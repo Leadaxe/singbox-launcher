@@ -8,6 +8,7 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 )
 
 // buildSnapshotFromState — эмиссия узлов из МАТЕРИАЛИЗОВАННОГО состояния
@@ -36,7 +37,7 @@ import (
 // Rebuild'а, и открытая здесь попытка на холостом вызове оставалась бы вечно
 // незавершённой — то есть стирала бы готовый отчёт прошлой полной сборки,
 // ничего не дав взамен. Кто попытку открывает, тот её и доводит.
-func buildSnapshotFromState(s *state.State, execDir string, subst config.VarSubstituter, td *template.TemplateData) (*build.ParsedCache, *config.OutboundGenerationResult, error) {
+func buildSnapshotFromState(s *state.State, l paths.Layout, subst config.VarSubstituter, td *template.TemplateData) (*build.ParsedCache, *config.OutboundGenerationResult, error) {
 	if s == nil {
 		return nil, nil, fmt.Errorf("buildSnapshotFromState: nil state")
 	}
@@ -69,7 +70,7 @@ func buildSnapshotFromState(s *state.State, execDir string, subst config.VarSubs
 		config.SubstituteParserConfigPlaceholders(&parserCfg, subst)
 	} else {
 		// Caller не передал — берём дефолтный (template + state vars с диска).
-		def := config.BuildVarSubstituterFromDisk(execDir)
+		def := config.BuildVarSubstituterFromDisk(l)
 		config.SubstituteParserConfigPlaceholders(&parserCfg, def)
 	}
 

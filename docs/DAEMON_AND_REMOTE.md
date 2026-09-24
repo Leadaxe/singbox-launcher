@@ -4,7 +4,8 @@
 
 > Status: current for SPEC 096 (daemon core engine), 097 (remote config target),
 > 098 (Local/Remote tabs, one profile per machine), 099 (machine traffic profiler),
-> 100 (remote/daemon coverage in the Debug API).
+> 100 (remote/daemon coverage in the Debug API), 136 (the service runs a root-owned
+> copy of the core), 137 (the classic TUN start runs the same copy).
 >
 > Companion documents:
 > - **[ARCHITECTURE.md](ARCHITECTURE.md)** — layers, the `CoreBackend`/`ProxyTransport` seams.
@@ -27,7 +28,7 @@ through the active engine (`CoreBackend`).
 | How the core lives | child process `sing-box run` | inside the long-lived system service `sing-box lxd` |
 | Control plane | Clash HTTP API | gRPC (`daemon.StartedService`) + admin REST |
 | Applying a config | kill + restart the process | the core is swapped in place, without restarting the service |
-| Privileges | a password on every privileged TUN start | once, at install time; nothing afterwards |
+| Privileges | macOS: a password on the first TUN start of a launcher session; root runs only the root-owned copy of the core (§2.2) | once, at install time; nothing afterwards |
 | Quitting the launcher | brings the VPN down | **leaves the VPN running** by default |
 | Core requirement | an ordinary fork build | a build with the `lxd` subcommand (`with_lx_command`) |
 
@@ -59,16 +60,117 @@ and sudo asks you.
 
 | Operation | Command |
 |---|---|
-| Install the service | `sudo <path-to-sing-box> lxd --service=install` |
-| Uninstall the service | `sudo <path-to-sing-box> lxd --service=uninstall` |
+| Install or update the service | `sudo <launcher-core> lxd --service=install` |
+| Uninstall the service | `sudo <service-core> lxd --service=uninstall --keep-copy` |
 | Uninstall along with the daemon's data | the same `+ --purge` |
-| Mint a fresh invite | `sudo <path-to-sing-box> lxd client add --name singbox-launcher` |
+| Uninstall in **Remove all data…** | `sudo <service-core> lxd --service=uninstall --purge` |
+| Mint a fresh invite | `sudo <service-core> lxd client add --name singbox-launcher` |
+
+`<launcher-core>` is the core the launcher uses (Settings → Storage → Core).
+`<service-core>` is the service's root-owned copy (§2.1) when the service runs one,
+otherwise the launcher core. `--keep-copy` (core lx.12+) removes the plist and the
+launchd job but leaves the copy and its `.install.json` in place — the classic TUN start
+runs that copy (§2.2). **Remove all data…** offers the full uninstall without it, so
+the copy goes away together with the data.
 
 `--service=install` takes no parameters: it picks a free loopback port itself
 (19091+, or keeps the address of an existing installation), generates the secret,
 forces mTLS on, and prints a **one-time invite** at the end.
 
 After that, starting/stopping the VPN and applying configs need no password.
+
+### 2.1 The service runs a root-owned copy of the core (SPEC 136)
+
+launchd starts the service as root. Earlier cores wrote into
+`/Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist` the path of whatever binary
+ran the install command — the core inside the app bundle or in the data folder.
+Both files belong to your user account, so any program running as you could replace
+the file and get root on the next service start.
+
+Since core **lx.12** the install command copies the core into a root-owned
+place and points the plist at the copy:
+
+| What | Where |
+|---|---|
+| Copy of the core | the flat file `/Library/PrivilegedHelperTools/sing-box-lxd` (`root:wheel 0755`, core lx.12+); no service folder; the root process is named `sing-box-lxd` |
+| Install record | `/Library/PrivilegedHelperTools/sing-box-lxd.install.json` (`root:wheel 0644`): source, sha256, version, time, plist, label |
+
+The same command covers every case — first install, an old plist that points at your
+own files, and a core update: `sudo <launcher-core> lxd --service=install`. It is
+idempotent (an identical core leaves the copy alone), keeps `daemon.json`, the secret
+and the paired clients, and restarts the service. After downloading a new core the
+launcher shows this command instead of a plain restart: restarting would bring the
+old copy back up.
+
+The launcher checks the service without sudo and shows the result on the Status tab
+of the LOCAL connection settings:
+
+| State | Meaning | Shown as |
+|---|---|---|
+| not installed | no plist | nothing |
+| unsafe | the plist does not point at the copy, or the copy, `/Library/PrivilegedHelperTools` or `/Library` is a symlink, not owned by root, or writable by group/others; a plist on the legacy layout of early lx.11 builds (`/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd/` or the flat file `/Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd`) is reported as “legacy layout — install, then remove it: `sudo rm -rf /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd /Library/PrivilegedHelperTools/com.leadaxe.sing-box-lxd.install.json`” | red, with the command; a one-time dialog per launcher version; a WARN line in the log before every config apply |
+| stale | the copy differs from the launcher core (sha256), or is missing | yellow, with the command |
+| not running | the files are fine (plist on the safe copy, sha256 matches), but launchd does not run the service: not loaded or `state` ≠ `running` (`launchctl print`, no sudo) | yellow, with `sudo launchctl bootstrap system /Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist` — loading, not reinstalling |
+| process stale | the files match, but the running daemon reports another binary (`executable_sha256` from `/admin/info`; with an older core — another version) | yellow, with the command |
+| ok | the service runs the current root-owned copy | nothing |
+
+An unsafe service is warned about loudly but not blocked: the VPN keeps working until
+you run the command. `<launcher-core> lxd --service=status` (no sudo needed) prints
+the same check from the core's side, comparing the copy with the binary that runs it:
+exit 0 — ok, 2 — mismatch or unsafe, 3 — not installed, 4 — copy only (a copy without
+the service, SPEC 137), 5 — not running (loaded state at launchd), 1 — error. The install
+command may take up to ~20 s: the core waits up to 10 s for the old service to unload
+and retries `bootstrap`. The copy lives outside the
+launcher's data folder, so **Remove all data…** leaves the service in place and offers
+its uninstall command through the copy.
+
+### 2.2 The classic TUN start runs the same copy (SPEC 137)
+
+In the classic engine on macOS a config with TUN starts the core as root through the
+system password prompt (once per launcher session). Root runs only the root-owned
+copy from §2.1 and system utilities by absolute path — never a file from the data
+folder, the app bundle or `PATH`:
+
+| Action | What root runs |
+|---|---|
+| Start with TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/sh -c '<constant body>' start-singbox-privileged <data>/bin <copy> config.json /Library/Logs/sing-box-lxd 0 <your uid> 2097152` |
+| Stop / restart | `/bin/kill -TERM <shell pid> <core pid>` |
+| Kill in "Sing-Box already running" and in Diagnostics | `/usr/bin/pkill -TERM -f 'sing-box run\|start-singbox-privileged'` |
+| Turning TUN off in the wizard | nothing — the launcher removes the leftovers itself |
+
+The shell body is a constant compiled into the launcher, paths arrive as arguments,
+and `env -i` keeps the launcher's environment (its `PATH`, exported bash functions)
+away from the root shell. The `bin/start-singbox-privileged.sh` script of earlier
+versions is no longer written and is removed on the next start.
+
+Root never writes into your folders. The core's output goes to
+`/Library/Logs/sing-box-lxd/classic.log` — a root-owned folder (`root:wheel 0755`)
+with a file that belongs to you, `0600` (previous run in `classic.log.old`, same owner):
+other local accounts cannot read it, and you cannot swap it for a link because the
+folder is root's. The body checks your uid (digits, 501 or above, an existing
+account), creates the folder, refuses to touch the folder or the file if either is a
+symlink, of another type or another owner — the refusal reason reaches the startup
+error — and rotates the file above 2 MiB. The
+launcher only reads it: **Logs → Core** and the traffic profiler follow the log of the
+last start (a non-TUN start keeps writing `<logs>/sing-box.log` itself). Turning TUN
+off removes the root-owned cache and old core logs left in the data and log folders
+with the launcher's own rights — the folder, not the file owner, grants deletion — so
+no password is asked. **Remove all data…** does not remove
+`/Library/Logs/sing-box-lxd` (it needs root): `sudo rm -rf /Library/Logs/sing-box-lxd`.
+
+Before the password prompt the launcher checks the copy without sudo — the ownership
+chain as in §2.1 and the sha256 of the copy against the launcher core. A missing,
+unprotected or outdated copy (for example after a core update) stops the start, and a
+dialog shows one command with **Copy the command**, **Run in Terminal** and **Retry**:
+
+| Case | Command |
+|---|---|
+| no daemon service | `sudo <launcher-core> lxd --service=copy` — core lx.12+: only the copy and its `.install.json`, no plist, no launchd |
+| the daemon service is installed | `sudo <launcher-core> lxd --service=install` — the §2 command; it refreshes the same copy and restarts the service |
+
+After a core download the log gets a WARN with both sha256 values, and the next TUN
+start shows the dialog. With a copy and no service, `<launcher-core> lxd --service=status`
+exits with 4 (copy only).
 
 ---
 
@@ -256,5 +358,10 @@ examples lives in [API.md](API.md); this section is about the principles.
   `constants.RequiredCoreVersion` includes that build (the current pin lives in `internal/constants/constants.go`).
   Check the feature boundary by running the binary (`sing-box lxd --help`), not by
   release number.
+- **The root-owned copy needs core lx.12+.** With a launcher core below lx.12 (or of
+  an unknown version) the launcher offers no install or copy command at all — such a
+  core would point the plist back at the launcher's own file (lx.11: at the legacy
+  layout) — and shows "Update the core first: Local tab → Download/Reinstall" instead
+  (`service_state` `core_too_old`).
 - **A remote config has no Clash API** by design — hence the gRPC sources for both
   the node list and the profiler.

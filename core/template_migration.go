@@ -12,6 +12,7 @@ import (
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -23,19 +24,26 @@ const templateRefreshTimeout = 15 * time.Second
 
 // TemplateRefreshResult reports what RefreshTemplateIfStale did.
 type TemplateRefreshResult struct {
-	// RebuildConfig — this is the first launch of a launcher version that did
-	// not build config.json on disk: the next core start must rebuild it from
-	// state instead of reusing it. Set whenever state.json exists, whatever
-	// happened to the download.
+	// RebuildConfig — config.json on disk must not be reused: the next core
+	// start rebuilds it from state. Set when this is the first launch of a
+	// launcher version that did not build it (whenever state.json exists,
+	// whatever happened to the download), and when the data root changed
+	// since the last build (SPEC 135 §3.5: config.json holds absolute paths).
 	RebuildConfig bool
 	// Downloaded — the template pinned for this version was fetched and now
-	// sits in bin/ (replacing the stale file or restoring a missing one).
+	// sits in Data/bin (replacing the stale file or restoring a missing one).
 	Downloaded bool
 }
 
-// RefreshTemplateIfStale brings bin/wizard_template.json up to the template
-// pinned for this launcher version when the file on disk was installed by an
-// older one (SPEC 046: the template format shifts between versions).
+// RefreshTemplateIfStale brings the wizard template up to the one pinned for
+// this launcher version when the file in use was installed by an older one
+// (SPEC 046: the template format shifts between versions).
+//
+// Two folders (SPEC 135 §3.3): the shipped template and its marker live in
+// App/bin, the downloaded one and the stamp in Data/bin. Which file is read
+// is decided by template.ResolveTemplate; this function only reads the
+// marker from App and writes (stamp, download) into Data. In portable/legacy
+// layouts App == Data and the behaviour is the one from before SPEC 135.
 //
 // The stale template is REPLACED, never deleted: it stays in place until the
 // new one is downloaded and parsed (template.DownloadTemplate swaps the file
@@ -52,8 +60,11 @@ type TemplateRefreshResult struct {
 //   - no template and no state.json (a pristine install that never downloaded
 //     one) → stamped without touching the network: the Download button on the
 //     Local tab stays the way in, as before;
-//   - template bundled by the installer for exactly this version → kept and
-//     stamped, no network.
+//   - template bundled by the installer for exactly this version (resolver
+//     picked the shipped one with a current marker) → kept and stamped, no
+//     network. A downloaded copy left in Data by the previous version is
+//     removed: it is superseded by the shipped one, and after the stamp the
+//     resolver would otherwise go back to it.
 //
 // A template the user placed by hand survives launches on the same version
 // (the stamp short-circuits the check); on the next upgrade it is replaced by
@@ -62,19 +73,30 @@ type TemplateRefreshResult struct {
 // Skipped for dev builds: AppVersion of the form "v-local-test" or
 // "unnamed-dev" doesn't compare meaningfully against semver, so the policy
 // would either always or never fire. Both are annoying during inner-loop
-// development; we leave the local template alone in those cases.
+// development; we leave the local template alone in those cases. The data
+// root check (config_data_root) runs on dev builds too: it has nothing to do
+// with versions.
 //
-// NETWORK: call off the UI thread. execDir and fetch are parameters so tests
+// NETWORK: call off the UI thread. l and fetch are parameters so tests
 // run without an AppController and without a network.
-func RefreshTemplateIfStale(ctx context.Context, execDir string, fetch template.URLFetcher) (TemplateRefreshResult, error) {
+func RefreshTemplateIfStale(ctx context.Context, l paths.Layout, fetch template.URLFetcher) (TemplateRefreshResult, error) {
 	var res TemplateRefreshResult
+	binDir := l.Data.Bin()
+	settings := locale.LoadSettings(binDir)
+
+	// SPEC 135 §3.5: config.json holds absolute paths (.srs, tailscale) under
+	// the data root it was built with. Moved root → those paths lie.
+	if old := settings.ConfigDataRoot; old != "" && old != configDataRoot(l) {
+		debuglog.WarnLog("config: data root changed %s -> %s, rebuilding config.json", old, configDataRoot(l))
+		res.RebuildConfig = true
+	}
+
 	if isDevAppVersion(constants.AppVersion) {
 		debuglog.DebugLog("template: skipping stale-check on dev build %q", constants.AppVersion)
 		return res, nil
 	}
 
-	binDir := platform.GetBinDir(execDir)
-	last := locale.LoadSettings(binDir).LastTemplateLauncherVersion
+	last := settings.LastTemplateLauncherVersion
 	if last != "" && CompareVersions(last, constants.AppVersion) >= 0 {
 		// Same launcher (or downgrade — leave the file, user knows what
 		// they're doing).
@@ -83,11 +105,11 @@ func RefreshTemplateIfStale(ctx context.Context, execDir string, fetch template.
 
 	// config.json on disk was built by another launcher version, maybe from
 	// another template: whatever happens below, the first start rebuilds it.
-	_, stateErr := os.Stat(platform.GetWizardStatePath(execDir))
+	_, stateErr := os.Stat(platform.GetWizardStatePath(l.Data))
 	hasState := stateErr == nil
-	res.RebuildConfig = hasState
+	res.RebuildConfig = res.RebuildConfig || hasState
 
-	templatePath := filepath.Join(binDir, constants.WizardTemplateFileName)
+	templatePath := platform.GetWizardTemplatePath(l.Data)
 	_, statErr := os.Stat(templatePath)
 
 	// Шаблон, положенный установщиком под ЭТУ версию (архив win64-full,
@@ -95,13 +117,10 @@ func RefreshTemplateIfStale(ctx context.Context, execDir string, fetch template.
 	// свежий, и перекачивать тот же файл незачем: весь смысл вложения в том,
 	// чтобы первый запуск не ходил в сеть. Маркер только читается; штамп в
 	// settings ставится, как при любом другом исходе без скачивания.
-	if statErr == nil {
-		if raw, rerr := os.ReadFile(filepath.Join(binDir, constants.WizardTemplateVersionFileName)); rerr == nil &&
-			strings.TrimSpace(string(raw)) == constants.AppVersion {
-			debuglog.InfoLog("template: bundled by the installer for %q — kept", constants.AppVersion)
-			stampTemplateCheck(binDir)
-			return res, nil
-		}
+	if keptShippedTemplate(l, statErr == nil) {
+		debuglog.InfoLog("template: bundled by the installer for %q — kept", constants.AppVersion)
+		stampTemplateCheck(binDir)
+		return res, nil
 	}
 
 	switch {
@@ -123,11 +142,61 @@ func RefreshTemplateIfStale(ctx context.Context, execDir string, fetch template.
 		return res, fmt.Errorf("template refresh: stat %s: %w", templatePath, statErr)
 	}
 
-	if _, err := template.DownloadTemplate(ctx, execDir, fetch); err != nil {
+	if _, err := template.DownloadTemplate(ctx, l.Data, fetch); err != nil {
 		return res, fmt.Errorf("template refresh: %w", err)
 	}
 	res.Downloaded = true
 	return res, nil
+}
+
+// keptShippedTemplate — ветка «положен установщиком под эту версию»: шаблон
+// оставляется как есть, сеть не нужна. dataExists — есть ли Data/bin/…json.
+//
+// Маркер читается из App. Нет маркера в App — из Data: у унаследованных
+// установок и после миграции маркер лежит рядом со скачанным шаблоном (в
+// portable это один и тот же файл).
+//
+// Поставляемый выбран резолвером, а в Data лежит копия прошлой версии — она
+// удаляется: штамп сейчас станет равен AppVersion, и по правилу резолвера
+// следующее чтение вернулось бы к ней. Не удалилась — false: штамп не
+// ставится, поставляемый продолжает побеждать, проверка повторится.
+func keptShippedTemplate(l paths.Layout, dataExists bool) bool {
+	tr := template.ResolveTemplate(l)
+	dataPath := platform.GetWizardTemplatePath(l.Data)
+	if tr.Source == template.TemplateSourceApp && tr.ShippedCurrent {
+		if dataExists && filepath.Clean(tr.Path) != filepath.Clean(dataPath) {
+			if err := os.Remove(dataPath); err != nil && !os.IsNotExist(err) {
+				debuglog.WarnLog("template: cannot remove %s superseded by the shipped template: %v", dataPath, err)
+				return false
+			}
+			debuglog.InfoLog("template: removed %s — superseded by the shipped %s", dataPath, tr.Path)
+		}
+		return true
+	}
+	if !dataExists {
+		return false
+	}
+	if l.App != "" {
+		if _, ok := template.ReadTemplateMarker(l.App.Bin()); ok {
+			return false // маркер App есть и не совпал — решил резолвер
+		}
+	}
+	marker, ok := template.ReadTemplateMarker(l.Data.Bin())
+	return ok && marker == constants.AppVersion
+}
+
+// configDataRoot — значение штампа config_data_root для раскладки l.
+func configDataRoot(l paths.Layout) string {
+	return filepath.Clean(string(l.Data))
+}
+
+// stampConfigDataRoot записывает DataDir, с которым только что собран
+// config.json (SPEC 135 §3.5). Best effort: не записалось — на следующем
+// старте сравнение просто не сработает или сработает лишний раз.
+func stampConfigDataRoot(l paths.Layout) {
+	if err := locale.MarkConfigDataRoot(l.Data.Bin(), configDataRoot(l)); err != nil {
+		debuglog.WarnLog("config: failed to record data root: %v", err)
+	}
 }
 
 // stampTemplateCheck records that this launcher version has run its template
@@ -153,7 +222,7 @@ func (ac *AppController) StartTemplateRefresh() {
 	}
 	done := make(chan struct{})
 	ac.templateRefreshDone.Store(&done)
-	execDir := ac.FileService.ExecDir
+	layout := ac.FileService.Layout
 	parent := ac.ctx
 	if parent == nil {
 		parent = context.Background()
@@ -169,6 +238,7 @@ func (ac *AppController) StartTemplateRefresh() {
 				debuglog.WarnLog("version marks: recovered from panic: %v", r)
 			}
 		}()
+		ac.logCoreResolution()
 		ac.CheckVersionMarks()
 	}()
 
@@ -182,7 +252,7 @@ func (ac *AppController) StartTemplateRefresh() {
 		ctx, cancel := context.WithTimeout(parent, templateRefreshTimeout)
 		defer cancel()
 
-		res, err := RefreshTemplateIfStale(ctx, execDir, ac.GetURLBytes)
+		res, err := RefreshTemplateIfStale(ctx, layout, ac.GetURLBytes)
 		if err != nil {
 			debuglog.WarnLog("template: %v — the installed template stays in use", err)
 		} else if res.Downloaded {
@@ -190,7 +260,18 @@ func (ac *AppController) StartTemplateRefresh() {
 		}
 		// Before the gate opens: a start waiting on it must already see the
 		// marker, or its rebuild takes the no-op path and runs the old file.
-		if res.RebuildConfig && ac.StateService != nil {
+		//
+		// SPEC 135 §3.4: after a migration the copied config.json still points
+		// at the old root. NewFileService stamps that old root into the new
+		// settings.json when it carried none, so the data-root check above
+		// fires on this start and on any restart before the rebuild. The
+		// in-memory migration flag stays as the fallback for a stamp that
+		// could not be written.
+		migrated := ac.FileService != nil && ac.FileService.Migration.Migrated
+		if (res.RebuildConfig || migrated) && ac.StateService != nil {
+			if migrated && !res.RebuildConfig {
+				debuglog.WarnLog("config: data migrated from %s, rebuilding config.json", ac.FileService.Migration.Source)
+			}
 			ac.StateService.MarkConfigStale()
 		}
 		if res.Downloaded && ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {

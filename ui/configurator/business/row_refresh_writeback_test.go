@@ -24,6 +24,7 @@ import (
 	corepkg "singbox-launcher/core"
 	"singbox-launcher/core/services"
 	corestate "singbox-launcher/core/state"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -43,10 +44,10 @@ func rowRefreshFixture(t *testing.T, body string) (*corepkg.ConfigService, strin
 	t.Cleanup(srv.Close)
 
 	execDir := t.TempDir()
-	if err := os.MkdirAll(platform.GetWizardStatesDir(execDir), platform.DefaultDirMode); err != nil {
+	if err := os.MkdirAll(platform.GetWizardStatesDir(paths.DataDir(execDir)), platform.DefaultDirMode); err != nil {
 		t.Fatal(err)
 	}
-	ac := &corepkg.AppController{FileService: &services.FileService{ExecDir: execDir}}
+	ac := &corepkg.AppController{FileService: &services.FileService{Layout: paths.Layout{Data: paths.DataDir(execDir)}}}
 	return corepkg.NewConfigService(ac), execDir, srv.URL
 }
 
@@ -115,7 +116,7 @@ func countUnsupported(nodes []corestate.Node) int {
 // состоянии — иначе его затрёт первый же чужой писатель state.json.
 func TestRowRefreshDeliversFetchResultToStateFile(t *testing.T) {
 	svc, execDir, url := rowRefreshFixture(t, rowRefreshBody)
-	statePath := platform.GetWizardStatePath(execDir)
+	statePath := platform.GetWizardStatePath(paths.DataDir(execDir))
 	m := rowRefreshModel(url)
 
 	// Состояние, каким его сохранил визард ДО обновления: подписка есть,
@@ -176,7 +177,7 @@ func TestRowRefreshDeliversFetchResultToStateFile(t *testing.T) {
 // запись — state.json пишет визард.
 func TestRowRefreshColdStartDoesNotInventSourceOnDisk(t *testing.T) {
 	svc, execDir, url := rowRefreshFixture(t, rowRefreshBody)
-	statePath := platform.GetWizardStatePath(execDir)
+	statePath := platform.GetWizardStatePath(paths.DataDir(execDir))
 	m := rowRefreshModel(url)
 
 	clickRowRefresh(t, svc, m, "SUBLIB")
@@ -199,7 +200,7 @@ func TestRowRefreshColdStartDoesNotInventSourceOnDisk(t *testing.T) {
 // отказа доезжает — иначе строка источника осталась бы с виду здоровой.
 func TestRowRefreshFailureKeepsNodesAndPersistsError(t *testing.T) {
 	execDir := t.TempDir()
-	if err := os.MkdirAll(platform.GetWizardStatesDir(execDir), platform.DefaultDirMode); err != nil {
+	if err := os.MkdirAll(platform.GetWizardStatesDir(paths.DataDir(execDir)), platform.DefaultDirMode); err != nil {
 		t.Fatal(err)
 	}
 	ok := true
@@ -211,9 +212,9 @@ func TestRowRefreshFailureKeepsNodesAndPersistsError(t *testing.T) {
 		_, _ = w.Write([]byte(rowRefreshBody))
 	}))
 	defer srv.Close()
-	ac := &corepkg.AppController{FileService: &services.FileService{ExecDir: execDir}}
+	ac := &corepkg.AppController{FileService: &services.FileService{Layout: paths.Layout{Data: paths.DataDir(execDir)}}}
 	svc := corepkg.NewConfigService(ac)
-	statePath := platform.GetWizardStatePath(execDir)
+	statePath := platform.GetWizardStatePath(paths.DataDir(execDir))
 
 	m := rowRefreshModel(srv.URL)
 	seed := corestate.New()

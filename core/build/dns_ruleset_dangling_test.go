@@ -19,6 +19,7 @@ import (
 
 	state "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
+	"singbox-launcher/internal/paths"
 )
 
 // TestDNSRuleSetRefsSurviveWhenTagIsEmitted — комплексный прогон BuildConfig
@@ -66,7 +67,7 @@ func TestDNSRuleSetRefsSurviveWhenTagIsEmitted(t *testing.T) {
 	ctx := BuildContext{
 		Template: td,
 		Preset: PresetMergeContext{
-			ExecDir:        execDir,
+			DataDir:        paths.DataDir(execDir),
 			SrsCachedPaths: map[string][]string{srsID: {srsFile}},
 			Rules:          []state.Rule{srsRule},
 			DNS: state.DNSOptions{

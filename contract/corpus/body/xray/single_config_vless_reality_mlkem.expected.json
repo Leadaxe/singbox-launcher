@@ -29,7 +29,13 @@
       },
       "kind": "outbound",
       "label": "single-xray-config",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.tcpSettings"
+        }
+      ]
     }
   ],
   "v": 1

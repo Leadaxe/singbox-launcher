@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"singbox-launcher/internal/lxdclient"
+	"singbox-launcher/internal/paths"
 )
 
 // Реестр удалённых демонов — файловый, поэтому проверяем его свойства на
@@ -13,7 +14,7 @@ import (
 // перезаписи и честное удаление.
 
 func TestRemoteRegistryEmptyIsNotAnError(t *testing.T) {
-	r := NewRemoteRegistry(t.TempDir())
+	r := NewRemoteRegistry(paths.DataDir(t.TempDir()))
 	list, err := r.List()
 	if err != nil {
 		t.Fatalf("missing registry file must not error: %v", err)
@@ -40,7 +41,7 @@ func TestRemoteRegistryUniqueIDs(t *testing.T) {
 
 func TestRemoteRegistryCRUD(t *testing.T) {
 	dir := t.TempDir()
-	r := NewRemoteRegistry(dir)
+	r := NewRemoteRegistry(paths.DataDir(dir))
 
 	// Pair ходит по сети (enroll), поэтому наполняем реестр напрямую —
 	// проверяем именно файловый слой.
@@ -110,7 +111,7 @@ func TestRemoteRegistryCRUD(t *testing.T) {
 // Каждая машина получает СВОЮ клиентскую пару: сертификат — полный мандат,
 // общий ключ означал бы, что отзыв доступа на одном роутере отзывает его везде.
 func TestRemoteRegistryIdentityIsolation(t *testing.T) {
-	r := NewRemoteRegistry(t.TempDir())
+	r := NewRemoteRegistry(paths.DataDir(t.TempDir()))
 	a, err := lxdclient.LoadOrCreateIdentity(r.identityDir("router"))
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +138,7 @@ func TestRemoteRegistryIdentityIsolation(t *testing.T) {
 // решит, что сопряжения пропали, и повторит enroll (а код одноразовый).
 func TestRemoteRegistryCorruptFileErrors(t *testing.T) {
 	dir := t.TempDir()
-	r := NewRemoteRegistry(dir)
+	r := NewRemoteRegistry(paths.DataDir(dir))
 	if err := os.MkdirAll(filepath.Dir(r.path()), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +153,7 @@ func TestRemoteRegistryCorruptFileErrors(t *testing.T) {
 // Транспорт к неизвестной машине — ошибка, а не nil-транспорт (иначе
 // вызывающий получит панику на первом RPC).
 func TestRemoteRegistryTransportUnknownID(t *testing.T) {
-	r := NewRemoteRegistry(t.TempDir())
+	r := NewRemoteRegistry(paths.DataDir(t.TempDir()))
 	if _, err := r.Transport("ghost"); err == nil {
 		t.Error("Transport for unknown id must fail")
 	}
@@ -177,7 +178,7 @@ func TestLxdRemoteTransportCloseWithoutDial(t *testing.T) {
 // свойства импорта, на которые фикс опирается.
 func TestImportPairedDaemon(t *testing.T) {
 	dir := t.TempDir()
-	r := NewRemoteRegistry(dir)
+	r := NewRemoteRegistry(paths.DataDir(dir))
 
 	// Готовим «уже сопряжённую» identity, как её создаёт локальный pair.
 	srcDir := filepath.Join(dir, "bin", "daemon")
@@ -244,7 +245,7 @@ func TestImportPairedDaemon(t *testing.T) {
 // приезжает нерабочее значение. Проверяем валидацию — сам enroll ходит по
 // сети, поэтому здесь только разбор входа.
 func TestPairWithAddrValidatesOverride(t *testing.T) {
-	r := NewRemoteRegistry(t.TempDir())
+	r := NewRemoteRegistry(paths.DataDir(t.TempDir()))
 	fp := "4dc7f90bfa5835781034d723675fd9d44b3dcd8dbdeed218f732903a3c05ad7a"
 	invite := "0.0.0.0:9091#" + fp + "#CODE123"
 
@@ -261,7 +262,7 @@ func TestPairWithAddrValidatesOverride(t *testing.T) {
 // демоном, переезд папки означал бы потерю сопряжения ради косметики.
 func TestRegistryUpdateKeepsIdentity(t *testing.T) {
 	dir := t.TempDir()
-	r := NewRemoteRegistry(dir)
+	r := NewRemoteRegistry(paths.DataDir(dir))
 	srcDir := filepath.Join(dir, "seed")
 	if _, err := lxdclient.LoadOrCreateIdentity(srcDir); err != nil {
 		t.Fatal(err)

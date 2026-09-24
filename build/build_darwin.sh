@@ -1,6 +1,12 @@
 #!/bin/bash
 
 # Build script for macOS (Darwin)
+#
+# With -i it also installs the build into /Applications: replaces the
+# executable (or copies the whole .app on first install), re-signs it and
+# re-seals the bundle, then restarts the launcher — a running instance is
+# asked to quit and the new build is started. SB_NO_RESTART=1 skips the
+# restart.
 
 set -e
 
@@ -33,9 +39,15 @@ print_usage() {
     echo ""
     echo "Options:"
     echo "  -i                                  Install/update in /Applications: if the app already"
-    echo "                                      exists, only the executable is replaced (bin/, logs/ kept);"
+    echo "                                      exists, only the executable is replaced (data lives in"
+    echo "                                      ~/Library/Application Support/singbox-launcher; old bin/, logs/"
+    echo "                                      inside the bundle, if any, are left untouched);"
     echo "                                      otherwise the full .app bundle is copied (first install)."
     echo "                                      The built .app in the repo directory is removed afterward."
+    echo "                                      Then the launcher is restarted: a running instance is asked"
+    echo "                                      to quit (SIGTERM if it is still there after 15 s, never"
+    echo "                                      SIGKILL) and the new build is started. Set SB_NO_RESTART=1"
+    echo "                                      to install without restarting."
     echo "  -h, --help                          Show this help"
 }
 
@@ -402,8 +414,17 @@ if [ "$COPY_TO_APPLICATIONS" = true ]; then
     DEST_BIN="$DEST_APP/Contents/MacOS/$BASE_NAME"
     SRC_BIN="$(pwd)/$APP_NAME/Contents/MacOS/$BASE_NAME"
 
+    # Data layout (SPEC 135): the launcher keeps its data in
+    # ~/Library/Application Support/singbox-launcher and its logs in
+    # ~/Library/Logs/singbox-launcher, not inside the bundle. Versions before
+    # SPEC 135 kept bin/ and logs/ in Contents/MacOS; on the first run the new
+    # launcher copies that bin/ to ~/Library itself (migration, SPEC 135 §3.4)
+    # and leaves the original in place for rollback. This script copies no
+    # data in either direction.
     if [ -d "$DEST_APP" ]; then
-        echo "Existing $APP_NAME found — updating executable only (Contents/MacOS/bin/, logs/ unchanged)."
+        echo "Existing $APP_NAME found — updating executable only."
+        echo "  Data lives in ~/Library/Application Support/singbox-launcher; old bin/ and logs/"
+        echo "  inside the bundle (pre-migration versions), if any, are left untouched."
         cp "$SRC_BIN" "$DEST_BIN"
         chmod +x "$DEST_BIN"
         echo "Updated: $DEST_BIN"
@@ -415,15 +436,27 @@ if [ "$COPY_TO_APPLICATIONS" = true ]; then
     rm -rf "$APP_NAME"
     echo "Removed local bundle: $(pwd)/$APP_NAME"
 
+    # Legacy data inside the bundle: an installation updated from a version
+    # before SPEC 135 still has bin/ and logs/ in Contents/MacOS. They are the
+    # migration source (and the rollback copy), so they stay where they are;
+    # the seal steps below only move them aside temporarily. A clean bundle
+    # (fresh install, or the user removed the old data) has neither.
+    LEGACY_DATA=""
+    for item in bin logs; do
+        [ -e "$DEST_APP/Contents/MacOS/$item" ] && LEGACY_DATA="$LEGACY_DATA $item"
+    done
+
     # macOS Sonoma+ kills binaries with invalid code signatures (SIGKILL
     # "Code Signature Invalid"). After replacing the executable in-place,
     # we ad-hoc resign it so launches work without manual intervention.
     #
-    # Direct codesign on a path inside .app fails because codesign treats
-    # the bundle as context and tries to sign every Contents/MacOS/* file
-    # — which includes root-owned `bin/logs/sing-box.log` and `.raw` files.
-    # Workaround: copy binary out of bundle, sign standalone with explicit
-    # identifier, copy back.
+    # The executable is signed standalone (copied out, signed with an explicit
+    # identifier, copied back). Historically this was required: direct
+    # codesign on a path inside .app treats the bundle as context and tries to
+    # sign every Contents/MacOS/* file — including root-owned
+    # `bin/logs/sing-box.log` and `.raw` files of pre-SPEC-135 installations.
+    # For a clean bundle it is merely redundant (the bundle seal below signs
+    # the executable again); one code path for both cases is kept on purpose.
     echo "=== Re-signing executable (ad-hoc) ==="
     SIGN_TMP="/tmp/${BASE_NAME}_sign_$$"
     if cp "$DEST_BIN" "$SIGN_TMP" && \
@@ -441,16 +474,10 @@ if [ "$COPY_TO_APPLICATIONS" = true ]; then
     # Strip quarantine attribute (just in case it got added by some flow).
     xattr -dr com.apple.quarantine "$DEST_APP" 2>/dev/null || true
 
-    # Check that the bundle still HAS a seal — not that it verifies.
+    # Check that the bundle seal MATCHES the bundle, and re-seal if not.
     #
-    # `codesign --verify` is useless here by design: it reports every file
-    # added to Contents/MacOS after signing as "a sealed resource is missing
-    # or invalid", and this app keeps its working data exactly there —
-    # bin/ (core, subscriptions, state) and logs/ change on every run. Using
-    # --verify as the gate would re-sign on every single install.
-    #
-    # What actually breaks the launch is a seal that does not MATCH the bundle:
-    # macOS refuses the app with a useless "cannot be opened" dialog and
+    # What breaks the launch is a seal that does not match the bundle: macOS
+    # refuses the app with a useless "cannot be opened" dialog and
     # `Launchd job spawn failed` (POSIX 162) in the log. Two distinct states
     # produce it, and both must be detected:
     #
@@ -460,21 +487,32 @@ if [ "$COPY_TO_APPLICATIONS" = true ]; then
     #      standalone (above) does NOT refresh the bundle seal, so it drifts
     #      out of sync as Contents/ changes across installs.
     #
-    # Case 2 was previously missed (the check was `! -d _CodeSignature`), and
-    # the app started failing to launch after a few incremental installs.
+    # Case 2 was once missed (the check was `! -d _CodeSignature`), and the app
+    # started failing to launch after a few incremental installs.
     #
-    # Verification and re-sealing both need the working data out of the way:
-    # those files live in Contents/MacOS, so --verify always reports them as
-    # "sealed resource is missing or invalid", and they may be root-owned
-    # after the core ran with administrator rights, which makes codesign fail.
-    SEAL_HOLD="/tmp/${BASE_NAME}_seal_$$"
-    mkdir -p "$SEAL_HOLD"
-    for item in bin logs; do
-        [ -e "$DEST_APP/Contents/MacOS/$item" ] && \
+    # Two paths:
+    #
+    #   - Clean bundle (no bin/, logs/ in Contents/MacOS): nothing but the
+    #     shipped files lives there, so `codesign --verify` tells the truth
+    #     directly and re-sealing runs in place.
+    #   - Bundle with pre-SPEC-135 data: those files were added after signing,
+    #     so --verify always reports them as "a sealed resource is missing or
+    #     invalid", and they may be root-owned after the core ran with
+    #     administrator rights, which makes codesign fail. They are moved
+    #     aside for the check and the re-seal, then put back untouched. (This
+    #     is historical: it is why --verify used to be useless here, and
+    #     `codesign --force` over a bundle with working data inside is what
+    #     broke launches before.)
+    SEAL_HOLD=""
+    if [ -n "$LEGACY_DATA" ]; then
+        echo "Old data inside the bundle (${LEGACY_DATA# }) — moving it aside for the seal check."
+        SEAL_HOLD="/tmp/${BASE_NAME}_seal_$$"
+        mkdir -p "$SEAL_HOLD"
+        for item in $LEGACY_DATA; do
             mv "$DEST_APP/Contents/MacOS/$item" "$SEAL_HOLD/$item"
-    done
+        done
+    fi
 
-    # With the working data aside, --verify tells the truth about the seal.
     if [ -d "$DEST_APP/Contents/_CodeSignature" ] && \
        codesign --verify "$DEST_APP" 2>/dev/null; then
         SEAL_OK=1
@@ -490,22 +528,120 @@ if [ "$COPY_TO_APPLICATIONS" = true ]; then
             echo "Bundle re-sealed: $DEST_APP"
         else
             echo "WARNING: bundle seal still invalid; macOS may refuse to launch the app"
-            echo "  Fix manually with the working data moved aside:"
+            if [ -n "$SEAL_HOLD" ]; then
+                echo "  Fix manually with bin/ and logs/ moved out of Contents/MacOS:"
+            else
+                echo "  Fix manually:"
+            fi
             echo "    codesign --force --sign - --identifier com.singbox.launcher $DEST_APP"
         fi
+    else
+        echo "Bundle seal OK: $DEST_APP"
     fi
 
-    for item in bin logs; do
-        [ -e "$SEAL_HOLD/$item" ] && \
-            mv "$SEAL_HOLD/$item" "$DEST_APP/Contents/MacOS/$item"
-    done
-    rmdir "$SEAL_HOLD" 2>/dev/null || true
+    if [ -n "$SEAL_HOLD" ]; then
+        for item in $LEGACY_DATA; do
+            [ -e "$SEAL_HOLD/$item" ] && \
+                mv "$SEAL_HOLD/$item" "$DEST_APP/Contents/MacOS/$item"
+        done
+        rmdir "$SEAL_HOLD" 2>/dev/null || true
+    fi
+
+    # Restart the launcher, so that the build just installed is what runs.
+    # This comes after the re-sign and re-seal on purpose: macOS refuses or
+    # kills a process started from a bundle whose signature does not match.
+    #
+    # The running instance is found by the exact executable path and this
+    # user's UID, never by name: sing-box processes (the core, a live VPN)
+    # and a root-owned process must not be touched. Quit goes through the
+    # regular macOS request (Apple Event quit -> applicationShouldTerminate:,
+    # the launcher stops the core via GracefulExit); SIGTERM, which the
+    # launcher also handles gracefully, is the fallback. There is no SIGKILL:
+    # a launcher killed that way leaves a classic core running with its TUN
+    # routes. If the instance does not exit, the new build is not started.
+    if [ "${SB_NO_RESTART:-}" = "1" ]; then
+        echo "=== Launcher restart skipped (SB_NO_RESTART=1) ==="
+    else
+        echo "=== Restarting the launcher ==="
+        LAUNCHER_UID=$(id -u)
+        DEST_BIN_RE=$(printf '%s' "$DEST_BIN" | sed 's/\./\\./g')
+
+        # PIDs of this user's instances of the installed launcher, space-separated.
+        launcher_pids() {
+            pgrep -d ' ' -U "$LAUNCHER_UID" -f "^${DEST_BIN_RE}( |\$)" 2>/dev/null || true
+        }
+
+        # Polls every 0.5 s for up to $1 seconds; succeeds once no instance is left.
+        wait_launcher_exit() {
+            local tries=$(( $1 * 2 ))
+            while [ -n "$(launcher_pids)" ]; do
+                [ "$tries" -gt 0 ] || return 1
+                sleep 0.5
+                tries=$((tries - 1))
+            done
+            return 0
+        }
+
+        START_LAUNCHER=true
+        RUNNING_PIDS=$(launcher_pids)
+        if [ -n "$RUNNING_PIDS" ]; then
+            echo "Launcher is running (PID $RUNNING_PIDS) — asking it to quit..."
+            # The app is addressed by its path: a copy with the same name or
+            # bundle id elsewhere (a build in the repo) must not get the quit.
+            QUIT_START=$SECONDS
+            osascript -e 'with timeout of 15 seconds' \
+                      -e "tell application \"$DEST_APP\" to quit" \
+                      -e 'end timeout' >/dev/null 2>&1 || true
+            QUIT_LEFT=$(( 15 - (SECONDS - QUIT_START) ))
+            [ "$QUIT_LEFT" -ge 1 ] || QUIT_LEFT=1
+            if wait_launcher_exit "$QUIT_LEFT"; then
+                echo "Launcher quit."
+            else
+                STILL_PIDS=$(launcher_pids)
+                echo "Still running after 15 s — sending SIGTERM to PID $STILL_PIDS"
+                for pid in $STILL_PIDS; do
+                    kill -TERM "$pid" 2>/dev/null || true
+                done
+                if wait_launcher_exit 5; then
+                    echo "Launcher exited on SIGTERM."
+                else
+                    echo "WARNING: the launcher (PID $(launcher_pids)) did not exit; the new build is NOT started."
+                    echo "  Quit it yourself, then run: open $DEST_APP"
+                    START_LAUNCHER=false
+                fi
+            fi
+            if [ "$START_LAUNCHER" = true ]; then
+                # Right after the exit LaunchServices may still hold the old
+                # instance and answer open with error -600.
+                sleep 2
+            fi
+        else
+            echo "Launcher is not running — starting it."
+        fi
+
+        if [ "$START_LAUNCHER" = true ]; then
+            if open "$DEST_APP" 2>/dev/null; then
+                echo "Started: $DEST_APP"
+            else
+                echo "open failed (the old instance may still be shutting down) — retrying in 3 s..."
+                sleep 3
+                if open "$DEST_APP"; then
+                    echo "Started: $DEST_APP"
+                else
+                    echo "WARNING: could not start the launcher. Start it yourself: open $DEST_APP"
+                fi
+            fi
+        fi
+    fi
     echo "========================================"
 else
     echo "To install or update in /Applications:"
-    echo "  $0 -i $BUILD_TYPE   # updates binary only if the app is already there; else full .app"
+    echo "  $0 -i $BUILD_TYPE   # updates binary only if the app is already there; else full .app;"
+    echo "  #                     then restarts the launcher (SB_NO_RESTART=1 to skip)"
     echo ""
-    echo "Manual full copy (replaces entire app, wipes data in Contents/MacOS/bin/):"
+    echo "Manual full copy (replaces the entire app). Safe once this version has run at least once:"
+    echo "  data then lives in ~/Library/Application Support/singbox-launcher. Before that, it wipes"
+    echo "  not-yet-migrated data of an older version inside the bundle (Contents/MacOS/bin/):"
     echo "  cp -R \"$(pwd)/$APP_NAME\" /Applications/"
     echo "========================================"
 fi

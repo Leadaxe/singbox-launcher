@@ -63,7 +63,7 @@ func (s *Server) handleRemoteResourcesSync(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	config, err := os.ReadFile(platform.GetRemoteConfigPathFor(s.remote.ExecDir, id))
+	config, err := os.ReadFile(platform.GetRemoteConfigPathFor(s.remote.DataDir, id))
 	if err != nil {
 		if os.IsNotExist(err) {
 			writeJSON(w, http.StatusNotFound, map[string]any{
@@ -74,7 +74,7 @@ func (s *Server) handleRemoteResourcesSync(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	files, err := services.CollectDeployResources(s.remote.ExecDir, id, config)
+	files, err := services.CollectDeployResources(s.remote.DataDir, id, config)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return

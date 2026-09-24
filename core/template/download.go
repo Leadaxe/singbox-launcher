@@ -24,6 +24,7 @@ import (
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -36,7 +37,7 @@ const DownloadTimeout = 30 * time.Second
 // передать метод контроллера как есть.
 type URLFetcher func(ctx context.Context, url string, timeout time.Duration) ([]byte, int, error)
 
-// DownloadTemplate скачивает шаблон и кладёт его в <execDir>/bin.
+// DownloadTemplate скачивает шаблон и кладёт его в <DataDir>/bin.
 //
 // Возвращает путь установленного файла. Ошибка пригодна для показа
 // пользователю: она всегда содержит конкретную причину, а не «см. лог» —
@@ -49,13 +50,13 @@ type URLFetcher func(ctx context.Context, url string, timeout time.Duration) ([]
 //
 // СЕТЕВАЯ функция: вызывать только вне UI-потока, мутации виджетов после —
 // через fyne.Do.
-func DownloadTemplate(ctx context.Context, execDir string, fetch URLFetcher) (string, error) {
+func DownloadTemplate(ctx context.Context, d paths.DataDir, fetch URLFetcher) (string, error) {
 	if fetch == nil {
 		return "", fmt.Errorf("template download: no URL fetcher provided")
 	}
 	url := GetTemplateURL()
-	binDir := platform.GetBinDir(execDir)
-	target := filepath.Join(binDir, GetTemplateFileName())
+	binDir := d.Bin()
+	target := platform.GetWizardTemplatePath(d)
 
 	debuglog.InfoLog("template: downloading %s → %s", url, target)
 
@@ -133,17 +134,17 @@ func replaceFileAtomically(target string, data []byte) error {
 // вкладки Local по нему обновляется статус-строка.
 //
 // СЕТЕВАЯ функция: вызывать только вне UI-потока.
-func EnsureTemplate(ctx context.Context, execDir string, fetch URLFetcher) (*TemplateData, bool, error) {
-	data, err := LoadTemplateData(execDir)
+func EnsureTemplate(ctx context.Context, l paths.Layout, fetch URLFetcher) (*TemplateData, bool, error) {
+	data, err := LoadTemplateData(l)
 	if err == nil {
 		return data, false, nil
 	}
 	debuglog.InfoLog("template: load failed (%v) — attempting download before giving up", err)
 
-	if _, dlErr := DownloadTemplate(ctx, execDir, fetch); dlErr != nil {
+	if _, dlErr := DownloadTemplate(ctx, l.Data, fetch); dlErr != nil {
 		return nil, true, dlErr
 	}
-	data, err = LoadTemplateData(execDir)
+	data, err = LoadTemplateData(l)
 	if err != nil {
 		// Скачали, но прочитать всё равно не смогли — причина именно в
 		// содержимом, и в диалог должна уехать она, а не «см. лог».

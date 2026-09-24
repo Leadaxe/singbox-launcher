@@ -3,8 +3,9 @@
 // FileService управляет файловыми путями и лог-файлами приложения.
 //
 // Ответственности:
-//   - Определение путей к исполняемым файлам и конфигурации (ExecDir, ConfigPath, SingboxPath, SingboxBundledPath)
-//   - Создание необходимых директорий (logs/, bin/) при старте
+//   - Раскладка данных (Layout: AppDir/DataDir/LogDir, SPEC 135) и пути от неё (ConfigPath, SingboxPath, SingboxBundledPath)
+//   - Миграция унаследованных данных App/bin → Data/bin при старте (SPEC 135 §3.4)
+//   - Создание writable-директорий (Data/bin, Logs) при старте
 //   - Управление жизненным циклом лог-файлов (открытие, закрытие)
 //   - Ротация логов при превышении размера (максимум 1 старый файл на каждый лог)
 //
@@ -31,6 +32,8 @@ import (
 
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -41,20 +44,31 @@ const maxLogFileSize = 2 * 1024 * 1024 // 2 MB
 // FileService управляет файловыми путями и лог-файлами приложения.
 // Создаётся один раз при старте через NewFileService и хранится в AppController.
 type FileService struct {
-	// ExecDir — директория, в которой находится исполняемый файл приложения.
-	// Все относительные пути (bin/, logs/, config.json) строятся от неё.
-	ExecDir string
+	// Layout — раскладка данных (SPEC 135), решается один раз в main():
+	// App — поставляемое (только чтение), Data — состояние и кэши, Logs — логи.
+	Layout paths.Layout
 
 	// ConfigPath — полный путь к config.json (платформозависимый).
 	ConfigPath string
 
-	// SingboxBundledPath — локальный bin/sing-box (или .exe): цель установки ядра из лаунчера (Core → Download).
+	// SingboxBundledPath — <Data>/bin/sing-box (или .exe): цель установки ядра из лаунчера (Core → Download).
 	SingboxBundledPath string
 
-	// SingboxPath — путь для запуска sing-box, проверки версии и capabilities (на Linux может быть из PATH).
+	// SingboxPath — путь для запуска sing-box, проверки версии и capabilities:
+	// итог цепочки SINGBOX_LAUNCHER_CORE → Data/bin → App/bin → PATH
+	// (SPEC 135 §3.3, platform.ResolveSingboxExecPath). Пересчитывает ResolveCore.
 	SingboxPath string
 
-	// WintunPath — полный путь к wintun.dll (только Windows, пустая строка на других платформах).
+	// CoreSource — откуда взят SingboxPath: env / data / app / path; "" — ядро
+	// не найдено (SingboxPath тогда = SingboxBundledPath, цель скачивания).
+	CoreSource string
+
+	// ShadowedCorePath — второе найденное ядро, затенённое выбранным (Data над
+	// App, env над Data/App); пусто, если затенять нечего. Только для лога.
+	ShadowedCorePath string
+
+	// WintunPath — wintun.dll рядом с выбранным ядром: Dir(SingboxPath)/wintun.dll
+	// (только Windows, пустая строка на других платформах).
 	WintunPath string
 
 	// MainLogFile — лог приложения (singbox-launcher.log).
@@ -68,50 +82,110 @@ type FileService struct {
 	// ApiLogFile — лог API-запросов (api.log).
 	ApiLogFile *os.File
 
-	// ChildLogRelativePath is the relative path to the sing-box log file (e.g. "logs/sing-box.log").
-	// Set when OpenLogFiles is called; used by the log viewer to build the full path without duplicating the constant.
-	ChildLogRelativePath string
+	// ChildLogPath — абсолютный путь лога sing-box: <Logs>/sing-box.log.
+	ChildLogPath string
+
+	// Migration — итог переноса унаследованных данных App/bin → Data/bin
+	// (SPEC 135 §3.4), выполненного в NewFileService. Читает main: строка в
+	// лог после открытия логов и решение об одноразовом уведомлении.
+	Migration paths.MigrationResult
+
+	// MigrationErr — сбой миграции. Старт не прерывается: приложение
+	// поднимается с пустым DataDir, а state.json в Data так и не появился,
+	// поэтому следующий старт повторит попытку.
+	MigrationErr error
 }
 
-// NewFileService создаёт и инициализирует FileService.
-// Определяет все пути и создаёт необходимые директории (logs/, bin/).
+// NewFileService создаёт и инициализирует FileService от раскладки layout.
+// Переносит унаследованные данные (SPEC 135 §3.4), определяет все пути и
+// создаёт writable-директории (Data/bin, Logs).
 // Вызывается один раз при создании AppController.
-func NewFileService() (*FileService, error) {
-	fs := &FileService{}
+func NewFileService(layout paths.Layout) (*FileService, error) {
+	fs := &FileService{Layout: layout}
 
-	ex, err := os.Executable()
-	if err != nil {
-		return nil, fmt.Errorf("NewFileService: cannot determine executable path: %w", err)
+	// SPEC 135 §3.4: до EnsureDirectories и до любого чтения settings/state
+	// из Data — копия должна лечь раньше, чем кто-то увидит пустой Data/bin.
+	// Логов ещё нет (они открываются следом, в OpenLogFiles), и debuglog
+	// ранние строки не буферизует — итог пишет main после открытия логов.
+	fs.Migration, fs.MigrationErr = paths.MigrateLegacyData(layout, nil)
+	if fs.MigrationErr == nil && fs.Migration.Migrated {
+		stampPreMigrationDataRoot(layout.Data, fs.Migration.Source)
 	}
-	fs.ExecDir = filepath.Dir(ex)
 
-	if err := platform.EnsureDirectories(fs.ExecDir); err != nil {
+	if err := platform.EnsureDirectories(layout); err != nil {
 		return nil, fmt.Errorf("NewFileService: cannot create directories: %w", err)
 	}
 
-	fs.ConfigPath = platform.GetConfigPath(fs.ExecDir)
-	singboxName := platform.GetExecutableNames()
-	fs.SingboxBundledPath = filepath.Join(fs.ExecDir, "bin", singboxName)
-	fs.SingboxPath = platform.ResolveSingboxExecPath(fs.ExecDir, fs.SingboxBundledPath)
-	fs.WintunPath = platform.GetWintunPath(fs.ExecDir)
+	fs.ConfigPath = platform.GetConfigPath(layout.Data)
+	fs.SingboxBundledPath = filepath.Join(layout.Data.Bin(), platform.GetExecutableNames())
+	fs.ResolveCore()
+	fs.ChildLogPath = filepath.Join(string(layout.Logs), constants.ChildLogFileName)
 
 	return fs, nil
+}
+
+// stampPreMigrationDataRoot записывает в settings.json нового DataDir СТАРЫЙ
+// корень данных — тот, под которым собран перенесённый config.json (SPEC 135
+// §3.4, §3.5). Флаг Migration.Migrated живёт только в памяти первого старта:
+// перезапуск лаунчера до пересборки терял его, и config.json с путями .srs и
+// tailscale на старый корень уходил в ядро как есть. Несовпадение штампа с
+// текущим DataDir переживает перезапуск (core.RefreshTemplateIfStale →
+// пересборка); успешная сборка перепишет штамп текущим корнем.
+//
+// source — App/bin; корень — без хвоста bin, в той же форме, что
+// core.configDataRoot (filepath.Clean). Штамп, уже принесённый из старого
+// settings.json, не трогается. Не записалось — WARN (логов ещё нет, строка
+// уходит в stderr); миграция при этом состоялась.
+func stampPreMigrationDataRoot(data paths.DataDir, source string) {
+	bin := data.Bin()
+	if locale.LoadSettings(bin).ConfigDataRoot != "" {
+		return
+	}
+	oldRoot := filepath.Clean(filepath.Dir(source))
+	if err := locale.MarkConfigDataRoot(bin, oldRoot); err != nil {
+		debuglog.WarnLog("migration: cannot record previous data root %s: %v", oldRoot, err)
+	}
+}
+
+// ResolveCore пересчитывает путь ядра и его спутников (SPEC 135 §3.3, §5):
+// сначала ядро по цепочке, затем wintun.dll от каталога выбранного ядра —
+// загрузчик ОС ищет спутники рядом с sing-box, а не рядом с лаунчером.
+//
+// Зовётся из NewFileService и после успешного скачивания ядра (оно ложится
+// в Data/bin и должно сменить поставляемое или системное).
+func (fs *FileService) ResolveCore() {
+	r := platform.ResolveSingboxExecPath(fs.Layout, os.Getenv)
+	wintun := platform.GetWintunPathFor(filepath.Dir(r.Path))
+	// Поля читают другие горутины без блокировки; пишем только изменившиеся,
+	// чтобы повторный вызов с тем же итогом (обычный случай после скачивания
+	// в Data/bin) ничего не трогал.
+	if fs.SingboxPath != r.Path {
+		fs.SingboxPath = r.Path
+	}
+	if fs.CoreSource != r.Source {
+		fs.CoreSource = r.Source
+	}
+	if fs.ShadowedCorePath != r.Shadowed {
+		fs.ShadowedCorePath = r.Shadowed
+	}
+	if fs.WintunPath != wintun {
+		fs.WintunPath = wintun
+	}
 }
 
 // OpenLogFiles открывает все лог-файлы приложения с ротацией.
 // Основной лог (MainLogFile) устанавливается как вывод стандартного log пакета.
 // Ошибки открытия ChildLogFile и ApiLogFile не являются критическими —
 // приложение продолжает работу без них.
-func (fs *FileService) OpenLogFiles(logFileName, childLogFileName, apiLogFileName string) error {
-	fs.ChildLogRelativePath = childLogFileName
-	logFile, err := fs.OpenLogFileWithRotation(filepath.Join(fs.ExecDir, logFileName))
+func (fs *FileService) OpenLogFiles() error {
+	logFile, err := fs.OpenLogFileWithRotation(filepath.Join(string(fs.Layout.Logs), constants.MainLogFileName))
 	if err != nil {
 		return fmt.Errorf("OpenLogFiles: cannot open main log file: %w", err)
 	}
 	log.SetOutput(logFile)
 	fs.MainLogFile = logFile
 
-	childLogFile, err := fs.OpenLogFileWithRotation(filepath.Join(fs.ExecDir, childLogFileName))
+	childLogFile, err := fs.OpenLogFileWithRotation(fs.ChildLogPath)
 	if err != nil {
 		debuglog.WarnLog("OpenLogFiles: failed to open sing-box child log file: %v", err)
 		fs.ChildLogFile = nil
@@ -119,7 +193,7 @@ func (fs *FileService) OpenLogFiles(logFileName, childLogFileName, apiLogFileNam
 		fs.ChildLogFile = childLogFile
 	}
 
-	apiLogFile, err := fs.OpenLogFileWithRotation(filepath.Join(fs.ExecDir, apiLogFileName))
+	apiLogFile, err := fs.OpenLogFileWithRotation(filepath.Join(string(fs.Layout.Logs), constants.APILogFileName))
 	if err != nil {
 		debuglog.WarnLog("OpenLogFiles: failed to open API log file: %v", err)
 		fs.ApiLogFile = nil
@@ -131,18 +205,14 @@ func (fs *FileService) OpenLogFiles(logFileName, childLogFileName, apiLogFileNam
 }
 
 // ReopenChildLogFile закрывает дескриптор лога sing-box и заново открывает файл по пути
-// logs/sing-box.log (создаёт при отсутствии). Нужно после внешнего удаления файла (например
+// ChildLogPath (создаёт при отсутствии). Нужно после внешнего удаления файла (например
 // привилегированный rm): иначе старый fd указывает на снятый с каталога inode, а путь для
 // просмотра логов и следующий Start не совпадают с реальной записью.
 func (fs *FileService) ReopenChildLogFile() error {
 	if fs == nil {
 		return nil
 	}
-	rel := fs.ChildLogRelativePath
-	if rel == "" {
-		rel = filepath.Join(constants.LogsDirName, constants.ChildLogFileName)
-	}
-	full := filepath.Join(fs.ExecDir, rel)
+	full := fs.ChildLogPath
 	if fs.ChildLogFile != nil {
 		debuglog.RunAndLog("ReopenChildLogFile: close stale child log", fs.ChildLogFile.Close)
 		fs.ChildLogFile = nil
@@ -200,8 +270,7 @@ func (fs *FileService) CheckAndRotateLogFile(logPath string) {
 		return
 	}
 
-	isChildLog := fs.ChildLogFile != nil && fs.ChildLogRelativePath != "" &&
-		logPath == filepath.Join(fs.ExecDir, fs.ChildLogRelativePath)
+	isChildLog := fs.ChildLogFile != nil && fs.ChildLogPath != "" && logPath == fs.ChildLogPath
 	if isChildLog {
 		if err := fs.ChildLogFile.Close(); err != nil {
 			debuglog.WarnLog("CheckAndRotateLogFile: failed to close child log before rotation: %v", err)

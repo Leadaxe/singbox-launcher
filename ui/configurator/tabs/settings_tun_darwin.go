@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2/dialog"
@@ -15,10 +14,8 @@ import (
 
 	"singbox-launcher/core/config"
 	wizardtemplate "singbox-launcher/core/template"
-	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -41,9 +38,48 @@ func pathUnderRoot(root, target string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// removeTunLeftover удаляет target своим uid (SPEC 137.1): target лежит под
+// root лексически и после разрешения симлинков родителя, сам не симлинк.
+func removeTunLeftover(root, target string) error {
+	if !pathUnderRoot(root, target) {
+		return fmt.Errorf("%s is outside %s, left in place", target, root)
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return fmt.Errorf("%s: %v", root, err)
+	}
+	realParent, err := filepath.EvalSymlinks(filepath.Dir(target))
+	if err != nil {
+		return fmt.Errorf("%s: %v", filepath.Dir(target), err)
+	}
+	if !pathUnderRoot(realRoot, realParent) {
+		return fmt.Errorf("%s resolves outside %s, left in place", target, root)
+	}
+	fi, err := os.Lstat(target)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("%s: %v", target, err)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s is a symbolic link, left in place", target)
+	}
+	if err := os.RemoveAll(target); err != nil {
+		return fmt.Errorf("cannot remove %s: %v", target, err)
+	}
+	return nil
+}
+
 // maybeTunOffDarwin при снятии TUN на macOS: не даёт выключить, пока ядро запущено;
-// после остановки — привилегированно удаляет experimental.cache_file.path под bin/ (если есть),
-// а также логи ядра logs/sing-box.log и logs/sing-box.log.old, если существуют (после TUN под root они могут быть недоступны обычному процессу).
+// после остановки удаляет experimental.cache_file.path под bin/ (если есть),
+// а также логи ядра logs/sing-box.log и logs/sing-box.log.old, если существуют
+// (ядро под root могло оставить их root-owned).
+//
+// SPEC 137.1: без root. Файлы лежат в каталогах пользователя, а право удаления
+// даёт каталог, а не владелец файла — root-owned остатки лаунчер удаляет своим
+// uid (removeTunLeftover). Интерфейс и маршруты ядро снимает само при выходе:
+// привилегированных вызовов здесь нет.
 // Возвращает true, если снятие галки отменено (чекбокс возвращён в true).
 func maybeTunOffDarwin(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, td *wizardtemplate.TemplateData, varName string, chk *widget.Check) bool {
 	if varName != "tun" || presenter == nil || model == nil || td == nil || chk == nil {
@@ -86,8 +122,8 @@ func maybeTunOffDarwin(presenter *wizardpresentation.WizardPresenter, model *wiz
 	}
 
 	var targets []string
-	binDir := filepath.Clean(platform.GetBinDir(ac.FileService.ExecDir))
-	execDir := filepath.Clean(ac.FileService.ExecDir)
+	binDir := filepath.Clean(ac.FileService.Layout.Data.Bin())
+	logsDir := filepath.Clean(string(ac.FileService.Layout.Logs))
 
 	expRaw, expOK, expErr := wizardbusiness.EffectiveConfigSection(model, "experimental")
 	if expErr != nil {
@@ -111,10 +147,10 @@ func maybeTunOffDarwin(presenter *wizardpresentation.WizardPresenter, model *wiz
 		}
 	}
 
-	logPath := filepath.Join(execDir, constants.LogsDirName, constants.ChildLogFileName)
+	logPath := ac.FileService.ChildLogPath
 	var removedCoreLogs bool
 	for _, p := range []string{logPath, logPath + ".old"} {
-		if !pathUnderRoot(execDir, p) {
+		if !pathUnderRoot(logsDir, p) {
 			continue
 		}
 		if _, err := os.Lstat(p); err == nil {
@@ -127,15 +163,21 @@ func maybeTunOffDarwin(presenter *wizardpresentation.WizardPresenter, model *wiz
 		return false
 	}
 
-	var quoted []string
+	var failed []string
 	for _, p := range targets {
-		quoted = append(quoted, strconv.Quote(p))
+		root := binDir
+		if pathUnderRoot(logsDir, p) {
+			root = logsDir
+		}
+		if err := removeTunLeftover(root, p); err != nil {
+			debuglog.WarnLog("maybeTunOffDarwin: %v", err)
+			failed = append(failed, err.Error())
+			continue
+		}
+		debuglog.InfoLog("maybeTunOffDarwin: removed %s", p)
 	}
-	shell := "rm -rf " + strings.Join(quoted, " ")
-	_, _, err := platform.RunWithPrivileges("/bin/sh", []string{"-c", shell})
-	if err != nil {
-		debuglog.WarnLog("maybeTunOffDarwin: privileged rm: %v", err)
-		dialog.ShowError(err, presenter.DialogParent())
+	if len(failed) > 0 {
+		dialog.ShowError(errors.New(strings.Join(failed, "\n")), presenter.DialogParent())
 		return false
 	}
 	if removedCoreLogs {

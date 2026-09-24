@@ -33,7 +33,7 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/internal/platform"
+	"singbox-launcher/internal/paths"
 )
 
 // TemplateFileName — единственный файл шаблона для всех платформ.
@@ -251,9 +251,12 @@ func GetTemplateURL() string {
 
 // LoadTemplateData загружает и обрабатывает шаблон конфигурации.
 // Применяет params для текущей платформы, фильтрует selectable_rules.
-func LoadTemplateData(execDir string) (*TemplateData, error) {
-	templatePath := platform.GetWizardTemplatePath(execDir)
-	debuglog.InfoLog("TemplateLoader: loading template from: %s", templatePath)
+// Какой файл читать (поставляемый в App или скачанный в Data) решает
+// ResolveTemplate (SPEC 135 §3.3).
+func LoadTemplateData(l paths.Layout) (*TemplateData, error) {
+	tr := ResolveTemplate(l)
+	templatePath := tr.Path
+	debuglog.InfoLog("TemplateLoader: loading template from: %s (source=%s)", templatePath, tr.Source)
 
 	raw, err := os.ReadFile(templatePath)
 	if err != nil {

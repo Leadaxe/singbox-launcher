@@ -1,6 +1,9 @@
 package constants
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // File names
 const (
@@ -29,7 +32,7 @@ const (
 	LegacyRemoteConfigFileName = "remote-config.json"
 	WizardStateFileName        = "state.json"
 	// OutboundsCacheFileName — кеш-файл outbounds (SPEC 045 phase 5.1).
-	// Лежит в <execDir>/bin/. Scope = последний активный state. Парсер
+	// Лежит в <DataDir>/bin/. Scope = последний активный state. Парсер
 	// перезаписывает его при каждом успешном Update; на переключении
 	// state'а файл не инвалидируется (см. PLAN.md outboundscache).
 	OutboundsCacheFileName = "outbounds.cache.json"
@@ -53,7 +56,7 @@ const (
 	RuleSetsDirName     = "rule-sets"
 	WizardStatesDirName = "wizard_states"
 	// SubscriptionsDirName — каталог raw-body cache подписок (SPEC 052):
-	// <execDir>/bin/subscriptions/<source-id>.raw. Один файл per Source(id),
+	// <DataDir>/bin/subscriptions/<source-id>.raw. Один файл per Source(id),
 	// атомарная запись через .tmp + Rename, lazy GC orphan-файлов.
 	//
 	// SPEC 098: для удалённой машины тот же базовый имя каталога, но внутри
@@ -65,6 +68,36 @@ const (
 	// Имя короче локального rule-sets/ намеренно: путь и так длинный, а
 	// каталог лежит внутри директории машины, где двусмысленности нет.
 	RemoteRuleSetsDirName = "srs"
+	// TailscaleDirName — корень каталогов состояния tailnet под bin/ (SPEC 122).
+	TailscaleDirName = "tailscale"
+	// TempDirName — временный каталог скачивания ядра и wintun (под DataDir, не под bin/).
+	TempDirName = "temp"
+	// DaemonIdentityDirName — клиентская пара сопряжения с локальным демоном под bin/.
+	DaemonIdentityDirName = "daemon"
+	// RemoteDaemonsDirName — клиентские пары удалённых демонов под bin/, по каталогу на машину.
+	RemoteDaemonsDirName = "remote-daemons"
+)
+
+// Data layout (SPEC 135): где лежат поставляемое (AppDir), состояние (DataDir)
+// и логи (LogDir). Раскладку решает internal/paths.Resolve.
+const (
+	// PortableMarkerFileName — маркер рядом с бинарём: данные и логи живут в
+	// каталоге бинаря. Содержимое не читается, достаточно существования.
+	PortableMarkerFileName = "portable.txt"
+	// DataDirAppName — имя каталога приложения в платформенных корнях
+	// ($XDG_DATA_HOME, ~/Library/Application Support, %LOCALAPPDATA%).
+	DataDirAppName = "singbox-launcher"
+	// EnvDataDir и EnvLogDir переопределяют DataDir и LogDir независимо
+	// друг от друга (Flatpak-обёртки, пакеты, CI, отладка).
+	EnvDataDir = "SINGBOX_LAUNCHER_DATA_DIR"
+	EnvLogDir  = "SINGBOX_LAUNCHER_LOG_DIR"
+	// EnvCorePath — явный путь к бинарю ядра; первый в цепочке поиска
+	// (SPEC 135 §3.3: env → Data/bin → App/bin → PATH). Срабатывает, только
+	// если файл существует.
+	EnvCorePath = "SINGBOX_LAUNCHER_CORE"
+	// MigratedFromMarkerFileName — маркер в DataDir после миграции данных из
+	// старой раскладки (SPEC 135 §3.4).
+	MigratedFromMarkerFileName = ".migrated_from"
 )
 
 // Config targets (SPEC 097) — для какой машины лаунчер готовит config.json.
@@ -155,7 +188,7 @@ const SingboxCoreRepo = "Leadaxe/sing-box-lx" // core for all platforms (XHTTP +
 // `sing-box version`, so the strict-equality reinstall check still holds.
 // Manually bumped per release; source-of-truth here. See
 // docs/RELEASE_PROCESS.md §5.1.
-const RequiredCoreVersion = "1.14.1-lx.8"
+const RequiredCoreVersion = "1.14.1-lx.12"
 
 // AppVersion — git describe output. Set by build scripts via -ldflags.
 //
@@ -169,7 +202,7 @@ const RequiredCoreVersion = "1.14.1-lx.8"
 // HEAD. See docs/RELEASE_PROCESS.md §5.2.
 var (
 	AppVersion          = "v-local-test"
-	RequiredTemplateRef = "2534f1ef3e184edc2fd05ceaf995347088d6cc41"
+	RequiredTemplateRef = "9736db76558c6b1ba9047a471c31f89b6354d227"
 )
 
 // GetMyBranch возвращает ветку репозитория для загрузки ассетов, у которых нет
@@ -206,3 +239,73 @@ const (
 	// Theme options: "dark", "light", or "default" (follows system theme)
 	AppTheme = "default" // Set to "dark", "light", or "default"
 )
+
+// CompareVersions сравнивает две версии (формат X.Y.Z или X.Y.Z-N-hash или X.Y.Z-dev.branch-hash).
+// Возвращает: -1 если v1 < v2, 0 если v1 == v2, 1 если v1 > v2.
+//
+// Живёт здесь, а не в core: правило выбора шаблона (core/template,
+// SPEC 135 §3.3) сравнивает штамп с AppVersion, а core/template не может
+// импортировать core. core.CompareVersions — обёртка над этой функцией.
+func CompareVersions(v1, v2 string) int {
+	v1 = strings.TrimPrefix(v1, "v")
+	v2 = strings.TrimPrefix(v2, "v")
+
+	base1, hasSuffix1 := extractBaseVersion(v1)
+	base2, hasSuffix2 := extractBaseVersion(v2)
+
+	baseCompare := compareBaseVersions(base1, base2)
+	if baseCompare != 0 {
+		return baseCompare
+	}
+
+	// Если базовые версии равны — версия с суффиксом (коммиты после тега
+	// или dev) считается новее. v0.7.1-96-gc1343cc > v0.7.1.
+	if hasSuffix1 && !hasSuffix2 {
+		return 1
+	}
+	if !hasSuffix1 && hasSuffix2 {
+		return -1
+	}
+
+	return 0
+}
+
+// extractBaseVersion извлекает базовую версию и проверяет наличие суффикса.
+// Форматы: "0.7.1", "0.7.1-96-gc1343cc", "0.7.1-dev.branch-hash".
+func extractBaseVersion(version string) (base string, hasSuffix bool) {
+	idx := strings.Index(version, "-")
+	if idx == -1 {
+		return version, false
+	}
+	return version[:idx], true
+}
+
+// compareBaseVersions сравнивает базовые версии (формат X.Y.Z).
+func compareBaseVersions(base1, base2 string) int {
+	parts1 := strings.Split(base1, ".")
+	parts2 := strings.Split(base2, ".")
+
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var num1, num2 int
+		if i < len(parts1) {
+			_, _ = fmt.Sscanf(parts1[i], "%d", &num1)
+		}
+		if i < len(parts2) {
+			_, _ = fmt.Sscanf(parts2[i], "%d", &num2)
+		}
+
+		if num1 < num2 {
+			return -1
+		}
+		if num1 > num2 {
+			return 1
+		}
+	}
+
+	return 0
+}

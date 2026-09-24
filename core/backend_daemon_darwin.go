@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,6 +22,7 @@ import (
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/lxdclient"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -120,15 +120,15 @@ func (b *DaemonBackend) noteLinkFail(err error) bool {
 }
 
 // DaemonIdentityDir — каталог клиентской пары сопряжения (bin/daemon).
-func DaemonIdentityDir(execDir string) string {
-	return filepath.Join(platform.GetBinDir(execDir), "daemon")
+func DaemonIdentityDir(dataDir paths.DataDir) string {
+	return platform.GetDaemonIdentityDir(dataDir)
 }
 
 // DaemonConfigFromSettings строит конфиг клиента демона из settings.json.
 // Ошибка — если daemon-режим не сконфигурирован (нет адреса) или не удалось
 // поднять клиентскую пару при включённом TLS.
 func DaemonConfigFromSettings(ac *AppController) (lxdclient.Config, error) {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 	if st.DaemonAddress == "" {
 		return lxdclient.Config{}, fmt.Errorf("daemon is not configured: install the service or pair via invite")
@@ -139,7 +139,7 @@ func DaemonConfigFromSettings(ac *AppController) (lxdclient.Config, error) {
 		Secret:            st.DaemonSecret,
 	}
 	if cfg.TLSEnabled() {
-		ident, err := lxdclient.LoadOrCreateIdentity(DaemonIdentityDir(ac.FileService.ExecDir))
+		ident, err := lxdclient.LoadOrCreateIdentity(DaemonIdentityDir(ac.FileService.Layout.Data))
 		if err != nil {
 			return lxdclient.Config{}, err
 		}
@@ -346,10 +346,27 @@ func (b *DaemonBackend) applyOnce(caller string, forced bool) bool {
 	// (демон старой сборки). (2) Полное удаление clash_api (всё по gRPC).
 	// Classic-режим этой подготовки не проходит (cwd=bin/, единственное ядро).
 	runtimeDir := daemonFallbackRuntimeDir
-	if passport, infoErr := b.admin.Info(); infoErr == nil && passport.StateDir != "" {
+	passport, infoErr := b.admin.Info()
+	if infoErr == nil && passport.StateDir != "" {
 		runtimeDir = passport.StateDir
 	} else if infoErr != nil {
 		debuglog.WarnLog("daemon.%s: /admin/info unavailable (%v); using fallback runtime dir", caller, infoErr)
+	}
+	// SPEC 136: служба не на актуальной root-owned копии — громко в лог, но
+	// apply не блокируется (у пользователя работающий VPN, ремонт — одна
+	// команда).
+	var passportPtr *lxdclient.InfoData
+	if infoErr == nil {
+		passportPtr = &passport
+	}
+	if check := ac.daemonServiceCheck(passportPtr, b.admin.AddrString()); check.NeedsInstall() {
+		debuglog.WarnLog("daemon.%s: the daemon service is %s (%s) — run the Install or update service command",
+			caller, check.State, check.Detail)
+	} else if check.State == DaemonServiceCoreTooOld {
+		debuglog.WarnLog("daemon.%s: the daemon service is %s (%s)", caller, check.State, check.Detail)
+	} else if check.NeedsBootstrap() {
+		debuglog.WarnLog("daemon.%s: the daemon service is installed but not running (%s) — run: %s",
+			caller, check.Detail, daemonBootstrapCommand())
 	}
 	config, err = prepareConfigForDaemon(config, runtimeDir)
 	if err != nil {
@@ -438,7 +455,7 @@ func (b *DaemonBackend) StopVPN() {
 // VPN работать (это и есть смысл daemon-режима); опция DaemonStopVPNOnExit
 // возвращает классическое поведение.
 func (b *DaemonBackend) OnAppExit() bool {
-	binDir := platform.GetBinDir(b.ac.FileService.ExecDir)
+	binDir := b.ac.FileService.Layout.Data.Bin()
 	if !locale.LoadSettings(binDir).DaemonStopVPNOnExit {
 		return false
 	}

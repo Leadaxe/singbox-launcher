@@ -28,6 +28,14 @@
       "scheme": "hysteria2",
       "warnings": [
         {
+          "code": "json_field_unknown",
+          "path": "streamSettings.hysteriaSettings.udpIdleTimeout"
+        },
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.network"
+        },
+        {
           "code": "tls_not_applicable_quic",
           "path": "tls.utls",
           "value": "map[enabled:true fingerprint:firefox]"

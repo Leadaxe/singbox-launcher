@@ -2473,8 +2473,8 @@
   "✅ Installed core supports the daemon": {
     "value": "✅ Установленное ядро поддерживает демон"
   },
-  "❌ Installed core has no lxd support (need sing-box-lx 1.14.0-lx.23+)": {
-    "value": "❌ Ядро без поддержки lxd (нужен sing-box-lx 1.14.0-lx.23+)"
+  "❌ Installed core has no lxd support (a sing-box-lx build with the lxd command is required)": {
+    "value": "❌ Ядро без поддержки lxd (нужна сборка sing-box-lx с командой lxd)"
   },
   "✅ System service installed": {
     "value": "✅ Системная служба установлена"
@@ -2590,20 +2590,44 @@
   "— Daemon engine is not active yet: install the service and pair on the Install tab, then it switches on automatically.": {
     "value": "— Daemon-движок ещё не активен: установите службу и сопрягитесь на вкладке «Установка» — он включится автоматически."
   },
-  "Restart the service (after a core update):": {
-    "value": "Перезапустить службу (после обновления ядра):"
-  },
   "Copy the command": {
     "value": "Скопировать команду"
   },
   "Run in Terminal": {
     "value": "Выполнить в терминале"
   },
-  "Core updated — restart the daemon service": {
-    "value": "Ядро обновлено — перезапустите службу демона"
+  "Core updated — update the daemon service": {
+    "value": "Ядро обновлено — обновите службу демона"
   },
-  "The daemon service keeps the old core binary in memory until it restarts. Run this command in Terminal (it asks for your sudo password):": {
-    "value": "Служба демона держит старый бинарь ядра в памяти до перезапуска. Выполните команду в терминале (спросит ваш sudo-пароль):"
+  "The daemon service still runs the previous core. Run this command in Terminal to install the new core into the service and restart it (it asks for your sudo password):": {
+    "value": "Служба демона всё ещё запускает прежнее ядро. Выполните команду в терминале — она установит новое ядро в службу и перезапустит её (спросит ваш sudo-пароль):"
+  },
+  "Core copy for privileged start is missing": {
+    "value": "Нет копии ядра для запуска с правами администратора"
+  },
+  "Core copy for privileged start is outdated": {
+    "value": "Копия ядра для запуска с правами администратора устарела"
+  },
+  "Core copy for privileged start is not protected": {
+    "value": "Копия ядра для запуска с правами администратора не защищена"
+  },
+  "TUN mode starts the sing-box core as root. For safety the launcher runs only a root-owned copy of the core that your user account cannot modify, and there is no such copy yet.": {
+    "value": "В режиме TUN ядро sing-box запускается от root. Ради безопасности лаунчер запускает только копию ядра, принадлежащую root, — её ваша учётная запись изменить не может, — а такой копии пока нет."
+  },
+  "TUN mode starts the sing-box core as root from a root-owned copy, and the copy is not the launcher's current core (copy %s, launcher core %s) — for example after a core update.": {
+    "value": "В режиме TUN ядро sing-box запускается от root из копии, принадлежащей root, а копия не совпадает с текущим ядром лаунчера (копия %s, ядро лаунчера %s) — например, после обновления ядра."
+  },
+  "TUN mode starts the sing-box core as root only from a root-owned copy, and the copy's location failed the ownership check:\n%s\nIf the command below reports the same problem, fix the ownership of that path.": {
+    "value": "В режиме TUN ядро sing-box запускается от root только из копии, принадлежащей root, а место копии не прошло проверку владельца:\n%s\nЕсли команда ниже сообщит о той же проблеме, исправьте владельца этого пути."
+  },
+  "The daemon service is installed on this Mac, so the command is its Install or update command: it refreshes the same copy and restarts the service.": {
+    "value": "На этом Mac установлена служба демона, поэтому команда — её «Install or update»: она обновит ту же копию и перезапустит службу."
+  },
+  "Run this command in Terminal (it asks for your sudo password), then click Retry:": {
+    "value": "Выполните эту команду в терминале (она спросит ваш sudo-пароль), затем нажмите «Повторить»:"
+  },
+  "Retry": {
+    "value": "Повторить"
   },
   "Uninstall": {
     "value": "Удаление"
@@ -2620,8 +2644,8 @@
   "Install": {
     "value": "Установка"
   },
-  "1. Install the service (run in Terminal, your sudo — prints a pairing invite at the end):": {
-    "value": "1. Установить службу (в терминале, ваш sudo — в конце печатает приглашение):"
+  "1. Install or update the service (run in Terminal, your sudo; a first install prints a pairing invite at the end):": {
+    "value": "1. Установить или обновить службу (в терминале, ваш sudo; первая установка в конце печатает приглашение):"
   },
   "2. Paste the invite (address#fingerprint#code) and pair:": {
     "value": "2. Вставьте приглашение (адрес#отпечаток#код) и сопрягитесь:"
@@ -3704,14 +3728,8 @@
   "Create a folder first: Sources → ⋮ → Add folder.": {
     "value": "Сначала создайте папку: «Источники» → ⋮ → «Добавить папку»."
   },
-  "Node tag cannot be empty.": {
-    "value": "Тег узла не может быть пустым."
-  },
   "Tag %q is already taken in this container.": {
     "value": "Тег %q в этом контейнере уже занят."
-  },
-  "Node %q is gone.": {
-    "value": "Узла %q больше нет."
   },
   "Delete node": {
     "value": "Удалить узел"
@@ -4390,5 +4408,197 @@
   },
   "(unnamed)": {
     "value": "(без имени)"
+  },
+  "%d files, %s": {
+    "value": "%d файлов, %s"
+  },
+  "Copy paths": {
+    "value": "Скопировать пути"
+  },
+  "Data from before the migration, inside the app bundle": {
+    "value": "Данные до переезда, внутри бандла приложения"
+  },
+  "Data from before the migration, next to the program": {
+    "value": "Данные до переезда, рядом с программой"
+  },
+  "Data": {
+    "value": "Данные"
+  },
+  "Data, logs, core and template paths copied. Paste them into the bug report.": {
+    "value": "Пути к данным, логам, ядру и шаблону скопированы. Вставьте их в сообщение об ошибке."
+  },
+  "Environment": {
+    "value": "Переменные окружения"
+  },
+  "Left over from a data move": {
+    "value": "Осталось после переноса данных"
+  },
+  "Legacy": {
+    "value": "Унаследованный"
+  },
+  "Move launcher data": {
+    "value": "Перенести данные лаунчера"
+  },
+  "Moving data…": {
+    "value": "Перенос данных…"
+  },
+  "Network cleanup: ghost wintun adapters and orphan firewall rules": {
+    "value": "Сетевая очистка: призрачные адаптеры wintun и осиротевшие правила файрвола"
+  },
+  "No data from a previous launcher version was found in the data folder. If you had settings and subscriptions, restore them from an LX Backup (Settings → Backup). Data folder:": {
+    "value": "В папке данных не найдено данных предыдущей версии лаунчера. Если у вас были настройки и подписки, восстановите их из LX Backup (Settings → Backup). Папка данных:"
+  },
+  "No previous data found": {
+    "value": "Данные предыдущей версии не найдены"
+  },
+  "Not found: the core will be downloaded to this path": {
+    "value": "Не найдено: ядро будет скачано по этому пути"
+  },
+  "Not found: the template will be downloaded to this path": {
+    "value": "Не найдено: шаблон будет скачан по этому пути"
+  },
+  "Nothing to remove.": {
+    "value": "Удалять нечего."
+  },
+  "Old logs next to the program": {
+    "value": "Старые логи рядом с программой"
+  },
+  "Paths are set by environment variables": {
+    "value": "Пути заданы переменными окружения"
+  },
+  "Paths copied": {
+    "value": "Пути скопированы"
+  },
+  "Portable mode (keep data next to the program)": {
+    "value": "Portable-режим (хранить данные рядом с программой)"
+  },
+  "Portable": {
+    "value": "Portable"
+  },
+  "Program": {
+    "value": "Программа"
+  },
+  "The service is installed but not running.": {
+    "value": "Служба установлена, но не запущена."
+  },
+  "launchd reports: %s": {
+    "value": "launchd сообщает: %s"
+  },
+  "Load the service into launchd (run in Terminal, your sudo):": {
+    "value": "Загрузить службу в launchd (в терминале, ваш sudo):"
+  },
+  "Install or update the service (run in Terminal, your sudo):": {
+    "value": "Установить или обновить службу (выполнить в терминале, ваш sudo):"
+  },
+  "Remove all data…": {
+    "value": "Удалить все данные…"
+  },
+  "Remove all launcher data": {
+    "value": "Удалить все данные лаунчера"
+  },
+  "Shadows: %s": {
+    "value": "Затеняет: %s"
+  },
+  "Source: %s": {
+    "value": "Источник: %s"
+  },
+  "Stop the VPN first": {
+    "value": "Сначала остановите VPN"
+  },
+  "Storage": {
+    "value": "Хранилище"
+  },
+  "Switching moves the data to: %s": {
+    "value": "Переключение перенесёт данные в: %s"
+  },
+  "System": {
+    "value": "Системный"
+  },
+  "Template": {
+    "value": "Шаблон"
+  },
+  "The core folder is read-only; download the core into the data folder first": {
+    "value": "Папка ядра доступна только для чтения; сначала скачайте ядро в папку данных"
+  },
+  "The daemon service is installed. Remove it first with this command, otherwise the launcher will not be able to do it after the data is gone:": {
+    "value": "Служба демона установлена. Сначала удалите её этой командой, иначе после удаления данных лаунчер сделать этого уже не сможет:"
+  },
+  "The daemon service is installed and is not removed with the data: it runs from its own root-owned copy of the core. To remove the service as well, run this command:": {
+    "value": "Служба демона установлена и вместе с данными не удаляется: она запускает собственную копию ядра, принадлежащую root. Чтобы удалить и службу, выполните эту команду:"
+  },
+  "The following will be deleted. The program folder itself is not touched — delete it yourself afterwards.": {
+    "value": "Будет удалено следующее. Папка с программой не затрагивается — удалите её сами после этого."
+  },
+  "The program folder is read-only": {
+    "value": "Папка программы доступна только для чтения"
+  },
+  "The service runs a binary your user can modify. Install or update the service to move it to a root-owned copy.": {
+    "value": "Служба запускает бинарь, который может изменить ваш пользователь. Установите или обновите службу, чтобы перевести её на копию, принадлежащую root."
+  },
+  "Service binary: %s": {
+    "value": "Бинарь службы: %s"
+  },
+  "The service runs a different core (%s) than the launcher (%s). Install or update the service to switch it to the launcher core.": {
+    "value": "Служба запускает другое ядро (%s), не ядро лаунчера (%s). Установите или обновите службу, чтобы перевести её на ядро лаунчера."
+  },
+  "The launcher core (%s) is older than %s and cannot install a root-owned service. Update the core first: Local tab → Download/Reinstall v%s, then install or update the service.": {
+    "value": "Версия ядра лаунчера (%s) ниже %s: оно не умеет ставить службу на копию, принадлежащую root. Сначала обновите ядро: вкладка «Локально» → «Скачать/Переустановить v%s», затем установите или обновите службу."
+  },
+  "The launcher core (%s) is not a numbered sing-box-lx release, so the launcher cannot confirm it installs a root-owned service. Update the core first: Local tab → Download/Reinstall v%s, then install or update the service.": {
+    "value": "Ядро лаунчера (%s) — не нумерованный релиз sing-box-lx, и лаунчер не может убедиться, что оно ставит службу на копию, принадлежащую root. Сначала обновите ядро: вкладка «Локально» → «Скачать/Переустановить v%s», затем установите или обновите службу."
+  },
+  "The service has no core binary to run. Install or update the service to restore it.": {
+    "value": "У службы нет бинаря ядра для запуска. Установите или обновите службу, чтобы восстановить его."
+  },
+  "The daemon service is not protected": {
+    "value": "Служба демона не защищена"
+  },
+  "The daemon service runs as root from a file your user account can modify:\n%s\n\nAny program running as you could replace it and gain root access. Run this command in Terminal to move the service to a root-owned copy of the core (it asks for your sudo password). The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed.": {
+    "value": "Служба демона запускается от root из файла, который может изменить ваша учётная запись:\n%s\n\nЛюбая программа, работающая от вашего имени, может подменить его и получить права root. Выполните эту команду в терминале, чтобы перевести службу на копию ядра, принадлежащую root (спросит ваш sudo-пароль). VPN тем временем продолжает работать; вкладка LOCAL в настройках подключения показывает это предупреждение, пока проблема не устранена."
+  },
+  "The daemon service runs as root from a file your user account can modify:\n%s\n\nAny program running as you could replace it and gain root access. %s The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed.": {
+    "value": "Служба демона запускается от root из файла, который может изменить ваша учётная запись:\n%s\n\nЛюбая программа, работающая от вашего имени, может подменить его и получить права root. %s VPN тем временем продолжает работать; вкладка LOCAL в настройках подключения показывает это предупреждение, пока проблема не устранена."
+  },
+  "Unused data": {
+    "value": "Неиспользуемые данные"
+  },
+  "Unused system data folder": {
+    "value": "Неиспользуемая системная папка данных"
+  },
+  "Version: %s, source: %s": {
+    "value": "Версия: %s, источник: %s"
+  },
+  "Where the launcher keeps its files. Attach “Copy paths” to bug reports.": {
+    "value": "Где лаунчер хранит свои файлы. Прикладывайте «Скопировать пути» к сообщениям об ошибках."
+  },
+  "found": {
+    "value": "найден"
+  },
+  "unknown": {
+    "value": "неизвестно"
+  },
+  "Existing data found": {
+    "value": "Найдены существующие данные"
+  },
+  "Your settings and subscriptions were found in:\n%s\n\nThe launcher is running in portable mode because portable.txt lies next to the program. Switch to the found data? The launcher will restart.": {
+    "value": "Ваши настройки и подписки найдены в:\n%s\n\nЛаунчер работает в portable-режиме, потому что рядом с программой лежит portable.txt. Переключиться на найденные данные? Лаунчер перезапустится."
+  },
+  "Data move in progress": {
+    "value": "Идёт перенос данных"
+  },
+  "The launcher will restart immediately after the move.": {
+    "value": "Сразу после переноса лаунчер перезапустится."
+  },
+  "Data will be moved from:\n%s\nto:\n%s": {
+    "value": "Данные будут перенесены из:\n%s\nв:\n%s"
+  },
+  "Left over from the move: %s": {
+    "value": "Осталось после переноса: %s"
+  },
+  "System data folder with settings — kept by default": {
+    "value": "Системная папка данных с настройками — по умолчанию сохраняется"
+  },
+  "Only: %s": {
+    "value": "Только: %s"
   }
 }

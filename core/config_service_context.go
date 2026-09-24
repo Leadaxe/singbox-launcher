@@ -4,9 +4,9 @@ package core
 // BuildContext-assembly хелперы: сборка build.BuildContext из state + cache +
 // template, плюс конвертеры DNS/Route из state в build-структуры.
 //
-// Инвариант Preset.ExecDir сохранён ровно как был в config_service.go:
-// execDir резолвится один раз под nil-guard и кормит и Route.ExecDir, и
-// PresetMergeContext.ExecDir / SrsCachedPaths.
+// Инвариант Preset.DataDir сохранён ровно как был в config_service.go:
+// dataDir резолвится один раз под nil-guard и кормит и Route.DataDir, и
+// PresetMergeContext.DataDir / SrsCachedPaths.
 
 import (
 	"encoding/json"
@@ -15,6 +15,7 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 )
 
 // buildContextFromState собирает BuildContext из state + cache + template.
@@ -62,18 +63,18 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 	// DNS scalars из state (могут жить в DNSOptions или vars; см. dnsConfigFromUpdate).
 	ctx.DNS = dnsConfigForUpdate(s)
 	ctx.Route = routeConfigForUpdate(s)
-	// SPEC 045 фаза 9: execDir нужен MergeRouteSection-у для резолва путей
+	// SPEC 045 фаза 9: dataDir нужен MergeRouteSection-у для резолва путей
 	// SRS файлов (bin/rule-sets/<tag>.srs). Без этого convertRuleSetToLocalRequired
-	// не может проверить наличие файла и валит build с «empty execDir».
-	// execDir feeds both Route (SRS path resolution) and Preset (cached SRS
+	// не может проверить наличие файла и валит build с «empty dataDir».
+	// dataDir feeds both Route (SRS path resolution) and Preset (cached SRS
 	// lookup). Resolve once under a nil-guard — the SrsCachedPaths line below
 	// used to deref ac.FileService unconditionally (SA5011: nil-deref when ac
 	// or FileService is nil).
-	var execDir string
+	var dataDir paths.DataDir
 	if ac != nil && ac.FileService != nil {
-		execDir = ac.FileService.ExecDir
+		dataDir = ac.FileService.Layout.Data
 	}
-	ctx.Route.ExecDir = execDir
+	ctx.Route.DataDir = dataDir
 	// SPEC 053: preset bundle merge — все правила из state.Rules в порядке.
 	// Если state.Rules не пуст, MergePresetsIntoRoute берёт на себя весь emit
 	// (preset/inline/srs). Noop когда RulesV6 пуст (legacy v5-only flow).
@@ -82,9 +83,9 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 		Presets:             td.Presets,
 		Rules:               s.Rules,
 		DNS:                 s.DNS,
-		SrsCachedPaths:      build.CollectSrsCachedPaths(s.Rules, execDir, ""),
+		SrsCachedPaths:      build.CollectSrsCachedPaths(s.Rules, dataDir, ""),
 		TemplateDNSDefaults: parseTemplateDNSDefaultsFromTD(td),
-		ExecDir:             execDir,
+		DataDir:             dataDir,
 		// SPEC 106 (G3): тело пресета видит глобальные переменные шаблона для
 		// имён, которых не объявило у себя — настройка со вкладки Settings
 		// (@tun, @resolve_strategy) не дублируется в каждом пресете.

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
 )
 
 // layout создаёт временную exec-dir с поддиректориями bin/ и
@@ -53,7 +54,7 @@ func TestBuild_AllFilesPresent(t *testing.T) {
 	writeFile(t, execDir, "cache", []byte(`{"version":1}`))
 	writeFile(t, execDir, "config", []byte(`{"log":{"level":"info"}}`))
 
-	snap := Build(execDir, "v-test", "1.13.x")
+	snap := Build(paths.Layout{Data: paths.DataDir(execDir)}, "v-test", "1.13.x")
 
 	for _, name := range []string{"template", "state", "cache", "config"} {
 		if _, ok := snap.Files[name]; !ok {
@@ -81,7 +82,7 @@ func TestBuild_MissingCache(t *testing.T) {
 	writeFile(t, execDir, "state", []byte(`{}`))
 	writeFile(t, execDir, "config", []byte(`{}`))
 
-	snap := Build(execDir, "v-test", "1.13.x")
+	snap := Build(paths.Layout{Data: paths.DataDir(execDir)}, "v-test", "1.13.x")
 
 	if len(snap.Missing) != 1 || snap.Missing[0] != "cache" {
 		t.Errorf("Missing: want [cache], got %v", snap.Missing)
@@ -95,7 +96,7 @@ func TestBuild_MissingCache(t *testing.T) {
 func TestBuild_AllMissing(t *testing.T) {
 	execDir := layout(t)
 
-	snap := Build(execDir, "v-test", "1.13.x")
+	snap := Build(paths.Layout{Data: paths.DataDir(execDir)}, "v-test", "1.13.x")
 
 	if len(snap.Missing) != 4 {
 		t.Errorf("Missing: want 4 entries, got %d (%v)", len(snap.Missing), snap.Missing)
@@ -113,7 +114,7 @@ func TestBuild_CorruptJSON(t *testing.T) {
 	writeFile(t, execDir, "cache", []byte(`{}`))
 	writeFile(t, execDir, "config", []byte(`{garbage`))
 
-	snap := Build(execDir, "", "")
+	snap := Build(paths.Layout{Data: paths.DataDir(execDir)}, "", "")
 
 	if msg := snap.Errors["config"]; msg == "" {
 		t.Errorf("Errors[config] must be set: %v", snap.Errors)
@@ -145,7 +146,7 @@ func TestBuild_JSONCConfigAccepted(t *testing.T) {
 }`)
 	writeFile(t, execDir, "config", jsoncConfig)
 
-	snap := Build(execDir, "", "")
+	snap := Build(paths.Layout{Data: paths.DataDir(execDir)}, "", "")
 
 	if msg, bad := snap.Errors["config"]; bad {
 		t.Fatalf("config errored, want accepted: %s", msg)
@@ -171,7 +172,7 @@ func TestBuild_NoRedaction(t *testing.T) {
 	cfg := `{"experimental":{"clash_api":{"secret":"deadbeef-secret"}},"outbounds":[{"type":"vless","password":"my-pass","uuid":"abcd"}]}`
 	writeFile(t, execDir, "config", []byte(cfg))
 
-	snap := Build(execDir, "", "")
+	snap := Build(paths.Layout{Data: paths.DataDir(execDir)}, "", "")
 	got := string(snap.Files["config"])
 	for _, secret := range []string{"deadbeef-secret", "my-pass", "abcd"} {
 		if !strings.Contains(got, secret) {
@@ -188,7 +189,7 @@ func TestBuild_FilesAreInlineJSON(t *testing.T) {
 	execDir := layout(t)
 	writeFile(t, execDir, "template", []byte(`{"answer":42}`))
 
-	snap := Build(execDir, "", "")
+	snap := Build(paths.Layout{Data: paths.DataDir(execDir)}, "", "")
 	raw, ok := snap.Files["template"]
 	if !ok {
 		t.Fatal("template missing")
@@ -202,10 +203,10 @@ func TestBuild_FilesAreInlineJSON(t *testing.T) {
 	}
 }
 
-// TestBuild_EmptyExecDir — несуществующая exec-dir → 4 в Missing, no panic.
+// TestBuild_EmptyDataDir — несуществующий DataDir → 4 в Missing, no panic.
 // Защищаемся от программной ошибки вызывающего (передал пустую/несуществующую path).
-func TestBuild_EmptyExecDir(t *testing.T) {
-	snap := Build("/this/path/does/not/exist", "", "")
+func TestBuild_EmptyDataDir(t *testing.T) {
+	snap := Build(paths.Layout{Data: paths.DataDir("/this/path/does/not/exist")}, "", "")
 	if len(snap.Missing) != 4 {
 		t.Errorf("Missing must list all 4 files for nonexistent dir, got: %v", snap.Missing)
 	}

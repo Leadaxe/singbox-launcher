@@ -35,7 +35,7 @@ func effectiveNodeConfigPath(ac *core.AppController, scope services.ProxyScope) 
 	}
 	if scope == services.ScopeRemote {
 		if id, _, active := GetLxdRemoteOverride(); active && id != "" {
-			return platform.GetRemoteConfigPathFor(ac.FileService.ExecDir, id)
+			return platform.GetRemoteConfigPathFor(ac.FileService.Layout.Data, id)
 		}
 	}
 	return ac.FileService.ConfigPath
@@ -56,10 +56,10 @@ func effectiveNodeStatePath(ac *core.AppController, scope services.ProxyScope) s
 	if scope == services.ScopeRemote {
 		if id, _, active := GetLxdRemoteOverride(); active && id != "" {
 			return platform.GetWizardStatePathFor(
-				ac.FileService.ExecDir, constants.ConfigTargetRemote, id)
+				ac.FileService.Layout.Data, constants.ConfigTargetRemote, id)
 		}
 	}
-	return platform.GetWizardStatePath(ac.FileService.ExecDir)
+	return platform.GetWizardStatePath(ac.FileService.Layout.Data)
 }
 
 // nodeWarningsFor — предупреждения узла с финальным тегом tag в области scope.

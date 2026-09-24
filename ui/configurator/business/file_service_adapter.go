@@ -7,6 +7,7 @@ package business
 
 import (
 	"singbox-launcher/core/services"
+	"singbox-launcher/internal/paths"
 )
 
 // FileServiceAdapter адаптирует services.FileService для использования в бизнес-логике.
@@ -19,8 +20,8 @@ func (a *FileServiceAdapter) ConfigPath() string {
 	return a.FileService.ConfigPath
 }
 
-func (a *FileServiceAdapter) ExecDir() string {
-	return a.FileService.ExecDir
+func (a *FileServiceAdapter) Layout() paths.Layout {
+	return a.FileService.Layout
 }
 
 func (a *FileServiceAdapter) SingboxPath() string {

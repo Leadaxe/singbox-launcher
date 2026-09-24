@@ -589,7 +589,23 @@ type Coerce struct {
 // UserInfo — разбор userinfo ссылки.
 type UserInfo struct {
 	Decode []string `json:"decode"`
-	Split  *struct {
+	// DecodeRequiresSeparator — разделитель как ПРИЗНАК формы userinfo.
+	//
+	// Нужен там, где base64 отличается от открытого текста ТОЛЬКО
+	// отсутствием разделителя, и работает в обе стороны: разделитель уже
+	// есть во входе — форма открытая, Decode не применяется; разделителя
+	// нет — декодер пробуется, но его результат принимается лишь тогда,
+	// когда разделитель в нём ПОЯВИЛСЯ.
+	//
+	// v2rayN пишет socks-ссылку как base64url("user:pass") ВСЕГДА
+	// (SocksFmt.ToUri) и читает её по этому же признаку — берёт
+	// раскодированное только после деления на два компонента
+	// (SocksFmt.ResolveSocksNew). Без признака try-decode "base64?"
+	// разрушает открытое ОДИНОЧНОЕ имя: `socks4://useridonly@host` —
+	// законный userid socks4 (пароля у версии 4 нет по протоколу), но
+	// "useridonly" проходит RawStdEncoding и уезжает мусором.
+	DecodeRequiresSeparator string `json:"decode_requires_separator"`
+	Split                *struct {
 		Sep string `json:"sep"`
 		// Limit: 2 — резать по ПЕРВОМУ разделителю: пароль с двоеточием
 		// иначе теряется.
@@ -784,6 +800,21 @@ type UnknownKey struct {
 	// нечего») ровно тем, что ключ вообще не принадлежит этому уровню:
 	// объявить его записью значило бы сказать, что секция его читает.
 	Ignore []string `json:"ignore"`
+
+	// NestedQuiet — поддеревья ВНУТРИ контейнеров, молчащие целиком, даже
+	// если объявлены лишь частично.
+	//
+	// Путь пишется от корня элемента ("streamSettings.sockopt"), и кода не
+	// получает ни он сам, ни любой его лист. Нужен там, где реестр объявил
+	// несколько полей поддерева, а остальные его поля серверные либо
+	// неприменимые на клиенте: `sockopt` читается записями
+	// dialerProxy/tcpKeepAlive*, а полей у него у Xray десятки (tcpMptcp,
+	// tcpFastOpen, mark, interface), и код на каждом узле с sockopt был бы
+	// шумом, а не сведением.
+	//
+	// Отличается от Ignore ПРЕДМЕТОМ: Ignore судит ключ верхнего уровня,
+	// этот список — путь внутри контейнера.
+	NestedQuiet []string `json:"nested_quiet"`
 }
 
 // EmitSpec — обратное направление. Отсутствие секции (null в JSON) означает
@@ -996,9 +1027,54 @@ type SourceKind struct {
 	// LineCommentPrefixes — начала строк-комментариев для нарезки "lines".
 	LineCommentPrefixes []string `json:"line_comment_prefixes"`
 
+	// BannerTargets — цели, которые СЕРВЕРОМ НЕ БЫВАЮТ: запись, ведущая на
+	// такой адрес, есть БАННЕР провайдера, а не узел.
+	//
+	// Панели не отдают пустое тело при истёкшей подписке — они пишут
+	// синтаксически валидную ссылку в никуда, а объяснение кладут в ремарку
+	// после `#`: Remnawave шлёт `vless://…@0.0.0.0:1`, 3x-ui —
+	// `socks://127.0.0.1:1080`, и при истечении эта запись бывает в теле
+	// ЕДИНСТВЕННОЙ. Признак объявлен ДАННЫМИ, чтобы список адресов жил в
+	// реестре, а не в разборщике.
+	BannerTargets *BannerTargets `json:"banner_targets"`
+
 	DescEN string `json:"desc_en"`
 	DescRU string `json:"desc_ru"`
 	Impl   string `json:"impl"`
+}
+
+// BannerTargets — объявление признака записи-баннера (см. SourceKind).
+type BannerTargets struct {
+	// Hosts — адреса, сверяемые ДОСЛОВНО (после снятия скобок IPv6).
+	// Образцом сопоставлять нельзя: адрес узла — значение, и шаблон поймал
+	// бы заодно законные адреса.
+	Hosts []string `json:"hosts"`
+	// Action — что делать с записью; сегодня только "drop".
+	Action string `json:"action"`
+	// Code — info-код, которым выпадение записи называется вслух.
+	Code string `json:"code"`
+	// MessageFrom — откуда берётся сообщение провайдера ("fragment").
+	// Ремарка после `#` есть то самое содержимое, ради которого запись
+	// написана, и она уезжает параметром кода.
+	MessageFrom string `json:"message_from"`
+}
+
+// IsBannerHost — адрес из списка «заведомо не сервер», регистронезависимо и
+// со снятыми скобками IPv6 (`[::1]` → `::1`).
+func (b *BannerTargets) IsBannerHost(host string) bool {
+	if b == nil || host == "" {
+		return false
+	}
+	h := strings.TrimSpace(host)
+	if len(h) >= 2 && h[0] == '[' && h[len(h)-1] == ']' {
+		h = h[1 : len(h)-1]
+	}
+	for _, want := range b.Hosts {
+		if strings.EqualFold(h, strings.TrimSpace(want)) {
+			return true
+		}
+	}
+	return false
 }
 
 // SourceKindSet — таблица видов источника целиком.

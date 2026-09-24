@@ -3,6 +3,7 @@ package core
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,8 @@ import (
 
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -27,6 +30,11 @@ func winTunGitHubFallbackURL() string {
 	return fmt.Sprintf("https://raw.githubusercontent.com/Leadaxe/singbox-launcher/%s/assets/wintun-%s.zip",
 		constants.GetMyBranch(), WinTunVersion)
 }
+
+// ErrCoreDirReadOnly — каталог выбранного ядра не пишется (поставляемое ядро в
+// read-only AppDir без спутника, SPEC 135 §3.3): wintun.dll туда не положить,
+// выход — скачать ядро в каталог данных, спутник ляжет рядом с ним.
+var ErrCoreDirReadOnly = errors.New("core folder is read-only")
 
 // CheckWintunDLL checks for the presence of wintun.dll
 func (ac *AppController) CheckWintunDLL() (bool, error) {
@@ -54,8 +62,22 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 		return
 	}
 
+	// 0. wintun.dll ложится рядом с выбранным ядром (SPEC 135 §3.3). Каталог
+	// не пишется — сказать причину сразу, до скачивания.
+	if coreDir := filepath.Dir(ac.FileService.WintunPath); dirExists(coreDir) && !paths.ProbeWritable(coreDir) {
+		msg := locale.T("The core folder is read-only; download the core into the data folder first")
+		debuglog.WarnLog("DownloadWintunDLL: %s is not writable", coreDir)
+		progressChan <- DownloadProgress{
+			Progress: 0,
+			Message:  msg,
+			Status:   "error",
+			Error:    fmt.Errorf("DownloadWintunDLL: %s: %w", coreDir, ErrCoreDirReadOnly),
+		}
+		return
+	}
+
 	// 1. Create temporary directory
-	tempDir := filepath.Join(ac.FileService.ExecDir, "temp")
+	tempDir := platform.GetTempDir(ac.FileService.Layout.Data)
 	if err := os.MkdirAll(tempDir, platform.DefaultDirMode); err != nil {
 		progressChan <- DownloadProgress{
 			Progress: 0,
@@ -229,4 +251,10 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 		Message:  fmt.Sprintf("wintun.dll v%s installed successfully!", WinTunVersion),
 		Status:   "done",
 	}
+}
+
+// dirExists — путь существует и это каталог.
+func dirExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
 }

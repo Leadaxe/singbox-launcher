@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -13,7 +14,7 @@ import (
 // CollectDeployResources берёт тела ресурсов.
 func writeMachineRuleSet(t *testing.T, execDir, machineID, name, body string) {
 	t.Helper()
-	dir := platform.GetRuleSetsDirFor(execDir, constants.ConfigTargetRemote, machineID)
+	dir := platform.GetRuleSetsDirFor(paths.DataDir(execDir), constants.ConfigTargetRemote, machineID)
 	if err := os.MkdirAll(dir, platform.DefaultDirMode); err != nil {
 		t.Fatalf("mkdir %s: %v", dir, err)
 	}
@@ -43,7 +44,7 @@ func TestCollectDeployResourcesPicksReferenced(t *testing.T) {
 		}
 	}`)
 
-	got, err := CollectDeployResources(execDir, machineID, config)
+	got, err := CollectDeployResources(paths.DataDir(execDir), machineID, config)
 	if err != nil {
 		t.Fatalf("CollectDeployResources: %v", err)
 	}
@@ -63,7 +64,7 @@ func TestCollectDeployResourcesMissingFileFails(t *testing.T) {
 		{"tag":"ru","type":"local","path":"/etc/sing-box/resources/absent.srs"}
 	]}}`)
 
-	if _, err := CollectDeployResources(execDir, "m1", config); err == nil {
+	if _, err := CollectDeployResources(paths.DataDir(execDir), "m1", config); err == nil {
 		t.Fatal("ожидалась ошибка на отсутствующий rule-set, получено nil")
 	}
 }
@@ -71,7 +72,7 @@ func TestCollectDeployResourcesMissingFileFails(t *testing.T) {
 // Битый конфиг: разбор обязан вернуть ошибку, а не пустой набор — иначе
 // деплой прошёл бы «успешно», не залив ничего.
 func TestCollectDeployResourcesBrokenConfigFails(t *testing.T) {
-	if _, err := CollectDeployResources(t.TempDir(), "m1", []byte("{not json")); err == nil {
+	if _, err := CollectDeployResources(paths.DataDir(t.TempDir()), "m1", []byte("{not json")); err == nil {
 		t.Fatal("ожидалась ошибка разбора конфига, получено nil")
 	}
 }

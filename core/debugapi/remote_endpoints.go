@@ -25,6 +25,7 @@ import (
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/lxdclient"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -34,9 +35,9 @@ import (
 type RemoteAPI struct {
 	Registry *services.RemoteRegistry
 	Pool     *services.TransportPool
-	// ExecDir — корень лаунчера; от него считаются пути профилей машин
+	// DataDir — корень данных лаунчера; от него считаются пути профилей машин
 	// (bin/wizard_states/remote/<id>/…).
-	ExecDir string
+	DataDir paths.DataDir
 
 	// UI-override (SPEC 100 §3.8) — то, что в UI делают кнопки
 	// Connect/Disconnect вкладки Remote: перевести вкладку Servers лаунчера
@@ -574,7 +575,7 @@ func (s *Server) handleRemoteConfigBuilt(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	raw, err := os.ReadFile(platform.GetRemoteConfigPathFor(s.remote.ExecDir, id))
+	raw, err := os.ReadFile(platform.GetRemoteConfigPathFor(s.remote.DataDir, id))
 	if err != nil {
 		if os.IsNotExist(err) {
 			writeJSON(w, http.StatusNotFound, map[string]any{

@@ -100,6 +100,24 @@ func (p *TrafficProfiler) SetOnSessionChange(fn func()) {
 // Idempotent — second call is a no-op. Pass a real http.Client (e.g.
 // api.getHTTPClient()) so we reuse the existing transport.
 func (p *TrafficProfiler) Start(cfg ClashConfigProvider, logPath string, httpc HTTPClientLike) {
+	// Пустой logPath = наблюдаем УДАЛЁННУЮ машину: её sing-box.log лежит на
+	// её файловой системе, и читать нам нечего. Тогда работает только поток
+	// соединений (gRPC), без DNS-событий и CNAME-цепочек из лога.
+	var tailer *LogTailer
+	if logPath != "" {
+		tailer = NewLogTailer(logPath)
+	}
+	p.start(cfg, tailer, httpc)
+}
+
+// StartFollowing — Start для лога, путь к которому меняется между стартами
+// ядра (classic с TUN на macOS пишет в root-owned лог, SPEC 137.1):
+// logPathFn пересчитывается на каждом тике тейлера.
+func (p *TrafficProfiler) StartFollowing(cfg ClashConfigProvider, logPathFn func() string, httpc HTTPClientLike) {
+	p.start(cfg, NewLogTailerFunc(logPathFn), httpc)
+}
+
+func (p *TrafficProfiler) start(cfg ClashConfigProvider, newTailer *LogTailer, httpc HTTPClientLike) {
 	p.mu.Lock()
 	if p.poller != nil {
 		p.mu.Unlock()
@@ -107,12 +125,7 @@ func (p *TrafficProfiler) Start(cfg ClashConfigProvider, logPath string, httpc H
 	}
 	p.bgCtx, p.bgCancel = context.WithCancel(context.Background())
 	p.poller = NewConnPoller(cfg, asStdHTTP(httpc))
-	// Пустой logPath = наблюдаем УДАЛЁННУЮ машину: её sing-box.log лежит на
-	// её файловой системе, и читать нам нечего. Тогда работает только поток
-	// соединений (gRPC), без DNS-событий и CNAME-цепочек из лога.
-	if logPath != "" {
-		p.tailer = NewLogTailer(logPath)
-	}
+	p.tailer = newTailer
 	tailer := p.tailer
 	p.mu.Unlock()
 

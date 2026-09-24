@@ -18,7 +18,6 @@ package tabs
 import (
 	"context"
 	"image/color"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,11 +33,11 @@ import (
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/services"
 	wizardtemplate "singbox-launcher/core/template"
-	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -112,7 +111,7 @@ func runSRSDownloadAsync(
 	onSuccess func(),
 	silent bool,
 ) {
-	if model.ExecDir == "" {
+	if model.DataDir == "" {
 		return
 	}
 	btn.Disable()
@@ -124,12 +123,12 @@ func runSRSDownloadAsync(
 		// её srs/, у local — bin/rule-sets/. Общий каталог означал бы, что
 		// окно ресурсов машины своих файлов не видит, а GC одной машины
 		// трогает файлы другой.
-		err := services.DownloadSRSGroupTo(ctx, model.ExecDir, model.SrsDir(), srsEntries)
+		err := services.DownloadSRSGroupTo(ctx, model.DataDir, model.SrsDir(), srsEntries)
 		presenter.UpdateUI(func() {
 			btn.Enable()
 			if err != nil {
 				btn.SetText(srsBtnDownload())
-				ruleSetsDir := filepath.Join(model.ExecDir, constants.BinDirName, constants.RuleSetsDirName)
+				ruleSetsDir := platform.GetRuleSetsDir(model.DataDir)
 				downloadURL := ""
 				if len(srsEntries) > 0 {
 					downloadURL = srsEntries[0].URL
@@ -302,7 +301,7 @@ func buildSingleCustomRuleRow(
 		presenter, model, guiState, customRule, customIdx, availableOutbounds, rowGetter,
 	)
 	outboundSelect := &outboundWidget.Select
-	if isSRSRule && len(srsEntries) > 0 && !services.AllSRSDownloadedIn(model.ExecDir, model.SrsDir(), srsEntries) {
+	if isSRSRule && len(srsEntries) > 0 && !services.AllSRSDownloadedIn(model.DataDir, model.SrsDir(), srsEntries) {
 		outboundSelect.Disable()
 	}
 
@@ -367,7 +366,7 @@ func createRuleEnableCheckbox(
 	ch = widget.NewCheck("", func(val bool) {
 		if val {
 			entries, isSRS := customRuleSRSEntries(customRule)
-			if isSRS && len(entries) > 0 && !services.AllSRSDownloadedIn(model.ExecDir, model.SrsDir(), entries) {
+			if isSRS && len(entries) > 0 && !services.AllSRSDownloadedIn(model.DataDir, model.SrsDir(), entries) {
 				if !guiState.UpdatingOutboundOptions && *srsButtonRef != nil {
 					*enableRuleOnSRSSuccess = true
 					(*srsButtonRef).OnTapped()
@@ -504,7 +503,7 @@ func createCustomRuleSRSButton(
 	rowGetter fynewidget.RowHoverGetter,
 ) *fynewidget.HoverForwardTTButton {
 	initialText := srsBtnDownload()
-	if services.AllSRSDownloadedIn(model.ExecDir, model.SrsDir(), srsEntries) {
+	if services.AllSRSDownloadedIn(model.DataDir, model.SrsDir(), srsEntries) {
 		initialText = srsBtnDone()
 	}
 	btn := fynewidget.NewHoverForwardTTButton(initialText, nil, rowGetter)
@@ -597,7 +596,7 @@ func srsTargetDirHint(model *wizardmodels.WizardModel) string {
 	}
 	dir := model.SrsDir()
 	if dir == "" {
-		dir = filepath.Join(model.ExecDir, constants.BinDirName, constants.RuleSetsDirName)
+		dir = platform.GetRuleSetsDir(model.DataDir)
 	}
 	return locale.Tf("Downloads to: %s", dir)
 }

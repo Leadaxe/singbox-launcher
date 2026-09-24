@@ -343,8 +343,17 @@ func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *
 		// Код едет МАШИННЫМ полем отказа, а не подстрокой текста: нормативен в
 		// ожиданиях корпуса именно он (`dropped[].code`), а `reason` — текст
 		// стороны, который раннеры не сравнивают.
-		return nil, NewReject(st.dropCode, map[string]string{"transport": st.dropValue},
-			fmt.Errorf("linkmap: транспорт %q ядром не поддержан", st.dropValue))
+		//
+		// Текст всё же разный по КОДУ: «транспорт http ядром не поддержан»
+		// было бы прямой неправдой про обфускацию заголовком — транспорт
+		// `http` у ядра как раз есть (это HTTP/2), не поддержана ИМЕННО
+		// подделка заголовка поверх TCP, и назвать её транспортом значит
+		// увести читателя лога чинить не то.
+		msg := fmt.Errorf("linkmap: транспорт %q ядром не поддержан", st.dropValue)
+		if st.dropCode == "transport_header_unsupported" {
+			msg = fmt.Errorf("linkmap: обфускация заголовком %q поверх TCP ядром не поддержана", st.dropValue)
+		}
+		return nil, NewReject(st.dropCode, map[string]string{"transport": st.dropValue}, msg)
 	}
 
 	// required — ПОСЛЕ обоих проходов и defaults: запись объявлена
@@ -513,18 +522,29 @@ func (st *execState) applyUserInfo() {
 	// SIP002 кодирует в base64 именно userinfo, оставляя адрес и метку
 	// открытыми. Порядок объявлен секцией: percent ДО base64, потому что
 	// панели экранируют '='-паддинг как %3D.
-	for i, dec := range ui.Decode {
-		if i >= maxDecodeDepth {
-			break
-		}
-		next, err := decodeNamed(dec, raw)
-		if err != nil {
-			// Объявленный декодер не сработал — userinfo остаётся как есть.
-			// Отказ разбора здесь был бы неверен: `base64?` у ss означает
-			// «попробовать», и открытый SS2022 `method:key@host` законен.
-			break
-		}
-		raw = next
+	// Разделитель как ПРИЗНАК формы: `decode_requires_separator`.
+	//
+	// Развилка тут не про декодер, а про ФОРМУ, и объявлена данными, потому
+	// что у socks base64 отличается от открытого текста ТОЛЬКО отсутствием
+	// разделителя. Признак работает в обе стороны, и обе нужны:
+	//
+	//   1. Разделитель УЖЕ ЕСТЬ во входе — форма открытая, конвейер не
+	//      применяется вовсе. `user:pass` двоеточие в алфавит base64 не
+	//      пускает, так что его наличие ДОКАЗЫВАЕТ открытую форму.
+	//   2. Разделителя нет — форма под вопросом, декодер пробуется, но его
+	//      результат ПРИНИМАЕТСЯ лишь тогда, когда разделитель в нём
+	//      появился. Иначе декодирование считается ложным срабатыванием и
+	//      значение остаётся как было.
+	//
+	// Без второй половины `base64?` рушит открытое ОДИНОЧНОЕ имя:
+	// `socks4://useridonly@host` — законный userid socks4 (пароля у версии 4
+	// нет по протоколу), но "useridonly" проходит RawStdEncoding и уезжает
+	// семью байтами мусора. Ровно этой парой условий читает и v2rayN,
+	// который форму и пишет: он берёт раскодированное только тогда, когда
+	// оно разделилось на ДВА компонента (SocksFmt.ResolveSocksNew).
+	sep := ui.DecodeRequiresSeparator
+	if sep == "" || !strings.Contains(raw, sep) {
+		raw = st.decodeUserInfo(ui, raw, sep)
 	}
 	st.space.UserInfo = raw
 	if i := strings.Index(raw, ":"); i >= 0 {
@@ -545,6 +565,43 @@ func (st *execState) applyUserInfo() {
 	if len(targets) == 0 && ui.SingleInto != "" {
 		targets = []string{ui.SingleInto}
 	}
+	st.writeUserInfoParts(ui, parts, targets, raw)
+}
+
+// decodeUserInfo прогоняет объявленный конвейер декодеров userinfo.
+//
+// `sep` непустой — результат принимается ТОЛЬКО с разделителем внутри
+// (см. applyUserInfo): декодер, не давший разделителя, сработал ложно, и
+// открытое значение возвращается нетронутым.
+func (st *execState) decodeUserInfo(ui *registry.UserInfo, raw, sep string) string {
+	decoded := raw
+	for i, dec := range ui.Decode {
+		if i >= maxDecodeDepth {
+			break
+		}
+		next, err := decodeNamed(dec, decoded)
+		if err != nil {
+			// Объявленный декодер не сработал — userinfo остаётся как есть.
+			// Отказ разбора здесь был бы неверен: `base64?` у ss означает
+			// «попробовать», и открытый SS2022 `method:key@host` законен.
+			break
+		}
+		decoded = next
+	}
+	// Разделителя в результате нет — считаем декодирование ЛОЖНЫМ.
+	//
+	// Открытое одиночное имя проходит base64 «успешно» и превращается в
+	// мусор, а отличить его от настоящей base64 больше нечем: у обеих форм
+	// один алфавит и любая длина. Признак объявлен секцией, и без него
+	// остаётся только выдумывать за автора ссылки.
+	if sep != "" && !strings.Contains(decoded, sep) {
+		return raw
+	}
+	return decoded
+}
+
+// writeUserInfoParts раскладывает компоненты userinfo по объявленным целям.
+func (st *execState) writeUserInfoParts(ui *registry.UserInfo, parts, targets []string, raw string) {
 	// Одиночный userinfo без разделителя при объявленном single_into едет
 	// туда, а не в первый into (конвенция naive/hysteria2).
 	//
@@ -2352,6 +2409,153 @@ func (st *execState) noteUnknownJSONKeys(uk *registry.UnknownKey, ignored map[st
 			Act: ActKeep, Why: WhyNotDeclared,
 		})
 	}
+	st.noteUnknownNestedJSONKeys(uk, ignored)
+}
+
+// noteUnknownNestedJSONKeys ставит тот же код на необъявленный ключ ВНУТРИ
+// объявленного контейнера (`settings.*`, `streamSettings.*`).
+//
+// Зачем вообще. Верхний уровень молчит про контейнеры намеренно: их листья
+// читают записи таблицы, и `ignore` у xray-секций перечисляет
+// `settings`/`streamSettings` ровно за этим. Но следствие было хуже болезни:
+// ВСЁ, что лежит внутри контейнера и не названо ни одним `source`, терялось
+// АБСОЛЮТНО МОЛЧА — ни кода, ни ноты, ни деградации (аудит outbound-параметров
+// Xray-core 24.09.2026, §0). Человек не узнавал, что часть его конфига не
+// прочитана, и отличить это от «прочитано и не нужно» было нечем.
+//
+// Отбраковки тут нет и быть не может: непрочитанный лист не ломает узел, он
+// лишь не доезжает. Код — тот же info (`json_field_unknown`), путь — ПОЛНЫЙ
+// (`streamSettings.xhttpSettings.foo`), чтобы человек нашёл место в своём
+// конфиге, а не гадал, какой из вложенных объектов имелся в виду.
+//
+// Молчат (и это объявлено, а не случайно):
+//   - объявленные пути, включая чтение-без-записи (`maps_to: null`) — секция
+//     их назвала своей рукой, а «читаем и не пишем» есть прочитанное;
+//   - `sockopt` целиком: объявлен ЧАСТИЧНО (`dialerProxy`, `tcpKeepAlive…`),
+//     и остальные его поля серверные либо неприменимые — код на каждом узле
+//     с sockopt был бы шумом;
+//   - контейнеры-дороги: путь внутреннего объекта листом не считается.
+func (st *execState) noteUnknownNestedJSONKeys(uk *registry.UnknownKey, ignored map[string]bool) {
+	roots := make([]string, 0, len(uk.Ignore))
+	for _, n := range uk.Ignore {
+		roots = append(roots, n)
+	}
+	if len(roots) == 0 {
+		return
+	}
+	quiet := make(map[string]bool, len(uk.NestedQuiet))
+	for _, q := range uk.NestedQuiet {
+		quiet[strings.ToLower(strings.TrimSpace(q))] = true
+	}
+	declared := st.declaredJSONPaths()
+	for _, path := range st.space.JSONLeafPaths(roots) {
+		low := strings.ToLower(path)
+		if declared[low] {
+			continue
+		}
+		// Объявленным считается и путь-РОДИТЕЛЬ: запись, читающая объект
+		// целиком (`wsSettings.headers` с `type: object`), читает и каждый
+		// его лист, а перечислить листья она не может — их имена принадлежат
+		// подписке. Тем же правилом молчит ЧАСТИЧНО объявленный `sockopt`:
+		// его поддерево названо записью `sockopt.dialerProxy`, и код на
+		// каждом остальном его поле был бы шумом.
+		if declaredByAncestor(declared, low) {
+			continue
+		}
+		// Игнор-список верхнего уровня сюда НЕ переносится целиком: он
+		// перечисляет сами КОНТЕЙНЕРЫ (`settings`, `streamSettings`), то есть
+		// корни этого обхода, и сверка по префиксу заглушила бы ровно то, ради
+		// чего обход затеян. Молчание ВНУТРИ контейнера объявляется путями
+		// `source` либо отдельным списком `nested_quiet`.
+		if ignored[low] || quietByPrefix(quiet, low) {
+			continue
+		}
+		st.notePath(uk.Code, path, map[string]string{"query_name": path})
+		st.trace.Add(Event{
+			Stage: StageUnknown, Mapper: st.mapperName, Entry: "$unknown",
+			Src: "json." + path, Raw: nil, Val: nil, Path: nil,
+			Act: ActKeep, Why: WhyNotDeclared,
+		})
+	}
+}
+
+// declaredJSONPaths — пути `json.*`, названные планом, с подставленным $base.
+//
+// Собирается ЗДЕСЬ, а не в плане, потому что якорь формы ($base) известен
+// только на исполнении: одна и та же запись у формы `vnext` и формы `servers`
+// адресует разные пути.
+//
+// Объявленным считается и путь-РОДИТЕЛЬ: запись, читающая объект целиком
+// (`wsSettings.headers` с `type: object`), читает и каждый его лист, а
+// перечислить их она не может — их имена принадлежат подписке.
+func (st *execState) declaredJSONPaths() map[string]bool {
+	out := make(map[string]bool, 128)
+	add := func(src string) {
+		if !strings.HasPrefix(src, "json.") {
+			return
+		}
+		name := strings.ToLower(st.substituteBase(strings.TrimPrefix(src, "json.")))
+		if name == "" {
+			return
+		}
+		out[name] = true
+	}
+	for _, e := range st.plan.Selectors {
+		for _, s := range e.Param.Source.All() {
+			add(s)
+		}
+	}
+	for _, e := range st.plan.Rest {
+		for _, s := range e.Param.Source.All() {
+			add(s)
+		}
+	}
+	for i := range st.plan.Mapper.Overlays {
+		for _, s := range st.plan.Mapper.Overlays[i].Source.All() {
+			add(s)
+		}
+	}
+	if st.plan.Mapper.Label != nil {
+		for _, s := range st.plan.Mapper.Label.Source.All() {
+			add(s)
+		}
+	}
+	return out
+}
+
+// declaredByAncestor — путь прочитан записью, объявившей его ПРЕДКА.
+//
+// Объект, объявленный целиком (`type: object` у `headers`), несёт листья,
+// имена которых принадлежат подписке, а не реестру: перечислить их секция не
+// может, и звать их неизвестными значило бы ругаться на прочитанное. Тем же
+// правилом молчит частично объявленное поддерево `sockopt`.
+// quietByPrefix — путь молчит, если он сам или любой его предок объявлен
+// молчащим поддеревом (`nested_quiet`).
+func quietByPrefix(quiet map[string]bool, path string) bool {
+	if len(quiet) == 0 {
+		return false
+	}
+	if quiet[path] {
+		return true
+	}
+	for i := len(path) - 1; i > 0; i-- {
+		if path[i] == '.' && quiet[path[:i]] {
+			return true
+		}
+	}
+	return false
+}
+
+func declaredByAncestor(declared map[string]bool, path string) bool {
+	for i := len(path) - 1; i > 0; i-- {
+		if path[i] != '.' {
+			continue
+		}
+		if declared[path[:i]] {
+			return true
+		}
+	}
+	return false
 }
 
 // noteINIDropped ставит код на секции ini, чьи ПОВТОРЫ снял диалект.

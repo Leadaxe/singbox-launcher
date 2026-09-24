@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"singbox-launcher/internal/paths"
 )
 
 // SPEC 063: для удалённой машины путь .srs должен указывать в ЕЁ ресурс-стор.
@@ -17,7 +19,7 @@ func TestRemoteRuleSetPointsAtResourceStore(t *testing.T) {
 	const resourceDir = "/var/lib/sing-box-lxd/state/resources"
 	in := json.RawMessage(`{"tag":"geosite-ru","type":"remote","url":"https://example/geosite-ru.srs"}`)
 
-	got, err := convertRuleSetToLocalRequired(in, execDir, resourceDir)
+	got, err := convertRuleSetToLocalRequired(in, paths.DataDir(execDir), resourceDir)
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -40,7 +42,7 @@ func TestLocalRuleSetKeepsOwnPath(t *testing.T) {
 	want := stubSRSFile(t, execDir, "geosite-ru")
 
 	in := json.RawMessage(`{"tag":"geosite-ru","type":"remote","url":"https://example/geosite-ru.srs"}`)
-	got, err := convertRuleSetToLocalRequired(in, execDir, "")
+	got, err := convertRuleSetToLocalRequired(in, paths.DataDir(execDir), "")
 	if err != nil {
 		t.Fatalf("convert: %v", err)
 	}
@@ -53,11 +55,11 @@ func TestLocalRuleSetKeepsOwnPath(t *testing.T) {
 // файла тут нет по определению, и os.Stat завалил бы сборку исправного конфига.
 func TestRemoteLocalEntryNotStatedLocally(t *testing.T) {
 	in := json.RawMessage(`{"tag":"x","type":"local","format":"binary","path":"/var/lib/sing-box-lxd/state/resources/x.srs"}`)
-	if _, err := convertRuleSetToLocalRequired(in, t.TempDir(), "/var/lib/sing-box-lxd/state/resources"); err != nil {
+	if _, err := convertRuleSetToLocalRequired(in, paths.DataDir(t.TempDir()), "/var/lib/sing-box-lxd/state/resources"); err != nil {
 		t.Errorf("remote local entry must not be checked on this machine: %v", err)
 	}
 	// А для локальной машины проверка остаётся: там путь наш и файл обязан быть.
-	if _, err := convertRuleSetToLocalRequired(in, t.TempDir(), ""); err == nil {
+	if _, err := convertRuleSetToLocalRequired(in, paths.DataDir(t.TempDir()), ""); err == nil {
 		t.Error("local target must still verify the file exists")
 	}
 }

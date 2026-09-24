@@ -192,6 +192,11 @@
         }
       ],
       "userinfo": {
+        "decode": [
+          "percent",
+          "base64?"
+        ],
+        "decode_requires_separator": ":",
         "split": {
           "sep": ":",
           "limit": 2
@@ -201,7 +206,7 @@
           "password"
         ],
         "single_into": "username",
-        "impl": "Одиночный userinfo — ИМЯ пользователя: так устроен socks4 («socks4://userid@host», корпус socks4_userid), где пароля нет по протоколу. Совпадает с into[0], но объявлено явно."
+        "impl": "Одиночный userinfo — ИМЯ пользователя: так устроен socks4 («socks4://userid@host», корпус socks4_userid), где пароля нет по протоколу. Совпадает с into[0], но объявлено явно. `decode` + `decode_requires_separator` — форма v2rayN: он пишет socks-ссылку как base64url(«user:pass») ВСЕГДА (`SocksFmt.ToUri`), и прежде реестр резал такую строку по ':', которого в ней нет — `username` становился всей base64-строкой, а ПАРОЛЬ терялся МОЛЧА (D-10 аудита панелей). Признак `:` работает В ОБЕ СТОРОНЫ, и обе половины обязательны: двоеточие в алфавит base64 не входит, поэтому его наличие ВО ВХОДЕ доказывает открытую форму и снимает конвейер, а его отсутствие В РЕЗУЛЬТАТЕ декодирования означает ложное срабатывание — открытое одиночное имя «useridonly» (userid socks4, пароля у версии 4 нет по протоколу) проходит RawStdEncoding и уехало бы семью байтами мусора. Проверено прогоном: без второй половины признака кейс socks4_userid ломался ровно так. Ровно этим признаком читает и сам v2rayN: `rawUserInfo.Contains(':') ? split : Base64Decode(...)`. `limit: 2` ловит пароль с двоеточием ВНУТРИ (base64 от «user:pa:ss» → «user» + «pa:ss», корпус socks5_base64_userinfo_colon_password). percent ДО base64 — как у ss: панели экранируют '='-паддинг как %3D."
       },
       "label": {
         "source": [
@@ -390,6 +395,9 @@
           "mux",
           "sendThrough",
           "proxySettings"
+        ],
+        "nested_quiet": [
+          "streamSettings.sockopt"
         ],
         "impl": "Список дословно равен списку остальных xray-секций — см. развёрнутую сноску у vless."
       },

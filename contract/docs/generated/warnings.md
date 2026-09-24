@@ -59,6 +59,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`password_empty`](#password_empty) · `warning` — Password is empty
 - [`port_invalid`](#port_invalid) · `error` — Invalid port {value}
 - [`protocol_unsupported`](#protocol_unsupported) · `error` — Protocol {scheme} is not supported
+- [`provider_banner_link`](#provider_banner_link) · `info` — Subscription: provider notice instead of a server
 - [`reality_fp_not_chrome`](#reality_fp_not_chrome) · `info` — REALITY: fingerprint {value} may not connect
 - [`reality_key_share_invalid`](#reality_key_share_invalid) · `info` — REALITY: key_share removed
 - [`reality_pbk_invalid`](#reality_pbk_invalid) · `warning` — REALITY disabled: invalid public key
@@ -80,6 +81,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`tls_field_unsupported_naive`](#tls_field_unsupported_naive) · `warning` — naive: TLS field {path} removed
 - [`tls_insecure`](#tls_insecure) · `info` — Certificate verification disabled
 - [`tls_not_applicable_quic`](#tls_not_applicable_quic) · `info` — QUIC: TLS field {path} not applicable
+- [`transport_header_unsupported`](#transport_header_unsupported) · `error` — TCP header obfuscation {value} is not supported
 - [`transport_unsupported`](#transport_unsupported) · `warning` — Transport replaced with {fallback}
 - [`tuic_congestion_invalid`](#tuic_congestion_invalid) · `warning` — Field removed: unknown congestion control
 - [`tuic_udp_relay_mode_invalid`](#tuic_udp_relay_mode_invalid) · `warning` — Field removed: unknown UDP relay mode
@@ -1049,6 +1051,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
+<a id="provider_banner_link"></a>
+### provider_banner_link
+
+**severity:** `info` · **params:** `message`
+
+**Subscription: provider notice instead of a server**
+
+- **What happened:** The subscription carries an entry that looks like a link but points nowhere — the panel writes its notice this way. The provider's message: {message}. The entry was skipped; every other entry of the subscription was imported as usual.
+- **Why it happens:** When a subscription has expired, is disabled or has run out of traffic, panels do not send an empty body: Remnawave writes a valid `vless://` to `0.0.0.0:1` and 3x-ui a `socks://` to `127.0.0.1:1080`, putting the explanation into the remark after `#`. On expiry such an entry may be the only one in the body. Addresses like these are not servers — they are a way to deliver text to the user through a list that has room only for links.
+- **What you can do:**
+  - Read the provider's message — usually it says the subscription has expired or the device limit is reached.
+  - Renew or re-activate the subscription in the provider's panel, then update the subscription in the app.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="reality_fp_not_chrome"></a>
 ### reality_fp_not_chrome
 
@@ -1435,6 +1454,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Nothing to do: the node works, and the removed settings have no meaning over QUIC.
   - If you need a fingerprint or REALITY, take a node on a TCP protocol — vless, trojan, vmess or anytls.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="transport_header_unsupported"></a>
+### transport_header_unsupported
+
+**severity:** `error` · **params:** `value`
+
+**TCP header obfuscation {value} is not supported**
+
+- **What happened:** The entry asks for Xray header obfuscation {value} over plain TCP. The core has no counterpart for it, so the node was dropped: it could only have been built as a node without obfuscation, and the server expects an HTTP header in the very first packet and would break the connection.
+- **Why it happens:** Xray disguises a plain TCP stream as HTTP: the first packet carries a fabricated HTTP request, and the transport stays TCP. This is not the HTTP/2 transport of sing-box, which is a different protocol on the wire, so the value cannot be carried over to it. Panels write this obfuscation for nodes meant to pass DPI.
+- **What you can do:**
+  - Pick another node from this subscription — this one cannot work here.
+  - Ask the provider for a link to the same server with a real transport (ws, grpc, httpupgrade, xhttp) instead of TCP header obfuscation.
 
 **Where it comes from:**
 

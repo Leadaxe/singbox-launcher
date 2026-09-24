@@ -75,13 +75,13 @@ Everything a link of this scheme can carry, including the TLS and transport para
   - Type: int
   - Maps to: [`obfs.max_packet_size`](#body-obfs-max-packet-size)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- <a id="link-proto-upmbps"></a>**`upmbps`** — Uplink bandwidth, Mbps.
-  - Also spelled: `up_mbps`
+- <a id="link-proto-upmbps"></a>**`upmbps`** — Uplink bandwidth, Mbps. The short spelling `up` is read as an alias; a unit suffix (`100 mbps`) is stripped.
+  - Also spelled: `up_mbps`, `up`
   - Type: int
   - Maps to: [`up_mbps`](#body-up-mbps)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- <a id="link-proto-downmbps"></a>**`downmbps`** — Downlink bandwidth, Mbps.
-  - Also spelled: `down_mbps`
+- <a id="link-proto-downmbps"></a>**`downmbps`** — Downlink bandwidth, Mbps. The short spelling `down` is read as an alias; a unit suffix is stripped.
+  - Also spelled: `down_mbps`, `down`
   - Type: int
   - Maps to: [`down_mbps`](#body-down-mbps)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -439,8 +439,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 **Link parameter names.** The same parameter is spelled differently by different clients; the left spelling is read as the right one.
 
 - `ports` → `mport`
-- `up_mbps` → `upmbps`
-- `down_mbps` → `downmbps`
+- `up_mbps`, `up` → `upmbps`
+- `down_mbps`, `down` → `downmbps`
 - `fingerprint` → `fp`
 - `allowInsecure`, `allowinsecure`, `allow_insecure`, `allow-insecure`, `skipCertVerify`, `skipcertverify`, `skip_cert_verify`, `skip-cert-verify`, `noverify` → `insecure`
 

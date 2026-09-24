@@ -19,7 +19,21 @@
       },
       "kind": "outbound",
       "label": "extra wins",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.xhttpSettings.extra.host"
+        },
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.xhttpSettings.extra.mode"
+        },
+        {
+          "code": "json_field_unknown",
+          "path": "streamSettings.xhttpSettings.extra.path"
+        }
+      ]
     }
   ],
   "v": 1

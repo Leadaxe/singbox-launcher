@@ -10,6 +10,7 @@ import (
 	"singbox-launcher/core/services"
 	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/srstag"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -26,7 +27,7 @@ import (
 // (зеркало боевого пути routeConfigForUpdate).
 func TestSrsRuleSurvivesReopen(t *testing.T) {
 	execDir := findProjectRoot(t)
-	templateData, err := wizardtemplate.LoadTemplateData(execDir)
+	templateData, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(execDir), Data: paths.DataDir(execDir)})
 	if err != nil {
 		t.Fatalf("load template: %v", err)
 	}
@@ -52,7 +53,7 @@ func TestSrsRuleSurvivesReopen(t *testing.T) {
 	// Модель — как restoreCustomRules/restorePresetRefs при открытии.
 	model := wizardmodels.NewWizardModel()
 	model.TemplateData = templateData
-	model.ExecDir = execDir
+	model.DataDir = paths.DataDir(execDir)
 	model.RulesLibraryMerged = true
 	model.Sources = append(model.Sources, wizardmodels.Source{
 		ID:   "01TESTSRSREOPEN0000000000",
@@ -138,7 +139,7 @@ func TestSrsRuleSurvivesReopen(t *testing.T) {
 // правило маршрута со ссылкой на все).
 func TestSrsRuleKeepsAllRuleSetsAcrossReopen(t *testing.T) {
 	execDir := findProjectRoot(t)
-	templateData, err := wizardtemplate.LoadTemplateData(execDir)
+	templateData, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(execDir), Data: paths.DataDir(execDir)})
 	if err != nil {
 		t.Fatalf("load template: %v", err)
 	}
@@ -167,7 +168,7 @@ func TestSrsRuleKeepsAllRuleSetsAcrossReopen(t *testing.T) {
 
 	model := wizardmodels.NewWizardModel()
 	model.TemplateData = templateData
-	model.ExecDir = execDir
+	model.DataDir = paths.DataDir(execDir)
 	model.RulesLibraryMerged = true
 	model.Sources = append(model.Sources, wizardmodels.Source{
 		ID:   "01TESTSRSMULTI00000000000",

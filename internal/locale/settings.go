@@ -77,6 +77,32 @@ type Settings struct {
 	LastLauncherVersion string `json:"last_launcher_version,omitempty"`
 	LastCoreVersion     string `json:"last_core_version,omitempty"`
 
+	// ConfigDataRoot — DataDir, с которым config.json собран в последний раз
+	// (SPEC 135 §3.5). config.json держит абсолютные пути (.srs, tailscale):
+	// после смены корня данных (миграция, portable, переменная окружения,
+	// перенос руками) они ложны. На старте несовпадение с текущим DataDir
+	// форсирует пересборку (core.RefreshTemplateIfStale); пишется после
+	// каждой успешной сборки. Пусто — сборки ещё не было.
+	ConfigDataRoot string `json:"config_data_root,omitempty"`
+
+	// FirstRunNoticeShown — одноразовое уведомление «данных предыдущей
+	// версии не найдено» (SPEC 135 §3.4) уже показано. Ставится сразу после
+	// показа; до тех пор уведомление всплывает на каждом старте, где в
+	// DataDir нет state.json и мигрировать нечего.
+	FirstRunNoticeShown bool `json:"first_run_notice_shown,omitempty"`
+
+	// HiddenDataNoticeShown — пользователь отказался (Cancel) переключиться
+	// на данные, найденные в системном каталоге при включённом portable.txt
+	// (SPEC 135, paths.HiddenSystemData). Больше не спрашивать.
+	HiddenDataNoticeShown bool `json:"hidden_data_notice_shown,omitempty"`
+
+	// StorageLeftover — что переключатель Portable не смог стереть на
+	// старом месте (SPEC 135 §4.2, paths.SwitchReport.Leftover). Пишется в
+	// settings.json НОВОГО места сразу после переезда; раздел Storage
+	// показывает его строкой, очистка (§4.3) удаляет как остаток переезда.
+	// Пусто — остатка нет. Путь абсолютный.
+	StorageLeftover string `json:"storage_leftover,omitempty"`
+
 	// HWID — random UUIDv4 идентификатор устройства, отправляемый в
 	// `X-Hwid` заголовке при каждом fetch'е подписки. Lazy-generated
 	// (EnsureHWID): пустой строкой при первой инсталляции → генерируется и
@@ -118,6 +144,11 @@ type Settings struct {
 	// лаунчера. Default false: выход из лаунчера НЕ трогает VPN — главное
 	// UX-преимущество daemon-режима.
 	DaemonStopVPNOnExit bool `json:"daemon_stop_vpn_on_exit,omitempty"`
+	// DaemonUnsafeNoticeVersion — версия лаунчера, на которой показано
+	// модальное предупреждение «служба демона запускает файл, который может
+	// подменить пользователь» (SPEC 136 §6). Одно предупреждение на версию:
+	// плашка на вкладке LOCAL остаётся до ремонта, модальное окно — нет.
+	DaemonUnsafeNoticeVersion string `json:"daemon_unsafe_notice_version,omitempty"`
 
 	// HideAppFromDock — пункт трея «Скрыть из Dock» (macOS). Пишется при
 	// каждом переключении пункта, применяется на старте: до этого поля
@@ -217,6 +248,61 @@ func MarkTemplateInstalled(binDir, appVersion string) error {
 		return nil
 	}
 	s.LastTemplateLauncherVersion = appVersion
+	return SaveSettings(binDir, s)
+}
+
+// MarkConfigDataRoot persists the data root config.json was just built with
+// (SPEC 135 §3.5). No write when it is already recorded: rebuilds are frequent.
+func MarkConfigDataRoot(binDir, root string) error {
+	s := LoadSettings(binDir)
+	if s.ConfigDataRoot == root {
+		return nil
+	}
+	s.ConfigDataRoot = root
+	return SaveSettings(binDir, s)
+}
+
+// MarkFirstRunNoticeShown persists that the one-time "no previous data found"
+// notice was shown (SPEC 135 §3.4).
+func MarkFirstRunNoticeShown(binDir string) error {
+	s := LoadSettings(binDir)
+	if s.FirstRunNoticeShown {
+		return nil
+	}
+	s.FirstRunNoticeShown = true
+	return SaveSettings(binDir, s)
+}
+
+// MarkHiddenDataNoticeShown persists that the user declined to switch to the
+// data found in the system folder while portable.txt is present (SPEC 135).
+func MarkHiddenDataNoticeShown(binDir string) error {
+	s := LoadSettings(binDir)
+	if s.HiddenDataNoticeShown {
+		return nil
+	}
+	s.HiddenDataNoticeShown = true
+	return SaveSettings(binDir, s)
+}
+
+// MarkDaemonUnsafeNoticeShown persists the launcher version that showed the
+// "daemon service runs a user-writable binary" warning (SPEC 136 §6).
+func MarkDaemonUnsafeNoticeShown(binDir, appVersion string) error {
+	s := LoadSettings(binDir)
+	if s.DaemonUnsafeNoticeVersion == appVersion {
+		return nil
+	}
+	s.DaemonUnsafeNoticeVersion = appVersion
+	return SaveSettings(binDir, s)
+}
+
+// MarkStorageLeftover persists what a Portable switch left behind at the old
+// place ("" clears it) into settings.json of the new place (SPEC 135 §4.2).
+func MarkStorageLeftover(binDir, path string) error {
+	s := LoadSettings(binDir)
+	if s.StorageLeftover == path {
+		return nil
+	}
+	s.StorageLeftover = path
 	return SaveSettings(binDir, s)
 }
 

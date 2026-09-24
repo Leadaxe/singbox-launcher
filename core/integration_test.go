@@ -8,6 +8,7 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/services"
+	"singbox-launcher/internal/paths"
 )
 
 // TestIntegration_RealWorldSubscription tests parsing real-world subscription data
@@ -70,7 +71,7 @@ func TestIntegration_RealWorldSubscription(t *testing.T) {
 	})
 
 	t.Run("Process through ConfigService", func(t *testing.T) {
-		fileService, _ := services.NewFileService()
+		fileService, _ := services.NewFileService(paths.Layout{Data: paths.DataDir(t.TempDir()), Logs: paths.LogDir(t.TempDir())})
 		if fileService != nil {
 			fileService.ConfigPath = "/tmp/test-config.json"
 		}
@@ -252,7 +253,7 @@ func TestIntegration_ParserConfigFlow(t *testing.T) {
 		}
 
 		// Process through ConfigService
-		fileService, _ := services.NewFileService()
+		fileService, _ := services.NewFileService(paths.Layout{Data: paths.DataDir(t.TempDir()), Logs: paths.LogDir(t.TempDir())})
 		if fileService != nil {
 			fileService.ConfigPath = "/tmp/test-config.json"
 		}

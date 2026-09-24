@@ -186,8 +186,8 @@ func buildConfigWithExclusions(model *wizardmodels.WizardModel, forPreview bool)
 		Presets:             model.TemplateData.Presets,
 		Rules:               rulesV6,
 		DNS:                 dnsV6,
-		SrsCachedPaths:      build.CollectSrsCachedPaths(rulesV6, model.ExecDir, model.ResourceDir),
-		ExecDir:             model.ExecDir,
+		SrsCachedPaths:      build.CollectSrsCachedPaths(rulesV6, model.DataDir, model.ResourceDir),
+		DataDir:             model.DataDir,
 		TemplateDNSDefaults: ParseTemplateDNSDefaults(model.TemplateData),
 		// SPEC 106 (G3): тело пресета видит глобальные переменные шаблона для
 		// имён, которых не объявило у себя — настройка со вкладки Settings
@@ -313,7 +313,7 @@ func routeConfigFromModel(model *wizardmodels.WizardModel) build.RouteConfig {
 	return build.RouteConfig{
 		Rules:                     rules,
 		FinalOutbound:             model.SelectedFinalOutbound,
-		ExecDir:                   model.ExecDir,
+		DataDir:                   model.DataDir,
 		ResourceDir:               model.ResourceDir,
 		DefaultDomainResolver:     model.DefaultDomainResolver,
 		OmitDefaultDomainResolver: model.DefaultDomainResolverUnset,

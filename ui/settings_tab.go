@@ -23,7 +23,6 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
 )
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
@@ -50,8 +49,11 @@ const (
 // locale.SaveSettings with load-mutate-save — we explicitly avoid the
 // `Settings{Lang: code}` "fresh struct" anti-pattern which silently wiped
 // every other field.
-func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+//
+// Второе значение — refresh для вкладки: перечитывает то, что меняется без
+// участия Settings (пути раздела Storage). Зовётся при выборе вкладки.
+func BuildSettingsContent(ac *core.AppController) (fyne.CanvasObject, func()) {
+	binDir := ac.FileService.Layout.Data.Bin()
 
 	// ---- Subscriptions section ---------------------------------------------
 	subsTitle := widget.NewLabelWithStyle(locale.T("Subscriptions"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
@@ -241,6 +243,11 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 	// языком и идентификацией подписки.
 	debugAPIBlock := buildDebugAPIRow(ac)
 
+	// ---- Storage (SPEC 135 §4.1) --------------------------------------------
+	// Внизу: справочный блок путей, под ним встанут переключатель Portable и
+	// «Remove all data…» — опасное действие в конце вкладки.
+	storageBlock, refreshStorage := buildStorageSection(ac)
+
 	// Language first so the two subscription sections (Subscriptions +
 	// Subscription identification) sit together instead of being split by the
 	// Language block.
@@ -261,8 +268,10 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 		subIDBlock,
 		widget.NewSeparator(),
 		debugAPIBlock,
+		widget.NewSeparator(),
+		storageBlock,
 	)
-	return content
+	return content, refreshStorage
 }
 
 // buildSubscriptionDefaultsBlock — два умолчания подписок (SPEC 118 Т8):
@@ -612,7 +621,7 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 // Diagnostics → Settings tab (так как это persisted launcher setting,
 // а не one-shot диагностическое действие).
 func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	st := locale.LoadSettings(binDir)
 
 	title := widget.NewLabelWithStyle(locale.T("Debug API (localhost)"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
 )
 
 // fillRuleSetsDir создаёт bin/rule-sets/ внутри execDir и пишет в него
@@ -51,7 +52,7 @@ func TestDeleteOrphanRuleSets_RemovesUnknown(t *testing.T) {
 	fillRuleSetsDir(t, execDir, []string{"ru-blocked-main.srs", "ads-all.srs", "stale.srs"})
 
 	known := []string{"ru-blocked-main", "ads-all"}
-	deleted, err := DeleteOrphanRuleSets(execDir, known)
+	deleted, err := DeleteOrphanRuleSets(paths.DataDir(execDir), known)
 	if err != nil {
 		t.Fatalf("DeleteOrphanRuleSets: %v", err)
 	}
@@ -72,7 +73,7 @@ func TestDeleteOrphanRuleSets_RemovesNonSRSGarbage(t *testing.T) {
 	fillRuleSetsDir(t, execDir, []string{"ru-inside.srs", "notes.txt", "junk", "левый-файл"})
 
 	known := []string{"ru-inside"}
-	deleted, err := DeleteOrphanRuleSets(execDir, known)
+	deleted, err := DeleteOrphanRuleSets(paths.DataDir(execDir), known)
 	if err != nil {
 		t.Fatalf("DeleteOrphanRuleSets: %v", err)
 	}
@@ -90,7 +91,7 @@ func TestDeleteOrphanRuleSets_PreservesAllKnown(t *testing.T) {
 	execDir := t.TempDir()
 	fillRuleSetsDir(t, execDir, []string{"a.srs", "b.srs", "c.srs"})
 
-	deleted, err := DeleteOrphanRuleSets(execDir, []string{"a", "b", "c"})
+	deleted, err := DeleteOrphanRuleSets(paths.DataDir(execDir), []string{"a", "b", "c"})
 	if err != nil {
 		t.Fatalf("DeleteOrphanRuleSets: %v", err)
 	}
@@ -107,7 +108,7 @@ func TestDeleteOrphanRuleSets_PreservesAllKnown(t *testing.T) {
 // возвращает (nil, nil) без ошибки. Используется как идемпотентный no-op.
 func TestDeleteOrphanRuleSets_MissingDirIsNoOp(t *testing.T) {
 	execDir := t.TempDir() // bin/rule-sets/ ещё не создан
-	deleted, err := DeleteOrphanRuleSets(execDir, []string{"x"})
+	deleted, err := DeleteOrphanRuleSets(paths.DataDir(execDir), []string{"x"})
 	if err != nil {
 		t.Errorf("missing dir should be no-op, got error: %v", err)
 	}
@@ -122,7 +123,7 @@ func TestDeleteOrphanRuleSets_EmptyKnownClearsAll(t *testing.T) {
 	execDir := t.TempDir()
 	fillRuleSetsDir(t, execDir, []string{"a.srs", "b.srs"})
 
-	deleted, err := DeleteOrphanRuleSets(execDir, []string{})
+	deleted, err := DeleteOrphanRuleSets(paths.DataDir(execDir), []string{})
 	if err != nil {
 		t.Fatalf("DeleteOrphanRuleSets: %v", err)
 	}

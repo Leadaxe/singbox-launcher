@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"singbox-launcher/core/config"
@@ -114,16 +116,48 @@ func (svc *ProcessService) CleanupStaleTunAtStart() {
 // The service ensures proper cleanup of TUN interfaces, log rotation, and process state management.
 type ProcessService struct {
 	ac *AppController
+	// coreLog — куда пишет вывод последнее запущенное ядро (SPEC 137.1):
+	// coreLogUnknown до первого старта в сессии, coreLogUser — лог в
+	// каталоге пользователя, coreLogPrivileged — лог старта с TUN в root-owned каталоге.
+	coreLog atomic.Int32
+}
+
+// Куда пишет вывод classic-ядро (ProcessService.coreLog).
+const (
+	coreLogUnknown int32 = iota
+	coreLogUser
+	coreLogPrivileged
+)
+
+// CoreLogPath — файл вывода текущего (или последнего) classic-ядра: лог в
+// каталоге пользователя (<Logs>/sing-box.log), а после старта с TUN на
+// macOS — platform.PrivilegedCoreLogPath в root-owned каталоге (SPEC 137.1): root в
+// каталог пользователя не пишет. До первого старта в сессии — по конфигу
+// (TUN на macOS → лог под root). Его читают Core-вкладка логов и тейлер
+// профайлера трафика; дёшево после первого вызова.
+func (ac *AppController) CoreLogPath() string {
+	privileged := platform.PrivilegedCoreLogPath()
+	if privileged == "" || ac.ProcessService == nil {
+		return ac.FileService.ChildLogPath
+	}
+	state := ac.ProcessService.coreLog.Load()
+	if state == coreLogUnknown {
+		state = coreLogUser
+		if hasTun, err := config.ConfigHasTun(ac.FileService.ConfigPath); err == nil && hasTun {
+			state = coreLogPrivileged
+		}
+		ac.ProcessService.coreLog.CompareAndSwap(coreLogUnknown, state)
+		state = ac.ProcessService.coreLog.Load()
+	}
+	if state == coreLogPrivileged {
+		return privileged
+	}
+	return ac.FileService.ChildLogPath
 }
 
 // NewProcessService constructs a ProcessService bound to the controller.
 func NewProcessService(ac *AppController) *ProcessService {
 	return &ProcessService{ac: ac}
-}
-
-// buildPrivilegedKillByPatternScript returns the shell command to kill privileged script and sing-box by process name pattern (for "already running" dialog on macOS).
-func buildPrivilegedKillByPatternScript() string {
-	return "pkill -TERM -f " + strconv.Quote(platform.PrivilegedPkillPattern) + " 2>/dev/null"
 }
 
 // Start launches the sing-box process. Behavior is identical to the previous StartSingBoxProcess.
@@ -212,7 +246,10 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 		}
 		if hasTun {
 			if err := svc.startSingBoxPrivileged(); err != nil {
-				ac.ShowStartupError(err)
+				// Отказ гейта копии уже показан своим диалогом с командой.
+				if !errors.Is(err, errPrivilegedCopyNotReady) {
+					ac.ShowStartupError(err)
+				}
 				return
 			}
 			return
@@ -222,10 +259,10 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	debuglog.WarnLog("startSingBox: Starting Sing-Box...")
 	ac.SingboxCmd = exec.Command(ac.FileService.SingboxPath, "run", "-c", filepath.Base(ac.FileService.ConfigPath))
 	platform.PrepareCommand(ac.SingboxCmd)
-	ac.SingboxCmd.Dir = platform.GetBinDir(ac.FileService.ExecDir)
+	ac.SingboxCmd.Dir = ac.FileService.Layout.Data.Bin()
 	if ac.FileService.ChildLogFile != nil {
 		// Check and rotate log file before starting new process to prevent unbounded growth
-		ac.FileService.CheckAndRotateLogFile(filepath.Join(ac.FileService.ExecDir, childLogFileName))
+		ac.FileService.CheckAndRotateLogFile(ac.FileService.ChildLogPath)
 
 		// Write directly to file - no buffering in memory
 		// This prevents memory leaks from accumulating log output
@@ -240,6 +277,7 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 		debuglog.ErrorLog("startSingBox: Failed to start Sing-Box: %v", err)
 		return
 	}
+	svc.coreLog.Store(coreLogUser)
 	ac.RunningState.Set(true)
 	ac.StoppedByUser = false
 	ac.StateService.ResetAutoUpdateFailedAttempts() // Reset so auto-update can retry after successful Start
@@ -256,31 +294,47 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	go svc.Monitor(ac.SingboxCmd)
 }
 
+// errPrivilegedCopyNotReady — гейт привилегированного старта отказал по
+// root-owned копии ядра и сам показал диалог с командой (SPEC 137).
+var errPrivilegedCopyNotReady = errors.New("the root-owned core copy for the privileged start is not ready")
+
 // startSingBoxPrivileged starts sing-box with elevated privileges on macOS (for TUN).
-// Скрипт создаётся в platform; оркестрация и состояние — здесь.
+// Команда root-шелла собирается в platform; оркестрация и состояние — здесь.
+//
+// SPEC 137: root исполняет только root-owned копию ядра и системные
+// утилиты. Гейт проверяет копию до AEWP; не прошла — старта с привилегиями
+// нет. Скрипт в каталоге данных больше не пишется. SPEC 137.1: вывод ядра
+// root пишет в свой каталог (platform.PrivilegedCoreLogPath) и там же
+// ротирует его; каталог пользователя root не трогает.
 func (svc *ProcessService) startSingBoxPrivileged() error {
 	ac := svc.ac
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	corePath, err := ac.privilegedCoreCopyGate()
+	if err != nil {
+		return err
+	}
+	binDir := ac.FileService.Layout.Data.Bin()
 	configName := filepath.Base(ac.FileService.ConfigPath)
-	logPath := filepath.Join(ac.FileService.ExecDir, childLogFileName)
-	if ac.FileService.ChildLogFile != nil {
-		ac.FileService.CheckAndRotateLogFile(logPath)
-	}
 
-	scriptPath := filepath.Join(binDir, platform.PrivilegedScriptName)
 	pidFilePath := filepath.Join(binDir, platform.PrivilegedPidFileName)
-
-	if err := platform.WritePrivilegedStartScript(scriptPath, pidFilePath, binDir, ac.FileService.SingboxPath, configName, logPath); err != nil {
-		return fmt.Errorf("failed to write script %s: %w", scriptPath, err)
+	// Скрипт старта до SPEC 137 больше ничто не исполняет — убираем, чтобы
+	// он не выглядел действующим.
+	legacyScript := filepath.Join(binDir, platform.PrivilegedLegacyScriptName)
+	if err := os.Remove(legacyScript); err == nil {
+		debuglog.InfoLog("startSingBox: removed the pre-SPEC 137 start script %s", legacyScript)
+	} else if !os.IsNotExist(err) {
+		debuglog.WarnLog("startSingBox: cannot remove the old start script %s: %v", legacyScript, err)
 	}
 
-	debuglog.WarnLog("startSingBox: Starting Sing-Box with elevated privileges (TUN)...")
-	type privilegedPids struct{ Script, Singbox int }
+	debuglog.WarnLog("startSingBox: Starting Sing-Box with elevated privileges (TUN) from %s...", corePath)
+	type privilegedPids struct {
+		Script, Singbox int
+		Err             error
+	}
 	pidCh := make(chan privilegedPids, 1)
 	go func() {
-		scriptPID, singboxPID, runErr := platform.RunWithPrivileges("/bin/sh", []string{scriptPath})
+		scriptPID, singboxPID, runErr := platform.StartPrivilegedCore(corePath, binDir, configName)
 		if runErr != nil {
-			pidCh <- privilegedPids{0, 0}
+			pidCh <- privilegedPids{Err: runErr}
 			ac.CmdMutex.Lock()
 			if ac.SingboxPrivilegedMode {
 				ac.CmdMutex.Unlock()
@@ -290,10 +344,11 @@ func (svc *ProcessService) startSingBoxPrivileged() error {
 			debuglog.WarnLog("startSingBox: privileged run failed: %v", runErr)
 			return
 		}
-		pidCh <- privilegedPids{scriptPID, singboxPID}
+		pidCh <- privilegedPids{Script: scriptPID, Singbox: singboxPID}
 		if scriptPID <= 0 {
 			return
 		}
+		svc.coreLog.Store(coreLogPrivileged)
 		ac.CmdMutex.Lock()
 		ac.SingboxCmd = nil
 		ac.SingboxPrivilegedMode = true
@@ -312,6 +367,9 @@ func (svc *ProcessService) startSingBoxPrivileged() error {
 
 	pids := <-pidCh
 	if pids.Script <= 0 {
+		if pids.Err != nil {
+			return fmt.Errorf("privileged start failed: %w", pids.Err)
+		}
 		return fmt.Errorf("privileged start failed or cancelled (no PID)")
 	}
 
@@ -657,7 +715,7 @@ func (svc *ProcessService) checkAndShowSingBoxRunningWarning(ctx string) bool {
 			dialogs.ShowProcessKillConfirmation(svc.ac.UIService.MainWindow, func() {
 				if runtime.GOOS == "darwin" {
 					// On macOS the process may have been started with privileges (root); kill with elevated rights
-					if _, _, err := platform.RunWithPrivileges("/bin/sh", []string{"-c", buildPrivilegedKillByPatternScript()}); err != nil {
+					if err := platform.KillPrivilegedByPattern(); err != nil {
 						debuglog.WarnLog("%s: Privileged kill failed (user may have cancelled): %v", ctx, err)
 					}
 				} else {

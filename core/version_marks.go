@@ -11,6 +11,9 @@
 package core
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"singbox-launcher/core/maintenance"
@@ -32,7 +35,7 @@ func (ac *AppController) CheckVersionMarks() {
 	if ac == nil || ac.FileService == nil {
 		return
 	}
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	binDir := ac.FileService.Layout.Data.Bin()
 	settings := locale.LoadSettings(binDir)
 	changed := false
 
@@ -101,4 +104,63 @@ func (ac *AppController) checkCoreMark(last string) (string, bool) {
 		return "", false
 	}
 	return current, true
+}
+
+// logCoreResolution пишет в лог, какое ядро выбрано и откуда (SPEC 135 §3.3).
+// Если выбранное затеняет второе найденное (Data над App, env над Data/App),
+// спрашивает версии у обоих и пишет одну строку со словом shadows: иначе
+// «почему ядро не то» на машине пользователя не разобрать.
+//
+// Запускает `sing-box version` — звать вне UI-потока (горутина отметок
+// версий на старте).
+func (ac *AppController) logCoreResolution() {
+	if ac == nil || ac.FileService == nil {
+		return
+	}
+	fs := ac.FileService
+	src := fs.CoreSource
+	if src == "" {
+		src = "none"
+	}
+	debuglog.WarnLog("core: %s (source=%s)", fs.SingboxPath, src)
+	// Ядро из PATH, которое выбранное затеняет: версию не спрашиваем, только
+	// путь — иначе «в терминале sing-box другой» не объяснить по логу.
+	switch fs.CoreSource {
+	case platform.CoreSourceData, platform.CoreSourceApp, platform.CoreSourceEnv:
+		if p, err := exec.LookPath(platform.GetExecutableNames()); err == nil {
+			if abs, err := filepath.Abs(p); err == nil {
+				p = abs
+			}
+			if !sameCoreFile(p, fs.SingboxPath) {
+				debuglog.WarnLog("core: %s %s shadows path %s", fs.CoreSource, fs.SingboxPath, p)
+			}
+		}
+	}
+	if fs.ShadowedCorePath == "" {
+		return
+	}
+	cur, err := ac.GetInstalledCoreVersion()
+	if err != nil || cur == "" {
+		cur = "?"
+	}
+	shadowed, err := coreVersionAt(fs.ShadowedCorePath)
+	if err != nil || shadowed == "" {
+		shadowed = "?"
+	}
+	kind := platform.CoreSourceApp
+	if filepath.Clean(fs.ShadowedCorePath) == filepath.Clean(filepath.Join(fs.Layout.Data.Bin(), platform.GetExecutableNames())) {
+		kind = platform.CoreSourceData
+	}
+	debuglog.WarnLog("core: %s %s shadows %s %s (%s)", src, cur, kind, shadowed, fs.ShadowedCorePath)
+}
+
+// sameCoreFile — один и тот же файл: по очищенному пути или, если оба
+// существуют, по идентичности (симлинки, регистр на macOS/Windows).
+func sameCoreFile(a, b string) bool {
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	ai, errA := os.Stat(a)
+	bi, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(ai, bi)
 }

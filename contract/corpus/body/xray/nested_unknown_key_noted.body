@@ -1,0 +1,15 @@
+# Неизвестный ключ ВНУТРИ объявленного контейнера (контракт 1.1.52).
+# Прежде `json_field_unknown` судил только ВЕРХНИЙ уровень элемента, а
+# контейнеры `settings`/`streamSettings` стояли в его `ignore` — и всё, что
+# лежало внутри них и не названо ни одним `source`, терялось АБСОЛЮТНО МОЛЧА:
+# ни кода, ни ноты, ни деградации (аудит outbound-параметров Xray-core, §0).
+# Теперь путь называется ПОЛНОСТЬЮ, а узел живёт: непрочитанный лист узел не
+# ломает, он лишь не доезжает, поэтому код info и отбраковки нет.
+# Кейс держит ТРИ границы нормы сразу:
+#   - `streamSettings.wsSettings.zzzUnknown` — код есть (лист никем не читается);
+#   - `streamSettings.sockopt.tcpMptcp` — МОЛЧИТ (`nested_quiet`: поддерево
+#     объявлено частично, остальные его поля серверные, и код на каждом узле с
+#     sockopt был бы шумом);
+#   - `wsSettings.headers.X-Custom` — МОЛЧИТ: запись читает объект `headers`
+#     целиком, а имена его листьев принадлежат подписке, не реестру.
+[{"remarks":"nested-unknown","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"a.example","port":443,"users":[{"id":"11111111-2222-3333-4444-555555555555","encryption":"none"}]}]},"streamSettings":{"network":"ws","wsSettings":{"path":"/x","zzzUnknown":"lost","headers":{"X-Custom":"kept"}},"sockopt":{"tcpMptcp":true,"dialerProxy":""}}}]}]

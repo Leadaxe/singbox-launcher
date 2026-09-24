@@ -7,8 +7,8 @@
 //
 // Settings live in `internal/locale` (legacy package name from when it
 // only held translations) and are loaded/saved via locale.LoadSettings /
-// locale.SaveSettings. The path is `<execDir>/bin/settings.json`,
-// resolved through ControllerFacade.GetExecDir + platform.GetBinDir.
+// locale.SaveSettings. The path is `<DataDir>/bin/settings.json`,
+// resolved through ControllerFacade.GetLayout().Data.Bin().
 //
 // Endpoints:
 //
@@ -27,7 +27,6 @@ import (
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
 )
 
 // handleSettingsUserAgent — GET/PATCH /settings/user-agent.
@@ -49,7 +48,7 @@ import (
 // so PATCH stays idempotent and protects against accidental wipes from
 // truncated requests.
 func (s *Server) handleSettingsUserAgent(w http.ResponseWriter, r *http.Request) {
-	binDir := platform.GetBinDir(s.facade.GetExecDir())
+	binDir := s.facade.GetLayout().Data.Bin()
 
 	switch r.Method {
 	case http.MethodGet:

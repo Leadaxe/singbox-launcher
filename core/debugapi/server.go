@@ -33,6 +33,7 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 )
 
 // DefaultPort — desktop debug-API default. Mobile LxBox uses 9269; we
@@ -52,9 +53,13 @@ type ControllerFacade interface {
 	GetConfigPath() string
 	GetLastUpdateSucceededAt() time.Time
 	GetLauncherVersion() string
-	// GetExecDir — used by /debug/snapshot to resolve canonical wizard
-	// file paths via internal/platform helpers (SUB_SPEC_SNAPSHOT.md §2.2).
-	GetExecDir() string
+	// GetLayout — data layout (SPEC 135): /debug/snapshot, /state and
+	// /settings resolve canonical file paths from it via internal/platform
+	// helpers (SUB_SPEC_SNAPSHOT.md §2.2).
+	GetLayout() paths.Layout
+	// GetPathsInfo — the paths block (SPEC 135 §4.1) served by /debug/paths:
+	// layout plus the core and template actually in use.
+	GetPathsInfo() paths.PathsInfo
 
 	// Actions — may be no-ops if the facade doesn't want to expose them.
 	StartSingBox() error
@@ -245,6 +250,7 @@ func (s *Server) endpoints() []apiEndpoint {
 		{"GET", "/state", true, "Core run state + active proxy/group", s.handleState},
 		{"GET", "/proxies", true, "Proxy list with latencies", s.handleProxies},
 		{"GET", "/debug/snapshot", true, "Diagnostic snapshot (state/config/template)", s.handleSnapshot},
+		{"GET", "/debug/paths", true, "Data layout: program/data/logs dirs, core and template in use", s.handlePaths},
 		{"GET", "/debug/goroutines", true, "Stack dump of all goroutines (text/plain, like SIGQUIT)", s.handleGoroutines},
 		{"POST", "/action/update-subs", true, "Re-fetch subscriptions and rebuild config", s.handleUpdateSubs},
 		{"POST", "/action/start", true, "Start the core", s.handleStart},

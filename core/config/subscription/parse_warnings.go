@@ -105,6 +105,14 @@ const (
 	// быть названным, иначе оно неотличимо от потерянного узла
 	// (source_kinds.json, uri_lines.service_schemes).
 	WarnServiceRecordIgnored = "service_record_ignored"
+	// WarnProviderBannerLink — запись-БАННЕР, притворившаяся ссылкой: цель
+	// из списка «заведомо не сервер» (source_kinds.json,
+	// uri_lines.banner_targets). Прежде признаком баннера было отсутствие
+	// `://`, а Remnawave и 3x-ui пишут баннер СИНТАКСИЧЕСКИ ВАЛИДНОЙ
+	// ссылкой (`vless://…@0.0.0.0:1`, `socks://127.0.0.1:1080`) — и он
+	// становился полноценным узлом-пустышкой. severity=info: узла тут не
+	// было никогда, но выпадение обязано быть названным.
+	WarnProviderBannerLink = "provider_banner_link"
 	// WarnSchemeUnsupported — схему строки не ведёт ни одна секция реестра.
 	// Отбраковка, а не пометка (узла не будет), поэтому severity=error:
 	// прежде причина ехала только текстом Go, и сверить её по коду вторая

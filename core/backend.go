@@ -9,7 +9,6 @@ import (
 
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
 )
 
 // BackendMode identifies which engine runs the VPN core.
@@ -468,7 +467,7 @@ func (ac *AppController) DaemonCoreLogLines(max int) ([]string, bool) {
 // он включён в settings.json. Ошибка конструирования не фатальна — лаунчер
 // остаётся на classic (уже установлен в NewAppController) и пишет warning.
 func (ac *AppController) initBackendFromSettings() {
-	st := locale.LoadSettings(platform.GetBinDir(ac.FileService.ExecDir))
+	st := locale.LoadSettings(ac.FileService.Layout.Data.Bin())
 	if st.CoreBackendMode != string(BackendDaemon) {
 		return
 	}

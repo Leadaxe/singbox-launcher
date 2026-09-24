@@ -1017,7 +1017,7 @@ func showSourceEditWindowAt(
 			return
 		}
 		urlEntry.SetText(p.URL)
-		identityBlock.syncFromModel(p, currentIdentityDefaults(m.ExecDir))
+		identityBlock.syncFromModel(p, currentIdentityDefaults(m.DataDir))
 		ts := tagSpecOf(p)
 		prefixEntry.SetText(ts.Prefix)
 		postfixEntry.SetText(ts.Postfix)
@@ -2383,10 +2383,10 @@ func showSourceEditWindowAt(
 		if editingNode {
 			newTag := strings.TrimSpace(scratch.Tag)
 			// Сырой тег — идентичность узла В РАМКАХ контейнера (SPEC 112):
-			// двух одинаковых там быть не может, и Save обязан отказать так
-			// же, как отказывает команда Rename в списке узлов. Без этой
-			// проверки форма молча заводила второй узел с чужим именем, а
-			// перепись ссылок уводила их на произвольный из двух.
+			// двух одинаковых там быть не может, и Save обязан отказать —
+			// другого входа у переименования нет, и проверять больше негде.
+			// Без этой проверки форма молча заводила второй узел с чужим
+			// именем, а перепись ссылок уводила их на произвольный из двух.
 			if newTag != "" && newTag != nodeTagAtOpen && nodeTagTakenInContainer(presenter.Model(), nodeLink, newTag) {
 				dialog.ShowError(fmt.Errorf("%s", locale.Tf(
 					"Tag %q is already taken in this container.", newTag)), win)
@@ -2402,10 +2402,11 @@ func showSourceEditWindowAt(
 				dereferenced = wizardbusiness.DereferenceNodeOrigin(&scratch.Node)
 			}
 			applyNodeEditToModel(presenter, guiState, presenter.Model(), nodeLink, &scratch)
-			// Переименование узла контейнера идёт ТЕМ ЖЕ путём, что команда
-			// Rename в списке узлов (preview_node_ops.applyRename): реестр
-			// переписи ведёт ссылки на новый адрес, а не гасит их вслепую —
-			// узел никуда не делся, у него сменилось имя.
+			// Переименование узла контейнера живёт ТОЛЬКО здесь: своей
+			// команды Rename у списка узлов нет (обкатка заход 3), окно узла
+			// открывается на эту же форму (showSourceEditWindowForNode).
+			// Реестр переписи (SPEC 112) ведёт ссылки на новый адрес, а не
+			// гасит их вслепую — узел никуда не делся, у него сменилось имя.
 			if renamed {
 				if mm := presenter.Model(); mm != nil {
 					// SPEC 122 норма 2: каталог состояния tailnet едет за

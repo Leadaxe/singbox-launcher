@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -19,7 +20,7 @@ func TestOrphanGCStaysWithinMachineBoundaries(t *testing.T) {
 	execDir := t.TempDir()
 
 	seed := func(target, id, tag string) string {
-		dir := platform.GetRuleSetsDirFor(execDir, target, id)
+		dir := platform.GetRuleSetsDirFor(paths.DataDir(execDir), target, id)
 		if err := os.MkdirAll(dir, platform.DefaultDirMode); err != nil {
 			t.Fatal(err)
 		}
@@ -37,7 +38,7 @@ func TestOrphanGCStaysWithinMachineBoundaries(t *testing.T) {
 	vpsFile := seed(constants.ConfigTargetRemote, "home-vps", "geosite-ru")
 
 	// У роутера тег больше не живой — чистим ЕГО каталог с пустым набором.
-	deleted, err := DeleteOrphanRuleSetsFor(execDir, constants.ConfigTargetRemote, "routerich", nil)
+	deleted, err := DeleteOrphanRuleSetsFor(paths.DataDir(execDir), constants.ConfigTargetRemote, "routerich", nil)
 	if err != nil {
 		t.Fatalf("GC failed: %v", err)
 	}
@@ -59,7 +60,7 @@ func TestOrphanGCStaysWithinMachineBoundaries(t *testing.T) {
 // набор считается строго по её состояниям.
 func TestOrphanGCKeepsOwnLiveTags(t *testing.T) {
 	execDir := t.TempDir()
-	dir := platform.GetRuleSetsDirFor(execDir, constants.ConfigTargetRemote, "routerich")
+	dir := platform.GetRuleSetsDirFor(paths.DataDir(execDir), constants.ConfigTargetRemote, "routerich")
 	if err := os.MkdirAll(dir, platform.DefaultDirMode); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestOrphanGCKeepsOwnLiveTags(t *testing.T) {
 		}
 	}
 
-	if _, err := DeleteOrphanRuleSetsFor(execDir, constants.ConfigTargetRemote, "routerich",
+	if _, err := DeleteOrphanRuleSetsFor(paths.DataDir(execDir), constants.ConfigTargetRemote, "routerich",
 		[]string{"keep-me"}); err != nil {
 		t.Fatalf("GC failed: %v", err)
 	}
@@ -88,7 +89,7 @@ func TestOrphanGCKeepsOwnLiveTags(t *testing.T) {
 // а не ошибка: чистить там нечего.
 func TestOrphanGCOnMissingDirectoryIsNoop(t *testing.T) {
 	execDir := t.TempDir()
-	deleted, err := DeleteOrphanRuleSetsFor(execDir, constants.ConfigTargetRemote, "never-configured", nil)
+	deleted, err := DeleteOrphanRuleSetsFor(paths.DataDir(execDir), constants.ConfigTargetRemote, "never-configured", nil)
 	if err != nil {
 		t.Fatalf("missing dir must not be an error: %v", err)
 	}
@@ -101,7 +102,7 @@ func TestOrphanGCOnMissingDirectoryIsNoop(t *testing.T) {
 // инвариант §5.5 «local-путь генерации не меняется».
 func TestLocalOrphanGCUnchanged(t *testing.T) {
 	execDir := t.TempDir()
-	dir := platform.GetRuleSetsDir(execDir)
+	dir := platform.GetRuleSetsDir(paths.DataDir(execDir))
 	if err := os.MkdirAll(dir, platform.DefaultDirMode); err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +111,7 @@ func TestLocalOrphanGCUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deleted, err := DeleteOrphanRuleSets(execDir, []string{"other"})
+	deleted, err := DeleteOrphanRuleSets(paths.DataDir(execDir), []string{"other"})
 	if err != nil {
 		t.Fatalf("local GC failed: %v", err)
 	}

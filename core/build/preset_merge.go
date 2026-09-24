@@ -20,6 +20,8 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
+	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/srstag"
 )
 
@@ -40,13 +42,13 @@ import (
 // в path уезжает он: конфиг исполняет ядро на той стороне, где пути лаунчера
 // не существует. Наличие файла при этом проверяется У НАС — его туда зальёт
 // Deploy.
-func convertPresetRuleSetRemoteToLocal(rs map[string]interface{}, execDir, resourceDir, srsLocalDir string) (map[string]interface{}, bool) {
+func convertPresetRuleSetRemoteToLocal(rs map[string]interface{}, dataDir paths.DataDir, resourceDir, srsLocalDir string) (map[string]interface{}, bool) {
 	typ, _ := rs["type"].(string)
 	if typ != "remote" {
 		return rs, false
 	}
 	url, _ := rs["url"].(string)
-	if url == "" || execDir == "" {
+	if url == "" || dataDir == "" {
 		return rs, true // skip — нет данных для resolve
 	}
 	contentTag := srsTagFromURLLocal(url)
@@ -55,7 +57,7 @@ func convertPresetRuleSetRemoteToLocal(rs map[string]interface{}, execDir, resou
 	}
 	// path — куда посмотрит ЯДРО (на машине-исполнителе);
 	// checkPath — где файл лежит У НАС, его наличие и проверяем.
-	path := execDir + "/bin/rule-sets/" + contentTag + ".srs"
+	path := platform.GetRuleSetPath(dataDir, contentTag)
 	checkPath := path
 	if resourceDir != "" {
 		path = resourceDir + "/" + ResourceNameForSRS(contentTag)
@@ -158,8 +160,8 @@ type PresetMergeContext struct {
 	DNS            state.DNSOptions
 	SrsCachedPaths map[string][]string
 
-	// ExecDir — для резолва local SRS paths (kind=srs / preset remote rule_set).
-	ExecDir string
+	// DataDir — для резолва local SRS paths (kind=srs / preset remote rule_set).
+	DataDir paths.DataDir
 
 	// TemplateDNSDefaults — раскрытые dns_defaults.servers[] из template.
 	// Используется для materialization template-серверов с применением
@@ -349,7 +351,7 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 	// резолва — дальше они рядовые inline/srs, и узловых веток в конвейере нет.
 	st := &state.State{Rules: ctx.rulesWithNodeSections(), DNS: ctx.dnsWithNodeSections()}
 	tdVal := template.TemplateData{Presets: ctx.Presets}
-	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())
+	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())
 
 	// Dedup по tag (template уже мог эмитить rule_sets).
 	emittedTags := make(map[string]bool)
@@ -628,7 +630,7 @@ func CollectEmittedRouteRuleSetTags(routeRaw json.RawMessage, routeCfg RouteConf
 	// MergePresetsIntoRoute, с теми же фильтрами эмиссии.
 	st := &state.State{Rules: ctx.rulesWithNodeSections(), DNS: ctx.dnsWithNodeSections()}
 	tdVal := template.TemplateData{Presets: ctx.Presets}
-	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())
+	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())
 	for _, rs := range resolved.RuleSets {
 		if rs.Skipped || !rs.Enabled {
 			continue
@@ -726,8 +728,8 @@ func cleanDanglingDNSRule(rule map[string]interface{}, validTags map[string]bool
 // bin/rule-sets/: конфиг исполняет ядро НА ТОЙ СТОРОНЕ, и путь лаунчера там
 // не существует — apply проходил, а ядро падало с «open …: no such file».
 // Пусто = конфиг для этой машины, путь прежний.
-func CollectSrsCachedPaths(rules []state.Rule, execDir, resourceDir string) map[string][]string {
-	if execDir == "" || len(rules) == 0 {
+func CollectSrsCachedPaths(rules []state.Rule, dataDir paths.DataDir, resourceDir string) map[string][]string {
+	if dataDir == "" || len(rules) == 0 {
 		return nil
 	}
 	out := make(map[string][]string, len(rules))
@@ -757,7 +759,7 @@ func CollectSrsCachedPaths(rules []state.Rule, execDir, resourceDir string) map[
 			if resourceDir != "" {
 				paths = append(paths, resourceDir+"/"+ResourceNameForSRS(tag))
 			} else {
-				paths = append(paths, execDir+"/bin/rule-sets/"+tag+".srs")
+				paths = append(paths, platform.GetRuleSetPath(dataDir, tag))
 			}
 		}
 		out[state.StableRuleID(r)] = paths

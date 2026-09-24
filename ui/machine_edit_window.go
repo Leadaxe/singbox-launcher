@@ -322,7 +322,7 @@ func machineHasProfile(ac *core.AppController, id string) bool {
 	if ac == nil || ac.FileService == nil {
 		return false
 	}
-	path := platform.GetWizardStatePathFor(ac.FileService.ExecDir, constants.ConfigTargetRemote, id)
+	path := platform.GetWizardStatePathFor(ac.FileService.Layout.Data, constants.ConfigTargetRemote, id)
 	_, err := os.Stat(path)
 	return err == nil
 }

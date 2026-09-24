@@ -7,6 +7,7 @@ import (
 
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -16,7 +17,7 @@ import (
 // месте, find_process=true), а на роутер уехало бы другое.
 func TestBuildPreviewConfig_RespectsRemoteTarget(t *testing.T) {
 	execDir := findProjectRoot(t)
-	templateData, err := wizardtemplate.LoadTemplateData(execDir)
+	templateData, err := wizardtemplate.LoadTemplateData(paths.Layout{App: paths.AppDir(execDir), Data: paths.DataDir(execDir)})
 	if err != nil {
 		t.Fatalf("load template: %v", err)
 	}
@@ -24,7 +25,7 @@ func TestBuildPreviewConfig_RespectsRemoteTarget(t *testing.T) {
 	newModel := func(target wizardtemplate.TargetSpec) *wizardmodels.WizardModel {
 		model := wizardmodels.NewWizardModel()
 		model.TemplateData = templateData
-		model.ExecDir = execDir
+		model.DataDir = paths.DataDir(execDir)
 		// SPEC 117: гейт «нечего собирать» смотрит на canonical model.Sources.
 		model.Sources = append(model.Sources, wizardmodels.Source{
 			ID:   "01TESTPREVIEWTARGET000000",

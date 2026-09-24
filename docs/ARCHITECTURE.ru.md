@@ -77,7 +77,7 @@ SPEC 070 кодифицировал эти слои, удалил мёртвый
 
 | Слой | Название | Пакеты | Ответственность |
 |-------|------|----------|----------------|
-| **L0** | platform | `internal/platform` | Абстракция ОС за единым интерфейсом: sleep/wake, HWID-информация об устройстве, перечисление процессов, чистка призрачных WinTun-адаптеров, канонические геттеры путей. Зависит только от stdlib + `debuglog`/`constants`. Никаких импортов вверх. |
+| **L0** | platform | `internal/platform`, `internal/paths` | Абстракция ОС за единым интерфейсом: sleep/wake, HWID-информация об устройстве, перечисление процессов, чистка призрачных WinTun-адаптеров, канонические геттеры путей. `internal/paths` (SPEC 135) разрешает раскладку AppDir/DataDir/LogDir — пакет-лист ниже `platform`, который его импортирует. Зависит только от stdlib + `debuglog`/`constants`. Никаких импортов вверх. |
 | **L1** | shared-internal (листовые утилиты) | `internal/locale`, `internal/srstag`, `internal/outboundutil`, `internal/urlsafe`, `internal/debuglog`, `internal/constants`, `internal/traffic`, `internal/textnorm`, `internal/urlredact`, `internal/ctxutil`, `internal/process`, `internal/wizardsync`, `internal/lxdclient` | Самодостаточные, ни от чего не зависящие хелперы, переиспользуемые всеми слоями: каталог i18n, контент-адресуемое хеширование SRS-тегов, маппинг reject/drop outbound → rule (единый источник истины для core и UI), allowlist URL-схем, уровневое логирование, профайлер трафика (развязанный, только stdlib), нормализация отображения тегов, редакция URL и mTLS-клиент демона `sing-box lxd` (пиннинг, разбор приглашений, идентичность на машину — без состояния приложения). |
 | **L2** | core-domain (состояние + сборка + конфиг + шаблон) | `core/state`, `core/snapshot`, `core/build`, `core/config`, `core/config/subscription`, `core/config/configtypes`, `core/config/parser`, `core/template` | Чистый домен: схема состояния, загрузка/сохранение/миграции, JSON-пайплайн сборки и чистые резолверы, загрузка/разбор/кодирование подписок и генерация outbound'ов, загрузка шаблона и извлечение пресетов, снятие снапшота. Чистые функции где возможно; **никакого Fyne, никакого `AppController`**. |
 | **L3** | сервисы + жизненный цикл | `core/services`, `core/uiservice`, `core/events`, `core` (`controller.go`, `process_service.go`, `config_service.go`, `rebuild.go`, `auto_update.go`, `backend*.go`, `daemon_manager_darwin.go`, `main.go`, загрузчики) | Реализации сервисов с состоянием (`FileService`/`APIService`/`StateService`/`SRSDownloader`, реестр удалённых машин, транспорт, сборщик ресурсов для Deploy), контейнер UI-колбэков (без зависимости от Fyne), типизированный `EventBus`, оркестрация жизненного цикла приложения и процесса и шов движков `CoreBackend` (`LegacyBackend` / `DaemonBackend`). **Владеет EventBus и всей DI-разводкой.** |
@@ -437,6 +437,187 @@ build.BuildConfig  (чистая)
 
 ---
 
+## 7a. Раскладка каталогов данных (SPEC 135)
+
+До SPEC 135 каждый путь выводился из одного корня, `FileService.ExecDir =
+filepath.Dir(os.Executable())`: на инсталляции только для чтения (NixOS, Guix,
+Flatpak, `/opt`) `EnsureDirectories` падал на первом же `MkdirAll`, а на macOS все
+данные жили **внутри бандла `.app`**, поэтому замена бандла стирала
+пользовательские данные. SPEC 135 заменяет единый корень тремя ролями,
+вычисляемыми один раз и передаваемыми по значению — никогда не пакетной
+глобальной переменной и не ленивым перевычислением:
+
+| Роль | Тип | Права | Хранит |
+|---|---|---|---|
+| **AppDir** | `paths.AppDir` | только чтение | исполняемый файл, поставляемые шаблон и локали (`bin/wizard_template.json`, `bin/wizard_template.version`, `bin/locale/`), поставляемое ядро и компаньоны при бандлинге, `mesa3d/`, маркер `portable.txt` |
+| **DataDir** | `paths.DataDir` | чтение-запись | всё состояние и кеши в прежней внутренней раскладке `bin/…` (состояние, снапшоты, профили удалённых машин, `config.json`, скачанные шаблон/локали/ядро, `.srs`, подписки, `settings.json`, `gl-state.json`, `wintun.dll`, `tailscale/`, `daemon/`, `remote-daemons/`) |
+| **LogDir** | `paths.LogDir` | чтение-запись | четыре ротируемых лога, `crash.log`, `native-stderr.log` |
+
+Единственная санкционированная запись в AppDir — переключатель Mesa3D на Windows
+(`internal/platform/glstate.go` `DisableMesa`/`EnableMesa`): `opengl32.dll` должен
+лежать рядом с exe, чтобы его нашёл загрузчик ОС. Кнопки Mesa в Диагностике
+скрываются, когда AppDir не проходит проверку записи.
+
+### 7a.1 Пути на каждой платформе
+
+| Платформа | AppDir | DataDir | LogDir |
+|---|---|---|---|
+| Linux | каталог исполняемого файла | `$XDG_DATA_HOME/singbox-launcher` (по умолчанию `~/.local/share/singbox-launcher`) | `$XDG_STATE_HOME/singbox-launcher/logs` (по умолчанию `~/.local/state/…`) |
+| macOS, запуск из `.app` | `…app/Contents/MacOS` | `~/Library/Application Support/singbox-launcher` | `~/Library/Logs/singbox-launcher` |
+| macOS, голый бинарь | каталог исполняемого файла | = AppDir (portable) | `AppDir/logs` |
+| Windows | каталог exe | `%LOCALAPPDATA%\singbox-launcher` | `%LOCALAPPDATA%\singbox-launcher\logs` |
+| Любая платформа, portable | каталог исполняемого файла | = AppDir | `AppDir/logs` |
+
+Каталог исполняемого файла берётся **после** `filepath.EvalSymlinks` (символьные
+ссылки инсталляций Homebrew и `/nix/store`); пустой `%LOCALAPPDATA%` откатывается
+на `%USERPROFILE%\AppData\Local`, а если пуст и он — лаунчер уходит в portable,
+если AppDir доступен для записи, иначе отказывается стартовать с сообщением,
+указывающим на `SINGBOX_LAUNCHER_DATA_DIR`.
+
+### 7a.2 `paths.Resolve` — как выбирается раскладка
+
+`internal/paths` (пакет-лист: только stdlib + `internal/constants`, поэтому его
+можно импортировать из `main`, `internal/platform` и любого теста без циклов)
+экспортирует:
+
+```go
+type AppDir string   // только чтение
+type DataDir string  // чтение-запись
+type LogDir string    // чтение-запись
+type Mode string      // "env" | "portable" | "legacy" | "system"
+
+type Layout struct {
+    App, Data, Logs AppDir/DataDir/LogDir
+    Mode            Mode
+    EnvSource       []string // какие env-переменные сработали, при Mode == "env"
+}
+
+func Resolve(exe string, env func(string) string, goos string, probe func(dir string) bool) (Layout, error)
+```
+
+`Resolve` выполняется **один раз**, первым делом в `main()`, до открытия
+`crash.log` и до `RunGLProbeChild`, а результат передаётся по значению в
+`services.NewFileService(layout)` → `AppController`. Побеждает первое сработавшее
+правило:
+
+1. **Переменные окружения** `SINGBOX_LAUNCHER_DATA_DIR` / `SINGBOX_LAUNCHER_LOG_DIR`
+   (независимо друг от друга) → `ModeEnv`.
+2. **`portable.txt`** рядом с исполняемым файлом (содержимое не важно, важно
+   наличие) → `ModePortable`. Поставляется Windows zip-дистрибутивами или
+   создаётся переключателем Portable в приложении (§7a.4).
+3. **Обнаружена legacy-раскладка**: `bin/wizard_states/state.json` существует
+   рядом с бинарём и AppDir проходит проверку записи → `ModeLegacy`, данные
+   остаются на месте, ничего не копируется, маркер не пишется.
+4. **Платформенный дефолт** из таблицы выше → `ModeSystem`.
+
+Правила 2 и 3 **отключены при запуске из бандла `.app` на macOS**
+(`paths.IsAppBundle`): маркер некому положить рядом с бандлом, да и карантин
+Gatekeeper всё равно его перемещает. Голый бинарь на macOS следует тем же
+правилам, что и Linux. Проверка записи (`paths.ProbeWritable`) создаёт и удаляет
+`AppDir/.write-probe-<pid>` — биты прав и ACL Windows оба лгут, доверять можно
+только реальной записи.
+
+Выбранная раскладка логируется первой строкой каждого запуска
+(`Layout.LogLine()`): `layout: mode=<mode> app=<path> data=<path> logs=<path>`.
+
+### 7a.3 Двухуровневое чтение поставляемого и скачанного
+
+Шаблон, локали и ядро **читаются** по цепочке `DataDir → AppDir`; **записи**
+(скачивания) всегда идут в DataDir. `EnsureDirectories(Layout)` создаёт только
+доступную для записи сторону (`Data/bin`, `Data/bin/rule-sets`, `Logs`) — AppDir
+никогда не трогается.
+
+- **Шаблон.** `core/template.ResolveTemplate(Layout)` — единственное правило,
+  используемое во всех местах чтения. У порядка «по расположению» есть одно
+  намеренное исключение: если `wizard_template.json` в AppDir несёт маркер версии
+  (`wizard_template.version`), равный `constants.AppVersion`, **и** штамп DataDir
+  (`LastTemplateLauncherVersion` в `settings.json`) пуст или старее, побеждает
+  AppDir — свежий поставляемый шаблон обходит устаревший скачанный после
+  обновления, без сетевого запроса. Иначе порядок — DataDir → AppDir. Когда
+  побеждает поставляемый шаблон, устаревшая скачанная копия в DataDir
+  **удаляется**; пропуск этого шага замкнул бы правило обратно на устаревший
+  файл при следующем чтении штампа (см. §11, пункт b). `template.ReadTemplateMarker`
+  читает маркер только из AppDir.
+- **Ядро.** `internal/platform.ResolveSingboxExecPath` обходит
+  `SINGBOX_LAUNCHER_CORE` (явное переопределение) → `<DataDir>/bin/sing-box` →
+  `<AppDir>/bin/sing-box` → `PATH`, в этом порядке, **на любой платформе** —
+  DataDir всегда побеждает более новое поставляемое ядро, потому что именно там
+  живут вручную положенные dev-сборки. Когда найдены оба, проигравший
+  логируется как `shadowed`. `PATH` теперь ищется **последним** (раньше —
+  первым на Linux, `internal/platform/singbox_exec_path_linux.go`, теперь
+  удалено — резолвер унифицирован между платформами): лаунчеру нужен форк
+  `sing-box-lx` (XHTTP, AWG), а пакетный `sing-box` из дистрибутива почти
+  никогда им не является.
+- **Компаньоны** (`wintun.dll`, `libcronet.*`) разрешаются из каталога
+  **выбранного** ядра (`FileService.WintunPath = Dir(SingboxPath)/wintun.dll`),
+  а не напрямую из AppDir/DataDir — загрузчик ОС ищет их рядом с бинарём,
+  который их подгружает.
+- **Локали.** `LoadExternalLocales` выполняется дважды при старте: сначала
+  `AppDir/bin/locale`, затем `DataDir/bin/locale`; более поздний вызов
+  переопределяет язык целиком.
+
+### 7a.4 Миграция, переключатель Portable и очистка
+
+- **Миграция** (`internal/paths.MigrateLegacyData`, вызывается из
+  `services.NewFileService` до `EnsureDirectories` и до любого чтения
+  settings/state) копирует `AppDir/bin` → `DataDir/bin`, когда режим раскладки —
+  `system` или `env`, в DataDir ещё нет `state.json`, а в AppDir он есть.
+  Основной случай — macOS, запуск из `.app` (правило 3 там отключено); прочие —
+  инсталляция на Windows/Linux, у которой AppDir перестал быть доступен для
+  записи, или свежий `SINGBOX_LAUNCHER_DATA_DIR` поверх существующей
+  инсталляции. Копирование идёт через общий копировщик
+  (`internal/paths.CopyTree`) во временный `DataDir/bin.migrating`, который
+  переименовывается на место только по завершении; маркер
+  `DataDir/.migrated_from` (путь источника) пишется **последним**. Прерывание
+  до переименования оставляет DataDir без `state.json`, поэтому следующий
+  запуск повторяет миграцию с нуля; источник рядом с бинарём никогда не
+  трогается (откат на предыдущую версию продолжает работать).
+- **Переключатель Portable** (`internal/paths.SwitchToPortable` /
+  `SwitchToSystem`, подключён через `core/storage_switch.go` и чекбокс
+  Settings → Storage) использует тот же копировщик в обе стороны, затем удаляет
+  старую копию (огрызки, если удаление не удалось, всплывают в очистке) и
+  перезапускает процесс через `platform.RestartSelf()` — раскладка разрешается
+  один раз на процесс, поэтому переключение вступает в силу только в новом
+  процессе. `RestartSelf` теперь настоящая реализация на всех платформах (ранее
+  — фича только для Windows; путь не-Windows использует `Setsid`, чтобы
+  отсоединить дочерний процесс от сессии родителя).
+- **Штамп `config_data_root`** (§3.5 SPEC): `settings.json` хранит DataDir, под
+  который был собран сохранённый `config.json`, потому что в нём встроены
+  **абсолютные** пути к файлам `.srs` и каталогу состояния Tailscale. Любая
+  смена DataDir (миграция, переключатель Portable, переопределение через env,
+  ручной перенос `bin/`) отлавливается при старте сравнением штампа с текущим
+  DataDir и вызовом `MarkConfigStale`, если они различаются — не только после
+  миграции на macOS.
+- **Очистка** (`internal/paths.BuildPurgePlan` / `ExecutePurge`, подключена
+  через `core/purge.go`) никогда не удаляет AppDir или `portable.txt`; она
+  удаляет DataDir, LogDir и любые обнаруженные огрызки (`bin.moved-*` после
+  неудачного переключения, неиспользуемый системный DataDir при активном
+  portable, устаревший `AppDir/logs`, оставшийся источник до миграции).
+  Доступна как диалог Settings → Storage «Remove all data…» и как флаг
+  `-purge-data [-yes]` (без `-yes` — сухой прогон).
+- **Страховка.** `tools/paths_guard` запланирован как AST-скан (по образцу
+  `tools/l10n/l10n_check/scan.go`) по вызовам пишущих хелперов с аргументом
+  `AppDir`, с функциями Mesa как единственным исключением — это основная защита
+  на ~190 точках вызова, которые затронул SPEC 135, поверх того, что компилятор
+  ловит простое несовпадение типов `AppDir` в параметр `DataDir`. Пока не
+  реализовано (SPEC 135 TASKS.md, этап 4).
+
+### 7a.5 Пользовательская поверхность
+
+Settings → Storage (`ui/settings_storage.go`) показывает Mode / Program (AppDir)
+/ Data (DataDir) / Logs (LogDir) / Core (путь, версия, источник) / Template
+(уровень, версия маркера) с кнопками **Open** на каждой строке и кнопкой
+**Copy paths** (тот же паттерн, что «Copy API info»). Тот же блок — первая
+строка каждого лога, отдаётся по `GET /debug/paths` (`core/debugapi`) и
+печатается флагом `-paths` до инициализации GUI (единственный способ увидеть
+пути на машине, где окно не может подняться — headless CI, NixOS без GL).
+
+См. [SPECS/135-F-N-DATA_DIR_LAYOUT/SPEC.md](../SPECS/135-F-N-DATA_DIR_LAYOUT/SPEC.md)
+для полного дизайна (включая отвергнутые альтернативы и решения владельца) и его
+§11 — где реализация в мелочах расходится с исходным дизайном.
+
+---
+
 ## 8. Инвентарь по пакетам
 
 Полный инвентарь по пакетам и файлам (одна строка ответственности на пакет,
@@ -592,3 +773,30 @@ remote-сервер обычно не gateway. Таргет живёт в `state
 осью клиентов. Телеметрия хоста (CPU / память / хранилище / сеть самой машины) —
 отдельное окно поверх admin REST: профайлер описывает *ядро*, телеметрия описывает
 *машину*.
+
+### 11.6 Привилегированный старт classic на macOS (SPEC 136–137)
+
+Classic-движок поднимает конфиг с TUN от root через
+`AuthorizationExecuteWithPrivileges`, службу демона от root запускает launchd.
+Правило у обоих одно: **root исполняет только root-owned файлы** — копию ядра службы
+(`/Library/PrivilegedHelperTools/sing-box-lxd`, её пишет само
+ядро на `lxd --service=install|copy`) и системные утилиты по абсолютным путям.
+Лаунчер ядро не копирует и sudo сам не запускает.
+
+`ProcessService.startSingBoxPrivileged` сначала спрашивает гейт
+(`core/classic_privileged_darwin.go`): копия есть, проходит цепочку владения и
+совпадает с ядром лаунчера по sha256 — проверка цепочки и кэш хэшей взяты у
+классификатора SPEC 136. Только затем `platform.StartPrivilegedCore` запускает
+`/usr/bin/env -i PATH=… /bin/sh -c <постоянное тело> <пути>`: ни файла-скрипта, ни
+окружения лаунчера в root-шелле. Отказ гейта показывает диалог с командой
+(`internal/dialogs.ShowCommandRetry`) вместо ошибки старта, Retry идёт через
+`StartSingBoxProcess`. Авторизация живёт сессию лаунчера; `privilegedAuthReuse` в
+`internal/platform/privileged_darwin.go` сужает её до одного действия.
+
+И root не пишет по путям пользователя (137.1): вывод ядра идёт в
+`/Library/Logs/sing-box-lxd/classic.log` (каталог root, файл пользователя лаунчера
+`0600`), который готовит и ротирует то же
+постоянное тело, а `AppController.CoreLogPath()` говорит читателям, какой лог писал
+последний старт, — Core-вкладке окна логов и тейлеру профайлера трафика
+(`TrafficProfiler.StartFollowing`, путь пересчитывается на каждом тике). Чистка при
+снятии TUN удаляет root-owned остатки uid'ом лаунчера; AEWP там нет.

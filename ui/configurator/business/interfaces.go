@@ -9,6 +9,7 @@ package business
 import (
 	"singbox-launcher/core/config"
 	corestate "singbox-launcher/core/state"
+	"singbox-launcher/internal/paths"
 )
 
 // ConfigService предоставляет доступ к генерации outbounds из ParserConfig
@@ -34,6 +35,6 @@ type ConfigService interface {
 // Интерфейс определен здесь для использования в тестах без зависимости от core/services.
 type FileServiceInterface interface {
 	ConfigPath() string
-	ExecDir() string
+	Layout() paths.Layout
 	SingboxPath() string
 }

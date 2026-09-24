@@ -6,3 +6,6 @@ package debuglog
 // runtime/debug.SetCrashOutput там нет, паника уходит только в stderr.
 // Возвращает nil, чтобы не шуметь предупреждением на каждом старте.
 func EnableCrashOutput(string) error { return nil }
+
+// releaseCrashOutput — заглушка: без SetCrashOutput отпускать нечего.
+func releaseCrashOutput() {}

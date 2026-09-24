@@ -265,6 +265,76 @@ func (s *Space) JSONKeys() []string {
 	return out
 }
 
+// JSONLeafPaths — ПОЛНЫЕ пути листьев JSON-объекта в устойчивом порядке
+// (по алфавиту), для кода `json_field_unknown` внутри объявленных контейнеров.
+//
+// Лист — скаляр либо пустой объект/массив: именно он несёт (или не несёт)
+// значение, и именно про него имеет смысл говорить «не прочитан». Путь
+// внутреннего объекта листом не считается — он лишь дорога к листьям, и
+// назвать неизвестным `streamSettings.wsSettings` значило бы ругаться на
+// контейнер, чьи листья секция как раз читает.
+//
+// Индекс массива входит в путь числом (`settings.vnext.0.users.0.id`) — тем
+// же написанием, каким его адресует `source` реестра, иначе объявленность
+// пути нельзя было бы сверить.
+//
+// `roots` ограничивает обход ОБЪЯВЛЕННЫМИ контейнерами (`settings`,
+// `streamSettings`, …): за их пределами верхний уровень уже сосчитан
+// JSONKeys, и спускаться туда значило бы считать одно и то же дважды.
+func (s *Space) JSONLeafPaths(roots []string) []string {
+	if s == nil {
+		return nil
+	}
+	obj, ok := s.json.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	want := make(map[string]bool, len(roots))
+	for _, r := range roots {
+		want[strings.ToLower(strings.TrimSpace(r))] = true
+	}
+	var out []string
+	for k, v := range obj {
+		if !want[strings.ToLower(k)] {
+			continue
+		}
+		collectLeafPaths(v, k, &out)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// collectLeafPaths обходит значение, добавляя пути ЛИСТЬЕВ под prefix.
+//
+// Глубина ограничена maxLeafDepth: подписки присылают и циклически глубокие
+// объекты, а код на пути из двадцати сегментов человеку ничего не сообщает.
+func collectLeafPaths(v interface{}, prefix string, out *[]string) {
+	const maxLeafDepth = 12
+	if strings.Count(prefix, ".") >= maxLeafDepth {
+		return
+	}
+	switch node := v.(type) {
+	case map[string]interface{}:
+		if len(node) == 0 {
+			*out = append(*out, prefix)
+			return
+		}
+		for k, nv := range node {
+			collectLeafPaths(nv, prefix+"."+k, out)
+		}
+	case []interface{}:
+		if len(node) == 0 {
+			*out = append(*out, prefix)
+			return
+		}
+		for i, nv := range node {
+			collectLeafPaths(nv, prefix+"."+strconv.Itoa(i), out)
+		}
+	default:
+		*out = append(*out, prefix)
+	}
+}
+
 func (s *Space) iniValue(rest string) (string, bool) {
 	// ini.$comment.<Section> — имя узла из комментария секции (G7).
 	if strings.HasPrefix(rest, "$comment.") {

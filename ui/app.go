@@ -82,8 +82,9 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// единственным пунктом строки, ведущим себя не как вкладка. Теперь
 	// содержимое рендерится на месте, отдельное окно удалено за
 	// ненадобностью.
+	settingsContent, refreshSettings := BuildSettingsContent(controller)
 	settingsTabItem := container.NewTabItem(locale.T("⚙️ Settings"),
-		components.WrapInScrollWithGutter(container.NewPadded(BuildSettingsContent(controller))))
+		components.WrapInScrollWithGutter(container.NewPadded(settingsContent)))
 	// Tab order: Core | Servers | 🔍 Diagnostics | ⚙️ Settings | ❓ Help.
 	// Settings sits between Diagnostics and Help — close to other
 	// "launcher behavior" controls and one click away from Help.
@@ -141,6 +142,10 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 			// девалось — снимает его только явный Disconnect.
 			ReapplyLxdRemoteTransport(controller)
 			app.remotePanel.Activate(controller)
+		case settingsTabItem:
+			// Пути раздела Storage (SPEC 135 §4.1): ядро могли скачать,
+			// версия ядра могла стать известной — перечитываем при входе.
+			refreshSettings()
 		}
 		// Авто-обновление списка узлов идёт только на видимой вкладке Remote:
 		// опрашивать машину, пока пользователь смотрит на Local, незачем.

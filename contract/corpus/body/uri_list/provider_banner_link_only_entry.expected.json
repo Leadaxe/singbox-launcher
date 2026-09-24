@@ -1,0 +1,15 @@
+{
+  "dropped": [
+    {
+      "code": "provider_banner_link",
+      "index": 0,
+      "reason": "provider notice, not a server: Subscription expired",
+      "ref": "socks://127.0.0.1:1080#Subscription%20expired"
+    }
+  ],
+  "meta": {
+    "body_kind": "uri-list"
+  },
+  "nodes": [],
+  "v": 1
+}

@@ -38,6 +38,7 @@ import (
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -113,7 +114,7 @@ type MachineLister interface {
 //
 // Порядок: local первым (самый частый донор — там настроено раньше всего),
 // затем машины по имени.
-func ListCloneSources(execDir string, machines []CloneSource, curTarget, curMachineID string) []CloneSource {
+func ListCloneSources(dataDir paths.DataDir, machines []CloneSource, curTarget, curMachineID string) []CloneSource {
 	curTarget = strings.ToLower(strings.TrimSpace(curTarget))
 	curIsRemote := curTarget == constants.ConfigTargetRemote
 
@@ -126,7 +127,7 @@ func ListCloneSources(execDir string, machines []CloneSource, curTarget, curMach
 		out = append(out, CloneSource{
 			Kind:     CloneSourceLocal,
 			Name:     "Local",
-			HasState: stateExistsFor(execDir, constants.ConfigTargetLocal, ""),
+			HasState: stateExistsFor(dataDir, constants.ConfigTargetLocal, ""),
 		})
 	}
 
@@ -139,15 +140,15 @@ func ListCloneSources(execDir string, machines []CloneSource, curTarget, curMach
 			continue // сам себе не источник
 		}
 		m.Kind = CloneSourceRemote
-		m.HasState = stateExistsFor(execDir, constants.ConfigTargetRemote, m.MachineID)
+		m.HasState = stateExistsFor(dataDir, constants.ConfigTargetRemote, m.MachineID)
 		out = append(out, m)
 	}
 	return out
 }
 
 // stateExistsFor — есть ли у источника state.json.
-func stateExistsFor(execDir, target, machineID string) bool {
-	path := platform.GetWizardStatePathFor(execDir, target, machineID)
+func stateExistsFor(dataDir paths.DataDir, target, machineID string) bool {
+	path := platform.GetWizardStatePathFor(dataDir, target, machineID)
 	_, err := corestate.Load(path)
 	return err == nil
 }
@@ -172,9 +173,9 @@ type CloneSummary struct {
 //
 // Возвращает состояние и сводку. Состояние НЕ записывается на диск —
 // решение применять принимает вызывающий после подтверждения.
-func LoadCloneState(execDir string, src CloneSource) (*corestate.State, CloneSummary, error) {
+func LoadCloneState(dataDir paths.DataDir, src CloneSource) (*corestate.State, CloneSummary, error) {
 	target, machineID := src.Target()
-	path := platform.GetWizardStatePathFor(execDir, target, machineID)
+	path := platform.GetWizardStatePathFor(dataDir, target, machineID)
 
 	st, err := corestate.Load(path)
 	if err != nil {
