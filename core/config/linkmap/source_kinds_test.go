@@ -24,6 +24,7 @@ package linkmap
 
 import (
 	"encoding/base64"
+	"fmt"
 	"testing"
 
 	"singbox-launcher/core/config/registry"
@@ -367,5 +368,92 @@ func TestSourceKindsTableWellFormed(t *testing.T) {
 	// предикатом, но читающего человека сбивает.
 	if last := kinds[len(kinds)-1]; last.Detect == nil || !last.Detect.Default {
 		t.Errorf("последний по priority вид — %s, а не ветка default", last.SourceKind)
+	}
+
+	// Секции-мапперы и их формы — тот же IsZero, что у видов источника.
+	// Пустой detect здесь — не «форма без условия» (та пишется без ключа
+	// detect вовсе), а словарь без единого предиката: `json: {}` явный или
+	// оставшийся после того, как загрузчик молча выбросил поле с именем не
+	// из грамматики (`has_key` вместо `required_keys`). Движок на таком
+	// словаре верен на любом элементе, формы пробуются по порядку — первая
+	// такая забирает и элементы, ради которых написаны следующие. Схема
+	// (TestContractMapperSectionsMatchSchema) `json: {}` пропускает, так что
+	// рубеж только здесь.
+	sections, forms := 0, 0
+	for _, scheme := range set.Schemes() {
+		for _, kind := range set.Kinds(scheme) {
+			m, ok := set.Mapper(scheme, kind)
+			if !ok || m == nil {
+				continue
+			}
+			sections++
+			where := fmt.Sprintf("%s mappers.%s", scheme, kind)
+			checkDetectTree(t, where+".detect", m.Detect)
+			for i := range m.Forms {
+				forms++
+				checkDetectTree(t, fmt.Sprintf("%s.forms[%d](%s).detect", where, i, m.Forms[i].ID),
+					m.Forms[i].Detect)
+			}
+		}
+	}
+	if sections == 0 {
+		t.Error("секций-мапперов не найдено — обход смотрит не туда")
+	}
+	t.Logf("проверено секций-мапперов: %d, форм: %d", sections, forms)
+}
+
+// checkDetectTree — ни один узел дерева предиката не пуст.
+//
+// nil на входе законен: форма без detect берёт всё (так пишется единственная
+// форма секции), секция без detect по содержимому не выбирается вовсе. Обход
+// вложенный: `{}` внутри all/any движок тоже считает истиной, внутри not —
+// вечной ложью, и ветка молча становится «всё» либо «ничего».
+func checkDetectTree(t *testing.T, where string, d *registry.Detect) {
+	t.Helper()
+	if d == nil {
+		return
+	}
+	if d.IsZero() {
+		t.Errorf("%s: пустой предикат — движок верен на любом элементе, запись заберёт чужие", where)
+		return
+	}
+	checkDetectTree(t, where+".not", d.Not)
+	for i := range d.All {
+		checkDetectTree(t, fmt.Sprintf("%s.all[%d]", where, i), &d.All[i])
+	}
+	for i := range d.Any {
+		checkDetectTree(t, fmt.Sprintf("%s.any[%d]", where, i), &d.Any[i])
+	}
+}
+
+// TestDetectIsZeroEmptyDictionaries — пустой словарь json / ini / text
+// предикатом не является: опора линтера выше.
+//
+// Записи синтетические и идут через тот же json.Unmarshal, что у загрузчика:
+// поле с именем не из грамматики он выбрасывает молча, и `has_key` оставляет
+// от предиката ровно тот же пустой словарь, что явное `{}`. Рантайм
+// (Matches → matchJSON) на пустом словаре верен на любом элементе с обеих
+// сторон контракта и не меняется — судит только линтер данных.
+func TestDetectIsZeroEmptyDictionaries(t *testing.T) {
+	cases := []struct {
+		raw  string
+		zero bool
+	}{
+		{`{"json": {}}`, true},
+		{`{"json": {"has_key": ["peers"]}}`, true},
+		{`{"json": {"required_keys": ["peers"]}}`, false},
+		{`{"json": {"value_in": {"type": ["a", "b"]}}}`, false},
+		{`{"ini": {}}`, true},
+		{`{"ini": {"keys_any": ["jc"]}}`, false},
+		{`{"text": {}}`, true},
+		{`{"text": {"prefix_trim": "{"}}`, false},
+		// Пустой словарь рядом с настоящим предикатом запись не обнуляет.
+		{`{"json": {}, "scheme_in": ["x"]}`, false},
+		{`{"json": {}, "default": true}`, false},
+	}
+	for _, c := range cases {
+		if got := mustDetect(t, c.raw).IsZero(); got != c.zero {
+			t.Errorf("%s: IsZero = %v, ожидалось %v", c.raw, got, c.zero)
+		}
 	}
 }
