@@ -29,8 +29,9 @@
 - fix(contract): 1.1.53 — `security=reality` в share-ссылках VLESS; `servername`/`serverName` и `packet-encoding`; keep-alive из JSON-формы vmess; отрицательный `tcpKeepAliveInterval` в Xray
 - fix(paths): «Remove all data» без прав предупреждает, что старая копия в Program Files останется и при следующем старте перенесётся снова
 
-### Прочее (4)
+### Прочее (5)
 
+- feat(diag): сторож зависания UI — если UI-поток не отвечает ~30 с, полный дамп горутин пишется в `logs/ui-freeze-<время>.txt` (хранятся 3 последних), в лог — WARN с путём
 - chore(core): пин sing-box-lx 1.14.2-lx.2 (было 1.14.1-lx.12) — синк апстрима 1.14.2, ключи сна WireGuard под `lx.wg.*`, Windows-служба `sing-box-lxd`
 - chore(contract): 1.1.53 — SS без паддинга, порядок ключей и `aid` в контейнере v2rayN, `disable_sni` у TUIC, 13 секций `mappers.singbox`
 - ci(lint): линтер реестра — пустой словарь `detect` не является предикатом (SPEC 133)
