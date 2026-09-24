@@ -63,6 +63,11 @@ type UIService struct {
 	UpdateConfigStatusFunc   func()
 	UpdateTrayMenuFunc       func()
 	UpdateParserProgressFunc func(progress float64, status string)
+	// StartAbortedFunc — Start вернул управление, не запустив ядро и не
+	// меняя RunningState (гейт TUN без прав, SPEC 139 §4: диалог вместо
+	// ядра). Дашборд снимает «Запуск…» сразу, а не по таймауту ожидания.
+	// nil — никто не слушает.
+	StartAbortedFunc func()
 
 	// ShowSubsResultFunc — финальный статус subscription operation
 	// (success/error). Вызывается из core/config_service.go вместо

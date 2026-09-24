@@ -33,6 +33,8 @@
 | `fs_unix.go` / `fs_windows.go` | Хелперы атомарной записи и fsync по ОС. |
 | `dock_handler.go` / `dock_handler_stub.go` | Скрытие иконки в Dock на macOS; на остальных — заглушка. |
 | `privileged_darwin.go` / `privileged_stub.go` | Привилегированное исполнение на macOS через AEWP (SPEC 137): старт TUN с root-owned копии ядра через `env -i` и постоянное тело `sh`, лог ядра `/Library/Logs/sing-box-lxd/classic.log` (каталог root, файл пользователя лаунчера `0600`), который готовит и ротирует то же тело (137.1), kill / pkill по абсолютным путям без шелла, флаг времени жизни авторизации `privilegedAuthReuse`; на остальных — заглушка. |
+| `elevation.go` / `elevation_windows.go` / `elevation_other.go` | **SPEC 139.** `IsElevated` (`TokenElevation` или членство в Administrators, один раз на процесс), `ElevationAsksOtherAccount`, `AdminCleanupTasks`; `RunElevated` — `ShellExecuteExW` `runas`, возвращает `*ElevatedProcess` (pid, `Wait`, `Close`; его берёт SPEC 141), `ErrElevationCancelled`; `WaitForProcessExit` для `-handoff`. Вне Windows: `euid == 0` и «not supported». |
+| `autostart.go` / `autostart_windows.go` / `autostart_other.go` | **SPEC 139 §8.** Значение `HKCU\…\Run\singbox-launcher`: формат `"<exe>" -tray [-start]` и разбор (общий файл), чтение/запись/удаление в реестре (Windows). |
 | `singbox_exec_path.go` | Разрешение пути к исполняемому файлу sing-box: `SINGBOX_LAUNCHER_CORE` → `DataDir/bin` → `AppDir/bin` → `PATH` (SPEC 135 §3.3; порядок единый для всех платформ, `PATH` теперь последний везде — раньше был первым и только на Linux). |
 
 ### `internal/paths` (SPEC 135)
@@ -43,11 +45,11 @@ stdlib и `internal/constants`), лежит **ниже** `internal/platform` (т
 
 | Файл | Назначение |
 |------|---------|
-| `paths.go` | Типы `AppDir`/`DataDir`/`LogDir`/`Mode`/`Layout`, `Resolve` (env → маркер `portable.txt` → детект legacy → платформенный дефолт), `ProbeWritable`, `Executable` (`EvalSymlinks`), `IsAppBundle`, `Layout.LogLine()`, `PathsInfo` (блок для Settings/`-paths`/`/debug/paths`). |
+| `paths.go` | Типы `AppDir`/`DataDir`/`LogDir`/`Mode`/`Layout`, `Resolve` (env → маркер `portable.txt` → детект legacy → платформенный дефолт), `AppDirUserWritable` (проба + защищённые каталоги Windows, SPEC 139 §7), `Layout.Handoff` / `ParseHandoff` (`-handoff`), `ProbeWritable`, `Executable` (`EvalSymlinks`), `IsAppBundle`, `Layout.LogLine()`, `PathsInfo` (блок для Settings/`-paths`/`/debug/paths`). |
 | `copytree.go` | `CopyTree` — общий копировщик для миграции и переключателя Portable: временный `dst.migrating`, нормализация прав владельца (rwx/rw), пропуск нечитаемого со счётчиком, атомарное продвижение переименованием. |
 | `migrate.go` | `MigrateLegacyData` — копирует `AppDir/bin` → `DataDir/bin` при первом старте, если раскладка system/env и `state.json` есть только в унаследованном месте; маркер `.migrated_from` пишется последним. |
 | `switch.go` | `SwitchToPortable` / `SwitchToSystem` / `SystemDefault` для чекбокса Portable в Settings → Storage; `MovedBinPrefix` для остатков неудачного переключения. |
-| `purge.go` | `BuildPurgePlan` / `ExecutePurge` для диалога «Remove all data…» и `-purge-data [-yes]`: что считается данными, а что поставляемым и не удаляется, поиск остатков, подсчёт байт/файлов. |
+| `purge.go` | `BuildPurgePlan` / `ExecutePurge` для диалога «Remove all data…» и `-purge-data [-yes]`: что считается данными, а что поставляемым и не удаляется, поиск остатков, подсчёт байт/файлов; остатки под AppDir, куда процесс писать не может, — `NeedsAdmin` (пропуск, SPEC 139 §6). |
 
 ---
 
@@ -69,7 +71,7 @@ stdlib и `internal/constants`), лежит **ниже** `internal/platform` (т
 | `internal/ctxutil` | Хелпер контекста, учитывающий сон системы. | `sleep.go` |
 | `internal/process` | Тонкая обёртка над списком процессов для рантайм-проверок. | `process.go` |
 | `internal/wizardsync` | Предикаты слияния GUI→модель без Fyne (`GuiTextAwaitingProgrammaticFill`, `FinalOutboundSelectReadLooksStale`) — тестируются без CGO/GL. | `guards.go` |
-| `internal/dialogs` | Общие примитивы диалогов, не зависящие от `ui` (кастомный диалог, диалог неудачной загрузки, авто-скрывающееся уведомление, диалог «команда + Retry»). | `dialogs.go` |
+| `internal/dialogs` | Общие примитивы диалогов, не зависящие от `ui` (кастомный диалог, диалог неудачной загрузки, авто-скрывающееся уведомление, диалог «команда + Retry», список действий со строкой статуса — `ShowActions`, SPEC 139). | `dialogs.go` |
 | `internal/lxdclient` | mTLS-клиент демона `sing-box lxd` (SPEC 096/097): вызовы admin REST, пиннинг сертификата (никогда не опционален), разбор одноразовых приглашений (`адрес#отпечаток#код`), клиентская идентичность на машину, определение канала, чтение телеметрии хоста и clients-info. Без состояния приложения. | `client.go`, `identity.go`, `invite.go`, `host.go` |
 
 > Замечание: и `internal/dialogs`, и `internal/fynewidget` зависят от Fyne.
@@ -306,6 +308,8 @@ stdlib и `internal/constants`), лежит **ниже** `internal/platform` (т
 | `rebuild_raw_cache.go` | `buildSnapshotFromRawCache` — пересборка из `.raw`-тел без сети. |
 | `auto_update.go` | Событийное авто-обновление по источникам (SPEC 052): цикл heartbeat, таймеры повторов, подписка на `VpnStateChanged`. |
 | `log_level.go` | Headless-применение уровня логов (Load→мутация→Save). |
+| `elevation.go` | **SPEC 139.** Права по требованию на Windows: гейт TUN в `ProcessService.Start` и его диалог (Restart as administrator / Switch to proxy mode), `RestartAsAdministrator` (аргументы из `flag.Visit` + `-handoff`, `platform.RunElevated`, затем `GracefulExit`), `SwitchToProxyMode`, Kill ядра повышенного экземпляра без прав, `setLocalStateVars` (общий с `log_level.go`), строка INFO о пропущенных без прав очистках. |
+| `autostart.go` | **SPEC 139 §8.** Автозапуск с Windows: состояние для Settings, `SetAutostart`, `AutostartCLI` (`-autostart=on|off`), удаление в Remove all data / `-purge-data` — только если значение указывает на этот exe. |
 | `core_downloader.go` / `core_version.go` | Загрузка sing-box и версия (пин через `constants.RequiredCoreVersion`); проверка самообновления лаунчера. |
 | `wintun_downloader.go` | Загрузка wintun.dll (Windows). |
 | `template_migration.go` | `InvalidateTemplateIfStale` — удаление локального шаблона при апгрейде лаунчера. |

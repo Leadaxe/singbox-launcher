@@ -818,9 +818,17 @@ func CheckIfSingBoxRunningAtStartUtil() {
 
 // CleanupStaleTunAtStartUtil runs Win7 ghost-TUN cleanup on launcher startup when
 // sing-box is not already running (SPEC 065).
+//
+// Без прав администратора на Windows (SPEC 139 §6 п. 2–3) ни NLA-профили в
+// HKLM, ни адаптеры, ни правила брандмауэра не трогаются: одна строка INFO
+// с перечнем пропущенного, очистки пройдут при старте с правами.
 func CleanupStaleTunAtStartUtil() {
 	ac := GetController()
 	if ac == nil || ac.ProcessService == nil {
+		return
+	}
+	if windowsNotElevated() {
+		logSkippedAdminCleanups()
 		return
 	}
 	ac.ProcessService.CleanupStaleTunAtStart()

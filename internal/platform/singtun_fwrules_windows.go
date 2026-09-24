@@ -15,8 +15,9 @@ import (
 )
 
 // firewallRulesRegPath — persistent-хранилище всех правил брандмауэра.
-// Чтение HKLM не требует прав администратора; удаление идёт через netsh
-// (нужна элевация — лаунчер и так запущен elevated ради TUN).
+// Чтение HKLM не требует прав администратора; удаление идёт через netsh и
+// требует их. Лаунчер повышается только по требованию (SPEC 139): без прав
+// вызывающий эту очистку пропускает (гейт в core).
 const firewallRulesRegPath = `SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules`
 
 // CleanupOrphanSingTunFirewallRules удаляет правила `sing-tun (<путь>)`,

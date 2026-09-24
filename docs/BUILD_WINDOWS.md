@@ -60,10 +60,14 @@ The script automatically:
 go mod tidy
 ```
 
-3. (Optional) Embed the icon:
+3. (Optional) Embed the icon and the manifest:
 ```batch
 rsrc -ico assets/app.ico -manifest app.manifest -o rsrc.syso
 ```
+`app.manifest` requests `asInvoker`: the launcher starts without administrator
+rights and asks for them only for TUN (SPEC 139). Keep the manifest embedded
+anyway — a 32-bit build without `requestedExecutionLevel` falls under UAC file
+virtualization, and writes to Program Files silently land in `VirtualStore`.
 
 4. Build the project:
 ```batch
