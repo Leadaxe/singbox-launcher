@@ -9,3 +9,6 @@ import "errors"
 func (ac *AppController) privilegedCoreCopyGate() (string, error) {
 	return "", errors.New("privileged start is only available on macOS")
 }
+
+// notifyPrivilegedCopyAfterCoreUpdate — копии для старта с TUN вне macOS нет.
+func (ac *AppController) notifyPrivilegedCopyAfterCoreUpdate() {}

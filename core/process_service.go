@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -207,7 +208,10 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 		}
 		if hasTun {
 			if err := svc.startSingBoxPrivileged(); err != nil {
-				ac.ShowStartupError(err)
+				// Отказ гейта копии уже показан своим диалогом с командой.
+				if !errors.Is(err, errPrivilegedCopyNotReady) {
+					ac.ShowStartupError(err)
+				}
 				return
 			}
 			return
@@ -250,6 +254,10 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 
 	go svc.Monitor(ac.SingboxCmd)
 }
+
+// errPrivilegedCopyNotReady — гейт привилегированного старта отказал по
+// root-owned копии ядра и сам показал диалог с командой (SPEC 137).
+var errPrivilegedCopyNotReady = errors.New("the root-owned core copy for the privileged start is not ready")
 
 // startSingBoxPrivileged starts sing-box with elevated privileges on macOS (for TUN).
 // Команда root-шелла собирается в platform; оркестрация и состояние — здесь.

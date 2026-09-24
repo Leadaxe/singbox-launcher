@@ -20,10 +20,10 @@
 - [x] `TestPrivilegedStartCommand` (`sh -n`, прогон с поддельным ядром, `BASH_FUNC_echo%%` и `PATH` не доходят).
 
 ## Этап 4 · Диалог
-- [ ] `dialogs.ShowCommandRetry`: Copy the command, Run in Terminal, Retry, Close.
-- [ ] Отказ гейта: WARN с обоими sha, диалог вместо «Failed to start».
-- [ ] После обновления ядра: WARN с обоими sha, если копия отстаёт и службы нет.
-- [ ] Ключи `locale.T` с переводом в `bin/locale/ru.json`, `l10n_check --strict` без сирот.
+- [x] `dialogs.ShowCommandRetry`: Copy the command, Run in Terminal, Retry, Close.
+- [x] Отказ гейта: WARN с обоими sha, диалог вместо «Failed to start».
+- [x] После обновления ядра: WARN с обоими sha, если копия отстаёт и службы нет.
+- [x] Ключи `locale.T` с переводом в `bin/locale/ru.json`, `l10n_check --strict` без сирот.
 - [ ] Показать владельцу.
 
 ## Этап 5 · Доки

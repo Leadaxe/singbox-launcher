@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/dialogs"
+	"singbox-launcher/internal/locale"
 )
 
 // Гейт привилегированного старта classic-движка (SPEC 137).
@@ -19,6 +22,15 @@ import (
 // владения копии и сверяет её sha256 с ядром лаунчера; не прошло — старта
 // с привилегиями нет, пользователь получает одну sudo-команду, которая
 // создаёт или обновляет копию. Лаунчер ничего не копирует сам.
+
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	privilegedCopyMissingText     = "TUN mode starts the sing-box core as root. For safety the launcher runs only a root-owned copy of the core that your user account cannot modify, and there is no such copy yet."
+	privilegedCopyOutdatedText    = "TUN mode starts the sing-box core as root from a root-owned copy, and the copy is not the launcher's current core (copy %s, launcher core %s) — for example after a core update."
+	privilegedCopyUnsafeText      = "TUN mode starts the sing-box core as root only from a root-owned copy, and the copy's location failed the ownership check:\n%s\nIf the command below reports the same problem, fix the ownership of that path."
+	privilegedCopyServiceNoteText = "The daemon service is installed on this Mac, so the command is its Install or update command: it refreshes the same copy and restarts the service."
+	privilegedCopyInstructionText = "Run this command in Terminal (it asks for your sudo password), then click Retry:"
+)
 
 // privilegedCopyState — вердикт гейта (SPEC 137 §4).
 type privilegedCopyState string
@@ -115,7 +127,10 @@ func privilegedCopyCommandFor(l daemonServiceLayout, launcherCore string) (comma
 }
 
 // privilegedCoreCopyGate — гейт перед AEWP: путь копии для старта или
-// ошибка. Отказ пишется WARN с обоими sha.
+// ошибка. Отказ по копии (missing / unsafe / outdated) пишется WARN с
+// обоими sha и показывается диалогом с одной sudo-командой; тогда
+// возвращается errPrivilegedCopyNotReady, и Start не добавляет «Failed to
+// start sing-box». Нет ядра лаунчера — обычная ошибка старта.
 func (ac *AppController) privilegedCoreCopyGate() (string, error) {
 	l := systemDaemonServiceLayout()
 	c := checkPrivilegedCoreCopy(l, ac.FileService.SingboxPath, &daemonServiceHashes)
@@ -126,8 +141,65 @@ func (ac *AppController) privilegedCoreCopyGate() (string, error) {
 	case privilegedCopyNoCore:
 		return "", errors.New(c.Detail)
 	}
+	command, viaService := privilegedCopyCommandFor(l, ac.FileService.SingboxPath)
+	debuglog.WarnLog("startSingBox: privileged start refused, core copy %s: %s (copy sha256 %s, launcher core sha256 %s); command: %s",
+		c.State, c.Detail, orUnknown(c.CopySHA256), orUnknown(c.LauncherSHA256), command)
+	ac.showPrivilegedCopyDialog(c, command, viaService)
+	return "", errPrivilegedCopyNotReady
+}
+
+// orUnknown — sha для лога: пустое значение (не считалось) видно как «-».
+func orUnknown(sum string) string {
+	if sum == "" {
+		return "-"
+	}
+	return sum
+}
+
+// showPrivilegedCopyDialog — диалог отказа гейта (SPEC 137 §5): причина,
+// одна sudo-команда, Copy the command / Run in Terminal / Retry / Close.
+// Retry повторяет Start тем же путём, что кнопка Start.
+func (ac *AppController) showPrivilegedCopyDialog(c privilegedCopyCheck, command string, viaService bool) {
+	if !ac.hasUI() {
+		return
+	}
+	var title, reason string
+	switch c.State {
+	case privilegedCopyMissing:
+		title = locale.T("Core copy for privileged start is missing")
+		reason = locale.T(privilegedCopyMissingText)
+	case privilegedCopyOutdated:
+		title = locale.T("Core copy for privileged start is outdated")
+		reason = locale.Tf(privilegedCopyOutdatedText, shortSHA(c.CopySHA256), shortSHA(c.LauncherSHA256))
+	default:
+		title = locale.T("Core copy for privileged start is not protected")
+		reason = locale.Tf(privilegedCopyUnsafeText, c.Detail)
+	}
+	parts := []string{reason}
+	if viaService {
+		parts = append(parts, locale.T(privilegedCopyServiceNoteText))
+	}
+	parts = append(parts, locale.T(privilegedCopyInstructionText))
+	dialogs.ShowCommandRetry(ac.UIService.MainWindow, title, strings.Join(parts, "\n\n"), command,
+		ac.OpenTerminalWithCommand, func() { go StartSingBoxProcess() })
+}
+
+// notifyPrivilegedCopyAfterCoreUpdate — после скачивания ядра (SPEC 137
+// §7) копия для старта с TUN отстаёт от нового ядра. При установленной
+// службе диалог install уже показал notifyDaemonServiceAfterCoreUpdate: он
+// обновляет ту же копию. Иначе — WARN с обоими sha, а ближайший старт с TUN
+// не пройдёт гейт и покажет диалог с командой. Копии нет — молчим: её
+// попросит первый старт с TUN.
+func (ac *AppController) notifyPrivilegedCopyAfterCoreUpdate() {
+	l := systemDaemonServiceLayout()
+	if _, err := os.Lstat(l.PlistPath); err == nil {
+		return
+	}
+	c := checkPrivilegedCoreCopy(l, ac.FileService.SingboxPath, &daemonServiceHashes)
+	if c.State != privilegedCopyOutdated {
+		return
+	}
 	command, _ := privilegedCopyCommandFor(l, ac.FileService.SingboxPath)
-	debuglog.WarnLog("startSingBox: privileged start refused, core copy %s: %s (copy sha256 %q, launcher core sha256 %q); run: %s",
-		c.State, c.Detail, c.CopySHA256, c.LauncherSHA256, command)
-	return "", fmt.Errorf("the root-owned core copy for the privileged start is %s: %s. Run in Terminal: %s", c.State, c.Detail, command)
+	debuglog.WarnLog("core updated: the root-owned copy for the privileged (TUN) start is outdated (copy sha256 %s, launcher core sha256 %s); the next TUN start asks to run: %s",
+		c.CopySHA256, c.LauncherSHA256, command)
 }

@@ -2602,6 +2602,33 @@
   "The daemon service still runs the previous core. Run this command in Terminal to install the new core into the service and restart it (it asks for your sudo password):": {
     "value": "Служба демона всё ещё запускает прежнее ядро. Выполните команду в терминале — она установит новое ядро в службу и перезапустит её (спросит ваш sudo-пароль):"
   },
+  "Core copy for privileged start is missing": {
+    "value": "Нет копии ядра для запуска с правами администратора"
+  },
+  "Core copy for privileged start is outdated": {
+    "value": "Копия ядра для запуска с правами администратора устарела"
+  },
+  "Core copy for privileged start is not protected": {
+    "value": "Копия ядра для запуска с правами администратора не защищена"
+  },
+  "TUN mode starts the sing-box core as root. For safety the launcher runs only a root-owned copy of the core that your user account cannot modify, and there is no such copy yet.": {
+    "value": "В режиме TUN ядро sing-box запускается от root. Ради безопасности лаунчер запускает только копию ядра, принадлежащую root, — её ваша учётная запись изменить не может, — а такой копии пока нет."
+  },
+  "TUN mode starts the sing-box core as root from a root-owned copy, and the copy is not the launcher's current core (copy %s, launcher core %s) — for example after a core update.": {
+    "value": "В режиме TUN ядро sing-box запускается от root из копии, принадлежащей root, а копия не совпадает с текущим ядром лаунчера (копия %s, ядро лаунчера %s) — например, после обновления ядра."
+  },
+  "TUN mode starts the sing-box core as root only from a root-owned copy, and the copy's location failed the ownership check:\n%s\nIf the command below reports the same problem, fix the ownership of that path.": {
+    "value": "В режиме TUN ядро sing-box запускается от root только из копии, принадлежащей root, а место копии не прошло проверку владельца:\n%s\nЕсли команда ниже сообщит о той же проблеме, исправьте владельца этого пути."
+  },
+  "The daemon service is installed on this Mac, so the command is its Install or update command: it refreshes the same copy and restarts the service.": {
+    "value": "На этом Mac установлена служба демона, поэтому команда — её «Install or update»: она обновит ту же копию и перезапустит службу."
+  },
+  "Run this command in Terminal (it asks for your sudo password), then click Retry:": {
+    "value": "Выполните эту команду в терминале (она спросит ваш sudo-пароль), затем нажмите «Повторить»:"
+  },
+  "Retry": {
+    "value": "Повторить"
+  },
   "Uninstall": {
     "value": "Удаление"
   },

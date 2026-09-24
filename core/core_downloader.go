@@ -148,6 +148,11 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 	// на прежнем ядре.
 	ac.notifyDaemonServiceAfterCoreUpdate()
 
+	// 6.8. Classic TUN на macOS (SPEC 137) стартует ту же копию: без службы
+	// она отстаёт от нового ядра до команды copy — WARN сейчас, диалог с
+	// командой на ближайшем старте с TUN (гейт), не молча.
+	ac.notifyPrivilegedCopyAfterCoreUpdate()
+
 	// 7. Done! Invalidate the session version cache so the dashboard shows
 	// the freshly installed core without a launcher restart.
 	ac.InvalidateInstalledCoreVersionCache()

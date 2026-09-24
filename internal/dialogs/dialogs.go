@@ -184,28 +184,7 @@ func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command s
 		msgLabel := widget.NewLabel(message)
 		msgLabel.Wrapping = fyne.TextWrapWord
 
-		// Высота — по содержимому, с потолком. Прежние SetMinRowsVisible(10)
-		// и MinSize 520×220 резервировали десять строк под сообщение из двух,
-		// и половину диалога занимала пустота.
-		// Высота оценивается по длине текста, а не по Label.MinSize(): до
-		// размещения в контейнере тот не знает ширину и считает перенос по
-		// словам как одну строку, занижая высоту в разы на длинном тексте
-		// (Linux capabilities).
-		const msgWidth = 520
-		lines := 1 + len([]rune(message))/72 // ~72 символа в строке при 520px
-		if n := strings.Count(message, "\n"); n > 0 {
-			lines += n
-		}
-		msgH := float32(lines)*theme.TextSize()*1.5 + 16
-		if msgH < 56 {
-			msgH = 56
-		}
-		if msgH > 260 {
-			msgH = 260 // длинное сообщение скроллится
-		}
-		msgScroll := container.NewVScroll(msgLabel)
-		msgScroll.SetMinSize(fyne.NewSize(msgWidth, msgH))
-		mainContent.Add(msgScroll)
+		mainContent.Add(messageScroll(msgLabel, message))
 
 		// Selectable command line and Copy button
 		// Команда остаётся Entry — её выделяют и копируют мышью, — но НЕ
@@ -245,6 +224,96 @@ func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command s
 
 		d := dialog.NewCustom(title, locale.T("OK"), mainContent, window)
 		d.Show()
+	})
+}
+
+// messageWidth — ширина текста в диалогах «текст + команда».
+const messageWidth = 520
+
+// messageScroll — прокрутка под пояснение диалога с высотой по содержимому
+// и потолком. Прежние SetMinRowsVisible(10) и MinSize 520×220 резервировали
+// десять строк под сообщение из двух, и половину диалога занимала пустота.
+// Высота оценивается по длине текста, а не по Label.MinSize(): до
+// размещения в контейнере тот не знает ширину и считает перенос по словам
+// как одну строку, занижая высоту в разы на длинном тексте.
+func messageScroll(label *widget.Label, message string) *container.Scroll {
+	lines := 1 + len([]rune(message))/72 // ~72 символа в строке при 520px
+	if n := strings.Count(message, "\n"); n > 0 {
+		lines += n
+	}
+	msgH := float32(lines)*theme.TextSize()*1.5 + 16
+	if msgH < 56 {
+		msgH = 56
+	}
+	if msgH > 260 {
+		msgH = 260 // длинное сообщение скроллится
+	}
+	scroll := container.NewVScroll(label)
+	scroll.SetMinSize(fyne.NewSize(messageWidth, msgH))
+	return scroll
+}
+
+// commandCopyFeedback — сколько держится галочка на кнопке копирования.
+const commandCopyFeedback = 1200 * time.Millisecond
+
+// ShowCommandRetry — диалог шага, который пользователь выполняет сам в
+// терминале (sudo), прежде чем действие можно повторить (SPEC 137):
+// пояснение, команда в поле только для чтения, кнопки «Copy the command» и
+// «Run in Terminal», внизу Close и Retry. Retry закрывает диалог и зовёт
+// onRetry. openTerminal == nil прячет кнопку терминала, onRetry == nil —
+// Retry. Сам диалог ничего привилегированного не запускает.
+func ShowCommandRetry(window fyne.Window, title, message, command string, openTerminal func(string) error, onRetry func()) {
+	fyne.Do(func() {
+		msgLabel := widget.NewLabel(message)
+		msgLabel.Wrapping = fyne.TextWrapWord
+
+		// Поле остаётся читаемым Entry (не Disable — тот рисуется цветом
+		// placeholder'а), правки гасятся откатом текста.
+		entry := widget.NewEntry()
+		entry.SetText(command)
+		entry.Wrapping = fyne.TextWrapOff
+		entry.OnChanged = func(s string) {
+			if s != command {
+				entry.SetText(command)
+			}
+		}
+
+		var copyBtn *widget.Button
+		copyBtn = widget.NewButtonWithIcon(locale.T("Copy the command"), theme.ContentCopyIcon(), func() {
+			if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
+				app.Clipboard().SetContent(command)
+			}
+			copyBtn.SetIcon(theme.ConfirmIcon())
+			go func() {
+				time.Sleep(commandCopyFeedback)
+				fyne.Do(func() { copyBtn.SetIcon(theme.ContentCopyIcon()) })
+			}()
+		})
+		actions := container.NewHBox(layout.NewSpacer(), copyBtn)
+		if openTerminal != nil {
+			termBtn := widget.NewButtonWithIcon(locale.T("Run in Terminal"), theme.ComputerIcon(), func() {
+				if err := openTerminal(command); err != nil {
+					debuglog.WarnLog("dialogs: open Terminal: %v", err)
+					dialog.ShowError(err, window)
+				}
+			})
+			actions.Add(termBtn)
+		}
+
+		var d dialog.Dialog
+		var buttons fyne.CanvasObject
+		if onRetry != nil {
+			retryBtn := widget.NewButton(locale.T("Retry"), func() {
+				d.Hide()
+				onRetry()
+			})
+			retryBtn.Importance = widget.HighImportance
+			buttons = container.NewHBox(retryBtn)
+		}
+		content := container.NewVBox(messageScroll(msgLabel, message), entry, actions)
+		d = NewCustom(title, content, buttons, locale.T("Close"), window)
+		d.Show()
+		debuglog.DebugLog("dialogs: ShowCommandRetry %q shown", title)
 	})
 }
 
