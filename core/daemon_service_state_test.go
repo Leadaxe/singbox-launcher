@@ -4,7 +4,9 @@ package core
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"singbox-launcher/internal/lxdclient"
@@ -241,4 +243,61 @@ func TestDaemonServiceClassifier(t *testing.T) {
 	stale.State = DaemonServiceStale
 	compareDaemonServiceProcess(&stale, lxdclient.InfoData{ExecutableSHA256: "ff"}, l.CorePath)
 	expect(t, stale, DaemonServiceStale)
+}
+
+// TestDaemonServiceCommandQuoting — sudo-команды службы с путём, в котором
+// пробел, апостроф и двойная кавычка: команда синтаксически верна для sh,
+// разбирается ровно в задуманные аргументы и переживает литерал AppleScript,
+// через который её получает Terminal. Uninstall идёт через копию, только
+// когда она безопасна (SPEC 136 §5).
+func TestDaemonServiceCommandQuoting(t *testing.T) {
+	bin := "/Users/o'brien/My Apps/\"lx\" core/sing-box"
+	commands := map[string][]string{
+		daemonServiceCommand(bin, "lxd", "--service=install"): {bin, "lxd", "--service=install"},
+		daemonUninstallCommandFor(bin, true):                  {bin, "lxd", "--service=uninstall", "--purge"},
+	}
+	wantInstall := `sudo '/Users/o'\''brien/My Apps/"lx" core/sing-box' lxd --service=install`
+	if got := daemonServiceCommand(bin, "lxd", "--service=install"); got != wantInstall {
+		t.Fatalf("install command:\n got %s\nwant %s", got, wantInstall)
+	}
+	for command, wantArgs := range commands {
+		if out, err := exec.Command("sh", "-n", "-c", command).CombinedOutput(); err != nil {
+			t.Fatalf("sh -n %q: %v (%s)", command, err, out)
+		}
+		// sudo подменён функцией, печатающей свои аргументы по строке.
+		out, err := exec.Command("sh", "-c", `sudo() { printf '%s\n' "$@"; }; `+command).Output()
+		if err != nil {
+			t.Fatalf("sh -c %q: %v", command, err)
+		}
+		if got := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n"); strings.Join(got, "|") != strings.Join(wantArgs, "|") {
+			t.Fatalf("%q parsed as %q, want %q", command, got, wantArgs)
+		}
+		if osascript, err := exec.LookPath("osascript"); err == nil {
+			out, err := exec.Command(osascript, "-e", "return "+appleScriptString(command)).Output()
+			if err != nil {
+				t.Fatalf("osascript literal of %q: %v", command, err)
+			}
+			if got := strings.TrimSuffix(string(out), "\n"); got != command {
+				t.Fatalf("AppleScript literal round-trip:\n got %s\nwant %s", got, command)
+			}
+		}
+	}
+
+	// Uninstall и client add: копия — только когда plist на неё и она цела.
+	l := newTestServiceLayout(t)
+	if got := daemonServiceBinaryFor(l.daemonServiceLayout, l.launcherCore); got != l.launcherCore {
+		t.Fatalf("no service: binary %s, want the launcher core", got)
+	}
+	writeTestPlist(t, l.PlistPath, l.launcherCore)
+	if got := daemonServiceBinaryFor(l.daemonServiceLayout, l.launcherCore); got != l.launcherCore {
+		t.Fatalf("unsafe service: binary %s, want the launcher core", got)
+	}
+	writeTestPlist(t, l.PlistPath, l.CorePath)
+	if got := daemonServiceBinaryFor(l.daemonServiceLayout, l.launcherCore); got != l.launcherCore {
+		t.Fatalf("missing copy: binary %s, want the launcher core", got)
+	}
+	writeTestFile(t, l.CorePath, "core v0")
+	if got := daemonServiceBinaryFor(l.daemonServiceLayout, l.launcherCore); got != l.CorePath {
+		t.Fatalf("safe copy: binary %s, want the copy", got)
+	}
 }

@@ -25,7 +25,7 @@ import (
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
-	daemonKickstartBodyText = "The daemon service keeps the old core binary in memory until it restarts. Run this command in Terminal (it asks for your sudo password):"
+	daemonCoreUpdatedBodyText = "The daemon service still runs the previous core. Run this command in Terminal to install the new core into the service and restart it (it asks for your sudo password):"
 )
 
 // Управление launchd-службой демона `sing-box lxd` (задача 057 форка,
@@ -469,28 +469,67 @@ func (ac *AppController) reloadDaemonBackendIfActive() {
 	ac.setBackend(b)
 }
 
-// restartDaemonServiceAfterCoreUpdate перезапускает установленную службу
-// демона после обновления бинаря ядра (launchd держит старый образ в памяти;
-// KeepAlive поднимет процесс заново уже с новым бинарём). Привилегированных
-// вызовов из лаунчера нет — показываем пользователю готовую sudo-команду
-// (терминальная модель, как и все операции со службой). Только активный
-// daemon-режим: в classic чужая служба нас не касается.
+// notifyDaemonServiceAfterCoreUpdate — после обновления ядра служба
+// продолжает запускать свою root-owned копию (SPEC 136): до неё новое ядро
+// доходит только командой install, которая обновляет копию и перезапускает
+// службу. Перезапуск (kickstart) поднял бы ту же старую копию. Условие —
+// plist есть, в любом движке: службу запускает launchd, и без лаунчера.
+// Привилегированных вызовов нет — диалог с готовой sudo-командой.
 func (ac *AppController) notifyDaemonServiceAfterCoreUpdate() {
-	if ac.BackendMode() != BackendDaemon {
+	check := ac.daemonServiceFileCheck()
+	switch check.State {
+	case DaemonServiceNotInstalled:
+		return
+	case DaemonServiceOK:
+		// Скачано то же ядро, что уже в копии: обновлять нечего.
+		debuglog.InfoLog("notifyDaemonServiceAfterCoreUpdate: the service already runs this core")
 		return
 	}
-	if _, err := os.Stat(daemonSystemPlistPath()); err != nil {
-		return // служба не установлена — нечего перезапускать
-	}
-	debuglog.InfoLog("notifyDaemonServiceAfterCoreUpdate: core updated; daemon keeps the old binary until kickstart")
+	debuglog.WarnLog("notifyDaemonServiceAfterCoreUpdate: core updated; the daemon service is %s (%s) until the install command runs",
+		check.State, check.Detail)
 	if !ac.hasUI() {
+		return
+	}
+	command, err := ac.DaemonInstallCommand()
+	if err != nil {
+		debuglog.WarnLog("notifyDaemonServiceAfterCoreUpdate: %v", err)
 		return
 	}
 	// Диалог сам оборачивается в fyne.Do — зваться из горутины загрузчика можно.
 	dialogs.ShowLinuxCapabilitiesRequired(ac.UIService.MainWindow,
-		locale.T("Core updated — restart the daemon service"),
-		locale.T(daemonKickstartBodyText),
-		ac.DaemonKickstartCommand())
+		locale.T("Core updated — update the daemon service"),
+		locale.T(daemonCoreUpdatedBodyText),
+		command)
+}
+
+// daemonServiceFileCheck — вердикт по файлам без сети (SPEC 136 §4):
+// определение службы, цепочка владения, sha копии против ядра лаунчера.
+func (ac *AppController) daemonServiceFileCheck() DaemonServiceCheck {
+	l := systemDaemonServiceLayout()
+	check := inspectDaemonServiceDefinition(l)
+	if check.CopyUsable() {
+		check.CopyVersion = readDaemonServiceSidecarVersion(filepath.Dir(l.CorePath))
+	}
+	compareDaemonServiceFiles(&check, l.CorePath, ac.FileService.SingboxPath, &daemonServiceHashes)
+	return check
+}
+
+// daemonServiceBinaryFor — бинарь для Uninstall и `lxd client add`: копия
+// службы, если plist указывает на неё и цепочка владения цела (она
+// переживает удаление данных лаунчера и совпадает с работающей службой);
+// иначе — ядро лаунчера, как до SPEC 136.
+func daemonServiceBinaryFor(l daemonServiceLayout, launcherCore string) string {
+	if inspectDaemonServiceDefinition(l).CopyUsable() {
+		return l.CorePath
+	}
+	return launcherCore
+}
+
+// daemonServiceCommand — единственное место сборки sudo-команд службы:
+// бинарь в одинарных кавычках (пробелы и апострофы в пути), аргументы —
+// константы без спецсимволов.
+func daemonServiceCommand(binary string, args ...string) string {
+	return "sudo " + shellQuote(binary) + " " + strings.Join(args, " ")
 }
 
 // DaemonKickstartCommand — sudo-команда перезапуска установленной службы
@@ -502,10 +541,10 @@ func (ac *AppController) DaemonKickstartCommand() string {
 // DaemonRepairCommand — sudo-команда пере-сопряжения: `lxd client add` сам
 // находит state-dir установленной службы, берёт listen/секрет из её
 // daemon.json и печатает свежее одноразовое приглашение — его пользователь
-// вставляет в поле сопряжения.
+// вставляет в поле сопряжения. Бинарь — копия службы, если она безопасна.
 func (ac *AppController) DaemonRepairCommand() string {
-	return fmt.Sprintf("sudo %s lxd client add --name singbox-launcher",
-		shellQuote(ac.FileService.SingboxPath))
+	return daemonServiceCommand(daemonServiceBinaryFor(systemDaemonServiceLayout(), ac.FileService.SingboxPath),
+		"lxd", "client", "add", "--name", "singbox-launcher")
 }
 
 // --- Терминальная модель (оператор выполняет все привилегированные шаги) ---
@@ -516,25 +555,32 @@ func (ac *AppController) DaemonRepairCommand() string {
 // Сопряжение после установки/пере-сопряжения: скопировать приглашение из
 // вывода в поле сопряжения.
 
-// DaemonInstallCommand собирает shell-команду установки службы для терминала.
-// Никаких параметров: install сам выбирает свободный loopback-порт (19091+,
-// либо сохраняет адрес существующей установки), сам генерирует секрет,
-// принудительно включает mTLS — и печатает адрес, секрет, путь к daemon.json,
-// команду перезапуска и приглашение. Адрес лаунчер узнаёт из приглашения при
+// DaemonInstallCommand — «Install or update service» (SPEC 136 §5): одна
+// команда для первой установки, старого небезопасного plist и обновления
+// после скачивания ядра. Бинарь — всегда ядро лаунчера: ядро lx.11+ копирует
+// СЕБЯ в root-owned каталог службы и переписывает plist на копию
+// (идемпотентно по sha, daemon.json и клиенты сохраняются, служба
+// перезапускается). Никаких параметров: install сам выбирает loopback-порт
+// (19091+, либо адрес существующей установки), генерирует секрет, включает
+// mTLS и печатает приглашение. Адрес лаунчер узнаёт из приглашения при
 // сопряжении (PairDaemonWithInvite сохраняет invite.Addr).
 func (ac *AppController) DaemonInstallCommand() (string, error) {
-	return fmt.Sprintf("sudo %s lxd --service=install",
-		shellQuote(ac.FileService.SingboxPath)), nil
+	return daemonServiceCommand(ac.FileService.SingboxPath, "lxd", "--service=install"), nil
 }
 
 // DaemonUninstallCommand собирает shell-команду удаления службы для терминала.
-// purge=true — полное удаление данных демона.
+// purge=true — полное удаление данных демона. Бинарь — копия службы, если
+// она безопасна (SPEC 136 §5), иначе ядро лаунчера.
 func (ac *AppController) DaemonUninstallCommand(purge bool) string {
-	cmd := fmt.Sprintf("sudo %s lxd --service=uninstall", shellQuote(ac.FileService.SingboxPath))
+	return daemonUninstallCommandFor(daemonServiceBinaryFor(systemDaemonServiceLayout(), ac.FileService.SingboxPath), purge)
+}
+
+func daemonUninstallCommandFor(binary string, purge bool) string {
+	args := []string{"lxd", "--service=uninstall"}
 	if purge {
-		cmd += " --purge"
+		args = append(args, "--purge")
 	}
-	return cmd
+	return daemonServiceCommand(binary, args...)
 }
 
 // OpenTerminalWithCommand открывает Terminal.app и выполняет команду в новом
@@ -549,18 +595,24 @@ func (ac *AppController) OpenTerminalWithCommand(command string) error {
 	// do script без цели создаёт ЕЩЁ одно → два окна (баг, замеченный при
 	// первой установке). Здесь do script сам решает, куда писать, и лишнего
 	// окна не появляется.
-	escaped := strings.ReplaceAll(command, "\\", "\\\\")
-	escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
 	script := fmt.Sprintf(`tell application "Terminal"
-	do script "%s"
+	do script %s
 	activate
-end tell`, escaped)
+end tell`, appleScriptString(command))
 	cmd := exec.Command("osascript", "-e", script)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("could not open Terminal: %v (%s)", err, strings.TrimSpace(string(out)))
 	}
 	debuglog.InfoLog("OpenTerminalWithCommand: opened Terminal for: %s", command)
 	return nil
+}
+
+// appleScriptString — строковый литерал AppleScript в кавычках: экранируются
+// обратный слэш и двойная кавычка (порядок важен — слэш первым).
+func appleScriptString(s string) string {
+	escaped := strings.ReplaceAll(s, "\\", "\\\\")
+	escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
+	return "\"" + escaped + "\""
 }
 
 // shellQuote заключает строку в одинарные кавычки для безопасной вставки в

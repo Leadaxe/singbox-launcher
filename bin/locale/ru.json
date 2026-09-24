@@ -2599,11 +2599,11 @@
   "Run in Terminal": {
     "value": "Выполнить в терминале"
   },
-  "Core updated — restart the daemon service": {
-    "value": "Ядро обновлено — перезапустите службу демона"
+  "Core updated — update the daemon service": {
+    "value": "Ядро обновлено — обновите службу демона"
   },
-  "The daemon service keeps the old core binary in memory until it restarts. Run this command in Terminal (it asks for your sudo password):": {
-    "value": "Служба демона держит старый бинарь ядра в памяти до перезапуска. Выполните команду в терминале (спросит ваш sudo-пароль):"
+  "The daemon service still runs the previous core. Run this command in Terminal to install the new core into the service and restart it (it asks for your sudo password):": {
+    "value": "Служба демона всё ещё запускает прежнее ядро. Выполните команду в терминале — она установит новое ядро в службу и перезапустит её (спросит ваш sudo-пароль):"
   },
   "Uninstall": {
     "value": "Удаление"
