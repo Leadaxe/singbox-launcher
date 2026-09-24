@@ -37,6 +37,10 @@ const (
 	daemonFallbackRuntimeDir = "/Library/Application Support/sing-box-lxd"
 )
 
+// daemonEngineAvailable — на macOS daemon-движок доступен всегда: умеет ли
+// его ядро лаунчера, решают CoreSupportsLxd и гейт версии.
+func daemonEngineAvailable() error { return nil }
+
 func daemonSystemPlistPath() string {
 	return filepath.Join("/Library/LaunchDaemons", daemonLaunchdLabel+".plist")
 }

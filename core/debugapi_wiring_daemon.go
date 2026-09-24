@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || (windows && !386)
 
 package core
 
@@ -19,9 +19,13 @@ type debugAPIDaemonWiring struct {
 	ac *AppController
 }
 
-// debugAPIDaemonFacade — darwin-реализация. Другие платформы (см. стаб)
+// debugAPIDaemonFacade — реализация daemon-платформ. Платформа без готового
+// слоя службы (daemonEngineAvailable) и остальные платформы (см. стаб)
 // возвращают nil, и группа /daemon/* не регистрируется.
 func (ac *AppController) debugAPIDaemonFacade() debugapi.DaemonFacade {
+	if daemonEngineAvailable() != nil {
+		return nil
+	}
 	return &debugAPIDaemonWiring{ac: ac}
 }
 

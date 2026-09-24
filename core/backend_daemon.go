@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || (windows && !386)
 
 package core
 
@@ -27,7 +27,7 @@ import (
 )
 
 // DaemonBackend — движок daemon-режима: ядро живёт внутри долгоживущего
-// `sing-box lxd` (launchd-служба), лаунчер управляет им по admin REST
+// `sing-box lxd` (служба ОС; на macOS — launchd), лаунчер управляет им по admin REST
 // (apply/start/stop) и наблюдает по gRPC daemon.StartedService (протокол
 // Android-линии). Смена конфига — in-process подмена инстанса в демоне:
 // без убийства процесса, без пароля, с валидацией и автооткатом на
@@ -150,7 +150,12 @@ func DaemonConfigFromSettings(ac *AppController) (lxdclient.Config, error) {
 
 // newDaemonBackend конструирует daemon-движок из settings.json и запускает
 // supervisor статуса. Вызывается из initBackendFromSettings/SwitchBackendMode.
+// Платформа без готового слоя службы (daemonEngineAvailable) — отказ, и
+// лаунчер остаётся на classic.
 func newDaemonBackend(ac *AppController) (CoreBackend, error) {
+	if err := daemonEngineAvailable(); err != nil {
+		return nil, err
+	}
 	cfg, err := DaemonConfigFromSettings(ac)
 	if err != nil {
 		return nil, err

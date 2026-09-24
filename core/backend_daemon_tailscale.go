@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || (windows && !386)
 
 // File backend_daemon_tailscale.go — стрим статуса tailnet локального
 // демона (SPEC 130). Образец — superviseConnections: reconnect с backoff,
