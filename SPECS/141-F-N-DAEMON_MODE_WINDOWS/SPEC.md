@@ -44,6 +44,9 @@
 
 ## 3. Интерфейс ядра v1.14.2-lx.2 (SPEC 103 форка)
 
+Норма ядра — SPEC 103 форка:
+`sing-box-lx/SPECS/TASKS/103-LXD_WINDOWS_SERVICE/SPEC.md`, тег **v1.14.2-lx.2**.
+
 Подтверждён сессией ядра 24.09.2026 по всем пунктам. Только amd64/arm64 с
 `with_lxd`; Win7 (`windows-386-legacy-windows-7`) — без службы. `C:\` в
 тексте — пример: пути ядро и лаунчер берут через `windows.KnownFolderPath`
@@ -53,19 +56,19 @@
 |---|---|---|---|
 | 1 | Служба | SCM `sing-box-lxd`, `LocalSystem`, `StartAutomatic`, зависимость `Tcpip`, restart-on-failure; `BinaryPathName` в кавычках, argv[0] — путь копии, аргументы как на macOS | §6.2 Unsafe |
 | 1a | DACL службы | `(A;;0x2008d;;;AU)` — `QUERY_STATUS`, `QUERY_CONFIG`, `READ_CONTROL` для Authenticated Users, без `CHANGE_CONFIG`/`WRITE_DAC`/`WRITE_OWNER`/`DELETE`/`START`/`STOP`; SYSTEM и Administrators — полный доступ | классификатор без прав; «Start the service» — через runas (§5.1) |
-| 2 | Команды | `lxd --service=install\|copy\|status\|uninstall [--keep-copy] [--purge]`; копия — `<ProgramFiles>\sing-box-lxd\`, state — `<ProgramData>\sing-box-lxd\` (`daemon.json`, tls, клиенты, логи; SYSTEM + Administrators); `--purge` удаляет и state-каталог; install/copy/uninstall — только с elevated token | «Remove all data» (§9) |
-| 2a | Захват `ProgramData` | install и copy забирают владение `<ProgramData>\sing-box-lxd` и заменяют DACL целиком (с явными строками вывода); отказ — только если владение забрать нельзя | — |
-| 3 | Набор копии | `sing-box-lxd.exe` + `libcronet.dll` (если лежит рядом с источником); `wintun.dll` не нужен — `sing-tun` несёт его `go:embed`. Сайдкар `sing-box-lxd.install.json`: `files[{name, sha256}]`, `source`, `version`, `installed_at`, `service`; идемпотентность по sha набора; лишний файл в каталоге копии — MISMATCH | §6.2 Stale |
-| 3a | Замена образа | stop службы → rename в `<имя>.old` → temp + fsync + sha → rename на место → удалить `.old` (занят — удалит следующий install); copy без службы — то же без stop | §10 |
+| 2 | Команды | `lxd --service=install\|copy\|status\|uninstall [--keep-copy] [--purge]`; копия — `<ProgramFiles>\sing-box-lxd\`, каталог данных — `<ProgramData>\sing-box-lxd\` (SYSTEM + Administrators): `state\` = `<StateDir>` (`DefaultServiceStateDir`, как `state/` на macOS: `daemon.json`, tls, клиенты, `resources`, `tailscale`) и `logs\` (п. 8); `--purge` удаляет весь `<ProgramData>\sing-box-lxd`, включая `logs\classic.log`; install/copy/uninstall — только с elevated token; строка рестарта в сводке install — `Restart-Service sing-box-lxd` (PowerShell от администратора) | «Remove all data» (§9); NotRunning — `sc.exe start` под runas (§5.1) |
+| 2a | Захват `ProgramData` | install и copy забирают владение `<ProgramData>\sing-box-lxd` и заменяют DACL целиком на всём дереве без исключений (`state\`, `logs\` и содержимое, в том числе `classic.log`; с явными строками вывода); отказ — только если владение забрать нельзя. Секрет и серверная пара не перегенерируются; если до install каталог принадлежал чужому SID или был ему читаем — `WARN: <путь> was readable by <имя> (<SID>) before this install; rotate the admin secret …`, в сайдкар — код `state_dir_foreign_before_install` (п. 3) | `daemon_secret` в `settings.json` остаётся валидным; WARN — §5.3; чтение `classic.log` — §8 |
+| 3 | Набор копии | `sing-box-lxd.exe` + `libcronet.dll` (если лежит рядом с источником); `wintun.dll` не нужен — `sing-tun` несёт его `go:embed`. Сайдкар `sing-box-lxd.install.json`: `files[{name, sha256}]`, `source`, `version`, `installed_at`, `service`, `warnings[{code, text}]` — предупреждения install (п. 2a; SPEC 103 §2.5: каждый install/copy переписывает поле заново, даже при неизменном наборе; поля нет или массив пуст — предупреждений нет); идемпотентность по sha набора; лишний файл в каталоге копии — MISMATCH (остатки п. 3a — не лишние) | §6.2 Stale; `warnings` — §5.3 |
+| 3a | Замена образа | stop службы → temp `.<имя>.tmp-<hex>` + fsync + sha → rename в `<имя>.old` → rename на место → удалить `.old` (занят — удалит следующий install); copy без службы — то же без stop. Остатки `<член набора>.old` и `.<член набора>.tmp-<hex>` (пока старый образ исполняется classic'ом) — не MISMATCH: `--service=status` их называет, вердикт не меняет | §6.2 Stale, §10 |
 | 4 | Инвариант | модель `boxdd`: предки — владелец из {SYSTEM, Administrators, TrustedInstaller}, чужим SID нельзя `DELETE`/`WRITE_DAC`/`WRITE_OWNER`/`GENERIC_WRITE\|ALL`/`FILE_DELETE_CHILD`; каталог копии и файлы — сверх того `FILE_WRITE_DATA`/`APPEND_DATA`/`WRITE_EA`/`WRITE_ATTRIBUTES`; «чужой» — любой SID вне allowlist; без reparse points; локальный NTFS | проверяет так же (§6.1) |
 | 5 | Самопроверка | строгий отказ — только при `svc.IsWindowsService()`; иначе WARN; `--allow-unsafe-exec` | classic с правами — гейт лаунчера (§8) |
-| 6 | `--service=status` | 0 OK, 2 MISMATCH/UNSAFE, 3 NOT INSTALLED, 4 COPY ONLY, 5 NOT RUNNING (установлена, но не `SERVICE_RUNNING`), 1 ошибка; `QueryServiceStatus` без прав | не вызывает, для ручной проверки |
-| 7 | Приглашение | `--invite-out <file>` у `--service=install` (создаёт клиента `--invite-name`, по умолчанию `singbox-launcher`; повторный install без флага клиентов не трогает) и у `client add`; O_EXCL, без следования ссылкам, отказ, если файл есть; в stdout не печатается; флаг на всех платформах | §5 |
-| 8 | Логи | install и copy создают `<ProgramData>\sing-box-lxd\logs\` (SYSTEM + Administrators, наследуемый DACL); демон пишет туда `lxd.log` с ротацией; Event Log нет | `classic.log` — файл лаунчера там же (§8) |
+| 6 | `--service=status` | 0 OK, 2 MISMATCH/UNSAFE, 3 NOT INSTALLED, 4 COPY ONLY, 5 NOT RUNNING (установлена, но не `SERVICE_RUNNING`), 1 ошибка; `QueryServiceStatus` без прав | вызывает только после install с кодом 1 (§5.3); иначе — для ручной проверки |
+| 7 | Приглашение | `--invite-out <file>` у `--service=install` (создаёт клиента `--invite-name`, по умолчанию `singbox-launcher`, лаунчер на Windows передаёт имя на пользователя `singbox-launcher-<user>` (§5.3); `--invite-name` есть только у install; повторный install без флага клиентов не трогает) и у `client add` (имя — существующий `--name`); O_EXCL, без следования ссылкам, отказ, если файл есть; в stdout не печатается; флаг на всех платформах. Демон не дал приглашение за 15 с — install с `--invite-out` выходит с кодом 1: служба остаётся установленной, файл удаляется. Enroll по приглашению с именем заменяет запись клиента с тем же именем, старый сертификат отзывается | §5.1, §5.3 |
+| 8 | Логи | install и copy создают `<ProgramData>\sing-box-lxd\logs\` (SYSTEM + Administrators, наследуемый DACL); демон пишет туда `lxd.log` с ротацией (путь install записывает в `daemon.json` ключом `log_file`); Event Log нет | `classic.log` — файл лаунчера там же (§8) |
 | 9 | `/admin/info` | `executable` (путь exe), `executable_sha256` | ProcessStale |
-| 10 | Под SYSTEM | state tailscale по умолчанию — `<StateDir>\tailscale`, каталог `<тег>` создаёт демон при apply (DACL от StateDir); `find_process` без ограничений; системный DNS без изменений; системный прокси — сторона лаунчера | §7 |
+| 10 | Под SYSTEM | рабочий каталог службы — `<StateDir>` (ядро делает `Chdir` в `Execute`): относительные пути конфига — в `state\`, не в `System32`; state tailscale по умолчанию — `<StateDir>\tailscale`, каталог `<тег>` создаёт демон при apply (DACL от StateDir); `find_process` без ограничений; системный DNS без изменений; системный прокси — сторона лаунчера | §7 |
 | 11 | Канал | TCP loopback + mTLS, порт из `daemon.json`; named pipe нет | как на macOS |
-| 12 | Поиск DLL | `SetDefaultDllDirectories(APPLICATION_DIR \| SYSTEM32)` — первым действием `main`; `libcronet.dll` (purego) грузится после | условие релиза §8 закрыто ядром |
+| 12 | Поиск DLL | `SetDefaultDllDirectories(APPLICATION_DIR \| SYSTEM32)` — в `init` пакета `main` ядра, тег `with_lxd && windows`; `libcronet.dll` (purego) грузится после, по полному пути: в контексте службы и при повышенном `run` — только из каталога exe, нет её там — отказ старта (naive-outbound) без поиска по `PATH` | условие релиза §8 закрыто ядром |
 
 Референс — `experimental/boxdd/` форка (`cmd_service_windows.go`,
 `security_windows.go`).
@@ -102,10 +105,10 @@
 
 | Операция | Binary (`lpFile`) | Args |
 |---|---|---|
-| Install or update service | ядро лаунчера `<CoreDir>\sing-box.exe` | `lxd --service=install --invite-out <file>` — одно окно UAC (§13 п. 2) |
+| Install or update service | ядро лаунчера `<CoreDir>\sing-box.exe` | `lxd --service=install --invite-out <file> --invite-name <имя клиента>` — одно окно UAC (§13 п. 2); `<имя клиента>` — §5.3 |
 | Uninstall (вкладка, Debug API) | копия, если `CopyUsable`, иначе ядро лаунчера | `lxd --service=uninstall --keep-copy [--purge]` |
 | Uninstall в «Remove all data…» | то же правило | `lxd --service=uninstall --purge` |
-| Свежее приглашение | то же правило | `lxd client add --name singbox-launcher --invite-out <file>` |
+| Свежее приглашение | то же правило | `lxd client add --name <имя клиента> --invite-out <file>` |
 | Копия для classic (службы нет) | ядро лаунчера | `lxd --service=copy` |
 | Запустить службу (NotRunning) | `%SystemRoot%\System32\sc.exe` (runas: `START` у AU нет, §3 п. 1a) | `start sing-box-lxd` |
 | Kickstart | — | нет (Debug API — пусто) |
@@ -131,13 +134,31 @@ install и copy проходят гейт версии (§6.2); ниже 1.14.2-
 |---|---|
 | `ERROR_CANCELLED` (1223) — пользователь отказал в UAC | INFO в лог, строка «The administrator prompt was cancelled.»; диалог остаётся открытым |
 | иная ошибка `ShellExecuteExW` | текст ошибки + команда для Copy |
-| код выхода ≠ 0 | «The command failed (exit code N). Run it in an elevated terminal to see its output:» + команда для Copy; вывод процесса под `runas` не перехватывается |
+| код выхода ≠ 0 (install с кодом 1 — ниже) | «The command failed (exit code N). Run it in an elevated terminal to see its output:» + команда для Copy; вывод процесса под `runas` не перехватывается |
 | `client add`, код 0 | лаунчер читает файл `--invite-out`, `PairDaemonWithInvite`, удаляет файл; приглашение в лог не пишется |
 | install, код 0 | то же, что у `client add`: файл `--invite-out` → сопряжение; поле ручной вставки остаётся |
+| install, код 1 | сначала `--service=status` ядром лаунчера (без прав, как классификатор §6). status ≠ 0 — строка общего случая и вердикт классификатора, повторное сопряжение не предлагается. status = 0, служба есть в SCM, файла `--invite-out` нет — приглашение не получено (§3 п. 7): WARN в лог, строка «The service is installed, but no invite was received. Pair it as a separate step:» и команда «Свежее приглашение» (§5.1: `client add --name <имя клиента> --invite-out <file>`) с кнопками Copy / Run as administrator — второе окно UAC; её код 0 — как у `client add` выше Причина раннего провала install (до выдачи приглашения) лаунчеру не видна: вывод под runas не перехватывается, при status = 0 пользователь получит только это сообщение — известное ограничение |
+| после шага install/update в сайдкаре (§3 п. 3) есть `warnings` | лаунчер читает сайдкар, показывает предупреждения в результате шага и пишет их в лог (WARN); `state_dir_foreign_before_install` — «The service data folder was readable by another account before this install. Rotate the admin secret in daemon.json and pair again if this computer is shared.», прочие коды — `text` как есть; поле переписывается каждым install/copy, устаревших предупреждений не бывает; список кодов — SPEC 103 §2.5 |
 
 Файл приглашения — `<Data>\bin\daemon\invite-<случайное>.txt` (ядро:
 O_EXCL, без следования ссылкам). При elevation чужими учётными данными файл
 пишет администратор, ACL наследуется от профиля — пользователь его читает.
+
+**Имя клиента и повторное сопряжение.** Имя клиента на Windows — на
+пользователя: `singbox-launcher-<user>`, где `<user>` — имя учётной записи
+(SAM account name) в нижнем регистре, символы вне `[a-z0-9_-]` заменяются на
+`_`, итоговое имя — не длиннее 64 символов; оно уходит в `--invite-name` у
+install и в `--name` у `client add` (§5.1). Норма ядра с lx.2: после обрезки
+пробелов по краям от 1 до 64 рун, только печатные символы; нарушение → HTTP 400
+`client name: …` и ненулевой код у install / `client add`. Нормализованное имя
+укладывается в неё с запасом. Enroll по приглашению с именем
+заменяет запись клиента с тем же именем, старый сертификат отзывается (§3
+п. 7). Поэтому «Install or update service» не копит клиентов, а учётные
+записи не выбивают пары друг друга (§11), но прежняя пара этого пользователя
+после переустановки не сохраняется: чтение нового invite-файла и сопряжение
+по нему — обязательный следующий шаг после install/update, а не опция. Пара,
+вытесненная другим enroll под тем же именем, не работает до чтения нового
+приглашения («Need a fresh invite», §9).
 
 ### 5.4 Идемпотентность (для SPEC 140)
 
@@ -180,7 +201,7 @@ detail называет SID).
 |---|---|---|
 | **NotInstalled** | plist нет | `OpenService` → `ERROR_SERVICE_DOES_NOT_EXIST` (1060) |
 | **Unsafe** | plist не разобрался; `ProgramArguments[0]` ≠ копия; цепочка нарушена | `QueryServiceConfig` не прочитался (в т. ч. отказ в доступе); `BinaryPathName` не разбирается `DecomposeCommandLine`; argv[0] ≠ канонической копии (без учёта регистра, после `Clean`); путь с пробелом без кавычек; DACL службы (§6.1); цепочка или набор нарушают инвариант |
-| **Stale** | sha копии ≠ ядра лаунчера; копии нет | по файлам набора: `sing-box-lxd.exe` ↔ `<CoreDir>\sing-box.exe`, `libcronet.dll` ↔ `<CoreDir>\libcronet.dll` (`wintun.dll` в набор не входит, §3 п. 3); разное присутствие или sha — Stale; лишний файл в каталоге копии — Stale (у ядра MISMATCH, лечит install); нет exe при целой цепочке — Stale (`CopyMissing`) |
+| **Stale** | sha копии ≠ ядра лаунчера; копии нет | по файлам набора: `sing-box-lxd.exe` ↔ `<CoreDir>\sing-box.exe`, `libcronet.dll` ↔ `<CoreDir>\libcronet.dll` (`wintun.dll` в набор не входит, §3 п. 3); разное присутствие или sha — Stale; лишний файл в каталоге копии — Stale (у ядра MISMATCH, лечит install) — это любое имя, кроме членов набора, сайдкара и остатков замены образа; остатки `<член набора>.old` и `.<член набора>.tmp-<hex>` (живут, пока старый exe исполняется classic'ом) — не лишние и не Stale: ядро называет их в `--service=status`, вердикт не меняет (§3 п. 3a); нет exe при целой цепочке — Stale (`CopyMissing`) |
 | **NotRunning** | `launchctl print`: не загружена / `state` ≠ running | `QueryServiceStatus` без прав: `CurrentState` ≠ `SERVICE_RUNNING` — как exit 5 у ядра (§3 п. 6); `START_PENDING` виден как NotRunning до следующего Refresh |
 | **ProcessStale** | паспорт `/admin/info` ≠ копии | то же (`executable` — путь exe, §3 п. 9); сравнение без учёта регистра после `Clean` |
 | **OK** | иначе | иначе |
@@ -214,7 +235,8 @@ detail называет SID).
 ветка работает, только если пользователь включил их. Remote-таргет не
 затрагивается (`false` по шаблону). Шаг (4) того же звена (Windows):
 `state_directory` узла tailscale из DataDir → `<StateDir>\tailscale\<тег>`
-(§13 п. 5; каталог создаёт демон, §3 п. 10).
+(`<StateDir>` = `<ProgramData>\sing-box-lxd\state`, §3 п. 2; §13 п. 5;
+каталог создаёт демон, §3 п. 10).
 
 **Как ставится.** `internal/platform/sysproxy_windows.go` — порт
 `wininet.SetSystemProxy`/`ClearSystemProxy` (~60 строк, без зависимости от
@@ -259,12 +281,15 @@ detail называет SID).
   `lxd.log` демона) создают install и copy (§3 п. 8), нет его —
   `missing`; цепочка `ProgramData\sing-box-lxd\logs` — по §6.1. Файл создаёт
   повышенный лаунчер с явным DACL: SYSTEM и Administrators — полный доступ,
-  SID пользователя лаунчера — чтение; reparse point или чужой тип на месте
-  файла — отказ старта с причиной; ротация > 2 МиБ — rename в
+  SID пользователя лаунчера — чтение. install и copy заменяют DACL на всём
+  дереве `<ProgramData>\sing-box-lxd` без исключений (§3 п. 2a) и снимают
+  это чтение, поэтому явный DACL файла лаунчер выставляет на каждом
+  повышенном старте classic, а не только при создании; reparse point или
+  чужой тип на месте файла — отказ старта с причиной; ротация > 2 МиБ — rename в
   `classic.log.old`. Без прав файл читается по полному пути (обход traverse
   — `SeChangeNotifyPrivilege` у Everyone). `CoreLogPath()` после повышенного
   старта отдаёт этот файл (окно логов, профайлер трафика). Уходит вместе
-  со state-каталогом при uninstall с `--purge` (§3 п. 2).
+  со всем `<ProgramData>\sing-box-lxd` при uninstall с `--purge` (§3 п. 2).
 - **Stop, рестарт, Kill** — только по PID своего процесса
   (`KillProcessByPID`); `taskkill /IM sing-box-lxd.exe` запрещён — так же
   зовётся служба.
@@ -306,7 +331,8 @@ Core → Download пишет `<Data>\bin\sing-box.exe` (+ `libcronet.dll`,
 
 Работающий образ на месте не заменить: install/copy останавливает службу и
 меняет файлы через `.old` и rename (§3 п. 3a); повышенный classic из копии живёт на
-старом образе до рестарта.
+старом образе до рестарта, а в каталоге копии до следующего install остаются
+`<член набора>.old` / `.<член набора>.tmp-<hex>` — не Stale (§6.2).
 
 Пин `RequiredCoreVersion` (`1.14.1-lx.13`) → `1.14.2-lx.2` отдельным
 коммитом при релизе ядра (как SPEC 136 §10), до него — CoreTooOld; гейт
@@ -322,7 +348,12 @@ macOS (`lx.12`) новая линия проходит.
   `--state-dir`, гейт версии); `with_lxd` в `windows-arm64` ядро
   подтвердило.
 - **Несколько учётных записей** — служба одна, сопряжение и прокси у
-  каждого свои; последний apply побеждает.
+  каждого свои: имя клиента — на пользователя (`singbox-launcher-<user>`,
+  §5.3), каждая учётная запись держит свою пару и не выбивает чужую;
+  последний apply побеждает.
+- **macOS** — имя клиента остаётся фиксированным `singbox-launcher` (текущее
+  поведение; та же коллизия при нескольких учётных записях — отдельная
+  задача, здесь не решается).
 - **Вне рамок:** Windows как Remote-таргет, named pipe, Authenticode копии,
   установщик (SPEC 140), перезапуск с правами и автозапуск (SPEC 139).
 - **Долг macOS:** `state_directory` tailscale под root остаётся в DataDir —
@@ -363,7 +394,8 @@ macOS (`lx.12`) новая линия проходит.
 9. **Classic с правами.** Копии нет → повышенный Start → `missing` с
    `--service=copy` → Run as administrator → Retry → в Диспетчере задач
    `…\sing-box-lxd.exe run -c config.json`, лог в `classic.log` (у
-   пользователя — чтение); подмена ядра лаунчера → `outdated`; Kill в
+   пользователя — чтение, в том числе после `--service=copy` и нового
+   повышенного старта); подмена ядра лаунчера → `outdated`; Kill в
    «already running» службу не трогает.
 10. **Uninstall** (`--keep-copy`) → `sc query` → 1060, копия на месте,
     `--service=status` → 4; **Remove all data…** → нет ни службы, ни копии.
