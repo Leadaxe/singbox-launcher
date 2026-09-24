@@ -271,11 +271,23 @@ Pre-built binaries are not distributed. Build from source — see [Building from
 
 ### Windows
 
-1. Download from [Releases](https://github.com/Leadaxe/singbox-launcher/releases) — regular archive for Win 10/11, `singbox-launcher-<version>-win64-full.zip` if you want everything inside (core, `wintun.dll`, template, Mesa3D for RDP/VMs without a GPU — nothing is downloaded on first launch), `singbox-launcher-<version>-win7-32.zip` for Windows 7.
-2. Extract to any folder (e.g. `C:\Program Files\singbox-launcher`).
+#### Option 1: installer (recommended, Windows 10 / 11 x64)
+
+1. Download `singbox-launcher-<version>-win64-setup.exe` from [Releases](https://github.com/Leadaxe/singbox-launcher/releases) and run it — one administrator prompt. The program goes to `C:\Program Files\singbox-launcher`, your data to `%LOCALAPPDATA%\singbox-launcher`; the core, `wintun.dll`, the template and Mesa3D are inside, nothing is downloaded on first launch.
+2. Optional tasks: desktop shortcut, launch at startup, software OpenGL (Mesa3D) for RDP / VMs without a GPU.
+3. Open **Wizard** → paste subscription URL → walk through tabs → **Save** → **Start**.
+
+Installing a newer version over it keeps your data; Setup closes a running launcher by itself (the VPN is stopped cleanly). **Settings → Apps** uninstalls it and asks whether to remove your data as well. The installer is not code-signed yet: SmartScreen may show "Windows protected your PC" — **More info → Run anyway**.
+
+#### Option 2: portable ZIP
+
+1. Download from [Releases](https://github.com/Leadaxe/singbox-launcher/releases) — regular archive for Win 10/11, `singbox-launcher-<version>-win64-full.zip` if you want everything inside (core, `wintun.dll`, template, Mesa3D for RDP/VMs without a GPU — nothing is downloaded on first launch), `singbox-launcher-<version>-win7-32.zip` for Windows 7 (no installer there).
+2. Extract to a folder you can write to (e.g. `D:\Tools\singbox-launcher`), not to Program Files: the archive carries `portable.txt`, and the launcher keeps its data next to the program.
 3. Run `singbox-launcher.exe`.
 4. **Local** tab → **Download** to fetch `sing-box.exe`, then **Download wintun.dll** if needed.
 5. Open **Wizard** → paste subscription URL → walk through tabs → **Save** → **Start**.
+
+Moving from a portable copy to the installer: in the old copy switch off **Settings → Storage → Portable mode** (the data moves to `%LOCALAPPDATA%\singbox-launcher`), then install — or carry the settings over with LX Backup.
 
 ### macOS
 
@@ -325,7 +337,7 @@ The launcher separates three roles instead of keeping everything next to the exe
 
 Inside the data directory, the layout is the same `bin/…` tree previous versions kept next to the executable — `bin/config.json`, `bin/wizard_states/` (`state.json`, named snapshots, `remote/<machine-id>/` per paired machine), `bin/subscriptions/<id>.raw`, `bin/rule-sets/*.srs`, `bin/sing-box(.exe)`, `bin/wintun.dll` — it is a stable contract external tools (backup scripts, MCP servers, CI) can rely on.
 
-**Portable mode** keeps everything next to the program folder — the classic "flash drive" layout. It is on by default in every Windows zip release (a `portable.txt` marker ships with it); toggle it from **Settings → Storage → Portable mode**, which moves your data and restarts the app, or drop/remove `portable.txt` next to the executable yourself. It is unavailable on macOS `.app` builds and unnecessary on a bare macOS binary (already portable).
+**Portable mode** keeps everything next to the program folder — the classic "flash drive" layout. It is on by default in every Windows zip release (a `portable.txt` marker ships with it; the installer ships none and removes a leftover one); toggle it from **Settings → Storage → Portable mode**, which moves your data and restarts the app, or drop/remove `portable.txt` next to the executable yourself. It is unavailable on macOS `.app` builds and unnecessary on a bare macOS binary (already portable).
 
 **Environment overrides** (for Flatpak wrappers, packaging, CI, or a non-default disk layout), each independent of the others:
 

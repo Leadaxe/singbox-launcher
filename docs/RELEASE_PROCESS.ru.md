@@ -110,7 +110,7 @@ gh run watch <RUN_ID> --exit-status
 ```
 
 На финише ожидаем:
-- 5 артефактов: `macos.zip`, `macos-catalina.zip`, `win64.zip`, `win64-full.zip` (exe + запиненное ядро + wintun + шаблон + Mesa3D в `mesa3d/`; собирает job release из констант кода), `win7-32.zip` + `checksums.txt`.
+- 6 артефактов: `macos.zip`, `macos-catalina.zip`, `win64-setup.exe` (установщик Inno Setup, SPEC 140: тот же набор, что `win64-full`, без `portable.txt`; собирает job `build-windows-installer`), `win64.zip`, `win64-full.zip` (exe + запиненное ядро + wintun + шаблон + Mesa3D в `mesa3d/`; набор готовит `build/installer/stage_win64_full.sh` из констант кода), `win7-32.zip` + `checksums.txt` (со строкой установщика).
 - Release опубликован (`isDraft=false`, `isPrerelease=false`).
 - Тело содержит Downloads + Checksums + вашу `X-Y-Z.md` без посторонних блоков.
 
@@ -278,7 +278,7 @@ git tag -d vX.Y.Z
 - [ ] `RELEASE_NOTES.md` index обновлён.
 - [ ] Коммит `docs(release): vX.Y.Z notes` запушен.
 - [ ] `main` ← merge `develop`, запушен; тег `vX.Y.Z` запушен **отдельной командой**.
-- [ ] `gh run watch` зелёный, в релизе 4 архива + `checksums.txt`.
+- [ ] `gh run watch` зелёный, в релизе 5 архивов + `win64-setup.exe` + `checksums.txt` (со строкой установщика).
 - [ ] **`main` слит обратно в `develop`** (§1.5) — без этого шага develop «не от тега».
 - [ ] **Source-default `RequiredTemplateRef` забампен** на новый `origin/main` HEAD (§1.5, §5).
 - [ ] `git describe` на develop показывает `vX.Y.Z-0-...` или `vX.Y.Z`.

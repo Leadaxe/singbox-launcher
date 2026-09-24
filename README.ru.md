@@ -279,11 +279,23 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Контроли при�
 
 ### Windows
 
-1. Скачайте релиз с [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) — обычный архив для Win 10/11, `singbox-launcher-<version>-win64-full.zip`, если нужно всё сразу (ядро, `wintun.dll`, шаблон, Mesa3D для RDP/ВМ без GPU — первый запуск ничего не качает), `singbox-launcher-<version>-win7-32.zip` для Windows 7.
-2. Распакуйте в любую папку (например, `C:\Program Files\singbox-launcher`).
+#### Вариант 1: установщик (рекомендуется, Windows 10 / 11 x64)
+
+1. Скачайте `singbox-launcher-<version>-win64-setup.exe` с [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) и запустите — один запрос прав администратора. Программа ставится в `C:\Program Files\singbox-launcher`, данные — в `%LOCALAPPDATA%\singbox-launcher`; ядро, `wintun.dll`, шаблон и Mesa3D уже внутри, первый запуск ничего не качает.
+2. Задачи по желанию: ярлык на рабочем столе, запуск при входе в Windows, программный OpenGL (Mesa3D) для RDP / ВМ без видеокарты.
+3. Откройте **Wizard** → вставьте subscription URL → пройдите вкладки → **Save** → **Start**.
+
+Установка новой версии поверх сохраняет данные; работающий лаунчер установщик закрывает сам (VPN останавливается штатно). Удаление — через **Параметры → Приложения**, с вопросом, удалять ли данные. Установщик пока не подписан: SmartScreen может показать «Windows защитила ваш компьютер» — **Подробнее → Выполнить в любом случае**.
+
+#### Вариант 2: portable-архив
+
+1. Скачайте релиз с [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) — обычный архив для Win 10/11, `singbox-launcher-<version>-win64-full.zip`, если нужно всё сразу (ядро, `wintun.dll`, шаблон, Mesa3D для RDP/ВМ без GPU — первый запуск ничего не качает), `singbox-launcher-<version>-win7-32.zip` для Windows 7 (установщика для неё нет).
+2. Распакуйте в папку с правом записи (например, `D:\Tools\singbox-launcher`), а не в Program Files: в архиве лежит `portable.txt`, и лаунчер держит данные рядом с программой.
 3. Запустите `singbox-launcher.exe`.
 4. Вкладка **Локально** → **Download** скачает `sing-box.exe`, затем **Download wintun.dll** при необходимости.
 5. Откройте **Wizard** → вставьте subscription URL → пройдите вкладки → **Save** → **Start**.
+
+Переход с portable-копии на установщик: в старой копии снимите **Settings → Storage → Portable mode** (данные переедут в `%LOCALAPPDATA%\singbox-launcher`), затем ставьте — или перенесите настройки через LX Backup.
 
 ### macOS
 
@@ -333,7 +345,7 @@ chmod +x singbox-launcher
 
 Внутри каталога данных раскладка — та же структура `bin/…`, что раньше лежала рядом с исполняемым файлом: `bin/config.json`, `bin/wizard_states/` (`state.json`, именованные снапшоты, `remote/<machine-id>/` на сопряжённую машину), `bin/subscriptions/<id>.raw`, `bin/rule-sets/*.srs`, `bin/sing-box(.exe)`, `bin/wintun.dll` — это стабильный контракт, на который могут полагаться внешние инструменты (backup-скрипты, MCP-серверы, CI).
 
-**Portable-режим** держит всё рядом с папкой программы — классическая раскладка «на флешке». Включён по умолчанию во всех zip-релизах для Windows (маркер `portable.txt` идёт вместе с архивом); переключается из **Settings → Storage → Portable mode** (переносит данные и перезапускает приложение), либо маркер `portable.txt` рядом с бинарём можно положить/удалить руками. Недоступен на macOS-сборках `.app` и не нужен для голого бинаря macOS (он и так portable).
+**Portable-режим** держит всё рядом с папкой программы — классическая раскладка «на флешке». Включён по умолчанию во всех zip-релизах для Windows (маркер `portable.txt` идёт вместе с архивом; установщик маркера не ставит и удаляет оставшийся); переключается из **Settings → Storage → Portable mode** (переносит данные и перезапускает приложение), либо маркер `portable.txt` рядом с бинарём можно положить/удалить руками. Недоступен на macOS-сборках `.app` и не нужен для голого бинаря macOS (он и так portable).
 
 **Переменные окружения** (для Flatpak-обёрток, упаковки, CI или нестандартной раскладки дисков), каждая независимо:
 

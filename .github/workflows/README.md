@@ -15,7 +15,7 @@
 
 Параметры: `run_mode` (обязательный выбор), `skip_tests` (boolean), `target` (строка, необязательно).
 
-**target** — какие сборки запускать (через пробел: `macOS`, `Win64`, `Win7`). Пусто = все три. Пример: `macOS Win64` — только macOS и Win64, без Win7.
+**target** — какие сборки запускать (через пробел: `macOS`, `Win64`, `Win7`). Пусто = все три. `Win64` включает и установщик. Пример: `macOS Win64` — только macOS и Win64, без Win7.
 
 ---
 
@@ -43,10 +43,11 @@
   - **build-darwin** — macOS (универсальный .app + Catalina Intel-only); запускается, если `target` пусто или содержит `macOS`.
   - **build-windows** — Win64 (.exe); если `target` пусто или содержит `Win64`.
   - **build-win7** — Win7 x86; если `target` пусто или содержит `Win7`.
+  - **build-windows-installer** — установщик Inno Setup `*-win64-setup.exe` (SPEC 140); после `build-windows`, то же условие (`Win64`). Набор готовит `build/installer/stage_win64_full.sh` (тот же, что у `win64-full.zip`, без `portable.txt`), `VersionInfoVersion` = `X.Y.Z.N` из `git describe --tags --long --match "v[0-9]*" --exclude "*-prerelease"` (не разобралось — job падает), ISCC из образа `windows-latest`, запасной путь — `choco install innosetup`. Отдельный шаг компилирует вариант `/DDaemonService` на пустых заглушках.
   На `macos-latest` два артефакта: универсальный и `*-macos-catalina.zip`.
-- Release job: запускается после успешного выполнения хотя бы одного build для тегов (stable) или при ручном `run_mode=prerelease`; подтягивает только артефакты тех сборок, что реально запускались.
+- Release job: запускается после успешного выполнения хотя бы одного build для тегов (stable) или при ручном `run_mode=prerelease`; подтягивает только артефакты тех сборок, что реально запускались. Установщик поднимается в корень релиза и попадает в `checksums.txt`; в `build` он только артефакт на 30 дней.
 
-Артефакты: `artifacts-darwin`, `artifacts-windows`, `artifacts-macos-catalina`, `artifacts-windows-win7-32`.
+Артефакты: `artifacts-darwin`, `artifacts-windows`, `artifacts-windows-installer`, `artifacts-macos-catalina`, `artifacts-windows-win7-32`.
 
 ---
 
