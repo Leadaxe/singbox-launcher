@@ -708,6 +708,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`public_key`](protocols/masque.md#body-public-key) — set without `private_key` → removed
 - [`shadowsocks`](protocols/shadowsocks.md)
   - [`plugin_opts`](protocols/shadowsocks.md#body-plugin-opts) — set without `plugin` → removed
+- [`tailscale`](protocols/tailscale.md)
+  - [`exit_node_allow_lan_access`](protocols/tailscale.md#body-exit-node-allow-lan-access) — set without `exit_node` → removed
 - [`tls`](protocols/_tls.md)
   - [`client_certificate`](protocols/_tls.md#body-client-certificate) — set without `tls.client_key` → removed
   - [`client_key`](protocols/_tls.md#body-client-key) — set without `tls.client_certificate` → removed
@@ -721,6 +723,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`wireguard`](protocols/wireguard.md)
   - [`ib`](protocols/wireguard.md#body-ib) — set without `ip` → removed
   - [`id`](protocols/wireguard.md#body-id) — set without `ip` → removed
+  - [`ip`](protocols/wireguard.md#body-ip) — set without `id` → removed
 
 <a id="flow_deprecated"></a>
 ### flow_deprecated

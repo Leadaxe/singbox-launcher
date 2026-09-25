@@ -199,6 +199,37 @@ func NewReject(code string, params map[string]string, err error) error {
 	return &RejectError{Code: code, Params: params, Err: err}
 }
 
+// rejectValueParam — имя параметра кода, в который движок кладёт
+// отвергнутое значение: первый параметр, объявленный кодом в warnings.json
+// (`params`); у кода без объявленных — неявный `value`.
+func rejectValueParam(code string) string {
+	if reg, err := registry.Get(); err == nil {
+		if w, ok := reg.Warning(code); ok && len(w.Params) > 0 {
+			return w.Params[0]
+		}
+	}
+	return "value"
+}
+
+// rejectText — диагностический текст отказа селектором. Нормативен код
+// (`dropped[].code`), текст — только для лога и ненормативного `reason`, и
+// строится одинаково для любого кода: ветка по имени кода в движке знала бы
+// частный блок реестра (SPEC 142 B10). Заголовок кода из warnings.json сюда
+// не берётся: у transport_unsupported он описывает замену транспорта
+// (ветка Dart с fallback), а не отбраковку узла.
+func rejectText(code string, params map[string]string) error {
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%q", k, params[k]))
+	}
+	return fmt.Errorf("linkmap: узел отброшен селектором: %s (%s)", code, strings.Join(parts, ", "))
+}
+
 // RejectCode — код отказа из цепочки ошибок; "" — код не назначен.
 func RejectCode(err error) string {
 	var r *RejectError
@@ -347,16 +378,11 @@ func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *
 		// ожиданиях корпуса именно он (`dropped[].code`), а `reason` — текст
 		// стороны, который раннеры не сравнивают.
 		//
-		// Текст всё же разный по КОДУ: «транспорт http ядром не поддержан»
-		// было бы прямой неправдой про обфускацию заголовком — транспорт
-		// `http` у ядра как раз есть (это HTTP/2), не поддержана ИМЕННО
-		// подделка заголовка поверх TCP, и назвать её транспортом значит
-		// увести читателя лога чинить не то.
-		msg := fmt.Errorf("linkmap: транспорт %q ядром не поддержан", st.dropValue)
-		if st.dropCode == "transport_header_unsupported" {
-			msg = fmt.Errorf("linkmap: обфускация заголовком %q поверх TCP ядром не поддержана", st.dropValue)
-		}
-		return nil, NewReject(st.dropCode, map[string]string{"transport": st.dropValue}, msg)
+		// Причину называет КОД, а не ветка по его имени в движке; параметр,
+		// в который едет отвергнутое значение, объявляет код (`params` в
+		// warnings.json), а не движок (SPEC 142 B10).
+		params := map[string]string{rejectValueParam(st.dropCode): st.dropValue}
+		return nil, NewReject(st.dropCode, params, rejectText(st.dropCode, params))
 	}
 
 	// required — ПОСЛЕ обоих проходов и defaults: запись объявлена
@@ -1791,8 +1817,8 @@ func (st *execState) convert(p *registry.Param, val string) (interface{}, bool) 
 				if params == nil {
 					params = map[string]string{}
 				}
-				if _, has := params["transport"]; !has {
-					params["transport"] = val
+				if name := rejectValueParam(code); params[name] == "" {
+					params[name] = val
 				}
 				st.notePath(code, val, params)
 			}

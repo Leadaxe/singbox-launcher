@@ -21,6 +21,7 @@ import (
 	"hash/fnv"
 	"strings"
 
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/debuglog"
 )
@@ -96,17 +97,22 @@ func ApplyTLSTransforms(outbounds []json.RawMessage, opts TLSTransformOptions) [
 
 // isFirstHopTLSOutbound reports whether ob is a first-hop TLS outbound eligible
 // for transforms: has an enabled tls block, no detour (it dials the network
-// itself), and is not a utility/relay type where fragment is meaningless or
-// harmful (direct/block/dns/selector/urltest/naive — naive manages its own
-// TLS/HTTP2 stack; masque carries TLS inside QUIC or its own h2 client, so
-// there is no TCP TLS record stream to cut — the core warns about it, see core
-// SPEC 062 §1.3).
+// itself), and its scheme accepts the transformed field per the registry
+// (contract/registry: tls.fragment allowed_for/forbidden_for). Types the
+// registry does not know as a node (direct/block/dns/selector/urltest) and
+// schemes whose tls.fragment is forbidden (naive — fatal at core start) are
+// skipped; there is no local list of schemes here (SPEC 142 B2).
 func isFirstHopTLSOutbound(ob map[string]interface{}) (map[string]interface{}, bool) {
 	if det, _ := ob["detour"].(string); det != "" {
 		return nil, false
 	}
-	switch t, _ := ob["type"].(string); t {
-	case "direct", "block", "dns", "selector", "urltest", "naive", "masque", "":
+	t, _ := ob["type"].(string)
+	reg, err := registry.Get()
+	if err != nil {
+		return nil, false
+	}
+	scheme, ok := reg.NodeSchemeForSingboxType(t)
+	if !ok || !reg.FieldAllowed(scheme, "tls.fragment") {
 		return nil, false
 	}
 	tls, ok := ob["tls"].(map[string]interface{})

@@ -42,17 +42,18 @@ func TestDeriveTransport(t *testing.T) {
 			want: "tcp",
 		},
 		{name: "trojan without transport is tcp", nodeType: "trojan", raw: map[string]interface{}{}, want: "tcp"},
-		{name: "anytls without transport is tcp", nodeType: "anytls", raw: map[string]interface{}{}, want: "tcp"},
+		// Сменного транспорта у anytls в реестре нет — метки нет.
+		{name: "anytls has no transport", nodeType: "anytls", raw: map[string]interface{}{}, want: ""},
 		{
-			name: "masque network", nodeType: "masque",
-			raw:  map[string]interface{}{"network": "h2"},
+			name: "masque vhttp", nodeType: "masque",
+			raw:  map[string]interface{}{"vhttp": "h2"},
 			want: "h2",
 		},
 		{
-			// Пустой network у masque = дефолт ядра.
-			name: "masque without network defaults to h3", nodeType: "masque",
+			// Пустой vhttp у masque = дефолт поля в реестре.
+			name: "masque without vhttp shows the registry default", nodeType: "masque",
 			raw:  map[string]interface{}{},
-			want: "h3",
+			want: "auto",
 		},
 		{name: "wireguard has no transport", nodeType: "wireguard", raw: map[string]interface{}{}, want: ""},
 		{name: "group has no transport", nodeType: "urltest", raw: map[string]interface{}{}, want: ""},

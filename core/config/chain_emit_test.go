@@ -95,8 +95,8 @@ func TestChainNode_OptionsRoundtrip(t *testing.T) {
 	c.IdleTimeout = "10m"
 	c.StripEvasion = &no
 	c.Strip = map[string]bool{
-		configtypes.ChainStripTLSUTLS:     true,
-		configtypes.ChainStripTLSFragment: false,
+		configtypes.ChainStripTLSUTLS: true,
+		"tls.fragment":                false,
 	}
 	c.Rewrite = map[string]interface{}{"vless": map[string]interface{}{"flow": ""}}
 
@@ -112,7 +112,7 @@ func TestChainNode_OptionsRoundtrip(t *testing.T) {
 		t.Errorf("strip_evasion = %v, ожидали false", ob["strip_evasion"])
 	}
 	strip, ok := ob["strip"].(map[string]interface{})
-	if !ok || strip[configtypes.ChainStripTLSUTLS] != true || strip[configtypes.ChainStripTLSFragment] != false {
+	if !ok || strip[configtypes.ChainStripTLSUTLS] != true || strip["tls.fragment"] != false {
 		t.Errorf("strip = %v", ob["strip"])
 	}
 	if _, ok := ob["rewrite"].(map[string]interface{}); !ok {

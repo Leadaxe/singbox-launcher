@@ -50,6 +50,18 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `true`
 - <a id="body-strip"></a>**`strip`** — Per-option patch to the strip catalogue.
   - Type: object
+- <a id="body-strip-tls-fragment"></a>**`strip.tls.fragment`** — Strip TLS ClientHello fragmentation from inner hops.
+  - Type: bool
+  - Default: `true`
+- <a id="body-strip-multiplex-padding"></a>**`strip.multiplex.padding`** — Strip multiplex padding from inner hops.
+  - Type: bool
+  - Default: `true`
+- <a id="body-strip-xhttp-padding"></a>**`strip.xhttp.padding`** — Strip XHTTP padding from inner hops.
+  - Type: bool
+  - Default: `true`
+- <a id="body-strip-tls-utls"></a>**`strip.tls.utls`** — Strip the uTLS fingerprint from inner hops.
+  - Type: bool
+  - Default: `false`
 - <a id="body-rewrite"></a>**`rewrite`** — JSON merge patch applied to inner hop options.
   - Type: object
 - <a id="body-interrupt-exist-connections"></a>**`interrupt_exist_connections`** — Drop existing connections when the chain changes.

@@ -24,8 +24,10 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/config/nodeflow"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 )
 
 // addServerTailscaleNoteText — подсказка под полем ключа. Текст нормативный
@@ -185,7 +187,9 @@ func tailscaleDocument(tag string, t *tailscaleFields) ([]byte, error) {
 		endpoint["advertise_exit_node"] = true
 	} else {
 		putIfNotEmpty(endpoint, "exit_node", t.exitNode.Text)
-		if strings.TrimSpace(t.exitNode.Text) != "" && t.exitNodeLAN.Checked {
+		// Связь с exit_node судит реестр (requires у
+		// exit_node_allow_lan_access) — через tailscaleVerdict ниже.
+		if t.exitNodeLAN.Checked {
 			endpoint["exit_node_allow_lan_access"] = true
 		}
 	}
@@ -199,6 +203,9 @@ func tailscaleDocument(tag string, t *tailscaleFields) ([]byte, error) {
 	}
 	if tags := splitTailscaleList(t.advTags.Text); len(tags) > 0 {
 		endpoint["advertise_tags"] = tags
+	}
+	if err := tailscaleVerdict(endpoint); err != nil {
+		return nil, err
 	}
 
 	// Связка — не литерал формы: её собирает config.TailscaleBundleFragments,
@@ -218,6 +225,24 @@ func tailscaleDocument(tag string, t *tailscaleFields) ([]byte, error) {
 	}
 	return json.MarshalIndent(doc, "", "  ")
 }
+
+// tailscaleVerdict прогоняет тело узла через санитайзер реестра: поле, которое
+// он снял с кодом уровня warning/error (связи полей, формат), — отказ формы с
+// текстом кода, а не узел без набранного значения (SPEC 142 B7).
+func tailscaleVerdict(endpoint map[string]interface{}) error {
+	res := nodeflow.Sanitize(tailscaleScheme, endpoint)
+	ws := res.Warnings
+	if res.Drop != nil {
+		ws = append([]nodeflow.Warning{*res.Drop}, ws...)
+	}
+	if msg := nodewarn.Summary(nodewarn.FromParsed(ws)); msg != "" {
+		return fmt.Errorf("%s", msg)
+	}
+	return nil
+}
+
+// tailscaleScheme — схема реестра узла Tailscale.
+const tailscaleScheme = "tailscale"
 
 // splitTailscaleList режет список, набранный через запятую или пробелы.
 func splitTailscaleList(text string) []string {
@@ -243,6 +268,11 @@ func splitTailscaleList(text string) []string {
 // Нормализация — обязательная: netip требует, чтобы биты хоста за префиксом
 // были нулями, поэтому «192.168.10.5/24» ядро отвергнет. Masked() приводит его
 // к «192.168.10.0/24» — ровно то, что пользователь имел в виду.
+//
+// Почему не реестр (SPEC 142 B7): format cidr реестра пропускает голый адрес
+// (ядру нужен префикс), маскирование битов хоста — нормализация, которой у
+// реестра нет, а запрет дефолтного маршрута в элементе списка ждёт примитива
+// `item_forbidden_values` (C9). Все три — волна 7; до неё проверка живёт здесь.
 func parseTailscalePrefixList(text string) ([]string, error) {
 	items := splitTailscaleList(text)
 	out := make([]string, 0, len(items))

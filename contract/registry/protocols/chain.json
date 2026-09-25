@@ -32,9 +32,45 @@
       },
       "strip": {
         "type": "object",
+        "order": [
+          "tls.fragment",
+          "multiplex.padding",
+          "xhttp.padding",
+          "tls.utls"
+        ],
+        "fields": {
+          "tls.fragment": {
+            "type": "bool",
+            "default": true,
+            "desc_en": "Strip TLS ClientHello fragmentation from inner hops.",
+            "desc_ru": "Снимать фрагментацию ClientHello у внутренних хопов.",
+            "impl": "Каталог ядра protocol/chain/transform.go stripCatalog: снимается по умолчанию при strip_evasion."
+          },
+          "multiplex.padding": {
+            "type": "bool",
+            "default": true,
+            "desc_en": "Strip multiplex padding from inner hops.",
+            "desc_ru": "Снимать padding мультиплексора у внутренних хопов.",
+            "impl": "Каталог ядра stripCatalog: снимается по умолчанию при strip_evasion."
+          },
+          "xhttp.padding": {
+            "type": "bool",
+            "default": true,
+            "desc_en": "Strip XHTTP padding from inner hops.",
+            "desc_ru": "Снимать padding XHTTP у внутренних хопов.",
+            "impl": "Каталог ядра stripCatalog: снимается по умолчанию при strip_evasion."
+          },
+          "tls.utls": {
+            "type": "bool",
+            "default": false,
+            "desc_en": "Strip the uTLS fingerprint from inner hops.",
+            "desc_ru": "Снимать uTLS-отпечаток у внутренних хопов.",
+            "impl": "Каталог ядра stripCatalog: по умолчанию НЕ снимается. На REALITY-хопе снятие = отказ старта (код chain_strip_utls_on_reality)."
+          }
+        },
         "desc_en": "Per-option patch to the strip catalogue.",
         "desc_ru": "Точечная правка каталога снимаемых опций.",
-        "impl": "map[string]bool поверх каталога ядра; НЕИЗВЕСТНЫЙ ключ = ошибка старта на весь конфиг. Код chain_strip_utls_on_reality: `sing-box check` такую ошибку не ловит, падает только run (память chain-check-misses-start-errors)."
+        "impl": "map[string]bool поверх каталога ядра (protocol/chain/transform.go stripCatalog); `fields` — ЗАКРЫТЫЙ каталог ядра (контракт 1.1.58, SPEC 142 B3), `order` — порядок показа в форме. `default` ключа = снимается ли он при включённом strip_evasion (при strip_evasion=false каталог пуст, действует только патч). Санитайзер это значение не материализует. НЕИЗВЕСТНЫЙ ключ = ошибка старта на весь конфиг — теперь снимается общим unknown_key. Код chain_strip_utls_on_reality: `sing-box check` такую ошибку не ловит, падает только run (память chain-check-misses-start-errors)."
       },
       "rewrite": {
         "type": "object",

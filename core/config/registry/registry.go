@@ -1153,6 +1153,68 @@ func (r *Registry) Field(scheme, path string) (*Field, bool) {
 	return cur, cur != nil
 }
 
+// AllowedForScheme — разрешено ли поле схеме по `allowed_for`/`forbidden_for`.
+// Единственная трактовка пары атрибутов: ею пользуются и санитайзер, и
+// сборка (глобальные трансформы), и формы, — своего списка схем нигде нет.
+func (f *Field) AllowedForScheme(scheme string) bool {
+	if f == nil {
+		return false
+	}
+	for _, sc := range f.ForbiddenFor {
+		if sc == scheme {
+			return false
+		}
+	}
+	if len(f.AllowedFor) == 0 {
+		return true
+	}
+	for _, sc := range f.AllowedFor {
+		if sc == scheme {
+			return true
+		}
+	}
+	return false
+}
+
+// FieldAllowed — есть ли у схемы поле по пути и разрешено ли оно ей.
+func (r *Registry) FieldAllowed(scheme, path string) bool {
+	f, ok := r.Field(scheme, path)
+	return ok && f.AllowedForScheme(scheme)
+}
+
+// FieldsWithBuildTag — корневые поля тела схемы, которым нужна сборка ядра
+// с тегом tag (`build_tag`), в порядке тела. Так форма узнаёт набор полей
+// расширения (AmneziaWG: with_awg) из реестра, а не своим списком.
+func (r *Registry) FieldsWithBuildTag(scheme, tag string) []string {
+	b, ok := r.bodies[scheme]
+	if !ok || tag == "" {
+		return nil
+	}
+	var out []string
+	for _, name := range b.Order {
+		if f := b.Fields[name]; f != nil && f.BuildTag == tag {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// FieldStrings — `values` поля строками (enum для выпадающих списков форм).
+// Пустое значение "" (у реестра оно значит «не задано») пропускается.
+func (r *Registry) FieldStrings(scheme, path string) []string {
+	f, ok := r.Field(scheme, path)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(f.Values))
+	for _, v := range f.Values {
+		if s, ok := v.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // Warning возвращает запись кода из warnings.json.
 func (r *Registry) Warning(code string) (*WarningEntry, bool) {
 	w, ok := r.warnings[code]

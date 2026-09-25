@@ -119,8 +119,8 @@ func newChainForm(parent fyne.Window, cands []chainHopCandidate, realityTags, de
 		parent:        parent,
 		onChange:      onChange,
 		hopsBox:       container.NewVBox(),
-		stripChecks:   make(map[string]*widget.Check, len(configtypes.ChainStripKeys)),
-		stripExplicit: make(map[string]bool, len(configtypes.ChainStripKeys)),
+		stripChecks:   make(map[string]*widget.Check, len(configtypes.ChainStripKeys())),
+		stripExplicit: make(map[string]bool, len(configtypes.ChainStripKeys())),
 		unsupported:   unsupported,
 	}
 	f.rewrite = newRewriteEditor(func() { f.changed() })
@@ -212,12 +212,12 @@ func (f *chainForm) Load(c *configtypes.SourceChain, hops []corestate.NodeLink) 
 		f.stripEvasion.SetChecked(on)
 		f.stripEvasion.OnChanged = prev
 	}
-	f.stripExplicit = make(map[string]bool, len(configtypes.ChainStripKeys))
+	f.stripExplicit = make(map[string]bool, len(configtypes.ChainStripKeys()))
 	if c != nil {
 		// Ключ, лежащий в патче, пользователь задал явно: при движении
 		// общего переключателя его галку не трогаем.
 		for k := range c.Strip {
-			if _, known := configtypes.ChainStripDefault[k]; known {
+			if _, known := configtypes.ChainStripDefault(k); known {
 				f.stripExplicit[k] = true
 			}
 		}
@@ -230,12 +230,13 @@ func (f *chainForm) Load(c *configtypes.SourceChain, hops []corestate.NodeLink) 
 // остальные — по умолчанию ядра с учётом общего переключателя.
 func (f *chainForm) syncStripChecks(c *configtypes.SourceChain) {
 	evasion := c.StripEvasionEnabled()
-	for _, key := range configtypes.ChainStripKeys {
+	for _, key := range configtypes.ChainStripKeys() {
 		chk := f.stripChecks[key]
 		if chk == nil {
 			continue
 		}
-		want := evasion && configtypes.ChainStripDefault[key]
+		def, _ := configtypes.ChainStripDefault(key)
+		want := evasion && def
 		if c != nil {
 			if v, ok := c.Strip[key]; ok {
 				want = v
@@ -298,13 +299,14 @@ func (f *chainForm) Collect() *configtypes.SourceChain {
 		off := false
 		c.StripEvasion = &off
 	}
-	strip := make(map[string]bool, len(configtypes.ChainStripKeys))
-	for _, key := range configtypes.ChainStripKeys {
+	strip := make(map[string]bool, len(configtypes.ChainStripKeys()))
+	for _, key := range configtypes.ChainStripKeys() {
 		chk := f.stripChecks[key]
 		if chk == nil {
 			continue
 		}
-		def := configtypes.ChainStripDefault[key] && c.StripEvasionEnabled()
+		def, _ := configtypes.ChainStripDefault(key)
+		def = def && c.StripEvasionEnabled()
 		if chk.Checked != def {
 			// В патч уезжает только расхождение с умолчанием: писать весь
 			// каталог значило бы зафиксировать сегодняшние умолчания ядра
@@ -415,7 +417,7 @@ func (f *chainForm) Content() fyne.CanvasObject {
 	f.stripEvasion = widget.NewCheck(locale.T("Strip DPI evasion from links"), nil)
 	f.stripEvasion.SetChecked(true)
 	stripRows := container.NewVBox()
-	for _, key := range configtypes.ChainStripKeys {
+	for _, key := range configtypes.ChainStripKeys() {
 		k := key
 		chk := widget.NewCheck(k, func(bool) {
 			f.stripExplicit[k] = true
@@ -433,7 +435,7 @@ func (f *chainForm) Content() fyne.CanvasObject {
 	f.stripEvasion.OnChanged = func(bool) {
 		// Общий переключатель двигает галки каталога к новым умолчаниям,
 		// не трогая явно заданные пользователем: `strip` — патч поверх.
-		for _, key := range configtypes.ChainStripKeys {
+		for _, key := range configtypes.ChainStripKeys() {
 			if f.stripExplicit[key] {
 				continue
 			}
@@ -443,7 +445,8 @@ func (f *chainForm) Content() fyne.CanvasObject {
 			}
 			prev := chk.OnChanged
 			chk.OnChanged = nil
-			chk.SetChecked(f.stripEvasion.Checked && configtypes.ChainStripDefault[key])
+			def, _ := configtypes.ChainStripDefault(key)
+			chk.SetChecked(f.stripEvasion.Checked && def)
 			chk.OnChanged = prev
 		}
 		f.rebuildHops()
@@ -682,7 +685,8 @@ func (f *chainForm) stripsUTLS() bool {
 	if chk := f.stripChecks[configtypes.ChainStripTLSUTLS]; chk != nil {
 		return chk.Checked
 	}
-	return configtypes.ChainStripDefault[configtypes.ChainStripTLSUTLS]
+	def, _ := configtypes.ChainStripDefault(configtypes.ChainStripTLSUTLS)
+	return def
 }
 
 // moveHop переставляет позицию (перетаскивание).
@@ -762,14 +766,16 @@ func (f *chainForm) changed() {
 }
 
 // chainStripHint — расшифровка ключа каталога: сами ключи ядра непрозрачны,
-// а выбор без понимания последствий — не выбор.
+// а выбор без понимания последствий — не выбор. Каталог (набор ключей,
+// порядок, дефолты) — из реестра; здесь только подписи известных ключей,
+// ключ без подписи показывается как есть.
 func chainStripHint(key string) string {
 	switch key {
-	case configtypes.ChainStripTLSFragment:
+	case "tls.fragment":
 		return locale.T("ClientHello fragmentation")
-	case configtypes.ChainStripMultiplexPadding:
+	case "multiplex.padding":
 		return locale.T("multiplex padding")
-	case configtypes.ChainStripXHTTPPadding:
+	case "xhttp.padding":
 		return locale.T("XHTTP padding")
 	case configtypes.ChainStripTLSUTLS:
 		return locale.T("ClientHello fingerprint (must not be stripped on reality nodes)")

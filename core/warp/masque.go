@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"singbox-launcher/core/config/registry"
 )
 
 // MasqueAccount is a registered WARP MASQUE account plus everything needed to
@@ -182,13 +184,11 @@ func (c *Client) RegisterMasque(ctx context.Context, now time.Time, vhttp, sni s
 // Пустой SNI оставлять нельзя: ядро подставит consumer-masque.cloudflareclient.com,
 // туннель встанет, но данные не пойдут — DPI пропускает MASQUE только под
 // нейтральным именем. Вызов без SNI → берём случайное из пула.
+//
+// vhttp судит реестр (masque.body.vhttp): значение из enum — как есть,
+// иное — значение его on_invalid (coerce), пустое — не задано (ToMasqueURI).
 func (a *MasqueAccount) ApplyNodeOptions(vhttp, sni string) {
-	switch vhttp {
-	case "h2", "auto":
-		a.VHTTP = vhttp
-	default:
-		a.VHTTP = "h3"
-	}
+	a.VHTTP = registryVHTTP(vhttp)
 	a.SNI = strings.TrimSpace(sni)
 	if a.SNI == "" {
 		a.SNI = RandomMasqueSNI(nil)
@@ -196,6 +196,38 @@ func (a *MasqueAccount) ApplyNodeOptions(vhttp, sni string) {
 	a.IdleTimeout = "5m"
 	a.KeepAlive = "30s"
 }
+
+// registryVHTTP приводит vhttp по полю реестра masque.body.vhttp: enum,
+// normalize trim_lower и on_invalid coerce. Своего списка значений у WARP нет
+// (SPEC 142 B9).
+func registryVHTTP(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	if v == "" {
+		return ""
+	}
+	reg, err := registry.Get()
+	if err != nil {
+		return v
+	}
+	f, ok := reg.Field(masqueScheme, "vhttp")
+	if !ok {
+		return v
+	}
+	for _, allowed := range f.Values {
+		if s, _ := allowed.(string); s != "" && s == v {
+			return v
+		}
+	}
+	if f.OnInvalid != nil && f.OnInvalid.Action == "coerce" {
+		if s, ok := f.OnInvalid.Value.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// masqueScheme — схема реестра узла MASQUE.
+const masqueScheme = "masque"
 
 // parseMasqueEnroll extracts the MASQUE account from the PATCH-enroll response.
 // The server public key may arrive under config.peers[0].public_key (DER) and

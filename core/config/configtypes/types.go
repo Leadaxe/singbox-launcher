@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/internal/constants"
 )
 
@@ -1084,35 +1085,51 @@ type BuiltChain struct {
 // ChainOutboundType — значение поля `type` в конфиге ядра.
 const ChainOutboundType = "chain"
 
-// Ключи каталога `strip` ядра (`protocol/chain/transform.go:24-27`).
-//
-// Список закрыт: ядро отвергает конфиг на неизвестном ключе, поэтому
-// «на всякий случай» сюда добавлять нечего — новый ключ появляется только
-// вместе с новой версией ядра.
-const (
-	ChainStripTLSFragment      = "tls.fragment"
-	ChainStripMultiplexPadding = "multiplex.padding"
-	ChainStripXHTTPPadding     = "xhttp.padding"
-	ChainStripTLSUTLS          = "tls.utls"
-)
+// ChainStripTLSUTLS — ключ каталога `strip`, снятие которого ломает
+// reality-хопы (проверка конфликта — chain_validate.go, волна C4 SPEC 142).
+const ChainStripTLSUTLS = "tls.utls"
 
-// ChainStripKeys — каталог в порядке показа в форме. Снимаемые по умолчанию
-// идут первыми, tls.utls последним: он единственный не снимается по
-// умолчанию и единственный, снятие которого ломает reality-узлы (T4).
-var ChainStripKeys = []string{
-	ChainStripTLSFragment,
-	ChainStripMultiplexPadding,
-	ChainStripXHTTPPadding,
-	ChainStripTLSUTLS,
+// chainScheme — схема цепочки в реестре контракта.
+const chainScheme = "chain"
+
+// ChainStripKeys — каталог `strip` ядра в порядке показа в форме. Источник —
+// реестр (`chain.json` body.strip.order/fields): каталог закрыт, ядро
+// отвергает конфиг на неизвестном ключе, поэтому своего списка в Go нет.
+func ChainStripKeys() []string {
+	f := chainStripField()
+	if f == nil {
+		return nil
+	}
+	out := make([]string, len(f.Order))
+	copy(out, f.Order)
+	return out
 }
 
-// ChainStripDefault — снимается ли ключ при включённом strip_evasion.
-// Копия каталога ядра; форма показывает по нему исходное состояние галок.
-var ChainStripDefault = map[string]bool{
-	ChainStripTLSFragment:      true,
-	ChainStripMultiplexPadding: true,
-	ChainStripXHTTPPadding:     true,
-	ChainStripTLSUTLS:          false,
+// ChainStripDefault — снимается ли ключ при включённом strip_evasion
+// (`default` поля каталога в реестре); known=false — ключа в каталоге нет.
+func ChainStripDefault(key string) (def, known bool) {
+	f := chainStripField()
+	if f == nil {
+		return false, false
+	}
+	kf, ok := f.Fields[key]
+	if !ok || kf == nil {
+		return false, false
+	}
+	b, _ := kf.Default.(bool)
+	return b, true
+}
+
+func chainStripField() *registry.Field {
+	reg, err := registry.Get()
+	if err != nil {
+		return nil
+	}
+	f, ok := reg.Field(chainScheme, "strip")
+	if !ok {
+		return nil
+	}
+	return f
 }
 
 // HopsOrNil — позиции цепочки, безопасно для nil-приёмника.

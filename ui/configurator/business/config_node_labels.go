@@ -3,6 +3,7 @@ package business
 import (
 	"strings"
 
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/config/subscription"
 )
 
@@ -11,12 +12,6 @@ import (
 // Правила один в один с LxBox (app/lib/models/config_node.dart,
 // _deriveTransport / _deriveSecurity): подзаголовок должен читаться одинаково
 // на телефоне и на десктопе, иначе пользователь сверяет два разных языка.
-
-// tcpLikeProtocols — протоколы, которые без блока transport идут по голому TCP.
-// Для них пустой transport означает "tcp", а не "транспорта нет".
-var tcpLikeProtocols = map[string]struct{}{
-	"vless": {}, "vmess": {}, "trojan": {}, "anytls": {},
-}
 
 // awgNumericKeys — базовые поля обфускации AmneziaWG 1.0.
 var awgNumericKeys = []string{"jc", "jmin", "jmax", "s1", "s2", "h1", "h2", "h3", "h4"}
@@ -28,40 +23,53 @@ var awgSignatureKeys = []string{"i1", "i2", "i3", "i4", "i5"}
 // то есть по сути это уже 1.5.
 var awgMasqueradeKeys = []string{"ip", "id", "ib"}
 
-// deriveTransport возвращает метку транспорта.
-//
-// Правила:
-//   - masque ходит поверх QUIC/h2, транспорт задан полем network; пусто → h3
-//     (дефолт ядра);
-//   - transport.type как есть, но "http" показывается как "h2" — так короче и
-//     совпадает с тем, что пишут провайдеры;
-//   - vless/vmess/trojan/anytls без transport → "tcp";
-//   - иначе пусто (у групп, direct, wireguard транспорта нет).
+// deriveTransport возвращает метку транспорта по типу тела ядра.
 func deriveTransport(nodeType string, raw map[string]interface{}) string {
-	if nodeType == "masque" {
-		// `vhttp` since core SPEC 062; `network` is the legacy spelling, still
-		// present in outbounds imported from older configs.
+	reg, err := registry.Get()
+	if err != nil {
+		return ""
+	}
+	scheme, ok := reg.SchemeForSingboxType(nodeType)
+	if !ok {
+		return ""
+	}
+	return TransportLabel(scheme, raw)
+}
+
+// TransportLabel — метка транспорта узла схемы scheme (подзаголовки списка
+// узлов и превью считают её одной функцией).
+//
+// Что у схемы есть транспорт, знает реестр, а не таблица протоколов
+// (SPEC 142 B8):
+//   - у схемы есть поле `transport` — его type как есть ("http" показывается
+//     как "h2": так короче и так пишут провайдеры), без блока — "tcp";
+//   - у схемы есть поле версии HTTP `vhttp` (транспорт поверх QUIC/h2) — его
+//     значение, пустое = дефолт поля в реестре;
+//   - иначе транспорта нет — пусто (группы, WireGuard, QUIC-протоколы и
+//     протоколы без сменного транспорта).
+func TransportLabel(scheme string, raw map[string]interface{}) string {
+	reg, err := registry.Get()
+	if err != nil {
+		return ""
+	}
+	if _, has := reg.Field(scheme, "transport"); has {
+		if tr, ok := raw["transport"].(map[string]interface{}); ok {
+			if t := strings.TrimSpace(cfgNodeString(tr, "type")); t != "" {
+				if t == "http" {
+					return "h2"
+				}
+				return t
+			}
+		}
+		return "tcp"
+	}
+	if f, has := reg.Field(scheme, "vhttp"); has {
 		if v := strings.TrimSpace(cfgNodeString(raw, "vhttp")); v != "" {
 			return v
 		}
-		if v := strings.TrimSpace(cfgNodeString(raw, "network")); v != "" {
-			return v
+		if def, ok := f.Default.(string); ok {
+			return def
 		}
-		return "h3"
-	}
-
-	if tr, ok := raw["transport"].(map[string]interface{}); ok {
-		t := strings.TrimSpace(cfgNodeString(tr, "type"))
-		if t != "" {
-			if t == "http" {
-				return "h2"
-			}
-			return t
-		}
-	}
-
-	if _, tcpLike := tcpLikeProtocols[nodeType]; tcpLike {
-		return "tcp"
 	}
 	return ""
 }

@@ -230,27 +230,6 @@ func TestBuildWireGuardURI_RoundTrip(t *testing.T) {
 	}
 }
 
-// MTU и keepalive вне разумных границ отвергаются формой.
-func TestBuildWireGuardURI_NumericBounds(t *testing.T) {
-	base := wgURIInput{
-		Host: "h", Port: "51820", Private: testWGPriv, Public: testWGPub, Address: "10.0.0.2/32",
-	}
-	for _, bad := range []string{"1", "100000", "abc"} {
-		in := base
-		in.MTU = bad
-		if _, err := buildWireGuardURI(in); err == nil {
-			t.Errorf("mtu %q must fail", bad)
-		}
-	}
-	for _, bad := range []string{"-1", "70000", "x"} {
-		in := base
-		in.Keepalive = bad
-		if _, err := buildWireGuardURI(in); err == nil {
-			t.Errorf("keepalive %q must fail", bad)
-		}
-	}
-}
-
 // Ключи WireGuard — ровно 32 байта base64. Значения детерминированные и не
 // секретные: важна только длина, которую требует и парсер, и ядро.
 const (
@@ -259,8 +238,9 @@ const (
 	testWGPSK  = "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8="
 )
 
-// Негодный ключ обязан отвергаться формой, а не молча ронять узел в парсере:
-// там он уходит warning'ом в лог, которого человек в форме не увидит.
+// Негодный ключ обязан отвергаться формой (вердиктом движка по реестру), а
+// не молча ронять узел в парсере: там он уходит warning'ом в лог, которого
+// человек в форме не увидит.
 func TestBuildWireGuardURI_RejectsBadKeys(t *testing.T) {
 	base := wgURIInput{
 		Host: "h", Port: "51820", Private: testWGPriv, Public: testWGPub,

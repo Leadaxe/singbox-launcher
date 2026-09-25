@@ -93,9 +93,15 @@
       "exit_node_allow_lan_access": {
         "type": "bool",
         "default": false,
+        "requires": [
+          {
+            "path": "exit_node",
+            "code": "field_requires"
+          }
+        ],
         "desc_en": "Allow LAN access while an exit node is used.",
         "desc_ru": "Разрешать доступ в локальную сеть при использовании выходного узла.",
-        "impl": "option/tailscale.go ExitNodeAllowLANAccess."
+        "impl": "option/tailscale.go ExitNodeAllowLANAccess. Ядро применяет его только внутри ветки `if t.exitNode != \"\"` (protocol/tailscale/endpoint.go) — без exit_node поле бессмысленно: `requires` (контракт 1.1.58, SPEC 142 B7) снимает его с кодом field_requires; прежде ту же связь держала форма добавления узла."
       },
       "advertise_routes": {
         "type": "string_array",

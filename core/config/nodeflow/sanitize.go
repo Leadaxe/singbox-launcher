@@ -611,20 +611,7 @@ func (s *sanitizer) forbiddenCode(f *registry.Field) string {
 
 // allowedForScheme — разрешено ли поле текущей схеме (allowed_for/forbidden_for).
 func (s *sanitizer) allowedForScheme(f *registry.Field) bool {
-	for _, sc := range f.ForbiddenFor {
-		if sc == s.scheme {
-			return false
-		}
-	}
-	if len(f.AllowedFor) > 0 {
-		for _, sc := range f.AllowedFor {
-			if sc == s.scheme {
-				return true
-			}
-		}
-		return false
-	}
-	return true
+	return f.AllowedForScheme(s.scheme)
 }
 
 // value обрабатывает одно поле: связи с соседями, приведение типа, проверки

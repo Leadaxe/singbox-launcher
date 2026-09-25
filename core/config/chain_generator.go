@@ -80,9 +80,9 @@ func ChainEmitError(tag string, c *configtypes.SourceChain) string {
 		}
 	}
 	for key := range c.Strip {
-		if _, known := configtypes.ChainStripDefault[key]; !known {
+		if _, known := configtypes.ChainStripDefault(key); !known {
 			return fmt.Sprintf("strip: unknown key %q (allowed: %s)",
-				key, strings.Join(configtypes.ChainStripKeys, ", "))
+				key, strings.Join(configtypes.ChainStripKeys(), ", "))
 		}
 	}
 	return ""
@@ -124,7 +124,7 @@ func ChainOutboundObject(tag string, c *configtypes.SourceChain) map[string]inte
 	}
 	if len(c.Strip) > 0 {
 		strip := make(map[string]interface{}, len(c.Strip))
-		for _, key := range configtypes.ChainStripKeys {
+		for _, key := range configtypes.ChainStripKeys() {
 			if val, ok := c.Strip[key]; ok {
 				strip[key] = val
 			}

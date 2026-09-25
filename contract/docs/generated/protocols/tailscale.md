@@ -62,6 +62,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-exit-node-allow-lan-access"></a>**`exit_node_allow_lan_access`** — Allow LAN access while an exit node is used.
   - Type: bool
   - Default: `false`
+  - Meaningless without: `exit_node`
 - <a id="body-advertise-routes"></a>**`advertise_routes`** — Prefixes advertised to the tailnet.
   - Type: string_array, format `cidr`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -145,6 +146,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 - [`field_conflict`](../warnings.md#field_conflict)
   - [`exit_node`](#body-exit-node) — conflicts with `advertise_exit_node` → removed
+- [`field_requires`](../warnings.md#field_requires)
+  - [`exit_node_allow_lan_access`](#body-exit-node-allow-lan-access) — set without `exit_node` → removed
 - [`type_invalid`](../warnings.md#type_invalid)
   - [`advertise_routes`](#body-advertise-routes) — the value does not fit the field → removed
   - [`listen_port`](#body-listen-port) — the value does not fit the field → removed
@@ -164,6 +167,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 **The field is removed, the node lives on**
 
 - `advertise_routes` — invalid value
+- `exit_node_allow_lan_access` — conflicts with another field of the same node
 - `exit_node` — conflicts with another field of the same node
 - `inet4_bind_address` — invalid value
 - `listen_port` — invalid value

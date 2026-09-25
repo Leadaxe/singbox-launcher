@@ -48,7 +48,8 @@ func ChainStripsUTLS(c *configtypes.SourceChain) bool {
 	if v, ok := c.Strip[configtypes.ChainStripTLSUTLS]; ok {
 		return v
 	}
-	return c.StripEvasionEnabled() && configtypes.ChainStripDefault[configtypes.ChainStripTLSUTLS]
+	def, _ := configtypes.ChainStripDefault(configtypes.ChainStripTLSUTLS)
+	return c.StripEvasionEnabled() && def
 }
 
 // ChainRealityConflict — теги reality-узлов на позициях цепочки, у которых

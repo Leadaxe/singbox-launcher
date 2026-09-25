@@ -317,7 +317,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Set by link parameter: [`i5`](#link-proto-i5)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - <a id="body-id"></a>**`id`** — Masquerade domain name.
-  - Type: string, format `host`, `…–253`
+  - Type: string, format `host`, must match `^[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?(?:\.[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)*\.?$`, `…–253`
   - Set by link parameter: [`id`](#link-proto-id)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Meaningless without: `ip`
@@ -326,6 +326,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: enum, `""`, `quic`, `dns`, `stun`, `sip`, normalized: `trim_lower`
   - Set by link parameter: [`ip`](#link-proto-ip)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+  - Meaningless without: `id`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - <a id="body-ib"></a>**`ib`** — Client profile imitated inside the masquerade.
   - Type: enum, `""`, `chrome`, `firefox`, `curl`, normalized: `trim_lower`
@@ -456,6 +457,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`peers.address`](#body-peers-address) — the value does not fit the field → node dropped
 - [`field_requires`](../warnings.md#field_requires)
   - [`id`](#body-id) — set without `ip` → removed
+  - [`ip`](#body-ip) — set without `id` → removed
   - [`ib`](#body-ib) — set without `ip` → removed
 - [`port_invalid`](../warnings.md#port_invalid)
   - [`peers.port`](#body-peers-port) — the value does not fit the field → node dropped
@@ -538,6 +540,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `id` — conflicts with another field of the same node
 - `id` — invalid value
 - `inet4_bind_address` — invalid value
+- `ip` — conflicts with another field of the same node
 - `ip` — invalid value
 - `jc` — invalid value
 - `jmax` — invalid value

@@ -165,7 +165,6 @@ func TestApplyAWGSettings_RejectsBadInput(t *testing.T) {
 	}
 	for name, mutate := range map[string]func(*awgSettings){
 		"empty domain":    func(s *awgSettings) { s.Domain = "" },
-		"domain no dot":   func(s *awgSettings) { s.Domain = "localhost" },
 		"domain hyphen":   func(s *awgSettings) { s.Domain = "-bad.example" },
 		"domain bad rune": func(s *awgSettings) { s.Domain = "пример.рф" },
 		"empty jc":        func(s *awgSettings) { s.JC = "" },
@@ -232,7 +231,7 @@ func TestAWGEditableNode(t *testing.T) {
 func TestWriteAWGBody_KeepsTypeOnCleanPipeline(t *testing.T) {
 	body := wgBody(nil)
 	node := wgNodeWithBody(t, body)
-	if err := writeAWGBody(node, body); err != nil {
+	if err := writeAWGBody(node, body, nil); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	if got, _ := bodyOf(t, node)["type"].(string); got != "wireguard" {
