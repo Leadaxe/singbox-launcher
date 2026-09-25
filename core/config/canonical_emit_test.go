@@ -250,10 +250,16 @@ func TestEmitE2_DetourCycleIsFailClosed(t *testing.T) {
 	if hasTag(tags, "A") || hasTag(tags, "B") {
 		t.Errorf("участники кольца detour остались в конфиге: %v", tags)
 	}
-	// Тексты эмиссии — английские ключи локали (SPEC 116 W12, фикс 2);
-	// в тестах каталог не загружен, поэтому проверяется дефолт.
-	if !strings.Contains(joinWarnings(res), "detour loop") {
-		t.Errorf("кольцо не названо пользователю: %v", res.EmissionWarnings)
+	// Кольцо названо пользователю кодом реестра (SPEC 142 волна 10b):
+	// текст берётся из warnings.json и перефразируется, код — нет.
+	named := map[string]bool{}
+	for _, w := range res.EmissionWarnings {
+		if w.Code == codeSourceDetourCycle {
+			named[w.Params["tag"]] = true
+		}
+	}
+	if !named["A"] || !named["B"] {
+		t.Errorf("кольцо не названо пользователю кодом %s: %v", codeSourceDetourCycle, res.EmissionWarnings)
 	}
 }
 

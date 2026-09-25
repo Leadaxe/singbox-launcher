@@ -776,6 +776,7 @@ func (st *bodyParseState) finish() {
 		}
 		members := make([]string, 0)
 		seen := make(map[string]struct{})
+		var lost []string
 		if rawMembers, ok := e.Node.Outbound[configtypes.GroupMembersKey].([]interface{}); ok {
 			for _, item := range rawMembers {
 				memberTag, ok := item.(string)
@@ -785,8 +786,8 @@ func (st *bodyParseState) finish() {
 				raw, found := resolveMember(memberTag)
 				if !found {
 					// Вложенная группа-член или потерянный узел — потеря с
-					// warning, не молча (SPEC Т3).
-					st.warn(fmt.Sprintf("group %q: member %q not resolvable — dropped", e.RawTag, memberTag))
+					// warning, не молча (SPEC Т3); одна запись на группу ниже.
+					lost = append(lost, memberTag)
 					continue
 				}
 				if _, dup := seen[raw]; dup {
@@ -795,6 +796,14 @@ func (st *bodyParseState) finish() {
 				seen[raw] = struct{}{}
 				members = append(members, raw)
 			}
+		}
+		if len(lost) > 0 && len(members) > 0 {
+			// Группа живёт без части членов: код уровня тела (слот
+			// WarningCodes, как у group_empty), не на узле-группе —
+			// warnings у kind=auto контракт пока не разрешает.
+			st.warnCoded(fmt.Sprintf("group %q: %d member(s) not resolvable — dropped (%s)",
+				e.RawTag, len(lost), strings.Join(lost, ", ")),
+				WarnGroupMemberMissing, map[string]string{"count": strconv.Itoa(len(lost))})
 		}
 		if len(members) == 0 {
 			st.warnCoded(fmt.Sprintf("group %q lost all members — dropped", e.RawTag),

@@ -619,7 +619,7 @@
       ],
       "desc": "Часть членов группы не доехала (тег не дал узла, вложенная группа) — группа живёт без них.",
       "dart": "GroupMemberMissingWarning",
-      "go": "в Go кодом не ставится: текстовое предупреждение источника — core/config/subscription/singbox_groups.go:singboxGroupToNode (импорт sing-box); Auto-группы канона — текстовый EmissionWarning, core/config/nodelink_resolve.go:resolveCanonicalGroup"
+      "go": "код уровня тела подписки: core/config/subscription/parse_body.go:bodyParseState.finish (дорезолв состава) → ParsedBody.WarningCodes → FetchWarning.Code/Params; на узел-группу не ставится. Потеря членов при импорте sing-box (core/config/subscription/singbox_groups.go:singboxGroupToNode) и у Auto-группы канона (core/config/nodelink_resolve.go:resolveCanonicalGroup) — пока текстом"
     },
     "reality_pbk_invalid": {
       "severity": "warning",
