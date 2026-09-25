@@ -693,26 +693,33 @@ type EndpointStatus struct {
 // в нём не реализован.
 var ErrEndpointToggleUnsupported = errors.New("core does not support WireGuard on/off — update the core")
 
-// EndpointStatusRPC читает состояние узла из GetOutbounds. ok=false — тега
-// нет или ядро не отдаёт endpointState (старше lx-SPEC 097).
-func EndpointStatusRPC(ctx context.Context, client daemonpb.StartedServiceClient, tag string) (EndpointStatus, bool, error) {
+// EndpointSource — транспорт, отдающий состояния WG/AWG-узлов и выключатель
+// (gRPC: локальный демон или удалённая машина; у Clash API этого нет).
+type EndpointSource interface {
+	// EndpointStatuses — состояния всех WG/AWG-узлов по тегу. Узлы других
+	// типов и ядро без endpointState в карту не попадают.
+	EndpointStatuses() (map[string]EndpointStatus, error)
+	// SetEndpointEnabled возвращает состояние узла после вызова.
+	SetEndpointEnabled(tag string, enabled bool) (string, error)
+}
+
+// EndpointStatusesRPC читает состояния из одного GetOutbounds.
+func EndpointStatusesRPC(ctx context.Context, client daemonpb.StartedServiceClient) (map[string]EndpointStatus, error) {
 	list, err := client.GetOutbounds(ctx, &emptypb.Empty{})
 	if err != nil {
-		return EndpointStatus{}, false, fmt.Errorf("GetOutbounds: %w", err)
+		return nil, fmt.Errorf("GetOutbounds: %w", err)
 	}
+	out := make(map[string]EndpointStatus)
 	for _, o := range list.GetOutbounds() {
-		if o.GetTag() != tag {
+		if o.GetEndpointState() == "" {
 			continue
 		}
-		if o.GetEndpointState() == "" {
-			return EndpointStatus{}, false, nil
-		}
-		return EndpointStatus{
+		out[o.GetTag()] = EndpointStatus{
 			State:     o.GetEndpointState(),
 			IdleSince: time.Duration(o.GetIdleSinceSeconds()) * time.Second,
-		}, true, nil
+		}
 	}
-	return EndpointStatus{}, false, nil
+	return out, nil
 }
 
 // SetEndpointEnabledRPC включает/выключает WG/AWG-узел и возвращает его
@@ -732,14 +739,14 @@ func SetEndpointEnabledRPC(ctx context.Context, client daemonpb.StartedServiceCl
 	return resp.GetState(), nil
 }
 
-// EndpointStatus — состояние WG/AWG-узла на УДАЛЁННОМ ядре.
-func (t *LxdRemoteTransport) EndpointStatus(tag string) (EndpointStatus, bool, error) {
+// EndpointStatuses — состояния WG/AWG-узлов УДАЛЁННОГО ядра.
+func (t *LxdRemoteTransport) EndpointStatuses() (map[string]EndpointStatus, error) {
 	client, ctx, cancel, err := t.rpc()
 	if err != nil {
-		return EndpointStatus{}, false, err
+		return nil, err
 	}
 	defer cancel()
-	return EndpointStatusRPC(ctx, client, tag)
+	return EndpointStatusesRPC(ctx, client)
 }
 
 // SetEndpointEnabled — выключатель WG/AWG-узла на УДАЛЁННОМ ядре. Бюджет как

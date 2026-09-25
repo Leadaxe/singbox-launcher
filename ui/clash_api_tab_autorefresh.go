@@ -51,6 +51,8 @@ type proxyAutoRefresh struct {
 	tick    func()
 	enabled bool // вкладка активна
 	visible bool // окно не свёрнуто
+	// steps — период в секундах; 0 — autoRefreshSteps.
+	steps int
 
 	// onCountdown — индикатор обратного отсчёта: сколько шагов осталось до
 	// запроса (autoRefreshSteps..0). Вызывается раз в секунду, всегда с
@@ -113,13 +115,17 @@ func (r *proxyAutoRefresh) reconcile() {
 		r.stop = stop
 		tick := r.tick
 		countdown := r.onCountdown
+		steps := r.steps
+		if steps <= 0 {
+			steps = autoRefreshSteps
+		}
 		go func() {
 			// Шаг — секунда, а не весь интервал: тот же таймер и запускает
 			// запрос, и гасит значок. Отдельный таймер на анимацию
 			// разъезжался бы с запросами, и пульс шёл бы не в такт.
 			t := time.NewTicker(time.Second)
 			defer t.Stop()
-			left := autoRefreshSteps
+			left := steps
 			if countdown != nil {
 				countdown(left)
 			}
@@ -136,7 +142,7 @@ func (r *proxyAutoRefresh) reconcile() {
 						continue
 					}
 					tick()
-					left = autoRefreshSteps
+					left = steps
 					if countdown != nil {
 						countdown(left)
 					}

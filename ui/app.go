@@ -150,6 +150,16 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 		// Авто-обновление списка узлов идёт только на видимой вкладке Remote:
 		// опрашивать машину, пока пользователь смотрит на Local, незачем.
 		app.remotePanel.AutoRefresh().SetTabActive(item == app.clashAPITab)
+		// Состояния WG/AWG-узлов — у панели на экране; после смены транспорта
+		// выше, чтобы опрос шёл в ядро своей области.
+		app.localPanel.EndpointPoll().SetTabActive(item == coreTabItem)
+		app.remotePanel.EndpointPoll().SetTabActive(item == app.clashAPITab)
+		switch item {
+		case coreTabItem:
+			app.localPanel.RefreshEndpointStates(controller)
+		case app.clashAPITab:
+			app.remotePanel.RefreshEndpointStates(controller)
+		}
 		// Обновляем список только там, где есть с кем разговаривать.
 		//
 		// На Local это локальное ядро — оно есть всегда (RefreshAPIFunc сам
@@ -284,6 +294,10 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// неактивна, а окно — видимо (режим -tray скроет его сам, дёрнув
 	// OnWindowHidden). Тикер поднимется при первом заходе на Remote.
 	app.remotePanel.AutoRefresh().SetWindowVisible(true)
+	app.localPanel.EndpointPoll().SetWindowVisible(true)
+	app.remotePanel.EndpointPoll().SetWindowVisible(true)
+	app.localPanel.EndpointPoll().SetTabActive(true)
+	app.localPanel.RefreshEndpointStates(controller)
 	app.setWindowVisible(true)
 	// Пока окно в трее, обновлять нечего: данные никто не видит, а запросы
 	// продолжали бы будить машину.
@@ -294,6 +308,8 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 				prevShown()
 			}
 			app.remotePanel.AutoRefresh().SetWindowVisible(true)
+			app.localPanel.EndpointPoll().SetWindowVisible(true)
+			app.remotePanel.EndpointPoll().SetWindowVisible(true)
 			// Тот же признак нужен страховке: диалог предела за скрытым окном
 			// остановил бы её цикл навсегда (SPEC 132 §6.2).
 			app.setWindowVisible(true)
@@ -304,6 +320,8 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 				prevHidden()
 			}
 			app.remotePanel.AutoRefresh().SetWindowVisible(false)
+			app.localPanel.EndpointPoll().SetWindowVisible(false)
+			app.remotePanel.EndpointPoll().SetWindowVisible(false)
 			app.setWindowVisible(false)
 		}
 	}

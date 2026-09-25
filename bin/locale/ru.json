@@ -4780,5 +4780,20 @@
   },
   "Disable": {
     "value": "Выключить"
+  },
+  "sleep": {
+    "value": "сон"
+  },
+  "freed": {
+    "value": "освобождён"
+  },
+  "Enable WireGuard": {
+    "value": "Включить WireGuard"
+  },
+  "Disable WireGuard": {
+    "value": "Выключить WireGuard"
+  },
+  "WireGuard switch error: %s": {
+    "value": "Ошибка переключения WireGuard: %s"
   }
 }

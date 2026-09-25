@@ -833,29 +833,6 @@ func (b *DaemonBackend) SetPositionEnabled(chainTag string, pos int, enabled boo
 	return resp.GetWarmupError(), nil
 }
 
-// EndpointStatus implements endpointSource через GetOutbounds.
-func (b *DaemonBackend) EndpointStatus(tag string) (services.EndpointStatus, bool, error) {
-	client, err := b.grpcClient()
-	if err != nil {
-		return services.EndpointStatus{}, false, err
-	}
-	ctx, cancel := context.WithTimeout(b.ctx, daemonRPCTimeout)
-	defer cancel()
-	return services.EndpointStatusRPC(ctx, client, tag)
-}
-
-// SetEndpointEnabled implements endpointSource через lx-RPC
-// SetEndpointEnabled (SPEC 106 ядра).
-func (b *DaemonBackend) SetEndpointEnabled(tag string, enabled bool) (string, error) {
-	client, err := b.grpcClient()
-	if err != nil {
-		return "", err
-	}
-	ctx, cancel := context.WithTimeout(b.ctx, chainProbeCallTimeout())
-	defer cancel()
-	return services.SetEndpointEnabledRPC(ctx, client, tag, enabled)
-}
-
 // --- gRPC-транспорт proxy-операций (Servers tab, tray, auto-load) --------
 
 // daemonProxyTransport реализует services.ProxyTransport поверх gRPC:
@@ -873,6 +850,29 @@ func (t *daemonProxyTransport) rpc() (daemonpb.StartedServiceClient, context.Con
 	}
 	ctx, cancel := context.WithTimeout(t.b.ctx, daemonRPCTimeout)
 	return client, ctx, cancel, nil
+}
+
+// EndpointStatuses implements services.EndpointSource через GetOutbounds.
+func (t *daemonProxyTransport) EndpointStatuses() (map[string]services.EndpointStatus, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	return services.EndpointStatusesRPC(ctx, client)
+}
+
+// SetEndpointEnabled implements services.EndpointSource через lx-RPC
+// SetEndpointEnabled (SPEC 106 ядра). Бюджет как у пробы: включение будит
+// устройство.
+func (t *daemonProxyTransport) SetEndpointEnabled(tag string, enabled bool) (string, error) {
+	client, err := t.b.grpcClient()
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(t.b.ctx, chainProbeCallTimeout())
+	defer cancel()
+	return services.SetEndpointEnabledRPC(ctx, client, tag, enabled)
 }
 
 // GroupProxies implements services.ProxyTransport через GetGroups.

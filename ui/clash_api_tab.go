@@ -84,6 +84,11 @@ type ProxyListPanel struct {
 	// silentRefresh — обновление без побочных эффектов ручного действия
 	// (скролл, статус-строка). Дёргается тикером.
 	silentRefresh func(*core.AppController)
+
+	// endpointPoll / endpointStates — опрос и кеш состояний WG/AWG-узлов
+	// (servers_node_info_wireguard.go). Кеш трогается только в UI-потоке.
+	endpointPoll   *proxyAutoRefresh
+	endpointStates map[string]services.EndpointStatus
 }
 
 // AutoRefresh возвращает тикер авто-обновления панели (nil на Local).
@@ -888,7 +893,14 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 		// SPEC 095 — подзаголовок из config.json. Узел, которого там нет
 		// (гонка перегенерации), просто остаётся без подзаголовка.
-		subtitleText.Text = truncateSubtitle(serversNodeSubtitle(ac, proxyInfo, panel.scope))
+		subtitle := serversNodeSubtitle(ac, proxyInfo, panel.scope)
+		endpointState, hasEndpointState := panel.endpointStateFor(proxyInfo.Name)
+		// Статус WG/AWG — в конце подзаголовка; обрезается состав, а не статус.
+		if word := endpointStateShort(endpointState); hasEndpointState && word != "" && subtitle != "" {
+			suffix := " · " + word
+			subtitle = truncateRunes(subtitle, serversSubtitleMaxRunes-len([]rune(suffix))) + suffix
+		}
+		subtitleText.Text = truncateSubtitle(subtitle)
 		subtitleText.Color = theme.Color(theme.ColorNamePlaceHolder)
 		subtitleText.Refresh()
 
@@ -900,6 +912,11 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		// запускает новый замер (обработчик ниже).
 		delayText.Text = serversDelayText(proxyInfo.Delay)
 		delayText.Color = serversDelayColor(proxyInfo.Delay)
+		// Выключенный вручную узел — не сломанный: вместо красного Error.
+		if hasEndpointState && endpointState.State == services.EndpointStateDisabled {
+			delayText.Text = locale.T("off")
+			delayText.Color = theme.Color(theme.ColorNamePlaceHolder)
+		}
 		delayText.Refresh()
 
 		delayBackground.FillColor = theme.Color(theme.ColorNameInputBackground)
@@ -944,6 +961,13 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			menu := serversProxyContextMenu(ac, status, win, proxyInfo, scope, func() {
 				pingProxy(proxyInfo.Name, retestSetter)
 			})
+			if st, ok := panel.endpointStateFor(proxyInfo.Name); ok {
+				enable := st.State == services.EndpointStateDisabled
+				tag := proxyInfo.Name
+				menu.Items = append(menu.Items, fyne.NewMenuItem(endpointToggleLabel(st), func() {
+					panel.toggleEndpointFromMenu(ac, status, tag, enable)
+				}))
+			}
 			pop := widget.NewPopUpMenu(menu, win.Canvas())
 			pop.ShowAtPosition(pe.AbsolutePosition)
 		}
@@ -1914,6 +1938,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		silentRefreshProxies(c, scope, c.APIService.SelectedClashGroupIn(panel.scope))
 	}
 	panel.startAutoRefresh(ac)
+	panel.startEndpointPoll(ac)
 
 	// На Remote кнопку ↻ подменяет пульсирующий индикатор: он и кнопка (тот же
 	// клик), и показ авто-обновления — значок гаснет к моменту запроса и резко

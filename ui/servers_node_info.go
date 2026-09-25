@@ -279,7 +279,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	// WG/AWG: состояние в ядре и выключатель. Секция сама решает, рисоваться
 	// ли, — по ответу ядра (addWireGuardSection).
 	if !node.IsGroup() {
-		addWireGuardSection(ac, body, win, proxy.Name)
+		addWireGuardSection(ac, body, win, proxy.Name, scope)
 	}
 
 	// TLS-подробности отдельной секцией: их много и они длинные.
@@ -457,12 +457,13 @@ const nodeInfoScrollbarGutter = 5
 // Значение в Entry, а не Label: его можно выделить и скопировать, а длинное
 // значение не растягивает окно (Entry сжимается, Label — нет).
 func infoRow(key, value string) *fyne.Container {
-	row, _ := infoRowEntry(key, value)
+	row, _ := infoRowEntry(key, value, nil)
 	return row
 }
 
-// infoRowEntry — infoRow, отдающий поле значения для последующих обновлений.
-func infoRowEntry(key, value string) (*fyne.Container, *widget.Entry) {
+// infoRowEntry — infoRow, отдающий поле значения для последующих обновлений;
+// right (может быть nil) встаёт справа от поля — кнопка действия над ним.
+func infoRowEntry(key, value string, right fyne.CanvasObject) (*fyne.Container, *widget.Entry) {
 	keyLabel := widget.NewLabel(key)
 	keyLabel.TextStyle.Bold = true
 	keyLabel.Truncation = fyne.TextTruncateEllipsis
@@ -476,7 +477,7 @@ func infoRowEntry(key, value string) (*fyne.Container, *widget.Entry) {
 	valueEntry.SetText(value)
 	valueEntry.Wrapping = fyne.TextWrapOff
 
-	return container.NewBorder(nil, nil, keyCell, nil, valueEntry), valueEntry
+	return container.NewBorder(nil, nil, keyCell, right, valueEntry), valueEntry
 }
 
 // memberRow — строка члена группы с его собственным подзаголовком.
