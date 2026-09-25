@@ -92,7 +92,9 @@
       "type": "mixed"
     },
     {
-      "address": "172.16.0.1/30",
+      "address": [
+        "172.16.0.1/30"
+      ],
       "auto_route": true,
       "mtu": 1492,
       "stack": "system",

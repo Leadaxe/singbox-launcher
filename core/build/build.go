@@ -136,6 +136,13 @@ type Result struct {
 	// доливает записи в реестр исключений поверх парсерных — иначе выпадение
 	// источника снова становится молчаливым.
 	ExcludedSources []SourceExclusion
+
+	// TemplateWarnings — предупреждения подстановки шаблона (SPEC 143):
+	// мусор в числовой переменной, необъявленное имя, неизвестная директива.
+	// Конфиг при этом собран; вызывающий кладёт их в отчёт как
+	// template_degraded, иначе о мусоре в MTU пользователь узнаёт только из
+	// отказа ядра. Отсортированы, без дублей по паре (код, параметры).
+	TemplateWarnings []template.TemplateWarning
 }
 
 // ValidationResult — структура для накопления fatal/warning'ов.
@@ -219,7 +226,7 @@ func effectiveConfig(td *template.TemplateData, vars map[string]string, target t
 	if len(td.RawConfig) == 0 || (len(td.Params) == 0 && len(td.Vars) == 0) {
 		return td.Config, td.ConfigOrder
 	}
-	effective, ord, err := template.GetEffectiveConfigFor(
+	effective, ord, warnings, err := template.GetEffectiveConfigForWarnings(
 		td.RawConfig,
 		td.Params,
 		td.Vars,
@@ -232,6 +239,7 @@ func effectiveConfig(td *template.TemplateData, vars map[string]string, target t
 			fmt.Sprintf("template.GetEffectiveConfig failed (%v); falling back to template defaults", err))
 		return td.Config, td.ConfigOrder
 	}
+	res.TemplateWarnings = warnings
 	return effective, ord
 }
 

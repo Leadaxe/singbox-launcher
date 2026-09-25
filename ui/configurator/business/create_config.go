@@ -78,17 +78,18 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 // пресеты, DNS-порядок) одинаково, поэтому экспортируемый конфиг гарантированно
 // совпадает с тем, что показано в превью.
 func buildConfigFromModel(model *wizardmodels.WizardModel, forPreview bool) (string, error) {
-	text, _, err := buildConfigWithExclusions(model, forPreview)
-	return text, err
+	res, err := buildConfigWithExclusions(model, forPreview)
+	return string(res.ConfigJSON), err
 }
 
-// buildConfigWithExclusions — то же тело, но отдаёт ещё и потери последнего
-// рубежа (SPEC 115). Отдельная функция, а не третий возврат у всех вызывающих:
-// исключения нужны ровно одному пути — сборке для отчёта «Итога», и навязывать
-// их превью с remote-экспортом значило бы заставить их молча их выбрасывать.
-func buildConfigWithExclusions(model *wizardmodels.WizardModel, forPreview bool) (string, []build.SourceExclusion, error) {
+// buildConfigWithExclusions — то же тело, но отдаёт весь build.Result: потери
+// последнего рубежа (SPEC 115) и предупреждения шаблона (SPEC 143). Отдельная
+// функция, а не лишний возврат у всех вызывающих: они нужны ровно одному
+// пути — сборке для отчёта «Итога», и навязывать их превью с remote-экспортом
+// значило бы заставить их молча их выбрасывать.
+func buildConfigWithExclusions(model *wizardmodels.WizardModel, forPreview bool) (build.Result, error) {
 	if model == nil || model.TemplateData == nil {
-		return "", nil, fmt.Errorf("template data not available")
+		return build.Result{}, fmt.Errorf("template data not available")
 	}
 
 	// Mutates model.SettingsVars: материализует dns_* + секреты.
@@ -98,7 +99,7 @@ func buildConfigWithExclusions(model *wizardmodels.WizardModel, forPreview bool)
 	// Гейт «нечего собирать» — по canonical-модели, не по строковому кэшу
 	// (SPEC 117 C6).
 	if len(model.Sources) == 0 {
-		return "", nil, fmt.Errorf("ParserConfig is empty and no template available")
+		return build.Result{}, fmt.Errorf("ParserConfig is empty and no template available")
 	}
 
 	ctx := build.BuildContext{
@@ -200,11 +201,7 @@ func buildConfigWithExclusions(model *wizardmodels.WizardModel, forPreview bool)
 		DNSServerVars: model.TemplateData.DNSServerVars,
 	}
 
-	res, err := build.BuildConfig(ctx)
-	if err != nil {
-		return "", nil, err
-	}
-	return string(res.ConfigJSON), res.ExcludedSources, nil
+	return build.BuildConfig(ctx)
 }
 
 // BuildFinalReportConfig — сборка В ПАМЯТИ для вкладки «Итог» (SPEC 115 §1).
@@ -244,11 +241,13 @@ func BuildFinalReportConfig(model *wizardmodels.WizardModel) (string, config.Bui
 	if gen == 0 {
 		return "", 0, fmt.Errorf("subscriptions were not parsed for this build attempt")
 	}
-	text, excluded, err := buildConfigWithExclusions(model, false)
+	res, err := buildConfigWithExclusions(model, false)
 	if err != nil {
 		return "", gen, err
 	}
-	corepkg.FeedBuildReportFromSanitizer(gen, excluded)
+	corepkg.FeedBuildReportFromSanitizer(gen, res.ExcludedSources)
+	corepkg.FeedBuildReportFromTemplate(gen, res.TemplateWarnings)
+	text := string(res.ConfigJSON)
 	if !config.FinishBuildReport(gen) {
 		// Попытку обогнали, пока шла сборка: правка модели (инвалидация) или
 		// другой писатель реестра. Показывать её отчёт нельзя — в реестре лежит

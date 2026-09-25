@@ -74,6 +74,15 @@ func warningDedupKey(code string, params map[string]string) string {
 	return b.String()
 }
 
+// SortTemplateWarnings упорядочивает предупреждения детерминированно: по коду,
+// затем по параметрам (тот же ключ, что у дедупа). Обход объекта идёт по map,
+// и без сортировки строки «Итога» прыгали бы между сборками одного конфига.
+func SortTemplateWarnings(ws []TemplateWarning) {
+	sort.SliceStable(ws, func(i, j int) bool {
+		return warningDedupKey(ws[i].Code, ws[i].Params) < warningDedupKey(ws[j].Code, ws[j].Params)
+	})
+}
+
 // warnUndeclared — template_var_undeclared {name}; name без ведущего "@".
 func (c *canonCtx) warnUndeclared(name string) {
 	c.warn(warnVarUndeclared, map[string]string{"name": name})

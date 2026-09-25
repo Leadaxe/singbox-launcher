@@ -154,6 +154,17 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 		return fmt.Errorf("config: %w", err)
 	}
 	for _, ref := range refs {
+		// @runtime.* в позиции значения — desktop-расширение §7.2 (SPEC 143
+		// Т15/Т16): подставляется строкой таргета. Неизвестное поле после
+		// «runtime.» — ошибка загрузки, как и необъявленное имя. Bare-форму
+		// в предикатах этот цикл не пропускает дальше: её отвергает
+		// validateIfConstruct ниже.
+		if isRuntimeGlobalRef(ref) {
+			if !isKnownRuntimeGlobal(ref) {
+				return fmt.Errorf("config: unknown runtime global @%s (known: @runtime.platform, @runtime.arch, @runtime.target)", ref)
+			}
+			continue
+		}
 		if _, ok := names[ref]; !ok {
 			return fmt.Errorf("config: @%q is not declared in vars", ref)
 		}

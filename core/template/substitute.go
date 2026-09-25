@@ -536,8 +536,9 @@ func handleIfArrayElementCtx(body map[string]interface{}, varTypes map[string]st
 // скаляра ВНЕ дерева конфига (паритет с mobile evalIfScalar, if_engine.dart:
 // 224-229; SPEC 103, §4.5/§4.6 TEMPLATE_LANG.md). Используется исключительно
 // механизмом on_change.set (on_change.go) — переиспользует тот же движок
-// предикатов (selectIfBranch/evaluateIfCondition/evaluatePredicate), что и
-// substituteWalkCtx, чтобы не заводить второй парсер языка #if.
+// предикатов и тот же канонический обходчик (selectIfBranchCanon,
+// substituteWalkCanon), что и главный конфиг, чтобы не заводить второй парсер
+// языка #if.
 //
 // resolved строится из vars+stateVars через ResolveTemplateVarsFor: on_change
 // вызывается ПОСЛЕ того, как изменённая var уже записана в stateVars новым
@@ -571,20 +572,37 @@ func EvalIfScalar(node json.RawMessage, vars []TemplateVar, stateVars map[string
 	}
 
 	varTypes := make(map[string]string, len(vars))
+	declared := make(map[string]bool, len(vars))
 	for _, v := range vars {
 		if !v.Separator {
 			varTypes[v.Name] = v.Type
+			declared[v.Name] = true
 		}
 	}
 	resolved := ResolveTemplateVarsFor(vars, stateVars, nil, target)
 
-	branch, take := selectIfBranch(body, varTypes, resolved, target)
+	// Канонический обходчик (SPEC 143): та же грамматика #if и та же политика
+	// unresolved, что у главного конфига. Предупреждения здесь — только в лог:
+	// on_change срабатывает в UI при правке переменной, сборки и её отчёта в
+	// этот момент нет.
+	ctx := &canonCtx{varTypes: varTypes, declared: declared, resolved: resolved, target: target}
+	defer func() {
+		SortTemplateWarnings(ctx.warnings)
+		for _, w := range ctx.warnings {
+			debuglog.WarnLog("EvalIfScalar: %s %v", w.Code, w.Params)
+		}
+	}()
+	branch, take := selectIfBranchCanon(ifKeys[0], body, ctx)
 	if !take {
 		return "", false
 	}
 	// Ветка может сама содержать @var-плейсхолдеры (как в конфиг-дереве) —
 	// подставляем их тем же ходом, что и обычный #if в дереве конфига.
-	substituteWalkCtx(&branch, varTypes, resolved, target, nil)
+	substituteWalkCanon(&branch, ctx)
+	if _, dropped := branch.(droppedValue); dropped {
+		// Dropped (§5.1): значения нет — цель не трогаем, как у невыбранной ветки.
+		return "", false
+	}
 	s, ok := branch.(string)
 	if !ok {
 		debuglog.WarnLog("EvalIfScalar: the chosen branch is not a string scalar (%T)", branch)

@@ -1559,7 +1559,7 @@
       ],
       "desc": "Ссылка на имя, не объявленное в vars (опечатка автора шаблона): плейсхолдер остаётся в выводе как есть (TEMPLATE_LANG §5.2), в предикате/гейте → false. Код отдают оба движка; корпус сверяет строго.",
       "dart": "if_engine.dart: templateWarnVarUndeclared (хук onTemplateWarning)",
-      "go": "core/template/substitute_canon.go:replacementCanon, canonCtx.noteVarRef (константа warnVarUndeclared). В сборке Go не ставится: вход core/template/substitute.go:SubstituteVarsInJSONCanon зовут только тесты, сборка идёт через SubstituteVarsInJSON / SubstituteVarsInJSONStrict без кодов"
+      "go": "core/template/substitute_canon.go:replacementCanon, canonCtx.noteVarRef (константа warnVarUndeclared); в отчёт сборки — core/template/loader.go:ApplyTemplateWithVarsForWarnings → core/build/build.go:effectiveConfig (Result.TemplateWarnings) → core/build_report_feed.go:FeedBuildReportFromTemplate (вид template_degraded); в on_change.set — core/template/substitute.go:EvalIfScalar, только лог"
     },
     "template_unknown_directive": {
       "severity": "warning",
@@ -1582,7 +1582,7 @@
       ],
       "desc": "Неизвестный `#`-ключ выброшен (forward-compat, §4.1) ИЛИ невалидная форма условия: #if без/с обоими #and/#or, истинное условие без #value, нечисловое/не-cond значение #enable. Fail-closed: узел не включается (D-058).",
       "dart": "if_engine.dart: templateWarnUnknownDirective",
-      "go": "core/template/substitute_canon.go:substituteWalkCanon, handleIfMapSpreadCanon, selectIfBranchCanon (константа warnUnknownDirective). В сборке Go не ставится: вход core/template/substitute.go:SubstituteVarsInJSONCanon зовут только тесты"
+      "go": "core/template/substitute_canon.go:substituteWalkCanon, handleIfMapSpreadCanon, selectIfBranchCanon (константа warnUnknownDirective); в отчёт сборки — core/template/loader.go:ApplyTemplateWithVarsForWarnings → core/build/build.go:effectiveConfig (Result.TemplateWarnings) → core/build_report_feed.go:FeedBuildReportFromTemplate (вид template_degraded); в on_change.set — core/template/substitute.go:EvalIfScalar, только лог"
     },
     "template_int_clamped": {
       "severity": "warning",
@@ -1606,7 +1606,7 @@
       ],
       "desc": "Значение int-переменной вне [0,65535] клампнуто (uint16-backstop ядра, §2.2).",
       "dart": "test/contract/template_contract_test.dart: _coerceWithWarnings (движок клампит молча)",
-      "go": "core/template/substitute_canon.go:intCastCanon (константа warnIntClamped). В сборке Go не ставится: вход core/template/substitute.go:SubstituteVarsInJSONCanon зовут только тесты"
+      "go": "core/template/substitute_canon.go:intCastCanon (константа warnIntClamped); в отчёт сборки — core/template/loader.go:ApplyTemplateWithVarsForWarnings → core/build/build.go:effectiveConfig (Result.TemplateWarnings) → core/build_report_feed.go:FeedBuildReportFromTemplate (вид template_degraded); в on_change.set — core/template/substitute.go:EvalIfScalar, только лог"
     },
     "template_int_invalid": {
       "severity": "warning",
@@ -1628,7 +1628,7 @@
       ],
       "desc": "int-переменная содержит не число — уезжает в конфиг строкой как есть (опечатка видна, не маскируется нулём; §2.2, D-055).",
       "dart": "test/contract/template_contract_test.dart: _coerceWithWarnings",
-      "go": "core/template/substitute_canon.go:intCastCanon (константа warnIntInvalid). В сборке Go не ставится: вход core/template/substitute.go:SubstituteVarsInJSONCanon зовут только тесты"
+      "go": "core/template/substitute_canon.go:intCastCanon (константа warnIntInvalid); в отчёт сборки — core/template/loader.go:ApplyTemplateWithVarsForWarnings → core/build/build.go:effectiveConfig (Result.TemplateWarnings) → core/build_report_feed.go:FeedBuildReportFromTemplate (вид template_degraded); в on_change.set — core/template/substitute.go:EvalIfScalar, только лог"
     },
     "chain_unsupported_by_core": {
       "severity": "error",

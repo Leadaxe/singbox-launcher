@@ -19,6 +19,7 @@ import (
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/state"
+	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 )
@@ -302,6 +303,36 @@ func FeedBuildReportFromSanitizer(gen config.BuildGeneration, list []build.Sourc
 				Reason:      e.Reason,
 			})
 		}
+	}
+	config.AddBuildReportEntries(gen, entries)
+}
+
+// FeedBuildReportFromTemplate кладёт в отчёт предупреждения подстановки
+// шаблона (SPEC 143, Т18): одна запись на предупреждение.
+//
+// Субъект — имя переменной (template_var_undeclared, template_int_*) или
+// директивы (template_unknown_directive): по нему пользователь находит, что
+// чинить в настройках или в шаблоне. Текст — из реестра по коду на языке UI,
+// поэтому Code и Params уходят как есть, а Reason — сам код: запасная строка
+// на случай, когда реестр не прочитался.
+func FeedBuildReportFromTemplate(gen config.BuildGeneration, warnings []template.TemplateWarning) {
+	if len(warnings) == 0 {
+		return
+	}
+	entries := make([]config.BuildReportEntry, 0, len(warnings))
+	for _, w := range warnings {
+		subject := w.Params["name"]
+		if subject == "" {
+			subject = w.Params["key"]
+		}
+		debuglog.WarnLog("build report: template %s %v", w.Code, w.Params)
+		entries = append(entries, config.BuildReportEntry{
+			Kind:    config.BuildReportTemplateDegraded,
+			Subject: subject,
+			Reason:  w.Code,
+			Code:    w.Code,
+			Params:  w.Params,
+		})
 	}
 	config.AddBuildReportEntries(gen, entries)
 }

@@ -84,20 +84,24 @@ type finalReportLine struct {
 // потери. Внутри вида сохраняется порядок записей (он детерминирован в
 // сборке), поэтому список не прыгает между заходами на вкладку.
 func finalReportLines(entries []config.BuildReportEntry) []finalReportLine {
-	// Источник, не давший ни одного узла, идёт ПЕРВЫМ: он объясняет остальные
-	// записи (у пропавшей подписки следом рвутся ссылки на её узлы), и читать
-	// список сверху вниз надо начиная с корня.
+	// Деградация шаблона идёт ПЕРВОЙ (SPEC 143): мусор в переменной или
+	// директива новее приложения — причина в шаблоне или настройках, и она
+	// объясняет всё, что ниже. Затем источник, не давший ни одного узла: он
+	// объясняет остальные записи (у пропавшей подписки следом рвутся ссылки
+	// на её узлы), и читать список сверху вниз надо начиная с корня.
+	// Текст template_degraded — общий рендер «субъект: текст кода реестра».
 	order := map[config.BuildReportKind]int{
-		config.BuildReportSourceParseFailed: 0,
-		config.BuildReportSourceExcluded:    1,
-		config.BuildReportTargetMissing:     2,
-		config.BuildReportNodesDropped:      3,
-		config.BuildReportChainFailed:       4,
+		config.BuildReportTemplateDegraded:  0,
+		config.BuildReportSourceParseFailed: 1,
+		config.BuildReportSourceExcluded:    2,
+		config.BuildReportTargetMissing:     3,
+		config.BuildReportNodesDropped:      4,
+		config.BuildReportChainFailed:       5,
 		// Деградации обновления и эмиссии — частичные потери у источника,
 		// который работает: после всего, что стоило источника целиком.
-		config.BuildReportFetchDegraded:   5,
-		config.BuildReportEmitDegraded:    6,
-		config.BuildReportCoreUnsupported: 7,
+		config.BuildReportFetchDegraded:   6,
+		config.BuildReportEmitDegraded:    7,
+		config.BuildReportCoreUnsupported: 8,
 	}
 	idx := make([]int, len(entries))
 	for i := range idx {
