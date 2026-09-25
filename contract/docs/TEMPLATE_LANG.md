@@ -111,7 +111,7 @@
 | type | Приведение строки `raw` | Невалидное значение |
 |---|---|---|
 | `bool` | `TrimSpace` + case-insensitive сравнение с `"true"` → JSON `true`/`false`; всё прочее (включая пустую строку) → `false` | не бывает |
-| `int` | `TrimSpace` + целочисленный парс → JSON number; затем **clamp в [0, 65535]** (uint16-backstop: порт/tolerance/MTU вне диапазона роняют ядро на decode) | не число → значение уезжает **строкой как есть** (advisory: опечатка видна в конфиге/валидаторе, а не маскируется нулём; сегодняшний Go `warn + 0` уходит вместе с C5) |
+| `int` | `TrimSpace` + целочисленный парс → JSON number; затем **clamp в [0, 65535]** (uint16-backstop: порт/tolerance/MTU вне диапазона роняют ядро на decode) | не число → значение уезжает **строкой как есть** (advisory: опечатка видна в конфиге/валидаторе, а не маскируется нулём; код `template_int_invalid`) |
 | `text` | строка как есть | — |
 | `text_list` | построчный сплит (`\n`), trim строк, пустые строки выбрасываются → JSON-массив строк; пустое значение → `[]` | — |
 | `enum` | = `text` с закрытыми `options`: строка как есть; принадлежность `options` — забота UI, движок не enforce'ит | — |
@@ -388,7 +388,7 @@ desktop-расширение (§7.2). Движок без поддержки `@r
 
 ## 5. Dropped-каскад и политика unresolved (D-011)
 
-Принята **модель Dart** целиком; Go мигрирует в фазе 3 (разрыв C4).
+Принята **модель Dart** целиком; Go перешёл на неё полностью (разрыв C4 закрыт, SPEC 143).
 
 ### 5.1 Dropped-каскад
 
@@ -407,7 +407,8 @@ Sentinel `Dropped` (`if_engine.dart:21-24`) — «этого значения б
 
 Итог: деградация **пофрагментная** — битая часть пресета выпадает с warning,
 остальное живёт. Строгий режим Go (`SubstituteVarsInJSONStrict` →
-`UnresolvedVarError` → пресет выбрасывается целиком) упраздняется.
+`UnresolvedVarError` → пресет выбрасывается целиком) упразднён (SPEC 143):
+на desktop выпавший фрагмент даёт код `template_fragment_dropped`.
 
 ### 5.2 Unresolved var
 
@@ -417,8 +418,9 @@ Sentinel `Dropped` (`if_engine.dart:21-24`) — «этого значения б
 | Имя объявлено, значение `null` | `Dropped`-каскад §5.1 |
 | Имя не объявлено — в `#if`-предикате | предикат `false` + warning |
 
-Разрыв C4: Go сегодня подставляет `""` + WarnLog
-(`substitute.go:196-202`) — мигрирует.
+Разрыв C4 закрыт (SPEC 143): Go во всех путях сборки (главный конфиг,
+`on_change.set`, тела пресетов, шаблонные DNS-серверы) идёт каноническим
+обходчиком — плейсхолдер остаётся, код `template_var_undeclared`.
 
 ---
 
@@ -646,7 +648,7 @@ C7 = D-012):
 | C1 | bare `"@boolvar"`: Dart строгое `== 'true'` | trim + case-insensitive (§4.2 P1) | ✅ **закрыт** (D-056) | — |
 | C2 | `#notEmpty` на bool-var: Dart всегда true | семантика по типу (§4.2 P3) | ✅ **закрыт** (D-056): `_isNotEmptyTyped` | — |
 | C3 | `#if` без and/or: Go warn+true, нет load-валидации | load-ошибка; рантайм-фолбэк false (§4.1) | ✅ **закрыт** (D-058) с обеих сторон | — |
-| C4 | unresolved: Go `""`+warn, strict роняет пресет целиком | модель Dart: плейсхолдер / Dropped-каскад (§5, D-011) | ✅ **закрыт** (D-054): `SubstituteVarsInJSONCanon` в `substitute_canon.go`; legacy-режимы живут до миграции preset-пути (SPEC 106) | — |
+| C4 | unresolved: Go `""`+warn, strict роняет пресет целиком | модель Dart: плейсхолдер / Dropped-каскад (§5, D-011) | ✅ **закрыт** (D-054): `SubstituteVarsInJSONCanon` в `substitute_canon.go`; legacy-режимы удалены, preset-путь и DNS-серверы на каноне (SPEC 143) | — |
 | C5 | int-каст по хардкод-именам, ошибка → 0 | по объявленному `type` + clamp [0,65535]; не-число → строка (§2.2) | ✅ **закрыт полностью** (D-055, SPEC 143 / D-125): каст только по `type`, списков имён нет ни в одном движке | — |
 | C6 | `text_list` и `#in`-строка-`"@list"` отсутствуют в Dart | тип и обе формы `#in` — ядро (§2.2, §4.2 P4) | ✅ **закрыт** (D-056): `splitTextList`, `_inList` | — |
 | C7 ✅ | префикс тегов пресета отсутствовал в Dart | автопрефикс `<preset_id>:<tag>` (§6.2, D-012) | **закрыт в SPEC 106**: `namespacePresetTags` + heal-редирект старых ссылок (`healPresetTagPrefix`) | `preset_expand.dart`, `post_steps/heal_preset_tag_prefix.dart` |

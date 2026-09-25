@@ -31,7 +31,7 @@ core/template.LoadTemplateData(execDir)
      │   read JSON
      │   ValidateWizardTemplate (including the #if construct and outer @-only — SPEC 067)
      │   ApplyParams(runtime.GOOS) → effective Config sections
-     │   SubstituteVarsInJSON(goos, goarch):
+     │   SubstituteVarsInJSONCanonWarnings(target):
      │     · resolves "@var" placeholders across the whole JSON tree
      │     · handles the "#if" construct (map-spread + array-element),
      │       runtime globals @runtime.platform / @runtime.arch — SPEC 067

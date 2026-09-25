@@ -536,7 +536,7 @@ build.BuildConfig  (pure)
             │
             └─► MergeRouteSection → MergePresetsIntoRoute → ResolveRoute (pure)
                    walk state.Rules kind switch (preset / inline / srs),
-                   ExpandPreset per preset-ref (substitute @vars, eval if/if_or,
+                   ExpandPreset per preset-ref (canonical @var walker, eval if/if_or,
                    prefix tags, clean dangling rule_set refs)
             │
             ▼
@@ -555,6 +555,36 @@ Key properties:
 - **`ExpandPreset` is single-sourced.** Both `ResolveRoute` and `ResolveDNS` call it
   once and consume the result; `evalIf` / if-filtering live in one place
   (`preset_expand.go`, unified in SPEC 070 cleanup Stage 3b).
+- **One template walker (SPEC 143).** Every `@var` / `#if` substitution goes
+  through the canonical walker `template.SubstituteVarsInJSONCanonWarnings`
+  (`core/template/substitute_canon.go`, rules of `contract/docs/TEMPLATE_LANG.md`):
+  the main config (`ApplyTemplateWithVarsForWarnings` /
+  `GetEffectiveConfigForWarnings`), `on_change.set` (`EvalIfScalar`), preset
+  bodies (`substitutePresetBody`, which declares all template vars plus the
+  preset's own, so an empty global drops the key instead of leaking `"@name"`)
+  and template DNS servers (`substituteTemplateDNSServer`). The old lenient and
+  strict walkers and the hard-coded list of numeric var names are gone: a value
+  becomes a number only by its declared `type: int` (`template.CastIntValue`,
+  clamp [0, 65535], a non-number stays a string with a warning; the same cast
+  serves `@var` in `parser_config` via `core/config/varsubst.go`). After the
+  Dropped cascade validity gates run in one place, `preset_expand.go` (preset
+  fragments and template DNS servers alike): a route rule without `outbound`/`action`, a DNS rule without
+  `server`/`action`, a `rule_set` without a source, a DNS server without an
+  address or a rule without conditions is dropped with
+  `template_fragment_dropped`.
+- **Template warnings reach the build report.** The walker returns
+  `[]TemplateWarning{Code, Params}` (deduplicated by code + params):
+  `template_var_undeclared`, `template_unknown_directive`,
+  `template_int_clamped`, `template_int_invalid`, plus
+  `template_fragment_dropped` from the gates. The build collects those of the
+  main config, presets and DNS servers into `build.Result.TemplateWarnings`;
+  `core.FeedBuildReportFromTemplate` (called in `core/rebuild.go` and
+  `ui/configurator/business/create_config.go`, next to the sanitizer feed) turns
+  each into a `template_degraded` entry, which goes **first** in the Summary: a
+  broken setting explains everything below it. Text comes from
+  `contract/registry/warnings.json` by code; nothing blocks Save. Warnings of
+  `on_change.set` (UI edit, no build running) and of the `parser_config`
+  substitution go to the log only.
 - **Outbound JSON generation** was split out of the 1086-LOC monolith into
   `outbound_validity.go` (the three-pass algorithm), `outbound_jsonbuilder.go`
   (the `JSONBuilder` that appends fields in insertion order, replacing the fragile

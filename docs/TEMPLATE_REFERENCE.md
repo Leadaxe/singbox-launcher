@@ -382,7 +382,7 @@ replaces the old one before the first core start.
 
 Template expressions v1 — declarative conditional field inclusion right inside the
 template, with no post-substitution Go hooks. Implemented in
-`core/template/substitute.go::SubstituteVarsInJSON` (the walker) and
+`core/template/substitute_canon.go` (the single canonical walker, entry point `SubstituteVarsInJSONCanonWarnings`, SPEC 143) and
 `core/template/template_validate.go::validateIfConstruct` (load-time
 validation). It covers cases of the form "one field inside an already-emitted
 object depends on a bool var / the runtime platform".

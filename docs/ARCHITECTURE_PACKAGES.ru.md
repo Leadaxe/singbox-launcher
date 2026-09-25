@@ -246,7 +246,7 @@ stdlib и `internal/constants`), лежит **ниже** `internal/platform` (т
 |------|---------|
 | `loader.go` | `LoadTemplateData`: чтение и валидация шаблона, применение params по GOOS, извлечение пресетов, возврат `TemplateData`. |
 | `template_validate.go` | `ValidateWizardTemplate` (уникальность, ссылки, тело `#if`, внешний `@`-only). |
-| `substitute.go` | `SubstituteVarsInJSON`: рекурсивная подстановка `@var` и walker `#if` (map-spread / array-element), runtime-глобалы `@runtime.platform`/`@runtime.arch`. |
+| `substitute.go` | `SubstituteVarsInJSONCanonWarnings` (обходчик в `substitute_canon.go`): единственная подстановка `@var` и walker `#if` (map-spread / array-element) для главного конфига, `on_change.set`, тел пресетов и шаблонных DNS-серверов; runtime-глобалы `@runtime.platform`/`@runtime.arch`/`@runtime.target`; `CastIntValue` (int по объявленному `type`, clamp [0, 65535]). Предупреждения возвращаются как `[]TemplateWarning{Code, Params}` (SPEC 143). |
 | `ifexpr.go` | Формы вычисления предикатов `#if` (равенство, `#in`/`#matches`/`#not`, короткое замыкание AND/OR). |
 | `vars_resolve.go` / `vars_default.go` | Разрешение переменных (`VarAppliesOnGOOS`, `ParamBoolVarTrue`) и выбор объектного `default_value` (GOOS/win7/default). |
 | `preset_loader.go` / `preset_types.go` / `preset_outbounds.go` | Разбор пресетов и типы (rules / dns / outbounds / vars). |

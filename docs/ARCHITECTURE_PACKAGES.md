@@ -245,7 +245,7 @@ semantics: `contract/docs/BACKUP.md`.
 |------|---------|
 | `loader.go` | `LoadTemplateData`: read + validate template, apply params by GOOS, extract presets, return `TemplateData`. |
 | `template_validate.go` | `ValidateWizardTemplate` (uniqueness, refs, `#if` body, outer `@`-only). |
-| `substitute.go` | `SubstituteVarsInJSON`: recursive `@var` substitution + `#if` walker (map-spread / array-element), runtime globals `@runtime.platform`/`@runtime.arch`. |
+| `substitute.go` | `SubstituteVarsInJSONCanonWarnings` (walker in `substitute_canon.go`): the single `@var` substitution + `#if` walker (map-spread / array-element) for the main config, `on_change.set`, preset bodies and template DNS servers; runtime globals `@runtime.platform`/`@runtime.arch`/`@runtime.target`; `CastIntValue` (int by declared `type`, clamp [0, 65535]). Warnings come back as `[]TemplateWarning{Code, Params}` (SPEC 143). |
 | `ifexpr.go` | `#if` predicate evaluation forms (equality, `#in`/`#matches`/`#not`, AND/OR short-circuit). |
 | `vars_resolve.go` / `vars_default.go` | Var resolution (`VarAppliesOnGOOS`, `ParamBoolVarTrue`) + object `default_value` selection (GOOS/win7/default). |
 | `preset_loader.go` / `preset_types.go` / `preset_outbounds.go` | Preset parsing + types (rules / dns / outbounds / vars). |
