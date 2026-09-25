@@ -353,6 +353,31 @@ Two properties fall out of this, and both are load-bearing:
   nodes travel as `OutboundGenerationResult.CoreSkips` into the build report
   (`core_unsupported`). Chains keep their own gate (`ChainSupportProbe`).
 
+SPEC 142 removed the last hand-written per-scheme rules about node fields from
+Go; every such rule is now registry data, read by the same three-stage engine
+above, and `TestRegistryCodeRefsResolve` (`core/config/registry_refs_test.go`)
+keeps the registry's own pointers to code (`refs.go`, `impl`/`go`/`note`)
+truthful — it fails the Contract CI job on any `.go` change if a referenced
+file or identifier no longer exists. Two attributes and two post-walk
+primitives came out of that work:
+
+- **Field role** (`role: credential | private_key`, top-level body fields
+  only) — `registry.Credential`/`registry.FieldWithRole` read a node's account
+  secret (UUID/password/username slot) and its private-key field by role
+  instead of a per-scheme table, so link and JSON inputs agree on what goes in
+  the userinfo slot and which share links need a "contains a private key"
+  confirmation.
+- **`requires[].set`** — a missing required neighbour is *materialised* (with
+  a warning code) instead of the field being dropped, and **`coerce_when`** —
+  a field's already-valid value is replaced under a condition (also coded).
+  Both are judged on the finished body after the sanitizer's normal walk
+  (`deferred`, mode `final`), which is how REALITY↔uTLS became one registry
+  rule instead of a build-time patch (`nodeflow.NodeCoreRefusal`'s sibling for
+  values). Bodies the build does not run through the sanitizer — frozen state
+  bodies, manual `config_json` — still get these two as repairs via
+  `nodeflow.Repairs`, with the code going to the log instead of a stored
+  warning.
+
 Warnings are derived data — recomputable from `origin.raw` — and are stored only
 so the UI can draw ⚠ without re-parsing. `nil` means "never counted" and an empty
 list means "counted, clean"; a one-time pass at load turns the former into the
