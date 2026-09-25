@@ -508,7 +508,7 @@
       ],
       "desc": "Кольцо в detour-цепочке разорвано, узел дозванивается напрямую/без замыкающего ребра. Go: импорт — DebugLog (core/config/subscription/detour_chain.go), свои узлы — сборка (core/config/outbound_generator.go:GenerateOutboundsFromParserConfig).",
       "dart": "DetourCycleBrokenWarning",
-      "go": "в Go кодом не ставится: импорт sing-box снимает замыкающее ребро кольца с записью в debug-лог — core/config/subscription/detour_chain.go:findDetourCycleEdges, singboxChainInfo.attachChain. Свои узлы под этот код не попадают: самоссылка и кольцо detour там fail-closed — узел выбрасывается, а не укорачивается (core/config/outbound_generator.go:sanitizeNodeDetours)"
+      "go": "core/config/subscription/detour_chain.go:singboxChainInfo.attachChain — код на узле импорта sing-box (замыкающее ребро кольца снято, рёбра — core/config/subscription/detour_chain.go:findDetourCycleEdges; вызов из core/config/subscription/singbox_import.go:parseSingboxConfig). Свои узлы под этот код не попадают: самоссылка и кольцо detour на сборке fail-closed — коды source_detour_self и source_detour_cycle"
     },
     "detour_target_missing": {
       "severity": "warning",
@@ -531,7 +531,7 @@
       ],
       "desc": "detour указывает на несуществующий тег ИМПОРТИРУЕМОГО конфига — цепочка обрезается, узел живёт и ходит напрямую. Не путать с source_detour_missing (детур источника, настроенный пользователем, — там fail-closed).",
       "dart": "DetourTargetMissingWarning",
-      "go": "в Go кодом не ставится: импорт sing-box обрезает цепочку с записью в debug-лог — core/config/subscription/detour_chain.go:singboxChainInfo.attachChain (цель detour не найдена)"
+      "go": "core/config/subscription/detour_chain.go:singboxChainInfo.attachChain — код на узле импорта sing-box (цель detour не найдена, цепочка обрезана)"
     },
     "detour_to_group": {
       "severity": "warning",
@@ -554,7 +554,7 @@
       ],
       "desc": "detour на группу (selector/urltest) — группа не может быть хопом цепочки; цепочка обрезается, узел живёт.",
       "dart": "DetourToGroupWarning",
-      "go": "в Go кодом не ставится: импорт sing-box обрезает цепочку с записью в debug-лог — core/config/subscription/detour_chain.go:singboxChainInfo.attachChain (цель detour — группа)"
+      "go": "core/config/subscription/detour_chain.go:singboxChainInfo.attachChain — код на узле импорта sing-box (цель detour — группа, цепочка обрезана)"
     },
     "detour_chain_too_deep": {
       "severity": "warning",
@@ -577,7 +577,7 @@
       ],
       "desc": "Цепочка длиннее max_detour_chain (см. limits.json) — усечена, узел рабочий.",
       "dart": "DetourChainTooDeepWarning",
-      "go": "в Go кодом не ставится: импорт sing-box усекает цепочку с WARN лога — core/config/subscription/detour_chain.go:singboxChainInfo.attachChain (глубина больше maxDetourChainDepth)"
+      "go": "core/config/subscription/detour_chain.go:singboxChainInfo.attachChain — код на узле импорта sing-box (глубина больше maxDetourChainDepth, цепочка усечена)"
     },
     "selector_as_auto": {
       "severity": "info",
@@ -952,10 +952,10 @@
       "params": [],
       "title_en": "SSH: user root substituted",
       "title_ru": "SSH: подставлен пользователь root",
-      "text_en": "The SSH link names no user. root was substituted, because the core rejects an entry without a user and would refuse to start the whole config; change the user if the server expects a different one.",
-      "text_ru": "В SSH-ссылке не указан пользователь. Подставлен root: ядро отвергает запись без пользователя и не запустит весь конфиг. Смените пользователя, если сервер ждёт другого.",
-      "cause_en": "The SSH link was written without the user part before the @ — usually shortened by hand, since many tools default the user silently and the author saw no need to spell it out.",
-      "cause_ru": "Ссылка SSH написана без части с пользователем перед символом @ — обычно её сократили вручную: многие инструменты подставляют пользователя молча, и автор не счёл нужным его указывать.",
+      "text_en": "No SSH user was given. root was written into the node explicitly: the core connects as root when the user is empty anyway, so the connection is unchanged. Change the user if the server expects a different one.",
+      "text_ru": "Пользователь SSH не указан. В узел явно записан root: при пустом пользователе ядро и так подключается как root, поэтому соединение не изменилось. Смените пользователя, если сервер ждёт другого.",
+      "cause_en": "The SSH entry was written without a user — in an imported sing-box config the user key is simply absent, since the core fills in root silently and the author saw no need to spell it out.",
+      "cause_ru": "Запись SSH написана без пользователя — в импортированном конфиге sing-box ключа user просто нет: ядро молча подставляет root, и автор не счёл нужным его указывать.",
       "fix_en": [
         "Nothing to do if the server really accepts root.",
         "If it expects a different user, set it in the node's settings."
@@ -964,9 +964,9 @@
         "Если сервер правда принимает root, делать ничего не нужно.",
         "Если он ждёт другого пользователя, укажите его в настройках узла."
       ],
-      "desc": "SSH-ссылка без пользователя — подставлен root. Прежняя пометка «Desktop-протокол» протухла: ssh в LxBox поддержан. РАСХОЖДЕНИЕ ЖИВО: Go на URI-пути отбраковывает ссылку без user (required записи маппера, field_missing), и код не ставит нигде; Dart на URI-пути делает null-skip (ssh_parser.dart), а в singbox-импорте дефолтит root (json_parsers.dart). Код ставится только на singbox-пути Dart; выравнивание — за Go.",
+      "desc": "Тело ssh без user — root записан в тело явно (контракт 1.1.65): body.fields.user.default_when {absent, value: root, code}. Ядро при пустом user и так берёт root (sing-box protocol/ssh/outbound.go NewOutbound), поведение соединения не меняется — код делает подстановку видимой. Вход ссылки кода не получает: ссылку без user отбивает обязательность userinfo раньше (field_missing, корпус uri/ssh/missing_user_rejected). Dart в singbox-импорте подставляет root без кода (json_parsers.dart), на URI-пути — null-skip.",
       "dart": null,
-      "go": "в Go не ставится: ни одна секция реестра этот код не объявляет (у mappers.uri ssh дефолта username нет), а ссылку с пустым userinfo отбивает обязательность userinfo раньше — core/config/linkmap/exec.go:execState.checkRequired (field_missing). Константа Go снята (core/config/subscription/parse_warnings.go)"
+      "go": "правило реестра contract/registry/protocols/ssh.json body.fields.user.default_when; исполнение — core/config/nodeflow/sanitize.go:sanitizer.object (ветка default_when)"
     },
     "wg_key_invalid": {
       "severity": "error",
@@ -1394,30 +1394,31 @@
       ],
       "desc": "Группа осталась без разрешимых членов — группа в dropped (узлы-члены при этом живут сами по себе).",
       "dart": null,
-      "go": "в Go кодом не ставится: группа снимается с текстовым предупреждением — core/config/subscription/singbox_groups.go:singboxGroupToNode; после перепривязки тегов — WARN лога, core/config/subscription/source_loader.go:rebindImportedGroupNodes; Xray-балансировщик — WARN лога, core/config/subscription/xray_json_array.go:resolveGroupMembers; Auto-группы канона — текстовый EmissionWarning, core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks"
+      "go": "код отбраковки (dropped[].code): пустая группа sing-box — core/config/subscription/singbox_groups.go:singboxGroupToNode → core/config/subscription/singbox_import.go:parseSingboxConfig; группа, опустевшая при дорезолве состава — core/config/subscription/parse_body.go:bodyParseState.finish. Синтезированная Xray-группа исходника не имеет — код уровня тела (FetchWarning.Code): core/config/subscription/xray_json_array.go:resolveGroupMembers → core/config/subscription/parse_body.go:ParseSubscriptionBody. Auto-группа канона на сборке — EmissionWarning.Code в отчёт: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks"
     },
     "detour_with_listen_port": {
       "severity": "warning",
       "params": [
+        "tag",
         "target"
       ],
-      "title_en": "Chain not applied: node listens on a port",
-      "title_ru": "Цепочка не применена: узел слушает порт",
-      "text_en": "This node listens on its own port, so it cannot additionally be routed through {target}. The chain was not applied, because the core rejects that combination and would refuse to start the whole config; the node keeps working.",
-      "text_ru": "Этот узел слушает собственный порт, поэтому дополнительно вести его через {target} нельзя. Цепочка не применена: ядро отвергает такое сочетание и не запустит весь конфиг. Узел продолжает работать.",
-      "cause_en": "The node was set up to listen on its own port, and at the same time a hop was assigned to it — as a source detour or in an imported config. The core does not allow those two together.",
-      "cause_ru": "Узел настроен слушать собственный порт, и одновременно ему назначен хоп — детуром источника или в импортированном конфиге. Ядро не допускает этих двух вещей вместе.",
+      "title_en": "{tag}: listening port removed for the hop",
+      "title_ru": "{tag}: порт прослушивания снят ради хопа",
+      "text_en": "Node {tag} is routed through {target}, and a node that listens on its own port cannot go through a hop: the core rejects that combination and would refuse to start the whole config. The listening port was removed, the hop stays — the node connects through {target}.",
+      "text_ru": "Узел {tag} ведётся через {target}, а узел, слушающий собственный порт, через хоп идти не может: ядро отвергает такое сочетание и не запустит весь конфиг. Порт прослушивания снят, хоп сохранён — узел подключается через {target}.",
+      "cause_en": "The node arrived with its own listening port (from a .conf file, a link or an imported config), and you assigned a hop to it — personally or through its folder. The core does not allow those two together.",
+      "cause_ru": "Узел пришёл с собственным портом прослушивания (из .conf, ссылки или импортированного конфига), а вы назначили ему хоп — лично или через папку. Ядро не допускает этих двух вещей вместе.",
       "fix_en": [
-        "Decide what this node is for: remove its listening port, or drop the assigned hop.",
-        "Nothing to do if the node works as it is — it simply connects without the hop."
+        "Nothing to do if the node works through the hop.",
+        "If the node has to listen on its port, remove the hop assigned to it."
       ],
       "fix_ru": [
-        "Решите, для чего этот узел: уберите у него порт прослушивания либо снимите назначенный хоп.",
-        "Если узел и так работает, делать ничего не нужно — он просто подключается без хопа."
+        "Если узел работает через хоп, делать ничего не нужно.",
+        "Если узлу нужно слушать свой порт, снимите назначенный ему хоп."
       ],
-      "desc": "Узел с listen_port не может получить detour (ядро отвергает сочетание) — detour не применяется, узел живёт. Desktop-механика (source-detour лаунчера).",
+      "desc": "Контракт 1.1.65, SPEC 142 волна 10b. Связь wireguard.json body.fields.listen_port.conflicts {with: detour}: detour — managed-поле (dialer.json), его пишет сборка ПОСЛЕ санитайзера, поэтому связь проверяется по готовому телу на сборке, сразу после проставления detour. Уступает listen_port, detour не трогается (единая строгость detour, fail-closed: снять хоп значило бы тихий прямой дозвон). Факт ядра: sing-box-lx protocol/wireguard/endpoint.go NewEndpoint «`listen_port` is conflict with `detour`» — отказ старта всего конфига; форк в своей цепочке снимает listen_port так же (protocol/chain/transform.go). Desktop-механика (detour, назначенный пользователем).",
       "dart": null,
-      "go": "в Go не ставится, и правила больше нет: проверка listen_port у узла с detour жила в легаси-разрешении detour источника и снята вместе с ним (SPEC 118 W5–W8)"
+      "go": "core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks — после проставления detour (core/config/nodelink_resolve.go:resolveCanonicalDetour) поля, уступающие ему по связи conflicts реестра, снимаются общим core/config/nodelink_resolve.go:yieldToBuildDetour (вопрос к реестру — core/config/registry/registry.go:Registry.YieldsTo); код — EmissionWarning.Code в отчёт сборки"
     },
     "source_detour_missing": {
       "severity": "error",
@@ -1441,7 +1442,53 @@
       ],
       "desc": "Detour-узел, НАЗНАЧЕННЫЙ ПОЛЬЗОВАТЕЛЕМ на источник, не найден — все ноды источника дропаются fail-closed (трафик не должен уйти напрямую мимо приватной границы). Противоположная политика detour_target_missing — там detour приехал из чужого файла и узел живёт direct; различие by design. Desktop-фича.",
       "dart": null,
-      "go": "в Go кодом не ставится: неразрешённый detour узла (NodeLink) выбрасывает узел fail-closed с текстовым EmissionWarning — core/config/nodelink_resolve.go:resolveCanonicalDetour (вызов из ApplyCanonicalNodeLinks)"
+      "go": "EmissionWarning.Code в отчёт сборки, одна запись на пару источник→цель с числом узлов: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks (узлы выпадают fail-closed в core/config/nodelink_resolve.go:resolveCanonicalDetour)"
+    },
+    "source_detour_self": {
+      "severity": "error",
+      "params": [
+        "tag"
+      ],
+      "title_en": "Node {tag} excluded: hop points at itself",
+      "title_ru": "Узел {tag} исключён: хоп указывает на него самого",
+      "text_en": "Node {tag} is routed through itself. It was excluded on purpose: a node cannot be its own hop, and dropping the hop silently would send the traffic directly, past the boundary you set.",
+      "text_ru": "Узел {tag} ведётся через самого себя. Он исключён намеренно: узел не может быть собственным хопом, а молча снять хоп значило бы пустить трафик напрямую, мимо заданной вами границы.",
+      "cause_en": "The hop assigned to the node — personally or through its folder — resolved to the node itself: for example, the folder's hop is one of the folder's own nodes.",
+      "cause_ru": "Хоп, назначенный узлу лично или через папку, разрешился в сам этот узел: например, хопом папки выбран один из её же узлов.",
+      "fix_en": [
+        "Assign a different node as the hop.",
+        "Or take this node out of the folder whose hop it is."
+      ],
+      "fix_ru": [
+        "Назначьте хопом другой узел.",
+        "Или выведите этот узел из папки, хопом которой он служит."
+      ],
+      "desc": "Контракт 1.1.65. detour, НАЗНАЧЕННЫЙ ПОЛЬЗОВАТЕЛЕМ, разрешился в сам узел — узел выпадает fail-closed (та же политика, что source_detour_missing). Не путать с detour_cycle_broken: там кольцо пришло из импортированного конфига, ребро снимается и узел живёт. Desktop-фича.",
+      "dart": null,
+      "go": "EmissionWarning.Code в отчёт сборки: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks (узел роняет core/config/nodelink_resolve.go:resolveCanonicalDetour)"
+    },
+    "source_detour_cycle": {
+      "severity": "error",
+      "params": [
+        "tag"
+      ],
+      "title_en": "Node {tag} excluded: hops form a loop",
+      "title_ru": "Узел {tag} исключён: хопы образуют кольцо",
+      "text_en": "The hops assigned to node {tag} lead back to it. The node was excluded on purpose: the core rejects such a loop and would refuse to start the whole config, and breaking the loop silently would send traffic directly, past the boundary you set.",
+      "text_ru": "Хопы, назначенные узлу {tag}, возвращаются к нему же. Узел исключён намеренно: ядро отвергает такое кольцо и не запустит весь конфиг, а молча разорвать его значило бы пустить трафик напрямую, мимо заданной вами границы.",
+      "cause_en": "Two or more nodes were assigned as hops of each other — personally or through their folders — so the chain of hops closes on itself.",
+      "cause_ru": "Двум или более узлам назначены хопами друг друга — лично или через папки, — и цепочка хопов замыкается сама на себя.",
+      "fix_en": [
+        "Pick the hops so that they do not lead back to the node.",
+        "Or remove the hop from one of the nodes in the loop."
+      ],
+      "fix_ru": [
+        "Подберите хопы так, чтобы они не вели обратно к узлу.",
+        "Или снимите хоп у одного из узлов кольца."
+      ],
+      "desc": "Контракт 1.1.65. Кольцо по рёбрам detour, НАЗНАЧЕННЫМ ПОЛЬЗОВАТЕЛЕМ, — все участники выпадают fail-closed (политика source_detour_missing). Не путать с detour_cycle_broken: там кольцо из импортированного конфига, замыкающее ребро снимается, узел живёт. Desktop-фича.",
+      "dart": null,
+      "go": "EmissionWarning.Code в отчёт сборки: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks (кольца ищет core/config/nodelink_resolve.go:detectCanonicalDetourCycles)"
     },
     "max_nodes_exceeded": {
       "severity": "warning",
@@ -1465,7 +1512,7 @@
       ],
       "desc": "Подписка дала больше max_nodes_per_subscription узлов — хвост отброшен (защита от CIDR-подписок). D-013: Dart добавляет лимит и код.",
       "dart": null,
-      "go": "в Go кодом не ставится: хвост сверх капа отбрасывается с текстовым предупреждением источника — core/config/subscription/parse_body.go:bodyParseState.finish (счёт — bodyParseState.capReached)"
+      "go": "код уровня тела подписки: core/config/subscription/parse_body.go:bodyParseState.finish (счёт — bodyParseState.capReached) → ParsedBody.WarningCodes → FetchWarning.Code/Params в update_status (core/config_service_subscriptions.go:parseFetchWarnings) → отчёт fetch_degraded"
     },
     "template_var_undeclared": {
       "severity": "warning",
@@ -1581,7 +1628,7 @@
       ],
       "desc": "Ядро собрано без with_lx_chain и не знает тип outbound'а chain (SPEC 110). Ядро отвергает конфиг ЦЕЛИКОМ на неизвестном типе, поэтому источник-цепочка не превращается в узел вовсе — иначе одна настроенная цепочка лишила бы пользователя VPN, а не одного маршрута. Тот же приём деградации, что naive_unavailable. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
       "dart": "services/builder/core_chain_capability.dart + chain_nodes.dart:99",
-      "go": "в Go кодом не ставится: цепочка деградирует причиной-текстом ChainDegradation.Reason — core/config/chain_nodes.go:buildChainNode (ветка !supported); вердикт ядра — core/core_chain_capability.go:chainVerdictFromVersionOutput, хук core/config/chain_generator.go:ChainSupportProbe"
+      "go": "ChainDegradation.Code/Params → отчёт chain_failed: core/config/chain_nodes.go:buildChainNode (ветка !supported); вердикт ядра — core/core_chain_capability.go:chainVerdictFromVersionOutput, хук core/config/chain_generator.go:ChainSupportProbe"
     },
     "chain_hop_missing": {
       "severity": "error",
@@ -1605,7 +1652,7 @@
       ],
       "desc": "Позиция цепочки не найдена среди узлов и Направлений: узел исчез из подписки, Направление выключено, или цепочка сослалась на объявленную НИЖЕ по списку (ссылки вперёд запрещены — этим исключены циклы между цепочками). Цепочка выпадает ЦЕЛИКОМ, а не теряет одну позицию: маршрут без хопа это другой маршрут, а ссылка в никуда не даёт ядру стартовать. Не путать с detour_target_missing — там узел живёт и ходит напрямую. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
       "dart": "services/builder/chain_nodes.dart:137",
-      "go": "в Go кодом не ставится: цепочка деградирует причиной-текстом ChainDegradation.Reason — core/config/chain_nodes.go:buildChainNode (позиция не найдена среди узлов и Направлений)"
+      "go": "ChainDegradation.Code/Params → отчёт chain_failed: core/config/chain_nodes.go:buildChainNode (позиция не найдена среди узлов и Направлений)"
     },
     "chain_invalid": {
       "severity": "error",
@@ -1628,7 +1675,7 @@
       ],
       "desc": "Цепочка нарушает инвариант ядра: меньше двух позиций, пустой тег, ссылка на саму себя, повтор позиции или неизвестный ключ каталога strip (protocol/chain/chain.go:85-100). Каждое из этих условий не даёт стартовать всему конфигу, поэтому запись не эмитится. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
       "dart": "services/builder/chain_nodes.dart:107,117",
-      "go": "в Go кодом не ставится: причина-текст core/config/chain_generator.go:ChainEmitError уходит в ChainDegradation.Reason (core/config/chain_nodes.go:buildChainNode)"
+      "go": "ChainDegradation.Code/Params → отчёт chain_failed: core/config/chain_nodes.go:buildChainNode (причина — core/config/chain_generator.go:ChainEmitError или коллизия тега)"
     },
     "chain_strip_utls_on_reality": {
       "severity": "warning",
@@ -1651,7 +1698,7 @@
       ],
       "desc": "Контракт 1.1.61, SPEC 142 B4: chain.json strip.tls.utls.on_hop_required {action: unstrip}. Ключ каталога снимается с патча цепочки, когда тело хопа на позиции >= 1 этот путь требует — санитайзер вернул бы его связью requires с set (tls.reality.enabled → tls.utls.enabled; nodeflow.StripBlocked). Цепочка собирается, uTLS остаётся у всех звеньев. Факт ядра: sing-box-lx protocol/chain/transform.go «strip tls.utls: node uses reality, which requires utls» — отказ старта (sing-box check не ловит, память chain-check-misses-start-errors); каталог ядро применяет ко всей цепочке разом (buildStripSet). Прежде цепочка выпадала целиком (severity error) по рукописной копии правила (прежний ChainRealityConflict). МЕХАНИЗМ DART: строковый код рядом с цепочкой и/или находка формы ChainIssueCode.",
       "dart": "screens/chain_edit/chain_form_validation.dart (ChainIssueCode.stripUtlsOnReality)",
-      "go": "contract/registry/protocols/chain.json body.fields.strip.fields.tls.utls.on_hop_required; исполнение — core/config/chain_validate.go:ChainUnstripRequired (вызов — core/config/chain_nodes.go)"
+      "go": "contract/registry/protocols/chain.json body.fields.strip.fields.tls.utls.on_hop_required; исполнение — core/config/chain_validate.go:ChainUnstripRequired; EmissionWarning.Code в отчёт сборки — core/config/chain_nodes.go:ResolveChainSources"
     },
     "chain_nested_position": {
       "severity": "error",
@@ -1675,7 +1722,7 @@
       ],
       "desc": "Вложенная цепочка стоит не на позиции 0. Ядро допускает её только первой (protocol/chain/chain.go:279): звено — это «узел через предыдущую позицию», а цепочка не узел и не пересобирается под чужой диалер. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
       "dart": "services/builder/chain_nodes.dart:154",
-      "go": "в Go кодом не ставится: причина-текст по core/config/chain_validate.go:ChainNestedConflict уходит в ChainDegradation.Reason (core/config/chain_nodes.go:buildChainNode)"
+      "go": "ChainDegradation.Code/Params → отчёт chain_failed: core/config/chain_nodes.go:buildChainNode (проверка — core/config/chain_validate.go:ChainNestedConflict)"
     },
     "chain_cycle_through_direction": {
       "severity": "warning",
@@ -1699,7 +1746,30 @@
       ],
       "desc": "Направление не взяло в состав цепочку, которая через это же Направление проходит (SPEC 110 T9). Самый частый случай: цепочка [proxy-out, exit] при фильтре «все узлы» у proxy-out. Ядро на таком не падает — оно развернёт позицию в то, что группа выбрала сейчас, — но пользователь получил бы маршрут, которого не задумывал: выбрав цепочку внутри группы, он замкнул бы трафик на неё же. Проверяется транзитивно, включая цепочку через цепочку. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
       "dart": "services/builder/chain_nodes.dart (T9) + screens/chain_edit/chain_form_validation.dart",
-      "go": "в Go кодом не ставится: цепочка не берётся в состав Направления с WARN лога — core/config/chain_cycle.go:dropChainsThroughDirection"
+      "go": "EmissionWarning.Code в отчёт сборки (адресат — Направление): core/config/chain_cycle.go:chainCycleWarnings; цепочку из состава снимает core/config/chain_cycle.go:dropChainsThroughDirection"
+    },
+    "direction_filter_matched_nothing": {
+      "severity": "warning",
+      "params": [
+        "direction",
+        "filter",
+        "count"
+      ],
+      "title_en": "Direction {direction}: filter matched no nodes",
+      "title_ru": "Направление {direction}: фильтр не выбрал ни одного узла",
+      "text_en": "The node filter {filter} of direction {direction} matched none of the {count} nodes. The direction was left without nodes, so its traffic is blocked (the default member).",
+      "text_ru": "Фильтр узлов {filter} у Направления {direction} не выбрал ни одного из {count} узлов. Направление осталось без узлов, и его трафик блокируется (член по умолчанию).",
+      "cause_en": "The filter no longer matches the node names — typically the provider renamed its servers, or the filter was written for another subscription.",
+      "cause_ru": "Фильтр больше не совпадает с именами узлов — обычно провайдер переименовал серверы, или фильтр писался под другую подписку.",
+      "fix_en": [
+        "Check the node filter of the direction against the current node names."
+      ],
+      "fix_ru": [
+        "Сверьте фильтр узлов Направления с текущими именами узлов."
+      ],
+      "desc": "Фильтр узлов Направления не выбрал ни одного узла при непустом пуле — Направление эмитится с блокирующим членом по умолчанию. Пустой пул (узлов нет вовсе) — вина подписки, код не ставится. Код корпуса direction/empty_direction_blocks; зарегистрирован контрактом 1.1.65 (прежде корпус ставил код, которого в реестре не было).",
+      "dart": "test/contract/direction_corpus_test.dart (_isFilterMatchedNothing)",
+      "go": "в Go кодом не ставится: WARN лога и имя Направления в OutboundGenerationResult.EmptyDirections — core/config/direction_twins.go:warnEmptyDirection; код ставит раннер корпуса Направлений"
     },
     "dialer_proxy_unusable": {
       "severity": "error",
@@ -2184,27 +2254,6 @@
       "desc": "Строка состава со схемой, которую не ведёт ни одна секция реестра (последний отказ ParseNode). Прежде причина ехала только текстом Go «unsupported scheme» без машинного кода, и мобильная сторона не могла сверить отбраковку. Отличается от protocol_unsupported: там ядро не умеет ТИП outbound'а из JSON-тела, здесь реестр не знает СХЕМУ ссылки. От service_record_ignored — тем, что про эту схему мы не знаем ничего, а про служебную знаем, что она узлом не является. Граница с form_unrecognized (CANON §4.1): этот код ставится только строке формы xxx://; текст без схемы, а также строка с опознанной схемой и непрочитанным пейлоадом — form_unrecognized.",
       "dart": null,
       "go": "core/config/subscription/node_parser_core.go:ParseNode"
-    },
-    "body_dialect_unrecognized": {
-      "severity": "error",
-      "params": [],
-      "title_en": "Subscription: config dialect was read as the wrong one",
-      "title_ru": "Подписка: диалект конфига прочитан не тот",
-      "text_en": "The subscription body is a whole config, but its dialect was determined incorrectly, and the entries were read by a parser meant for another dialect. No nodes were imported.",
-      "text_ru": "Тело подписки — целый конфиг, но его диалект определён неверно, и записи читал разбор, предназначенный другому диалекту. Ни один узел не импортирован.",
-      "cause_en": "An Xray config and a sing-box config have the same shape (`outbounds` with a list of entries) and differ only in what the entry itself is called: `protocol` for Xray, `type` for sing-box. A classifier that asks only for `outbounds` hands an Xray config to the sing-box parser, which finds no `type` in a single entry.",
-      "cause_ru": "Конфиг Xray и конфиг sing-box имеют одну форму (`outbounds` со списком записей) и различаются только тем, как называется сама запись: у Xray — `protocol`, у sing-box — `type`. Классификатор, спрашивающий лишь `outbounds`, отдаёт конфиг Xray разбору sing-box, и тот не находит `type` ни у одной записи.",
-      "fix_en": [
-        "Update the application: the dialect check is part of the parser.",
-        "As a workaround, wrap the config in a JSON array of one element — an array of configs is recognised correctly."
-      ],
-      "fix_ru": [
-        "Обновите приложение: проверка диалекта — часть разбора.",
-        "Как обходной путь оберните конфиг в JSON-массив из одного элемента — массив конфигов опознаётся верно."
-      ],
-      "desc": "Диагностический код ступени КЛАССИФИКАЦИИ, а не разбора записи: тело опознано целым конфигом, но диалект спрошен не был. Заведён вместе с исправлением (source_kinds.json xray_config, prio 35): реестр признак диалекта объявлял, а рукописный сниффер (core/config/subscription/body_classify.go) его не спрашивал, и одиночный конфиг Xray давал ноль узлов с отбраковкой «missing type» на каждой записи. Ставится там, где ступень всё же промахнулась — код без пути к нему был бы мёртвыми данными, поэтому он объявлен body-level (на подписку, не на узел).",
-      "dart": null,
-      "go": "в Go не ставится: константа WarnBodyDialectUnrecognized (core/config/subscription/parse_warnings.go) объявлена, но нигде не используется; промах, который описывает код, предотвращает core/config/subscription/body_classify.go:classifyJSONObjectBody — диалект Xray спрашивается до ветки sing-box-конфига"
     },
     "xray_domain_strategy_ignored": {
       "severity": "info",

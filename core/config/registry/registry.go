@@ -1349,6 +1349,57 @@ func (r *Registry) FieldAllowedOn(scheme, path string, body map[string]interface
 	return true
 }
 
+// BodyYield — поле готового тела, которое санитайзер снял бы связью
+// `conflicts` с соседом, дописанным в тело уже после санитайзера.
+type BodyYield struct {
+	// Path — путь уступающего поля от корня тела.
+	Path string
+	// With — сосед, которому поле уступает.
+	With string
+	// Code — код связи (пусто — связь кода не назвала).
+	Code string
+}
+
+// YieldsTo — поля готового тела body схемы, которые санитайзер снял бы
+// связью `conflicts {with}`, будь сосед with в теле уже при обходе. Вопрос
+// того, кто дописывает managed-поле после санитайзера: detour пишет сборка,
+// в теле состояния его нет, и связь при санитайзе не срабатывает никогда.
+// Трактовка связи — та же, что у FieldAllowedOn (`when` верно, сосед задан,
+// не задан ни один путь `unless_set`); пути — от корня тела. Порядок —
+// порядок обхода тела.
+func (r *Registry) YieldsTo(scheme, with string, body map[string]interface{}) []BodyYield {
+	if with == "" {
+		return nil
+	}
+	if _, present := bodyValue(body, with); !present {
+		return nil
+	}
+	var out []BodyYield
+	r.WalkPresent(scheme, body, func(path string, f *Field, _ interface{}) {
+		if !f.AllowedForScheme(scheme) {
+			return
+		}
+		for _, c := range f.Conflicts {
+			if c.With != with || !c.When.HoldsOn(body) {
+				continue
+			}
+			unless := false
+			for _, u := range c.UnlessSet {
+				if _, present := bodyValue(body, u); present {
+					unless = true
+					break
+				}
+			}
+			if unless {
+				continue
+			}
+			out = append(out, BodyYield{Path: path, With: with, Code: c.Code})
+			return
+		}
+	})
+	return out
+}
+
 // FieldsWithBuildTag — корневые поля тела схемы, которым нужна сборка ядра
 // с тегом tag (`build_tag`), в порядке тела. Так форма узнаёт набор полей
 // расширения (AmneziaWG: with_awg) из реестра, а не своим списком.

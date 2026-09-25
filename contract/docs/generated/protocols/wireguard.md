@@ -490,8 +490,9 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`mtu`](#body-mtu) — the value is above `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) → replaced with `1280`
 - [`awg_mtu_high`](../warnings.md#awg_mtu_high)
   - [`mtu`](#body-mtu) — the value is above `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more), but the body came from `singbox` → kept with a notice
-- [`field_conflict`](../warnings.md#field_conflict)
+- [`detour_with_listen_port`](../warnings.md#detour_with_listen_port)
   - [`listen_port`](#body-listen-port) — conflicts with `detour` → removed
+- [`field_conflict`](../warnings.md#field_conflict)
   - [`i1`](#body-i1) — conflicts with `id` → removed
   - [`i1`](#body-i1) — conflicts with `ip` → removed
   - [`i1`](#body-i1) — conflicts with `ib` → removed

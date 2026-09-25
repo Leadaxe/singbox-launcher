@@ -1030,6 +1030,9 @@
   "%d node(s) dropped: detour target %q is gone": {
     "value": "Снято узлов: %d — цели detour %q больше нет"
   },
+  "node %q: %s removed — it cannot be combined with detour %q": {
+    "value": "узел %q: %s снят — несовместим с detour %q"
+  },
   "%s — %d node(s) skipped: %s": {
     "value": "%s — пропущено узлов: %d — %s"
   },

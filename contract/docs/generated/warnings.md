@@ -22,7 +22,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`awg_headers_overlap`](#awg_headers_overlap) · `error` — AmneziaWG: headers {a} and {b} overlap
 - [`awg_mtu_clamped`](#awg_mtu_clamped) · `warning` — AmneziaWG: MTU lowered to 1280
 - [`awg_mtu_high`](#awg_mtu_high) · `info` — AmneziaWG: MTU above 1280
-- [`body_dialect_unrecognized`](#body_dialect_unrecognized) · `error` — Subscription: config dialect was read as the wrong one
 - [`chain_cycle_through_direction`](#chain_cycle_through_direction) · `warning` — Chain {chain} excluded from {direction}
 - [`chain_hop_missing`](#chain_hop_missing) · `error` — Chain: hop {position} not found
 - [`chain_invalid`](#chain_invalid) · `error` — Chain is malformed
@@ -34,8 +33,9 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`detour_cycle_broken`](#detour_cycle_broken) · `warning` — Loop in the chain broken
 - [`detour_target_missing`](#detour_target_missing) · `warning` — Chain cut: {target} not found
 - [`detour_to_group`](#detour_to_group) · `warning` — Chain cut: {target} is a group
-- [`detour_with_listen_port`](#detour_with_listen_port) · `warning` — Chain not applied: node listens on a port
+- [`detour_with_listen_port`](#detour_with_listen_port) · `warning` — {tag}: listening port removed for the hop
 - [`dialer_proxy_unusable`](#dialer_proxy_unusable) · `error` — Preceding proxy {target} is unusable
+- [`direction_filter_matched_nothing`](#direction_filter_matched_nothing) · `warning` — Direction {direction}: filter matched no nodes
 - [`ech_ignored`](#ech_ignored) · `info` — ECH from the link removed
 - [`field_conflict`](#field_conflict) · `warning` — Field {path} removed: conflicts with {with}
 - [`field_missing`](#field_missing) · `error` — Required field {field} is missing
@@ -73,7 +73,9 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`scheme_unsupported`](#scheme_unsupported) · `error` — Link: scheme {scheme} is not supported
 - [`selector_as_auto`](#selector_as_auto) · `info` — Manual selector imported as auto-select
 - [`service_record_ignored`](#service_record_ignored) · `info` — Subscription: service record {scheme} skipped
+- [`source_detour_cycle`](#source_detour_cycle) · `error` — Node {tag} excluded: hops form a loop
 - [`source_detour_missing`](#source_detour_missing) · `error` — Source chain broken: {target} not found
+- [`source_detour_self`](#source_detour_self) · `error` — Node {tag} excluded: hop points at itself
 - [`ss_method_invalid`](#ss_method_invalid) · `error` — Unsupported encryption method {method}
 - [`ss_method_legacy`](#ss_method_legacy) · `info` — Shadowsocks: legacy cipher
 - [`ssh_user_default`](#ssh_user_default) · `info` — SSH: user root substituted
@@ -344,23 +346,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`wireguard`](protocols/wireguard.md)
   - [`mtu`](protocols/wireguard.md#body-mtu) — the value is above `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more), but the body came from `singbox` → kept with a notice
 
-<a id="body_dialect_unrecognized"></a>
-### body_dialect_unrecognized
-
-**severity:** `error`
-
-**Subscription: config dialect was read as the wrong one**
-
-- **What happened:** The subscription body is a whole config, but its dialect was determined incorrectly, and the entries were read by a parser meant for another dialect. No nodes were imported.
-- **Why it happens:** An Xray config and a sing-box config have the same shape (`outbounds` with a list of entries) and differ only in what the entry itself is called: `protocol` for Xray, `type` for sing-box. A classifier that asks only for `outbounds` hands an Xray config to the sing-box parser, which finds no `type` in a single entry.
-- **What you can do:**
-  - Update the application: the dialect check is part of the parser.
-  - As a workaround, wrap the config in a JSON array of one element — an array of configs is recognised correctly.
-
-**Where it comes from:**
-
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
-
 <a id="chain_cycle_through_direction"></a>
 ### chain_cycle_through_direction
 
@@ -554,19 +539,20 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="detour_with_listen_port"></a>
 ### detour_with_listen_port
 
-**severity:** `warning` · **params:** `target`
+**severity:** `warning` · **params:** `tag`, `target`
 
-**Chain not applied: node listens on a port**
+**{tag}: listening port removed for the hop**
 
-- **What happened:** This node listens on its own port, so it cannot additionally be routed through {target}. The chain was not applied, because the core rejects that combination and would refuse to start the whole config; the node keeps working.
-- **Why it happens:** The node was set up to listen on its own port, and at the same time a hop was assigned to it — as a source detour or in an imported config. The core does not allow those two together.
+- **What happened:** Node {tag} is routed through {target}, and a node that listens on its own port cannot go through a hop: the core rejects that combination and would refuse to start the whole config. The listening port was removed, the hop stays — the node connects through {target}.
+- **Why it happens:** The node arrived with its own listening port (from a .conf file, a link or an imported config), and you assigned a hop to it — personally or through its folder. The core does not allow those two together.
 - **What you can do:**
-  - Decide what this node is for: remove its listening port, or drop the assigned hop.
-  - Nothing to do if the node works as it is — it simply connects without the hop.
+  - Nothing to do if the node works through the hop.
+  - If the node has to listen on its port, remove the hop assigned to it.
 
 **Where it comes from:**
 
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+- [`wireguard`](protocols/wireguard.md)
+  - [`listen_port`](protocols/wireguard.md#body-listen-port) — conflicts with `detour` → removed
 
 <a id="dialer_proxy_unusable"></a>
 ### dialer_proxy_unusable
@@ -580,6 +566,22 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Ask the provider for a config that carries all the nodes its chains reference.
   - Pick another node from this subscription.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="direction_filter_matched_nothing"></a>
+### direction_filter_matched_nothing
+
+**severity:** `warning` · **params:** `direction`, `filter`, `count`
+
+**Direction {direction}: filter matched no nodes**
+
+- **What happened:** The node filter {filter} of direction {direction} matched none of the {count} nodes. The direction was left without nodes, so its traffic is blocked (the default member).
+- **Why it happens:** The filter no longer matches the node names — typically the provider renamed its servers, or the filter was written for another subscription.
+- **What you can do:**
+  - Check the node filter of the direction against the current node names.
 
 **Where it comes from:**
 
@@ -644,7 +646,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`i1`](protocols/wireguard.md#body-i1) — conflicts with `id` → removed
   - [`i1`](protocols/wireguard.md#body-i1) — conflicts with `ip` → removed
   - [`i2`](protocols/wireguard.md#body-i2) — conflicts with `ip` → removed
-  - [`listen_port`](protocols/wireguard.md#body-listen-port) — conflicts with `detour` → removed
 
 <a id="field_missing"></a>
 ### field_missing
@@ -1315,6 +1316,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
+<a id="source_detour_cycle"></a>
+### source_detour_cycle
+
+**severity:** `error` · **params:** `tag`
+
+**Node {tag} excluded: hops form a loop**
+
+- **What happened:** The hops assigned to node {tag} lead back to it. The node was excluded on purpose: the core rejects such a loop and would refuse to start the whole config, and breaking the loop silently would send traffic directly, past the boundary you set.
+- **Why it happens:** Two or more nodes were assigned as hops of each other — personally or through their folders — so the chain of hops closes on itself.
+- **What you can do:**
+  - Pick the hops so that they do not lead back to the node.
+  - Or remove the hop from one of the nodes in the loop.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="source_detour_missing"></a>
 ### source_detour_missing
 
@@ -1327,6 +1345,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Assign an existing node as the hop for this source.
   - Or remove the hop if the source no longer needs to go through one.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="source_detour_self"></a>
+### source_detour_self
+
+**severity:** `error` · **params:** `tag`
+
+**Node {tag} excluded: hop points at itself**
+
+- **What happened:** Node {tag} is routed through itself. It was excluded on purpose: a node cannot be its own hop, and dropping the hop silently would send the traffic directly, past the boundary you set.
+- **Why it happens:** The hop assigned to the node — personally or through its folder — resolved to the node itself: for example, the folder's hop is one of the folder's own nodes.
+- **What you can do:**
+  - Assign a different node as the hop.
+  - Or take this node out of the folder whose hop it is.
 
 **Where it comes from:**
 
@@ -1375,15 +1410,16 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **SSH: user root substituted**
 
-- **What happened:** The SSH link names no user. root was substituted, because the core rejects an entry without a user and would refuse to start the whole config; change the user if the server expects a different one.
-- **Why it happens:** The SSH link was written without the user part before the @ — usually shortened by hand, since many tools default the user silently and the author saw no need to spell it out.
+- **What happened:** No SSH user was given. root was written into the node explicitly: the core connects as root when the user is empty anyway, so the connection is unchanged. Change the user if the server expects a different one.
+- **Why it happens:** The SSH entry was written without a user — in an imported sing-box config the user key is simply absent, since the core fills in root silently and the author saw no need to spell it out.
 - **What you can do:**
   - Nothing to do if the server really accepts root.
   - If it expects a different user, set it in the node's settings.
 
 **Where it comes from:**
 
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+- [`ssh`](protocols/ssh.md)
+  - [`user`](protocols/ssh.md#body-user) — the field is absent → filled in with `root`
 
 <a id="tailscale_core_unsupported"></a>
 ### tailscale_core_unsupported

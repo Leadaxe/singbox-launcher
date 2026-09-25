@@ -373,6 +373,16 @@ primitives came out of that work:
   fields after the sanitizer — the build's global anti-DPI TLS transforms
   (`core/build/tls_transforms.go`) — asks it per node, so MASQUE on
   `vhttp: h3` gets no TLS fragmentation (contract 1.1.64).
+- **Fields yielding to a build-written field** — `registry.Registry.YieldsTo`
+  is the other side of the same question: which fields of a finished body the
+  sanitizer would drop by a `conflicts {with}` relation if the managed
+  neighbour `with` had been present during the walk. `detour` is written by
+  the build after the sanitizer (`ApplyCanonicalNodeLinks` →
+  `resolveCanonicalDetour`), so right after it is set
+  `yieldToBuildDetour` drops the yielding fields with the relation's code into
+  the build report — WireGuard `listen_port` gives way to `detour`
+  (`detour_with_listen_port`); the detour itself stays (fail-closed). No
+  scheme names in code (contract 1.1.65).
 - **`requires[].set`** — a missing required neighbour is *materialised* (with
   a warning code) instead of the field being dropped, and **`coerce_when`** —
   a field's already-valid value is replaced under a condition (also coded).

@@ -114,10 +114,10 @@ const (
 	// прежде причина ехала только текстом Go, и сверить её по коду вторая
 	// сторона не могла (D-088).
 	WarnSchemeUnsupported = "scheme_unsupported"
-	// WarnBodyDialectUnrecognized — тело опознано целым конфигом, но диалект
-	// (Xray против sing-box) спрошен не был, и записи читал чужой разбор.
-	// Код ступени КЛАССИФИКАЦИИ и уровня ПОДПИСКИ, а не узла; severity=error.
-	WarnBodyDialectUnrecognized = "body_dialect_unrecognized"
+	// СНЯТ (контракт 1.1.65): body_dialect_unrecognized. Промах, который он
+	// называл (конфиг Xray уходил в разбор sing-box), предотвращает
+	// классификация — body_classify.go:classifyJSONObjectBody спрашивает
+	// диалект до ветки sing-box. События нет, ставить код было некому.
 
 	// Коды detour-цепочки импортируемого sing-box-конфига: их видно только
 	// по ВСЕМУ телу (граф detour), одной записи для них мало. Узел живёт,

@@ -46,6 +46,7 @@ const (
 	emitDetourSelfText          = "node %q dropped: its detour points at itself"
 	emitDetourCycleText         = "node %q dropped: detour loop — the chain of hops leads traffic back to itself"
 	emitDetourTargetMissingText = "%d node(s) dropped: detour target %q is gone"
+	emitDetourFieldYieldText    = "node %q: %s removed — it cannot be combined with detour %q"
 
 	emitGroupMemberLostText     = "group %q: member %q left the group (%s)"
 	emitMemberDroppedReasonText = "the node fell out of the config"
@@ -61,6 +62,8 @@ const (
 // Коды реестра (contract/registry/warnings.json), которые ставит сборка.
 const (
 	codeSourceDetourMissing        = "source_detour_missing"
+	codeSourceDetourSelf           = "source_detour_self"
+	codeSourceDetourCycle          = "source_detour_cycle"
 	codeGroupEmpty                 = "group_empty"
 	codeChainUnsupportedByCore     = "chain_unsupported_by_core"
 	codeChainInvalid               = "chain_invalid"

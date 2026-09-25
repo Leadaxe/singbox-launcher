@@ -18,7 +18,7 @@
       "meaning": "user:password",
       "desc_en": "user:password of the account.",
       "desc_ru": "user:password учётной записи.",
-      "impl": "user обязателен по-разному. URI-путь: Go при пустом user валит ноду (required записи mappers.uri.params.user → parse_error + field_missing, корпус uri/ssh/missing_user_rejected); прежняя root-ветка рукописного парсера ssh была мёртвым кодом и удалена вместе с ним; Dart при пустом user — null-skip (ssh_parser.dart:17). Singbox-импорт: root при пустом user дефолтит ДАРТ (json_parsers.dart:967); Go кладёт тело как есть без дефолта (default у body.fields.user — дефолт ядра, санитайзер его не материализует), и сборка пустой user просто не эмитит — РАЗРЫВ (новое, вне §9). Общий эмиттер share-URI Go root не подставляет (прежний рукописный эмиттер подставлял без warning). password опционален. Дефолтный порт 22."
+      "impl": "user обязателен по-разному. URI-путь: Go при пустом user валит ноду (required записи mappers.uri.params.user → parse_error + field_missing, корпус uri/ssh/missing_user_rejected); Dart при пустом user — null-skip (ssh_parser.dart:17). Singbox-импорт: тело без user получает root явно с кодом ssh_user_default (body.fields.user.default_when, контракт 1.1.65); Dart подставляет root без кода (json_parsers.dart). Общий эмиттер share-URI Go root не подставляет. password опционален. Дефолтный порт 22."
     },
     "query": {
       "private_key": {
@@ -130,9 +130,14 @@
         "type": "string",
         "role": "credential",
         "default": "root",
+        "default_when": {
+          "absent": true,
+          "value": "root",
+          "code": "ssh_user_default"
+        },
         "desc_en": "SSH user name.",
         "desc_ru": "Имя пользователя SSH.",
-        "impl": "Пусто → root (дефолт ядра; код ssh_user_default в Go не ставится: ссылку без user отбивает required маппера, а тело sing-box санитайзер дефолтом не дополняет). server_port по умолчанию 22 — подставляет реализация, не option/."
+        "impl": "Пусто → root. Ядро и так берёт root при пустом user (sing-box protocol/ssh/outbound.go NewOutbound); default_when (контракт 1.1.65) пишет его в тело явно с кодом ssh_user_default — подстановка видна пользователю, соединение не меняется. На входе ссылки user обязателен раньше (field_missing). server_port по умолчанию 22 — подставляет реализация, не option/."
       },
       "password": {
         "type": "string",

@@ -1966,12 +1966,12 @@
         "conflicts": [
           {
             "with": "detour",
-            "code": "field_conflict"
+            "code": "detour_with_listen_port"
           }
         ],
         "desc_en": "Local UDP port the tunnel listens on.",
         "desc_ru": "Локальный порт UDP, который слушает туннель.",
-        "impl": "Конфликт с detour — «`listen_port` is conflict with `detour`» (protocol/wireguard/endpoint.go NewEndpoint); код detour_with_listen_port."
+        "impl": "Конфликт с detour — «`listen_port` is conflict with `detour`» (protocol/wireguard/endpoint.go NewEndpoint), отказ старта всего конфига. detour — managed-поле, его пишет сборка после санитайзера: связь проверяется по готовому телу сразу после проставления detour, уступает listen_port с кодом detour_with_listen_port (контракт 1.1.65; Go — core/config/nodelink_resolve.go:yieldToBuildDetour)."
       },
       "peers": {
         "type": "array",

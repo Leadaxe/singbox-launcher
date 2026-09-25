@@ -37,6 +37,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 )
@@ -319,7 +320,13 @@ func ApplyCanonicalNodeLinks(
 				if lostTarget != "" {
 					missing = addDetourMissing(missing, addr(n, ""), lostTarget, n.Tag)
 				} else {
-					warnings = append(warnings, addr(n, reason))
+					// Без потерянной цели resolveCanonicalDetour роняет узел
+					// только за detour на самого себя.
+					w := addr(n, "")
+					w.Code = codeSourceDetourSelf
+					w.Params = map[string]string{"tag": n.Tag}
+					w.Text = registryWarningText(w.Code, w.Params, reason)
+					warnings = append(warnings, w)
 				}
 				debuglog.WarnLog("nodelink: %s", reason)
 				changed = true
@@ -347,8 +354,35 @@ func ApplyCanonicalNodeLinks(
 		for _, n := range cycled {
 			dropped[n] = true
 			reason := locale.Tf(emitDetourCycleText, n.Tag)
-			warnings = append(warnings, addr(n, reason))
+			w := addr(n, "")
+			w.Code = codeSourceDetourCycle
+			w.Params = map[string]string{"tag": n.Tag}
+			w.Text = registryWarningText(w.Code, w.Params, reason)
+			warnings = append(warnings, w)
 			debuglog.WarnLog("nodelink: %s", reason)
+		}
+	}
+
+	// Связи тела с detour, который сборка только что проставила: в теле
+	// состояния detour нет (managed-поле, санитайзер его снимает), поэтому
+	// связь реестра `conflicts {with: detour}` при санитайзе не сработала бы
+	// никогда. detour не уступает (fail-closed) — уступает поле, с кодом связи.
+	for _, n := range allNodes {
+		if n == nil || dropped[n] || n.CanonicalDetour == nil {
+			continue
+		}
+		target, _ := n.Outbound[buildDetourField].(string)
+		for _, y := range yieldToBuildDetour(n) {
+			w := addr(n, "")
+			w.Code = y.Code
+			if w.Code == "" {
+				w.Code = "field_conflict"
+			}
+			w.Params = map[string]string{"tag": n.Tag, "path": y.Path, "with": y.With, "target": target}
+			fallback := locale.Tf(emitDetourFieldYieldText, n.Tag, y.Path, target)
+			w.Text = registryWarningText(w.Code, w.Params, fallback)
+			warnings = append(warnings, w)
+			debuglog.WarnLog("nodelink: %s (%s)", fallback, w.Code)
 		}
 	}
 
@@ -423,6 +457,50 @@ func resolveCanonicalDetour(n *ParsedNode, targets *NodeLinkTargets, dropped map
 	}
 	n.Outbound["detour"] = res.Tag
 	return "", ""
+}
+
+// buildDetourField — managed-поле тела, которое проставляет сборка
+// (resolveCanonicalDetour).
+const buildDetourField = "detour"
+
+// yieldToBuildDetour снимает с тела узла поля, которые реестр объявил
+// несовместимыми с detour (registry.Registry.YieldsTo), и возвращает их.
+// Правило — данные реестра; имён схем здесь нет.
+func yieldToBuildDetour(n *ParsedNode) []registry.BodyYield {
+	if n == nil || n.Outbound == nil {
+		return nil
+	}
+	reg, err := registry.Get()
+	if err != nil {
+		return nil
+	}
+	ys := reg.YieldsTo(n.Scheme, buildDetourField, n.Outbound)
+	for _, y := range ys {
+		n.Outbound = withoutBodyPath(n.Outbound, strings.Split(y.Path, "."))
+	}
+	return ys
+}
+
+// withoutBodyPath — тело без поля по пути. Вложенные объекты копируются по
+// пути к полю: они могут быть общими с состоянием.
+func withoutBodyPath(m map[string]interface{}, parts []string) map[string]interface{} {
+	if m == nil || len(parts) == 0 {
+		return m
+	}
+	if len(parts) == 1 {
+		delete(m, parts[0])
+		return m
+	}
+	inner, ok := m[parts[0]].(map[string]interface{})
+	if !ok {
+		return m
+	}
+	cp := make(map[string]interface{}, len(inner))
+	for k, v := range inner {
+		cp[k] = v
+	}
+	m[parts[0]] = withoutBodyPath(cp, parts[1:])
+	return m
 }
 
 // detourMissingGroup — узлы одного источника, выпавшие из-за одной и той же

@@ -7481,3 +7481,93 @@ REALITY, коды не меняются); `requires … set` к снятому �
 новых примитивов нет); свести проверку сборки перед анти-DPI трансформами к
 вопросу «оставил бы санитайзер поле при этом теле»; у Xray-входа vless
 сравнивать `none` с учётом регистра. sha коммита — в сообщении сессии.
+
+## 61. Контракт 1.1.65 — коды на своих местах; `listen_port` WireGuard уступает detour; ssh без user
+
+Волна 10b кампании SPEC 142: хвосты по кодам `warnings.json`, которые Go не
+ставил. Волна 10a довела коды до пользователя без правки реестра; здесь —
+то, что требовало реестра.
+
+**Поле `go` у 13 кодов** теперь указывает фактическое место постановки
+(прежде — «в Go кодом не ставится»): `detour_cycle_broken`,
+`detour_target_missing`, `detour_to_group`, `detour_chain_too_deep` — на
+узле импорта sing-box (как ваши `Detour*Warning`); `group_empty` — код
+отбраковки (`dropped[].code`), у синтезированной Xray-группы — код уровня
+тела, у Auto канона — отчёт сборки; `max_nodes_exceeded` — код уровня тела
+подписки; `source_detour_missing` — отчёт сборки, одна запись на пару
+источник→цель с числом узлов; `chain_unsupported_by_core`,
+`chain_hop_missing`, `chain_invalid`, `chain_nested_position` — код
+деградации цепочки (у вас `ChainDegradation`), `chain_strip_utls_on_reality`,
+`chain_cycle_through_direction` — предупреждения сборки. Данных правил это
+не меняет — только заметки.
+
+**`ssh_user_default` — данными.** `protocols/ssh.json`
+`body.fields.user.default_when: {absent: true, value: "root", code:
+"ssh_user_default"}`. Тело sing-box без `user` (или с `""`) получает `root`
+явно с info-кодом. Ядро и так подключается как root при пустом user
+(sing-box `protocol/ssh/outbound.go` NewOutbound), соединение не меняется —
+подстановка становится видимой. У вас singbox-импорт уже дефолтит root
+(`json_parsers.dart`), но без кода — примитив `default_when` вы исполняете,
+достаточно синка. Вход ссылки не меняется: без userinfo `field_missing`
+отбивает ссылку раньше (у вас null-skip). Идентичность узла — тег
+(`IDENTITY.md` §1), содержимое в неё не входит; у ssh-узлов из тел sing-box
+тело после первого обновления получит `"user": "root"`. Тексты кода
+переписаны: говорили о «ссылке» и об отказе ядра, которого нет. Корпус:
+`body/singbox/ssh_user_default`.
+
+**`body_dialect_unrecognized` снят.** Код заводился вместе с исправлением
+классификации (1.1.48, §44) под промах «конфиг Xray уехал в разбор sing-box».
+Классификация спрашивает диалект до ветки sing-box (`source_kinds.json`
+`xray_config`, prio 35), и промаха больше не бывает — события нет, ставить
+код некому; у нас константа была мёртвой. Если у вас код ставится
+(в §44 он объявлен вместе с `scheme_unsupported` и `service_record_ignored`) —
+напишите: значит, у вас есть событие, которого нет у нас, и его надо
+разобрать, а не держать код «про запас». Иначе — снимите у себя.
+
+**`direction_filter_matched_nothing` зарегистрирован** (warning, params
+`direction`, `filter`, `count`). Корпус `direction/empty_direction_blocks`
+ставил код, которого не было в реестре (README корпуса требует коды из
+`warnings.json`); ваш `direction_corpus_test.dart` его уже знает. Смысл
+прежний: фильтр узлов Направления не выбрал ни одного узла при непустом пуле,
+Направление уходит с блокирующим членом по умолчанию; пустой пул — вина
+подписки, код не ставится.
+
+**`detour_with_listen_port` — живой дефект, исправлен общим правилом.** Ядро
+отказывает WireGuard с `listen_port` вместе с `detour` («`listen_port` is
+conflict with `detour`», sing-box-lx `protocol/wireguard/endpoint.go`
+NewEndpoint) — весь конфиг не стартует. Связь в реестре была
+(`wireguard.json` `listen_port.conflicts: [{with: detour}]`), но не
+срабатывала никогда: `detour` — managed-поле (`dialer.json`), санитайзер его
+снимает, а пишет сборка уже после санитайзера. Теперь:
+
+- код связи `field_conflict` → `detour_with_listen_port` (warning, params
+  `tag`, `target`), тексты переписаны: уступает `listen_port`, хоп
+  сохраняется. Снять detour значило бы тихий прямой дозвон (единая
+  строгость detour, fail-closed), поэтому решение владельца — так;
+- норма сборки: сразу после проставления detour сборка перепроверяет связи
+  `conflicts {with: detour}` реестра по ГОТОВОМУ телу (та же трактовка,
+  что у `FieldAllowedOn` из §60: `when` верно, сосед задан, `unless_set` не
+  задан) и снимает уступающие поля с кодом связи. У нас это
+  `registry.Registry.YieldsTo` + `nodelink_resolve.go:yieldToBuildDetour`;
+  имён схем в коде нет. Если у вас detour, назначенный пользователем, есть
+  (у нас это desktop-механика) — нужна та же проверка в месте, где detour
+  дописывается; если нет — код остаётся desktop-only;
+- форк в своей цепочке снимает `listen_port` так же
+  (`protocol/chain/transform.go`), так что поведение совпадает с цепочкой.
+
+**Два новых кода сборки** (desktop-механика, `dart: null`):
+`source_detour_self` и `source_detour_cycle` (error, params `tag`) — detour,
+назначенный пользователем, разрешился в сам узел / рёбра detour замкнулись
+кольцом. Узел выпадает fail-closed, как у `source_detour_missing`; прежде
+эти два случая ехали в отчёт только текстом. Не путать с
+`detour_cycle_broken` — там кольцо пришло из импортированного конфига,
+ребро снимается и узел живёт.
+
+**Не менялось:** `group_member_missing` на узле-группе и `warnings` у
+`kind=auto` — ждёт решения владельца; `template_*` — отдельная задача.
+
+**Корпус +1:** `body/singbox/ssh_user_default`. Прежние ожидания не менялись.
+
+От вас: синк 1.1.65; удалить `body_dialect_unrecognized` (или написать, где
+у вас событие); принять новые коды и тексты; для ssh-тела без `user` ставить
+`ssh_user_default` (данные `default_when`). sha коммита — в сообщении сессии.

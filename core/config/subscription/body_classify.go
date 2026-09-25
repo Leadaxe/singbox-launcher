@@ -208,7 +208,8 @@ func classifyJSONObjectBody(trimmed string) BodyKind {
 	// различаются они только тем, как называется сама запись. Без этой
 	// проверки конфиг Xray уезжал в sing-box-разбор, который не находил в
 	// нём ни одного `type`, и узлов выходило ноль (код
-	// body_dialect_unrecognized описывает ровно тот промах).
+	// body_dialect_unrecognized, заведённый под этот промах, снят контрактом
+	// 1.1.65: после этой проверки события нет).
 	if xrayElementHasProtocolOutbounds(obj) {
 		return BodyKindXrayConfig
 	}
