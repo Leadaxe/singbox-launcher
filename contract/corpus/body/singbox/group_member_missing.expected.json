@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "grp-a",
+      "scheme": "vless"
+    },
+    {
+      "entry": {
+        "default": "grp-a",
+        "outbounds": [
+          "grp-a"
+        ],
+        "type": "selector"
+      },
+      "kind": "group",
+      "label": "grp",
+      "scheme": "group",
+      "warnings": [
+        {
+          "code": "group_member_missing"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

@@ -2,6 +2,7 @@ package subscription
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
@@ -143,12 +144,36 @@ func singboxGroupToNode(
 		}
 	}
 
-	return &configtypes.ParsedNode{
+	groupNode := &configtypes.ParsedNode{
 		Tag:    tag,
 		Scheme: configtypes.SchemeGroup,
 		// server/server_port у группы нет — она не соединение.
 		Label:       tag,
 		Outbound:    outbound,
 		SourceIndex: configtypes.UnsetSourceIndex,
-	}, "", ""
+	}
+	// Группа живёт без части членов — код на самом узле-группе (warnings у
+	// kind=auto, контракт 1.1.66), а не только текстом в сводке источника.
+	markGroupMemberMissing(groupNode, lost)
+	return groupNode, "", ""
+}
+
+// markGroupMemberMissing ставит узлу-группе код group_member_missing с числом
+// потерянных членов. Состав теряется на нескольких шагах подряд (импорт
+// sing-box или резолв Xray, затем дорезолв тела в bodyParseState.finish) —
+// повторная потеря складывает число в той же записи, а не заводит вторую.
+func markGroupMemberMissing(n *configtypes.ParsedNode, lost int) {
+	if n == nil || lost <= 0 {
+		return
+	}
+	for i := range n.Warnings {
+		w := &n.Warnings[i]
+		if w.Code != WarnGroupMemberMissing || w.Path != "" {
+			continue
+		}
+		prev, _ := strconv.Atoi(w.Params["count"])
+		w.Params = map[string]string{"count": strconv.Itoa(prev + lost)}
+		return
+	}
+	n.AddWarningWithParams(WarnGroupMemberMissing, map[string]string{"count": strconv.Itoa(lost)})
 }

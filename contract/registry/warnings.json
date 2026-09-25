@@ -617,9 +617,9 @@
         "Если нужные серверы в группе остались, делать ничего не нужно.",
         "Если серверов не хватает, попросите провайдера поправить подписку и импортируйте её заново."
       ],
-      "desc": "Часть членов группы не доехала (тег не дал узла, вложенная группа) — группа живёт без них.",
+      "desc": "Часть членов группы не доехала (тег не дал узла, вложенная группа) — группа живёт без них. Код стоит на узле-группе (warnings у kind=auto разрешены с 1.1.66).",
       "dart": "GroupMemberMissingWarning",
-      "go": "код уровня тела подписки: core/config/subscription/parse_body.go:bodyParseState.finish (дорезолв состава) → ParsedBody.WarningCodes → FetchWarning.Code/Params; на узел-группу не ставится. Потеря членов при импорте sing-box (core/config/subscription/singbox_groups.go:singboxGroupToNode) и у Auto-группы канона (core/config/nodelink_resolve.go:resolveCanonicalGroup) — пока текстом"
+      "go": "на узле-группе (warnings у kind=auto, контракт 1.1.66), params count — число потерянных членов, одна запись на группу (повторная потеря на следующем шаге складывает число): импорт sing-box — core/config/subscription/singbox_groups.go:singboxGroupToNode; Xray-группа (балансировщик) — core/config/subscription/xray_json_array.go:resolveGroupMembers; дорезолв состава тела — core/config/subscription/parse_body.go:bodyParseState.finish; общий шаг — core/config/subscription/singbox_groups.go:markGroupMemberMissing; в состояние — core/config/migrate_materialize.go:canonicalNodeFromEntry. Потеря члена у Auto-группы канона на сборке (core/config/nodelink_resolve.go:resolveCanonicalGroup) — текстом отчёта сборки"
     },
     "reality_pbk_invalid": {
       "severity": "warning",

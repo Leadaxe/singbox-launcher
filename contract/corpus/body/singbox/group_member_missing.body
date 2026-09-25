@@ -1,0 +1,5 @@
+# sing-box: selector, у которого часть членов не даёт узла (тег "gone" в
+# конфиге не объявлен, "direct" — служебный тип, узлом не становится). Группа
+# живёт с выжившим членом, потеря — кодом group_member_missing на самом узле-
+# группе (контракт 1.1.66, params.count = 2; params в конверт не входят).
+{"outbounds":[{"type":"vless","tag":"grp-a","server":"example-1.com","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111"},{"type":"direct","tag":"direct"},{"type":"selector","tag":"grp","outbounds":["grp-a","gone","direct"],"default":"grp-a"}]}

@@ -188,6 +188,10 @@ func canonicalNodeFromEntry(subID string, e *subscription.ParsedBodyEntry) (stat
 			Enabled: true,
 			Origin:  origin,
 			Group:   group,
+			// Коды разбора группы (group_member_missing — часть членов не
+			// доехала) едут с узлом, как у server: warnings у kind=auto
+			// разрешены с контракта 1.1.66.
+			Warnings: stateWarnings(e.Node.Warnings),
 		}, nil
 	}
 

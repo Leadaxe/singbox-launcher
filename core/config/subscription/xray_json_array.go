@@ -322,9 +322,14 @@ func resolveGroupMembers(
 
 		members := make([]interface{}, 0, len(ids))
 		dedup := make(map[string]struct{}, len(ids))
+		lost := make(map[string]struct{})
 		for _, id := range ids {
 			tag, alive := finalTagByServer[id]
 			if !alive {
+				// Сервер-член не дожил (отбракован или не выпущен ни одним
+				// элементом) — потеря члена, не молча; один сервер под
+				// двумя тегами считается один раз.
+				lost[id] = struct{}{}
 				continue
 			}
 			if _, dup := dedup[tag]; dup {
@@ -340,6 +345,7 @@ func resolveGroupMembers(
 			continue
 		}
 		node.Outbound[configtypes.GroupMembersKey] = members
+		markGroupMemberMissing(node, len(lost))
 		out = append(out, node)
 	}
 	return out, emptyGroups

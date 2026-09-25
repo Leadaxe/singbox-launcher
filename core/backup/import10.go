@@ -190,7 +190,14 @@ func decode10Source(in Source10, subIndex int, ruleGroup func(node int) bool) (d
 			// Коды деградации при импорте не переносятся — по той же причине,
 			// что и у корневого узла (CANON §6): они производная тела и
 			// посчитаны чужим реестром. Читаются и отбрасываются молча.
-			member.Warnings = nil
+			//
+			// Исключение — провайдерская группа (kind=auto, контракт 1.1.66):
+			// тела у неё нет, пересчитать коды нечем, а group_member_missing
+			// описывает разбор, которого у приёмника не было. Записи файла
+			// едут как есть — иначе ⚠ группы терялся бы на round-trip.
+			if member.Kind != state.SourceKindAuto {
+				member.Warnings = nil
+			}
 			memberSections = append(memberSections, n.Sections != nil)
 			ms, mw := normalizeImportedSections(member.Sections, n.Tag)
 			warns = append(warns, mw...)

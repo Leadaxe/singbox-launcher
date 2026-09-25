@@ -798,12 +798,13 @@ func (st *bodyParseState) finish() {
 			}
 		}
 		if len(lost) > 0 && len(members) > 0 {
-			// Группа живёт без части членов: код уровня тела (слот
-			// WarningCodes, как у group_empty), не на узле-группе —
-			// warnings у kind=auto контракт пока не разрешает.
-			st.warnCoded(fmt.Sprintf("group %q: %d member(s) not resolvable — dropped (%s)",
-				e.RawTag, len(lost), strings.Join(lost, ", ")),
-				WarnGroupMemberMissing, map[string]string{"count": strconv.Itoa(len(lost))})
+			// Группа живёт без части членов: код — на самом узле-группе
+			// (warnings у kind=auto, контракт 1.1.66), в сводку источника
+			// уходит только текст с именами потерянных — второй записи с
+			// тем же кодом там нет.
+			st.warn(fmt.Sprintf("group %q: %d member(s) not resolvable — dropped (%s)",
+				e.RawTag, len(lost), strings.Join(lost, ", ")))
+			markGroupMemberMissing(e.Node, len(lost))
 		}
 		if len(members) == 0 {
 			st.warnCoded(fmt.Sprintf("group %q lost all members — dropped", e.RawTag),
