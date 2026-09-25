@@ -402,11 +402,12 @@ latter for nodes saved before the pipeline existed.
 ### 6.1 Ingest → state → build → config.json → run
 
 1. **INGEST (subscription → nodes).** UI/auto-update triggers
-   `config_service.UpdateConfigFromSubscriptions` → `subscription.LoadNodesFromSource`
-   (thin wrapper over `LoadNodesFromSourceEx`, see below) →
-   `fetcher.FetchSubscriptionWithMeta` (HTTP GET with HWID/UA headers, max 10 MB,
+   `config_service.UpdateConfigFromSubscriptions` → `refreshOneSubscriptionSource` →
+   `fetcher.FetchSubscriptionWithMetaFor` (HTTP GET with HWID/UA headers, max 10 MB,
    announce-header decode) → `decoder.DecodeSubscriptionContent` (base64 strip) →
-   `subscription.ClassifySubscriptionBody` picks one of three branches:
+   `config.MaterializeSubscriptionBody` → `subscription.ParseSubscriptionBody`
+   (the only body parser); `subscription.ClassifySubscriptionBody` picks one of
+   three branches:
    - **URI list** — `subscription.ParseNode` per line, which hands the raw text to
      the registry engine (`core/config/linkmap`): the section is chosen by the
      registry's `detect`, its table builds the sing-box body. Two branches stand
@@ -420,7 +421,8 @@ latter for nodes saved before the pipeline existed.
      the source's local outbounds, and `route`/`dns`/`inbounds`/`experimental` are
      ignored by design (reported back for the UI).
 
-   Then tag prefix/postfix/mask + skip-filter + dedup → `[]ParsedNode`.
+   Then skip-filter + dedup + raw-tag uniquification → `Subscription.nodes[]`;
+   tag prefix/postfix is applied later, at emission (`EmitCanonicalSource`).
 
    An imported `selector`/`urltest` becomes a **node** with scheme `group`
    (`configtypes.SchemeGroup`), sitting in the same list as regular nodes. It has
@@ -430,8 +432,9 @@ latter for nodes saved before the pipeline existed.
    sing-box the node still emits as a real selector/urltest inside `outbounds`
    (`generateGroupNodeJSON`).
 
-   `LoadNodesFromSourceEx` returns a `SourceLoadResult` — nodes (groups included)
-   plus the config sections the parser deliberately ignores.
+   `ParseSubscriptionBody` returns a `ParsedBody` — entries (groups included, with
+   members resolved to raw tags) plus the config sections the parser deliberately
+   ignores.
 
    Within a single source, nodes are deduplicated by identity (SPEC 094 D3)
    **before** tags are assigned, otherwise `MakeTagUnique` would hand a duplicate

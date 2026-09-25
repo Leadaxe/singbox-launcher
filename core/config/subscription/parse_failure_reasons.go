@@ -16,8 +16,6 @@ package subscription
 
 import (
 	"strings"
-
-	"singbox-launcher/core/config/configtypes"
 )
 
 // MaxParseFailureReasons — сколько РАЗНЫХ причин доезжает до пользователя.
@@ -80,25 +78,3 @@ func (r *ParseFailureReasons) Truncated() bool { return r.truncated }
 
 // Empty — не собрано ни одной причины.
 func (r *ParseFailureReasons) Empty() bool { return len(r.reasons) == 0 }
-
-// RecordParseFailures — package-level hook: разбор источника отдаёт наверх
-// причины отбраковки СРАЗУ, не дожидаясь, пока их вернёт результат.
-//
-// Тот же приём, что у NodeIdentityFunc, и по той же
-// причине: единственный потребитель — генератор из пакета config, а он зовёт
-// разбор через функцию-параметр `loadNodesFunc`, чья сигнатура отдаёт только
-// `([]*ParsedNode, error)`. Расширять её значило бы переписать полтора десятка
-// точек вызова (в основном тесты) ради значения, которое нужно ровно одному
-// вызывающему; хук ставится на время сборки и снимается после.
-//
-// nil (тесты разбора, точечные прогоны) — причины просто никуда не уезжают.
-// Разбор от этого не меняется: хук ничего не решает, только сообщает.
-var RecordParseFailures func(source configtypes.ProxySource, reasons []string)
-
-// reportParseFailures зовёт хук, если он установлен и причины есть.
-func reportParseFailures(source configtypes.ProxySource, reasons []string) {
-	if RecordParseFailures == nil || len(reasons) == 0 {
-		return
-	}
-	RecordParseFailures(source, reasons)
-}

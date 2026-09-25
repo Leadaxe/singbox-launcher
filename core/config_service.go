@@ -155,11 +155,6 @@ func updateParserProgress(ac *AppController, progress float64, status string) {
 	}
 }
 
-// ProcessProxySource delegates to subscription.LoadNodesFromSource
-func (svc *ConfigService) ProcessProxySource(proxySource config.ProxySource, tagCounts map[string]int, progressCallback func(float64, string), subscriptionIndex, totalSubscriptions int) ([]*config.ParsedNode, error) {
-	return subscription.LoadNodesFromSource(proxySource, tagCounts, progressCallback, subscriptionIndex, totalSubscriptions)
-}
-
 // GenerateNodeJSON delegates to config.GenerateNodeJSON
 func (svc *ConfigService) GenerateNodeJSON(node *config.ParsedNode) (string, error) {
 	return config.GenerateNodeJSON(node)

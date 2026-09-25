@@ -80,7 +80,7 @@
 
 **Пример и код**
 
-Структура как у публичных Xray-подписок (**`dns`**, **`inbounds`**, **`log`**, **`mux`**, **`tcpSettings`**, **`routing`**, **`freedom`/`blackhole`**), с вымышленными данными: **`docs/examples/xray_subscription_array_sample.json`**. Тот же сценарий в тестах: **`core/config/subscription/testdata/xray_provider_anon.json`** (`go:embed` в **`xray_json_array_test.go`**). Реализация: **`xray_json_array.go`**, **`xray_outbound_convert.go`** и **`xray_protocols.go`** (уровень **документа**: какой элемент становится узлом, какой звеном цепочки, какой группой-балансером), **`xray_element_engine.go`** (сам элемент — движку реестра), **`decoder.go`** (`DecodeSubscriptionContent`), **`source_loader.go`** (`LoadNodesFromSource`, **`applyTagsToXrayNode`**), configurator: **`ui/configurator/tabs/source_tab.go`** (`refreshOneSourceFromUI`).
+Структура как у публичных Xray-подписок (**`dns`**, **`inbounds`**, **`log`**, **`mux`**, **`tcpSettings`**, **`routing`**, **`freedom`/`blackhole`**), с вымышленными данными: **`docs/examples/xray_subscription_array_sample.json`**. Тот же сценарий в тестах: **`core/config/subscription/testdata/xray_provider_anon.json`** (`go:embed` в **`xray_json_array_test.go`**). Реализация: **`xray_json_array.go`**, **`xray_outbound_convert.go`** и **`xray_protocols.go`** (уровень **документа**: какой элемент становится узлом, какой звеном цепочки, какой группой-балансером), **`xray_element_engine.go`** (сам элемент — движку реестра), **`decoder.go`** (`DecodeSubscriptionContent`), **`parse_body.go`** (`ParseSubscriptionBody`), configurator: **`ui/configurator/tabs/source_tab.go`** (`refreshOneSourceFromUI`).
 
 ## Коды деградации на узле
 

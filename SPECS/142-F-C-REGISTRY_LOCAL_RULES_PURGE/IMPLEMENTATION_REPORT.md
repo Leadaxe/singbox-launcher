@@ -149,6 +149,16 @@
   `uniquify_collision_test`, `xray_ownership_test`, `manual_config_emit_test`)
   и `integration_test` — снятие = перевод этих тестов на `ParseSubscriptionBody`,
   отдельная задача.
+  **Закрыто волной 11b:** сняты `LoadNodesFromSource(Ex)`, `SourceLoadResult`,
+  `applyURINodeTags`/`applyTagsToSingboxNode`/`applyTagsToXrayNode`,
+  `rebindImportedGroupNodes`, хук `RecordParseFailures`, обёртка
+  `FetchSubscription` и `ConfigService.ProcessProxySource`. Тесты разбора
+  (дедуп, идентичность, уникализация, группы) переведены на
+  `ParseSubscriptionBody`; проверки с префиксом и глобальной уникализацией —
+  на `MaterializeSubscriptionBody` → `ToProxySourceV4` → сборку
+  (`canonical_emit_test.go`, `TestBodyEmit_*`); ручной config_json — на
+  `MaterializeServerNode` → сборку; `integration_test` — на
+  `MaterializeSubscriptionBody`.
 - Поля `go` в `warnings.json` у кодов выше ещё описывают прежнее «кодом не
   ставится» — обновит волна 10b вместе с бампом.
   **Закрыто волной 10b (контракт 1.1.65).**

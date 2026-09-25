@@ -206,8 +206,8 @@ The architecture — pipeline stages, the source space, execution order, the rev
 
 | File | Purpose |
 |------|---------|
-| `source_loader.go` | `LoadNodesFromSource` entry point: fetch → format-detect → parse → tag prefix/postfix/mask + skip-filter + dedup; `LookupCachedBody` offline hook. |
-| `fetcher.go` | `FetchSubscriptionWithMeta` HTTP fetch (HWID/UA headers, 10 MB cap) + announce-header decode; deprecated `FetchSubscription` wrapper. |
+| `source_loader.go` | Identity stamping (`StampNodeIdentity`, `MakeIdentityUnique`), `MakeTagUnique`, the legacy tag machine helpers used by migration. Body parsing itself lives in `parse_body.go` (`ParseSubscriptionBody`). |
+| `fetcher.go` | `FetchSubscriptionWithMeta` HTTP fetch (HWID/UA headers, 10 MB cap) + announce-header decode. |
 | `meta.go` | Header + inline-`#comment` metadata parsing (Profile-Title, Subscription-Userinfo, update interval), provider-announce on empty body. |
 | `decoder.go` | `DecodeSubscriptionContent` (base64 / Xray JSON array detection). |
 | `node_parser_core.go` | `ParseNode` — three branches: the Amnezia `vpn://` profile, the registry engine, and "scheme not supported" for text no section recognises. Plus the common helpers (`extractTagAndComment`, `generateDefaultTag`, `normalizeFlagTag`, `IsDirectLink` — a node link is whatever a registry `uri` section's `detect` recognises, plus the Amnezia `vpn://` container — skip filters). |

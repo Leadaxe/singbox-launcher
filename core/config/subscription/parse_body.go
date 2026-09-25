@@ -417,7 +417,7 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 		flushJSON(0)
 		for i, node := range importRes.Nodes {
 			// Исходный тег нужен группам для перепривязки состава на сырые
-			// теги (тот же приём, что applyTagsToSingboxNode → SourceTag).
+			// теги (bodyParseState.finish сопоставляет членов по SourceTag).
 			if node != nil && node.SourceTag == "" {
 				node.SourceTag = node.Tag
 			}

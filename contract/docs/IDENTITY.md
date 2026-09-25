@@ -86,7 +86,7 @@ identity = uniquify_within_source( raw_provider_tag )
   из одной формы в пределах одного тела.
 
   Реализация Go: `core/config/subscription/server_conn_key.go`
-  (`dedupSignature`), точка применения — `LoadNodesFromSource`, **до**
+  (`dedupSignature`), точка применения — `ParseSubscriptionBody`, **до**
   простановки тегов; тот же дедуп у превью источника
   (`DedupParsedNodes`).
 

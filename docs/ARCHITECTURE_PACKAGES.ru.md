@@ -207,8 +207,8 @@ stdlib и `internal/constants`), лежит **ниже** `internal/platform` (т
 
 | Файл | Назначение |
 |------|---------|
-| `source_loader.go` | Точка входа `LoadNodesFromSource`: загрузка → определение формата → разбор → префикс/постфикс/маска тегов, skip-фильтр и дедупликация; офлайн-хук `LookupCachedBody`. |
-| `fetcher.go` | HTTP-загрузка `FetchSubscriptionWithMeta` (заголовки HWID/UA, лимит 10 МБ) и декодирование announce-заголовков; устаревшая обёртка `FetchSubscription`. |
+| `source_loader.go` | Штамповка идентичности (`StampNodeIdentity`, `MakeIdentityUnique`), `MakeTagUnique`, помощники старой тег-машины для миграции. Сам разбор тела — `parse_body.go` (`ParseSubscriptionBody`). |
+| `fetcher.go` | HTTP-загрузка `FetchSubscriptionWithMeta` (заголовки HWID/UA, лимит 10 МБ) и декодирование announce-заголовков. |
 | `meta.go` | Разбор метаданных из заголовков и inline-`#comment` (Profile-Title, Subscription-Userinfo, интервал обновления), announce провайдера при пустом теле. |
 | `decoder.go` | `DecodeSubscriptionContent` (определение base64 / JSON-массива Xray). |
 | `node_parser_core.go` | `ParseNode` — три ветки: профиль Amnezia `vpn://`, движок реестра и «схема не поддержана» для текста, который не опознала ни одна секция. Плюс общие хелперы (`extractTagAndComment`, `generateDefaultTag`, `normalizeFlagTag`, `IsDirectLink` — ссылкой узла считается то, что опознаёт `detect` секции `uri` реестра, плюс контейнер Amnezia `vpn://` — skip-фильтры). |

@@ -8,10 +8,12 @@ package config
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/state"
 )
 
 // ── строительные леса ────────────────────────────────────────────────
@@ -900,5 +902,265 @@ func TestEmitProviderGroupAddressedByRawTag(t *testing.T) {
 	}
 	if w := joinWarnings(res); !strings.Contains(w, `"nl:Best"`) || !strings.Contains(w, `group "Best"`) {
 		t.Errorf("предупреждение не называет группу: %v", res.EmissionWarnings)
+	}
+}
+
+// ── тело подписки → материализация → эмиссия ─────────────────────────
+//
+// Сквозной путь данных подписки в приложении: fetch отдаёт декодированное
+// тело в MaterializeSubscriptionBody (ParseSubscriptionBody → nodes[]),
+// источник проецируется в сборочную форму (state.Source.ToProxySourceV4), и
+// тег-политику применяет эмиссия. Проверки, которым нужен префикс или
+// глобальная уникализация финальных тегов, живут здесь, а не в пакете
+// subscription: разбор тела тег-политики не знает.
+
+// subscriptionFromBody — источник-подписка из тела тем путём, каким его
+// получает приложение.
+func subscriptionFromBody(t *testing.T, id, body, prefix string) (ProxySource, []state.Node) {
+	t.Helper()
+	mat, err := MaterializeSubscriptionBody(id, []byte(body), nil, 0)
+	if err != nil {
+		t.Fatalf("MaterializeSubscriptionBody(%s): %v", id, err)
+	}
+	src := &state.Source{ID: id, Nodes: mat.Nodes}
+	src.Kind = state.SourceKindSubscription
+	src.Enabled = true
+	if prefix != "" {
+		src.TagPolicy = &state.TagPolicy{Prefix: prefix}
+	}
+	return src.ToProxySourceV4(), mat.Nodes
+}
+
+// emittedEverything — все эмитированные объекты (outbounds и endpoints) по
+// финальному тегу.
+func emittedEverything(res *OutboundGenerationResult) map[string]map[string]interface{} {
+	out := map[string]map[string]interface{}{}
+	for _, line := range append(append([]string(nil), res.OutboundsJSON...), res.EndpointsJSON...) {
+		i, j := strings.Index(line, "{"), strings.LastIndex(line, "}")
+		if i < 0 || j < i {
+			continue
+		}
+		var m map[string]interface{}
+		if json.Unmarshal([]byte(line[i:j+1]), &m) != nil {
+			continue
+		}
+		if tag, _ := m["tag"].(string); tag != "" {
+			out[tag] = m
+		}
+	}
+	return out
+}
+
+// Группы переживают переименование узлов префиксом: состав и default группы
+// эмитятся ФИНАЛЬНЫМИ тегами, а не висят на исходных.
+func TestBodyEmit_GroupsRebindAfterTagPrefix(t *testing.T) {
+	body, err := os.ReadFile("subscription/testdata/singbox_full_config.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps, nodes := subscriptionFromBody(t, "SUB", string(body), "NL-")
+	res := runCanonicalBuild(t, []ProxySource{ps}, nil)
+	all := emittedEverything(res)
+
+	if len(all) == 0 {
+		t.Fatal("no nodes emitted")
+	}
+	for tag := range all {
+		if !strings.HasPrefix(tag, "NL-") {
+			t.Fatalf("node %q did not receive the tag prefix", tag)
+		}
+	}
+
+	groups := 0
+	for _, n := range nodes {
+		if n.Kind != state.SourceKindAuto {
+			continue
+		}
+		groups++
+		obj := all["NL-"+n.Tag]
+		if obj == nil {
+			t.Fatalf("group %q not emitted (%v)", n.Tag, emittedTags(res))
+		}
+		members, _ := obj["outbounds"].([]interface{})
+		if len(members) == 0 {
+			t.Fatalf("group %q lost all members", n.Tag)
+		}
+		for _, m := range members {
+			if all[m.(string)] == nil {
+				t.Fatalf("group %q references %q, which is not an emitted node tag (%v)", n.Tag, m, members)
+			}
+		}
+		if def, ok := obj["default"].(string); ok && all[def] == nil {
+			t.Fatalf("group %q default %q is not an emitted node tag", n.Tag, def)
+		}
+	}
+	if groups != 2 {
+		t.Fatalf("got %d group nodes, want 2", groups)
+	}
+}
+
+// Цепочка провайдера после тег-политики остаётся связной: хопы — отдельные
+// узлы с уникальными тегами, узел идёт через первый хоп, хоп — через
+// следующий, последний — напрямую.
+func TestBodyEmit_ChainStaysConsistentAfterTagPrefix(t *testing.T) {
+	body := `{
+	  "outbounds":[
+	    {"type":"trojan","tag":"main","server":"m.com","server_port":443,"password":"p","detour":"hopA"},
+	    {"type":"socks","tag":"hopA","server":"a.com","server_port":1080,"detour":"hopB"},
+	    {"type":"socks","tag":"hopB","server":"b.com","server_port":1080}
+	  ]
+	}`
+	ps, _ := subscriptionFromBody(t, "SUB", body, "X-")
+	res := runCanonicalBuild(t, []ProxySource{ps}, nil)
+	all := emittedEverything(res)
+
+	main := all["X-main"]
+	if main == nil {
+		t.Fatalf("main node not emitted: %v", emittedTags(res))
+	}
+	hop1, _ := main["detour"].(string)
+	if all[hop1] == nil {
+		t.Fatalf("node detour = %q — not an emitted tag (%v)", hop1, emittedTags(res))
+	}
+	hop2, _ := all[hop1]["detour"].(string)
+	if all[hop2] == nil {
+		t.Fatalf("hop[0] detour = %q — not an emitted tag (%v)", hop2, emittedTags(res))
+	}
+	if hop1 == hop2 || hop1 == "X-main" || hop2 == "X-main" {
+		t.Fatalf("chain hops must have distinct tags: main=X-main hop1=%q hop2=%q", hop1, hop2)
+	}
+	if _, present := all[hop2]["detour"]; present {
+		t.Fatal("last hop must not carry a detour")
+	}
+	if all[hop1]["server"] != "a.com" || all[hop2]["server"] != "b.com" {
+		t.Fatalf("hops out of order: %v → %v", all[hop1]["server"], all[hop2]["server"])
+	}
+}
+
+// Ловушка «порядок стемпинга тегов»: идентичность (сырой тег узла) снимается
+// ДО tag_prefix. Правка политики тегов источника двигает только финальный тег.
+func TestBodyEmit_IdentityStampedBeforeTagPolicy(t *testing.T) {
+	const uri = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@e.com:443?security=tls&sni=e.com#🇩🇪 DE"
+
+	plainPS, plain := subscriptionFromBody(t, "SUB", uri, "")
+	prefixedPS, prefixed := subscriptionFromBody(t, "SUB", uri, "AL:")
+
+	if len(plain) != 1 || len(prefixed) != 1 {
+		t.Fatalf("ожидалось по 1 узлу, получено %d и %d", len(plain), len(prefixed))
+	}
+	plainTags := emittedTags(runCanonicalBuild(t, []ProxySource{plainPS}, nil))
+	prefixedTags := emittedTags(runCanonicalBuild(t, []ProxySource{prefixedPS}, nil))
+	if !hasTag(prefixedTags, "AL:"+plain[0].Tag) || hasTag(prefixedTags, plain[0].Tag) {
+		t.Fatalf("tag_prefix не применился — тест не проверяет заявленное: %v / %v", plainTags, prefixedTags)
+	}
+	if plain[0].Tag != prefixed[0].Tag {
+		t.Fatalf("tag_prefix увёл идентичность: %q → %q", plain[0].Tag, prefixed[0].Tag)
+	}
+}
+
+// Импорт sing-box конфига тоже штампует идентичность, и тоже до префикса.
+func TestBodyEmit_IdentityStampedForSingboxImport(t *testing.T) {
+	body := `{
+	  "outbounds":[
+	    {"type":"vless","tag":"first","server":"e.com","server_port":443,"uuid":"u1"},
+	    {"type":"vless","tag":"second","server":"e2.com","server_port":443,"uuid":"u1"}
+	  ]
+	}`
+	ps, nodes := subscriptionFromBody(t, "SUB", body, "AL:")
+
+	if len(nodes) != 2 {
+		t.Fatalf("получено %d узлов, ожидалось 2 (серверы разные — дедуп их не трогает)", len(nodes))
+	}
+	tags := emittedTags(runCanonicalBuild(t, []ProxySource{ps}, nil))
+	want := []string{"first", "second"}
+	for i, n := range nodes {
+		if n.Tag != want[i] {
+			t.Errorf("идентичность #%d = %q, ожидалась %q", i+1, n.Tag, want[i])
+		}
+		if !hasTag(tags, "AL:"+want[i]) {
+			t.Errorf("узел %q — префикс не применился (%v)", want[i], tags)
+		}
+	}
+}
+
+// Уникализация идентичностей ведётся на источник, а конфиговых тегов —
+// глобально на сборку: идентичность уникальна В ПРЕДЕЛАХ источника.
+func TestBodyEmit_IdentityCounterIsPerSource(t *testing.T) {
+	const uri = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@e.com:443?security=tls&sni=e.com#🇳🇱 NL"
+
+	firstPS, first := subscriptionFromBody(t, "S1", uri, "")
+	secondPS, second := subscriptionFromBody(t, "S2", uri, "")
+
+	if len(first) != 1 || len(second) != 1 {
+		t.Fatalf("получено %d и %d узлов, ожидалось по 1", len(first), len(second))
+	}
+	if first[0].Tag != "🇳🇱 NL" || second[0].Tag != "🇳🇱 NL" {
+		t.Fatalf("идентичности разъехались между источниками: %q и %q", first[0].Tag, second[0].Tag)
+	}
+	// А конфиговые теги обязаны разойтись — они глобальны.
+	tags := emittedTags(runCanonicalBuild(t, []ProxySource{firstPS, secondPS}, nil))
+	if !hasTag(tags, "🇳🇱 NL") || !hasTag(tags, "🇳🇱 NL-2") {
+		t.Fatalf("конфиговые теги не разведены глобальной уникализацией: %v", tags)
+	}
+}
+
+// Регрессия: с tag_prefix состав Xray-группы (балансировщик) обязан
+// ссылаться на ИТОГОВЫЕ теги членов. `sing-box check` висячих членов не
+// ловит, а в рантайме такая группа мертва.
+func TestBodyEmit_XrayGroupMembersSurviveTagPrefix(t *testing.T) {
+	// Форма боевой подписки: пул с балансировщиком впереди, страны следом
+	// (тот же сервер и в пуле, и в стране).
+	const body = `[
+  {
+    "remarks": "🇪🇺 Авто | Лучший сервер",
+    "outbounds": [
+      {"protocol":"vless","tag":"proxy-1-1-1-1-direct","settings":{"vnext":[
+        {"address":"1.1.1.1","port":443,"users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}]}]}},
+      {"protocol":"vless","tag":"proxy-2-2-2-2-direct","settings":{"vnext":[
+        {"address":"2.2.2.2","port":443,"users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}]}]}}
+    ],
+    "routing": {"balancers": [{"tag":"Auto_Balancer","selector":["proxy"],
+      "strategy":{"type":"leastLoad","settings":{"expected":7}}}]},
+    "burstObservatory": {"pingConfig":{"destination":"http://www.gstatic.com/generate_204","interval":"2m"}}
+  },
+  {
+    "remarks": "🇩🇪 Германия",
+    "outbounds": [{"protocol":"vless","tag":"proxy","settings":{"vnext":[
+      {"address":"1.1.1.1","port":443,"users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}]}]}}]
+  },
+  {
+    "remarks": "🇫🇮 Финляндия",
+    "outbounds": [{"protocol":"vless","tag":"proxy","settings":{"vnext":[
+      {"address":"2.2.2.2","port":443,"users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}]}]}}]
+  }
+]`
+	ps, nodes := subscriptionFromBody(t, "SUB", body, "AL:")
+	res := runCanonicalBuild(t, []ProxySource{ps}, nil)
+	all := emittedEverything(res)
+
+	var group *state.Node
+	for i := range nodes {
+		if nodes[i].Kind == state.SourceKindAuto {
+			if group != nil {
+				t.Fatalf("ожидался 1 узел-группа (%v)", emittedTags(res))
+			}
+			group = &nodes[i]
+		}
+	}
+	if group == nil {
+		t.Fatalf("ожидался 1 узел-группа, получено 0 (%v)", emittedTags(res))
+	}
+	obj := all["AL:"+group.Tag]
+	if obj == nil {
+		t.Fatalf("группа %q не эмитирована (%v)", group.Tag, emittedTags(res))
+	}
+	members, _ := obj["outbounds"].([]interface{})
+	if len(members) == 0 {
+		t.Fatal("группа осталась без членов после применения префикса")
+	}
+	for _, m := range members {
+		if all[m.(string)] == nil {
+			t.Fatalf("группа %q ссылается на %q — такого узла нет (узлы: %v)", group.Tag, m, emittedTags(res))
+		}
 	}
 }
