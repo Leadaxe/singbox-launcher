@@ -1,0 +1,8 @@
+{
+  "_comment": "§5.1 (SPEC 143): телу пресета объявлены ВСЕ переменные шаблона; глобаль без значения (null) даёт Dropped ключа, а не литерал \"@name\" и не выпадение правила целиком. Корпус не моделирует пресеты — config здесь форма тела правила",
+  "vars": [
+    {"name": "out_tag", "type": "text", "default_value": "direct-out"},
+    {"name": "strategy_opt", "type": "text"}
+  ],
+  "config": {"rules": [{"rule_set": "ads", "action": "route", "outbound": "@out_tag", "strategy": "@strategy_opt"}]}
+}
