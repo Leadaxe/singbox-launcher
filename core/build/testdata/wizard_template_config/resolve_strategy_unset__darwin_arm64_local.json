@@ -1,0 +1,371 @@
+{
+  "certificate": {
+    "store": "system"
+  },
+  "dns": {
+    "rules": [
+      {
+        "rule_set": [
+          "russian:ru-domains",
+          "russian:ru-services"
+        ],
+        "server": "russian:yandex_udp"
+      },
+      {
+        "action": "predefined",
+        "query_type": [
+          "HTTPS",
+          "SVCB"
+        ],
+        "rcode": "NOERROR"
+      },
+      {
+        "query_type": [
+          "A",
+          "AAAA"
+        ],
+        "server": "fakeip:fakeip"
+      }
+    ],
+    "servers": [
+      {
+        "tag": "local_dns_resolver",
+        "type": "local"
+      },
+      {
+        "server": "8.8.8.8",
+        "server_port": 53,
+        "tag": "direct_dns_resolver",
+        "type": "udp"
+      },
+      {
+        "server": "77.88.8.8",
+        "server_port": 53,
+        "tag": "russian:yandex_udp",
+        "type": "udp"
+      },
+      {
+        "path": "/dns-query",
+        "server": "77.88.8.88",
+        "server_port": 443,
+        "tag": "russian:yandex_doh",
+        "tls": {
+          "enabled": true,
+          "server_name": "safe.dot.dns.yandex.net"
+        },
+        "type": "https"
+      },
+      {
+        "server": "77.88.8.88",
+        "server_port": 853,
+        "tag": "russian:yandex_dot",
+        "tls": {
+          "enabled": true,
+          "server_name": "safe.dot.dns.yandex.net"
+        },
+        "type": "tls"
+      },
+      {
+        "inet4_range": "198.18.0.0/15",
+        "inet6_range": "fc00::/18",
+        "tag": "fakeip:fakeip",
+        "type": "fakeip"
+      }
+    ],
+    "strategy": "ipv4_only"
+  },
+  "endpoints": [
+    /** @ParserSTART_E */
+/** @ParserEND_E */
+  ],
+  "experimental": {
+    "cache_file": {
+      "enabled": true,
+      "path": "cache.db",
+      "store_fakeip": true
+    },
+    "clash_api": {
+      "external_controller": "127.0.0.1:9090",
+      "secret": "golden-secret"
+    }
+  },
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "listen_port": 7890,
+      "set_system_proxy": true,
+      "tag": "proxy-in",
+      "type": "mixed"
+    },
+    {
+      "address": [
+        "172.16.0.1/30"
+      ],
+      "auto_route": true,
+      "include_interface": [],
+      "mtu": 1492,
+      "route_exclude_address": [],
+      "stack": "system",
+      "strict_route": false,
+      "tag": "tun-in",
+      "type": "tun"
+    }
+  ],
+  "log": {
+    "level": "warn",
+    "timestamp": true
+  },
+  "outbounds": [
+    /** @ParserSTART */
+	{"type":"vless","tag":"node-a","server":"198.51.100.1","server_port":443,"uuid":"00000000-0000-0000-0000-000000000001"},
+	{"type":"selector","tag":"proxy-out","outbounds":["node-a","direct-out"]},
+	{"type":"selector","tag":"ru VPN 🇷🇺","outbounds":["node-a"]},
+/** @ParserEND */
+    {"tag":"direct-out","type":"direct"},
+    {"tag":"block-out","type":"block"}
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "default_domain_resolver": "direct_dns_resolver",
+    "final": "proxy-out",
+    "find_process": true,
+    "rule_set": [
+      {
+        "format": "domain_suffix",
+        "rules": [
+          {
+            "domain_suffix": [
+              "local",
+              "lan"
+            ]
+          }
+        ],
+        "tag": "local-lan-domains:lan",
+        "type": "inline"
+      },
+      {
+        "format": "domain_suffix",
+        "rules": [
+          {
+            "domain_suffix": [
+              "anthropic.com",
+              "claude.ai",
+              "claudeusercontent.com",
+              "openai.com",
+              "chatgpt.com",
+              "oaistatic.com",
+              "oaiusercontent.com",
+              "perplexity.ai",
+              "pplx.ai",
+              "generativelanguage.googleapis.com",
+              "gemini.google.com",
+              "aistudio.google.com",
+              "ai.google.dev",
+              "palm.googleapis.com"
+            ]
+          }
+        ],
+        "tag": "ai-services:ai-services",
+        "type": "inline"
+      },
+      {
+        "format": "domain_suffix",
+        "rules": [
+          {
+            "domain_suffix": [
+              "meet.google.com",
+              "googlevideo.com",
+              "gstatic.com",
+              "googleusercontent.com",
+              "googleapis.com",
+              "web.whatsapp.com",
+              "whatsapp.com",
+              "whatsapp.net",
+              "cdn.whatsapp.net",
+              "mmg.whatsapp.net",
+              "discord.com",
+              "discordapp.com",
+              "cdn.discordapp.com",
+              "discord.gg",
+              "gateway.discord.gg",
+              "discord.media",
+              "telegram.org",
+              "t.me",
+              "cdn-telegram.org"
+            ]
+          },
+          {
+            "process_name": [
+              "Telegram",
+              "Discord",
+              "WhatsApp",
+              "Signal",
+              "zoom.us"
+            ]
+          }
+        ],
+        "tag": "messengers:messengers",
+        "type": "inline"
+      },
+      {
+        "format": "domain_suffix",
+        "rules": [
+          {
+            "domain_suffix": [
+              "ru",
+              "su",
+              "xn--p1ai",
+              "xn--p1acf",
+              "xn--80adxhks",
+              "moscow",
+              "tatar",
+              "xn--d1acj3b",
+              "xn--80asehdb",
+              "xn--80aswg",
+              "xn--c1avg",
+              "xn--j1aef"
+            ]
+          }
+        ],
+        "tag": "russian:ru-domains",
+        "type": "inline"
+      },
+      {
+        "format": "domain_suffix",
+        "rules": [
+          {
+            "domain_suffix": [
+              "userapi.com",
+              "avito.st",
+              "yandex.net",
+              "yandex.com",
+              "yastatic.net",
+              "2gis.com",
+              "okko.tv",
+              "premier.one",
+              "lenta.com",
+              "vk.com",
+              "vk-portal.net",
+              "gismeteo.com",
+              "lmru.tech",
+              "mradx.net",
+              "wbstatic.net",
+              "wildberries.by",
+              "trbcdn.net",
+              "sberbank.com"
+            ]
+          }
+        ],
+        "tag": "russian:ru-services",
+        "type": "inline"
+      }
+    ],
+    "rules": [
+      {
+        "action": "sniff",
+        "inbound": [
+          "tun-in",
+          "proxy-in"
+        ],
+        "timeout": "1s"
+      },
+      {
+        "action": "hijack-dns",
+        "protocol": "dns"
+      },
+      {
+        "ip_is_private": true,
+        "outbound": "direct-out"
+      },
+      {
+        "outbound": "direct-out",
+        "rule_set": "local-lan-domains:lan"
+      },
+      {
+        "outbound": "direct-out",
+        "protocol": [
+          "bittorrent"
+        ]
+      },
+      {
+        "network": [
+          "tcp",
+          "udp"
+        ],
+        "outbound": "direct-out",
+        "port": [
+          3659,
+          1935,
+          5001,
+          5795,
+          5796,
+          7000,
+          7777,
+          9000,
+          10039,
+          10040
+        ],
+        "port_range": "27000:27100"
+      },
+      {
+        "action": "reject",
+        "method": "drop",
+        "network": [
+          "udp"
+        ],
+        "port": [
+          443
+        ]
+      },
+      {
+        "network": [
+          "tcp",
+          "udp"
+        ],
+        "outbound": "direct-out"
+      },
+      {
+        "network": [
+          "tcp",
+          "udp"
+        ],
+        "outbound": "proxy-out",
+        "rule_set": "ai-services:ai-services"
+      },
+      {
+        "network": [
+          "tcp",
+          "udp"
+        ],
+        "outbound": "proxy-out",
+        "rule_set": "messengers:messengers"
+      },
+      {
+        "outbound": "direct-out",
+        "rule_set": [
+          "russian:ru-domains",
+          "russian:ru-services"
+        ]
+      },
+      {
+        "network": [
+          "tcp",
+          "udp"
+        ],
+        "outbound": "proxy-out"
+      },
+      {
+        "outbound": "proxy-out",
+        "source_port_range": [
+          "49152:57343"
+        ]
+      },
+      {
+        "outbound": "proxy-out",
+        "source_port_range": [
+          "57344:65535"
+        ]
+      }
+    ]
+  }
+}
