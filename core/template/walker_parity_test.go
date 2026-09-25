@@ -39,6 +39,12 @@ var knownWalkerDivergences = map[string]string{
 	"grammar/if_without_and_or_is_false": "legacy трактует #if без and/or как TRUE (канон и контракт — FALSE); " +
 		"в проде недостижимо — ValidateWizardTemplate обходит секцию config тем же " +
 		"walkValidateIf и отвергает такой шаблон на загрузке (аудит 2026-08-24)",
+
+	// Контракт 1.1.68 (SPEC 143, решения владельца 2026-09-25). Legacy уходит
+	// целиком волной 2, вместе с этим стражем.
+	"subst/single_element_array_keeps_array": "legacy сворачивает [\"@name\"] в скаляр; канон и контракт сохраняют скобки автора (§3)",
+
+	"unresolved/preset_body_declares_all_template_vars": "legacy подставляет \"\" вместо удаления ключа (Dropped-каскад §5.1)",
 }
 
 // walkerParityCase — одна фикстура корпуса, прогнанная через боевой обходчик.

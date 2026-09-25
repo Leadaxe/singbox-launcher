@@ -166,15 +166,15 @@ func (v *TemplateVar) UnmarshalJSON(data []byte) error {
 	if anyTitle {
 		v.OptionTitles = titles
 	}
-	// Object-form options (`[{title, value}]`) imply a closed-set semantic by
-	// definition — titles are display-only labels, the substituted value is
-	// the `value` field. Combining this with `type:"text"` (free-text combo)
-	// is unsafe: free-typed text bypasses the title→value mapping and lands
-	// in the config as the literal display string. Same risk for any other
-	// type. Normalize to `enum` regardless of the declared type so all code
-	// paths (renderer, validator, preview, substitute) see one consistent
-	// invariant.
-	if anyObjectForm {
+	// Объектная форма `options` (`[{title, value}]`) — закрытое множество:
+	// подпись только для показа, в конфиг уезжает `value`. Для `text` это
+	// сегодня выражается сведением к `enum`, иначе свободный ввод комбобокса
+	// уронит в конфиг подпись вместо значения. По контракту 1.1.68 (SPEC 143,
+	// TEMPLATE_LANG §2.1) `options` не меняют `type`: `int` с объектными
+	// `options` остаётся числом («число, которое выбирают из списка»).
+	// Сведение к `enum` у остальных типов снимает волна 4 вместе с рендером
+	// по `options`/`options_open`.
+	if anyObjectForm && v.Type != "int" && v.Type != "number" {
 		v.Type = "enum"
 	}
 	return nil
