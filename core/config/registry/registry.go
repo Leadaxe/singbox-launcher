@@ -518,6 +518,13 @@ type Registry struct {
 	// schemeByType — обратная карта для входа «ручной JSON-объект»: у него
 	// схемы нет, есть только "type" тела.
 	schemeByType map[string]string
+	// kinds — схема → `kind` протокола (outbound | endpoint | group):
+	// в какую секцию config.json эмитится узел.
+	kinds map[string]string
+	// sources — схема → входы, которыми узел приходит (`sources` файла
+	// протокола). Схема без входа "singbox" узлом из чужого конфига не
+	// становится, даже если её тип ядру известен.
+	sources map[string][]string
 }
 
 // protocolFiles — схемы протоколов реестра. Список явный: embed.FS читается
@@ -577,6 +584,8 @@ func Load() (*Registry, error) {
 		aliases:      map[string]map[string][]string{},
 		singboxTypes: map[string]string{},
 		schemeByType: map[string]string{},
+		kinds:        map[string]string{},
+		sources:      map[string][]string{},
 	}
 
 	for _, name := range protocolFiles {
@@ -603,6 +612,8 @@ func Load() (*Registry, error) {
 		reg.schemes = append(reg.schemes, scheme)
 		reg.mapsTo[scheme] = collectMapsTo(f.Raw)
 		reg.aliases[scheme] = collectAliases(f.Raw)
+		reg.kinds[scheme] = strings.TrimSpace(rawString(f.Raw, "kind"))
+		reg.sources[scheme] = rawStringSlice(f.Raw, "sources")
 		sbType := strings.TrimSpace(rawString(f.Raw, "singbox_type"))
 		if sbType != "" && !strings.Contains(sbType, "|") {
 			reg.singboxTypes[scheme] = sbType
@@ -622,6 +633,8 @@ func Load() (*Registry, error) {
 			reg.bodies[alias] = body
 			reg.mapsTo[alias] = reg.mapsTo[scheme]
 			reg.aliases[alias] = reg.aliases[scheme]
+			reg.kinds[alias] = reg.kinds[scheme]
+			reg.sources[alias] = reg.sources[scheme]
 			if sbType != "" {
 				reg.singboxTypes[alias] = sbType
 			}
@@ -1042,6 +1055,41 @@ func (r *Registry) SingboxType(scheme string) string {
 func (r *Registry) SchemeForSingboxType(t string) (string, bool) {
 	s, ok := r.schemeByType[strings.ToLower(strings.TrimSpace(t))]
 	return s, ok
+}
+
+// SourceSingbox — имя входа «тело в форме ядра» в `sources` протокола
+// (импорт sing-box JSON, ручной JSON, тело из состояния или бэкапа).
+const SourceSingbox = "singbox"
+
+// NodeSchemeForSingboxType — схема УЗЛА по типу тела ядра: обратная карта
+// `singbox_type`, суженная до схем, которые принимают вход "singbox"
+// (`sources`). Тип, известный ядру, но не приходящий узлом (chain — тело
+// рождается в форме, `sources` у схемы нет), узлом не становится: false.
+func (r *Registry) NodeSchemeForSingboxType(t string) (string, bool) {
+	s, ok := r.SchemeForSingboxType(t)
+	if !ok || !r.AcceptsSource(s, SourceSingbox) {
+		return "", false
+	}
+	return s, true
+}
+
+// AcceptsSource — приходит ли узел схемы входом source (`sources`).
+func (r *Registry) AcceptsSource(scheme, source string) bool {
+	for _, v := range r.sources[scheme] {
+		if v == source {
+			return true
+		}
+	}
+	return false
+}
+
+// KindEndpoint — `kind` протокола, чьи узлы живут в endpoints[] config.json.
+const KindEndpoint = "endpoint"
+
+// ProtocolKind — `kind` протокола: "outbound", "endpoint" или "group";
+// пустая строка — схема реестру неизвестна.
+func (r *Registry) ProtocolKind(scheme string) string {
+	return r.kinds[scheme]
 }
 
 // Schemes — схемы реестра в порядке загрузки (алфавитном).

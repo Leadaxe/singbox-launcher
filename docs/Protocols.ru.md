@@ -66,7 +66,7 @@
 | Декодер | После trim строка начинается с **`[`**, **`json.Valid`**, успешный `json.Unmarshal` в массив — тело не отвергается как «не подписка» (`DecodeSubscriptionContent`). |
 | Вход в парсер | **`IsXrayJSONArrayBody`**: то же — префикс `[`, валидный JSON, массив объектов. |
 | Элемент массива | **`xrayElementHasProtocolOutbounds`**: в **`outbounds`** есть хотя бы один объект с полем **`protocol`** (строка) — признак **Xray-диалекта**. Элементы только с sing-box **`type`** без **`protocol`** не считаются Xray для этой ветки и **пропускаются** с `debuglog` (ожидается follow-up **016**). |
-| Нода | Основной outbound элемента выбирается на уровне документа, а переводит его движок реестра (`parseXrayElementByEngine` → `core/config/linkmap`); какая секция `mappers.xray` его ведёт, решает её собственный `detect`, а не список протоколов в коде. При **`dialerProxy`** hop разбирается как **`socks`** или **`vless`** (`xrayChainHopFromOutbound`; socks-звено — `xrayBuildJumpFromSocksOutbound`); иные `protocol` у hop — пропуск элемента (`WarnLog`). |
+| Нода | Основной outbound элемента выбирается на уровне документа, а переводит его движок реестра (`parseXrayElementByEngine` → `core/config/linkmap`); какая секция `mappers.xray` его ведёт, решает её собственный `detect`, а не список протоколов в коде. При **`dialerProxy`** hop (`socks`, `vless`, …) переводит та же секция движка, что и узел (`xrayChainHopFromOutbound`); hop, который не опознала ни одна секция, — пропуск элемента (`WarnLog`). |
 
 **`remarks` и теги sing-box**
 

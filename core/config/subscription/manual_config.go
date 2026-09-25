@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/registry"
 )
 
 // NodeFromManualConfigJSON строит ParsedNode из ручного sing-box объекта.
@@ -49,7 +50,7 @@ func NodeFromManualConfigJSON(raw []byte) (*configtypes.ParsedNode, error) {
 	}
 
 	scheme := entryType
-	if s, ok := singboxTypeToScheme(entryType); ok {
+	if s, ok := registry.MustGet().NodeSchemeForSingboxType(entryType); ok {
 		scheme = s
 	}
 

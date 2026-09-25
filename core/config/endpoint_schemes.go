@@ -1,22 +1,9 @@
-// File endpoint_schemes.go — единственная точка истины «эта схема живёт в
-// endpoints[], а не в outbounds[]» (SPEC 122 §2.1).
+// File endpoint_schemes.go — «эта схема живёт в endpoints[], а не в
+// outbounds[]» (SPEC 122 §2.1) и раскладка каталога состояния tailnet.
 //
-// Раньше признак endpoint'а был строкой `node.Scheme == "wireguard"` в двух
-// местах эмиссии (EmitNodeJSONs и GenerateEndpointJSONBare) — и тип,
-// добавленный в таблицу схем импорта, но не в эти строки, молча уезжал в
-// outbounds[]. Предикат ниже нужен обоим местам и всем будущим.
-//
-// Нормативный источник — contract/registry/protocols/<scheme>.json, поле
-// `kind` (`endpoint` против `outbound`). Реестр в Go сейчас не читается ни
-// одним пакетом (это контрактный документ для сверки двух приложений), и
-// заводить ради одного предиката загрузчик JSON на старте значило бы
-// поставить эмиссию в зависимость от наличия файла на диске. Поэтому здесь
-// константная таблица, а её расхождение с реестром ловится глазами при
-// правке реестра — как и таблица singboxSchemeByType рядом.
-//
-// masque сюда НАМЕРЕННО не входит: в sing-box >= 1.11 он тоже endpoint, но
-// лаунчер эмитит его в outbounds[] (outbound_generator.go:528), и перенос —
-// отдельное решение, а не побочный эффект этой задачи.
+// Признак endpoint'а — поле `kind` протокола в реестре
+// (contract/registry/protocols/<scheme>.json: `endpoint` против `outbound`),
+// читается движком реестра; своей таблицы схем здесь нет (SPEC 142 A9).
 package config
 
 import (
@@ -25,18 +12,13 @@ import (
 	"sync"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/registry"
 )
 
-// endpointSchemes — схемы, чьи узлы эмитятся в секцию endpoints[].
-// Ключи совпадают с полем `scheme` реестра протоколов.
-var endpointSchemes = map[string]bool{
-	"wireguard": true, // contract/registry/protocols/wireguard.json  (kind: endpoint)
-	"tailscale": true, // contract/registry/protocols/tailscale.json  (kind: endpoint)
-}
-
-// IsEndpointScheme — уедет ли узел этой схемы в endpoints[].
+// IsEndpointScheme — уедет ли узел этой схемы в endpoints[]: `kind` её
+// протокола в реестре — endpoint.
 func IsEndpointScheme(scheme string) bool {
-	return endpointSchemes[scheme]
+	return registry.MustGet().ProtocolKind(scheme) == registry.KindEndpoint
 }
 
 // SchemeTailscale — схема узла tailnet (contract/registry/protocols/tailscale.json).

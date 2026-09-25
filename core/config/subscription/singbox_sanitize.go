@@ -66,7 +66,6 @@ func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) []string 
 	obType := strings.ToLower(strings.TrimSpace(mapString(ob, "type")))
 
 	sanitizeSingboxMasqueLegacy(ob, obType, tag)
-	sanitizeSingboxTLS(ob, tag)
 	sanitizeSingboxHysteriaObfs(ob, obType, tag)
 	return nil
 }
@@ -97,36 +96,10 @@ func sanitizeSingboxMasqueLegacy(ob map[string]interface{}, obType, tag string) 
 	}
 }
 
-// sanitizeSingboxTLS снимает блок tls в единственном случае, где его форма
-// роняет ядро ДО того, как тело доедет до санитайзера реестра: tls не объект.
-// Ядро отвергает такой конфиг на РАЗБОРЕ, то есть раньше любых правил
-// значений, и никакой атрибут реестра этого не выразит — он описывает поля
-// объекта, а объекта тут нет.
-//
-// Правил значения здесь больше нет. uTLS allowlist, REALITY pbk/short_id и
-// key_share ушли в реестр волной W2d, срез utls/reality на QUIC — контрактом
-// 1.1.4 (см. комментарий про quicOutboundTypes выше), а правило
-// «`tls:{enabled:false}` = TLS не задан» — атрибутом `absent_when` у секции
-// tls (контракт 1.1.12). Прежде оно жило здесь рукописной копией и потому
-// работало только на этом входе: тело, приехавшее мимо импорта (ручной JSON
-// вкладки, чужой бэкап), доезжало до конфига с выключенным блоком.
-func sanitizeSingboxTLS(ob map[string]interface{}, tag string) {
-	tlsRaw, ok := ob["tls"]
-	if !ok {
-		return
-	}
-	tlsMap, ok := tlsRaw.(map[string]interface{})
-	if !ok {
-		// tls не объект — ядро отвергнет конфиг; безопаснее снять поле.
-		debuglog.WarnLog("Parser: singbox import %q: tls is not an object — dropping field", tag)
-		delete(ob, "tls")
-		return
-	}
-
-	if len(tlsMap) == 0 {
-		delete(ob, "tls")
-	}
-}
+// СНЯТО (SPEC 142 A2): sanitizeSingboxTLS. tls не объект или пустой объект
+// судит реестр — у секции tls `type: object`, и санитайзер конвейера снимает
+// негодную форму с кодом type_invalid (пустой объект — молча) одинаково на
+// всех входах, а не только на импорте sing-box.
 
 // Дефолт полосы Hysteria v1 здесь БОЛЬШЕ НЕ ПОДСТАВЛЯЕТСЯ: его подставляет
 // реестр (default_when у hysteria.body.up_mbps / down_mbps, SPEC 131 W2d) —

@@ -227,6 +227,10 @@ func TestSingboxImportSelectorDropsDanglingDefault(t *testing.T) {
 }
 
 // Критерий 7: один битый outbound из пяти не роняет остальные.
+//
+// Запись без server разбор пропускает: обязательность адреса судит реестр
+// при материализации тела (dialer.common `required`, SPEC 142 A3), и там она
+// становится узлом kind=unsupported на своей позиции.
 func TestSingboxImportBrokenEntryDoesNotKillSiblings(t *testing.T) {
 	body := `{
 	  "outbounds":[
@@ -240,7 +244,7 @@ func TestSingboxImportBrokenEntryDoesNotKillSiblings(t *testing.T) {
 	res := parseSingboxBodyForTest(t, body)
 
 	got := tagsOf(res)
-	want := []string{"a", "b", "c"}
+	want := []string{"a", "broken-no-server", "b", "c"}
 	if len(got) != len(want) {
 		t.Fatalf("tags = %v, want %v", got, want)
 	}

@@ -146,19 +146,3 @@ func TestGenerateNodeJSON_FlowDroppedWithTransport(t *testing.T) {
 		})
 	}
 }
-
-// Guard: outboundHasTransport recognizes a real transport but not an empty/absent one.
-func TestOutboundHasTransport(t *testing.T) {
-	if outboundHasTransport(nil) {
-		t.Error("nil outbound has no transport")
-	}
-	if outboundHasTransport(map[string]interface{}{"type": "vless"}) {
-		t.Error("no transport key → false")
-	}
-	if outboundHasTransport(map[string]interface{}{"transport": map[string]interface{}{}}) {
-		t.Error("empty transport map → false")
-	}
-	if !outboundHasTransport(map[string]interface{}{"transport": map[string]interface{}{"type": "xhttp"}}) {
-		t.Error("xhttp transport → true")
-	}
-}

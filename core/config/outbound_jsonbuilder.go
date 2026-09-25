@@ -31,18 +31,3 @@ func sanitizeOutboundLineComment(s string) string {
 	s = strings.TrimSpace(s)
 	return strings.ToValidUTF8(s, "\uFFFD")
 }
-
-// outboundHasTransport reports whether the outbound carries a non-empty v2ray
-// transport (ws/grpc/http/httpupgrade/xhttp/…). Used to suppress VLESS `flow`,
-// which sing-box accepts only over bare TLS/Reality (no transport).
-func outboundHasTransport(outbound map[string]interface{}) bool {
-	if outbound == nil {
-		return false
-	}
-	transport, ok := outbound["transport"].(map[string]interface{})
-	if !ok || len(transport) == 0 {
-		return false
-	}
-	tType, _ := transport["type"].(string)
-	return tType != ""
-}

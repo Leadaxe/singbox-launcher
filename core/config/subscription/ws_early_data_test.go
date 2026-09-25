@@ -10,63 +10,6 @@ import (
 // Every WS transport builder (share-URI, Xray JSON, VMess) must split the tail
 // into max_early_data + early_data_header_name=Sec-WebSocket-Protocol.
 
-func TestSplitWSEarlyData(t *testing.T) {
-	tests := []struct {
-		in       string
-		wantPath string
-		wantED   int
-	}{
-		{"/api/v2/channel?ed=2560", "/api/v2/channel", 2560},
-		{"/path?ed=2048&foo=bar", "/path", 2048}, // ed among other params
-		{"/path?foo=bar&ed=100", "/path", 100},   // ed not first
-		{"/plain", "/plain", 0},                  // no tail
-		{"/plain?ed=", "/plain", 0},              // empty ed → strip tail, no ED
-		{"/plain?ed=abc", "/plain", 0},           // non-numeric ed → no ED
-		{"/plain?ed=0", "/plain", 0},             // ed=0 means disabled
-		{"/plain?ed=-5", "/plain", 0},            // negative → ignored
-		{"/plain?foo=bar", "/plain", 0},          // tail without ed → still stripped
-		{"  /sp?ed=64  ", "/sp", 64},             // surrounding whitespace
-		{"/p?ED=2560", "/p", 2560},               // uppercase key — folded like the rest of the parser
-		{"/p?ed=2560&ed=99", "/p", 2560},         // duplicate ed → first wins
-		{"", "", 0},                              // empty
-		{"?ed=32", "", 32},                       // path is only the tail
-	}
-	for _, tt := range tests {
-		gotPath, gotED := splitWSEarlyData(tt.in)
-		if gotPath != tt.wantPath || gotED != tt.wantED {
-			t.Errorf("splitWSEarlyData(%q) = (%q, %d), want (%q, %d)", tt.in, gotPath, gotED, tt.wantPath, tt.wantED)
-		}
-	}
-}
-
-func TestApplyWSEarlyData(t *testing.T) {
-	// With ed: all three fields set.
-	tr := map[string]interface{}{"type": "ws"}
-	applyWSEarlyData(tr, "/api/v2/channel?ed=2560")
-	if tr["path"] != "/api/v2/channel" {
-		t.Fatalf("path = %v, want /api/v2/channel", tr["path"])
-	}
-	if tr["max_early_data"] != 2560 {
-		t.Fatalf("max_early_data = %v, want 2560", tr["max_early_data"])
-	}
-	if tr["early_data_header_name"] != "Sec-WebSocket-Protocol" {
-		t.Fatalf("early_data_header_name = %v, want Sec-WebSocket-Protocol", tr["early_data_header_name"])
-	}
-
-	// Without ed: only path, no early-data keys leak in.
-	tr2 := map[string]interface{}{"type": "ws"}
-	applyWSEarlyData(tr2, "/plain")
-	if tr2["path"] != "/plain" {
-		t.Fatalf("path = %v, want /plain", tr2["path"])
-	}
-	if _, ok := tr2["max_early_data"]; ok {
-		t.Fatal("max_early_data must be absent when no ed")
-	}
-	if _, ok := tr2["early_data_header_name"]; ok {
-		t.Fatal("early_data_header_name must be absent when no ed")
-	}
-}
-
 // --- Parser 1: share-URI (type=ws&path=...) ---
 
 func TestParseNode_VLESS_WS_EarlyDataFromURI(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/config/subscription"
 )
 
@@ -233,9 +234,9 @@ func sanitizeForTest(t *testing.T, ob map[string]interface{}) map[string]interfa
 	// маппером — конвейер начинается после него.
 	subscription.SanitizeSingboxOutboundMap(src, "test")
 
-	scheme, ok := subscription.SchemeFromSingboxType(mapStringValue(src, "type"))
+	scheme, ok := registry.MustGet().NodeSchemeForSingboxType(mapStringValue(src, "type"))
 	if !ok {
-		t.Fatalf("тип %q вне таблицы схем", mapStringValue(src, "type"))
+		t.Fatalf("тип %q реестр узлом не знает", mapStringValue(src, "type"))
 	}
 	body, _, drop := materializeBody(scheme, configtypes.NodeSourceSingbox, src)
 	if drop != nil {

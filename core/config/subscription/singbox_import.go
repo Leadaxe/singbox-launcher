@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -326,26 +327,22 @@ func parseSingboxEntry(entry map[string]interface{}, cfgIdx, entryIdx int) (*con
 		return nil, fmt.Errorf("missing type")
 	}
 
-	scheme, ok := singboxTypeToScheme(entryType)
+	// Схему узла даёт реестр: обратная карта `singbox_type`, суженная до
+	// схем, которые приходят входом sing-box (`sources`). Тип вне её —
+	// неподдержанная запись.
+	scheme, ok := registry.MustGet().NodeSchemeForSingboxType(entryType)
 	if !ok {
 		return nil, fmt.Errorf("unsupported outbound type %q", entryType)
 	}
 
 	ob := copyJSONMap(entry)
 
-	// WireGuard/MASQUE описывают адрес иначе (address[]/peers), общая проверка
-	// server/server_port к ним не применима.
+	// Адрес узла — для списков и skip-фильтров. Обязательность server и
+	// server_port (и то, что у wireguard/tailscale адреса в корне нет) судит
+	// реестр при материализации тела (`required`, `format: port`): запись без
+	// адреса станет узлом kind=unsupported на своей позиции с кодом реестра.
 	server := mapString(entry, "server")
 	port := xrayJSONInt(entry["server_port"])
-
-	if !singboxTypeIsAddressless(entryType) {
-		if server == "" {
-			return nil, fmt.Errorf("missing server")
-		}
-		if port <= 0 || port > 65535 {
-			return nil, fmt.Errorf("invalid server_port %d", port)
-		}
-	}
 
 	tag := mapString(entry, "tag")
 	if tag == "" {
@@ -382,53 +379,6 @@ func parseSingboxEntry(entry map[string]interface{}, cfgIdx, entryIdx int) (*con
 	// отпечаток уходит как есть, узел предупреждает (SPEC 083 ядра).
 
 	return node, nil
-}
-
-// singboxSchemeByType — соответствие sing-box type → внутренняя схема лаунчера.
-//
-// Схемы совпадают с теми, что выдаёт URI-парсер: дальше по конвейеру
-// (GenerateNodeJSON, skip-фильтры, share-URI) работает один и тот же код.
-var singboxSchemeByType = map[string]string{
-	"vless":       "vless",
-	"vmess":       "vmess",
-	"trojan":      "trojan",
-	"shadowsocks": "ss",
-	"hysteria":    "hysteria",
-	"hysteria2":   "hysteria2",
-	"tuic":        "tuic",
-	"anytls":      "anytls",
-	"ssh":         "ssh",
-	"socks":       "socks",
-	"http":        "http",
-	"naive":       "naive",
-	"wireguard":   "wireguard",
-	"masque":      "masque",
-	// SPEC 122: endpoint tsnet в user-space. Как и wireguard — безадресный
-	// тип (см. singboxTypeIsAddressless) и эмитится в endpoints[]
-	// (config.IsEndpointScheme). URI-формы у схемы нет.
-	"tailscale": "tailscale",
-}
-
-func singboxTypeToScheme(t string) (string, bool) {
-	s, ok := singboxSchemeByType[t]
-	return s, ok
-}
-
-// SchemeFromSingboxType — тот же словарь наружу (SPEC 118 W4): эмиссия из
-// материализованных nodes[] определяет схему узла по типу его тела, и второй
-// таблицы соответствий заводить нельзя — она разъехалась бы с этой.
-func SchemeFromSingboxType(t string) (string, bool) {
-	return singboxTypeToScheme(strings.ToLower(strings.TrimSpace(t)))
-}
-
-// singboxTypeIsAddressless — типы без server/server_port на верхнем уровне.
-//
-// wireguard описывает адрес через address[]/peers, tailscale не описывает
-// вовсе — ядро само входит в tailnet по auth_key. Общая проверка
-// server/server_port (:299-307) к ним не применима: она отвергла бы такой
-// узел даже при наличии схемы в таблице выше.
-func singboxTypeIsAddressless(t string) bool {
-	return t == "wireguard" || t == "tailscale"
 }
 
 // singboxCredentialFromMap достаёт учётные данные в поле UUID ParsedNode.

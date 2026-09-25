@@ -114,55 +114,6 @@ func (a *MasqueAccount) ToMasqueURI() (string, error) {
 	return u.String(), nil
 }
 
-// ToMasqueOutbound builds the sing-box masque outbound map from the account,
-// following the core SPEC 021/062 contract (profile cloudflare, vhttp HTTP
-// version, nested tls block, ip/ipv6 tunnel addresses, base64-DER keys).
-// Requires core >= lx.26.
-func (a *MasqueAccount) ToMasqueOutbound() (map[string]interface{}, error) {
-	if a.PrivateKeyDER == "" || a.ServerPubDER == "" {
-		return nil, fmt.Errorf("warp masque: missing key material")
-	}
-	if a.ClientV4 == "" && a.ClientV6 == "" {
-		return nil, fmt.Errorf("warp masque: missing interface address")
-	}
-	vhttp := a.VHTTP
-	if vhttp == "" {
-		vhttp = "h3"
-	}
-	port := a.Port
-	if port == 0 {
-		port = 443
-	}
-	ob := map[string]interface{}{
-		"type":        "masque",
-		"tag":         a.DisplayTag(),
-		"server":      a.Server,
-		"server_port": port,
-		"profile":     "cloudflare",
-		"vhttp":       vhttp,
-		"private_key": a.PrivateKeyDER,
-		"public_key":  a.ServerPubDER,
-		"mtu":         warpMTU,
-	}
-	if a.ClientV4 != "" {
-		ob["ip"] = ensureCIDR(a.ClientV4, false)
-	}
-	if a.ClientV6 != "" {
-		ob["ipv6"] = ensureCIDR(a.ClientV6, true)
-	}
-	if a.SNI != "" {
-		// Nested `tls` block, not the flat `sni` the core deprecated (SPEC 062).
-		ob["tls"] = map[string]interface{}{"server_name": a.SNI}
-	}
-	if a.IdleTimeout != "" {
-		ob["idle_timeout"] = a.IdleTimeout
-	}
-	if a.KeepAlive != "" {
-		ob["keep_alive_period"] = a.KeepAlive
-	}
-	return ob, nil
-}
-
 // RegisterMasque registers a WARP MASQUE account in two steps (mirrors LxBox):
 //  1. POST /reg with a throwaway WireGuard key to create the device.
 //  2. PATCH /reg/{id} with the ECDSA public key, key_type=secp256r1,

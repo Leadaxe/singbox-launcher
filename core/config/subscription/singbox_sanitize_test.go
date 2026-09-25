@@ -1,6 +1,10 @@
 package subscription
 
-import "testing"
+import (
+	"testing"
+
+	"singbox-launcher/core/config/nodeflow"
+)
 
 // SPEC 094 A2 — санитайзы над импортированной sing-box map.
 //
@@ -13,7 +17,7 @@ import "testing"
 // живут в реестре, их исполняет nodeflow.Sanitize, и сверяют их табличный
 // тест пакета nodeflow и корпус контракта. Здесь остаётся то, что реестром
 // не выражается: СТРУКТУРНЫЕ преобразования диалекта (форма obfs, плоский
-// masque, снятие tls-блока негодной ФОРМЫ) — работа маппера.
+// masque) — работа маппера.
 //
 // Контракт 1.1.4: TestSanitizeSingboxQUICStripsUTLSAndReality снят вместе со
 // своим правилом — срез utls/reality на QUIC переехал в реестр (forbidden_for
@@ -43,12 +47,36 @@ import "testing"
 // obfs МОЛЧА; теперь узел получает obfs_unknown / obfs_password_missing —
 // проверено прогоном nodeflow.Sanitize на обоих кейсах.
 
+// tls негодной ФОРМЫ судит реестр (`type: object` секции tls), а не
+// рукописная копия на входе sing-box (SPEC 142 A2): не объект — блок снят с
+// кодом type_invalid, пустой объект — снят молча, узел жив в обоих случаях.
 func TestSanitizeSingboxHandlesMalformedBlocks(t *testing.T) {
-	// tls не объект: ядро отвергло бы конфиг, поле снимается.
-	ob := map[string]interface{}{"type": "vless", "tls": "yes-please"}
-	SanitizeSingboxOutboundMap(ob, "n")
-	if _, present := ob["tls"]; present {
-		t.Fatal("non-object tls must be dropped")
+	base := func(tls interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"type": "vless", "server": "e.com", "server_port": float64(443),
+			"uuid": "a0ee37a5-1844-4087-bc5c-1db6f416d38c", "tls": tls,
+		}
+	}
+	res := nodeflow.SanitizeFrom("vless", nodeflow.SourceSingbox, base("yes-please"))
+	if res.Drop != nil {
+		t.Fatalf("узел с негодным tls отброшен: %+v", res.Drop)
+	}
+	if _, present := res.Clean["tls"]; present {
+		t.Fatal("tls не объект — блок обязан сняться")
+	}
+	coded := false
+	for _, w := range res.Warnings {
+		if w.Code == "type_invalid" && w.Path == "tls" {
+			coded = true
+		}
+	}
+	if !coded {
+		t.Errorf("снятие tls без кода type_invalid: %+v", res.Warnings)
+	}
+
+	res = nodeflow.SanitizeFrom("vless", nodeflow.SourceSingbox, base(map[string]interface{}{}))
+	if _, present := res.Clean["tls"]; present || res.Drop != nil {
+		t.Fatalf("пустой tls обязан сняться, узел жить: clean=%v drop=%+v", res.Clean["tls"], res.Drop)
 	}
 
 	// nil-map не должна паниковать.

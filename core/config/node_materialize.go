@@ -274,9 +274,9 @@ func sanitizeStoredNodeBody(req state.SanitizeBodyRequest) (*state.SanitizeBodyR
 	if obType == "" {
 		return nil, fmt.Errorf("в теле узла нет %q", "type")
 	}
-	scheme, ok := subscription.SchemeFromSingboxType(obType)
+	scheme, ok := registry.MustGet().NodeSchemeForSingboxType(obType)
 	if !ok {
-		// Тип вне таблицы схем — тело passthrough, правил для него нет.
+		// Тип, которого реестр узлом не знает, — тело passthrough, правил нет.
 		// Узел «посчитан и чист»: сказать про его поля нечего.
 		return &state.SanitizeBodyResult{Warnings: []state.NodeWarning{}}, nil
 	}

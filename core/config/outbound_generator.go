@@ -1517,8 +1517,9 @@ func chainOfNode(node *ParsedNode) []*ParsedNode {
 // normalizeChainHop fills in the defaults a hop needs to emit cleanly.
 //
 // An empty scheme means SOCKS for backward compatibility (ParsedJump documented
-// it that way), and a SOCKS hop without an explicit version must default to 5 —
-// sing-box rejects the outbound otherwise.
+// it that way). A missing SOCKS `version` is NOT filled in: the core treats an
+// empty version as 5 (registry socks.json body.version), and CANON §2.4 does
+// not materialize core defaults (SPEC 142 A10).
 func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 	out := &ParsedNode{
 		Tag:      hop.Tag,
@@ -1536,11 +1537,6 @@ func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 	}
 	if out.Outbound == nil {
 		out.Outbound = map[string]interface{}{}
-	}
-	if out.Scheme == "socks" {
-		if _, ok := out.Outbound["version"]; !ok {
-			out.Outbound["version"] = "5"
-		}
 	}
 	return out
 }

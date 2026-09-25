@@ -36,6 +36,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
@@ -485,7 +486,7 @@ func normalizeCanonicalLinks(links []configtypes.NodeLink, ownerFolderID string)
 // Неизвестный тип остаётся собой: тело эмитится как есть, а схему читают
 // только фильтры.
 func canonicalSchemeFromType(t string) string {
-	if s, ok := subscription.SchemeFromSingboxType(t); ok {
+	if s, ok := registry.MustGet().NodeSchemeForSingboxType(t); ok {
 		return s
 	}
 	return t

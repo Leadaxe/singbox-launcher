@@ -33,50 +33,6 @@ func TestGenerateECDSAKeypair_DERValid(t *testing.T) {
 	}
 }
 
-func TestToMasqueOutbound(t *testing.T) {
-	acc := &MasqueAccount{
-		PrivateKeyDER: "cHJpdg==",
-		ServerPubDER:  "cHVi",
-		ClientV4:      "172.16.0.2",
-		ClientV6:      "2606:4700:110:8db9::",
-		Server:        "162.159.198.1",
-		VHTTP:         "h3",
-		SNI:           "consumer-masque.cloudflareclient.com",
-		IdleTimeout:   "5m",
-		KeepAlive:     "30s",
-	}
-	ob, err := acc.ToMasqueOutbound()
-	if err != nil {
-		t.Fatalf("emit: %v", err)
-	}
-	assert := func(k string, want interface{}) {
-		if ob[k] != want {
-			t.Errorf("%s = %v, want %v", k, ob[k], want)
-		}
-	}
-	assert("type", "masque")
-	assert("profile", "cloudflare")
-	assert("vhttp", "h3")
-	assert("server_port", 443)
-	assert("ip", "172.16.0.2/32") // bare address gets /32
-	assert("ipv6", "2606:4700:110:8db9::/128")
-	assert("mtu", warpMTU)
-	if tls, ok := ob["tls"].(map[string]interface{}); !ok || tls["server_name"] != "consumer-masque.cloudflareclient.com" {
-		t.Errorf("tls = %v, want nested server_name (core SPEC 062)", ob["tls"])
-	}
-	assert("idle_timeout", "5m")
-	assert("keep_alive_period", "30s")
-}
-
-func TestToMasqueOutbound_RequiresKeys(t *testing.T) {
-	if _, err := (&MasqueAccount{ClientV4: "172.16.0.2"}).ToMasqueOutbound(); err == nil {
-		t.Fatal("expected error without key material")
-	}
-	if _, err := (&MasqueAccount{PrivateKeyDER: "x", ServerPubDER: "y"}).ToMasqueOutbound(); err == nil {
-		t.Fatal("expected error without interface address")
-	}
-}
-
 func TestEnsureCIDR(t *testing.T) {
 	if ensureCIDR("1.2.3.4", false) != "1.2.3.4/32" {
 		t.Error("v4 mask")

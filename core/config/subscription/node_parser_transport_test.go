@@ -7,45 +7,6 @@ import "testing"
 // core/config/nodeflow (hex_only, base64_32) и корпус контракта
 // (uri/vless/reality_sid_*, reality_pbk_*).
 
-func TestNormalizeUTLSFingerprint(t *testing.T) {
-	tests := []struct {
-		in, want string
-	}{
-		// sing-box names pass through, lowercased (issue #45).
-		{"chrome", "chrome"},
-		{"QQ", "qq"},
-		{" Firefox ", "firefox"},
-		{"randomized", "randomized"},
-		{"android", "android"},
-		{"360", "360"},
-		// Chrome ClientHello variants sing-box accepts verbatim.
-		{"chrome_psk_shuffle", "chrome_psk_shuffle"},
-		{"chrome_pq", "chrome_pq"},
-		// Raw uTLS ClientHelloID identifiers → browser family.
-		{"HelloChrome_120", "chrome"},
-		{"hellochrome_auto", "chrome"},
-		{"HelloChrome-106", "chrome"},
-		{"HelloFirefox_Auto", "firefox"},
-		{"HelloSafari_16_0", "safari"},
-		{"HelloIOS_14", "ios"},
-		{"HelloEdge_85", "edge"},
-		{"HelloAndroid_11_OkHttp", "android"},
-		{"HelloRandomized", "randomized"}, // must not match the "hellorandom" prefix
-		{"HelloRandom", "random"},
-		// Junk from broken lists — dropped, not passed through.
-		{"enabled", ""},
-		{"true", ""},
-		{"HelloGolang", ""},
-		{"", ""},
-		{"   ", ""},
-	}
-	for _, tt := range tests {
-		if got := NormalizeUTLSFingerprint(tt.in); got != tt.want {
-			t.Errorf("NormalizeUTLSFingerprint(%q) = %q, want %q", tt.in, got, tt.want)
-		}
-	}
-}
-
 // Regression: a node carrying a raw uTLS identifier (fp=HelloChrome_120) made
 // sing-box abort the entire config with "initialize outbound[N]: unknown uTLS
 // fingerprint", so no node started. It must map onto the chrome family.

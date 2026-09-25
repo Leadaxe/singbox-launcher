@@ -840,27 +840,12 @@ func applyXrayFreedomFragment(node *configtypes.ParsedNode) {
 
 // xrayChainHopFromOutbound строит звено цепочки.
 //
-// В отличие от узла, звеном может быть и socks — он не становится
-// самостоятельной нодой, но как первый хоп вполне пригоден.
+// Звено разбирает тот же движок реестра, что и узел: секция `mappers.xray`
+// схемы (socks, vless, …) опознаёт элемент своим detect. Рукописной сборки
+// socks-звена больше нет (SPEC 142 A10) — тело хопа совпадает с телом того же
+// socks, пришедшего узлом.
 func xrayChainHopFromOutbound(ob map[string]interface{}, hopTag, label string) (*configtypes.ParsedNode, error) {
 	protocol := strings.ToLower(strings.TrimSpace(xrayMapString(ob, "protocol")))
-	if protocol == "socks" {
-		jump, err := xrayBuildJumpFromSocksOutbound(ob, hopTag)
-		if err != nil {
-			return nil, err
-		}
-		return &configtypes.ParsedNode{
-			Tag:      jump.Tag,
-			Scheme:   jump.Scheme,
-			Server:   jump.Server,
-			Port:     jump.Port,
-			UUID:     jump.UUID,
-			Flow:     jump.Flow,
-			Label:    label,
-			Outbound: jump.Outbound,
-		}, nil
-	}
-
 	hop, err := xrayNodeFromOutbound(ob, label)
 	if err != nil {
 		return nil, err

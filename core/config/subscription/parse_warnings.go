@@ -36,8 +36,7 @@ package subscription
 // buildOutbound: у ссылочного входа рукописного пути больше НЕТ.
 //
 // С vmess ушёл и ws_early_data_converted: хвост ?ed=N раскладывает запись
-// transports#uri.ws.path своим `extract`…`code`, а Xray-вход кода не ставил
-// никогда (applyWSEarlyData там зовут, отбрасывая его признак).
+// transports#uri.ws.path своим `extract`…`code`; Xray-вход этот код не ставит.
 //
 // Страж TestRegistryWarningCodesAreActuallySet ищет ИМЯ КОНСТАНТЫ, поэтому
 // осиротевшая константа его и роняет — это правильный сигнал: код без

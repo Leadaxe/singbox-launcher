@@ -14,34 +14,33 @@ import (
 	"singbox-launcher/core/config/registry"
 )
 
-// IsDirectLink checks if the input string is a direct proxy link (vless://, vmess://, wireguard://, etc.)
+// IsDirectLink — строка является ссылкой узла, а не URL подписки.
+//
+// Ссылку узнаёт РЕЕСТР: секция `uri` протокола своим detect (схема и все её
+// написания — `hy2`, `socks5`, `naive+quic`, `amneziawg`…), тем же выбором,
+// что ведёт разбор в ParseNode. Списка префиксов здесь нет (SPEC 142 A8):
+// новая схема реестра опознаётся ссылкой без правки кода. `http://` и
+// `https://` не ведёт ни одна секция — они остаются URL подписки.
+//
+// Контейнер Amnezia `vpn://` секцией протокола не описан (его detect в
+// containers.json — проза) и опознаётся тем же признаком, что в ParseNode.
 func IsDirectLink(input string) bool {
 	trimmed := strings.TrimSpace(input)
-	return strings.HasPrefix(trimmed, "vless://") ||
-		strings.HasPrefix(trimmed, "vmess://") ||
-		strings.HasPrefix(trimmed, "trojan://") ||
-		strings.HasPrefix(trimmed, "ss://") ||
-		strings.HasPrefix(trimmed, "hysteria2://") ||
-		strings.HasPrefix(trimmed, "hy2://") ||
-		strings.HasPrefix(trimmed, "hysteria://") ||
-		strings.HasPrefix(trimmed, "hy://") ||
-		strings.HasPrefix(trimmed, "tuic://") ||
-		strings.HasPrefix(trimmed, "anytls://") ||
-		strings.HasPrefix(trimmed, "ssh://") ||
-		strings.HasPrefix(trimmed, "wireguard://") ||
-		strings.HasPrefix(trimmed, "awg://") ||
-		strings.HasPrefix(trimmed, "masque://") ||
-		strings.HasPrefix(trimmed, "vpn://") ||
-		strings.HasPrefix(trimmed, "socks5://") ||
-		strings.HasPrefix(trimmed, "socks4a://") ||
-		strings.HasPrefix(trimmed, "socks4://") ||
-		strings.HasPrefix(trimmed, "socks://") ||
-		strings.HasPrefix(trimmed, "naive+https://") ||
-		strings.HasPrefix(trimmed, "naive+quic://") ||
-		strings.HasPrefix(trimmed, "proxy-http://") ||
-		strings.HasPrefix(trimmed, "proxy-https://") ||
-		strings.HasPrefix(trimmed, "proxy+http://") ||
-		strings.HasPrefix(trimmed, "proxy+https://")
+	if isAmneziaVPNLink(trimmed) {
+		return true
+	}
+	plans, err := linkmap.Planes()
+	if err != nil {
+		return false
+	}
+	_, _, ok := linkmap.SelectURI(plans, trimmed)
+	return ok
+}
+
+// isAmneziaVPNLink — строка это контейнер Amnezia `vpn://` (containers.json
+// amnezia_vpn_link): его ведёт parseAmneziaVPNLink, а не секция протокола.
+func isAmneziaVPNLink(s string) bool {
+	return strings.HasPrefix(s, "vpn://")
 }
 
 // MaxURILength — предел длины share-URI, из реестра контракта
@@ -131,7 +130,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	// Amnezia vpn:// (compressed profile JSON, SPEC 075) is dispatched before the
 	// generic length guard: such links wrap a whole profile and routinely exceed
 	// MaxURILength; parseAmneziaVPNLink enforces its own size caps.
-	if strings.HasPrefix(uri, "vpn://") {
+	if isAmneziaVPNLink(uri) {
 		return parseAmneziaVPNLink(uri, skipFilters)
 	}
 
