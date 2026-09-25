@@ -69,7 +69,7 @@
             },
             "desc_en": "Strip the uTLS fingerprint from inner hops.",
             "desc_ru": "Снимать uTLS-отпечаток у внутренних хопов.",
-            "impl": "Каталог ядра stripCatalog: по умолчанию НЕ снимается. На REALITY-хопе ядро отвергает снятие отказом старта (protocol/chain/transform.go:228-232 «strip tls.utls: node uses reality, which requires utls»). on_hop_required (контракт 1.1.61, SPEC 142 B4): когда тело хопа на позиции >= 1 этот путь ТРЕБУЕТ — санитайзер дописал бы его обратно связью requires с set (tls.reality.enabled → tls.utls.enabled), — ключ снимается с патча цепочки (`unstrip`) с кодом chain_strip_utls_on_reality, цепочка собирается. Каталог ядро применяет ко всем позициям разом, поэтому uTLS остаётся у всех звеньев. Прежде — рукописная копия правила в Go (chain_validate.go ChainRealityConflict), и цепочка выпадала целиком."
+            "impl": "Каталог ядра stripCatalog: по умолчанию НЕ снимается. На REALITY-хопе ядро отвергает снятие отказом старта (sing-box-lx protocol/chain/transform.go «strip tls.utls: node uses reality, which requires utls»). on_hop_required (контракт 1.1.61, SPEC 142 B4): когда тело хопа на позиции >= 1 этот путь ТРЕБУЕТ — санитайзер дописал бы его обратно связью requires с set (tls.reality.enabled → tls.utls.enabled), — ключ снимается с патча цепочки (`unstrip`) с кодом chain_strip_utls_on_reality, цепочка собирается. Каталог ядро применяет ко всем позициям разом, поэтому uTLS остаётся у всех звеньев. Прежде — рукописная копия правила в Go (прежний ChainRealityConflict), и цепочка выпадала целиком."
           }
         },
         "desc_en": "Per-option patch to the strip catalogue.",

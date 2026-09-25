@@ -308,7 +308,7 @@
       ],
       "desc": "REALITY с явным uTLS-отпечатком не из chrome-семейства (D-119, заменяет D-104). Отпечаток уходит в конфиг КАК ЕСТЬ, ни одна сторона его не подменяет. ПОЧЕМУ ПРЕДУПРЕЖДАЕМ: REALITY-сервер Xray >= v26.9.8 (XTLS/REALITY@8cdf7bf, SPEC 083 ядра) требует в ClientHello key_share X25519MLKEM768, который в uTLS ядра несут chrome-спеки (chrome, chrome_psk, chrome_psk_shuffle, chrome_padding_psk_shuffle, chrome_pq, chrome_pq_psk), а с sing-box-lx 1.14.1-lx.3 (форк utls, SPEC 086 ядра) ещё firefox (Firefox 148) и safari (Safari 26.3); без него сервер молча уводит соединение на камуфляжный сайт. С 16.09.2026 (решение владельца) firefox и safari под код НЕ попадают — обе стороны (Go realityHybridUTLSFingerprints, Dart utls_fingerprint.dart); ios/android/edge/360/qq попадают. На ядре старше lx.3 firefox/safari всё ещё отвергаются — пин ядра ≥ lx.3. ПОЧЕМУ НЕ ПОДМЕНЯЕМ: отпечаток — выбор подписки, и сторона делает так, как подписка велит (решение владельца 15.09.2026); D-104 исходил из того, что каждый REALITY-сервер — Xray >= v26.9.8, а это не так. Текст пользователю: серверы Xray ≥ v26.9.8 отвергают такой ClientHello; если соединение не устанавливается — попробуйте chrome. Пустой fp остаётся пустым (ядро = chrome), без warning. `random` под код НЕ попадает: его под REALITY заменяет chrome правило coerce_when с кодом reality_fp_random_pinned.",
       "dart": "RealityFingerprintWarning",
-      "go": "contract/registry/tls.json body.fields.utls.fields.fingerprint.advisory; исполнение — core/config/nodeflow/sanitize.go advisory"
+      "go": "contract/registry/tls.json body.fields.utls.fields.fingerprint.advisory; исполнение — core/config/nodeflow/sanitize.go:sanitizer.advisory"
     },
     "reality_fp_random_pinned": {
       "severity": "info",
@@ -328,9 +328,9 @@
       "fix_ru": [
         "Делать ничего не нужно: chrome — один из отпечатков, из которых выбирает random, и он работает с любым REALITY-сервером."
       ],
-      "desc": "Контракт 1.1.61, SPEC 142 C4: правило значения tls.utls.fingerprint.coerce_when (random при tls.reality.enabled → chrome), судится по готовому телу на всех входах. Факты ядра sing-box-lx 1.14.2-lx.3: common/tls/utls_client.go:363-370 — random = один из chrome/firefox/edge/safari/ios, выбранный при старте процесса; submodules/utls u_common.go:649,657 — ios = iOS 14, edge = Edge 85, их спеки (u_parrots.go:1790, :1921) без X25519MLKEM768; reality_client.go:225-227 — key_share hybrid без шара = отказ рукопожатия. Прежде замену делала сборка молча (core/build/tls_transforms.go HealRealityFingerprints), без кода на узле. Неявный random (D-009: маппер vless/anytls пишет его вместо пустого fp) от явного в теле неотличим — код получают оба. Узел, чей REALITY снят (негодный pbk), остаётся с random: правило судится по готовому телу.",
+      "desc": "Контракт 1.1.61, SPEC 142 C4: правило значения tls.utls.fingerprint.coerce_when (random при tls.reality.enabled → chrome), судится по готовому телу на всех входах. Факты ядра sing-box-lx 1.14.2-lx.3: common/tls/utls_client.go — random = один из chrome/firefox/edge/safari/ios, выбранный при старте процесса; utls (u_common, u_parrots) — ios = iOS 14, edge = Edge 85, их спеки без X25519MLKEM768; common/tls/reality_client.go — key_share hybrid без шара = отказ рукопожатия. Прежде замену делала сборка молча (прежний HealRealityFingerprints в core/build/tls_transforms.go), без кода на узле. Неявный random (D-009: маппер vless/anytls пишет его вместо пустого fp) от явного в теле неотличим — код получают оба. Узел, чей REALITY снят (негодный pbk), остаётся с random: правило судится по готовому телу.",
       "dart": null,
-      "go": "contract/registry/tls.json body.fields.utls.fields.fingerprint.coerce_when; исполнение — core/config/nodeflow/sanitize.go deferCoerce; на сборке для тел вне санитайзера — core/config/node_build_gate.go repairBodyForBuild, outbound_generator.go generateRawNodeJSON (nodeflow.Repairs)"
+      "go": "contract/registry/tls.json body.fields.utls.fields.fingerprint.coerce_when; исполнение — core/config/nodeflow/sanitize.go:sanitizer.deferCoerce; на сборке для тел вне санитайзера — core/config/node_build_gate.go:repairBodyForBuild, core/config/outbound_generator.go:generateRawNodeJSON (core/config/nodeflow/sanitize.go:Repairs)"
     },
     "reality_utls_enabled": {
       "severity": "info",
@@ -352,7 +352,7 @@
       ],
       "desc": "Контракт 1.1.61, SPEC 142 C4: связь tls.reality.enabled requires tls.utls.enabled с `set: true` — uTLS дописывается ({enabled: true}, пустой отпечаток = chrome у ядра, common/tls/utls_client.go:384), REALITY остаётся. Факт ядра: common/tls/reality_client.go:61 «uTLS is required by reality client» — отказ всего конфига. Судится по готовому телу: REALITY, снятый своим правилом (негодный public_key), uTLS не получает. Прежде реестр здесь снимал reality.enabled кодом field_requires, а сборка (HealRealityFingerprints) молча дописывала uTLS — два ответа на один вопрос.",
       "dart": null,
-      "go": "contract/registry/tls.json body.fields.reality.fields.enabled.requires (set); исполнение — core/config/nodeflow/sanitize.go deferImply; на сборке для тел вне санитайзера — core/config/node_build_gate.go repairBodyForBuild, outbound_generator.go generateRawNodeJSON (nodeflow.Repairs)"
+      "go": "contract/registry/tls.json body.fields.reality.fields.enabled.requires (set); исполнение — core/config/nodeflow/sanitize.go:sanitizer.deferImply; на сборке для тел вне санитайзера — core/config/node_build_gate.go:repairBodyForBuild, core/config/outbound_generator.go:generateRawNodeJSON (core/config/nodeflow/sanitize.go:Repairs)"
     },
     "xhttp_param_reset": {
       "severity": "warning",
@@ -1649,9 +1649,9 @@
         "Если цепочка работает, делать ничего не нужно.",
         "Чтобы снимать uTLS у остальных звеньев, поставьте на эту позицию узел без REALITY."
       ],
-      "desc": "Контракт 1.1.61, SPEC 142 B4: chain.json strip.tls.utls.on_hop_required {action: unstrip}. Ключ каталога снимается с патча цепочки, когда тело хопа на позиции >= 1 этот путь требует — санитайзер вернул бы его связью requires с set (tls.reality.enabled → tls.utls.enabled; nodeflow.StripBlocked). Цепочка собирается, uTLS остаётся у всех звеньев. Факт ядра: protocol/chain/transform.go:228-232 «strip tls.utls: node uses reality, which requires utls» — отказ старта (sing-box check не ловит, память chain-check-misses-start-errors); каталог ядро применяет ко всей цепочке разом (buildStripSet). Прежде цепочка выпадала целиком (severity error) по рукописной копии правила (chain_validate.go ChainRealityConflict). МЕХАНИЗМ DART: строковый код рядом с цепочкой и/или находка формы ChainIssueCode.",
+      "desc": "Контракт 1.1.61, SPEC 142 B4: chain.json strip.tls.utls.on_hop_required {action: unstrip}. Ключ каталога снимается с патча цепочки, когда тело хопа на позиции >= 1 этот путь требует — санитайзер вернул бы его связью requires с set (tls.reality.enabled → tls.utls.enabled; nodeflow.StripBlocked). Цепочка собирается, uTLS остаётся у всех звеньев. Факт ядра: sing-box-lx protocol/chain/transform.go «strip tls.utls: node uses reality, which requires utls» — отказ старта (sing-box check не ловит, память chain-check-misses-start-errors); каталог ядро применяет ко всей цепочке разом (buildStripSet). Прежде цепочка выпадала целиком (severity error) по рукописной копии правила (прежний ChainRealityConflict). МЕХАНИЗМ DART: строковый код рядом с цепочкой и/или находка формы ChainIssueCode.",
       "dart": "screens/chain_edit/chain_form_validation.dart (ChainIssueCode.stripUtlsOnReality)",
-      "go": "contract/registry/protocols/chain.json body.fields.strip.fields.tls.utls.on_hop_required; исполнение — core/config/chain_nodes.go chainUnstripRequired"
+      "go": "contract/registry/protocols/chain.json body.fields.strip.fields.tls.utls.on_hop_required; исполнение — core/config/chain_validate.go:ChainUnstripRequired (вызов — core/config/chain_nodes.go)"
     },
     "chain_nested_position": {
       "severity": "error",
