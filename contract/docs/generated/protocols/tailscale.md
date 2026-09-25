@@ -16,6 +16,7 @@
 | `sources` | `singbox` |
 | Core the schema was checked against | `1.14.1-lx.4` |
 | Core requirement | build tag `with_tailscale`; on a core that lacks it the node is dropped at build: `tailscale_core_unsupported` |
+| Exit to the internet (Direction pools) | only when any of `exit_node` is set |
 
 ## How to read this page
 
@@ -65,8 +66,9 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `false`
   - Meaningless without: `exit_node`
 - <a id="body-advertise-routes"></a>**`advertise_routes`** — Prefixes advertised to the tailnet.
-  - Type: string_array, format `cidr`
+  - Type: string_array, format `cidr`, normalized: `cidr_masked`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Items not accepted: `0.0.0.0/0`, `::/0` — removed, the rest stay → [`tailscale_default_route_advertised`](../warnings.md#tailscale_default_route_advertised)
 - <a id="body-advertise-exit-node"></a>**`advertise_exit_node`** — Offer this node as an exit node.
   - Type: bool
   - Default: `false`
@@ -149,6 +151,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`exit_node`](#body-exit-node) — conflicts with `advertise_exit_node` → removed
 - [`field_requires`](../warnings.md#field_requires)
   - [`exit_node_allow_lan_access`](#body-exit-node-allow-lan-access) — set without `exit_node` → removed
+- [`tailscale_default_route_advertised`](../warnings.md#tailscale_default_route_advertised)
+  - [`advertise_routes`](#body-advertise-routes) — a list item is `0.0.0.0/0`, `::/0` → item removed
 - [`type_invalid`](../warnings.md#type_invalid)
   - [`advertise_routes`](#body-advertise-routes) — the value does not fit the field → removed
   - [`listen_port`](#body-listen-port) — the value does not fit the field → removed
@@ -160,6 +164,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **Values.** What the sanitizer does to a value before it reaches the node body.
 
+- `advertise_routes` — normalized: `cidr_masked`
 - `tcp_keep_alive` — normalized: `duration_bare_seconds`
 - `tcp_keep_alive_interval` — normalized: `duration_bare_seconds`
 

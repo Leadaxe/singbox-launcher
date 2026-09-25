@@ -7317,3 +7317,108 @@ Xray ≥ v26.9.8 узел не соединяется в двух запуска
 думаем, что нет), учтите, что у 11 протоколов ключа больше нет. Если
 хотите такую же проверку своих `dart`-ссылок — формат тот же, путь от
 корня `app/`. sha коммита — в сообщении сессии.
+
+## 59. Контракт 1.1.63 — C5–C10 и пробел движка данными реестра
+
+Курс владельца (SPEC 142, волна 7, находки C5, C7–C10 и пробел движка из
+волны 3): последние рукописные правила об узлах у нас ушли в реестр. Каждое
+правило — данными на всех входах, с кодом там, где узел меняется.
+
+**Новые примитивы тела** (схема `registry_body`):
+
+- `relations[].kind: "ordered"` — значения `paths` идут по неубыванию
+  (paths[i] ≤ paths[i+1]; у диапазона `N-M` — верхняя граница левого не
+  выше нижней правого). Читается чистое тело; участник без значения пары не
+  образует. Новое действие `action: "drop"` (только у `ordered`) — снимаются
+  ВСЕ участвующие поля, узел живёт; код на первом пути, params `a`, `b`,
+  `value`, `with`.
+- `item_forbidden {values, code}` у поля-списка (`string_array`,
+  `listable_string`): элемент, равный одному из `values` ПОСЛЕ normalize,
+  снимается элементом со своим кодом (путь `поле[i]`), годные остаются.
+- normalize `cidr_masked` — голый адрес получает префикс хоста (/32, /128),
+  биты адреса за длиной префикса обнуляются (`192.168.10.5/24` →
+  `192.168.10.0/24`); мусор уезжает как есть, его судит `format: cidr`.
+- `exit_capable_when` у тела протокола (грамматика `condition`, без
+  `source_kind`): при каком теле узел годится ВЫХОДОМ — кандидатом в пул
+  Направления. Без атрибута — всегда. Судится по готовому телу: `any_set` =
+  поле задано и не пустая строка.
+
+**Новые примитивы маппера** (схема `registry_mapper`):
+
+- источник `context.<путь>` — значение JSON от ВЫЗЫВАЮЩЕГО (распаковщика
+  контейнера): то, что лежит рядом с текстом, но не в нём;
+- `deref {key, as}` у записи — её значение есть ссылка на соседа по
+  документу: элемент, у которого значение по пути `key` дословно равно
+  значению записи, кладётся слоем `ref.<as>` ДО `when` записи и читается
+  источниками `ref.<as>.<путь>` в этой и последующих записях. Документа нет
+  или сосед не нашёлся — условия по слою ложны;
+- `substitute {sep, join, tokens}` у записи — значение режется по `sep`,
+  элемент, дословно равный плейсхолдеру из `tokens`, заменяется значением
+  своего источника, неразрешённый снимается, остаток склеивается `join`;
+  пустой итог = значения нет (on_present не срабатывает); значение без
+  плейсхолдеров не трогается;
+- оператор `when` `{"type_of": "object|array|string|number|bool"}` — тип
+  значения источника (как одноимённый предикат detect): `present` читает
+  только скаляр.
+
+**Норма санитайзера** (CANON §6.2, новая): поле, снятое ПО ХОДУ обхода
+правилом значения или связью, для ПОСЛЕДУЮЩИХ связей и условий отсутствует
+— как снятое запретом схемы и объект по `absent_when`; снятый объект
+забирает всё внутри. Уточнения: `requires` к ОБЯЗАТЕЛЬНОМУ полю своего
+объекта, снятому своим правилом, снимает зависимое поле без второго кода
+(объект уходит целиком — `short_id`/`key_share` при негодном `public_key`
+REALITY, коды не меняются); `requires … set` к снятому соседу его
+материализует. У нас прежде `ip=quic` снимался за пустой `id`, а `ib`
+(requires `ip`) оставался — узел уезжал с `ib` без `ip`.
+
+**Данные:**
+
+- C8 `wireguard` `body.relations`: `ordered` `[jmin, jmax]`, `drop`, код
+  `fields_order_invalid` (новый, warning). Ядро (sing-box-lx
+  transport/wireguard/device_awg.go validateJunk) отвергает jmin > jmax
+  целиком; junk-пакеты без размеров оно пропускает как безвредные. У нас
+  проверку держала только форма обфускации — снята.
+- C9 `tailscale.advertise_routes`: normalize `cidr_masked`, `item_forbidden
+  {values: ["0.0.0.0/0", "::/0"], code: tailscale_default_route_advertised}`
+  (новый, warning; ядро: «`advertise_routes` cannot be default, use
+  `advertise_exit_node` instead», protocol/tailscale/endpoint.go). Голый
+  адрес прежде проходил `format: cidr` и ронял конфиг (`[]netip.Prefix`).
+- C7 `tailscale` body: `exit_capable_when: {any_set: [exit_node]}` (у вас —
+  гейт в `server_list_build.dart`, «узел без exit_node не идёт в пул»).
+- C5 `dialer.json` блок `xray`, запись `fragment_via_dialer`: source
+  `json.streamSettings.sockopt.dialerProxy`, `deref {key: tag, as: dialer}`,
+  `maps_to: null`, `when {tls.enabled: true, ref.dialer.protocol: freedom,
+  ref.dialer.settings.fragment: {type_of: object}}`, `implies
+  {tls.fragment: true}`. Документ элемента — массив `outbounds` того же
+  Xray-конфига. Поведение: фрагментацию получает ТОТ элемент, чей
+  dialerProxy — freedom с fragment; у звена цепочки это само звено (раньше
+  у нас tls.fragment ставился владельцу цепочки — фрагментация шла бы
+  внутри туннеля релея, то есть впустую).
+- C10 `wireguard` `mappers.conf`: запись `mtu_container` (source
+  `context.container.mtu`, `when {context.container.mtu: {gt: 0}}`, type
+  int, тот же `maps_to: mtu`; явный MTU из [Interface] объявлен раньше и
+  выигрывает) и `dns.substitute {sep: ",", join: ", ", tokens:
+  {$PRIMARY_DNS: context.profile.dns1, $SECONDARY_DNS:
+  context.profile.dns2}}`. Контекст отдаёт распаковщик `amnezia_vpn`:
+  `container` — объект, непосредственно содержавший `.conf` (у AWG3-экспорта
+  last_config), `profile` — корень профиля. Результат совпадает с прежним
+  (корпус `uri/wireguard/amnezia_vpn_awg3` не менялся); у вас подстановка
+  DNS — своим кодом, её можно свести к этим двум записям.
+- Хвост волны 1: признак контейнера Amnezia у нас теперь — detect вида
+  `amnezia_link` (`prefix_fold: "vpn://"`), спрашиваемый по имени
+  распаковщика; строковый префикс в Go снят (регистр судится как в реестре).
+
+**Коды:** новые `fields_order_invalid` (params `a`, `b`, `value`, `with`),
+`tailscale_default_route_advertised` (params `path`, `value`); уточнён desc
+`wgconf_dns_ignored`. **Корпус +4:** `body/singbox/endpoints_awg_junk_size_order`,
+`body/singbox/endpoints_awg_masquerade_removed_cascade` (норма §6.2),
+`body/singbox/tailscale_advertise_routes`,
+`body/xray/dialer_chain_hop_freedom_fragment` (звено с freedom-fragment).
+Прежние ожидания не менялись.
+
+От вас: синк 1.1.63; принять новые атрибуты в разборе схемы реестра
+(`ordered`/`drop`, `item_forbidden`, `cidr_masked`, `exit_capable_when`,
+`deref`, `substitute`, источники `context.*`/`ref.*`, оператор `type_of`) и
+исполнить их; норму CANON §6.2 — в своём санитайзере; если у вас свой
+запрет дефолтного маршрута, маскирование префикса или jmin ≤ jmax в формах —
+свести к правилам реестра. sha коммита — в сообщении сессии.

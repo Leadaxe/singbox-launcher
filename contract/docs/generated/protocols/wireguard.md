@@ -17,6 +17,7 @@
 | `sources` | `uri`, `singbox`, `wgconf`, `amnezia`, `xray` |
 | Core the schema was checked against | `1.14.1-lx.4` |
 | Protocol levels (node label, ascending) | `awg`, `awg1.5`, `awg2`, `awg3`, `awg3.1` |
+| Field order | must not decrease: `jmin`, `jmax`; otherwise all of them are removed: `fields_order_invalid` |
 | URI fragment | `label` |
 
 ## How to read this page

@@ -40,6 +40,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`field_conflict`](#field_conflict) · `warning` — Field {path} removed: conflicts with {with}
 - [`field_missing`](#field_missing) · `error` — Required field {field} is missing
 - [`field_requires`](#field_requires) · `warning` — Field {path} removed: {requires} is missing
+- [`fields_order_invalid`](#fields_order_invalid) · `warning` — {a} is greater than {b}
 - [`flow_deprecated`](#flow_deprecated) · `info` — Obsolete flow removed
 - [`form_unrecognized`](#form_unrecognized) · `error` — Entry could not be read
 - [`group_empty`](#group_empty) · `warning` — Group {tag} left without members
@@ -75,6 +76,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`ss_method_legacy`](#ss_method_legacy) · `info` — Shadowsocks: legacy cipher
 - [`ssh_user_default`](#ssh_user_default) · `info` — SSH: user root substituted
 - [`tailscale_core_unsupported`](#tailscale_core_unsupported) · `warning` — Tailscale is unavailable in this core
+- [`tailscale_default_route_advertised`](#tailscale_default_route_advertised) · `warning` — Tailscale: default route {value} removed from advertised routes
 - [`tailscale_from_subscription`](#tailscale_from_subscription) · `info` — Tailscale node arrived from a subscription
 - [`template_int_clamped`](#template_int_clamped) · `warning` — Value of {name} clamped
 - [`template_int_invalid`](#template_int_invalid) · `warning` — Variable {name} is not a number
@@ -727,6 +729,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`id`](protocols/wireguard.md#body-id) — set without `ip` → removed
   - [`ip`](protocols/wireguard.md#body-ip) — set without `id` → removed
 
+<a id="fields_order_invalid"></a>
+### fields_order_invalid
+
+**severity:** `warning` · **params:** `a`, `b`, `value`, `with`
+
+**{a} is greater than {b}**
+
+- **What happened:** The node sets {a} = {value} above {b} = {with}, but the core requires {a} not to exceed {b} and would refuse to start the whole config with such a pair. Both fields were removed; the node works without them.
+- **Why it happens:** The bounds were typed in the wrong order or swapped by hand. Which of the two numbers is wrong cannot be told from the node itself, so neither is kept.
+- **What you can do:**
+  - Take the configuration from the provider again.
+  - If you set the values yourself, put the smaller bound first and import the configuration again.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="flow_deprecated"></a>
 ### flow_deprecated
 
@@ -1341,6 +1360,24 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="tailscale_default_route_advertised"></a>
+### tailscale_default_route_advertised
+
+**severity:** `warning` · **params:** `path`, `value`
+
+**Tailscale: default route {value} removed from advertised routes**
+
+- **What happened:** The node advertises the default route {value} at {path}. The core refuses to start with it: offering this node as an exit to the internet is a separate setting, advertise_exit_node. The route was removed; the other advertised routes stay.
+- **Why it happens:** A default route was written into the list of subnets to share, meaning "use this node as an exit". Tailscale expresses that with its own flag and rejects the route form.
+- **What you can do:**
+  - To offer this node as an exit, turn on advertise_exit_node (the exit node checkbox of the Tailscale form).
+  - Otherwise nothing to do: the remaining routes are advertised.
+
+**Where it comes from:**
+
+- [`tailscale`](protocols/tailscale.md)
+  - [`advertise_routes`](protocols/tailscale.md#body-advertise-routes) — a list item is `0.0.0.0/0`, `::/0` → item removed
 
 <a id="tailscale_from_subscription"></a>
 ### tailscale_from_subscription
