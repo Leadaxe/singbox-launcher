@@ -7,7 +7,8 @@ package config
 // проверял, они протухали молча: рукописные парсеры снимались, а реестр
 // ещё годами отправлял читателя в удалённые файлы и функции.
 //
-// Что проверяется в строках под ключами `impl`, `go` и `refs.go`:
+// Что проверяется во ВСЕХ строках реестра (`refs.go`, `impl`, `go`, `note`,
+// описания) — кроме поддеревьев `dart`:
 //   - путь от корня репозитория (`core/…`, `ui/…`, `internal/…`,
 //     `contract/…` и т. п.) к файлу `.go`/`.json` существует;
 //   - `путь.go:Имя` — имя объявлено в этом файле: функция, тип, переменная,
@@ -79,7 +80,7 @@ func TestRegistryCodeRefsResolve(t *testing.T) {
 			t.Fatalf("%s: %v", file, err)
 		}
 		rel, _ := filepath.Rel(registryBodyDir, file)
-		for _, ref := range collectRegistryCodeRefs(doc, "", false) {
+		for _, ref := range collectRegistryCodeRefs(doc, "") {
 			for _, p := range checkRegistryCodeRef(ref.text, decls) {
 				problems = append(problems, rel+" "+ref.path+": "+p)
 			}
@@ -92,9 +93,10 @@ func TestRegistryCodeRefsResolve(t *testing.T) {
 
 type registryCodeRef struct{ path, text string }
 
-// collectRegistryCodeRefs собирает строки под ключами impl, go и refs.go.
-// Ключ dart пропускается целиком.
-func collectRegistryCodeRefs(node interface{}, path string, inRef bool) []registryCodeRef {
+// collectRegistryCodeRefs собирает все строки реестра; ключ dart
+// пропускается целиком. Ссылка на код бывает не только в refs/impl/go:
+// заметки и описания тоже называют файлы, и протухают они так же.
+func collectRegistryCodeRefs(node interface{}, path string) []registryCodeRef {
 	var out []registryCodeRef
 	switch v := node.(type) {
 	case map[string]interface{}:
@@ -107,16 +109,14 @@ func collectRegistryCodeRefs(node interface{}, path string, inRef bool) []regist
 			if k == "dart" {
 				continue
 			}
-			out = append(out, collectRegistryCodeRefs(v[k], path+"/"+k, inRef || k == "impl" || k == "go")...)
+			out = append(out, collectRegistryCodeRefs(v[k], path+"/"+k)...)
 		}
 	case []interface{}:
 		for i, item := range v {
-			out = append(out, collectRegistryCodeRefs(item, path+"/"+strconv.Itoa(i), inRef)...)
+			out = append(out, collectRegistryCodeRefs(item, path+"/"+strconv.Itoa(i))...)
 		}
 	case string:
-		if inRef {
-			out = append(out, registryCodeRef{path: path, text: v})
-		}
+		out = append(out, registryCodeRef{path: path, text: v})
 	}
 	return out
 }

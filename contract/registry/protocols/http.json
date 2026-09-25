@@ -119,7 +119,7 @@
       "alpn",
       "insecure"
     ],
-    "note": "Dart toUriHttp и Go shareURIFromHTTP (shareuri_http.go:16): схема по tls.enabled (proxy-https/proxy-http), insecure эмитится как allowInsecure=1."
+    "note": "Dart toUriHttp и Go — секция mappers.uri.emit, общий эмиттер core/config/linkmap/emit.go:Emit (прежний рукописный shareURIFromHTTP удалён): схема по tls.enabled (proxy-https/proxy-http), insecure эмитится как allowInsecure=1."
   },
   "refs": {
     "dart": [

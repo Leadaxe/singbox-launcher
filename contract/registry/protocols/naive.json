@@ -72,8 +72,7 @@
   ],
   "refs": {
     "go": [
-      "core/core_capabilities.go:probeNaiveSupport (сборка ядра с naive и libcronet рядом с бинарём)",
-      "core/config/outbound_generator.go:GenerateOutboundsFromParserConfig (узел naive снимается при сборке, когда ядро его не поднимет; хук NaiveSupportProbe)"
+      "core/core_capabilities.go:cronetLibAvailable (libcronet рядом с бинарём ядра: без неё тег сборки with_naive_outbound не засчитывается, и узел naive снимает узловой гейт ядра по on_core_unsupported реестра)"
     ],
     "dart": [
       "lib/services/parser/uri_parsers.dart:59-60",

@@ -17,8 +17,6 @@
   "refs": {
     "go": [
       "core/config/endpoint_schemes.go:applyTailscaleStateDirectory",
-      "core/config/outbound_generator.go:TailscaleSupportProbe",
-      "core/core_capabilities.go:AppController.CoreSupportsTailscale",
       "ui/configurator/dialogs/add_server_tailscale.go:tailscaleDocument",
       "ui/configurator/tabs/dns_server_form.go:dnsTypeTailscale"
     ],

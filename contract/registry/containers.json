@@ -95,7 +95,7 @@
         "go": "весь body как одна base64-строка (trim); декод обязан быть валидным UTF-8; лимит тела 10 MB (MaxSubscriptionResponseSize, на fetch)",
         "dart": "эвристика ДО декода: >= 16 символов, charset ^[A-Za-z0-9+/_=\\-]+$ (whitespace выброшен); после — UTF-8 c < 20% control-байтов и plausible-проверка ('://', '{', '[', '[Interface]'); лимитов тела/нод нет (§9.B9/D-013 — Dart добавляет 10 MB и 3000 нод)"
       },
-      "recursion": "декодированный текст классифицируется заново тем же алгоритмом (шаг 4 нормативной схемы §4 PLAN): URI-строки, JSON-флейворы, INI (Dart). Вторая base64-обёртка не разворачивается (одна итерация в обоих). Известная дыра Go §9.B4: fetch-путь DecodeSubscriptionContent режет одиночный JSON-объект (decoder.go:68-71), хотя классификатор его принимает — Go чинит decoder.",
+      "recursion": "декодированный текст классифицируется заново тем же алгоритмом (шаг 4 нормативной схемы §4 PLAN): URI-строки, JSON-флейворы, INI (Dart). Вторая base64-обёртка не разворачивается (одна итерация в обоих). Известная дыра Go §9.B4: fetch-путь DecodeSubscriptionContent режет одиночный JSON-объект (core/config/subscription/decoder.go:DecodeSubscriptionContent), хотя классификатор его принимает — Go чинит decoder.",
       "vmess_legacy_note": "b64-декод отдельного vmess://<base64> — не этот контейнер, а протокольный декод (registry/protocols/vmess.json); паритет legacy-cleartext подтверждён (§9.B8).",
       "refs": {
         "go": [

@@ -286,7 +286,7 @@
       "fp",
       "insecure"
     ],
-    "note": "Эмит = base64(JSON), порядок ключей — как в таблице (фактический у Go — порядок map/json.Marshal, у Dart — insertion order). Расхождения формы: Go порт/aid числами + base64 с padding; Dart строками + padding срезан. ВАЖНО: Go при транспорте httpupgrade пишет net='ws' (shareuri_vmess.go:70-74) — меняет wire-протокол на round-trip, кандидат на баг; Dart честно пишет net='httpupgrade'. Единственный lossy-эмиттер у Dart (каноническая JSON-форма)."
+    "note": "Эмит = base64(JSON), порядок ключей — как в таблице (фактический у Go — порядок map/json.Marshal, у Dart — insertion order). Расхождения формы: Go порт/aid числами + base64 с padding; Dart строками + padding срезан. Прежний рукописный эмиттер Go при транспорте httpupgrade писал net='ws' (менял wire-протокол на round-trip); сегодня эмит идёт секцией mappers.uri.emit через core/config/linkmap/emit.go:Emit. Dart пишет net='httpupgrade'. Единственный lossy-эмиттер у Dart (каноническая JSON-форма)."
   },
   "mapper": [
     {

@@ -1734,8 +1734,7 @@
       "core/config/subscription/node_parser_engine.go:ParseWGConfByEngine",
       "core/config/subscription/wgconf_text.go:ConvertWGConfText",
       "core/config/subscription/share_uri.go:ShareURIFromWireGuardEndpoint",
-      "core/config/subscription/node_parser_amnezia.go:ParseAmneziaVPNLinkAll",
-      "core/config/subscription/awg3.go:HasAWG3Fields"
+      "core/config/subscription/node_parser_amnezia.go:ParseAmneziaVPNLinkAll"
     ],
     "dart": [
       "app/lib/services/parser/uri_parsers/wireguard_parser.dart:8",

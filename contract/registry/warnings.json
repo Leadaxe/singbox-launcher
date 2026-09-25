@@ -71,7 +71,7 @@
         "Выберите другой узел из этой подписки — этот здесь работать не может.",
         "Спросите у провайдера, есть ли ссылка на тот же сервер в поддерживаемом протоколе."
       ],
-      "desc": "Протокол/тип outbound не поддержан — узел в dropped. Go: singbox-импорт скипает неизвестные типы (singbox_import.go:132), Xray-массив — неизвестные protocol (xray_json_array.go:499).",
+      "desc": "Протокол/тип outbound не поддержан — узел в dropped. Go: singbox-импорт скипает неизвестные типы (core/config/subscription/singbox_import.go), Xray-массив — неизвестные protocol (core/config/subscription/xray_json_array.go).",
       "dart": "UnsupportedProtocolWarning",
       "go": "core/config/subscription/xray_json_array.go:parseXrayJSONArrayElementNodes (Xray-протокол вне списка — core/config/subscription/xray_protocols.go:xrayNodeFromOutbound, код отказа даёт core/config/subscription/json_body_rejects.go:rejectCodeOf); core/config/nodeflow/sanitize.go:SanitizeFromKind (у схемы нет body реестра). Вход sing-box JSON тип вне реестра отбраковывает БЕЗ кода: core/config/subscription/singbox_import.go:parseSingboxEntry возвращает простую ошибку"
     },
@@ -96,7 +96,7 @@
         "Попросите провайдера исправить запись в подписке.",
         "Если тело JSON вы писали сами, добавьте недостающее поле."
       ],
-      "desc": "Обязательное поле отсутствует. Severity по Dart (error, узел в dropped); Go сегодня мягче — предупреждает и оставляет узел (hysteria2 без password node_parser_hysteria2.go:23, tuic без uuid/password node_parser_tuic.go:60/65, anytls без password node_parser_anytls.go:25) — расхождение отмечено, целевое поведение по Dart.",
+      "desc": "Обязательное поле отсутствует. Severity по Dart (error, узел в dropped); прежние рукописные парсеры Go были мягче — предупреждали и оставляли узел (hysteria2 без password, tuic без uuid/password, anytls без password); сегодня обязательность судит реестр (required) одинаково на всех входах.",
       "dart": "MissingFieldWarning",
       "go": "правило реестра contract/registry/protocols/*.json и contract/registry/dialer.json body.fields.* (required); исполнение — core/config/nodeflow/sanitize.go:sanitizer.requiredFailed; на разборе — core/config/linkmap/exec.go:execState.checkRequired (rejectMissing, CodeFieldMissing)"
     },
@@ -160,7 +160,7 @@
       "fix_ru": [
         "Делать ничего не нужно: узел работает, а снятое значение на этом транспорте ни на что не влияло."
       ],
-      "desc": "xtls-rprx-vision без VLESS Encryption валиден только на голом TLS; при любом v2ray-транспорте и отсутствии encryption flow гасится, узел живёт. С encryption код не ставится (unless_set, контракт 1.1.55, LxBox §544). Ставится ПРАВИЛОМ РЕЕСТРА — conflicts у vless.flow с собственным кодом (контракт 1.1.6); рукописного места в Go нет и не было, прежние ссылки на singbox_sanitize.go/outbound_generator.go были строками legacy-аудита, а не эмиттерами кода.",
+      "desc": "xtls-rprx-vision без VLESS Encryption валиден только на голом TLS; при любом v2ray-транспорте и отсутствии encryption flow гасится, узел живёт. С encryption код не ставится (unless_set, контракт 1.1.55, LxBox §544). Ставится ПРАВИЛОМ РЕЕСТРА — conflicts у vless.flow с собственным кодом (контракт 1.1.6); рукописного места в Go нет и не было, прежние ссылки на рукописный санитайзер импорта и генератор были строками legacy-аудита, а не эмиттерами кода.",
       "dart": "VisionWithTransportWarning",
       "go": "правило реестра contract/registry/protocols/vless.json body.fields.flow.conflicts; исполнение — core/config/nodeflow/sanitize.go:sanitizer.relationsOK"
     },
@@ -281,7 +281,7 @@
         "Чаще всего делать ничего не нужно: узел подключается с подставленным отпечатком.",
         "Если узел не соединяется, попросите у провайдера ссылку с отпечатком, известным sing-box."
       ],
-      "desc": "uTLS fingerprint вне словаря ядра (известные xray-псевдонимы канонизируются молча). НОВОЕ РАЗРЫВ-ПОВЕДЕНИЕ, решения нет: Dart заменяет на chrome + warning; Go в URI-пути молча подставляет random (node_parser_transport.go:646), в singbox-импорте молча снимает весь utls-блок (singbox_sanitize.go:177). Нужно единое fallback-значение. РЕШЕНО (SPEC 131, DRIFT §2(c)): единый fallback на всех путях — coerce в chrome + этот код; реестр tls.json приведён.",
+      "desc": "uTLS fingerprint вне словаря ядра (известные xray-псевдонимы канонизируются молча). НОВОЕ РАЗРЫВ-ПОВЕДЕНИЕ, решения нет: Dart заменяет на chrome + warning; Go в URI-пути молча подставлял random, в singbox-импорте молча снимал весь utls-блок. Нужно единое fallback-значение. РЕШЕНО (SPEC 131, DRIFT §2(c)): единый fallback на всех путях — coerce в chrome + этот код; реестр tls.json приведён.",
       "dart": "UnknownFingerprintWarning",
       "go": "правило реестра contract/registry/tls.json body.fields.utls.fields.fingerprint.on_invalid (coerce chrome); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid, одинаково на всех входах"
     },
@@ -416,7 +416,7 @@
       "fix_ru": [
         "Делать ничего не нужно: узел подключается без ECH ровно так же, как в любом клиенте sing-box."
       ],
-      "desc": "D-006/§9.B7: tls.ech вычищается с warning в обоих проектах — with_ech в LX_TAGS ядра нет, пропущенный ech уронил бы конфиг. Dart уже делает (§320); Go сегодня: URI-путь молча теряет, singbox-импорт пропускает насквозь (коммент в singbox_sanitize.go:47-48 врёт) — Go добавляет вычистку в sanitize и URI-путь.",
+      "desc": "D-122 (пересмотр D-006): снимается только URI-параметр ech= Xray-формы — он несёт чужой ключ, и рукопожатие не состоится; блок tls.ech из sing-box-JSON проходит (ECH в ядре компилируется всегда). Прежняя посылка «with_ech в ядре нет, ech уронил бы конфиг» оказалась ложной (DRIFT §7.2). Dart вычищает с §320.",
       "dart": "EchIgnoredWarning",
       "go": null
     },
@@ -462,7 +462,7 @@
         "Скопируйте ссылку с сайта провайдера заново — чаще всего её обрезали при копировании.",
         "Попросите провайдера исправить запись: если сервер ждёт обфускацию, без пароля этот узел не соединится."
       ],
-      "desc": "Обфускация задана без пароля — снимается целиком: ядро отвергает такой узел («missing obfs password»), и это роняет ВЕСЬ конфиг, а не одну ноду. РАСХОЖДЕНИЕ ЗАКРЫТО (фаза 1): Go проверял только на singbox-пути, а URI-путь эмитил obfs без password — проверка добавлена в оба (node_parser_hysteria2.go, singbox_sanitize.go). С контракта 1.1.57 им же снимается объект-обёртка без пароля у hysteria v1 obfs (on_invalid unwrap, else_code); параметр {type} — член type объекта.",
+      "desc": "Обфускация задана без пароля — снимается целиком: ядро отвергает такой узел («missing obfs password»), и это роняет ВЕСЬ конфиг, а не одну ноду. РАСХОЖДЕНИЕ ЗАКРЫТО (фаза 1): Go проверял только на singbox-пути, а URI-путь эмитил obfs без password — проверка добавлена в оба; сегодня это связь реестра hysteria2.body, одна на все входы. С контракта 1.1.57 им же снимается объект-обёртка без пароля у hysteria v1 obfs (on_invalid unwrap, else_code); параметр {type} — член type объекта.",
       "dart": "MissingObfsPasswordWarning",
       "go": "правило реестра contract/registry/protocols/hysteria2.json body.fields.obfs.fields.password (required + code), contract/registry/protocols/hysteria.json body.fields.obfs.on_invalid.else_code; исполнение — core/config/nodeflow/sanitize.go:sanitizer.requiredFailed (hysteria2), sanitizer.unwrap (hysteria)"
     },
@@ -506,7 +506,7 @@
         "Если узел работает, делать ничего не нужно: он подключается по укороченной цепочке.",
         "Если цепочка нужна целиком, поправьте ссылки detour в исходном конфиге."
       ],
-      "desc": "Кольцо в detour-цепочке разорвано, узел дозванивается напрямую/без замыкающего ребра. Go: импорт — DebugLog (detour_chain.go:162,172), свои узлы — self-detour outbound_generator.go:1262 и кольца :1291.",
+      "desc": "Кольцо в detour-цепочке разорвано, узел дозванивается напрямую/без замыкающего ребра. Go: импорт — DebugLog (core/config/subscription/detour_chain.go), свои узлы — сборка (core/config/outbound_generator.go:GenerateOutboundsFromParserConfig).",
       "dart": "DetourCycleBrokenWarning",
       "go": "в Go кодом не ставится: импорт sing-box снимает замыкающее ребро кольца с записью в debug-лог — core/config/subscription/detour_chain.go:findDetourCycleEdges, singboxChainInfo.attachChain. Свои узлы под этот код не попадают: самоссылка и кольцо detour там fail-closed — узел выбрасывается, а не укорачивается (core/config/outbound_generator.go:sanitizeNodeDetours)"
     },
@@ -642,7 +642,7 @@
         "Попросите провайдера исправить запись и переимпортируйте подписку.",
         "Выберите другой узел из этой подписки."
       ],
-      "desc": "REALITY public_key не X25519-base64url (43 знака) — pbk=enabled и прочий мусор публичных подписок; узел деградирует до plain TLS (иначе «invalid public_key» валит весь конфиг). В Go URI-путь деградирует молча (node_parser_transport.go:656), import-пути — с warning. Dart-класса нет — кандидат на добавление.",
+      "desc": "REALITY public_key не X25519-base64url (43 знака) — pbk=enabled и прочий мусор публичных подписок; узел деградирует до plain TLS (иначе «invalid public_key» валит весь конфиг). Прежде URI-путь Go деградировал молча, import-пути — с warning; сегодня правило body.fields.reality.fields.public_key реестра даёт код одинаково на всех входах. Dart-класса нет — кандидат на добавление.",
       "dart": null,
       "go": "правило реестра contract/registry/tls.json body.fields.reality.fields.public_key (normalize base64_rawurl + format base64_32, on_invalid drop; поле required, без него блок reality снимается); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid, одинаково на всех входах"
     },
@@ -665,7 +665,7 @@
         "Проверьте, соединяется ли узел: если сервер ждёт конкретный short_id, соединения не будет.",
         "Попросите у провайдера ссылку с правильным short_id."
       ],
-      "desc": "REALITY short_id содержит не-hex или слишком длинный — фильтруется до hex-цифр/усекается, мусор целиком → поле снимается (пустой short_id легален). Код ставится только на URI-пути vless, где узел под рукой (предикат realityShortIDWouldDegrade ДО нормализации). На sing-box-импорте поле чистится МОЛЧА: sanitizeSingboxReality нормализует short_id, но кода не возвращает — расхождение путей, кандидат на выравнивание по образцу reality_key_share_invalid. УТОЧНЕНО (DRIFT 131 §4): усечения до 16 нет ни у кого — обе стороны сбрасывают поле в \"\"; в ядре паника на short_id длиннее 16 hex (reality_client.go:80, проверка длины после hex.Decode) — гард обязателен до фикса форка.",
+      "desc": "REALITY short_id содержит не-hex или слишком длинный — фильтруется до hex-цифр/усекается, мусор целиком → поле снимается (пустой short_id легален). Прежде код ставился только на URI-пути vless, а sing-box-импорт чистил поле молча; сегодня правило body.fields.reality.fields.short_id реестра (normalize_code + on_invalid) даёт код одинаково на всех входах. УТОЧНЕНО (DRIFT 131 §4): усечения до 16 нет ни у кого — обе стороны сбрасывают поле в \"\"; в ядре паника на short_id длиннее 16 hex (common/tls/reality_client.go, проверка длины после hex.Decode) — гард обязателен до фикса форка.",
       "dart": "RealityShortIdInvalidWarning",
       "go": "правило реестра contract/registry/tls.json body.fields.reality.fields.short_id (normalize hex_only + normalize_code, on_invalid drop); исполнение — core/config/nodeflow/sanitize.go:sanitizer.noteNormalized, sanitizer.onInvalid — одинаково на всех входах, молчаливой чистки на импорте больше нет"
     },
@@ -964,7 +964,7 @@
         "Если сервер правда принимает root, делать ничего не нужно.",
         "Если он ждёт другого пользователя, укажите его в настройках узла."
       ],
-      "desc": "SSH-ссылка без пользователя — подставлен root. Прежняя пометка «Desktop-протокол» протухла: ssh в LxBox поддержан. РАСХОЖДЕНИЕ ЖИВО: Go на URI-пути валит ноду ещё раньше (пустой userinfo, node_parser_core.go:308-316) и root-ветка — мёртвый код; Dart на URI-пути делает null-skip (ssh_parser.dart), а в singbox-импорте дефолтит root (json_parsers.dart). Код ставится только на singbox-пути Dart; выравнивание — за Go.",
+      "desc": "SSH-ссылка без пользователя — подставлен root. Прежняя пометка «Desktop-протокол» протухла: ssh в LxBox поддержан. РАСХОЖДЕНИЕ ЖИВО: Go на URI-пути отбраковывает ссылку без user (required записи маппера, field_missing), и код не ставит нигде; Dart на URI-пути делает null-skip (ssh_parser.dart), а в singbox-импорте дефолтит root (json_parsers.dart). Код ставится только на singbox-пути Dart; выравнивание — за Go.",
       "dart": null,
       "go": "в Go не ставится: ни одна секция реестра этот код не объявляет (у mappers.uri ssh дефолта username нет), а ссылку с пустым userinfo отбивает обязательность userinfo раньше — core/config/linkmap/exec.go:execState.checkRequired (field_missing). Константа Go снята (core/config/subscription/parse_warnings.go)"
     },
@@ -1953,7 +1953,7 @@
         "Делать ничего не нужно: узел работает, а снятые настройки поверх QUIC смысла не имеют.",
         "Если нужен отпечаток или REALITY, возьмите узел на TCP-протоколе — vless, trojan, vmess или anytls."
       ],
-      "desc": "Блок tls.utls или tls.reality на протоколе поверх QUIC (hysteria, hysteria2, tuic, masque) — снимается целиком. Ядро строит TLS для QUIC через aTLS.Config.STDConfig() (sing-quic qtls.Dial/DialEarly/CreateTransport; у masque — protocol/masque/outbound.go:406), а у UTLSClientConfig и RealityClientConfig этот метод возвращает ошибку («unsupported usage for uTLS» / «for reality») — outbound не поднимается, узел мёртв. Severity info, а не warning: снята настройка, которая к QUIC не применилась бы в принципе, и узел от её снятия ничего не теряет (в отличие от tls_field_unsupported_naive, где это потерянная настройка). Один код на блок: key_share и short_id своих кодов не дают — снят не они, а весь REALITY. Правило живёт в реестре (tls.json body.fields.utls/reality forbidden_for + forbidden_codes), прежде было частной веткой quicOutboundTypes в singbox_sanitize.go и молчаливым пропуском fp в URI-парсерах.",
+      "desc": "Блок tls.utls или tls.reality на протоколе поверх QUIC (hysteria, hysteria2, tuic, masque) — снимается целиком. Ядро строит TLS для QUIC через aTLS.Config.STDConfig() (sing-quic qtls.Dial/DialEarly/CreateTransport; у masque — protocol/masque/outbound.go), а у UTLSClientConfig и RealityClientConfig этот метод возвращает ошибку («unsupported usage for uTLS» / «for reality») — outbound не поднимается, узел мёртв. Severity info, а не warning: снята настройка, которая к QUIC не применилась бы в принципе, и узел от её снятия ничего не теряет (в отличие от tls_field_unsupported_naive, где это потерянная настройка). Один код на блок: key_share и short_id своих кодов не дают — снят не они, а весь REALITY. Правило живёт в реестре (tls.json body.fields.utls/reality forbidden_for + forbidden_codes), прежде было частной веткой quicOutboundTypes прежнего санитайзера импорта и молчаливым пропуском fp в URI-парсерах.",
       "dart": null,
       "go": null
     },
@@ -2090,7 +2090,7 @@
         "Прочитайте сообщение провайдера — обычно в нём сказано, что подписка истекла или исчерпан лимит устройств.",
         "Продлите или активируйте подписку в панели провайдера и обновите подписку в приложении."
       ],
-      "desc": "Запись-БАННЕР, притворившаяся ссылкой: цель из списка «заведомо не сервер» (source_kinds.json uri_lines.banner_targets). Прежде признаком баннера было ОТСУТСТВИЕ `://` (isProviderBannerLine), а обе крупные панели пишут баннер синтаксически валидной ссылкой — и он становился ПОЛНОЦЕННЫМ узлом: `vless://…@0.0.0.0:1` у Remnawave (createFallbackHosts), `socks://127.0.0.1:1080` у 3x-ui (service.go:483). При истечении подписки 3x-ui отдаёт баннер единственной записью, и пользователь получал «рабочую» подписку из одного узла-пустышки вместо сообщения «подписка истекла». severity=info: узла тут не было никогда, терять нечего, но выпадение обязано быть названным. Текст ремарки после `#` едет в `message` — это и есть сообщение провайдера, ради которого запись существует. Обращение как с provider_banner (строка без схемы) и service_record_ignored (служебная схема): в состав не идёт, из списка выпадает с info-кодом.",
+      "desc": "Запись-БАННЕР, притворившаяся ссылкой: цель из списка «заведомо не сервер» (source_kinds.json uri_lines.banner_targets). Прежде признаком баннера было ОТСУТСТВИЕ `://` (isProviderBannerLine), а обе крупные панели пишут баннер синтаксически валидной ссылкой — и он становился ПОЛНОЦЕННЫМ узлом: `vless://…@0.0.0.0:1` у Remnawave (createFallbackHosts), `socks://127.0.0.1:1080` у 3x-ui (3x-ui:internal/sub/service.go). При истечении подписки 3x-ui отдаёт баннер единственной записью, и пользователь получал «рабочую» подписку из одного узла-пустышки вместо сообщения «подписка истекла». severity=info: узла тут не было никогда, терять нечего, но выпадение обязано быть названным. Текст ремарки после `#` едет в `message` — это и есть сообщение провайдера, ради которого запись существует. Обращение как с provider_banner (строка без схемы) и service_record_ignored (служебная схема): в состав не идёт, из списка выпадает с info-кодом.",
       "dart": null,
       "go": "core/config/subscription/parse_body.go:ParseSubscriptionBody (признак — core/config/subscription/parse_body.go:isProviderBannerLine, isProviderBannerNode по registry/source_kinds.json uri_lines.banner_targets)"
     },
@@ -2157,7 +2157,7 @@
         "Обновите приложение: проверка диалекта — часть разбора.",
         "Как обходной путь оберните конфиг в JSON-массив из одного элемента — массив конфигов опознаётся верно."
       ],
-      "desc": "Диагностический код ступени КЛАССИФИКАЦИИ, а не разбора записи: тело опознано целым конфигом, но диалект спрошен не был. Заведён вместе с исправлением (source_kinds.json xray_config, prio 35): реестр признак диалекта объявлял, а рукописный сниффер body_classify.go его не спрашивал, и одиночный конфиг Xray давал ноль узлов с отбраковкой «missing type» на каждой записи. Ставится там, где ступень всё же промахнулась — код без пути к нему был бы мёртвыми данными, поэтому он объявлен body-level (на подписку, не на узел).",
+      "desc": "Диагностический код ступени КЛАССИФИКАЦИИ, а не разбора записи: тело опознано целым конфигом, но диалект спрошен не был. Заведён вместе с исправлением (source_kinds.json xray_config, prio 35): реестр признак диалекта объявлял, а рукописный сниффер (core/config/subscription/body_classify.go) его не спрашивал, и одиночный конфиг Xray давал ноль узлов с отбраковкой «missing type» на каждой записи. Ставится там, где ступень всё же промахнулась — код без пути к нему был бы мёртвыми данными, поэтому он объявлен body-level (на подписку, не на узел).",
       "dart": null,
       "go": "в Go не ставится: константа WarnBodyDialectUnrecognized (core/config/subscription/parse_warnings.go) объявлена, но нигде не используется; промах, который описывает код, предотвращает core/config/subscription/body_classify.go:classifyJSONObjectBody — диалект Xray спрашивается до ветки sing-box-конфига"
     },
