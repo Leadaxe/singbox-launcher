@@ -11,6 +11,7 @@ package tabs
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -32,6 +33,23 @@ import (
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
+
+// numberEntryNotANumberText — подпись ошибки поля числа (ключ = английский
+// текст, перевод в bin/locale/ru.json).
+const numberEntryNotANumberText = "Must be a number."
+
+// numberEntryValidator — проверка поля с целым числом: пусто допустимо (движок
+// подставит 0 или умолчание), иначе целое. Общая для number у переменной
+// пресета и int у переменной шаблона на вкладке Settings (SPEC 143 Т12).
+func numberEntryValidator(s string) error {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	if _, err := strconv.Atoi(strings.TrimSpace(s)); err != nil {
+		return errors.New(locale.T(numberEntryNotANumberText))
+	}
+	return nil
+}
 
 // showEditPresetRefDialog — двух-табовый dialog (Form + JSON) для preset-ref правила.
 func showEditPresetRefDialog(
@@ -221,15 +239,7 @@ func showEditPresetRefDialog(
 				working[v.Name] = s
 				refreshJSON()
 			}
-			entry.Validator = func(s string) error {
-				if s == "" {
-					return nil
-				}
-				if _, err := strconv.Atoi(s); err != nil {
-					return fmt.Errorf("must be a number")
-				}
-				return nil
-			}
+			entry.Validator = numberEntryValidator
 			wid = entry
 		default: // text
 			entry := widget.NewEntry()

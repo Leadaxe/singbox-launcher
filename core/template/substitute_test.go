@@ -8,7 +8,7 @@ import (
 func TestSubstituteCanon_scalars(t *testing.T) {
 	vars := []TemplateVar{
 		{Name: "log_level", Type: "enum"},
-		{Name: "tun_mtu", Type: "text"},
+		{Name: "tun_mtu", Type: "int"},
 	}
 	resolved := map[string]ResolvedVar{
 		"log_level": {Scalar: "info"},
@@ -56,7 +56,7 @@ func TestSubstituteCanon_bool(t *testing.T) {
 }
 
 func TestSubstituteCanon_proxyInListenPort(t *testing.T) {
-	vars := []TemplateVar{{Name: "proxy_in_listen_port", Type: "text"}}
+	vars := []TemplateVar{{Name: "proxy_in_listen_port", Type: "int"}}
 	resolved := map[string]ResolvedVar{
 		"proxy_in_listen_port": {Scalar: "7890"},
 	}

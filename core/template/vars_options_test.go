@@ -68,85 +68,56 @@ func TestTemplateVarOptionsEmptyTitleFallsBackToValue(t *testing.T) {
 	}
 }
 
-// Object-form options (`[{title, value}]`) carry display-only titles. Free-text
-// combo (`type:"text"`) cannot safely round-trip them: user-typed text bypasses
-// the title→value mapping. Normalize the declared type to "enum" whenever any
-// option element is in object form, regardless of original type.
+// `options` ортогональны `type` (SPEC 143 Т8–Т10): объектная форма тип не
+// меняет, `enum` читается как `text` с закрытым списком, `options_open`
+// разрешает своё значение.
 
-func TestTemplateVarOptionsTextWithObjectFormDegradesToEnum(t *testing.T) {
-	raw := `{"name":"urltest_interval","type":"text","options":[
-		{"title":"5m (default)","value":"5m"},
-		{"title":"30m","value":"30m"}
-	]}`
-	var v TemplateVar
-	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+func TestTemplateVarOptionsObjectFormKeepsType(t *testing.T) {
+	for _, tc := range []struct{ raw, want string }{
+		{`{"name":"urltest_interval","type":"text","options":[{"title":"5m (default)","value":"5m"}]}`, "text"},
+		{`{"name":"tol","type":"int","options":[{"title":"Low","value":"50"}]}`, "int"},
+		{`{"name":"mix","type":"text","options":["plain",{"title":"Fancy","value":"fancy"}]}`, "text"},
+		{`{"name":"log_level","type":"enum","options":[{"title":"Info","value":"info"}]}`, "text"},
+		{`{"name":"urltest_url","type":"text","options":["https://a","https://b"]}`, "text"},
+	} {
+		var v TemplateVar
+		if err := json.Unmarshal([]byte(tc.raw), &v); err != nil {
+			t.Fatalf("unmarshal %s: %v", tc.raw, err)
+		}
+		if v.Type != tc.want {
+			t.Errorf("%s: Type = %q, want %q", tc.raw, v.Type, tc.want)
+		}
+		if v.OptionsOpen {
+			t.Errorf("%s: OptionsOpen = true without options_open", tc.raw)
+		}
 	}
-	if v.Type != "enum" {
-		t.Errorf("Type = %q, want %q (text+object-form options must degrade to enum)", v.Type, "enum")
+	var v TemplateVar
+	if err := json.Unmarshal([]byte(`{"name":"mtu","type":"int","options":["1280"],"options_open":true}`), &v); err != nil {
+		t.Fatal(err)
+	}
+	if !v.OptionsOpen {
+		t.Errorf("options_open: true not read")
 	}
 }
 
-func TestTemplateVarOptionsBoolWithObjectFormDegradesToEnum(t *testing.T) {
-	// Defensive: bool+options is nonsensical, but if a template author writes
-	// it, normalize to enum rather than letting the renderer guess.
-	raw := `{"name":"weird","type":"bool","options":[{"title":"On","value":"true"}]}`
-	var v TemplateVar
-	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if v.Type != "enum" {
-		t.Errorf("Type = %q, want %q (any type + object-form options → enum)", v.Type, "enum")
-	}
-}
-
-func TestTemplateVarOptionsEnumWithObjectFormStaysEnum(t *testing.T) {
-	// Already enum — no-op.
-	raw := `{"name":"log_level","type":"enum","options":[{"title":"Info","value":"info"}]}`
-	var v TemplateVar
-	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if v.Type != "enum" {
-		t.Errorf("Type = %q, want %q (enum is idempotent under degradation)", v.Type, "enum")
-	}
-}
-
-func TestTemplateVarOptionsTextWithLegacyStringListStaysText(t *testing.T) {
-	// Legacy form (title==value implicitly) is safe for free-text combo —
-	// no degradation, free typing remains useful.
-	raw := `{"name":"urltest_url","type":"text","options":["https://a","https://b"]}`
-	var v TemplateVar
-	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if v.Type != "text" {
-		t.Errorf("Type = %q, want %q (legacy string-list options must NOT degrade)", v.Type, "text")
-	}
-}
-
-func TestTemplateVarOptionsTextWithMixedFormDegradesToEnum(t *testing.T) {
-	// One string + one object → still triggers degradation; once any element
-	// is object-form, semantics flip to closed-set.
-	raw := `{"name":"mix","type":"text","options":["plain",{"title":"Fancy","value":"fancy"}]}`
-	var v TemplateVar
-	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if v.Type != "enum" {
-		t.Errorf("Type = %q, want %q (mixed list with any object → enum)", v.Type, "enum")
-	}
-}
-
-func TestTemplateVarOptionsTextWithEmptyTitleObjectDegradesToEnum(t *testing.T) {
-	// Object form with empty title — still object form, so degrade.
-	raw := `{"name":"x","type":"text","options":[{"title":"","value":"ok"}]}`
-	var v TemplateVar
-	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if v.Type != "enum" {
-		t.Errorf("Type = %q, want %q (object form with empty title is still object form)", v.Type, "enum")
+func TestValidateTemplateVarOptionsShape(t *testing.T) {
+	for _, tc := range []struct {
+		raw    string
+		reject bool
+	}{
+		{`{"name":"flag","type":"bool","options":[{"title":"On","value":"true"}]}`, true},
+		{`{"name":"mtu","type":"int","options_open":true}`, true},
+		{`{"name":"mtu","type":"int","options":["1280","1492"],"options_open":true}`, false},
+		{`{"name":"flag","type":"bool"}`, false},
+	} {
+		var v TemplateVar
+		if err := json.Unmarshal([]byte(tc.raw), &v); err != nil {
+			t.Fatalf("unmarshal %s: %v", tc.raw, err)
+		}
+		err := ValidateWizardTemplate([]TemplateVar{v}, nil, nil)
+		if (err != nil) != tc.reject {
+			t.Errorf("%s: err = %v, want reject=%v", tc.raw, err, tc.reject)
+		}
 	}
 }
 

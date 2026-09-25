@@ -183,7 +183,7 @@
   },
   {
    "name": "tun_mtu",
-   "type": "text",
+   "type": "int",
    "wizard_ui": "edit",
    "title": "TUN MTU",
    "tooltip": "Maximum transmission unit for the TUN interface (numeric value in JSON).",
@@ -282,7 +282,7 @@
   },
   {
    "name": "proxy_in_listen_port",
-   "type": "text",
+   "type": "int",
    "wizard_ui": "edit",
    "title": "Proxy-in listen port",
    "tooltip": "Listen port for mixed inbound proxy-in.",
@@ -458,6 +458,7 @@
    "title": "URLTest URL",
    "tooltip": "sing-box urltest.url — endpoint to probe for latency when selecting the fastest node in auto-proxy-out. Pick a preset or type any HTTP(S) URL that returns a quick response.",
    "default_value": "https://cp.cloudflare.com/generate_204",
+   "options_open": true,
    "options": [
     "https://cp.cloudflare.com/generate_204",
     "http://www.gstatic.com/generate_204",
@@ -497,7 +498,7 @@
   },
   {
    "name": "urltest_tolerance",
-   "type": "enum",
+   "type": "int",
    "wizard_ui": "edit",
    "title": "URLTest tolerance (ms)",
    "tooltip": "sing-box urltest.tolerance — don't switch node unless the new fastest one beats the current by this many milliseconds. Higher = less flap.",

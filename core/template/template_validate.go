@@ -103,6 +103,16 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 		if _, reserved := reservedVarNames[nm]; reserved {
 			return fmt.Errorf("template: vars[].name %q is reserved (runtime global namespace); rename", nm)
 		}
+		// options ортогональны type (SPEC 143 Т8), кроме bool: у флага два
+		// значения, и список поверх них либо дублирует чекбокс, либо
+		// противоречит ему. options_open без options ничего не открывает —
+		// это опечатка в объявлении, а не свободный ввод.
+		if strings.TrimSpace(v.Type) == "bool" && len(v.Options) > 0 {
+			return fmt.Errorf("vars[%d]: bool var %q must not set options", i, nm)
+		}
+		if v.OptionsOpen && len(v.Options) == 0 {
+			return fmt.Errorf("vars[%d]: var %q sets options_open without options", i, nm)
+		}
 		names[nm] = struct{}{}
 		varByName[nm] = v
 	}
@@ -198,7 +208,7 @@ func validateVarsSeparator(i int, v TemplateVar) error {
 	if !v.DefaultValue.IsEmpty() || strings.TrimSpace(v.DefaultNode) != "" {
 		return fmt.Errorf("%s: separator must not set default_value or default_node", ctx)
 	}
-	if len(v.Options) > 0 {
+	if len(v.Options) > 0 || v.OptionsOpen {
 		return fmt.Errorf("%s: separator must not set options", ctx)
 	}
 	if strings.TrimSpace(v.Title) != "" || strings.TrimSpace(v.Tooltip) != "" {

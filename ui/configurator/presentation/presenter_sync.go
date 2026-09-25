@@ -168,7 +168,7 @@ func (p *WizardPresenter) refreshDNSSelectsFromModel() {
 	}
 	if p.guiState.DNSStrategySelect != nil {
 		strOpts := []string{"ipv4_only", "ipv6_only", "prefer_ipv4", "prefer_ipv6"}
-		if vd, ok := wizardtemplate.VarByName(p.model.TemplateData.Vars, wizardmodels.VarDNSStrategy); ok && strings.EqualFold(strings.TrimSpace(vd.Type), "enum") && len(vd.Options) > 0 {
+		if vd, ok := wizardtemplate.VarByName(p.model.TemplateData.Vars, wizardmodels.VarDNSStrategy); ok && len(vd.Options) > 0 {
 			strOpts = append([]string(nil), vd.Options...)
 		}
 		p.guiState.DNSStrategySelect.Options = strOpts

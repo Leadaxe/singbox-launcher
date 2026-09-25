@@ -172,8 +172,11 @@ func TestBuildVarSubstituterFromDisk_TemplateDefaults(t *testing.T) {
 	template := map[string]interface{}{
 		"vars": []interface{}{
 			map[string]interface{}{"name": "urltest_interval", "type": "enum", "default_value": "10m"},
-			map[string]interface{}{"name": "urltest_tolerance", "type": "enum", "default_value": "200"},
+			map[string]interface{}{"name": "urltest_tolerance", "type": "int", "default_value": "200"},
 			map[string]interface{}{"name": "tun_stack", "type": "enum", "default_value": "system"},
+			// Число — по объявленному типу, а не по имени (SPEC 143 Т14):
+			// имени нет ни в каком списке, clamp тот же, что у канона.
+			map[string]interface{}{"name": "probe_port", "type": "int", "default_value": "70000"},
 		},
 	}
 	writeTemplateFile(t, execDir, template)
@@ -188,6 +191,9 @@ func TestBuildVarSubstituterFromDisk_TemplateDefaults(t *testing.T) {
 	}
 	if val, ok := subst("tun_stack"); !ok || val != "system" {
 		t.Errorf("tun_stack: %v ok=%v, want %q", val, ok, "system")
+	}
+	if val, ok := subst("probe_port"); !ok || val != 65535 {
+		t.Errorf("probe_port: %v (%T) ok=%v, want int 65535 (clamp)", val, val, ok)
 	}
 }
 
@@ -295,7 +301,7 @@ func TestSubstituteParserConfigPlaceholders_EndToEndWithDiskSubstituter(t *testi
 		"vars": []interface{}{
 			map[string]interface{}{"name": "urltest_url", "type": "text", "default_value": "https://1.1.1.1"},
 			map[string]interface{}{"name": "urltest_interval", "type": "enum", "default_value": "5m"},
-			map[string]interface{}{"name": "urltest_tolerance", "type": "enum", "default_value": "100"},
+			map[string]interface{}{"name": "urltest_tolerance", "type": "int", "default_value": "100"},
 		},
 	})
 	writeStateFile(t, execDir, map[string]interface{}{

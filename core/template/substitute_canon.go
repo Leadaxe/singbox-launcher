@@ -258,7 +258,7 @@ func replacementCanon(name string, ctx *canonCtx) interface{} {
 	if typ == "bool" {
 		return s != "" && strings.EqualFold(s, "true")
 	}
-	if wantsIntCast(name, typ) {
+	if IsIntVarType(typ) {
 		return intCastCanon(name, s, ctx)
 	}
 	return s
@@ -267,26 +267,16 @@ func replacementCanon(name string, ctx *canonCtx) interface{} {
 // intCastCanon — приведение к числу по §2.2: clamp в [0,65535], а не-число
 // уезжает строкой (опечатка видна, а не маскируется нулём).
 func intCastCanon(name, s string, ctx *canonCtx) interface{} {
-	if s == "" {
-		return 0
-	}
+	out, outcome := CastIntValue(s)
 	// value — исходная строка, как её ввёл пользователь: по ней он узнаёт,
 	// что именно было отвергнуто или ограничено.
-	params := map[string]string{"name": name, "value": s}
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		ctx.warn(warnIntInvalid, params)
-		return s
+	switch outcome {
+	case IntCastInvalid:
+		ctx.warn(warnIntInvalid, map[string]string{"name": name, "value": s})
+	case IntCastClamped:
+		ctx.warn(warnIntClamped, map[string]string{"name": name, "value": s})
 	}
-	if n < intCastMin {
-		ctx.warn(warnIntClamped, params)
-		return intCastMin
-	}
-	if n > intCastMax {
-		ctx.warn(warnIntClamped, params)
-		return intCastMax
-	}
-	return n
+	return out
 }
 
 // handleIfMapSpreadCanon вычисляет #if среди полей объекта и вливает выбранную

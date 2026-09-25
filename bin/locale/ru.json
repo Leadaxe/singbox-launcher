@@ -2218,6 +2218,9 @@
   "Port must be a number between 1024 and 65535.": {
     "value": "Порт должен быть числом от 1024 до 65535."
   },
+  "Must be a number.": {
+    "value": "Должно быть числом."
+  },
   "Rebuild config only": {
     "value": "Только пересобрать config"
   },

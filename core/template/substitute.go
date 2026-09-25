@@ -11,20 +11,6 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
-// isIntCastVar: legacy-список вар, которые кастуются в число ПО ИМЕНИ.
-//
-// Канон (TEMPLATE_LANG §2.2, разрыв C5) — каст по объявленному `type: "int"`,
-// а не по имени: иначе новая числовая переменная с любым другим именем уезжает
-// в конфиг строкой, и ядро отвергает весь конфиг на decode. Список остаётся
-// временным fallback для шаблонов, где у этих вар тип не проставлен.
-func isIntCastVar(name string) bool {
-	switch name {
-	case "tun_mtu", "mixed_listen_port", "proxy_in_listen_port", "urltest_tolerance":
-		return true
-	}
-	return false
-}
-
 // intCastBounds — backstop диапазона для int-подстановки (TEMPLATE_LANG §2.2).
 // Порт/tolerance/MTU вне uint16 роняют ядро на decode, поэтому значение
 // клампится, а не уезжает как есть.
@@ -33,14 +19,49 @@ const (
 	intCastMax = 65535
 )
 
-// wantsIntCast: переменная подставляется числом, если так объявлен её тип
-// (канон) либо если её имя в legacy-списке (fallback для непроставленных типов).
-func wantsIntCast(name, declaredType string) bool {
+// IsIntVarType: переменная подставляется числом только по объявленному типу
+// (TEMPLATE_LANG §2.2, C5 закрыт, SPEC 143 Т14). Списков имён нет: новая
+// числовая переменная обязана объявить `type: "int"`.
+func IsIntVarType(declaredType string) bool {
 	switch strings.ToLower(strings.TrimSpace(declaredType)) {
 	case "int", "number": // "number" — алиас чтения (TEMPLATE_LANG §2.2)
 		return true
 	}
-	return isIntCastVar(name)
+	return false
+}
+
+// IntCastOutcome — исход приведения строки к числу по §2.2.
+type IntCastOutcome int
+
+const (
+	// IntCastOK — число в диапазоне (или пустое значение → 0).
+	IntCastOK IntCastOutcome = iota
+	// IntCastClamped — число вне [0, 65535], приведено к границе.
+	IntCastClamped
+	// IntCastInvalid — не число; значение уезжает строкой как есть.
+	IntCastInvalid
+)
+
+// CastIntValue — единое приведение int-переменной (TEMPLATE_LANG §2.2):
+// TrimSpace, пусто → 0, число клампится в [0, 65535], не-число остаётся
+// строкой (опечатка видна, а не маскируется нулём). Им пользуются и канон
+// (intCastCanon), и подстановка в parser_config (core/config/varsubst.go).
+func CastIntValue(raw string) (interface{}, IntCastOutcome) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return 0, IntCastOK
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return s, IntCastInvalid
+	}
+	if n < intCastMin {
+		return intCastMin, IntCastClamped
+	}
+	if n > intCastMax {
+		return intCastMax, IntCastClamped
+	}
+	return n, IntCastOK
 }
 
 // runtimeGlobalPrefix — пространство имён runtime-globals в #if predicates (SPEC 067).
@@ -608,21 +629,12 @@ func substituteSimpleString(s string, varTypes map[string]string, resolved map[s
 		}
 		return "false"
 	}
-	if !wantsIntCast(name, typ) {
+	if !IsIntVarType(typ) {
 		return v
 	}
-	if v == "" {
-		return "0"
+	out, _ := CastIntValue(v)
+	if n, ok := out.(int); ok {
+		return strconv.Itoa(n)
 	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return v
-	}
-	if n < intCastMin {
-		n = intCastMin
-	}
-	if n > intCastMax {
-		n = intCastMax
-	}
-	return strconv.Itoa(n)
+	return v
 }
