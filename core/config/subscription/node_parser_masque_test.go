@@ -122,47 +122,12 @@ func TestMasque_ShareURIRoundTrip(t *testing.T) {
 	}
 }
 
-// Плоские network/sni/skip_cert_verify sing-box-импорта СТРИПАЮТСЯ без
-// переноса значений (0.8.0, D-078). Удаление обязательно: плоский sni рядом
-// с tls.server_name — два источника имени, ядро падает fail-fast'ом
-// (SPEC 062 §2); а legacy-значения больше не читаются.
-func TestSanitizeSingboxOutboundMap_MasqueLegacyStripped(t *testing.T) {
-	ob := map[string]interface{}{
-		"type":             "masque",
-		"network":          "h2",
-		"sni":              "x.example",
-		"skip_cert_verify": true,
-	}
-	SanitizeSingboxOutboundMap(ob, "imported")
-
-	for _, k := range []string{"network", "sni", "skip_cert_verify"} {
-		if _, has := ob[k]; has {
-			t.Errorf("legacy flat %q must be removed", k)
-		}
-	}
-	if _, has := ob["vhttp"]; has {
-		t.Errorf("network value must NOT fold into vhttp anymore, got %v", ob["vhttp"])
-	}
-	if _, has := ob["tls"]; has {
-		t.Errorf("flat sni/skip_cert_verify must NOT fold into tls anymore, got %v", ob["tls"])
-	}
-}
-
-// Канонические поля стрип не задевает.
-func TestSanitizeSingboxOutboundMap_MasqueCanonicalSurvives(t *testing.T) {
-	ob := map[string]interface{}{
-		"type":    "masque",
-		"vhttp":   "h3",
-		"network": "h2",
-		"sni":     "legacy.example",
-		"tls":     map[string]interface{}{"server_name": "current.example"},
-	}
-	SanitizeSingboxOutboundMap(ob, "imported")
-
-	assertEq(t, ob["vhttp"], "h3")
-	tls, _ := ob["tls"].(map[string]interface{})
-	assertEq(t, tls["server_name"], "current.example")
-}
+// СНЯТО (SPEC 142 волна 2, контракт 1.1.57):
+// TestSanitizeSingboxOutboundMap_MasqueLegacyStripped / _MasqueCanonicalSurvives.
+// Плоские network/sni/skip_cert_verify у masque снимает реестр (body.skipped →
+// общий unknown_key) на всех входах, а не рукописная копия на импорте
+// sing-box; проверяет кейс корпуса body/singbox/masque_legacy_flat_keys (там
+// же канонические vhttp и tls.server_name остаются нетронутыми).
 
 // СНЯТО (контракт 1.1.4): TestSanitizeSingboxOutboundMap_MasqueStripsUTLS.
 // masque идёт поверх QUIC, и utls/reality на нём снимает теперь реестр

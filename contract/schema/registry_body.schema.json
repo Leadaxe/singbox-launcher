@@ -101,8 +101,8 @@
       "type": "object",
       "properties": {
         "action": {
-          "description": "drop — снять поле; coerce — заменить на value; drop_node — узел уходит в dropped целиком.",
-          "enum": ["drop", "coerce", "drop_node"]
+          "description": "drop — снять поле; coerce — заменить на value; drop_node — узел уходит в dropped целиком; unwrap (контракт 1.1.57) — значение пришло ОБЁРТКОЙ соседнего диалекта: объект, чей член `key` приводится к типу поля, не пуст и проходит ограничения поля, заменяется этим членом с кодом `code`; объект без годного члена — поле снято с кодом `else_code` (параметры кода — скалярные члены объекта, кроме самого `key`); не объект — поле снято с type_invalid.",
+          "enum": ["drop", "coerce", "drop_node", "unwrap"]
         },
         "value": {
           "description": "Значение для action=coerce.",
@@ -110,7 +110,15 @@
         },
         "code": {
           "type": "string",
-          "description": "Код из registry/warnings.json."
+          "description": "Код из registry/warnings.json. У unwrap — код УСПЕШНОГО разворота (поле получило член обёртки)."
+        },
+        "key": {
+          "type": "string",
+          "description": "Только у action=unwrap: имя члена объекта-обёртки, который становится значением поля (hysteria v1 obfs: `password` из {type, password} hysteria2)."
+        },
+        "else_code": {
+          "type": "string",
+          "description": "Только у action=unwrap: код, когда объект-обёртка годного члена `key` не несёт и поле снято. Без него — type_invalid."
         }
       },
       "required": ["action", "code"],
@@ -127,6 +135,19 @@
           },
           "then": {
             "required": ["value"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "unwrap"
+              }
+            },
+            "required": ["action"]
+          },
+          "then": {
+            "required": ["key"]
           }
         }
       ]

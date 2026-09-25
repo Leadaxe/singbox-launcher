@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/nodeflow"
 )
 
 // helper: разбор тела с автоклассификацией.
@@ -316,5 +317,67 @@ func TestSingboxImportRespectsSkipFilters(t *testing.T) {
 	got := tagsOf(res)
 	if len(got) != 1 || got[0] != "keep" {
 		t.Fatalf("tags = %v, want [keep]", got)
+	}
+}
+
+// Перенесено из singbox_sanitize_test.go (файл снят вместе с
+// SanitizeSingboxOutboundMap, SPEC 142 волна 2). Структурные преобразования
+// диалекта, которые там оставались (форма obfs у hysteria v1, плоский
+// masque), теперь исполняет реестр — их проверяют кейсы корпуса
+// body/singbox/hysteria_obfs_object_*, body/singbox/masque_legacy_flat_keys.
+//
+// tls негодной ФОРМЫ судит реестр (`type: object` секции tls), а не
+// рукописная копия на входе sing-box (SPEC 142 A2): не объект — блок снят с
+// кодом type_invalid, пустой объект — снят молча, узел жив в обоих случаях.
+func TestSanitizeSingboxHandlesMalformedBlocks(t *testing.T) {
+	base := func(tls interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"type": "vless", "server": "e.com", "server_port": float64(443),
+			"uuid": "a0ee37a5-1844-4087-bc5c-1db6f416d38c", "tls": tls,
+		}
+	}
+	res := nodeflow.SanitizeFrom("vless", nodeflow.SourceSingbox, base("yes-please"))
+	if res.Drop != nil {
+		t.Fatalf("узел с негодным tls отброшен: %+v", res.Drop)
+	}
+	if _, present := res.Clean["tls"]; present {
+		t.Fatal("tls не объект — блок обязан сняться")
+	}
+	coded := false
+	for _, w := range res.Warnings {
+		if w.Code == "type_invalid" && w.Path == "tls" {
+			coded = true
+		}
+	}
+	if !coded {
+		t.Errorf("снятие tls без кода type_invalid: %+v", res.Warnings)
+	}
+
+	res = nodeflow.SanitizeFrom("vless", nodeflow.SourceSingbox, base(map[string]interface{}{}))
+	if _, present := res.Clean["tls"]; present || res.Drop != nil {
+		t.Fatalf("пустой tls обязан сняться, узел жить: clean=%v drop=%+v", res.Clean["tls"], res.Drop)
+	}
+}
+
+func TestIsSingboxServiceAndGroupTypes(t *testing.T) {
+	for _, s := range []string{"direct", "block", "dns", "DIRECT", " block "} {
+		if !IsSingboxServiceType(s) {
+			t.Errorf("IsSingboxServiceType(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{"vless", "selector", "urltest", ""} {
+		if IsSingboxServiceType(s) {
+			t.Errorf("IsSingboxServiceType(%q) = true, want false", s)
+		}
+	}
+	for _, s := range []string{"selector", "urltest", "URLTest"} {
+		if !IsSingboxGroupType(s) {
+			t.Errorf("IsSingboxGroupType(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{"vless", "direct", ""} {
+		if IsSingboxGroupType(s) {
+			t.Errorf("IsSingboxGroupType(%q) = true, want false", s)
+		}
 	}
 }

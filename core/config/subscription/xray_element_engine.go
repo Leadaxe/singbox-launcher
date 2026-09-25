@@ -83,10 +83,6 @@ func parseXrayElementByEngine(ob map[string]interface{}, label string) (*configt
 	// приезжают с путём и значением. Позови его ещё и здесь, узел получил
 	// бы КАЖДУЮ деградацию дважды: первый раз голым кодом, второй — с
 	// параметрами (корпус xray/vless_fp_junk ловит это сразу).
-	//
-	// Прежний конвертер звал у hysteria собственный ранний проход
-	// (SanitizeSingboxOutboundMap), но правил значений в нём давно нет —
-	// они ушли в реестр волной W2d, и функция возвращает пустой список.
 	body := res.Body
 
 	node := &configtypes.ParsedNode{

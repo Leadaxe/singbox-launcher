@@ -418,9 +418,30 @@
         "Скопируйте ссылку с сайта провайдера заново — чаще всего её обрезали при копировании.",
         "Попросите провайдера исправить запись: если сервер ждёт обфускацию, без пароля этот узел не соединится."
       ],
-      "desc": "Обфускация задана без пароля — снимается целиком: ядро отвергает такой узел («missing obfs password»), и это роняет ВЕСЬ конфиг, а не одну ноду. РАСХОЖДЕНИЕ ЗАКРЫТО (фаза 1): Go проверял только на singbox-пути, а URI-путь эмитил obfs без password — проверка добавлена в оба (node_parser_hysteria2.go, singbox_sanitize.go).",
+      "desc": "Обфускация задана без пароля — снимается целиком: ядро отвергает такой узел («missing obfs password»), и это роняет ВЕСЬ конфиг, а не одну ноду. РАСХОЖДЕНИЕ ЗАКРЫТО (фаза 1): Go проверял только на singbox-пути, а URI-путь эмитил obfs без password — проверка добавлена в оба (node_parser_hysteria2.go, singbox_sanitize.go). С контракта 1.1.57 им же снимается объект-обёртка без пароля у hysteria v1 obfs (on_invalid unwrap, else_code); параметр {type} — член type объекта.",
       "dart": "MissingObfsPasswordWarning",
       "go": "contract/registry/protocols/hysteria2.json body.relations (obfs password); исполнение — core/config/nodeflow/sanitize.go relations"
+    },
+    "obfs_object_flattened": {
+      "severity": "info",
+      "params": [
+        "path"
+      ],
+      "title_en": "Obfuscation password taken from an object",
+      "title_ru": "Пароль обфускации взят из объекта",
+      "text_en": "The obfuscation at {path} arrived as an object, while this protocol takes it as a plain password string. The password was taken from the object and used as the string; the node connects with obfuscation as intended.",
+      "text_ru": "Обфускация в поле {path} пришла объектом, а этот протокол принимает её строкой-паролем. Пароль взят из объекта и записан строкой; узел подключается с обфускацией, как и задумано.",
+      "cause_en": "Hysteria v1 takes the obfuscation secret as a plain string, while Hysteria2 writes the same key as an object {type, password}. Providers that convert configs automatically sometimes put the Hysteria2 form into a v1 entry; the core would reject such an entry and refuse to start the whole config.",
+      "cause_ru": "Hysteria v1 принимает секрет обфускации простой строкой, а Hysteria2 пишет тот же ключ объектом {type, password}. Провайдеры, конвертирующие конфиги автоматически, иногда кладут форму Hysteria2 в запись v1; ядро отвергло бы такую запись и не запустило бы весь конфиг.",
+      "fix_en": [
+        "Nothing to do: the node works with the password from the object."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно: узел работает с паролем из объекта."
+      ],
+      "desc": "Поле-строка получило объект-обёртку соседнего диалекта, годный член взят значением (on_invalid unwrap, контракт 1.1.57). Первый потребитель — hysteria v1 obfs: {type, password} от hysteria2 → строка password. Объект без пароля — obfs_password_missing, иная форма — type_invalid. SPEC 142 C1: прежде это делала рукописная копия только на импорте sing-box и молча (WarnLog); ручной JSON и бэкап теряли obfs с type_invalid.",
+      "dart": null,
+      "go": "contract/registry/protocols/hysteria.json body.fields.obfs.on_invalid (unwrap); исполнение — core/config/nodeflow/sanitize.go unwrap"
     },
     "detour_cycle_broken": {
       "severity": "warning",

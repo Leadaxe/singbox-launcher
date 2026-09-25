@@ -53,6 +53,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`naive_extra_headers_invalid`](#naive_extra_headers_invalid) · `info` — naive: header {entry} discarded
 - [`naive_padding_ignored`](#naive_padding_ignored) · `info` — naive: padding parameter ignored
 - [`naive_unavailable`](#naive_unavailable) · `error` — naive is unavailable in this build
+- [`obfs_object_flattened`](#obfs_object_flattened) · `info` — Obfuscation password taken from an object
 - [`obfs_password_missing`](#obfs_password_missing) · `warning` — Obfuscation removed: no password
 - [`obfs_unknown`](#obfs_unknown) · `warning` — Unknown obfuscation removed
 - [`packet_encoding_unknown`](#packet_encoding_unknown) · `warning` — Field removed: unknown packet_encoding
@@ -943,6 +944,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
+<a id="obfs_object_flattened"></a>
+### obfs_object_flattened
+
+**severity:** `info` · **params:** `path`
+
+**Obfuscation password taken from an object**
+
+- **What happened:** The obfuscation at {path} arrived as an object, while this protocol takes it as a plain password string. The password was taken from the object and used as the string; the node connects with obfuscation as intended.
+- **Why it happens:** Hysteria v1 takes the obfuscation secret as a plain string, while Hysteria2 writes the same key as an object {type, password}. Providers that convert configs automatically sometimes put the Hysteria2 form into a v1 entry; the core would reject such an entry and refuse to start the whole config.
+- **What you can do:**
+  - Nothing to do: the node works with the password from the object.
+
+**Where it comes from:**
+
+- [`hysteria`](protocols/hysteria.md)
+  - [`obfs`](protocols/hysteria.md#body-obfs) — the value does not fit the field → an object is replaced with its `password` member
+
 <a id="obfs_password_missing"></a>
 ### obfs_password_missing
 
@@ -958,6 +976,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **Where it comes from:**
 
+- [`hysteria`](protocols/hysteria.md)
+  - [`obfs`](protocols/hysteria.md#body-obfs) — an object arrived without a usable `password` member → removed
 - [`hysteria2`](protocols/hysteria2.md)
   - [`obfs.password`](protocols/hysteria2.md#body-obfs-password) — the field is present
 

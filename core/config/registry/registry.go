@@ -196,10 +196,21 @@ type Field struct {
 }
 
 // OnInvalid — что делать со значением, не прошедшим ограничение поля.
+//
+// Action `unwrap` (контракт 1.1.57) — значение приехало ОБЁРТКОЙ соседнего
+// диалекта: объектом там, где поле ждёт скаляр (у hysteria v1 obfs —
+// строка-секрет, а у hysteria2 тот же ключ — объект {type, password}). Если
+// значение — объект и его член `key` приводится к типу поля и проходит его
+// ограничения, поле получает этот член и код `code`. Иначе поле снимается:
+// объект без годного члена — с кодом `else_code` (параметры кода берутся из
+// скалярных членов объекта, так `{type}` доезжает до текста), не объект — с
+// `type_invalid`, как у поля без on_invalid.
 type OnInvalid struct {
-	Action string      `json:"action"`
-	Value  interface{} `json:"value"`
-	Code   string      `json:"code"`
+	Action   string      `json:"action"`
+	Value    interface{} `json:"value"`
+	Code     string      `json:"code"`
+	Key      string      `json:"key"`
+	ElseCode string      `json:"else_code"`
 }
 
 // OnItemInvalid — что делать с ЭЛЕМЕНТОМ списка, не прошедшим `item_pattern`.

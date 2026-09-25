@@ -78,7 +78,8 @@ Everything a link of this scheme can carry, including the TLS and transport para
   - If invalid: replaced with `h3` → [`masque_vhttp_invalid`](../warnings.md#masque_vhttp_invalid)
 - <a id="link-proto-sni"></a>**`sni`** — Server name sent in SNI.
   - Type: string
-  - Maps to: [`sni`](#body-sni)
+  - Maps to: [`tls.server_name`](#body-tls-server-name)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="link-proto-disable-sni"></a>**`disable_sni`** — Do not send the SNI extension.
   - Supported by LxBox only
   - Type: bool · Default: `false`
@@ -87,7 +88,8 @@ Everything a link of this scheme can carry, including the TLS and transport para
   - Supported by the desktop launcher only
   - Also spelled: `skip_cert_verify`, `allowinsecure`
   - Type: bool · Default: `false`
-  - Maps to: [`skip_cert_verify`](#body-skip-cert-verify)
+  - Maps to: [`tls.insecure`](#body-tls-insecure)
+  - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
 - <a id="link-proto-mtu"></a>**`mtu`** — Tunnel MTU.
   - Type: int · Default: `1280`
   - Maps to: [`mtu`](#body-mtu)
@@ -139,8 +141,6 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `auto`
   - Set by link parameter: [`vhttp`](#link-proto-vhttp)
   - If invalid: replaced with `h3` → [`masque_vhttp_invalid`](../warnings.md#masque_vhttp_invalid)
-- <a id="body-network"></a>**`network`** — Deprecated former name of vhttp.
-  - Type: string, deprecated
 - <a id="body-private-key"></a>**`private_key`** — Client private key, base64 DER EC.
   - Type: string, secret, format `base64`
   - Set by link parameter: [`userinfo`](#link-common-userinfo), [`private_key`](#link-proto-private-key)
@@ -194,10 +194,12 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Conflicts with: `tls.reality.enabled`
 - <a id="body-tls-server-name"></a>**`tls.server_name`** — Server name sent in SNI and verified in the certificate.
   - Type: string, format `host`
+  - Set by link parameter: [`sni`](#link-proto-sni)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="body-tls-insecure"></a>**`tls.insecure`** — Skip server certificate verification.
   - Type: bool
   - Default: `false`
+  - Set by link parameter: [`insecure`](#link-proto-insecure)
   - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
 - <a id="body-tls-alpn"></a>**`tls.alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string, normalized: `trim`
@@ -306,12 +308,6 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `""`
   - Meaningless without: `tls.reality.public_key`
   - Only written when: core ≥ `1.14.1-lx.4`, lx fork only
-- <a id="body-sni"></a>**`sni`** — Deprecated alias of tls.server_name.
-  - Type: string, deprecated
-  - Set by link parameter: [`sni`](#link-proto-sni)
-- <a id="body-skip-cert-verify"></a>**`skip_cert_verify`** — Deprecated alias of tls.insecure.
-  - Type: bool, deprecated
-  - Set by link parameter: [`insecure`](#link-proto-insecure)
 - <a id="body-fragment"></a>**`fragment`** — Deprecated alias of tls.fragment.
   - Type: bool, deprecated
 - <a id="body-fragment-fallback-delay"></a>**`fragment_fallback_delay`** — Deprecated alias of tls.fragment_fallback_delay.
@@ -427,7 +423,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 **Structural translations.** Decisions taken while the link is being read, before any value is judged: whether a block exists at all, where a field comes from, or how one input becomes several fields. The sanitizer sees a finished body and cannot take them.
 
 - flat `network` / `sni` / `skip_cert_verify` keys in an imported sing-box masque body → `the keys are removed, without carrying their values over` — These are another client's dialect; a flat `sni` sitting next to `tls.server_name` makes the core fail fast on the whole config.
-  - Kind: `drop`
+  - Kind: `drop` · [`unknown_key`](../warnings.md#unknown_key)
 - no `vhttp=` in the link → `vhttp: h3` — A convention shared by both apps, not a core default (the core defaults to `auto`). The value is part of the identity hash of live MASQUE nodes.
   - Kind: `default`
 - `sni=` whose value carries neither `.` nor `:` (a label, an emoji, a country name) → `tls.server_name` takes the server address instead — Such a value is not a hostname at all, so the server address is used as the SNI; this picks the SOURCE of the field rather than judging its value.

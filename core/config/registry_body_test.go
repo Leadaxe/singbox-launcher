@@ -125,7 +125,7 @@ var registryRelationActions = map[string]bool{"warn": true, "drop_node": true}
 
 // registryOnInvalidActions — допустимые действия on_invalid.
 var registryOnInvalidActions = map[string]bool{
-	"drop": true, "coerce": true, "drop_node": true,
+	"drop": true, "coerce": true, "drop_node": true, "unwrap": true,
 }
 
 // registryNodeSources — словарь ВХОДОВ узла (секция `sources` схем реестра).
@@ -327,9 +327,11 @@ func (c *bodyCondition) UnmarshalJSON(data []byte) error {
 // bodyOnInvalid — правило SPEC 131 §3.2: что делать со значением, не
 // прошедшим ограничение поля.
 type bodyOnInvalid struct {
-	Action string      `json:"action"`
-	Value  interface{} `json:"value"`
-	Code   string      `json:"code"`
+	Action   string      `json:"action"`
+	Value    interface{} `json:"value"`
+	Code     string      `json:"code"`
+	Key      string      `json:"key"`
+	ElseCode string      `json:"else_code"`
 }
 
 // bodyOnItemInvalid — реакция на негодный ЭЛЕМЕНТ списка (`item_pattern`).
@@ -893,6 +895,16 @@ func checkField(t *testing.T, where, path string, f *bodyField, codes map[string
 		}
 		if oi.Action != "coerce" && oi.Value != nil {
 			t.Errorf("%s: on_invalid.value задан при action=%q (value осмыслен только у coerce)", full, oi.Action)
+		}
+		// unwrap: имя члена обёртки обязательно, и ключ/else_code — только у него.
+		if oi.Action == "unwrap" && oi.Key == "" {
+			t.Errorf("%s: on_invalid.action=unwrap без key — нечего разворачивать", full)
+		}
+		if oi.Action != "unwrap" && (oi.Key != "" || oi.ElseCode != "") {
+			t.Errorf("%s: on_invalid.key/else_code заданы при action=%q (осмыслены только у unwrap)", full, oi.Action)
+		}
+		if oi.ElseCode != "" && !codes[oi.ElseCode] && !registryPendingCodes[oi.ElseCode] {
+			t.Errorf("%s: on_invalid.else_code %q не объявлен в warnings.json", full, oi.ElseCode)
 		}
 		if oi.Code == "" {
 			t.Errorf("%s: on_invalid без code — деградация была бы молчаливой", full)

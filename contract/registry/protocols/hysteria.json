@@ -189,7 +189,7 @@
       "kind": "structure",
       "desc_en": "Hysteria v1 takes the obfuscation secret as a bare string; the object form belongs to Hysteria2.",
       "desc_ru": "Hysteria v1 принимает секрет обфускации голой строкой; объектная форма — от Hysteria2.",
-      "impl": "core/config/subscription/singbox_sanitize.go. Строка-тип секретом не является."
+      "impl": "Исполняет тело: body.fields.obfs.on_invalid {action: unwrap, key: password} (контракт 1.1.57) — на всех входах, а не только на импорте sing-box. Строка-тип секретом не является."
     },
     {
       "id": "quic_has_no_utls_or_reality",
@@ -198,7 +198,7 @@
       "kind": "drop",
       "desc_en": "Hysteria runs over QUIC, which has no TLS handshake for uTLS or REALITY to shape.",
       "desc_ru": "Hysteria работает поверх QUIC, где нет TLS-рукопожатия, которое могли бы формировать uTLS или REALITY.",
-      "impl": "core/config/subscription/singbox_sanitize.go, набор quicOutboundTypes."
+      "impl": "Исполняет тело: tls.json body.fields.utls/reality forbidden_for + forbidden_codes → tls_not_applicable_quic (контракт 1.1.4)."
     }
   ],
   "refs": {
@@ -208,7 +208,6 @@
       "core/config/subscription/hysteria2_ports.go (общее восстановление authority)",
       "core/config/subscription/shareuri_hysteria.go",
       "core/config/subscription/xray_element_engine.go",
-      "core/config/subscription/singbox_sanitize.go (obfs-форма, обязательная полоса)",
       "core/config/outbound_generator.go (ветка эмиссии hysteria)"
     ],
     "dart": []
@@ -318,9 +317,15 @@
       "obfs": {
         "type": "string",
         "secret": true,
+        "on_invalid": {
+          "action": "unwrap",
+          "key": "password",
+          "code": "obfs_object_flattened",
+          "else_code": "obfs_password_missing"
+        },
         "desc_en": "Obfuscation password.",
         "desc_ru": "Пароль обфускации.",
-        "impl": "У hysteria v1 это строка-пароль (в отличие от объекта у hysteria2). Секрет."
+        "impl": "У hysteria v1 это строка-пароль (в отличие от объекта у hysteria2). Секрет. Объект {type, password} от hysteria2 (провайдеры-конвертеры кладут его в v1; ядро на объекте отвергает ВЕСЬ конфиг) разворачивает on_invalid unwrap: годный password становится строкой (obfs_object_flattened), объект без пароля снимается (obfs_password_missing), иная форма — type_invalid. Одинаково на всех входах (контракт 1.1.57, SPEC 142 C1)."
       },
       "auth": {
         "type": "string",

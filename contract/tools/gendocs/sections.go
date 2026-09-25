@@ -157,6 +157,9 @@ func collectSchemeUsages(out map[string][]usage, scheme, path string, f *registr
 
 	if f.OnInvalid != nil {
 		add(f.OnInvalid.Code, "the value does not fit the field", onInvalidAction(f.OnInvalid))
+		if f.OnInvalid.ElseCode != "" {
+			add(f.OnInvalid.ElseCode, "an object arrived without a usable `"+f.OnInvalid.Key+"` member", actionRemoved)
+		}
 	}
 	for _, a := range f.Advisory {
 		if len(a.Except) > 0 {
@@ -460,6 +463,9 @@ func collectDegradation(out map[string][]string, scheme, path string, f *registr
 			put(actionNodeDropped, "`"+path+"` — invalid value")
 		case "coerce":
 			put("replaced", "`"+path+"` — invalid value becomes "+scalar(oi.Value))
+		case "unwrap":
+			put("replaced", "`"+path+"` — an object takes the value of its `"+oi.Key+"` member")
+			put(actionRemoved, "`"+path+"` — an object without `"+oi.Key+"`, or another invalid value")
 		default:
 			put(actionRemoved, "`"+path+"` — invalid value")
 		}

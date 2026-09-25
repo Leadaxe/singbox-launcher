@@ -6910,3 +6910,88 @@ Identity не меняется. Существующие expected корпуса
 зелёного корпуса — снять ветку `uplink_data_placement` ↔ `mode` из
 `XhttpTransport.toSingbox` и `plugin_opts`-гейт из `emitShadowsocks`
 (§546 «Нерешённое», §547 фаза B). sha коммита — в сообщении сессии.
+
+## 53. Контракт 1.1.57 — новый примитив `on_invalid: unwrap`; hysteria v1 `obfs`-объект и плоские ключи masque — правилами реестра на всех входах
+
+Курс владельца (SPEC 142): любое правило о полях узла живёт только в
+реестре, в коде — общий движок. Волна 2 сняла у нас последний рукописный
+санитайзер импорта sing-box (`SanitizeSingboxOutboundMap`,
+`core/config/subscription/singbox_sanitize.go` удалён целиком). Два его
+правила работали ТОЛЬКО на импорте sing-box и МОЛЧА (лог); теперь оба —
+данные реестра, исполняются санитайзером тела на всех входах (импорт
+sing-box, ручной JSON, тело из бэкапа/state) и ставят код на узел.
+
+**Новый примитив движка санитайзера — `on_invalid.action = "unwrap"`**
+(схема `registry_body.schema.json`, `definitions.onInvalid`):
+
+```json
+"on_invalid": {"action": "unwrap", "key": "<член>", "code": "<код>", "else_code": "<код>"}
+```
+
+Смысл: значение приехало ОБЁРТКОЙ соседнего диалекта — объектом там, где
+поле ждёт скаляр. Срабатывает там же, где любой `on_invalid`: значение не
+привелось к типу поля или не прошло его ограничения. Три исхода, все с
+кодом:
+
+1. Значение — объект, его член `key` приводится к типу поля, не пуст
+   (строка из одних пробелов = пуста) и проходит ограничения поля
+   (`values`/`format`/`pattern`/`min`/`max`/…; `absent_values` тоже
+   значит «не годен») → поле получает ЭТОТ член, код `code` на пути поля.
+2. Значение — объект без годного члена `key` → поле снято, код
+   `else_code` (нет его — `type_invalid`). Параметры кода — СКАЛЯРНЫЕ
+   члены объекта (строка/число/bool), кроме самого `key` (у секретного
+   поля это секрет), плюс `path`; лишнее отсекается по `params` кода в
+   `warnings.json`. Так `{type}` у `obfs_password_missing` берётся из
+   `type` объекта.
+3. Значение не объект → поле снято с `type_invalid`, как у поля без
+   `on_invalid`.
+
+`value` у кода секретного поля — маска `***`, как везде. Имён схем и
+полей в движке нет: какой член брать, говорит реестр. У нас —
+`core/config/nodeflow/sanitize.go` (`unwrap`), у вас —
+`body_sanitizer.dart` рядом с `coerce`/`drop_node`. Линтер реестра:
+`unwrap` без `key` — ошибка; `key`/`else_code` при другом action —
+ошибка; `else_code` обязан быть объявлен в `warnings.json`.
+
+**Правила, перенесённые в реестр:**
+
+- **hysteria (v1), `hysteria.json` `body.fields.obfs`:**
+  `{action: unwrap, key: password, code: obfs_object_flattened,
+  else_code: obfs_password_missing}`. У v1 `obfs` — плоская строка-секрет,
+  а провайдеры-конвертеры кладут в него объект `{type, password}` от
+  hysteria2; ядро на объекте отвергает ВЕСЬ конфиг. Объект с паролем →
+  строка-пароль + `obfs_object_flattened`; объект без пароля → `obfs`
+  снят + `obfs_password_missing`; иная форма → `type_invalid`. Запись
+  `mapper` `obfs_object_to_string` теперь описывает правило тела.
+  (У вас парсера hysteria v1 нет — кейсы помечены `extension: desktop`;
+  примитив всё равно нужен движку, он общий.)
+- **masque, `masque.json` `body`:** плоские `network`/`sni`/
+  `skip_cert_verify` УБРАНЫ из `body.fields`/`order` и перечислены в
+  `body.skipped` с причиной. Снимает их общий `unknown_key` (по ключу,
+  значения НЕ переносятся — решение 0.8.0 / D-078 без изменений). Раньше
+  они были объявлены полями с `deprecated: true`; этот атрибут санитайзер
+  не исполняет, и на ручном JSON/бэкапе ключи доезжали до тела — а
+  плоский `sni` рядом с `tls.server_name` роняет ядро fail-fast на весь
+  конфиг. Запись `mapper` `singbox_flat_fields_stripped` получила
+  `code: unknown_key`. Описательные `uri.query.sni/insecure.maps_to`
+  поправлены на `tls.server_name`/`tls.insecure` (прежние цели — снятые
+  поля тела).
+
+**Коды:** новый `obfs_object_flattened` (severity `info`, `params:
+[path]`, title/text/cause/fix en+ru в `warnings.json`). Остальные —
+существующие (`obfs_password_missing`, `type_invalid`, `unknown_key`).
+
+**Кейсы корпуса (3):** `body/singbox/hysteria_obfs_object_flattened`
+(`extension: desktop`), `body/singbox/hysteria_obfs_object_no_password`
+(`extension: desktop`), `body/singbox/masque_legacy_flat_keys` (три
+`unknown_key` в порядке ключей по алфавиту — `network`,
+`skip_cert_verify`, `sni`; канонические `vhttp` и `tls.server_name` не
+тронуты). Существующие ожидания не менялись. Identity не меняется.
+
+От вас: синк 1.1.57; `unwrap` в `body_sanitizer.dart` по семантике выше;
+masque-кейс зелёный без правок данных, если ваш санитайзер снимает ключи
+вне `body.fields` общим `unknown_key` (у masque он больше не встретит
+`network`/`sni`/`skip_cert_verify` в fields). Если у вас есть своя
+рукописная вычистка плоских ключей masque в JSON-парсере
+(`json_parsers.dart`, ветка masque) — после зелёного корпуса её можно
+снять. sha коммита — в сообщении сессии.

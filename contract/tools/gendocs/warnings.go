@@ -248,6 +248,9 @@ func walkField(out map[string][]usage, scheme, path string, f *registry.Field) {
 	}
 	if f.OnInvalid != nil {
 		add(f.OnInvalid.Code, "the value does not fit the field", onInvalidAction(f.OnInvalid))
+		if f.OnInvalid.ElseCode != "" {
+			add(f.OnInvalid.ElseCode, "an object arrived without a usable `"+f.OnInvalid.Key+"` member", actionRemoved)
+		}
 	}
 	for _, a := range f.Advisory {
 		if len(a.Except) > 0 {
@@ -323,6 +326,8 @@ func onInvalidAction(oi *registry.OnInvalid) string {
 		return actionNodeDropped
 	case "coerce":
 		return "replaced with " + scalar(oi.Value)
+	case "unwrap":
+		return "an object is replaced with its `" + oi.Key + "` member"
 	}
 	return oi.Action
 }

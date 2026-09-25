@@ -10,7 +10,6 @@ import (
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/registry"
-	"singbox-launcher/core/config/subscription"
 )
 
 // SPEC 094, критерий приёмки 8/25 — импортированный конфиг обязан проходить
@@ -230,10 +229,6 @@ func sanitizeForTest(t *testing.T, ob map[string]interface{}) map[string]interfa
 	for k, v := range ob {
 		src[k] = v
 	}
-	// Диалектные преобразования (плоский masque, tls на QUIC) остаются за
-	// маппером — конвейер начинается после него.
-	subscription.SanitizeSingboxOutboundMap(src, "test")
-
 	scheme, ok := registry.MustGet().NodeSchemeForSingboxType(mapStringValue(src, "type"))
 	if !ok {
 		t.Fatalf("тип %q реестр узлом не знает", mapStringValue(src, "type"))

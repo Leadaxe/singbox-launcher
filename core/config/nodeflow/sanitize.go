@@ -1582,8 +1582,8 @@ func advisoryValueMatches(a registry.Advisory, v interface{}) bool {
 	return true
 }
 
-// onInvalid исполняет правило on_invalid: снять, подставить или отбросить
-// узел. Без правила — снять с type_invalid: значение, которое ядро отвергает
+// onInvalid исполняет правило on_invalid: снять, подставить, развернуть
+// обёртку (unwrap) или отбросить узел. Без правила — снять с type_invalid: значение, которое ядро отвергает
 // фатально, в теле остаться не может (CANON §8).
 func (s *sanitizer) onInvalid(path string, f *registry.Field, raw interface{}) (interface{}, bool) {
 	oi := f.OnInvalid
@@ -1607,10 +1607,65 @@ func (s *sanitizer) onInvalid(path string, f *registry.Field, raw interface{}) (
 	case "drop_node":
 		s.dropNode(codeOr(oi.Code, "type_invalid"), path, raw, f.Secret, params)
 		return nil, false
+	case "unwrap":
+		return s.unwrap(path, f, raw)
 	default: // drop
 		s.warn(codeOr(oi.Code, "type_invalid"), path, raw, f.Secret, params)
 		return nil, false
 	}
+}
+
+// unwrap исполняет on_invalid `unwrap`: значение приехало ОБЁРТКОЙ соседнего
+// диалекта — объектом там, где поле ждёт скаляр, — и годное содержимое лежит
+// в члене `key` этого объекта.
+//
+// Три исхода, все с кодом (молча узел не меняется):
+//   - объект с годным членом `key` (приводится к типу поля, не пуст, проходит
+//     ограничения поля) — поле получает член, код `code`;
+//   - объект без годного члена — поле снято, код `else_code` (по умолчанию
+//     type_invalid). Скалярные члены объекта уходят в параметры кода: так
+//     `{type}` доезжает до текста «обфускация типа … задана без пароля»;
+//     лишнее отсекает declaredParams;
+//   - не объект — поле снято с type_invalid, как у поля без on_invalid.
+//
+// Имён схем и полей здесь нет: какой член брать, говорит реестр.
+func (s *sanitizer) unwrap(path string, f *registry.Field, raw interface{}) (interface{}, bool) {
+	oi := f.OnInvalid
+	params := map[string]string{"path": path, "field": path}
+	obj, isObj := asObject(raw)
+	if !isObj {
+		if !f.Secret {
+			params["value"] = displayValue(raw)
+		}
+		s.warn("type_invalid", path, raw, f.Secret, params)
+		return nil, false
+	}
+	if inner, has := obj[oi.Key]; has && oi.Key != "" {
+		if v, ok := coerce(f, inner); ok && !blankString(v) && !isAbsentValue(f, v) && s.constraintsOK(f, v) {
+			s.warn(oi.Code, path, raw, f.Secret, params)
+			return v, true
+		}
+	}
+	for k, member := range obj {
+		// Сам член `key` в параметры не идёт никогда: у секретного поля это
+		// секрет, пусть и негодный.
+		if _, taken := params[k]; taken || k == oi.Key {
+			continue
+		}
+		switch member.(type) {
+		case string, bool, float64, int:
+			params[k] = displayValue(member)
+		}
+	}
+	s.warn(codeOr(oi.ElseCode, "type_invalid"), path, raw, f.Secret, params)
+	return nil, false
+}
+
+// blankString — строка из одних пробелов (или пустая): извлечённый из обёртки
+// член с таким значением годным не считается — «не задано».
+func blankString(v interface{}) bool {
+	str, ok := v.(string)
+	return ok && strings.TrimSpace(str) == ""
 }
 
 // constraintsOK — enum, format, min/max, len, len_parity.

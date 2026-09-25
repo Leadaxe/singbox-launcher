@@ -19,13 +19,49 @@ import (
 //
 // Принципиальное отличие от URI-пути: входной outbound УЖЕ является sing-box
 // JSON — тем самым, который лаунчер эмитит. Поэтому он не разбирается на поля
-// и не собирается обратно, а прогоняется через санитайзы (singbox_sanitize.go)
-// и кладётся в ParsedNode.Outbound почти как есть (Р2 в PLAN).
+// и не собирается обратно, а кладётся в ParsedNode.Outbound как есть (Р2 в
+// PLAN); правила значений и формы исполняет реестр стадией ниже, в единственной
+// точке рождения тела (materializeBody → nodeflow.Sanitize) — одинаково для
+// этого входа, ручного JSON и тела из бэкапа (SPEC 142 волна 2: рукописный
+// SanitizeSingboxOutboundMap снят вместе с файлом singbox_sanitize.go).
 
 // singboxIgnoredSections — секции целого конфига, которые импорт не читает.
 // Показываются пользователю в превью, чтобы «проглочено молча» не выглядело
 // как потеря данных.
 var singboxIgnoredSections = []string{"route", "dns", "inbounds", "experimental"}
+
+// singboxServiceTypes — служебные типы, которые не являются узлами.
+// Собственный набор, намеренно не переиспользующий Xray-список
+// (у Xray это freedom/blackhole/loopback, у sing-box — direct/block/dns).
+var singboxServiceTypes = map[string]struct{}{
+	"direct": {}, "block": {}, "dns": {},
+}
+
+// singboxGroupTypes — типы outbound-групп.
+var singboxGroupTypes = map[string]struct{}{
+	"selector": {}, "urltest": {},
+}
+
+// IsSingboxServiceType сообщает, является ли тип служебным (не узел).
+func IsSingboxServiceType(t string) bool {
+	_, ok := singboxServiceTypes[strings.ToLower(strings.TrimSpace(t))]
+	return ok
+}
+
+// IsSingboxGroupType сообщает, является ли тип группой (selector/urltest).
+func IsSingboxGroupType(t string) bool {
+	_, ok := singboxGroupTypes[strings.ToLower(strings.TrimSpace(t))]
+	return ok
+}
+
+// mapString возвращает строковое поле map или "".
+func mapString(m map[string]interface{}, key string) string {
+	if m == nil {
+		return ""
+	}
+	s, _ := m[key].(string)
+	return s
+}
 
 // SingboxImportResult — результат разбора sing-box JSON.
 type SingboxImportResult struct {
@@ -319,8 +355,9 @@ func singboxAllEntries(cfg map[string]interface{}) []map[string]interface{} {
 
 // parseSingboxEntry конвертирует один outbound/endpoint в ParsedNode.
 //
-// Работа минимальна по замыслу (Р2): валидация обязательных полей, копия map,
-// прогон санитайзов. Никакой пересборки полей.
+// Работа минимальна по замыслу (Р2): схема по типу, копия map, адрес и тег для
+// списков. Никакой пересборки полей и никаких правил значений — их исполняет
+// реестр при материализации тела.
 func parseSingboxEntry(entry map[string]interface{}, cfgIdx, entryIdx int) (*configtypes.ParsedNode, error) {
 	entryType := strings.ToLower(strings.TrimSpace(mapString(entry, "type")))
 	if entryType == "" {
@@ -350,8 +387,6 @@ func parseSingboxEntry(entry map[string]interface{}, cfgIdx, entryIdx int) (*con
 		ob["tag"] = tag
 	}
 
-	sanitizeCodes := SanitizeSingboxOutboundMap(ob, tag)
-
 	node := &configtypes.ParsedNode{
 		Tag:    tag,
 		Scheme: scheme,
@@ -371,10 +406,6 @@ func parseSingboxEntry(entry map[string]interface{}, cfgIdx, entryIdx int) (*con
 	node.UUID = singboxCredentialFromMap(ob, scheme)
 	node.Flow = mapString(ob, "flow")
 
-	// Деградации санитайзера — на узел: конверт узла едет в UI и в LxBox.
-	for _, code := range sanitizeCodes {
-		node.AddWarning(code)
-	}
 	// D-119 — reality, переживший санитайз, с отпечатком вне chrome-семейства:
 	// отпечаток уходит как есть, узел предупреждает (SPEC 083 ядра).
 

@@ -72,10 +72,12 @@ Everything a link of this scheme can carry, including the TLS and transport para
 - <a id="link-proto-obfs"></a>**`obfs`** — Obfuscation password.
   - Type: string
   - Maps to: [`obfs`](#body-obfs)
+  - If invalid: an object is replaced with its `password` member → [`obfs_object_flattened`](../warnings.md#obfs_object_flattened)
 - <a id="link-proto-obfsparam"></a>**`obfsParam`** — Obfuscation password, alternative spelling.
   - Also spelled: `obfs-password`
   - Type: string
   - Maps to: [`obfs`](#body-obfs)
+  - If invalid: an object is replaced with its `password` member → [`obfs_object_flattened`](../warnings.md#obfs_object_flattened)
 - <a id="link-proto-mport"></a>**`mport`** — Port range for port hopping.
   - Also spelled: `ports`
   - Type: string
@@ -152,6 +154,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-obfs"></a>**`obfs`** — Obfuscation password.
   - Type: string, secret
   - Set by link parameter: [`obfs`](#link-proto-obfs), [`obfsParam`](#link-proto-obfsparam)
+  - If invalid: an object is replaced with its `password` member → [`obfs_object_flattened`](../warnings.md#obfs_object_flattened)
 - <a id="body-auth"></a>**`auth`** — Authentication payload, base64 of raw bytes.
   - Type: string, secret, format `base64`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -370,6 +373,10 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.client_certificate`](#body-tls-client-certificate) — set without `tls.client_key` → removed
   - [`tls.client_key`](#body-tls-client-key) — set without `tls.client_certificate` → removed
   - [`tls.spoof_method`](#body-tls-spoof-method) — set without `tls.spoof` → removed
+- [`obfs_object_flattened`](../warnings.md#obfs_object_flattened)
+  - [`obfs`](#body-obfs) — the value does not fit the field → an object is replaced with its `password` member
+- [`obfs_password_missing`](../warnings.md#obfs_password_missing)
+  - [`obfs`](#body-obfs) — an object arrived without a usable `password` member → removed
 - [`port_invalid`](../warnings.md#port_invalid)
   - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
 - [`tls_insecure`](../warnings.md#tls_insecure)
@@ -455,6 +462,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `initial_packet_size` — invalid value
 - `max_concurrent_streams` — invalid value
 - `network` — invalid value
+- `obfs` — an object without `password`, or another invalid value
 - `stream_receive_window` — invalid value
 - `tls.certificate_public_key_sha256` — conflicts with another field of the same node
 - `tls.certificate_public_key_sha256` — invalid value
@@ -478,6 +486,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 **The value is replaced, the node lives on**
 
 - `down_mbps` — absent value is filled in with `100`
+- `obfs` — an object takes the value of its `password` member
 - `up_mbps` — absent value is filled in with `100`
 
 **Kept as is, with a notice**

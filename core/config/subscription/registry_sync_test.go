@@ -237,7 +237,7 @@ func nodeFieldCodePrefixes(code string) bool {
 	case "reality_short_id_invalid", "reality_pbk_invalid", "reality_key_share_invalid",
 		"reality_fp_not_chrome", "utls_fp_unknown", "packet_encoding_unknown",
 		"flow_deprecated", "ss_method_invalid", "ss_method_legacy", "port_invalid",
-		"obfs_unknown", "obfs_password_missing", "tuic_congestion_invalid",
+		"obfs_unknown", "obfs_password_missing", "obfs_object_flattened", "tuic_congestion_invalid",
 		"tuic_udp_relay_mode_invalid", "anytls_min_idle_invalid",
 		"tls_field_unsupported_naive", "tls_not_applicable_quic", "ech_ignored",
 		"masque_vhttp_invalid":
@@ -266,7 +266,7 @@ func registryRuleFiles(t *testing.T) []string {
 	return out
 }
 
-// registryCodesIn собирает значения всех ключей "code"/"normalize_code" файла.
+// registryCodesIn собирает значения всех ключей "code"/"normalize_code"/"else_code" файла.
 func registryCodesIn(t *testing.T, path string) []string {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -283,7 +283,7 @@ func registryCodesIn(t *testing.T, path string) []string {
 		switch t := v.(type) {
 		case map[string]interface{}:
 			for k, item := range t {
-				if k == "code" || k == "normalize_code" {
+				if k == "code" || k == "normalize_code" || k == "else_code" {
 					if s, ok := item.(string); ok && s != "" {
 						out = append(out, s)
 					}
