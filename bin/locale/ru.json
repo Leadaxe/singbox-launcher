@@ -1033,6 +1033,18 @@
   "node %q: %s removed — it cannot be combined with detour %q": {
     "value": "узел %q: %s снят — несовместим с detour %q"
   },
+  "group %q: member %q left the group (%s)": {
+    "value": "группа %q: член %q выбыл из состава (%s)"
+  },
+  "the node fell out of the config": {
+    "value": "узел выпал из конфига"
+  },
+  "group %q is not emitted: no members left (an empty group breaks core startup)": {
+    "value": "группа %q не выпущена: членов не осталось (пустая группа ломает запуск ядра)"
+  },
+  "group %q: default %q is not among the members — the key was dropped": {
+    "value": "группа %q: умолчание %q не входит в состав — ключ снят"
+  },
   "%s — %d node(s) skipped: %s": {
     "value": "%s — пропущено узлов: %d — %s"
   },

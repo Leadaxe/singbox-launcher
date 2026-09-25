@@ -46,11 +46,6 @@ const (
 	emitDetourSelfText          = "node %q dropped: its detour points at itself"
 	emitDetourCycleText         = "node %q dropped: detour loop — the chain of hops leads traffic back to itself"
 
-	emitGroupMemberLostText     = "group %q: member %q left the group (%s)"
-	emitMemberDroppedReasonText = "the node fell out of the config"
-	emitGroupEmptyText          = "group %q is not emitted: no members left (an empty group breaks core startup)"
-	emitGroupDefaultDroppedText = "group %q: default %q is not among the members — the key was dropped"
-
 	emitChainHopUnresolvedText = "chain %q: position %q did not resolve (%s)"
 	emitNodeNotEmittableText   = "node %q is not emittable — dropped: %v"
 
@@ -63,6 +58,7 @@ const (
 	codeSourceDetourSelf           = "source_detour_self"
 	codeSourceDetourCycle          = "source_detour_cycle"
 	codeGroupEmpty                 = "group_empty"
+	codeGroupMemberDropped         = "group_member_dropped"
 	codeChainUnsupportedByCore     = "chain_unsupported_by_core"
 	codeChainInvalid               = "chain_invalid"
 	codeChainHopMissing            = "chain_hop_missing"

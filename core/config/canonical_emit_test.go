@@ -441,8 +441,17 @@ func TestEmitE4_AutoFiltersDisabledMembers(t *testing.T) {
 	if len(members) != 1 || members[0] != "NL-1" {
 		t.Errorf("состав группы = %v, want [NL-1] (выключенный член отфильтрован)", members)
 	}
-	if !strings.Contains(joinWarnings(res), "DE-2") {
-		t.Errorf("выпавший член не назван пользователю: %v", res.EmissionWarnings)
+	var lost *EmissionWarning
+	for i := range res.EmissionWarnings {
+		if res.EmissionWarnings[i].Code == "group_member_dropped" {
+			lost = &res.EmissionWarnings[i]
+		}
+	}
+	if lost == nil {
+		t.Fatalf("выпавший член группы ушёл в отчёт без кода group_member_dropped: %v", res.EmissionWarnings)
+	}
+	if lost.Params["tag"] != "grp" || lost.Params["member"] != "DE-2" {
+		t.Errorf("params кода = %v, want tag=grp member=DE-2", lost.Params)
 	}
 }
 

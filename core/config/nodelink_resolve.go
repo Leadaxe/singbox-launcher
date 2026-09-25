@@ -394,8 +394,10 @@ func ApplyCanonicalNodeLinks(
 		if len(n.CanonicalGroupMembers) == 0 && n.CanonicalGroupDefault == nil {
 			continue // импортированная группа мостового пути — её состав уже сведён
 		}
-		for _, w := range resolveCanonicalGroup(n, targets, dropped) {
-			warnings = append(warnings, addr(n, w))
+		for _, gw := range resolveCanonicalGroup(n, targets, dropped) {
+			w := addr(n, gw.Text)
+			w.Code, w.Params = gw.Code, gw.Params
+			warnings = append(warnings, w)
 		}
 		if len(groupMemberTags(n)) == 0 {
 			dropped[n] = true
@@ -615,10 +617,21 @@ func detectCanonicalDetourCycles(allNodes []*ParsedNode, dropped map[*ParsedNode
 	return cycled
 }
 
+// Фразы отчёта сборки об Auto-группах. Константы живут в файле
+// использования: проверка локализации (tools/l10n) резолвит locale.T(const)
+// только по константам того же файла.
+const (
+	emitGroupMemberLostText     = "group %q: member %q left the group (%s)"
+	emitMemberDroppedReasonText = "the node fell out of the config"
+	emitGroupEmptyText          = "group %q is not emitted: no members left (an empty group breaks core startup)"
+	emitGroupDefaultDroppedText = "group %q: default %q is not among the members — the key was dropped"
+)
+
 // resolveCanonicalGroup сводит состав Auto-группы: члены → финальные теги,
-// битые и выключенные выпадают с предупреждением (prune).
-func resolveCanonicalGroup(n *ParsedNode, targets *NodeLinkTargets, dropped map[*ParsedNode]bool) []string {
-	var warnings []string
+// битые и выключенные выпадают с предупреждением (prune). Записи без
+// адресата — его проставляет вызывающий.
+func resolveCanonicalGroup(n *ParsedNode, targets *NodeLinkTargets, dropped map[*ParsedNode]bool) []EmissionWarning {
+	var warnings []EmissionWarning
 	members := make([]interface{}, 0, len(n.CanonicalGroupMembers))
 	seen := make(map[string]struct{}, len(n.CanonicalGroupMembers))
 	for _, link := range n.CanonicalGroupMembers {
@@ -628,9 +641,20 @@ func resolveCanonicalGroup(n *ParsedNode, targets *NodeLinkTargets, dropped map[
 			if why == "" {
 				why = locale.T(emitMemberDroppedReasonText)
 			}
-			w := locale.Tf(emitGroupMemberLostText, n.Tag, link.Tag, why)
+			fallback := locale.Tf(emitGroupMemberLostText, n.Tag, link.Tag, why)
+			w := EmissionWarning{
+				Code:   codeGroupMemberDropped,
+				Params: map[string]string{"tag": n.Tag, "member": link.Tag},
+			}
+			// Конкретная причина — в скобках к тексту реестра: отчёт переводит
+			// запись по коду, а читающему лог нужно знать, почему член выбыл.
+			if text := registryWarningText(w.Code, w.Params, ""); text != "" {
+				w.Text = text + " (" + why + ")"
+			} else {
+				w.Text = fallback
+			}
 			warnings = append(warnings, w)
-			debuglog.WarnLog("nodelink: %s", w)
+			debuglog.WarnLog("nodelink: %s", fallback)
 			continue
 		}
 		if _, dup := seen[res.Tag]; dup {
@@ -662,9 +686,9 @@ func resolveCanonicalGroup(n *ParsedNode, targets *NodeLinkTargets, dropped map[
 				return warnings
 			}
 		}
-		w := locale.Tf(emitGroupDefaultDroppedText, n.Tag, def.Tag)
-		warnings = append(warnings, w)
-		debuglog.WarnLog("nodelink: %s", w)
+		text := locale.Tf(emitGroupDefaultDroppedText, n.Tag, def.Tag)
+		warnings = append(warnings, EmissionWarning{Text: text})
+		debuglog.WarnLog("nodelink: %s", text)
 	}
 	return warnings
 }

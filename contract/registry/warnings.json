@@ -621,6 +621,30 @@
       "dart": "GroupMemberMissingWarning",
       "go": "на узле-группе (warnings у kind=auto, контракт 1.1.66), params count — число потерянных членов, одна запись на группу (повторная потеря на следующем шаге складывает число): импорт sing-box — core/config/subscription/singbox_groups.go:singboxGroupToNode; Xray-группа (балансировщик) — core/config/subscription/xray_json_array.go:resolveGroupMembers; дорезолв состава тела — core/config/subscription/parse_body.go:bodyParseState.finish; общий шаг — core/config/subscription/singbox_groups.go:markGroupMemberMissing; в состояние — core/config/migrate_materialize.go:canonicalNodeFromEntry. Потеря члена у Auto-группы канона на сборке (core/config/nodelink_resolve.go:resolveCanonicalGroup) — текстом отчёта сборки"
     },
+    "group_member_dropped": {
+      "severity": "warning",
+      "params": [
+        "tag",
+        "member"
+      ],
+      "title_en": "Group {tag}: {member} left the group",
+      "title_ru": "Группа {tag}: {member} выбыл из состава",
+      "text_en": "Member {member} of group {tag} did not resolve to a node when the config was built: the node is gone, disabled, or was excluded from the config itself. The group was kept without it; the other members work as before.",
+      "text_ru": "Член {member} группы {tag} при сборке конфига не разрешился в узел: узла нет, он выключен или сам исключён из конфига. Группа сохранена без него, остальные члены работают как прежде.",
+      "cause_en": "The group lists its members by reference, and this reference found no live node at build time: the node disappeared from its subscription after an update, was renamed or deleted, was turned off by you or by the application, or was itself dropped from the config because of a problem of its own.",
+      "cause_ru": "Группа перечисляет членов ссылками, и эта ссылка при сборке не нашла живого узла: узел пропал из подписки после обновления, был переименован или удалён, выключен вами или приложением, либо сам исключён из конфига из-за собственной проблемы.",
+      "fix_en": [
+        "Nothing to do if the group still has the servers you need.",
+        "If you need this member, turn the node back on or fix the problem that excluded it; after a subscription update, check that the node still exists."
+      ],
+      "fix_ru": [
+        "Если нужные серверы в группе остались, делать ничего не нужно.",
+        "Если этот член нужен, включите узел обратно или устраните проблему, из-за которой он исключён; после обновления подписки проверьте, что узел ещё существует."
+      ],
+      "desc": "Контракт 1.1.67. Член Auto-группы (kind=auto) не разрешился на СБОРКЕ — ссылки нет, цель выключена или отброшена сборкой; группа живёт без него (prune). Запись отчёта сборки, одна на потерянного члена; не путать с group_member_missing (потеря при разборе, код на узле-группе с count). Опустевшая группа — group_empty.",
+      "dart": null,
+      "go": "запись отчёта сборки (EmissionWarning.Code): core/config/nodelink_resolve.go:resolveCanonicalGroup → core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks"
+    },
     "reality_pbk_invalid": {
       "severity": "warning",
       "params": [

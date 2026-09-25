@@ -44,6 +44,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`flow_deprecated`](#flow_deprecated) · `info` — Obsolete flow removed
 - [`form_unrecognized`](#form_unrecognized) · `error` — Entry could not be read
 - [`group_empty`](#group_empty) · `warning` — Group {tag} left without members
+- [`group_member_dropped`](#group_member_dropped) · `warning` — Group {tag}: {member} left the group
 - [`group_member_missing`](#group_member_missing) · `warning` — {count} group members not imported
 - [`grpc_multi_mode_ignored`](#grpc_multi_mode_ignored) · `warning` — gRPC: multi mode not applied
 - [`hysteria2_server_ports_item_invalid`](#hysteria2_server_ports_item_invalid) · `warning` — Hysteria2: port hopping range dropped
@@ -795,6 +796,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Nothing to do if you use the nodes directly: they were not affected.
   - If you need the group, ask the provider for a config that carries its servers too.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="group_member_dropped"></a>
+### group_member_dropped
+
+**severity:** `warning` · **params:** `tag`, `member`
+
+**Group {tag}: {member} left the group**
+
+- **What happened:** Member {member} of group {tag} did not resolve to a node when the config was built: the node is gone, disabled, or was excluded from the config itself. The group was kept without it; the other members work as before.
+- **Why it happens:** The group lists its members by reference, and this reference found no live node at build time: the node disappeared from its subscription after an update, was renamed or deleted, was turned off by you or by the application, or was itself dropped from the config because of a problem of its own.
+- **What you can do:**
+  - Nothing to do if the group still has the servers you need.
+  - If you need this member, turn the node back on or fix the problem that excluded it; after a subscription update, check that the node still exists.
 
 **Where it comes from:**
 
