@@ -141,6 +141,9 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 		}
 		for _, ref := range refs {
 			if isRuntimeGlobalRef(ref) {
+				if !isKnownRuntimeGlobal(ref) {
+					return fmt.Errorf("params[%d]: unknown runtime global @%s (known: @runtime.platform, @runtime.arch, @runtime.target)", i, ref)
+				}
 				continue
 			}
 			if _, ok := names[ref]; !ok {

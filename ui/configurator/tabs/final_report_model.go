@@ -159,6 +159,11 @@ func finalReportEntryText(e config.BuildReportEntry) string {
 		return locale.Tf("%s — %d node(s) skipped: %s", subject, e.NodeCount, e.Reason)
 	case config.BuildReportTargetMissing:
 		return locale.Tf("Detour target %q is missing from the build: %s", subject, e.Reason)
+	case config.BuildReportTemplateDegraded:
+		// Текст реестра у кодов template_* уже называет переменную или
+		// директиву через {name}/{key}; субъект перед ним дал бы «tun_mtu:
+		// переменная tun_mtu…» (SPEC 143 Т19).
+		return e.Reason
 	case config.BuildReportEmitDegraded, config.BuildReportFetchDegraded:
 		// Причина уже сформулирована целиком (она называет и узел, и что с
 		// ним) — субъект добавляется ТОЛЬКО как адрес, где чинить. Без

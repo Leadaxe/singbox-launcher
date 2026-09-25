@@ -608,6 +608,13 @@ func EvalIfScalar(node json.RawMessage, vars []TemplateVar, stateVars map[string
 		debuglog.WarnLog("EvalIfScalar: the chosen branch is not a string scalar (%T)", branch)
 		return "", false
 	}
+	// Необъявленное имя в ветке канон оставляет плейсхолдером (§5.2) — в
+	// состояние переменной такой литерал не пишется, цель не трогаем.
+	for _, w := range ctx.warnings {
+		if w.Code == warnVarUndeclared {
+			return "", false
+		}
+	}
 	return s, true
 }
 
