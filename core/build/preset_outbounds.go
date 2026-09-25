@@ -126,12 +126,13 @@ func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string, 
 			})
 			continue
 		}
-		substituted, ok := substitutePresetBody(asMap, preset.Vars, varsMap, target)
+		substituted, subWarns, ok := substitutePresetBody(asMap, preset.Vars, nil, varsMap, target)
+		warnings = append(warnings, substitutionWarnings(preset.ID, subWarns)...)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{
 				PresetID: preset.ID,
 				Message: fmt.Sprintf(
-					"outbounds[%d] (tag=%q): unresolved @var (entry skipped)",
+					"outbounds[%d] (tag=%q): substitution failed (entry skipped)",
 					i, ob.Tag),
 			})
 			continue

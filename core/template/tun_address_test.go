@@ -65,7 +65,7 @@ func tunAddressFromTemplate(t *testing.T, raw json.RawMessage, state map[string]
 	}
 	target := TargetSpec{GOOS: "linux", GOARCH: "amd64"}.Normalized()
 	resolved := ResolveTemplateVarsFor(root.Vars, state, raw, target)
-	out, err := SubstituteVarsInJSON(inbounds, root.Vars, resolved, target)
+	out, _, err := SubstituteVarsInJSONCanon(inbounds, root.Vars, resolved, target)
 	if err != nil {
 		t.Fatal(err)
 	}

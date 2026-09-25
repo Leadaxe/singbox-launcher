@@ -139,6 +139,11 @@ type ResolvedDNS struct {
 	Final    string
 	// SPEC: IndependentCache УДАЛЕНО — deprecated в sing-box 1.14.0.
 	DefaultDomainResolver string
+
+	// Warnings — предупреждения подстановки тел серверов и DNS-правил пресетов
+	// с кодами реестра (SPEC 143): сборка кладёт их в отчёт видом
+	// template_degraded. Порядок и дубли не нормированы — их снимает сборка.
+	Warnings []template.TemplateWarning
 }
 
 // ── Implementation ─────────────────────────────────────────────────
@@ -187,16 +192,28 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 		// (td.DNSServerVars), значения — в его записи состояния; без
 		// подстановки `"detour": "@outbound"` доедет до ядра строкой, и
 		// конфиг будет отвергнут.
-		body := substituteTemplateDNSServer(stripDNSWizardOnlyFields(raw),
+		body, warns := substituteTemplateDNSServer(stripDNSWizardOnlyFields(raw),
 			td.DNSServerVars[tag], stateTemplateVars(state, tag), td, templateVars, target)
+		out.Warnings = append(out.Warnings, warns...)
+		// Гейт после Dropped-каскада (SPEC 143 Т3): сервер без адреса ядро
+		// отвергнет вместе со всем конфигом — он не эмитится, а отчёт
+		// говорит почему (только у включённого: выключенный не эмитится и так).
+		active, reason := true, ""
+		if dnsServerMissingAddress(body) {
+			active, reason = false, "no server address after substitution"
+			if enabled {
+				out.Warnings = append(out.Warnings, fragmentDropped(tag, fragmentKindDNSServer, "server").templateWarning())
+			}
+		}
 		out.Servers = append(out.Servers, ResolvedDNSServer{
-			Tag:      tag,
-			LocalTag: tag,
-			Body:     body,
-			Source:   DNSSourceTemplate,
-			Active:   true,
-			Enabled:  enabled,
-			Locked:   required,
+			Tag:            tag,
+			LocalTag:       tag,
+			Body:           body,
+			Source:         DNSSourceTemplate,
+			Active:         active,
+			Enabled:        enabled,
+			Locked:         required,
+			InactiveReason: reason,
 		})
 	}
 
@@ -232,6 +249,18 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 			}
 			pb := body.(*corestate.PresetBody)
 			presetVars := buildPresetVarsMap(p, pb.Vars, target)
+			// Тело сервера видит и глобали шаблона (SPEC 143 Т2), как тела
+			// правил в ExpandPresetWithGlobals; локальная переменная сильнее.
+			serverVars := make(map[string]string, len(presetVars)+len(templateVars))
+			for k, v := range templateVars {
+				serverVars[k] = v
+			}
+			for _, v := range p.Vars {
+				delete(serverVars, v.Name)
+			}
+			for k, v := range presetVars {
+				serverVars[k] = v
+			}
 
 			// 3a. DNS servers — все bundled, без consumption-фильтра.
 			for i := range p.DNSServers {
@@ -240,10 +269,23 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 					continue
 				}
 				active, reason := evalIfWithReason(ds.If, ds.IfOr, presetVars)
-				bodyMap := substitutePresetDNSServer(ds, p.Vars, presetVars, target)
+				bodyMap, warns := substitutePresetDNSServer(ds, p.Vars, td.Vars, serverVars, target)
 				ref := p.ID + ":" + ds.Tag
 				bodyMap["tag"] = ref
 				enabled := statePresetServerEnabled(state, ref, true)
+				if active && enabled {
+					out.Warnings = append(out.Warnings, warns...)
+				}
+				// Гейт после Dropped-каскада (SPEC 143 Т3) — как у шаблонных.
+				// Сервер, снятый своим #enable, — выбор автора шаблона, а не
+				// деградация: отчёту о нём сказать нечего.
+				if active && dnsServerMissingAddress(bodyMap) {
+					active, reason = false, "no server address after substitution"
+					gated := template.NormalizeGate(ds.EnableRaw(), ds.If, ds.IfOr).SatisfiedVars(presetVars, target)
+					if enabled && gated {
+						out.Warnings = append(out.Warnings, fragmentDropped(p.ID, fragmentKindDNSServer, "server").templateWarning())
+					}
+				}
 				out.Servers = append(out.Servers, ResolvedDNSServer{
 					Tag:            ref,
 					LocalTag:       ds.Tag,
@@ -261,7 +303,10 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 			// буферизуем список в карту; порядок эмиссии решается в Pass 4 по
 			// state.DNS.Rules (один toggle Ref=<id> покрывает весь список).
 			if p.PresetHasDNSRule() {
-				bodies := substitutePresetDNSRules(p, presetVars, target, templateVars)
+				bodies, warns := substitutePresetDNSRules(p, presetVars, target, templateVars, td.Vars)
+				if statePresetRuleEnabled(state, p.ID, true) {
+					out.Warnings = append(out.Warnings, warns...)
+				}
 				if len(bodies) == 0 {
 					continue
 				}
@@ -505,8 +550,10 @@ func buildPresetVarsMap(p *template.Preset, userVars map[string]string, target t
 }
 
 // substitutePresetDNSServer — конвертит PresetDNSServer struct в map с
-// applied substitute. Возвращает чистый sing-box-valid body.
-func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []template.PresetVar, varsMap map[string]string, target template.TargetSpec) map[string]interface{} {
+// applied substitute. Возвращает чистый sing-box-valid body и предупреждения
+// обходчика. globalDecls — объявления шаблона (SPEC 143 Т2), varsMap —
+// значения пресета поверх глобалей.
+func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []template.PresetVar, globalDecls []template.TemplateVar, varsMap map[string]string, target template.TargetSpec) (map[string]interface{}, []template.TemplateWarning) {
 	body := map[string]interface{}{
 		"tag":  ds.Tag,
 		"type": ds.Type,
@@ -536,20 +583,21 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []templa
 	if ds.Inet6Range != "" {
 		body["inet6_range"] = ds.Inet6Range
 	}
-	// SPEC 067 Phase 8: substitutePresetBody → SubstituteVarsInJSONStrict.
-	substituted, ok := substitutePresetBody(body, presetVars, varsMap, target)
+	// SPEC 143: канонический обходчик — объявленное имя без значения
+	// выбрасывает ключ, сервер без адреса снимает гейт у вызывающего.
+	substituted, warns, ok := substitutePresetBody(body, presetVars, globalDecls, varsMap, target)
 	if !ok {
-		return body
+		return body, nil
 	}
 	out, _ := substituted.(map[string]interface{})
 	if out == nil {
-		return body
+		return body, warns
 	}
 	// detour=direct-out → strip (sing-box резолвит без forwarding).
 	if det, ok := out["detour"].(string); ok && det == "direct-out" {
 		delete(out, "detour")
 	}
-	return out
+	return out, warns
 }
 
 // substituteTemplateDNSServer подставляет переменные в тело DNS-сервера из
@@ -557,11 +605,12 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []templa
 //
 // Имя, объявленное сервером (decls): значение из `vars` его записи → умолчание
 // объявления для цели → «не задано», и тогда ключ с этим плейсхолдером
-// выпадает (у LxBox `null` → ключа нет). Имя, не объявленное сервером, —
+// выпадает (у LxBox `null` → ключа нет): такое имя не кладётся в resolved, и
+// канонический обходчик даёт Dropped (§5.1). Имя, не объявленное сервером, —
 // переменная шаблона со значением из templateVars (расширение лаунчера;
 // необъявленное ни там, ни там валидатор шаблона не пропускает, Н11).
-// Тот же движок, что у пресетных серверов (SubstituteVarsInJSONStrict) —
-// второй реализацией подстановки эти ветки разъехались бы на первой же правке
+// Тот же обходчик, что у главного конфига и пресетов (SPEC 143) — второй
+// реализацией подстановки эти ветки разъехались бы на первой же правке
 // языка шаблонов.
 func substituteTemplateDNSServer(
 	body map[string]interface{},
@@ -570,93 +619,64 @@ func substituteTemplateDNSServer(
 	td *template.TemplateData,
 	templateVars map[string]string,
 	target template.TargetSpec,
-) map[string]interface{} {
+) (map[string]interface{}, []template.TemplateWarning) {
 	if body == nil || td == nil {
-		return body
+		return body, nil
 	}
 	scope, resolved := template.ResolveDNSServerVars(decls, record, td.Vars, templateVars, target)
 	if len(scope) == 0 {
-		return body
+		return body, nil
 	}
-	dropUnsetServerPlaceholders(body, decls, resolved)
+	// Переменная сервера без значения и без умолчания — «не задано»: имя
+	// объявлено, значения нет, ключ выпадает Dropped-каскадом.
+	for _, d := range decls {
+		r, ok := resolved[d.Name]
+		if ok && strings.TrimSpace(r.Scalar) == "" && len(r.List) == 0 {
+			delete(resolved, d.Name)
+		}
+	}
 	raw, err := json.Marshal(body)
 	if err != nil {
-		return body
+		return body, nil
 	}
-	substituted, _, err := template.SubstituteVarsInJSONStrict(raw, scope, resolved, target)
+	substituted, warns, err := template.SubstituteVarsInJSONCanonWarnings(raw, scope, resolved, target)
 	if err != nil {
 		debuglog.WarnLog("resolve_dns: substitution in the DNS server body failed: %v", err)
-		return body
+		return body, nil
 	}
 	var out map[string]interface{}
 	if err := json.Unmarshal(substituted, &out); err != nil || out == nil {
-		return body
+		return body, warns
 	}
 	// detour=direct-out → strip: ядро резолвит без forwarding, и явный
 	// detour на прямой канал ему не нужен (зеркало пресетной ветки).
 	if det, ok := out["detour"].(string); ok && det == "direct-out" {
 		delete(out, "detour")
 	}
-	return out
-}
-
-// dropUnsetServerPlaceholders убирает из тела ключи (и элементы массивов),
-// чьё значение — ровно `@name` объявленной сервером переменной без значения и
-// без умолчания (SPEC 129 §4.1 п. 1). До SPEC 129 такой ключ уезжал пустой
-// строкой («substitute: empty scalar»), а у LxBox — выпадал; норма одна.
-func dropUnsetServerPlaceholders(body map[string]interface{}, decls []template.TemplateVar, resolved map[string]template.ResolvedVar) {
-	if len(decls) == 0 {
-		return
-	}
-	unset := make(map[string]bool, len(decls))
-	for _, d := range decls {
-		r := resolved[d.Name]
-		if strings.TrimSpace(r.Scalar) == "" && len(r.List) == 0 {
-			unset["@"+d.Name] = true
-		}
-	}
-	if len(unset) == 0 {
-		return
-	}
-	var walk func(v interface{}) (interface{}, bool)
-	walk = func(v interface{}) (interface{}, bool) {
-		switch t := v.(type) {
-		case string:
-			return t, !unset[t]
-		case map[string]interface{}:
-			for k, inner := range t {
-				if kept, keep := walk(inner); keep {
-					t[k] = kept
-				} else {
-					delete(t, k)
-				}
-			}
-			return t, true
-		case []interface{}:
-			out := t[:0]
-			for _, inner := range t {
-				if kept, keep := walk(inner); keep {
-					out = append(out, kept)
-				}
-			}
-			return out, true
-		default:
-			return v, true
-		}
-	}
-	walk(body)
+	return out, warns
 }
 
 // substitutePresetDNSRules — резолвит ВСЕ DNS-правила пресета (singular DNSRule
 // + plural DNSRules, SPEC 085.1) через ExpandPreset, в порядке эмиссии. Пустой
-// список, если у пресета нет активных DNS-правил.
-func substitutePresetDNSRules(p *template.Preset, varsMap map[string]string, target template.TargetSpec, globalVars map[string]string) []map[string]interface{} {
+// список, если у пресета нет активных DNS-правил. Второй возврат —
+// предупреждения раскрытия с кодами реестра (для отчёта сборки).
+func substitutePresetDNSRules(p *template.Preset, varsMap map[string]string, target template.TargetSpec, globalVars map[string]string, globalDecls []template.TemplateVar) ([]map[string]interface{}, []template.TemplateWarning) {
 	if p == nil {
-		return nil
+		return nil, nil
 	}
-	frags, _, ok := ExpandPresetWithGlobals(p, varsMap, globalVars, target)
+	frags, warns, ok := ExpandPresetWithGlobals(p, varsMap, globalVars, globalDecls, target)
 	if !ok || frags == nil {
-		return nil
+		return nil, nil
+	}
+	// Только предупреждения DNS-правил: остальные фрагменты пресета отчитывает
+	// маршрутная сторона (ResolveRoute), дубль в отчёте не нужен.
+	var dnsWarns []template.TemplateWarning
+	for _, w := range warns {
+		if w.Params["kind"] == fragmentKindDNSRule {
+			if tw, ok := w.TemplateWarning(); ok {
+				dnsWarns = append(dnsWarns, tw)
+			}
+		}
 	}
 	out := make([]map[string]interface{}, 0, 1+len(frags.DNSRules))
 	if frags.DNSRule != nil {
@@ -665,7 +685,7 @@ func substitutePresetDNSRules(p *template.Preset, varsMap map[string]string, tar
 	for _, r := range frags.DNSRules {
 		out = append(out, cloneDNSRuleMap(r))
 	}
-	return out
+	return out, dnsWarns
 }
 
 func cloneDNSRuleMap(src map[string]interface{}) map[string]interface{} {

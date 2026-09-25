@@ -31,7 +31,7 @@ func convertPresetRefToUserRules(
 	if model == nil || tplPreset == nil {
 		return 0
 	}
-	frags, _, ok := build.ExpandPresetWithGlobals(tplPreset, vars, wizardbusiness.PresetGlobalVars(model), model.Target)
+	frags, _, ok := build.ExpandPresetWithGlobals(tplPreset, vars, wizardbusiness.PresetGlobalVars(model), wizardbusiness.PresetGlobalDecls(model), model.Target)
 	if !ok {
 		return 0
 	}

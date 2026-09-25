@@ -101,6 +101,11 @@ type ResolvedRouteRule struct {
 type ResolvedRoute struct {
 	RuleSets []ResolvedRouteRuleSet
 	Rules    []ResolvedRouteRule
+
+	// Warnings — предупреждения раскрытия включённых пресетов с кодами реестра
+	// (SPEC 143): подстановка и выпавшие фрагменты. Сборка кладёт их в отчёт
+	// видом template_degraded; порядок и дубли снимает она же.
+	Warnings []template.TemplateWarning
 }
 
 // ResolveRoute — единая точка резолва route section.
@@ -126,7 +131,8 @@ func ResolveRoute(
 // ResolveRouteWithGlobals — ResolveRoute с доступом тела пресета к ГЛОБАЛЬНЫМ
 // переменным шаблона (SPEC 106, разрыв G3). Пресет может ссылаться на
 // настройку со вкладки Settings (@tun, @resolve_strategy), не объявляя её у
-// себя; локальная переменная с тем же именем всегда сильнее.
+// себя; локальная переменная с тем же именем всегда сильнее. Объявления
+// глобалей — td.Vars (SPEC 143 Т2).
 func ResolveRouteWithGlobals(
 	state *corestate.State,
 	td *template.TemplateData,
@@ -160,7 +166,7 @@ func ResolveRouteWithGlobals(
 	for _, rule := range rules {
 		switch rule.Kind {
 		case corestate.RuleKindPreset:
-			resolvePresetRouteRule(&out, presetByID, rule, dataDir, emittedTags, target, globalVars)
+			resolvePresetRouteRule(&out, presetByID, rule, dataDir, emittedTags, target, globalVars, td.Vars)
 		case corestate.RuleKindInline:
 			resolveInlineRouteRule(&out, rule)
 		case corestate.RuleKindSrs:
@@ -180,6 +186,7 @@ func resolvePresetRouteRule(
 	emittedTags map[string]bool,
 	target template.TargetSpec,
 	globalVars map[string]string,
+	globalDecls []template.TemplateVar,
 ) {
 	p, ok := presetByID[rule.Ref]
 	if !ok {
@@ -192,9 +199,14 @@ func resolvePresetRouteRule(
 		return
 	}
 	pb := body.(*corestate.PresetBody)
-	frags, warns, ok := ExpandPresetWithGlobals(p, pb.Vars, globalVars, target)
+	frags, warns, ok := ExpandPresetWithGlobals(p, pb.Vars, globalVars, globalDecls, target)
 	for _, w := range warns {
 		debuglog.WarnLog("route resolve: %s", w.String())
+	}
+	// Выключенный пресет в конфиг не идёт — и его деградация пользователю
+	// ни к чему.
+	if rule.Enabled {
+		out.Warnings = append(out.Warnings, expandTemplateWarnings(warns)...)
 	}
 	if !ok {
 		return

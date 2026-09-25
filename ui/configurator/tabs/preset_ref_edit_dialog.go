@@ -117,7 +117,7 @@ func showEditPresetRefDialog(
 	jsonRichText.Wrapping = fyne.TextWrapWord
 
 	refreshJSON := func() {
-		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(tplPreset, working, model.Target, wizardbusiness.PresetGlobalVars(model)) + "\n```")
+		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(tplPreset, working, model.Target, wizardbusiness.PresetGlobalVars(model), wizardbusiness.PresetGlobalDecls(model)) + "\n```")
 	}
 
 	refreshVisibility := func() {
@@ -408,7 +408,10 @@ func showEditPresetRefDialog(
 // ссылаться на них, не объявляя у себя. Без них превью не собирается для
 // пресетов вроде traffic-processing, чьи правила гейтятся по @tun — вкладка
 // JSON показывала «preset expansion failed» на исправном пресете.
-func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]string, target wizardtemplate.TargetSpec, globalVars map[string]string) string {
+//
+// globalDecls — объявления переменных шаблона (SPEC 143 Т2): пустая глобаль
+// даёт Dropped ключа, а не литерал "@name" в превью.
+func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]string, target wizardtemplate.TargetSpec, globalVars map[string]string, globalDecls []wizardtemplate.TemplateVar) string {
 	// Build effective varsMap (working + defaults).
 	vars := make(map[string]string, len(tpl.Vars))
 	for _, v := range tpl.Vars {
@@ -418,7 +421,7 @@ func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]strin
 			vars[v.Name] = v.Default
 		}
 	}
-	frags, warns, ok := build.ExpandPresetWithGlobals(tpl, vars, globalVars, target)
+	frags, warns, ok := build.ExpandPresetWithGlobals(tpl, vars, globalVars, globalDecls, target)
 	if !ok {
 		return "// preset expansion failed:\n// " + warningsAsText(warns)
 	}

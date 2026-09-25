@@ -41,6 +41,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	corestate "singbox-launcher/core/state"
@@ -197,12 +198,17 @@ func BuildConfig(ctx BuildContext) (Result, error) {
 	// интернета после старта.
 	warnBindInterface(ctx.Vars, ctx.Target, &res)
 
-	// Шаг 2: build sections.
+	// Шаг 2: build sections. Предупреждения раскрытия пресетов и тел
+	// DNS-серверов (SPEC 143) копятся по ходу слияния секций и уходят в
+	// отчёт вместе с предупреждениями главного конфига.
+	var presetWarnings []template.TemplateWarning
+	ctx.Preset.templateWarnings = &presetWarnings
 	sections, excluded, err := buildOrderedSections(ctx, cfg, order)
 	if err != nil {
 		return Result{}, err
 	}
 	res.ExcludedSources = excluded
+	res.TemplateWarnings = mergeTemplateWarnings(res.TemplateWarnings, presetWarnings)
 
 	// Шаг 3: финальная конкатенация. Раньше тут ещё писался блок-комментарий
 	// /** @ParserConfig ... */ с дублем parser_config — удалён в SPEC 045
@@ -241,6 +247,43 @@ func effectiveConfig(td *template.TemplateData, vars map[string]string, target t
 	}
 	res.TemplateWarnings = warnings
 	return effective, ord
+}
+
+// mergeTemplateWarnings — предупреждения главного конфига плюс пресетов без
+// дублей по паре (код, параметры), в детерминированном порядке: секции route
+// и dns раскрывают один пресет каждая, и одна деградация пришла бы дважды.
+func mergeTemplateWarnings(main, extra []template.TemplateWarning) []template.TemplateWarning {
+	if len(extra) == 0 {
+		return main
+	}
+	all := append(append([]template.TemplateWarning(nil), main...), extra...)
+	seen := make(map[string]bool, len(all))
+	out := make([]template.TemplateWarning, 0, len(all))
+	for _, w := range all {
+		key := templateWarningKey(w)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, w)
+	}
+	template.SortTemplateWarnings(out)
+	return out
+}
+
+// templateWarningKey — ключ дедупа: код и параметры в порядке имён.
+func templateWarningKey(w template.TemplateWarning) string {
+	names := make([]string, 0, len(w.Params))
+	for k := range w.Params {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	b.WriteString(w.Code)
+	for _, k := range names {
+		b.WriteString(fmt.Sprintf("\x00%q=%q", k, w.Params[k]))
+	}
+	return b.String()
 }
 
 // buildOrderedSections итерирует order и форматирует каждую секцию.

@@ -2,7 +2,6 @@ package build
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"singbox-launcher/core/template"
@@ -356,14 +355,16 @@ func TestExpand_UnresolvedVar(t *testing.T) {
 	if frags.RoutingRules[0]["outbound"] != "direct-out" {
 		t.Errorf("surviving rule is the wrong one: %v", frags.RoutingRules[0])
 	}
-	hasUnresolved := false
+	// SPEC 143: необъявленное имя — код template_var_undeclared с именем
+	// (канон §5.2), а не безымянное «unresolved» в логе.
+	hasUndeclared := false
 	for _, w := range warns {
-		if strings.Contains(w.Message, "unresolved") {
-			hasUnresolved = true
+		if w.Code == "template_var_undeclared" && w.Params["name"] == "nonexistent" {
+			hasUndeclared = true
 		}
 	}
-	if !hasUnresolved {
-		t.Errorf("expected unresolved warning: %v", warns)
+	if !hasUndeclared {
+		t.Errorf("expected template_var_undeclared{name: nonexistent}: %v", warns)
 	}
 }
 
@@ -605,14 +606,16 @@ func TestExpandPreset_UnresolvedVar_DropsFragmentOnly(t *testing.T) {
 	if len(frags.RoutingRules) != 0 {
 		t.Errorf("broken rule must be dropped: %v", frags.RoutingRules)
 	}
-	hasUnresolved := false
+	// SPEC 143: необъявленное имя — код template_var_undeclared с именем
+	// (канон §5.2), а не безымянное «unresolved» в логе.
+	hasUndeclared := false
 	for _, w := range warns {
-		if strings.Contains(w.Message, "unresolved") {
-			hasUnresolved = true
+		if w.Code == "template_var_undeclared" && w.Params["name"] == "nonexistent" {
+			hasUndeclared = true
 		}
 	}
-	if !hasUnresolved {
-		t.Errorf("expected unresolved warning: %v", warns)
+	if !hasUndeclared {
+		t.Errorf("expected template_var_undeclared{name: nonexistent}: %v", warns)
 	}
 }
 

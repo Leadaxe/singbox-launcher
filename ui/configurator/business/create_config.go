@@ -47,6 +47,16 @@ func PresetGlobalVars(model *wizardmodels.WizardModel) map[string]string {
 	return wizardtemplate.VarValuesFor(td.Vars, model.SettingsVars, td.RawTemplate, model.Target)
 }
 
+// PresetGlobalDecls — объявления переменных шаблона для тела пресета
+// (SPEC 143 Т2): обходчику объявляются все они, чтобы пустая глобаль давала
+// Dropped ключа, а не литерал "@name". nil — шаблона нет.
+func PresetGlobalDecls(model *wizardmodels.WizardModel) []wizardtemplate.TemplateVar {
+	if model == nil || model.TemplateData == nil {
+		return nil
+	}
+	return model.TemplateData.Vars
+}
+
 // MaterializeSecretsIfNeeded гарантирует SettingsVars непустую map'у и
 // делегирует материализацию всех type:"secret" var в `core/build`. Тонкая
 // обёртка для двух callsites — preview build + EffectiveConfigSection.

@@ -16,8 +16,10 @@
 //  7. Clean dangling rule_set refs (после if-filter некоторые tag'и могли отсутствовать)
 //  8. Strip detour: "direct-out" в DNS-серверах
 //
-// Substitute — ТУПАЯ ТЕКСТОВАЯ ЗАМЕНА (no _Dropped sentinel). Опциональность
-// достигается через `if`/`if_or` на vars и фрагментах.
+// Подстановка — канонический обходчик (SPEC 143): объявленное имя без
+// значения даёт Dropped ключа (§5.1 TEMPLATE_LANG), после каскада фрагмент
+// проверяется гейтами валидности (fragmentGate*), и невалидный выпадает с
+// кодом реестра template_fragment_dropped — не молча и не пресетом целиком.
 package build
 
 import (
@@ -63,13 +65,83 @@ type PresetFragments struct {
 }
 
 // ExpandWarning — non-fatal предупреждение expansion engine'а.
+//
+// Code/Params — код contract/registry/warnings.json и его параметры: такое
+// предупреждение сборка кладёт в отчёт видом template_degraded
+// (ExpandWarning.TemplateWarning). Без кода — внутренняя диагностика, только
+// лог.
 type ExpandWarning struct {
 	PresetID string
 	Message  string
+	Code     string
+	Params   map[string]string
 }
 
 func (w ExpandWarning) String() string {
+	if w.Code != "" {
+		return fmt.Sprintf("preset %q: %s %v", w.PresetID, w.Code, w.Params)
+	}
 	return fmt.Sprintf("preset %q: %s", w.PresetID, w.Message)
+}
+
+// TemplateWarning — запись для отчёта сборки; ok=false у предупреждения без
+// кода реестра.
+func (w ExpandWarning) TemplateWarning() (template.TemplateWarning, bool) {
+	if w.Code == "" {
+		return template.TemplateWarning{}, false
+	}
+	return template.TemplateWarning{Code: w.Code, Params: w.Params}, true
+}
+
+// templateWarning — запись отчёта у предупреждения, которое заведомо с кодом.
+func (w ExpandWarning) templateWarning() template.TemplateWarning {
+	return template.TemplateWarning{Code: w.Code, Params: w.Params}
+}
+
+// WarnTemplateFragmentDropped — фрагмент шаблона (тело пресета или шаблонный
+// DNS-сервер) после подстановки остался без обязательного поля и не включён
+// в конфиг (SPEC 143 Т3). Параметры: owner — id пресета или "dns_options",
+// kind — секция конфига фрагмента, reason — недостающее поле.
+const WarnTemplateFragmentDropped = "template_fragment_dropped"
+
+// Секции конфига фрагментов — значения параметра kind.
+const (
+	fragmentKindRuleSet   = "route.rule_set"
+	fragmentKindRule      = "route.rules"
+	fragmentKindDNSRule   = "dns.rules"
+	fragmentKindDNSServer = "dns.servers"
+)
+
+// fragmentDropped — предупреждение о выпавшем фрагменте с кодом реестра.
+func fragmentDropped(owner, kind, reason string) ExpandWarning {
+	return ExpandWarning{
+		PresetID: owner,
+		Message:  fmt.Sprintf("%s entry dropped: no %s after substitution", kind, reason),
+		Code:     WarnTemplateFragmentDropped,
+		Params:   map[string]string{"owner": owner, "kind": kind, "reason": reason},
+	}
+}
+
+// substitutionWarnings — предупреждения канонического обходчика в форме
+// ExpandWarning: один канал для всего, что пресет сообщает сборке.
+func substitutionWarnings(presetID string, ws []template.TemplateWarning) []ExpandWarning {
+	out := make([]ExpandWarning, 0, len(ws))
+	for _, w := range ws {
+		out = append(out, ExpandWarning{PresetID: presetID, Message: w.Code, Code: w.Code, Params: w.Params})
+	}
+	return out
+}
+
+// expandTemplateWarnings — записи отчёта из предупреждений раскрытия: только
+// с кодом реестра; остальные остаются в логе.
+func expandTemplateWarnings(ws []ExpandWarning) []template.TemplateWarning {
+	var out []template.TemplateWarning
+	for _, w := range ws {
+		if tw, ok := w.TemplateWarning(); ok {
+			out = append(out, tw)
+		}
+	}
+	return out
 }
 
 // ExpandPreset выполняет полное раскрытие preset'а.
@@ -85,7 +157,7 @@ func (w ExpandWarning) String() string {
 // (например unresolved @var) — в этом случае fragments частично заполнен,
 // но caller должен пропустить preset целиком.
 func ExpandPreset(preset *template.Preset, userVars map[string]string, target template.TargetSpec) (*PresetFragments, []ExpandWarning, bool) {
-	return ExpandPresetWithGlobals(preset, userVars, nil, target)
+	return ExpandPresetWithGlobals(preset, userVars, nil, nil, target)
 }
 
 // ExpandPresetWithGlobals — ExpandPreset с доступом к ГЛОБАЛЬНЫМ переменным
@@ -97,13 +169,17 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, target te
 // бессмысленно. Глобали подмешиваются ТОЛЬКО там, где нет одноимённой
 // локальной — локальная всегда сильнее (putIfAbsent, а не перезапись).
 //
-// Без этого неотчуждаемый traffic-processing не собирается вовсе: его правила
-// ссылаются на @tun/@enable_proxy_in/@resolve_strategy, и все три уходят в
-// unresolved → пресет выбрасывается целиком.
+// globalDecls — ОБЪЯВЛЕНИЯ переменных шаблона (td.Vars, SPEC 143 Т2):
+// обходчику объявляются все они, а не только имена со значением. Глобаль с
+// пустым значением VarValuesFor в globalVars не кладёт; объявленная, она даёт
+// Dropped ключа (`"strategy": "@resolve_strategy"` → правило без strategy), а
+// не литерал "@resolve_strategy" в конфиге. nil — объявлены только пресет и
+// имена из globalVars (тип text).
 func ExpandPresetWithGlobals(
 	preset *template.Preset,
 	userVars map[string]string,
 	globalVars map[string]string,
+	globalDecls []template.TemplateVar,
 	target template.TargetSpec,
 ) (*PresetFragments, []ExpandWarning, bool) {
 	if preset == nil {
@@ -135,12 +211,13 @@ func ExpandPresetWithGlobals(
 			varsMap[v.Name] = v.Default
 			continue
 		}
-		// Пусто и обязательна — фрагменты, которые на неё ссылаются, собрать
-		// нечем. Пресет при этом НЕ выбрасывается целиком (D-011): выпадут
-		// только те правила, где переменная реально участвует.
+		// Пусто и обязательна — значения нет. Пресет при этом НЕ
+		// выбрасывается целиком (D-011): ключи со ссылкой на неё выпадают
+		// (Dropped, §5.1), а фрагмент, оставшийся без обязательного поля,
+		// снимает гейт валидности со своим кодом.
 		if v.Required {
-			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("required var %q is empty — fragments using it are dropped", v.Name)})
+			warnings = append(warnings, ExpandWarning{PresetID: preset.ID,
+				Message: fmt.Sprintf("required var %q is empty — keys using it are dropped", v.Name)})
 			continue
 		}
 		varsMap[v.Name] = v.Default
@@ -181,19 +258,15 @@ func ExpandPresetWithGlobals(
 		}
 		raw, err := deepCopy(rs)
 		if err != nil {
-			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("deep copy rule_set %q: %v", rs.Tag, err)})
+			warnings = append(warnings, ExpandWarning{PresetID: preset.ID,
+				Message: fmt.Sprintf("deep copy rule_set %q: %v", rs.Tag, err)})
 			continue
 		}
-		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, target)
+		substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target)
+		warnings = append(warnings, substitutionWarnings(preset.ID, subWarns)...)
 		if !ok {
-			// Dropped-каскад (§5.1, preset_types.go Required): выпадает ОДИН
-			// фрагмент, а не пресет целиком — пустая обязательная переменная
-			// одного правила не должна снимать несвязанные правила и
-			// dns_servers того же пресета (у russian это фильтр «исключить
-			// 🇷🇺-узлы», и его молчаливая потеря опаснее недостающего rule_set).
-			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("unresolved @var in rule_set %q — fragment dropped", rs.Tag)})
+			warnings = append(warnings, ExpandWarning{PresetID: preset.ID,
+				Message: fmt.Sprintf("substitution in rule_set %q failed — fragment dropped", rs.Tag)})
 			continue
 		}
 		m, _ := substituted.(map[string]interface{})
@@ -202,6 +275,12 @@ func ExpandPresetWithGlobals(
 		}
 		// Strip служебные ключи гейта (уже резолвлены) — sing-box их не знает.
 		stripGateKeys(m)
+		// Гейт после Dropped-каскада: набор без источника правил ядро не
+		// загрузит. Выпадает ОДИН фрагмент, а не пресет целиком (§5.1).
+		if reason := ruleSetMissingSource(m); reason != "" {
+			warnings = append(warnings, fragmentDropped(preset.ID, fragmentKindRuleSet, reason))
+			continue
+		}
 		// Prefix tag.
 		localTag, _ := m["tag"].(string)
 		prefixed := preset.ID + TagSeparator + localTag
@@ -222,15 +301,15 @@ func ExpandPresetWithGlobals(
 		}
 		raw, err := deepCopyMap(ruleMap)
 		if err != nil {
-			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("deep copy rules[%d]: %v", idx, err)})
+			warnings = append(warnings, ExpandWarning{PresetID: preset.ID,
+				Message: fmt.Sprintf("deep copy rules[%d]: %v", idx, err)})
 			continue
 		}
-		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, target)
+		substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target)
+		warnings = append(warnings, substitutionWarnings(preset.ID, subWarns)...)
 		if !ok {
-			// Dropped-каскад: выпадает одно правило, остальной пресет живёт.
-			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("unresolved @var in rules[%d] — rule dropped", idx)})
+			warnings = append(warnings, ExpandWarning{PresetID: preset.ID,
+				Message: fmt.Sprintf("substitution in rules[%d] failed — rule dropped", idx)})
 			continue
 		}
 		m, _ := substituted.(map[string]interface{})
@@ -244,17 +323,26 @@ func ExpandPresetWithGlobals(
 		if outbound, ok := m["outbound"].(string); ok {
 			m = outboundutil.ApplyOutboundToRule(m, outbound)
 		}
-		if !isRuleEmpty(m, emittedTags) {
+		// Гейты после Dropped-каскада (§5.1): без цели правило ядру не
+		// нужно, без условий — матчило бы весь трафик.
+		switch {
+		case len(m) == 0:
+			// Всё правило — ветка #if с ложным условием: его выключил автор
+			// шаблона, это не деградация (кода нет, только лог).
+			warnings = append(warnings, ExpandWarning{PresetID: preset.ID,
+				Message: fmt.Sprintf("rules[%d] is empty after #if — skipped", idx)})
+		case isRuleUnusable(m):
+			warnings = append(warnings, fragmentDropped(preset.ID, fragmentKindRule, "outbound/action"))
+		case isRuleEmpty(m, emittedTags):
+			warnings = append(warnings, fragmentDropped(preset.ID, fragmentKindRule, "rule_set"))
+		default:
 			frags.RoutingRules = append(frags.RoutingRules, m)
-		} else {
-			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("rules[%d] dropped (no valid rule_set refs after if-filter)", idx)})
 		}
 	}
 
 	// === 5. Resolve dns_rule (singular) + dns_rules (plural, SPEC 085.1) ===
 	if preset.DNSRule != nil {
-		if m, ok := expandOnePresetDNSRule(preset, preset.DNSRule, varsMap, emittedTags, target, &warnings); ok {
+		if m, ok := expandOnePresetDNSRule(preset, preset.DNSRule, globalDecls, varsMap, emittedTags, target, &warnings); ok {
 			frags.DNSRule = m
 		}
 	}
@@ -262,7 +350,7 @@ func ExpandPresetWithGlobals(
 		if dr == nil {
 			continue
 		}
-		if m, ok := expandOnePresetDNSRule(preset, dr, varsMap, emittedTags, target, &warnings); ok {
+		if m, ok := expandOnePresetDNSRule(preset, dr, globalDecls, varsMap, emittedTags, target, &warnings); ok {
 			frags.DNSRules = append(frags.DNSRules, m)
 		}
 	}
@@ -278,18 +366,26 @@ func ExpandPresetWithGlobals(
 		}
 		raw, err := deepCopy(ds)
 		if err != nil {
-			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("deep copy dns_server %q: %v", ds.Tag, err)})
+			warnings = append(warnings, ExpandWarning{PresetID: preset.ID,
+				Message: fmt.Sprintf("deep copy dns_server %q: %v", ds.Tag, err)})
 			continue
 		}
-		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, target)
+		substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target)
+		warnings = append(warnings, substitutionWarnings(preset.ID, subWarns)...)
 		if !ok {
-			// Dropped-каскад: выпадает один сервер, остальной пресет живёт.
-			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("unresolved @var in dns_server %q — server dropped", ds.Tag)})
+			warnings = append(warnings, ExpandWarning{PresetID: preset.ID,
+				Message: fmt.Sprintf("substitution in dns_server %q failed — server dropped", ds.Tag)})
 			continue
 		}
 		m, _ := substituted.(map[string]interface{})
+		if m == nil {
+			continue
+		}
+		// Гейт после Dropped-каскада: сервер без адреса ядро отвергнет.
+		if dnsServerMissingAddress(m) {
+			warnings = append(warnings, fragmentDropped(preset.ID, fragmentKindDNSServer, "server"))
+			continue
+		}
 		// Strip UI-only / control fields.
 		delete(m, "if")
 		delete(m, "if_or")
@@ -371,49 +467,42 @@ func extractIfFromMap(m map[string]interface{}) (ifList, ifOrList []string) {
 	return ifList, ifOrList
 }
 
-// substitutePresetBody — SPEC 067 Phase 8: единый substitute path для preset
-// bodies через template.SubstituteVarsInJSONStrict. Заменил substituteAny —
-// устаревший «тупой текстовый» substitute path, не знающий о #if/predicates.
+// substitutePresetBody — подстановка в тело фрагмента пресета каноническим
+// обходчиком (SPEC 143; до него строгий режим ронял фрагмент целиком на
+// любом unresolved).
 //
-// raw — preset fragment (map / slice / scalar — типичные decoded JSON shapes).
-// presetVars — описание preset.Vars (для varTypes map).
-// varsMap — varsMap{name: scalar string} после filterActiveVars.
+// raw — фрагмент (map / slice / scalar — типичные decoded JSON shapes).
+// presetVars — объявления пресета; globalDecls — объявления шаблона (td.Vars);
+// varsMap — значения после filterActiveVars (пресет + глобали).
 //
-// Возвращает (substituted, ok). ok=false если в дереве были unresolved @var,
-// либо если marshal/unmarshal сломался — caller должен пропустить preset
-// целиком (legacy substituteAny semantics).
+// Объявленное имя без значения даёт Dropped ключа или элемента (§5.1),
+// необъявленное остаётся плейсхолдером с warning template_var_undeclared.
+// Возвращает дерево, предупреждения обходчика с параметрами и ok=false только
+// на сломанном marshal/unmarshal.
 //
-// target — для @runtime.* globals в #if predicates (SPEC 067, SPEC 097).
-func substitutePresetBody(raw interface{}, presetVars []template.PresetVar, varsMap map[string]string, target template.TargetSpec) (interface{}, bool) {
+// target — для @runtime.* globals (SPEC 067, SPEC 097).
+func substitutePresetBody(raw interface{}, presetVars []template.PresetVar, globalDecls []template.TemplateVar, varsMap map[string]string, target template.TargetSpec) (interface{}, []template.TemplateWarning, bool) {
 	if raw == nil {
-		return nil, true
+		return nil, nil, true
 	}
 	data, err := json.Marshal(raw)
 	if err != nil {
-		return nil, false
+		return nil, nil, false
 	}
-	// SPEC 106 (G3): walker'у нужны ОБЪЯВЛЕНИЯ всех имён, которые могут
-	// встретиться в теле — включая глобальные переменные шаблона,
-	// подмешанные в varsMap. Без объявления имя считается неизвестным, и
-	// strict-режим роняет весь пресет: именно так traffic-processing падал
-	// на @resolve_strategy.
-	templateVars := presetVarsToTemplateVarsWithExtras(presetVars, varsMap)
-	resolved := varsMapToResolved(varsMap, presetVars)
-	out, _, err := template.SubstituteVarsInJSONStrict(data, templateVars, resolved, target)
+	decls, resolved := presetSubstitutionScope(presetVars, globalDecls, varsMap)
+	out, warns, err := template.SubstituteVarsInJSONCanonWarnings(data, decls, resolved, target)
 	if err != nil {
-		// UnresolvedVarError → ok=false (callers warn + skip preset).
-		return nil, false
+		return nil, nil, false
 	}
-	// Decode back via UseNumber to preserve int precision (substitute walker
-	// already uses UseNumber internally; here we round-trip via json.Decoder
-	// to match that behavior).
+	// Decode back via UseNumber to preserve int precision (обходчик внутри
+	// читает так же).
 	dec := json.NewDecoder(bytes.NewReader(out))
 	dec.UseNumber()
 	var result interface{}
 	if err := dec.Decode(&result); err != nil {
-		return nil, false
+		return nil, nil, false
 	}
-	return result, true
+	return result, warns, true
 }
 
 // presetVarsToTemplateVars — converts PresetVar list to TemplateVar list,
@@ -435,16 +524,33 @@ func presetVarsToTemplateVars(vars []template.PresetVar) []template.TemplateVar 
 	return out
 }
 
-// presetVarsToTemplateVarsWithExtras — объявления переменных пресета плюс
-// объявления имён, попавших в varsMap извне (глобали шаблона, SPEC 106 G3).
-// Тип у внешних имён неизвестен и трактуется как text — для подстановки этого
-// достаточно: типизированная семантика (bool/int/text_list) нужна только
-// переменным, объявленным в самом пресете.
-func presetVarsToTemplateVarsWithExtras(vars []template.PresetVar, varsMap map[string]string) []template.TemplateVar {
-	out := presetVarsToTemplateVars(vars)
-	declared := make(map[string]bool, len(out))
-	for _, v := range out {
-		declared[v.Name] = true
+// presetSubstitutionScope — объявления и значения для обходчика тела пресета.
+//
+// Объявления (SPEC 143 Т2): переменные пресета, затем ВСЕ переменные шаблона
+// (globalDecls) — одноимённая переменная пресета сильнее, — затем имена из
+// varsMap, не объявленные ни там, ни там (глобали без объявлений у
+// вызывающего, тип text). Полный список нужен ради Dropped: глобаль с пустым
+// значением в varsMap не попадает, и необъявленной она осталась бы
+// плейсхолдером "@name" в конфиге.
+//
+// Значения — только из varsMap. text_list пресета хранится строкой через
+// запятую (как его default), глобали — через перевод строки (VarValuesFor).
+func presetSubstitutionScope(presetVars []template.PresetVar, globalDecls []template.TemplateVar, varsMap map[string]string) ([]template.TemplateVar, map[string]template.ResolvedVar) {
+	decls := presetVarsToTemplateVars(presetVars)
+	local := make(map[string]bool, len(decls))
+	for _, v := range decls {
+		local[v.Name] = true
+	}
+	declared := make(map[string]bool, len(decls)+len(globalDecls))
+	for name := range local {
+		declared[name] = true
+	}
+	for _, g := range globalDecls {
+		if g.Separator || g.Name == "" || declared[g.Name] {
+			continue
+		}
+		declared[g.Name] = true
+		decls = append(decls, template.TemplateVar{Name: g.Name, Type: g.Type})
 	}
 	extras := make([]string, 0, len(varsMap))
 	for name := range varsMap {
@@ -454,32 +560,36 @@ func presetVarsToTemplateVarsWithExtras(vars []template.PresetVar, varsMap map[s
 	}
 	sort.Strings(extras) // детерминированный порядок объявлений
 	for _, name := range extras {
-		out = append(out, template.TemplateVar{Name: name, Type: "text"})
+		decls = append(decls, template.TemplateVar{Name: name, Type: "text"})
 	}
-	return out
-}
 
-// varsMapToResolved — adapt preset varsMap (name → scalar string) into the
-// ResolvedVar form SubstituteVarsInJSON expects. For text_list type, the scalar
-// is parsed into r.List (comma/newline-split; mirrors what loader/state does
-// for text_list values stored as strings).
-//
-// Preset vars don't natively store list values — preset.Default is a string
-// regardless of type — but text_list values arriving via state may be
-// comma-separated. We split on commas; if there are no commas, single-element
-// list.
-func varsMapToResolved(varsMap map[string]string, presetVars []template.PresetVar) map[string]template.ResolvedVar {
-	typeByName := make(map[string]string, len(presetVars))
-	for _, v := range presetVars {
+	typeByName := make(map[string]string, len(decls))
+	for _, v := range decls {
 		typeByName[v.Name] = v.Type
 	}
-	out := make(map[string]template.ResolvedVar, len(varsMap))
+	resolved := make(map[string]template.ResolvedVar, len(varsMap))
 	for name, scalar := range varsMap {
 		rv := template.ResolvedVar{Scalar: scalar}
 		if typeByName[name] == "text_list" {
-			rv.List = splitTextList(scalar)
+			if local[name] {
+				rv.List = splitTextList(scalar)
+			} else {
+				rv.List = splitTextListLines(scalar)
+			}
 		}
-		out[name] = rv
+		resolved[name] = rv
+	}
+	return decls, resolved
+}
+
+// splitTextListLines — text_list глобали: значение строкой через перевод
+// строки, как его отдаёт VarValuesFor; пустые строки отбрасываются.
+func splitTextListLines(scalar string) []string {
+	out := []string{}
+	for _, line := range strings.Split(strings.ReplaceAll(scalar, "\r\n", "\n"), "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			out = append(out, t)
+		}
 	}
 	return out
 }
@@ -588,27 +698,98 @@ func isDNSRuleEmpty(m map[string]interface{}, _ map[string]bool) bool {
 	return matchFields == 0
 }
 
+// ── Гейты валидности фрагмента после Dropped-каскада (SPEC 143 Т3,
+// TEMPLATE_LANG §5.1). Подстановка выбрасывает ключ, значения которому нет;
+// фрагмент без обязательного поля ядро отвергает целиком, поэтому такой
+// фрагмент выпадает сам — с кодом template_fragment_dropped. Одно место для
+// всех четырёх видов: правила маршрута, DNS-правила, наборы правил и
+// DNS-серверы (пресетные и шаблонные).
+
+// nonEmptyString — ключ есть и несёт непустую строку.
+func nonEmptyString(m map[string]interface{}, key string) bool {
+	s, _ := m[key].(string)
+	return strings.TrimSpace(s) != ""
+}
+
+// isRuleUnusable — правило маршрута без outbound и без action: ядру некуда
+// направить совпавший трафик.
+func isRuleUnusable(m map[string]interface{}) bool {
+	return !nonEmptyString(m, "outbound") && !nonEmptyString(m, "action")
+}
+
+// isDNSRuleUnusable — DNS-правило без server и без action (serverless-action
+// вроде predefined/reject сервер не требует).
+func isDNSRuleUnusable(m map[string]interface{}) bool {
+	return !nonEmptyString(m, "server") && !nonEmptyString(m, "action")
+}
+
+// ruleSetMissingSource — поле-источник, которого набору правил не хватает;
+// "" — набор годен. remote берёт правила по url, local — из path, inline —
+// из rules; набор без type обязан нести хоть один источник.
+func ruleSetMissingSource(m map[string]interface{}) string {
+	switch t, _ := m["type"].(string); t {
+	case "remote":
+		if !nonEmptyString(m, "url") {
+			return "url"
+		}
+	case "local":
+		if !nonEmptyString(m, "path") {
+			return "path"
+		}
+	case "inline":
+		if _, ok := m["rules"]; !ok {
+			return "rules"
+		}
+	default:
+		_, hasRules := m["rules"]
+		if !hasRules && !nonEmptyString(m, "url") && !nonEmptyString(m, "path") {
+			return "url/path"
+		}
+	}
+	return ""
+}
+
+// dnsServerAddressTypes — типы DNS-серверов sing-box, которым нужен адрес
+// (`server`). local/fakeip/dhcp/hosts/resolved/tailscale работают без него.
+var dnsServerAddressTypes = map[string]bool{
+	"udp": true, "tcp": true, "tls": true, "https": true, "quic": true, "h3": true,
+}
+
+// dnsServerMissingAddress — сервер без адреса после подстановки. Легаси-форма
+// без type адресуется полем address.
+func dnsServerMissingAddress(m map[string]interface{}) bool {
+	t, _ := m["type"].(string)
+	if t == "" {
+		return !nonEmptyString(m, "address")
+	}
+	return dnsServerAddressTypes[t] && !nonEmptyString(m, "server")
+}
+
 // expandOnePresetDNSRule resolves one preset DNS rule map: evaluates its `if`,
 // deep-copies, substitutes @vars, strips if/if_or, rewrites rule_set refs, and
 // prefixes a bundled server tag. Returns (rule, ok): ok=false when the rule is
 // gated off, empty, or hit an unresolved @var — правило выпадает с warning, а
 // пресет продолжает собираться (Dropped-каскад §5.1). Shared by the singular
 // dns_rule and the plural dns_rules.
-func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{}, varsMap map[string]string, emittedTags map[string]bool, target template.TargetSpec, warnings *[]ExpandWarning) (map[string]interface{}, bool) {
+func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{}, globalDecls []template.TemplateVar, varsMap map[string]string, emittedTags map[string]bool, target template.TargetSpec, warnings *[]ExpandWarning) (map[string]interface{}, bool) {
 	if !extractGateFromMap(src).SatisfiedVars(varsMap, target) {
 		return nil, false
 	}
 	raw, err := deepCopyMap(src)
 	if err != nil {
-		*warnings = append(*warnings, ExpandWarning{preset.ID, fmt.Sprintf("deep copy dns_rule: %v", err)})
+		*warnings = append(*warnings, ExpandWarning{PresetID: preset.ID, Message: fmt.Sprintf("deep copy dns_rule: %v", err)})
 		return nil, false
 	}
-	substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, target)
+	substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target)
+	*warnings = append(*warnings, substitutionWarnings(preset.ID, subWarns)...)
 	if !ok {
-		*warnings = append(*warnings, ExpandWarning{preset.ID, "unresolved @var in dns_rule — rule dropped"})
+		*warnings = append(*warnings, ExpandWarning{PresetID: preset.ID, Message: "substitution in dns_rule failed — rule dropped"})
 		return nil, false
 	}
 	m, _ := substituted.(map[string]interface{})
+	if m == nil {
+		return nil, false
+	}
 	delete(m, "if")
 	delete(m, "if_or")
 	rewriteRuleSetRefs(m, preset.ID, emittedTags)
@@ -621,7 +802,19 @@ func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{},
 			}
 		}
 	}
+	// Правило целиком — ветка #if с ложным условием: выключено автором
+	// шаблона, не деградация.
+	if len(m) == 0 {
+		return nil, false
+	}
+	// Гейты после Dropped-каскада (§5.1): без сервера и action правило
+	// ядру не нужно, без условий — перехватывало бы все запросы.
+	if isDNSRuleUnusable(m) {
+		*warnings = append(*warnings, fragmentDropped(preset.ID, fragmentKindDNSRule, "server/action"))
+		return nil, false
+	}
 	if isDNSRuleEmpty(m, emittedTags) {
+		*warnings = append(*warnings, fragmentDropped(preset.ID, fragmentKindDNSRule, "rule_set"))
 		return nil, false
 	}
 	return m, true

@@ -310,8 +310,9 @@ func FeedBuildReportFromSanitizer(gen config.BuildGeneration, list []build.Sourc
 // FeedBuildReportFromTemplate кладёт в отчёт предупреждения подстановки
 // шаблона (SPEC 143, Т18): одна запись на предупреждение.
 //
-// Субъект — имя переменной (template_var_undeclared, template_int_*) или
-// директивы (template_unknown_directive): по нему пользователь находит, что
+// Субъект — имя переменной (template_var_undeclared, template_int_*),
+// директивы (template_unknown_directive) или владельца выпавшего фрагмента
+// (template_fragment_dropped): по нему пользователь находит, что
 // чинить в настройках или в шаблоне. Текст — из реестра по коду на языке UI,
 // поэтому Code и Params уходят как есть, а Reason — сам код: запасная строка
 // на случай, когда реестр не прочитался.
@@ -324,6 +325,11 @@ func FeedBuildReportFromTemplate(gen config.BuildGeneration, warnings []template
 		subject := w.Params["name"]
 		if subject == "" {
 			subject = w.Params["key"]
+		}
+		if subject == "" {
+			// template_fragment_dropped: пресет или шаблонный DNS-сервер,
+			// чей фрагмент выпал.
+			subject = w.Params["owner"]
 		}
 		debuglog.WarnLog("build report: template %s %v", w.Code, w.Params)
 		entries = append(entries, config.BuildReportEntry{

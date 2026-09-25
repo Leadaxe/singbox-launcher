@@ -83,6 +83,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`tailscale_core_unsupported`](#tailscale_core_unsupported) · `warning` — Tailscale is unavailable in this core
 - [`tailscale_default_route_advertised`](#tailscale_default_route_advertised) · `warning` — Tailscale: default route {value} removed from advertised routes
 - [`tailscale_from_subscription`](#tailscale_from_subscription) · `info` — Tailscale node arrived from a subscription
+- [`template_fragment_dropped`](#template_fragment_dropped) · `warning` — Entry of {kind} from {owner} left out
 - [`template_int_clamped`](#template_int_clamped) · `warning` — Value of {name} clamped
 - [`template_int_invalid`](#template_int_invalid) · `warning` — Variable {name} is not a number
 - [`template_unknown_directive`](#template_unknown_directive) · `warning` — Unknown template directive {key}
@@ -1486,6 +1487,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Add the DNS server, the rule and the route for the tailnet yourself, or create the node locally through Add server → Tailscale — that way it gets them by default.
   - Nothing to do if you only use this node as a hop and do not need *.ts.net names.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="template_fragment_dropped"></a>
+### template_fragment_dropped
+
+**severity:** `warning` · **params:** `owner`, `kind`, `reason`
+
+**Entry of {kind} from {owner} left out**
+
+- **What happened:** After variable substitution an entry of {kind} from {owner} has no {reason}, which the core requires, so it was left out of the config. The rest of {owner} is kept.
+- **Why it happens:** A variable the entry refers to has no value — a setting left empty or switched off by another setting — and the key with it was dropped. Without that key the entry is incomplete: a rule without a target, a DNS server without an address, a rule set without a source.
+- **What you can do:**
+  - Fill in the setting of {owner} the entry depends on.
+  - If the entry is not needed, nothing has to be done: the config works without it.
 
 **Where it comes from:**
 

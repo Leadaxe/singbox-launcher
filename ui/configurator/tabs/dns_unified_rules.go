@@ -231,7 +231,7 @@ func buildSingleDNSPresetRuleRow(
 	// Resolve dns_rule body для tooltip + View JSON. SPEC 085.1: пресет может
 	// нести несколько DNS-правил под одним slot'ом — для summary берём первое
 	// доступное (singular DNSRule, иначе первый элемент DNSRules).
-	frags, _, ok := build.ExpandPresetWithGlobals(tplPreset, pr.Vars, wizardbusiness.PresetGlobalVars(model), model.Target)
+	frags, _, ok := build.ExpandPresetWithGlobals(tplPreset, pr.Vars, wizardbusiness.PresetGlobalVars(model), wizardbusiness.PresetGlobalDecls(model), model.Target)
 	var ruleBody map[string]interface{}
 	if ok {
 		if frags.DNSRule != nil {

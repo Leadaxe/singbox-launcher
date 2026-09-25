@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestSubstituteVarsInJSON_scalars(t *testing.T) {
+func TestSubstituteCanon_scalars(t *testing.T) {
 	vars := []TemplateVar{
 		{Name: "log_level", Type: "enum"},
 		{Name: "tun_mtu", Type: "text"},
@@ -15,7 +15,7 @@ func TestSubstituteVarsInJSON_scalars(t *testing.T) {
 		"tun_mtu":   {Scalar: "1400"},
 	}
 	raw := json.RawMessage(`{"log":{"level":"@log_level"},"mtu":"@tun_mtu"}`)
-	out, err := SubstituteVarsInJSON(raw, vars, resolved, TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
+	out, _, err := SubstituteVarsInJSONCanon(raw, vars, resolved, TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,14 +32,14 @@ func TestSubstituteVarsInJSON_scalars(t *testing.T) {
 	}
 }
 
-func TestSubstituteVarsInJSON_bool(t *testing.T) {
+func TestSubstituteCanon_bool(t *testing.T) {
 	vars := []TemplateVar{{Name: "strict_route", Type: "bool"}, {Name: "auto", Type: "bool"}}
 	resolved := map[string]ResolvedVar{
 		"strict_route": {Scalar: "true"},
 		"auto":         {Scalar: "false"},
 	}
 	raw := json.RawMessage(`{"strict_route":"@strict_route","auto":"@auto"}`)
-	out, err := SubstituteVarsInJSON(raw, vars, resolved, TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
+	out, _, err := SubstituteVarsInJSONCanon(raw, vars, resolved, TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,13 +55,13 @@ func TestSubstituteVarsInJSON_bool(t *testing.T) {
 	}
 }
 
-func TestSubstituteVarsInJSON_proxyInListenPort(t *testing.T) {
+func TestSubstituteCanon_proxyInListenPort(t *testing.T) {
 	vars := []TemplateVar{{Name: "proxy_in_listen_port", Type: "text"}}
 	resolved := map[string]ResolvedVar{
 		"proxy_in_listen_port": {Scalar: "7890"},
 	}
 	raw := json.RawMessage(`{"listen_port":"@proxy_in_listen_port"}`)
-	out, err := SubstituteVarsInJSON(raw, vars, resolved, TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
+	out, _, err := SubstituteVarsInJSONCanon(raw, vars, resolved, TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,13 +74,13 @@ func TestSubstituteVarsInJSON_proxyInListenPort(t *testing.T) {
 	}
 }
 
-func TestSubstituteVarsInJSON_textList(t *testing.T) {
+func TestSubstituteCanon_textList(t *testing.T) {
 	vars := []TemplateVar{{Name: "addrs", Type: "text_list"}}
 	resolved := map[string]ResolvedVar{
 		"addrs": {List: []string{"10.0.0.1/32", "10.0.0.2/32"}},
 	}
 	raw := json.RawMessage(`{"address":["@addrs"]}`)
-	out, err := SubstituteVarsInJSON(raw, vars, resolved, TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
+	out, _, err := SubstituteVarsInJSONCanon(raw, vars, resolved, TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestSubstituteVarsInJSON_textList(t *testing.T) {
 
 func substituteHelper(t *testing.T, vars []TemplateVar, resolved map[string]ResolvedVar, body, goos, goarch string) map[string]interface{} {
 	t.Helper()
-	out, err := SubstituteVarsInJSON(json.RawMessage(body), vars, resolved, TargetSpec{GOOS: goos, GOARCH: goarch}.Normalized())
+	out, _, err := SubstituteVarsInJSONCanon(json.RawMessage(body), vars, resolved, TargetSpec{GOOS: goos, GOARCH: goarch}.Normalized())
 	if err != nil {
 		t.Fatalf("substitute: %v", err)
 	}

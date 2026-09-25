@@ -41,7 +41,7 @@ func substituteRouteForBindIface(t *testing.T, value string) map[string]interfac
 		"auto_detect_interface": {Scalar: "true"},
 		"bind_interface":        {Scalar: value},
 	}
-	out, err := template.SubstituteVarsInJSON([]byte(tpl), vars, resolved, template.LocalTarget())
+	out, _, err := template.SubstituteVarsInJSONCanon([]byte(tpl), vars, resolved, template.LocalTarget())
 	if err != nil {
 		t.Fatalf("substitute: %v", err)
 	}
