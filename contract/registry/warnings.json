@@ -27,7 +27,7 @@
       ],
       "desc": "Транспорт не поддержан ядром/билдом — применён fallback (например XHTTP → httpupgrade при emit'е без with_xhttp). РАЗРЫВ: Go в Xray-конверте молча возвращает nil для неизвестного network (kcp и пр.) — транспорт теряется без предупреждения; целевое поведение — warning как в Dart.",
       "dart": "UnsupportedTransportWarning",
-      "go": "core/config/subscription/xray_outbound_convert.go:337"
+      "go": "правило реестра contract/registry/transports.json blocks.xray.$selector.network.on_invalid (drop: у селектора снимается узел); исполнение — core/config/linkmap/exec.go:execState.convert. Ставится только на входе Xray JSON; эмиссионного отката транспорта (XHTTP → httpupgrade) в Go нет"
     },
     "transport_header_unsupported": {
       "severity": "error",
@@ -50,7 +50,7 @@
       ],
       "desc": "Обфускация Xray заголовком поверх TCP/RAW (`headerType=http` у ссылки, `tcpSettings.header.type`/`rawSettings.header.type` у Xray-JSON). РЕШЕНИЕ ВЛАДЕЛЬЦА 24.09.2026 (делегировано): обе формы отбраковывают УЗЕЛ, а не теряют свойство. Прежде ссылочная форма маппилась в `transport.type: \"http\"` — НЕВЕРНЫЙ маппинг: у sing-box это транспорт HTTP/2, на проводе другой протокол, и такой узел не соединялся; JSON-форма терялась МОЛЧА и узел выходил чистым TCP, который сервер с обфускацией обрывает. Оба пути давали «рабочий» на вид узел, который не работает, — отбраковка с кодом называет причину вместо молчания. severity=error: это отказ, а не деградация. Значение заголовка едет в `value` (`http` у всех живых написаний).",
       "dart": null,
-      "go": "core/config/linkmap (селектор headerType у transports#uri, запись header у transports#xray)"
+      "go": "правило реестра contract/registry/transports.json blocks.uri.$selector.headerType.on_invalid, blocks.xray.raw.header.on_invalid; исполнение — core/config/linkmap/exec.go:execState.convert"
     },
     "protocol_unsupported": {
       "severity": "error",
@@ -73,7 +73,7 @@
       ],
       "desc": "Протокол/тип outbound не поддержан — узел в dropped. Go: singbox-импорт скипает неизвестные типы (singbox_import.go:132), Xray-массив — неизвестные protocol (xray_json_array.go:499).",
       "dart": "UnsupportedProtocolWarning",
-      "go": "core/config/subscription/singbox_import.go:132; core/config/subscription/xray_json_array.go:499"
+      "go": "core/config/subscription/xray_json_array.go:parseXrayJSONArrayElementNodes (Xray-протокол вне списка — core/config/subscription/xray_protocols.go:xrayNodeFromOutbound, код отказа даёт core/config/subscription/json_body_rejects.go:rejectCodeOf); core/config/nodeflow/sanitize.go:SanitizeFromKind (у схемы нет body реестра). Вход sing-box JSON тип вне реестра отбраковывает БЕЗ кода: core/config/subscription/singbox_import.go:parseSingboxEntry возвращает простую ошибку"
     },
     "field_missing": {
       "severity": "error",
@@ -98,7 +98,7 @@
       ],
       "desc": "Обязательное поле отсутствует. Severity по Dart (error, узел в dropped); Go сегодня мягче — предупреждает и оставляет узел (hysteria2 без password node_parser_hysteria2.go:23, tuic без uuid/password node_parser_tuic.go:60/65, anytls без password node_parser_anytls.go:25) — расхождение отмечено, целевое поведение по Dart.",
       "dart": "MissingFieldWarning",
-      "go": "contract/registry/protocols/*.json body.fields.* (required); исполнение — core/config/nodeflow/sanitize.go"
+      "go": "правило реестра contract/registry/protocols/*.json и contract/registry/dialer.json body.fields.* (required); исполнение — core/config/nodeflow/sanitize.go:sanitizer.requiredFailed; на разборе — core/config/linkmap/exec.go:execState.checkRequired (rejectMissing, CodeFieldMissing)"
     },
     "form_unrecognized": {
       "severity": "error",
@@ -119,7 +119,7 @@
       ],
       "desc": "Отказ РАЗБОРА: ни одна форма секции не прочитала текст (оболочка не распаковалась, пейлоад не JSON/ini), у тела не опознан ни один вид источника, либо у строки нет схемы вовсе. Граница (CANON §4.1): строка формы xxx://, схему которой не ведёт ни одна секция, получает scheme_unsupported, а не этот код. Заведён в 1.1.49 (TASKS_LXBOX §32.5/§45.4): до этого отбраковка разбора ехала в dropped[] без кода. Кода на узле не бывает — узла нет, код живёт в dropped[].code.",
       "dart": null,
-      "go": "core/config/linkmap/exec.go CodeFormUnrecognized (UnwrapURI/UnwrapElement); core/config/subscription/node_parser_core.go (секции нет), node_parser_amnezia.go (vpn:// не раскрылся)"
+      "go": "core/config/linkmap/exec.go:rejectUnrecognized (форма не распознана — core/config/linkmap/parse.go:UnwrapURI, core/config/linkmap/element.go:UnwrapElement); core/config/subscription/node_parser_core.go:ParseNode (у строки нет схемы); core/config/subscription/node_parser_amnezia.go:parseAmneziaVPNLink, ParseAmneziaVPNLinkAll (vpn:// не раскрылся)"
     },
     "flow_deprecated": {
       "severity": "info",
@@ -140,7 +140,7 @@
       ],
       "desc": "Flow вне {\"\", xtls-rprx-vision} (deprecated xtls-rprx-direct/origin/splice, мусор) — снимается, узел живёт.",
       "dart": "DeprecatedFlowWarning",
-      "go": "core/config/subscription/singbox_sanitize.go:234; core/config/outbound_generator.go:356"
+      "go": "правило реестра contract/registry/protocols/vless.json body.fields.flow.on_invalid (drop); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid"
     },
     "vision_with_transport": {
       "severity": "info",
@@ -162,7 +162,7 @@
       ],
       "desc": "xtls-rprx-vision без VLESS Encryption валиден только на голом TLS; при любом v2ray-транспорте и отсутствии encryption flow гасится, узел живёт. С encryption код не ставится (unless_set, контракт 1.1.55, LxBox §544). Ставится ПРАВИЛОМ РЕЕСТРА — conflicts у vless.flow с собственным кодом (контракт 1.1.6); рукописного места в Go нет и не было, прежние ссылки на singbox_sanitize.go/outbound_generator.go были строками legacy-аудита, а не эмиттерами кода.",
       "dart": "VisionWithTransportWarning",
-      "go": "core/config/nodeflow/sanitize.go relationsOK (по contract/registry/protocols/vless.json flow.conflicts)"
+      "go": "правило реестра contract/registry/protocols/vless.json body.fields.flow.conflicts; исполнение — core/config/nodeflow/sanitize.go:sanitizer.relationsOK"
     },
     "tls_insecure": {
       "severity": "info",
@@ -186,7 +186,7 @@
       ],
       "desc": "Проверка TLS-сертификата отключена (allowInsecure/insecure). Часто намеренный выбор провайдера — только info, значение СОХРАНЯЕТСЯ. Ставится advisory-правилом реестра у tls.insecure на значении true (контракт 1.1.6) — как reality_fp_not_chrome у utls.fingerprint; рукописного места в Go нет.",
       "dart": "InsecureTlsWarning",
-      "go": "core/config/nodeflow/sanitize.go advisory (по contract/registry/tls.json insecure.advisory)"
+      "go": "правило реестра contract/registry/tls.json body.fields.insecure.advisory; исполнение — core/config/nodeflow/sanitize.go:sanitizer.advisory"
     },
     "naive_unavailable": {
       "severity": "error",
@@ -207,7 +207,7 @@
       ],
       "desc": "Сборка не может поднять naive: Go — probe libcronet рядом с бинарём ядра, naive-ноды пропускаются с warning (деградация всего класса нод); Dart — defensively после runtime-ошибки libbox без with_naive_outbound. Механизмы разные, смысл кода один.",
       "dart": "NaiveBuildTagWarning",
-      "go": "core/config/nodeflow/gate.go (NodeCoreRefusal, узловой гейт ядра по on_core_unsupported реестра); вызов — core/config/outbound_generator.go (GenerateOutboundsFromParserConfig); теги сборки — core/core_capabilities.go (CoreBuildTags); реестр — protocols/naive.json body.on_core_unsupported"
+      "go": "core/config/nodeflow/gate.go:NodeCoreRefusal (узловой гейт ядра по on_core_unsupported реестра); вызов — core/config/outbound_generator.go:GenerateOutboundsFromParserConfig; теги сборки — core/core_capabilities.go:AppController.CoreBuildTags; реестр — protocols/naive.json body.on_core_unsupported"
     },
     "vless_encryption_invalid": {
       "severity": "error",
@@ -233,7 +233,7 @@
       ],
       "desc": "vless.encryption не совпал с pattern ^mlkem768x25519plus(\\\\.[^.]+){3,}$. НОРМАТИВНЫЙ ПОРЯДОК (одинаков на всех входах): URL-декодирование на входе ссылки → обрезка краёв всей строки (normalize trim, тихо) → пусто или ТОЧНОЕ 'none' = слоя нет, поля и кода нет → иначе pattern. В код уезжает СЫРОЕ значение, до обрезки. Проверяется только имя метода и число непустых частей; вид, RTT, padding и ключи НЕ проверяются, пробелы ВНУТРИ сегментов законны (ядро тримит сегменты с четвёртого). ПОЧЕМУ drop_node, а не снятие поля: узел без encryption к серверу, который слой требует, не подключится, а молча снять шифрование значит тихо понизить защиту. Грамматику ядра (справка SPECS/131-F-O-UNIFIED_NODE_PIPELINE/VLESS_ENCRYPTION_GRAMMAR.md) решением владельца 18.09.2026 НЕ дублируем; всё тоньше формы ловит страховка core_rejected (SPEC 132). Имя метода зашито в выражение — при бампе пина ядра сверить с protocol/vless/lx_encryption.go.",
       "dart": null,
-      "go": "правило реестра: contract/registry/protocols/vless.json body.fields.encryption (normalize trim + pattern + on_invalid drop_node); исполнение — core/config/nodeflow/sanitize.go patternOK; точное сравнение с 'none' на входах — node_parser_core.go:770-775, xray_outbound_convert.go:145,160"
+      "go": "правило реестра contract/registry/protocols/vless.json body.fields.encryption (normalize trim + pattern + on_invalid drop_node); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid (форма — patternOK). Пустое и ТОЧНОЕ 'none' = слоя нет: absent_values того же поля, value_map у mappers.uri.params.encryption (value_map_case: sensitive) и mappers.xray.params.encryption"
     },
     "core_rejected": {
       "severity": "error",
@@ -260,7 +260,7 @@
       ],
       "desc": "СТРАХОВКА ПРИЛОЖЕНИЯ, SPEC 132 (общая норма с LxBox, их фича 478). Ядро не приняло конфиг и назвало узел — приложение выключило узел обычным флажком enabled=false и записало рядом причину (поле disabled_reason, дословный text ядра); код ставится при разборе на узле, у которого причина записана. Новых сущностей нет: наличие причины = «выключило приложение», её отсутствие = «выключил человек». Человек включил узел обратно — причина стирается, узел проверится заново; автоснятия нет. Формат строки ошибки ядра и правило сопоставления тега — contract/docs/CANON.md §9 «Core-rejected node». СЛОВАРЬ ТЕКСТОВ (согласован с LxBox 18.09.2026): rejected / turned off / disabled / checking, «server», не «node»; слово «scanning» не использовать. ПРОИЗВОДИТЕЛЬ — страховка приложения, а не правило реестра и не константа парсера: код объявлен заранее, до реализации (решение владельца 18.09.2026: сначала контрактная норма, потом код обеих сторон).",
       "dart": null,
-      "go": "ещё не реализовано: SPEC 132, волна «разбор ошибки старта» (SPECS/132-F-N-CORE_REJECTED_NODE_AUTO_DISABLE/TASKS.md)"
+      "go": "core/state/node_enabled.go:Node.SetCoreRejected (запись кода — coreRejectedWarning); вызов — core/rebuild_corereject.go:savedStateDisabler.Disable (SPEC 132: ядро назвало узел при проверке кандидата)"
     },
     "utls_fp_unknown": {
       "severity": "warning",
@@ -283,7 +283,7 @@
       ],
       "desc": "uTLS fingerprint вне словаря ядра (известные xray-псевдонимы канонизируются молча). НОВОЕ РАЗРЫВ-ПОВЕДЕНИЕ, решения нет: Dart заменяет на chrome + warning; Go в URI-пути молча подставляет random (node_parser_transport.go:646), в singbox-импорте молча снимает весь utls-блок (singbox_sanitize.go:177). Нужно единое fallback-значение. РЕШЕНО (SPEC 131, DRIFT §2(c)): единый fallback на всех путях — coerce в chrome + этот код; реестр tls.json приведён.",
       "dart": "UnknownFingerprintWarning",
-      "go": "core/config/subscription/singbox_sanitize.go:177; core/config/subscription/node_parser_transport.go:646"
+      "go": "правило реестра contract/registry/tls.json body.fields.utls.fields.fingerprint.on_invalid (coerce chrome); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid, одинаково на всех входах"
     },
     "reality_fp_not_chrome": {
       "severity": "info",
@@ -376,7 +376,7 @@
       ],
       "desc": "XHTTP-параметр сброшен, потому что ядро отвергает его в заданном режиме. Сегодня это uplink_data_placement=header при ЯВНОМ режиме, отличном от packet-up: снимается поле, режим пользователя не переписывается (§169). Пара «header вне packet-up» — FATAL на ВЕСЬ конфиг ядра (проверено запуском 1.14.0-lx.30), поэтому гард обязателен. Обе стороны нормализуют и предупреждают: Go — xhttpGuardUplinkPlacement в сборке XHTTP-транспорта, одна точка на URI / sing-box JSON / Xray JSON / ручной редактор. NB: uplink_http_method=GET вне packet-up сюда НЕ относится — ядро само откатывает его на POST с предупреждением в лог (transport/v2rayxhttp/meta.go:122-129), конфиг живёт, гарда нет и не нужно.",
       "dart": "XhttpParamResetWarning",
-      "go": "WarnXHTTPParamReset"
+      "go": "правило реестра contract/registry/transports.json body.variants.xhttp.fields.{mode,session_placement,seq_placement,uplink_data_placement,x_padding_placement,x_padding_method}.on_invalid и uplink_data_placement.requires (header/cookie вне packet-up); на входах ссылки и Xray — blocks.uri.xhttp.uplinkDataPlacement.on_when_false, blocks.xray.xhttp.uplinkDataPlacement.on_when_false; исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid, sanitizer.relationsOK; core/config/linkmap/exec.go:execState.applyEntry"
     },
     "xhttp_mode_forced_packet_up": {
       "severity": "warning",
@@ -397,7 +397,7 @@
       ],
       "desc": "У XHTTP-узла был uplink_data_placement=header БЕЗ режима — режим доопределён в packet-up, placement сохранён. header осмыслен только в этом режиме, значит источник его подразумевал; молчать нельзя, потому что правка меняет проволочный протокол узла, а без неё ядро роняет весь конфиг (проверено запуском 1.14.0-lx.30). Контракт 0.12.8, §416.",
       "dart": "XhttpModeForcedPacketUpWarning",
-      "go": "WarnXHTTPModeForcedPacketUp"
+      "go": "правило реестра contract/registry/transports.json body.variants.xhttp.fields.mode.default_when; на входах ссылки и Xray — blocks.uri.xhttp.uplinkDataPlacement.on_implies_written, blocks.xray.xhttp.uplinkDataPlacement.on_implies_written; исполнение — core/config/nodeflow/sanitize.go:sanitizer.object (ветка default_when); core/config/linkmap/exec.go:execState.applyImplies"
     },
     "ech_ignored": {
       "severity": "info",
@@ -441,7 +441,7 @@
       ],
       "desc": "Тип hysteria2-обфускации вне словаря ядра — снимается, узел подключается без обфускации. Словарь ядра: salamander, gecko (protocol/hysteria2). РАСХОЖДЕНИЕ ЗАКРЫТО (фаза 1): Go принимал только salamander и молча дропал рабочий gecko — добавлен (isValidHysteria2ObfsType). Обе стороны используют один словарь.",
       "dart": "UnknownObfsWarning",
-      "go": "contract/registry/protocols/hysteria2.json body.fields.obfs.type (on_invalid); исполнение — core/config/nodeflow/sanitize.go onInvalid"
+      "go": "правило реестра contract/registry/protocols/hysteria2.json body.fields.obfs.fields.type.on_invalid (drop); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid"
     },
     "obfs_password_missing": {
       "severity": "warning",
@@ -464,7 +464,7 @@
       ],
       "desc": "Обфускация задана без пароля — снимается целиком: ядро отвергает такой узел («missing obfs password»), и это роняет ВЕСЬ конфиг, а не одну ноду. РАСХОЖДЕНИЕ ЗАКРЫТО (фаза 1): Go проверял только на singbox-пути, а URI-путь эмитил obfs без password — проверка добавлена в оба (node_parser_hysteria2.go, singbox_sanitize.go). С контракта 1.1.57 им же снимается объект-обёртка без пароля у hysteria v1 obfs (on_invalid unwrap, else_code); параметр {type} — член type объекта.",
       "dart": "MissingObfsPasswordWarning",
-      "go": "contract/registry/protocols/hysteria2.json body.relations (obfs password); исполнение — core/config/nodeflow/sanitize.go relations"
+      "go": "правило реестра contract/registry/protocols/hysteria2.json body.fields.obfs.fields.password (required + code), contract/registry/protocols/hysteria.json body.fields.obfs.on_invalid.else_code; исполнение — core/config/nodeflow/sanitize.go:sanitizer.requiredFailed (hysteria2), sanitizer.unwrap (hysteria)"
     },
     "obfs_object_flattened": {
       "severity": "info",
@@ -485,7 +485,7 @@
       ],
       "desc": "Поле-строка получило объект-обёртку соседнего диалекта, годный член взят значением (on_invalid unwrap, контракт 1.1.57). Первый потребитель — hysteria v1 obfs: {type, password} от hysteria2 → строка password. Объект без пароля — obfs_password_missing, иная форма — type_invalid. SPEC 142 C1: прежде это делала рукописная копия только на импорте sing-box и молча (WarnLog); ручной JSON и бэкап теряли obfs с type_invalid.",
       "dart": null,
-      "go": "contract/registry/protocols/hysteria.json body.fields.obfs.on_invalid (unwrap); исполнение — core/config/nodeflow/sanitize.go unwrap"
+      "go": "правило реестра contract/registry/protocols/hysteria.json body.fields.obfs.on_invalid (unwrap); исполнение — core/config/nodeflow/sanitize.go:sanitizer.unwrap"
     },
     "detour_cycle_broken": {
       "severity": "warning",
@@ -508,7 +508,7 @@
       ],
       "desc": "Кольцо в detour-цепочке разорвано, узел дозванивается напрямую/без замыкающего ребра. Go: импорт — DebugLog (detour_chain.go:162,172), свои узлы — self-detour outbound_generator.go:1262 и кольца :1291.",
       "dart": "DetourCycleBrokenWarning",
-      "go": "core/config/subscription/detour_chain.go:172; core/config/outbound_generator.go:1262; core/config/outbound_generator.go:1291"
+      "go": "в Go кодом не ставится: импорт sing-box снимает замыкающее ребро кольца с записью в debug-лог — core/config/subscription/detour_chain.go:findDetourCycleEdges, singboxChainInfo.attachChain. Свои узлы под этот код не попадают: самоссылка и кольцо detour там fail-closed — узел выбрасывается, а не укорачивается (core/config/outbound_generator.go:sanitizeNodeDetours)"
     },
     "detour_target_missing": {
       "severity": "warning",
@@ -531,7 +531,7 @@
       ],
       "desc": "detour указывает на несуществующий тег ИМПОРТИРУЕМОГО конфига — цепочка обрезается, узел живёт и ходит напрямую. Не путать с source_detour_missing (детур источника, настроенный пользователем, — там fail-closed).",
       "dart": "DetourTargetMissingWarning",
-      "go": "core/config/subscription/detour_chain.go:179"
+      "go": "в Go кодом не ставится: импорт sing-box обрезает цепочку с записью в debug-лог — core/config/subscription/detour_chain.go:singboxChainInfo.attachChain (цель detour не найдена)"
     },
     "detour_to_group": {
       "severity": "warning",
@@ -554,7 +554,7 @@
       ],
       "desc": "detour на группу (selector/urltest) — группа не может быть хопом цепочки; цепочка обрезается, узел живёт.",
       "dart": "DetourToGroupWarning",
-      "go": "core/config/subscription/detour_chain.go:190"
+      "go": "в Go кодом не ставится: импорт sing-box обрезает цепочку с записью в debug-лог — core/config/subscription/detour_chain.go:singboxChainInfo.attachChain (цель detour — группа)"
     },
     "detour_chain_too_deep": {
       "severity": "warning",
@@ -577,7 +577,7 @@
       ],
       "desc": "Цепочка длиннее max_detour_chain (см. limits.json) — усечена, узел рабочий.",
       "dart": "DetourChainTooDeepWarning",
-      "go": "core/config/subscription/detour_chain.go:209"
+      "go": "в Go кодом не ставится: импорт sing-box усекает цепочку с WARN лога — core/config/subscription/detour_chain.go:singboxChainInfo.attachChain (глубина больше maxDetourChainDepth)"
     },
     "selector_as_auto": {
       "severity": "info",
@@ -619,7 +619,7 @@
       ],
       "desc": "Часть членов группы не доехала (тег не дал узла, вложенная группа) — группа живёт без них.",
       "dart": "GroupMemberMissingWarning",
-      "go": "core/config/subscription/singbox_groups.go:89; core/config/subscription/source_loader.go:733"
+      "go": "в Go кодом не ставится: текстовое предупреждение источника — core/config/subscription/singbox_groups.go:singboxGroupToNode (импорт sing-box); Auto-группы канона — текстовый EmissionWarning, core/config/nodelink_resolve.go:resolveCanonicalGroup"
     },
     "reality_pbk_invalid": {
       "severity": "warning",
@@ -644,7 +644,7 @@
       ],
       "desc": "REALITY public_key не X25519-base64url (43 знака) — pbk=enabled и прочий мусор публичных подписок; узел деградирует до plain TLS (иначе «invalid public_key» валит весь конфиг). В Go URI-путь деградирует молча (node_parser_transport.go:656), import-пути — с warning. Dart-класса нет — кандидат на добавление.",
       "dart": null,
-      "go": "core/config/subscription/singbox_sanitize.go:204; core/config/subscription/xray_outbound_convert.go:241; core/config/subscription/node_parser_transport.go:656"
+      "go": "правило реестра contract/registry/tls.json body.fields.reality.fields.public_key (normalize base64_rawurl + format base64_32, on_invalid drop; поле required, без него блок reality снимается); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid, одинаково на всех входах"
     },
     "reality_short_id_invalid": {
       "severity": "info",
@@ -667,7 +667,7 @@
       ],
       "desc": "REALITY short_id содержит не-hex или слишком длинный — фильтруется до hex-цифр/усекается, мусор целиком → поле снимается (пустой short_id легален). Код ставится только на URI-пути vless, где узел под рукой (предикат realityShortIDWouldDegrade ДО нормализации). На sing-box-импорте поле чистится МОЛЧА: sanitizeSingboxReality нормализует short_id, но кода не возвращает — расхождение путей, кандидат на выравнивание по образцу reality_key_share_invalid. УТОЧНЕНО (DRIFT 131 §4): усечения до 16 нет ни у кого — обе стороны сбрасывают поле в \"\"; в ядре паника на short_id длиннее 16 hex (reality_client.go:80, проверка длины после hex.Decode) — гард обязателен до фикса форка.",
       "dart": "RealityShortIdInvalidWarning",
-      "go": "core/config/subscription/node_parser_transport.go:908 (AddWarning); нормализатор — node_parser_transport.go normalizeRealityShortID, молчаливая чистка импорта — singbox_sanitize.go sanitizeSingboxReality"
+      "go": "правило реестра contract/registry/tls.json body.fields.reality.fields.short_id (normalize hex_only + normalize_code, on_invalid drop); исполнение — core/config/nodeflow/sanitize.go:sanitizer.noteNormalized, sanitizer.onInvalid — одинаково на всех входах, молчаливой чистки на импорте больше нет"
     },
     "reality_key_share_invalid": {
       "severity": "info",
@@ -692,7 +692,7 @@
       ],
       "desc": "tls.reality.key_share вне закрытого enum ядра (hybrid|classical, SPEC 089 ядра, sing-box-lx >= 1.14.1-lx.4): ключ снят, узел жив с REALITY и обменом ключами по умолчанию отпечатка. ПОЧЕМУ ПРЕДУПРЕЖДАЕМ: значение вне enum ядро считает ошибкой загрузки ВСЕГО конфига, а не узла (проверено `sing-box check` бинарём 1.14.1-lx.4), поэтому поле не доезжает — и узел молча идёт не с тем обменом ключами, который просила подписка или тело. Мягче гейта pbk (§169: невалидный public_key роняет весь REALITY-блок и деградирует узел до plain TLS). Единый код для share-URI (vless/anytls, читается ТОЛЬКО при валидном pbk — D-121) и JSON-тела sing-box. Нормализация обоих путей — trim + lower-case через NormalizeRealityKeyShare. Пустая строка кода НЕ даёт: это не мусор, а «как несёт отпечаток». ГЕЙТ ВЕРСИИ — отдельная история: на ядре старше lx.4 валидное поле снимается эмиттером БЕЗ этого кода (ключ неизвестен ядру, узел живёт), причина уходит в WARN лога.",
       "dart": null,
-      "go": "core/config/subscription/parse_warnings.go (WarnRealityKeyShareInvalid); URI — node_parser_transport.go:925 vlessTLSFromNode, node_parser_anytls.go:96 buildAnyTLSTLS; JSON-тело — singbox_sanitize.go:231 sanitizeSingboxReality (код возвращается наружу и вешается в singbox_import.go); эмиссия и гейт версии — core/config/outbound_tls_emit.go, проба core/core_capabilities.go CoreSupportsRealityKeyShare"
+      "go": "правило реестра contract/registry/tls.json body.fields.reality.fields.key_share (normalize trim_lower + enum, on_invalid drop); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid, одинаково на всех входах. Гейт версии ядра (min_core 1.14.1-lx.4) снимает валидное поле БЕЗ этого кода — core/config/nodeflow/gate.go:GateForCore"
     },
     "packet_encoding_unknown": {
       "severity": "warning",
@@ -715,7 +715,7 @@
       ],
       "desc": "packet_encoding вне {xudp, packetaddr} (пустое/none = отсутствие поля) — поле снимается, иначе паника ядра (SPEC 049). Dart деградирует так же, но без NodeWarning-класса (uri_utils.dart:156, лог) — кандидат на добавление класса. УТОЧНЕНО (DRIFT 131 §8.2): на пине это аккуратный фатал B `unknown packet encoding`, не паника; фатальность на весь конфиг сохраняется.",
       "dart": "PacketEncodingUnknownWarning",
-      "go": "core/config/subscription/node_parser_core.go:622; core/config/subscription/singbox_sanitize.go:260"
+      "go": "правило реестра contract/registry/protocols/vless.json и contract/registry/protocols/vmess.json body.fields.packet_encoding.on_invalid (drop); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid"
     },
     "vmess_security_unknown": {
       "severity": "warning",
@@ -739,7 +739,7 @@
       ],
       "desc": "vmess security вне набора ядра (auto, none, zero, aes-128-cfb, aes-128-gcm, chacha20-poly1305 — sing-vmess/client.go:44-52, пин 1.14.1-lx.4) заменяется на auto. Замена значения подписки — это замена, и молчать о ней нельзя: узел уезжает не на том шифре, который просили. Прежде здесь стоял общий type_invalid с текстом «поле снято» — неточно вдвойне: поле не снимается, а подменяется, и тип значения тут ни при чём. Исполняется ТОЛЬКО реестром (on_invalid coerce → auto с этим кодом), одинаково на всех входах: ссылка, тело sing-box, Xray-JSON. Алиас chacha20-ietf-poly1305 → chacha20-poly1305 кодa НЕ даёт: это перевод диалекта, а не суждение о значении, и живёт он в маппере. Пустое/null/undefined тоже без кода — это «не задано», и поле берёт default auto.",
       "dart": null,
-      "go": "contract/registry/protocols/vmess.json body.fields.security (on_invalid); исполнение — core/config/nodeflow/sanitize.go onInvalid"
+      "go": "правило реестра contract/registry/protocols/vmess.json body.fields.security.on_invalid; исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid"
     },
     "naive_padding_ignored": {
       "severity": "info",
@@ -760,7 +760,7 @@
       ],
       "desc": "URI-параметр padding у naive не имеет sing-box-эквивалента — игнорируется, узел живёт.",
       "dart": "NaivePaddingIgnoredWarning",
-      "go": "core/config/subscription/node_parser_core.go:384"
+      "go": "правило реестра contract/registry/protocols/naive.json mappers.uri.params.padding.on_present; исполнение — core/config/linkmap/exec.go:execState.applyEntry"
     },
     "naive_extra_headers_invalid": {
       "severity": "info",
@@ -783,7 +783,7 @@
       ],
       "desc": "Пара из naive `extra-headers` отброшена при разборе (D-105): нет разделителя ':', запрещённые символы в имени (набор допустимых — подмножество RFC 7230 tchar по спецификации DuckSoft 2020) или CR/LF/NUL в значении. Прочие пары той же ссылки сохраняются, узел живёт — отсюда severity=info. ПОЧЕМУ код, а не только лог: заголовок из extra-headers часто и есть то, чем открывают доступ на сервере, и его молчаливая пропажа выглядела для пользователя как отказ узла без причины. Вешается на узел ОДИН раз при первой отброшенной паре. Собственный `headers` у http/https-прокси под код НЕ попадает: параметр объявлен у схемы naive.",
       "dart": "NaiveExtraHeadersInvalidWarning",
-      "go": "contract/registry/protocols/naive.json mappers.uri (extra_headers extract on_item_invalid); исполнение — core/config/linkmap/exec.go"
+      "go": "правило реестра contract/registry/protocols/naive.json mappers.uri.params.extra-headers.on_item_invalid; исполнение — core/config/linkmap/exec.go:execState.applyPairList"
     },
     "ss_method_invalid": {
       "severity": "error",
@@ -806,7 +806,7 @@
       ],
       "desc": "Shadowsocks-метод вне allowlist ss_methods — узел в dropped (битый метод уронил бы конфиг). КОД НА УЗЛЕ НЕ СТАВИТСЯ: узел отбрасывается на разборе (severity=error, dropped), объекта ParsedNode для AddWarning не существует — причина живёт в конверте dropped, а не в node.warnings. ОБНОВЛЕНО D-122 (18.09.2026): набор — 18 методов ядра (allowlists.json ss_methods); дроп узла только для значения вне набора, девять legacy stream-шифров дают ss_method_legacy (info).",
       "dart": null,
-      "go": "core/config/subscription/node_parser_core.go (ParseNode: return nil, err)"
+      "go": "правило реестра contract/registry/protocols/shadowsocks.json body.fields.method.on_invalid (drop_node); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid"
     },
     "port_invalid": {
       "severity": "error",
@@ -829,7 +829,7 @@
       ],
       "desc": "Порт вне 1..65535 или не число — узел в dropped (reason invalid_port в каноническом конверте, PLAN §2). КОД НА УЗЛЕ НЕ СТАВИТСЯ: узел отбрасывается на разборе (severity=error, dropped), объекта ParsedNode для AddWarning не существует — причина живёт в конверте dropped, а не в node.warnings.",
       "dart": null,
-      "go": "core/config/subscription/node_parser_core.go (ParseNode: return nil, err)"
+      "go": "правило реестра contract/registry/dialer.json common.fields.server_port.on_invalid (drop_node), contract/registry/protocols/wireguard.json body.fields.peers.items.fields.port.on_invalid; исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid"
     },
     "uri_too_long": {
       "severity": "error",
@@ -853,7 +853,7 @@
       ],
       "desc": "URI длиннее max_uri_length (см. limits.json, D-013: канон 65536) — строка в dropped. vpn:// исключён — у него свой amnezia_link_max_bytes.",
       "dart": null,
-      "go": "core/config/subscription/node_parser_core.go (CheckURILength — общая для ParseNode и ValidateURI конфигуратора, 1.1.51)"
+      "go": "core/config/subscription/node_parser_core.go:CheckURILength (общая для ParseNode и ValidateURI конфигуратора, 1.1.51); vpn:// — core/config/subscription/node_parser_amnezia.go:parseAmneziaVPNLink, ParseAmneziaVPNLinkAll (свой предел amnezia_link_max_bytes)"
     },
     "tuic_congestion_invalid": {
       "severity": "warning",
@@ -876,7 +876,7 @@
       ],
       "desc": "TUIC congestion_control вне {cubic, new_reno, bbr} — поле снимается, узел живёт.",
       "dart": "TuicCongestionInvalidWarning",
-      "go": "contract/registry/protocols/tuic.json body.fields.congestion_control (on_invalid); исполнение — core/config/nodeflow/sanitize.go onInvalid"
+      "go": "правило реестра contract/registry/protocols/tuic.json body.fields.congestion_control.on_invalid; исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid"
     },
     "tuic_udp_relay_mode_invalid": {
       "severity": "warning",
@@ -899,7 +899,7 @@
       ],
       "desc": "TUIC udp_relay_mode вне {native, quic} — поле снимается, узел живёт.",
       "dart": null,
-      "go": "contract/registry/protocols/tuic.json body.fields.udp_relay_mode (on_invalid); исполнение — core/config/nodeflow/sanitize.go onInvalid"
+      "go": "правило реестра contract/registry/protocols/tuic.json body.fields.udp_relay_mode.on_invalid; исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid"
     },
     "anytls_min_idle_invalid": {
       "severity": "warning",
@@ -922,7 +922,7 @@
       ],
       "desc": "anytls min_idle_session не неотрицательное целое — поле снимается, узел живёт.",
       "dart": "AnyTlsMinIdleInvalidWarning",
-      "go": "contract/registry/protocols/anytls.json body.fields.min_idle_session (on_invalid); исполнение — core/config/nodeflow/sanitize.go onInvalid"
+      "go": "правило реестра contract/registry/protocols/anytls.json body.fields.min_idle_session.on_invalid; исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid"
     },
     "masque_vhttp_invalid": {
       "severity": "warning",
@@ -945,7 +945,7 @@
       ],
       "desc": "MASQUE vhttp вне {h3, h2, auto} — принудительно h3 (auto принимается с 0.11.1: ядро >= lx.27, h3 с откатом на h2). Есть в ОБОИХ проектах (прежняя пометка «Desktop-протокол, в LxBox нет» протухла: masque в LxBox поддержан). Контракт 0.8.0 (D-078) снёс приём legacy-алиаса `network=` — параметр игнорируется, дефолт h3. ЛОВУШКА с пина lx.4 (DRIFT §9.4): profile:\"standard\" без uri даёт B при ЛЮБОМ vhttp (h2 — «not implemented for the standard profile», h3/auto — «uri is required»), не только на паре h2+standard.",
       "dart": "MasqueVhttpInvalidWarning",
-      "go": "contract/registry/protocols/masque.json body.fields.vhttp (on_invalid coerce); исполнение — core/config/nodeflow/sanitize.go onInvalid"
+      "go": "правило реестра contract/registry/protocols/masque.json body.fields.vhttp.on_invalid (coerce); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid"
     },
     "ssh_user_default": {
       "severity": "info",
@@ -966,7 +966,7 @@
       ],
       "desc": "SSH-ссылка без пользователя — подставлен root. Прежняя пометка «Desktop-протокол» протухла: ssh в LxBox поддержан. РАСХОЖДЕНИЕ ЖИВО: Go на URI-пути валит ноду ещё раньше (пустой userinfo, node_parser_core.go:308-316) и root-ветка — мёртвый код; Dart на URI-пути делает null-skip (ssh_parser.dart), а в singbox-импорте дефолтит root (json_parsers.dart). Код ставится только на singbox-пути Dart; выравнивание — за Go.",
       "dart": null,
-      "go": "contract/registry/protocols/ssh.json mappers.uri (default username); исполнение — core/config/linkmap/exec.go"
+      "go": "в Go не ставится: ни одна секция реестра этот код не объявляет (у mappers.uri ssh дефолта username нет), а ссылку с пустым userinfo отбивает обязательность userinfo раньше — core/config/linkmap/exec.go:execState.checkRequired (field_missing). Константа Go снята (core/config/subscription/parse_warnings.go)"
     },
     "wg_key_invalid": {
       "severity": "error",
@@ -989,7 +989,7 @@
       ],
       "desc": "private_key, peers[].public_key или peers[].pre_shared_key не декодируется в 32 байта — УЗЕЛ выброшен (dropped), а не помечен. Ядро декодирует эти поля base64.StdEncoding и отвергает весь config.json на негодном значении (класс pbk=enabled), то есть один узел лишил бы пользователя VPN. pre_shared_key роняет узел НАРАВНЕ с обязательными ключами (решение владельца 19.09.2026): туннель без ожидаемого сервером PSK — тихо сломанный туннель, рукопожатие не пройдёт, и снятие ПОЛЯ дало бы узел, который выглядит рабочим и молчит. Значение в params маскируется (`secret: true` у всех трёх полей).",
       "dart": null,
-      "go": "contract/registry/protocols/wireguard.json (body.fields.private_key / peers[].public_key / peers[].pre_shared_key, on_invalid drop_node)"
+      "go": "правило реестра contract/registry/protocols/wireguard.json body.fields.private_key, peers.items.fields.public_key, peers.items.fields.pre_shared_key (on_invalid drop_node); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid"
     },
     "awg_header_invalid": {
       "severity": "warning",
@@ -1015,7 +1015,7 @@
       ],
       "desc": "AWG magic-header (H1..H4/S1/S2 и др.) не uint32 и не lo-hi диапазон — поле снимается, ядро откатывается на обычный заголовок WireGuard. Текст называет ПУТЬ и ЗНАЧЕНИЕ ({path}/{value}) и прямое последствие: рукопожатие может не сойтись. Подстановка работает только в title/text (Registry.WarningText), в cause/fix плейсхолдеров быть не должно — там подстановки нет намеренно.",
       "dart": "AwgHeaderInvalidWarning",
-      "go": "contract/registry/protocols/wireguard.json body.fields (AWG magic headers, on_invalid); исполнение — core/config/nodeflow/sanitize.go onInvalid"
+      "go": "правило реестра contract/registry/protocols/wireguard.json body.fields.{jc,jmin,jmax,s1,s2,h1..h4}.on_invalid и jmin.requires; исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid, sanitizer.relationsOK"
     },
     "awg3_field_invalid": {
       "severity": "warning",
@@ -1041,7 +1041,7 @@
       ],
       "desc": "Поле AWG 3.x (диапазон таймингов content_padding_addition/rekey_after_time/rekey_timeout/reject_after_time/keepalive_timeout/max_handshake_attempts либо булево random_trailers/disable_cookies) с мусором или с перевёрнутым диапазоном N>M — ПОЛЕ снимается, узел живёт: тайминги клиентские, ядро работает на своих дефолтах. Границы НЕ свопаются (в отличие от h1-h4): перевёрнутый диапазон — опечатка, которую человек должен увидеть. SPEC 123 §2. Текст называет ПУТЬ и ЗНАЧЕНИЕ ({path}/{value}) и прямое последствие: откат на обычное поведение WireGuard, рукопожатие может не сойтись. Подстановка работает только в title/text (Registry.WarningText), в cause/fix плейсхолдеров быть не должно.",
       "dart": null,
-      "go": "core/config/subscription/awg3.go:applyAWG3Fields"
+      "go": "правило реестра contract/registry/protocols/wireguard.json body.fields.{s3,s4,id,ip,ib,content_padding_addition,rekey_after_time,rekey_timeout,reject_after_time,keepalive_timeout,max_handshake_attempts,random_trailers,disable_cookies}.on_invalid (drop); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid"
     },
     "awg3_header_key_invalid": {
       "severity": "error",
@@ -1062,7 +1062,7 @@
       ],
       "desc": "header_protection_key не base64, не 32 байта или все нули — УЗЕЛ выброшен на разборе (dropped), а не помечен: без верного ключа хендшейк невозможен, а ядро отвергает такой конфиг ЦЕЛИКОМ, то есть один узел лишил бы пользователя VPN. Та же политика, что у awg_headers_overlap. SPEC 123 §2.",
       "dart": null,
-      "go": "core/config/subscription/awg3.go:validateAWG3 (parseWireGuardURI: return nil, err)"
+      "go": "правило реестра contract/registry/protocols/wireguard.json body.fields.header_protection_key.on_invalid (drop_node); исполнение — core/config/nodeflow/sanitize.go:sanitizer.onInvalid"
     },
     "awg3_padding_too_short": {
       "severity": "error",
@@ -1086,7 +1086,7 @@
       ],
       "desc": "header_protection_key задан, но один из s1-s4 меньше 12 (или не задан = 0) — УЗЕЛ выброшен (dropped). Nonce шифра заголовка берётся из первых 12 байт паддинга сообщения, поэтому ядро отвергает такую пару на проверке конфига (docs-lx §2.9/§2.10). SPEC 123 §2.",
       "dart": null,
-      "go": "core/config/subscription/awg3.go:validateAWG3 (parseWireGuardURI: return nil, err)"
+      "go": "правило реестра contract/registry/protocols/wireguard.json body.fields.{s1,s2,s3,s4}.min_when (drop_node, absent_is_zero); исполнение — core/config/nodeflow/sanitize.go:sanitizer.applyMinWhen, sanitizer.minWhenAbsent"
     },
     "awg3_random_trailers_wide_headers": {
       "severity": "info",
@@ -1107,7 +1107,7 @@
       ],
       "desc": "random_trailers включён вместе с ШИРОКИМ диапазоном h1-h4 (ширина >= 65536). Ничего не снимается — это свойство протокола: приёмник сервера (референсная реализация) начинает принимать data-датаграммы за handshake-кандидаты с вероятностью ширина/2^32 на пакет и отбрасывать их на MAC, то есть страдает uplink. Наш приёмник к этому невосприимчив (SPEC 081 ядра). docs-lx §2.10.",
       "dart": null,
-      "go": "core/config/subscription/awg3.go:awg3RandomTrailersWithWideHeaders"
+      "go": "правило реестра contract/registry/protocols/wireguard.json body.relations (kind cooccurrence, $range_width); исполнение — core/config/nodeflow/sanitize.go:sanitizer.cooccurrence"
     },
     "awg3_core_unsupported": {
       "severity": "warning",
@@ -1130,7 +1130,7 @@
       ],
       "desc": "Узел с полями AmneziaWG 3.x снят на СБОРКЕ: ядро старше 1.14.0-lx.32 или собрано без with_awg отвергает конфиг с любым AWG3-ключом целиком («невалидный JSON»), то есть один такой узел оставил бы пользователя без VPN. Выброс, а не пометка на живом узле, но severity=warning: конфиг СОБИРАЕТСЯ, остальные узлы на месте, причина приезжает строкой отчёта сборки (BuildReportCoreUnsupported). Та же схема, что у tailscale_core_unsupported. SPEC 123 §2 «Гейт ядра». LxBox не применяет: ядро едет в AAR.",
       "dart": null,
-      "go": "core/config/nodeflow/gate.go (NodeCoreRefusal, узловой гейт ядра по on_core_unsupported реестра); вызов — core/config/outbound_generator.go (GenerateOutboundsFromParserConfig); теги сборки — core/core_capabilities.go (CoreBuildTags); реестр — protocols/wireguard.json on_core_unsupported полей AWG 3.x и range_form peers[].persistent_keepalive_interval"
+      "go": "core/config/nodeflow/gate.go:NodeCoreRefusal (узловой гейт ядра по on_core_unsupported реестра); вызов — core/config/outbound_generator.go:GenerateOutboundsFromParserConfig; теги сборки — core/core_capabilities.go:AppController.CoreBuildTags; реестр — protocols/wireguard.json on_core_unsupported полей AWG 3.x и range_form peers[].persistent_keepalive_interval"
     },
     "awg_headers_overlap": {
       "severity": "error",
@@ -1154,7 +1154,7 @@
       ],
       "desc": "Диапазоны AWG-заголовков пересекаются — ядро принимает такой endpoint на `check`, а отвергает на старте: `headers must not overlap` приходит из submodules/wireguard-go/device/uapi.go:839 при конфигурировании устройства (вердикт B на старте, DRIFT 131 §8.2) («headers must not overlap»), то есть падает ВЕСЬ конфиг, а не один узел. Поэтому узел выбрасывается на разборе (dropped), а не помечается предупреждением: узел без правильных заголовков всё равно не заработал бы. Изменено аудитом 2026-08-24 (была пометка на живом узле).",
       "dart": null,
-      "go": "contract/registry/protocols/wireguard.json body.relations (ranges_disjoint); исполнение — core/config/nodeflow/sanitize.go relations"
+      "go": "правило реестра contract/registry/protocols/wireguard.json body.relations (kind ranges_disjoint); исполнение — core/config/nodeflow/sanitize.go:sanitizer.rangesDisjoint"
     },
     "awg_mtu_clamped": {
       "severity": "warning",
@@ -1178,7 +1178,7 @@
       ],
       "desc": "wireguard.body.mtu выше 1280 на узле с любым AWG-полем ЗАМЕНЯЕТСЯ на 1280 — правило значения реестра (max_when, контракт 1.1.5). Потолок 1280 = рекомендация AmneziaWG и минимум IPv6, с запасом под S3/S4 (1500 - 28 UDP/IP - 32 WG - 60 max S3/S4 = 1380). Решение владельца 05.09.2026 на живых узлах: экспорт Amnezia несёт 1376, данные на нём не шли, на 1280 туннель заработал (память awg-mtu-too-high). ДО контракта 1.1.5 правило жило кодом в парсере ссылки (awgMaxMTU) и потому не применялось к телу из sing-box-импорта — расхождение входов, находка №5 LEGACY_AUDIT. ИСКЛЮЧЕНИЕ по входу: на sing-box JSON тело написано в форме ядра самим человеком или подпиской, значение НЕ заменяется, и узел получает info-код awg_mtu_high (решение владельца 18.09.2026, except_sources; парность входов нарушена намеренно, DRIFT §7.23). Подстановка 1280 при ОТСУТСТВИИ mtu кода не даёт — это дефолт, а не замена.",
       "dart": "awgClampMtu → по реестру (max_when), см. TASKS_LXBOX §24.14",
-      "go": "core/config/nodeflow/sanitize.go applyMaxWhen; правило — contract/registry/protocols/wireguard.json body.fields.mtu.max_when"
+      "go": "правило реестра contract/registry/protocols/wireguard.json body.fields.mtu.max_when; исполнение — core/config/nodeflow/sanitize.go:sanitizer.applyMaxWhen"
     },
     "awg_mtu_high": {
       "severity": "info",
@@ -1202,7 +1202,7 @@
       ],
       "desc": "Парный info-код к awg_mtu_clamped для входа `singbox`: тело в форме ядра не переписывается, узел получает уведомление. Решение владельца 18.09.2026 — молча править тело, которое человек написал сам в форме ядра, лаунчер не вправе; ссылку/.conf сочинял генератор провайдера, и там действует замена. Различие входов НАМЕРЕННОЕ и документировано в DRIFT §7.23. Вход определяется по origin узла и потому переживает перезапуск: пересчёт кодов на загрузке state (sanitizeStoredNodeBody) читает Origin.Kind, иначе исключение терялось бы после первой же загрузки и узел получал бы кламп задним числом.",
       "dart": null,
-      "go": "core/config/nodeflow/sanitize.go applyMaxWhen (ветка sourceExcepted); правило — contract/registry/protocols/wireguard.json body.fields.mtu.max_when.note_code"
+      "go": "правило реестра contract/registry/protocols/wireguard.json body.fields.mtu.max_when.note_code (вход из except_sources); исполнение — core/config/nodeflow/sanitize.go:sanitizer.applyMaxWhen"
     },
     "wgconf_dns_ignored": {
       "severity": "info",
@@ -1225,7 +1225,7 @@
       ],
       "desc": "Interface.DNS из .conf/ссылки не переносится в тело: у endpoint'а sing-box поля DNS нет (лоссы by design). Код объявлен, чтобы потеря перестала быть молчаливой; запись в маппере обязана остаться и без кода — иначе ключ уехал бы в uri_param_unknown.",
       "dart": null,
-      "go": "contract/registry/protocols/wireguard.json mappers.conf.params.dns / mappers.uri.params.dns (on_present.note)"
+      "go": "правило реестра contract/registry/protocols/wireguard.json mappers.conf.params.dns.on_present, mappers.uri.params.dns.on_present (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
     },
     "wgconf_param_unknown": {
       "severity": "info",
@@ -1250,7 +1250,7 @@
       ],
       "desc": "Ключ секции ini не объявлен ни одной записью mappers.conf. До тела он не доходит по построению (тело строят только объявленные записи), поэтому severity=info: узел исправен. Код заведён, чтобы потеря перестала быть молчаливой (Q133-58) — прежде часть файла не читалась без единого слова. Игнор-список не-узловых ключей wg-quick — в самой записи unknown_key.",
       "dart": null,
-      "go": "contract/registry/protocols/wireguard.json mappers.conf.unknown_key"
+      "go": "правило реестра contract/registry/protocols/wireguard.json mappers.conf.unknown_key; исполнение — core/config/linkmap/exec.go:execState.noteUnknownParams (ключи ini)"
     },
     "uri_param_unknown": {
       "severity": "info",
@@ -1275,7 +1275,7 @@
       ],
       "desc": "Параметр ссылки не объявлен ни одной записью секции uri (ни params, ни include-блоками, ни aliases — MAPPER_ENGINE.md §8). До тела он не доходит по построению, поэтому severity=info: узел исправен. Код ставится ПО ОДНОМУ на каждое необъявленное имя, имя уезжает в path: дедуп деградаций идёт по паре (код, path), и с пустым путём второй параметр терялся бы молча. Запись со значением null («знаем, читать нечего») кода не даёт — это объявленное молчание, а не потеря.",
       "dart": null,
-      "go": "contract/registry/protocols/*.json mappers.uri.unknown_key"
+      "go": "правило реестра contract/registry/protocols/*.json mappers.uri.unknown_key; исполнение — core/config/linkmap/exec.go:execState.noteUnknownParams"
     },
     "json_field_unknown": {
       "severity": "info",
@@ -1300,7 +1300,7 @@
       ],
       "desc": "Парный к uri_param_unknown код для JSON-входов (MAPPER_ENGINE.md §8): ключ ВЕРХНЕГО уровня элемента не объявлен записями секции. Вложенный путь параметром не является и сюда не попадает. Действие объявляет секция: drop у xray (чужой ключ уронил бы конфиг ядра), keep у singbox (тело уже в каноне, и ключ может быть расширением форка) — но молчать нельзя ни там, ни там. Отличие от unknown_key: тот судит ТЕЛО и снимает поле (severity warning), этот — ВХОД, до тела не дошедший.",
       "dart": null,
-      "go": "contract/registry/protocols/*.json mappers.xray.unknown_key / mappers.singbox.unknown_key"
+      "go": "правило реестра contract/registry/protocols/*.json mappers.xray.unknown_key / mappers.singbox.unknown_key; исполнение — core/config/linkmap/exec.go:execState.noteUnknownJSONKeys, execState.noteUnknownNestedJSONKeys"
     },
     "xray_extra_entries_dropped": {
       "severity": "warning",
@@ -1324,7 +1324,7 @@
       ],
       "desc": "Примитив on_len_gt{n:1} у записей $extra_vnext / $extra_servers / $extra_users (Q133-18, Q133-66 закрыт): при len>1 узлом становится первый элемент, код несёт path=имя записи и value=число элементов; params count/query_name — для текста UI.",
       "dart": null,
-      "go": "contract/registry/protocols/{vless,vmess,trojan,shadowsocks,hysteria2}.json mappers.xray.params.$extra_*.on_len_gt"
+      "go": "правило реестра contract/registry/protocols/{vless,vmess,trojan,shadowsocks,hysteria2}.json mappers.xray.params.$extra_*.on_len_gt; исполнение — core/config/linkmap/exec.go:execState.applyOnLenGt"
     },
     "wgconf_extra_peer_dropped": {
       "severity": "warning",
@@ -1347,7 +1347,7 @@
       ],
       "desc": "Несколько [Peer] в .conf — берётся первая, остальные снимаются. Сегодня Go делает это молча (parseWGConfSections: peerSections == 1); код делает потерю видимой.",
       "dart": null,
-      "go": "contract/registry/protocols/wireguard.json mappers.conf.ini_dialect.sections.Peer.on_extra; сегодня молча — core/config/subscription/node_parser_amnezia.go:495"
+      "go": "правило реестра contract/registry/protocols/wireguard.json mappers.conf.ini_dialect.sections.Peer.on_extra; исполнение — core/config/linkmap/exec.go:execState.noteINIDropped (все входы .conf, включая vpn://)"
     },
     "amnezia_container_choice": {
       "severity": "info",
@@ -1371,7 +1371,7 @@
       ],
       "desc": "vpn://-профиль содержит несколько WG/AWG-контейнеров. РЕШЕНО (SPEC 103 фаза 2): импортируются ВСЕ контейнеры — профиль с несколькими локациями штатен для Amnezia, и терять их незачем. Порядок детерминирован: дефолтный контейнер первым; метка узла дополняется именем контейнера, иначе локации неразличимы после MakeTagUnique. Одиночный ParseNode по-прежнему отдаёт ОДИН узел (дефолтный) — не потому что остальные не нужны, а потому что его сигнатура возвращает одну ноду; путь тела подписки зовёт ParseAmneziaVPNLinkAll. Этот код остаётся info-сообщением одиночного пути.",
       "dart": null,
-      "go": "core/config/subscription/node_parser_amnezia.go:171 (одиночный путь); ParseAmneziaVPNLinkAll (все контейнеры)"
+      "go": "core/config/subscription/node_parser_amnezia.go:parseAmneziaVPNLink (одиночный путь; core/config/subscription/node_parser_amnezia.go:ParseAmneziaVPNLinkAll берёт все контейнеры и кода не ставит)"
     },
     "group_empty": {
       "severity": "warning",
@@ -1394,7 +1394,7 @@
       ],
       "desc": "Группа осталась без разрешимых членов — группа в dropped (узлы-члены при этом живут сами по себе).",
       "dart": null,
-      "go": "core/config/subscription/singbox_groups.go:94; core/config/subscription/xray_json_array.go:223"
+      "go": "в Go кодом не ставится: группа снимается с текстовым предупреждением — core/config/subscription/singbox_groups.go:singboxGroupToNode; после перепривязки тегов — WARN лога, core/config/subscription/source_loader.go:rebindImportedGroupNodes; Xray-балансировщик — WARN лога, core/config/subscription/xray_json_array.go:resolveGroupMembers; Auto-группы канона — текстовый EmissionWarning, core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks"
     },
     "detour_with_listen_port": {
       "severity": "warning",
@@ -1417,7 +1417,7 @@
       ],
       "desc": "Узел с listen_port не может получить detour (ядро отвергает сочетание) — detour не применяется, узел живёт. Desktop-механика (source-detour лаунчера).",
       "dart": null,
-      "go": "core/config/outbound_generator.go:1215; core/config/subscription/source_loader.go:773"
+      "go": "в Go не ставится, и правила больше нет: проверка listen_port у узла с detour жила в легаси-разрешении detour источника и снята вместе с ним (SPEC 118 W5–W8)"
     },
     "source_detour_missing": {
       "severity": "error",
@@ -1441,7 +1441,7 @@
       ],
       "desc": "Detour-узел, НАЗНАЧЕННЫЙ ПОЛЬЗОВАТЕЛЕМ на источник, не найден — все ноды источника дропаются fail-closed (трафик не должен уйти напрямую мимо приватной границы). Противоположная политика detour_target_missing — там detour приехал из чужого файла и узел живёт direct; различие by design. Desktop-фича.",
       "dart": null,
-      "go": "core/config/outbound_generator.go:1200"
+      "go": "в Go кодом не ставится: неразрешённый detour узла (NodeLink) выбрасывает узел fail-closed с текстовым EmissionWarning — core/config/nodelink_resolve.go:resolveCanonicalDetour (вызов из ApplyCanonicalNodeLinks)"
     },
     "max_nodes_exceeded": {
       "severity": "warning",
@@ -1465,7 +1465,7 @@
       ],
       "desc": "Подписка дала больше max_nodes_per_subscription узлов — хвост отброшен (защита от CIDR-подписок). D-013: Dart добавляет лимит и код.",
       "dart": null,
-      "go": "core/config/subscription/source_loader.go:606"
+      "go": "в Go кодом не ставится: хвост сверх капа отбрасывается с текстовым предупреждением источника — core/config/subscription/parse_body.go:bodyParseState.finish (счёт — bodyParseState.capReached)"
     },
     "template_var_undeclared": {
       "severity": "warning",
@@ -1488,7 +1488,7 @@
       ],
       "desc": "Ссылка на имя, не объявленное в vars (опечатка автора шаблона): плейсхолдер остаётся в выводе как есть (TEMPLATE_LANG §5.2), в предикате/гейте → false. Код отдают оба движка; корпус сверяет строго.",
       "dart": "if_engine.dart: templateWarnVarUndeclared (хук onTemplateWarning)",
-      "go": "core/template/substitute_canon.go: warnVarUndeclared"
+      "go": "core/template/substitute_canon.go:replacementCanon, canonCtx.noteVarRef (константа warnVarUndeclared). В сборке Go не ставится: вход core/template/substitute.go:SubstituteVarsInJSONCanon зовут только тесты, сборка идёт через SubstituteVarsInJSON / SubstituteVarsInJSONStrict без кодов"
     },
     "template_unknown_directive": {
       "severity": "warning",
@@ -1511,7 +1511,7 @@
       ],
       "desc": "Неизвестный `#`-ключ выброшен (forward-compat, §4.1) ИЛИ невалидная форма условия: #if без/с обоими #and/#or, истинное условие без #value, нечисловое/не-cond значение #enable. Fail-closed: узел не включается (D-058).",
       "dart": "if_engine.dart: templateWarnUnknownDirective",
-      "go": "core/template/substitute_canon.go: warnUnknownDirective"
+      "go": "core/template/substitute_canon.go:substituteWalkCanon, handleIfMapSpreadCanon, selectIfBranchCanon (константа warnUnknownDirective). В сборке Go не ставится: вход core/template/substitute.go:SubstituteVarsInJSONCanon зовут только тесты"
     },
     "template_int_clamped": {
       "severity": "warning",
@@ -1535,7 +1535,7 @@
       ],
       "desc": "Значение int-переменной вне [0,65535] клампнуто (uint16-backstop ядра, §2.2).",
       "dart": "test/contract/template_contract_test.dart: _coerceWithWarnings (движок клампит молча)",
-      "go": "core/template/substitute_canon.go: intCastCanon"
+      "go": "core/template/substitute_canon.go:intCastCanon (константа warnIntClamped). В сборке Go не ставится: вход core/template/substitute.go:SubstituteVarsInJSONCanon зовут только тесты"
     },
     "template_int_invalid": {
       "severity": "warning",
@@ -1557,7 +1557,7 @@
       ],
       "desc": "int-переменная содержит не число — уезжает в конфиг строкой как есть (опечатка видна, не маскируется нулём; §2.2, D-055).",
       "dart": "test/contract/template_contract_test.dart: _coerceWithWarnings",
-      "go": "core/template/substitute_canon.go: intCastCanon"
+      "go": "core/template/substitute_canon.go:intCastCanon (константа warnIntInvalid). В сборке Go не ставится: вход core/template/substitute.go:SubstituteVarsInJSONCanon зовут только тесты"
     },
     "chain_unsupported_by_core": {
       "severity": "error",
@@ -1581,7 +1581,7 @@
       ],
       "desc": "Ядро собрано без with_lx_chain и не знает тип outbound'а chain (SPEC 110). Ядро отвергает конфиг ЦЕЛИКОМ на неизвестном типе, поэтому источник-цепочка не превращается в узел вовсе — иначе одна настроенная цепочка лишила бы пользователя VPN, а не одного маршрута. Тот же приём деградации, что naive_unavailable. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
       "dart": "services/builder/core_chain_capability.dart + chain_nodes.dart:99",
-      "go": "core/core_chain_capability.go:96"
+      "go": "в Go кодом не ставится: цепочка деградирует причиной-текстом ChainDegradation.Reason — core/config/chain_nodes.go:buildChainNode (ветка !supported); вердикт ядра — core/core_chain_capability.go:chainVerdictFromVersionOutput, хук core/config/chain_generator.go:ChainSupportProbe"
     },
     "chain_hop_missing": {
       "severity": "error",
@@ -1605,7 +1605,7 @@
       ],
       "desc": "Позиция цепочки не найдена среди узлов и Направлений: узел исчез из подписки, Направление выключено, или цепочка сослалась на объявленную НИЖЕ по списку (ссылки вперёд запрещены — этим исключены циклы между цепочками). Цепочка выпадает ЦЕЛИКОМ, а не теряет одну позицию: маршрут без хопа это другой маршрут, а ссылка в никуда не даёт ядру стартовать. Не путать с detour_target_missing — там узел живёт и ходит напрямую. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
       "dart": "services/builder/chain_nodes.dart:137",
-      "go": "core/config/chain_nodes.go:130"
+      "go": "в Go кодом не ставится: цепочка деградирует причиной-текстом ChainDegradation.Reason — core/config/chain_nodes.go:buildChainNode (позиция не найдена среди узлов и Направлений)"
     },
     "chain_invalid": {
       "severity": "error",
@@ -1628,7 +1628,7 @@
       ],
       "desc": "Цепочка нарушает инвариант ядра: меньше двух позиций, пустой тег, ссылка на саму себя, повтор позиции или неизвестный ключ каталога strip (protocol/chain/chain.go:85-100). Каждое из этих условий не даёт стартовать всему конфигу, поэтому запись не эмитится. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
       "dart": "services/builder/chain_nodes.dart:107,117",
-      "go": "core/config/chain_generator.go:54"
+      "go": "в Go кодом не ставится: причина-текст core/config/chain_generator.go:ChainEmitError уходит в ChainDegradation.Reason (core/config/chain_nodes.go:buildChainNode)"
     },
     "chain_strip_utls_on_reality": {
       "severity": "warning",
@@ -1675,7 +1675,7 @@
       ],
       "desc": "Вложенная цепочка стоит не на позиции 0. Ядро допускает её только первой (protocol/chain/chain.go:279): звено — это «узел через предыдущую позицию», а цепочка не узел и не пересобирается под чужой диалер. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
       "dart": "services/builder/chain_nodes.dart:154",
-      "go": "core/config/chain_validate.go:78"
+      "go": "в Go кодом не ставится: причина-текст по core/config/chain_validate.go:ChainNestedConflict уходит в ChainDegradation.Reason (core/config/chain_nodes.go:buildChainNode)"
     },
     "chain_cycle_through_direction": {
       "severity": "warning",
@@ -1699,7 +1699,7 @@
       ],
       "desc": "Направление не взяло в состав цепочку, которая через это же Направление проходит (SPEC 110 T9). Самый частый случай: цепочка [proxy-out, exit] при фильтре «все узлы» у proxy-out. Ядро на таком не падает — оно развернёт позицию в то, что группа выбрала сейчас, — но пользователь получил бы маршрут, которого не задумывал: выбрав цепочку внутри группы, он замкнул бы трафик на неё же. Проверяется транзитивно, включая цепочку через цепочку. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
       "dart": "services/builder/chain_nodes.dart (T9) + screens/chain_edit/chain_form_validation.dart",
-      "go": "core/config/chain_cycle.go:84"
+      "go": "в Go кодом не ставится: цепочка не берётся в состав Направления с WARN лога — core/config/chain_cycle.go:dropChainsThroughDirection"
     },
     "dialer_proxy_unusable": {
       "severity": "error",
@@ -1723,7 +1723,7 @@
       ],
       "desc": "Цель `streamSettings.sockopt.dialerProxy` непригодна: узел-владелец отбраковывается целиком (иначе он ушёл бы напрямую — тихая деанонимизация). cause ∈ not_found | service_outbound | group | not_convertible | cycle | depth. Лаунчер сегодня даёт not_found (остальные причины режутся раньше другими путями), LxBox — все шесть.",
       "dart": "DialerProxyUnusableWarning",
-      "go": "core/config/subscription/xray_json_array.go (attachXrayDialerChain)"
+      "go": "core/config/subscription/xray_json_array.go:parseXrayJSONArrayElementNodes (отказ core/config/subscription/xray_json_array.go:attachXrayDialerChain)"
     },
     "tailscale_core_unsupported": {
       "severity": "warning",
@@ -1746,7 +1746,7 @@
       ],
       "desc": "Узел `tailscale` снят на сборке: ядро собрано без тега with_tailscale (нужен форк 1.14.0-lx.31 или новее). Не пометка на живом узле, а его выброс — но severity=warning, а не error: конфиг СОБИРАЕТСЯ, остальные узлы на месте, и причина приезжает пользователю строкой отчёта сборки (BuildReportCoreUnsupported). Без выброса один такой узел завалил бы `sing-box check` для ВСЕГО конфига. SPEC 122 §2.2. Код общий для обеих сторон: LxBox с релиза v2.23.2 применяет Tailscale полноценно (libbox форка собран с `with_tailscale` + `ts_omit_*`, D-103, ядро 1.14.0-lx.38), и тот же гейт по версии ядра у него свой.",
       "dart": "lib/services/builder/core_chain_capability.dart (coreVersionSupportsTailscale)",
-      "go": "core/config/nodeflow/gate.go (NodeCoreRefusal, узловой гейт ядра по on_core_unsupported реестра); вызов — core/config/outbound_generator.go (GenerateOutboundsFromParserConfig); теги сборки — core/core_capabilities.go (CoreBuildTags); реестр — protocols/tailscale.json body.on_core_unsupported"
+      "go": "core/config/nodeflow/gate.go:NodeCoreRefusal (узловой гейт ядра по on_core_unsupported реестра); вызов — core/config/outbound_generator.go:GenerateOutboundsFromParserConfig; теги сборки — core/core_capabilities.go:AppController.CoreBuildTags; реестр — protocols/tailscale.json body.on_core_unsupported"
     },
     "tailscale_from_subscription": {
       "severity": "info",
@@ -1767,7 +1767,7 @@
       ],
       "desc": "Узел `tailscale` приехал ПОДПИСКОЙ. Узел законен и остаётся в составе — отсюда severity=info, а не error, — но полезен он не сам по себе: каноническую связку (DNS-сервер MagicDNS + правило на `.ts.net` + маршрут на 100.64.0.0/10 и fd7a:115c:a1e0::/48) подписка принести не может, потому что связка ссылается на финальный тег узла на ЭТОЙ машине, а идентичность машины в tailnet живёт в локальном каталоге состояния и одноразовым ключом провайдера не переносится. Связку пользователь заводит у себя (конструктор «Add server → Tailscale» или вкладка JSON); голый узел, заведённый локально, получает её по умолчанию. Молчать нельзя: узел виден в списке, а о неработающих именах `*.ts.net` пользователь узнал бы уже в бою. NODE_SECTIONS.md §6.",
       "dart": "—",
-      "go": "core/config/subscription/parse_body.go (bodyParseState.accept)"
+      "go": "core/config/subscription/parse_body.go:bodyParseState.accept"
     },
     "ws_early_data_converted": {
       "severity": "info",
@@ -1788,7 +1788,7 @@
       ],
       "desc": "Xray-хвост `?ed=N` в WebSocket-пути разложен на sing-box-поля max_early_data + early_data_header_name — путь из ссылки попадает в конфиг не буквально, узел работает. Без конверсии ядро отдаёт хвост серверу как часть пути и тот отвечает 404 (check при этом проходит). SPEC 103 §9.E / issue #96.",
       "dart": "WsEarlyDataConvertedWarning",
-      "go": "contract/registry/blocks/uri/ws.json (ed tail → max_early_data); исполнение — core/config/linkmap/exec.go"
+      "go": "правило реестра contract/registry/transports.json blocks.uri.ws.path.extract.into.ed (code); исполнение — core/config/linkmap/exec.go:execState.applyExtractGroup. Вход Xray этот код не ставит"
     },
     "unknown_key": {
       "severity": "warning",
@@ -2092,7 +2092,7 @@
       ],
       "desc": "Запись-БАННЕР, притворившаяся ссылкой: цель из списка «заведомо не сервер» (source_kinds.json uri_lines.banner_targets). Прежде признаком баннера было ОТСУТСТВИЕ `://` (isProviderBannerLine), а обе крупные панели пишут баннер синтаксически валидной ссылкой — и он становился ПОЛНОЦЕННЫМ узлом: `vless://…@0.0.0.0:1` у Remnawave (createFallbackHosts), `socks://127.0.0.1:1080` у 3x-ui (service.go:483). При истечении подписки 3x-ui отдаёт баннер единственной записью, и пользователь получал «рабочую» подписку из одного узла-пустышки вместо сообщения «подписка истекла». severity=info: узла тут не было никогда, терять нечего, но выпадение обязано быть названным. Текст ремарки после `#` едет в `message` — это и есть сообщение провайдера, ради которого запись существует. Обращение как с provider_banner (строка без схемы) и service_record_ignored (служебная схема): в состав не идёт, из списка выпадает с info-кодом.",
       "dart": null,
-      "go": "core/config/subscription/parse_body.go (признак — registry/source_kinds.json uri_lines.banner_targets)"
+      "go": "core/config/subscription/parse_body.go:ParseSubscriptionBody (признак — core/config/subscription/parse_body.go:isProviderBannerLine, isProviderBannerNode по registry/source_kinds.json uri_lines.banner_targets)"
     },
     "service_record_ignored": {
       "severity": "info",
@@ -2115,7 +2115,7 @@
       ],
       "desc": "Строка состава со СЛУЖЕБНОЙ схемой (source_kinds.json uri_lines.service_schemes): узлом не является и никогда им не была. Прежде отбраковывалась общим «unsupported scheme», и формально рабочая подписка показывала отказ на своём же служебном заголовке (наблюдалось: 5 отказов при 8 живых узлах). severity=info: терять тут нечего, но выпадение обязано быть названным, а не молчаливым — иначе оно неотличимо от потерянного узла. Обращение как с provider_banner, отличается только признаком (у баннера схемы нет вовсе).",
       "dart": null,
-      "go": "core/config/subscription/parse_body.go isServiceSchemeLine"
+      "go": "core/config/subscription/parse_body.go:ParseSubscriptionBody (признак — core/config/subscription/parse_body.go:isServiceSchemeLine по registry/source_kinds.json uri_lines.service_schemes)"
     },
     "scheme_unsupported": {
       "severity": "error",
@@ -2138,7 +2138,7 @@
       ],
       "desc": "Строка состава со схемой, которую не ведёт ни одна секция реестра (последний отказ ParseNode). Прежде причина ехала только текстом Go «unsupported scheme» без машинного кода, и мобильная сторона не могла сверить отбраковку. Отличается от protocol_unsupported: там ядро не умеет ТИП outbound'а из JSON-тела, здесь реестр не знает СХЕМУ ссылки. От service_record_ignored — тем, что про эту схему мы не знаем ничего, а про служебную знаем, что она узлом не является. Граница с form_unrecognized (CANON §4.1): этот код ставится только строке формы xxx://; текст без схемы, а также строка с опознанной схемой и непрочитанным пейлоадом — form_unrecognized.",
       "dart": null,
-      "go": "core/config/subscription/node_parser_core.go ParseNode"
+      "go": "core/config/subscription/node_parser_core.go:ParseNode"
     },
     "body_dialect_unrecognized": {
       "severity": "error",
@@ -2159,7 +2159,7 @@
       ],
       "desc": "Диагностический код ступени КЛАССИФИКАЦИИ, а не разбора записи: тело опознано целым конфигом, но диалект спрошен не был. Заведён вместе с исправлением (source_kinds.json xray_config, prio 35): реестр признак диалекта объявлял, а рукописный сниффер body_classify.go его не спрашивал, и одиночный конфиг Xray давал ноль узлов с отбраковкой «missing type» на каждой записи. Ставится там, где ступень всё же промахнулась — код без пути к нему был бы мёртвыми данными, поэтому он объявлен body-level (на подписку, не на узел).",
       "dart": null,
-      "go": "core/config/subscription/body_classify.go classifyJSONObjectBody"
+      "go": "в Go не ставится: константа WarnBodyDialectUnrecognized (core/config/subscription/parse_warnings.go) объявлена, но нигде не используется; промах, который описывает код, предотвращает core/config/subscription/body_classify.go:classifyJSONObjectBody — диалект Xray спрашивается до ветки sing-box-конфига"
     },
     "xray_domain_strategy_ignored": {
       "severity": "info",
@@ -2182,7 +2182,7 @@
       ],
       "desc": "settings.domainStrategy Xray-элемента wireguard (ForceIPv4/ForceIPv6/ForceIP/…). Эквивалент у ядра ЕСТЬ — domain_resolver.strategy (option/outbound.go DomainResolveOptions.Strategy), но реестр объявляет domain_resolver КОРОТКОЙ формой (строка с тегом сервера, dialer.json body.fields.domain_resolver), и strategy без server ядро сериализует в «{}». Код объявляет потерю; смена формы поля — отдельная дельта на все схемы.",
       "dart": null,
-      "go": "contract/registry/protocols/wireguard.json mappers.xray.params.domainStrategy (on_present.note)"
+      "go": "правило реестра contract/registry/protocols/wireguard.json mappers.xray.params.domainStrategy.on_present, contract/registry/dialer.json blocks.xray.domainStrategy.on_present (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
     },
     "xray_reserved_base64_unsupported": {
       "severity": "warning",
@@ -2205,7 +2205,7 @@
       ],
       "desc": "settings.reserved Xray-элемента wireguard в СТРОКОВОМ (base64) написании. Тип у Xray двоякий ([]byte принимает массив чисел и base64-строку), ядро ждёт []uint8. Запись reserved читает массив; примитива «base64 → список байтов» у движка нет, и заводить его ради одного написания одного поля — расширение грамматики под частный случай. Код объявляет потерю трёхбайтового префикса (WARP и подобные): без него узел не проходит у провайдеров, которые его требуют.",
       "dart": null,
-      "go": "contract/registry/protocols/wireguard.json mappers.xray.params.$reserved_base64 (on_present.note)"
+      "go": "правило реестра contract/registry/protocols/wireguard.json mappers.xray.params.$reserved_base64.on_present (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
     },
     "xray_cert_chain_pin_unsupported": {
       "severity": "warning",
@@ -2228,7 +2228,7 @@
       ],
       "desc": "tlsSettings.pinnedPeerCertificateChainSha256 (алиас pinnedPeerCertSha256) Xray-элемента. НЕ маппится в certificate_public_key_sha256: прообраз хеша РАЗНЫЙ — ядро хеширует SPKI ЛИСТОВОГО сертификата (common/tls/std_client.go:278 VerifyPublicKeySHA256: x509.MarshalPKIXPublicKey от leaf → sha256), Xray — сырой DER сертификатов ЦЕПОЧКИ. Значение, годное в Xray, в sing-box не совпадёт никогда, и перенос сломал бы рукопожатие у каждого узла с пином. Проверено по коду ядра, а не по имени поля (имена похожи, семантика нет).",
       "dart": null,
-      "go": "contract/registry/tls.json blocks.xray.pinnedPeerCertificateChainSha256 (on_present.note)"
+      "go": "правило реестра contract/registry/tls.json blocks.xray.pinnedPeerCertificateChainSha256.on_present (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
     },
     "grpc_multi_mode_ignored": {
       "severity": "warning",
@@ -2249,7 +2249,7 @@
       ],
       "desc": "grpcSettings.multiMode Xray-элемента при ИСТИННОМ значении. Эквивалента у ядра нет (V2RayGRPCOptions знает service_name/idle_timeout/ping_timeout/permit_without_stream); режим gun — сегодняшнее поведение, и он принимается молча. Ложное значение кода не даёт: терять нечего, когда режим и не просили. Парный случай authority кода НЕ имеет намеренно — та потеря поведения не меняет и шумела бы на каждом grpc-узле всех четырёх панелей.",
       "dart": null,
-      "go": "contract/registry/transports.json blocks.xray.grpc.multiMode (on_present.note)"
+      "go": "правило реестра contract/registry/transports.json blocks.xray.grpc.multiMode.on_present (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
     }
   }
 }

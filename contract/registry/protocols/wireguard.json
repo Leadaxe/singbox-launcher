@@ -23,7 +23,7 @@
       "meaning": "private_key — base64 of the 32-byte private key",
       "desc_en": "Client private key.",
       "desc_ru": "Приватный ключ клиента.",
-      "impl": "Сырой '/' в base64 percent-энкодится до url.Parse в обоих (percentEncodeWGUserinfoSlashes / encodeUserInfoSlashes). Маппер Go ТОЛЬКО переводит написание: принимает 4 варианта base64 и приводит к std-base64 с паддингом (секция mapper, wg_key_spelling_to_std_base64). ГОДНОСТЬ судит реестр — body.private_key, format base64_32, on_invalid drop_node с кодом wg_key_invalid; не-32-байтный ключ (напр. Proton '*****') роняет узел С КОДОМ, а не молча, и одинаково на всех входах, включая sing-box-импорт (контракт 1.1.11). Dart ключи не валидирует вовсе — мусорный ключ уедет в конфиг и уронит sing-box check (класс pbk=enabled); целевое поведение — суд реестра."
+      "impl": "Сырой '/' в base64: Go-движок режет userinfo сам по последнему '@' и слэш в ключе не теряет (core/config/linkmap/parse.go:lexURI; прежний рукописный percentEncodeWGUserinfoSlashes снят), Dart percent-энкодит до разбора (encodeUserInfoSlashes). Go ТОЛЬКО переводит написание: 4 варианта base64 приводятся к std-base64 с паддингом нормализацией тела base64_std (секция mapper, wg_key_spelling_to_std_base64; core/config/nodeflow/coerce.go:normalize). ГОДНОСТЬ судит реестр — body.private_key, format base64_32, on_invalid drop_node с кодом wg_key_invalid; не-32-байтный ключ (напр. Proton '*****') роняет узел С КОДОМ, а не молча, и одинаково на всех входах, включая sing-box-импорт (контракт 1.1.11). Dart ключи не валидирует вовсе — мусорный ключ уедет в конфиг и уронит sing-box check (класс pbk=enabled); целевое поведение — суд реестра."
     },
     "query": {
       "publickey": {
@@ -35,7 +35,7 @@
         "maps_to": "peers[].public_key",
         "desc_en": "Peer public key.",
         "desc_ru": "Публичный ключ пира.",
-        "impl": "Обязателен. Ключ пира (32 байта). Маппер Go приводит написание к std-base64, '+' сохраняется через PathUnescape (queryParamPreservePlus); годность судит реестр (body.peers[].public_key, on_invalid drop_node, код wg_key_invalid — контракт 1.1.11). Алиас public_key — только Dart."
+        "impl": "Обязателен. Ключ пира (32 байта). Go приводит написание к std-base64 (normalize base64_std тела); '+' сохраняется: движок разбирает query path-семантикой (core/config/linkmap/space.go:ParseQueryOrdered), а замену '+' на пробел запись с format base64* не получает (decode_extra.plus_literal); годность судит реестр (body.peers[].public_key, on_invalid drop_node, код wg_key_invalid — контракт 1.1.11). Алиас public_key — только Dart."
       },
       "privatekey": {
         "type": "base64",
@@ -55,7 +55,7 @@
         "maps_to": "address",
         "desc_en": "Addresses assigned to the tunnel interface.",
         "desc_ru": "Адреса, назначенные интерфейсу туннеля.",
-        "impl": "Обязателен в обоих. CIDR-список через запятую; bare IP чинится в /32 (v4) / /128 (v6) в обоих (normalizeWGPrefixes / ensureCidr)."
+        "impl": "Обязателен в обоих. CIDR-список через запятую; bare IP чинится в /32 (v4) / /128 (v6) в обоих (Go — normalize cidr_prefix тела, core/config/nodeflow/coerce.go:normalize, на всех входах; Dart — ensureCidr)."
       },
       "allowedips": {
         "type": "list",
@@ -185,7 +185,7 @@
         "maps_to": "h1",
         "desc_en": "AmneziaWG magic header H1.",
         "desc_ru": "Magic-заголовок AmneziaWG H1.",
-        "impl": "AWG magic header: uint32 ИЛИ строка-диапазон \"lo-hi\" (AWG 2.0, ядро >= lx.6; эмитится строкой). Порядок границ нормализует РЕЕСТР (normalize range_order), тихо: своп смысла диапазона не меняет; при overlap h1-h4 узел дропается связью реестра ranges_disjoint с кодом awg_headers_overlap — прежде рукописный awgHeaderOverlap ронял его молча (находка №8 LEGACY_AUDIT, контракт 1.1.11); Dart — только regex ^\\d+(-\\d+)?$. Битое значение снимает ПОЛЕ с кодом awg_header_invalid (ядро возьмёт дефолтный WG-header, и он не совпадёт с сервером). Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
+        "impl": "AWG magic header: uint32 ИЛИ строка-диапазон \"lo-hi\" (AWG 2.0, ядро >= lx.6; эмитится строкой). Порядок границ нормализует РЕЕСТР (normalize range_order), тихо: своп смысла диапазона не меняет; при overlap h1-h4 узел дропается связью реестра ranges_disjoint с кодом awg_headers_overlap — прежде рукописный (удалённый) awgHeaderOverlap ронял его молча (находка №8 LEGACY_AUDIT, контракт 1.1.11); Dart — только regex ^\\d+(-\\d+)?$. Битое значение снимает ПОЛЕ с кодом awg_header_invalid (ядро возьмёт дефолтный WG-header, и он не совпадёт с сервером). Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "h2": {
         "type": "int",
@@ -951,7 +951,7 @@
           }
         },
         "param_order": "alphabetical",
-        "impl": "Секция обратного хода у wireguard появилась вместе с движком эмита (SPEC 133): рукописный эмиттер shareuri_wireguard.go писал Scheme \"wireguard\" и для AWG-узла, и это поведение сохранено. form_from по $kind: написание `awg://` остаётся на случай «род объявлен, awg-полей в теле не осталось» — иначе род теряется на круге (MAPPER_ENGINE.md, «Критерий для эмиссии»); сегодня все ветки ведут в `wireguard`, потому что род несут сами параметры, и отдельного написания живым узлам не нужно. refuse_when peers>1: ссылка выражает ОДНОГО пира, и узел с несколькими выразить ею нельзя — прежний рукописный эмиттер тоже отказывал (ErrShareURINotSupported). Отказ объявлен данными, а не проверкой в коде: «сколько сущностей влезает в ссылку» есть свойство ФОРМАТА схемы.",
+        "impl": "Секция обратного хода у wireguard появилась вместе с движком эмита (SPEC 133): прежний рукописный эмиттер (удалён) писал Scheme \"wireguard\" и для AWG-узла, и это поведение сохранено. form_from по $kind: написание `awg://` остаётся на случай «род объявлен, awg-полей в теле не осталось» — иначе род теряется на круге (MAPPER_ENGINE.md, «Критерий для эмиссии»); сегодня все ветки ведут в `wireguard`, потому что род несут сами параметры, и отдельного написания живым узлам не нужно. refuse_when peers>1: ссылка выражает ОДНОГО пира, и узел с несколькими выразить ею нельзя — прежний рукописный эмиттер тоже отказывал (ErrShareURINotSupported). Отказ объявлен данными, а не проверкой в коде: «сколько сущностей влезает в ссылку» есть свойство ФОРМАТА схемы.",
         "refuse_when": [
           {
             "path": "peers",
@@ -995,7 +995,7 @@
             "on_extra": {
               "code": "wgconf_extra_peer_dropped"
             },
-            "impl": "Узел sing-box — это ОДИН peer, и вторая [Peer] в него не помещается по построению. Прежний путь брал ключи только первой и отбрасывал остальные МОЛЧА (node_parser_amnezia.go:495), движковый parseINI сливал вторую с первой (ключи второй перезаписывали ключи первой) — три разных поведения на одном месте, пока решение жило в коде. Норма: первая становится узлом, повторы отброшены с кодом."
+            "impl": "Узел sing-box — это ОДИН peer, и вторая [Peer] в него не помещается по построению. Прежний путь брал ключи только первой и отбрасывал остальные МОЛЧА (прежний разбор профиля vpn://), движковый parseINI сливал вторую с первой (ключи второй перезаписывали ключи первой) — три разных поведения на одном месте, пока решение жило в коде. Норма: первая становится узлом, повторы отброшены с кодом (core/config/linkmap/detect.go:parseINIDialect)."
           }
         },
         "impl": "КАК читать ini, а не что куда класть. Значения не трогаем (value_case preserve): Id маскировки — это домен, и регистр в нём значим. inline_comments=false, потому что у wg-quick \"#\" законен ВНУТРИ значения: имя узла «US-FREE#137» провайдеры пишут именно так, и резать хвост по маркеру нельзя."
@@ -1717,7 +1717,7 @@
       "kind": "spelling",
       "desc_en": "Panels write the same key in all four base64 spellings; the core decodes these fields with std base64 only.",
       "desc_ru": "Панели пишут один и тот же ключ во всех четырёх написаниях base64; ядро декодирует эти поля только std-base64.",
-      "impl": "core/config/subscription/node_parser_wireguard.go:normalizeWGKey, wgconf_text.go, node_parser_amnezia.go. Маппер ТОЛЬКО переводит написание и НИЧЕГО не решает о годности: ключ, который не декодируется в 32 байта, он переносит как есть, и судит его реестр (private_key / peers[].public_key / peers[].pre_shared_key, format base64_32, on_invalid drop_node wg_key_invalid). Прежде проверка стояла в парсере, роняла узел МОЛЧА и на входе singbox не работала вовсе — находка №4 LEGACY_AUDIT, решение владельца 19.09.2026."
+      "impl": "core/config/nodeflow/coerce.go:normalize (режим base64_std, объявленный normalize у body.fields.private_key, peers[].public_key, peers[].pre_shared_key) — на всех входах, включая singbox; прежний рукописный normalizeWGKey снят. Маппер ТОЛЬКО переводит написание и НИЧЕГО не решает о годности: ключ, который не декодируется в 32 байта, он переносит как есть, и судит его реестр (private_key / peers[].public_key / peers[].pre_shared_key, format base64_32, on_invalid drop_node wg_key_invalid). Прежде проверка стояла в парсере, роняла узел МОЛЧА и на входе singbox не работала вовсе — находка №4 LEGACY_AUDIT, решение владельца 19.09.2026."
     },
     {
       "id": "bare_ip_gets_prefix",
@@ -1726,23 +1726,16 @@
       "kind": "spelling",
       "desc_en": "wg-quick config files write single addresses without a prefix length; the core field is a CIDR.",
       "desc_ru": "Файлы wg-quick пишут одиночные адреса без длины префикса; поле ядра — CIDR.",
-      "impl": "core/config/subscription/node_parser_wireguard.go, wgconf_text.go."
+      "impl": "core/config/nodeflow/coerce.go:normalize (режим cidr_prefix, объявленный normalize у body.fields.address и peers[].allowed_ips) — на всех входах; прежний рукописный normalizeWGPrefixes снят."
     }
   ],
   "refs": {
     "go": [
-      "core/config/subscription/node_parser_core.go:260-270",
-      "core/config/subscription/node_parser_wireguard.go:18",
-      "core/config/subscription/node_parser_wireguard.go:268",
-      "core/config/subscription/node_parser_wireguard.go:337-353",
-      "core/config/subscription/node_parser_wireguard.go:381",
-      "core/config/subscription/node_parser_wireguard.go:435",
-      "core/config/subscription/node_parser_wireguard.go:462",
-      "core/config/subscription/node_parser_wireguard.go:505",
-      "core/config/subscription/shareuri_wireguard.go:17",
-      "core/config/subscription/singbox_import.go:222-242",
-      "core/config/subscription/singbox_import.go:326-329",
-      "core/config/outbound_generator.go:672"
+      "core/config/subscription/node_parser_engine.go:ParseWGConfByEngine",
+      "core/config/subscription/wgconf_text.go:ConvertWGConfText",
+      "core/config/subscription/share_uri.go:ShareURIFromWireGuardEndpoint",
+      "core/config/subscription/node_parser_amnezia.go:ParseAmneziaVPNLinkAll",
+      "core/config/subscription/awg3.go:HasAWG3Fields"
     ],
     "dart": [
       "app/lib/services/parser/uri_parsers/wireguard_parser.dart:8",
@@ -1912,7 +1905,7 @@
         },
         "desc_en": "Tunnel MTU in bytes.",
         "desc_ru": "MTU туннеля в байтах.",
-        "impl": "uint32, дефолт ядра 1408; при s4 > 0 дефолт 1280. Ядро предупреждает при mtu > 1492-60-s4. У AmneziaWG-узлов слишком большой mtu даёт «sendmsg: message too long» при успешном рукопожатии (память awg-mtu-too-high): рукопожатие проходит, данные не идут. Потолок 1280 для ЛЮБОГО AmneziaWG-узла — решение владельца 05.09.2026; условие «узел AWG» читается ДВУМЯ способами через ИЛИ. Первый — `source_kind`: род объявил ВХОД (`kind_when` маппера по написанию `awg://`), и это единственный способ узнать род, когда ни одно awg-поле не уцелело: негодные значения снимает правило поля, и к проверке потолка тело становится неотличимо от обычного WireGuard, хотя протокол автор просил AmneziaWG (кейсы awg_bad_numeric_skipped, awg_jc_invalid_dropped — в теле только mtu). Второй — прежний `any_set` по awg-ключам корня (тот же набор, что был у hasAWGParams/hasAWG3Params в Go); он остаётся НАВСЕГДА, потому что у входа `singbox` рода от входа нет вовсе и судить можно только по телу. Условие смотрит на НАЛИЧИЕ ключа, а не на непустоту: jc=0 — законное «мусор выключен» у настоящего AWG-узла (кейс awg_jc_zero_explicit). Род переживает перезапуск наравне с body_source: пересчёт кодов идёт по сохранённому телу без повторного разбора ссылки, поэтому род лежит в Origin (launcher-only расширение), у старых узлов выводится перепарсом Origin.Raw, а иначе работает any_set — contract/docs/MAPPER_ENGINE.md, «Контекст санитайзера: body_source + kind». Прежде правило жило кодом в парсере ссылки (awgMaxMTU в node_parser_wireguard.go) и потому НЕ применялось к телу из sing-box-импорта — расхождение входов, находка №5 LEGACY_AUDIT; с контрактом 1.1.5 оно правило реестра. ИСКЛЮЧЕНИЕ ПО ВХОДУ (решение владельца 18.09.2026): на входе `singbox` тело написано в собственной форме ядра человеком или подпиской — значение сохраняется, узел получает info-код awg_mtu_high; на прочих входах (ссылка wg/awg, .conf, awg://base64, форма AWG) значение заменяется на 1280 с кодом awg_mtu_clamped. Парность входов здесь нарушена НАМЕРЕННО (DRIFT §7.23). Подстановка 1280 при отсутствии mtu кода НЕ даёт (это дефолт, а не замена) и действует на ВСЕХ входах, включая singbox. Plain WG правило не трогает: без awg-ключей mtu не эмитится, ядро берёт свой 1408."
+        "impl": "uint32, дефолт ядра 1408; при s4 > 0 дефолт 1280. Ядро предупреждает при mtu > 1492-60-s4. У AmneziaWG-узлов слишком большой mtu даёт «sendmsg: message too long» при успешном рукопожатии (память awg-mtu-too-high): рукопожатие проходит, данные не идут. Потолок 1280 для ЛЮБОГО AmneziaWG-узла — решение владельца 05.09.2026; условие «узел AWG» читается ДВУМЯ способами через ИЛИ. Первый — `source_kind`: род объявил ВХОД (`kind_when` маппера по написанию `awg://`), и это единственный способ узнать род, когда ни одно awg-поле не уцелело: негодные значения снимает правило поля, и к проверке потолка тело становится неотличимо от обычного WireGuard, хотя протокол автор просил AmneziaWG (кейсы awg_bad_numeric_skipped, awg_jc_invalid_dropped — в теле только mtu). Второй — прежний `any_set` по awg-ключам корня (тот же набор, что был у hasAWGParams/hasAWG3Params в Go); он остаётся НАВСЕГДА, потому что у входа `singbox` рода от входа нет вовсе и судить можно только по телу. Условие смотрит на НАЛИЧИЕ ключа, а не на непустоту: jc=0 — законное «мусор выключен» у настоящего AWG-узла (кейс awg_jc_zero_explicit). Род переживает перезапуск наравне с body_source: пересчёт кодов идёт по сохранённому телу без повторного разбора ссылки, поэтому род лежит в Origin (launcher-only расширение), у старых узлов выводится перепарсом Origin.Raw, а иначе работает any_set — contract/docs/MAPPER_ENGINE.md, «Контекст санитайзера: body_source + kind». Прежде правило жило кодом в парсере ссылки (прежний awgMaxMTU, удалён вместе с рукописным парсером wireguard) и потому НЕ применялось к телу из sing-box-импорта — расхождение входов, находка №5 LEGACY_AUDIT; с контрактом 1.1.5 оно правило реестра. ИСКЛЮЧЕНИЕ ПО ВХОДУ (решение владельца 18.09.2026): на входе `singbox` тело написано в собственной форме ядра человеком или подпиской — значение сохраняется, узел получает info-код awg_mtu_high; на прочих входах (ссылка wg/awg, .conf, awg://base64, форма AWG) значение заменяется на 1280 с кодом awg_mtu_clamped. Парность входов здесь нарушена НАМЕРЕННО (DRIFT §7.23). Подстановка 1280 при отсутствии mtu кода НЕ даёт (это дефолт, а не замена) и действует на ВСЕХ входах, включая singbox. Plain WG правило не трогает: без awg-ключей mtu не эмитится, ядро берёт свой 1408."
       },
       "address": {
         "type": "string_array",
@@ -1925,7 +1918,7 @@
         "required": true,
         "desc_en": "Addresses assigned to the tunnel interface.",
         "desc_ru": "Адреса, назначенные интерфейсу туннеля.",
-        "impl": "listable CIDR; json-тег без omitempty. Голый адрес достраивается маской-хостом (10.0.0.2 → 10.0.0.2/32, IPv6 → /128): ядро требует префикс, а подписки пишут адрес голым. Прежде операция жила рукописным normalizeWGPrefixes (node_parser_wireguard.go) и потому не работала на входе singbox; normalize реестра действует на всех входах (SPEC 133 §6.0)."
+        "impl": "listable CIDR; json-тег без omitempty. Голый адрес достраивается маской-хостом (10.0.0.2 → 10.0.0.2/32, IPv6 → /128): ядро требует префикс, а подписки пишут адрес голым. Прежде операция жила рукописным normalizeWGPrefixes (удалён) и потому не работала на входе singbox; normalize реестра действует на всех входах (SPEC 133 §6.0; core/config/nodeflow/coerce.go:normalize)."
       },
       "private_key": {
         "type": "string",
@@ -1959,7 +1952,7 @@
         ],
         "desc_en": "Local UDP port the tunnel listens on.",
         "desc_ru": "Локальный порт UDP, который слушает туннель.",
-        "impl": "Конфликт с detour — «`listen_port` is conflict with `detour`» (protocol/wireguard/endpoint.go:110); код detour_with_listen_port."
+        "impl": "Конфликт с detour — «`listen_port` is conflict with `detour`» (protocol/wireguard/endpoint.go NewEndpoint); код detour_with_listen_port."
       },
       "peers": {
         "type": "array",
@@ -2073,7 +2066,7 @@
               },
               "desc_en": "Three reserved bytes prepended to packets.",
               "desc_ru": "Три резервных байта в начале пакетов.",
-              "impl": "[]uint8 ровно из 3 элементов, иначе ошибка. Тип int_array: значения ЧИСЛА (Go parseReservedTriplet → []int), string_array ронял поле целиком (SPEC 131 W2c). Границы 0..255 относятся к ЭЛЕМЕНТУ (тип int_array): reserved — три БАЙТА идентификатора устройства WARP, и значение вне байта ядро припишет к каждому пакету. Прежде диапазон судил рукописный parseReservedTriplet на разборе ссылки, то есть не работал ни на теле sing-box, ни на .conf."
+              "impl": "[]uint8 ровно из 3 элементов, иначе ошибка. Тип int_array: значения ЧИСЛА (Go: core/config/nodeflow/coerce.go:asIntArray → []int), string_array ронял поле целиком (SPEC 131 W2c). Границы 0..255 относятся к ЭЛЕМЕНТУ (тип int_array): reserved — три БАЙТА идентификатора устройства WARP, и значение вне байта ядро припишет к каждому пакету. Прежде диапазон судил рукописный parseReservedTriplet на разборе ссылки, то есть не работал ни на теле sing-box, ни на .conf."
             }
           },
           "desc_en": "One WireGuard peer.",
@@ -2200,7 +2193,7 @@
         "level": "awg",
         "desc_en": "Junk prepended to the handshake initiation packet.",
         "desc_ru": "Мусор перед пакетом инициации рукопожатия.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Мусор перед пакетом инициации рукопожатия. min_when: при заданном header_protection_key значение не ниже 12 — nonce шифра заголовка берётся из первых 12 байт паддинга, и ядро отвергает такую пару на загрузке ВСЕГО конфига (docs-lx §2.9/§2.10), поэтому action=drop_node, а не снятие поля. absent_is_zero: незаданный паддинг ядро читает как 0, и «ключ есть, паддинга нет» так же фатально, как «ключ + паддинг 5». Прежде правило жило рукописным validateAWG3 в awg3.go, роняло узел МОЛЧА и не работало на входе singbox (находка №8 LEGACY_AUDIT, контракт 1.1.11)."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Мусор перед пакетом инициации рукопожатия. min_when: при заданном header_protection_key значение не ниже 12 — nonce шифра заголовка берётся из первых 12 байт паддинга, и ядро отвергает такую пару на загрузке ВСЕГО конфига (docs-lx §2.9/§2.10), поэтому action=drop_node, а не снятие поля. absent_is_zero: незаданный паддинг ядро читает как 0, и «ключ есть, паддинга нет» так же фатально, как «ключ + паддинг 5». Прежде правило жило рукописным validateAWG3 (удалён), роняло узел МОЛЧА и не работало на входе singbox (находка №8 LEGACY_AUDIT, контракт 1.1.11)."
       },
       "s2": {
         "type": "int",
@@ -2374,7 +2367,7 @@
         ],
         "desc_en": "First custom junk packet.",
         "desc_ru": "Первый пользовательский мусорный пакет.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Конфликтует с маскировкой (id/ip/ib) — «masquerade conflicts with an explicit i1» (transport/wireguard/masque_awg.go:73)."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Конфликтует с маскировкой (id/ip/ib) — «masquerade conflicts with an explicit i1» (sing-box-lx transport/wireguard/masque_awg.go masqueI1)."
       },
       "i2": {
         "type": "string",
@@ -2390,7 +2383,7 @@
         ],
         "desc_en": "Second custom junk packet.",
         "desc_ru": "Второй пользовательский мусорный пакет.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Конфликтует с ip=sip — «sip masquerade fills i2» (device_awg.go:108)."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Конфликтует с ip=sip — «sip masquerade fills i2» (sing-box-lx transport/wireguard/device_awg.go awgIpcLines)."
       },
       "i3": {
         "type": "string",
@@ -2444,7 +2437,7 @@
         ],
         "desc_en": "Masquerade domain name.",
         "desc_ru": "Домен маскировки.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Обязателен только при ip=quic (становится SNI ClientHello) — правило `requires` у ip (контракт 1.1.58); у dns/sip ядро при пустом id генерирует псевдоимя, stun его не читает (masque_awg.go masqueI1). Заданный id при любом ip проходит строгую LDH-проверку ядра (validateMasqueDomain: метки из [A-Za-z0-9_-] до 63 байт, дефис не с краю, одна завершающая точка допустима) — это `pattern`; иначе отказ всего конфига. Не длиннее 253 байт. Без ip = «ip (masquerade protocol) is required when id/ib is set» (masque_awg.go:78)."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Обязателен только при ip=quic (становится SNI ClientHello) — правило `requires` у ip (контракт 1.1.58); у dns/sip ядро при пустом id генерирует псевдоимя, stun его не читает (sing-box-lx transport/wireguard/masque_awg.go masqueI1). Заданный id при любом ip проходит строгую LDH-проверку ядра (transport/wireguard/masque_awg.go validateMasqueDomain: метки из [A-Za-z0-9_-] до 63 байт, дефис не с краю, одна завершающая точка допустима) — это `pattern`; иначе отказ всего конфига. Не длиннее 253 байт. Без ip = «ip (masquerade protocol) is required when id/ib is set» (transport/wireguard/masque_awg.go masqueI1)."
       },
       "ip": {
         "type": "enum",
@@ -2504,7 +2497,7 @@
         ],
         "desc_en": "Client profile imitated inside the masquerade.",
         "desc_ru": "Профиль клиента, имитируемый внутри маскировки.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Осмыслен ТОЛЬКО при ip=quic, иначе ошибка (masque_awg.go:78)."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Осмыслен ТОЛЬКО при ip=quic, иначе ошибка (sing-box-lx transport/wireguard/masque_awg.go masqueI1)."
       },
       "header_protection_key": {
         "type": "string",
@@ -2526,7 +2519,7 @@
         },
         "desc_en": "Key protecting packet headers.",
         "desc_ru": "Ключ защиты заголовков пакетов.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x: base64 ровно 32 байта (format base64_32) и НЕ все нули — запрет всех нулей выражен pattern'ом: строка из одних 'A' с паддингом и есть 32 нулевых байта, а пустую строку pattern пропускает, её снимает omitAsUnset как «не задано». Негодный ключ роняет УЗЕЛ (on_invalid drop_node, код awg3_header_key_invalid): без верного ключа рукопожатие невозможно, а ядро отвергает такой конфиг ЦЕЛИКОМ. Порог паддинга s1..s4 >= 12 выражен их min_when (код awg3_padding_too_short). Прежде обе проверки жили рукописным validateAWG3 в awg3.go, роняли узел МОЛЧА, и объявленные коды не ставились никогда (находка №8 LEGACY_AUDIT, контракт 1.1.11). Секрет."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x: base64 ровно 32 байта (format base64_32) и НЕ все нули — запрет всех нулей выражен pattern'ом: строка из одних 'A' с паддингом и есть 32 нулевых байта, а пустую строку pattern пропускает, её снимает omitAsUnset как «не задано». Негодный ключ роняет УЗЕЛ (on_invalid drop_node, код awg3_header_key_invalid): без верного ключа рукопожатие невозможно, а ядро отвергает такой конфиг ЦЕЛИКОМ. Порог паддинга s1..s4 >= 12 выражен их min_when (код awg3_padding_too_short). Прежде обе проверки жили рукописным validateAWG3 (удалён), роняли узел МОЛЧА, и объявленные коды не ставились никогда (находка №8 LEGACY_AUDIT, контракт 1.1.11). Секрет."
       },
       "content_padding_addition": {
         "type": "awg_range",
@@ -2707,7 +2700,7 @@
         "code": "awg_headers_overlap",
         "desc_en": "The magic header ranges h1-h4 must not overlap: the core tells message types apart by them.",
         "desc_ru": "Диапазоны magic-заголовков h1-h4 не должны пересекаться: по ним ядро различает типы сообщений.",
-        "impl": "Свойство НАБОРА, а не пары «поле и сосед», поэтому conflicts/requires его не выражают: виноват может быть любой из четырёх, и снятие одного пару не развело бы. Незаданный заголовок участвует своим дефолтом ядра (h1=1 … h4=4) — отсюда defaults. Ядро принимает такой endpoint на `sing-box check`, но отвергает на конфигурировании устройства («headers must not overlap», submodules/wireguard-go/device/uapi.go), то есть падает ВЕСЬ конфиг, а не один узел — потому drop_node. Прежде правило жило рукописным awgHeaderOverlap в node_parser_wireguard.go, роняло узел МОЛЧА и не работало на входе singbox (находка №8 LEGACY_AUDIT, контракт 1.1.11)."
+        "impl": "Свойство НАБОРА, а не пары «поле и сосед», поэтому conflicts/requires его не выражают: виноват может быть любой из четырёх, и снятие одного пару не развело бы. Незаданный заголовок участвует своим дефолтом ядра (h1=1 … h4=4) — отсюда defaults. Ядро принимает такой endpoint на `sing-box check`, но отвергает на конфигурировании устройства («headers must not overlap», sing-box-lx submodules/wireguard-go/device/uapi.go), то есть падает ВЕСЬ конфиг, а не один узел — потому drop_node. Прежде правило жило рукописным awgHeaderOverlap (удалён), роняло узел МОЛЧА и не работало на входе singbox (находка №8 LEGACY_AUDIT, контракт 1.1.11)."
       },
       {
         "kind": "cooccurrence",
@@ -2734,7 +2727,7 @@
         "code": "awg3_random_trailers_wide_headers",
         "desc_en": "Random trailers together with a very wide magic-header range cost upload speed against reference-implementation servers.",
         "desc_ru": "Случайные хвосты вместе с очень широким диапазоном magic-заголовков стоят скорости отдачи на серверах референсной реализации.",
-        "impl": "Свойство ПАРЫ настроек, ни одна из которых не битая, поэтому ни on_invalid, ни conflicts тут не подходят: узел живёт, менять нечего, человеку сообщается цена сочетания. Условие разнородное (булев флаг + ширина диапазона), отсюда kind cooccurrence, а не ranges_disjoint. Порог: ширина/2^32 на каждый data-пакет перестаёт быть пренебрежимой при hi-lo >= 65536 (docs-lx §2.10, SPEC 123 §91) — в записи это `gt: 65535`, потому что оператор строгий, а правило кода нестрогое (>=). Диапазоном считается только значение вида «lo-hi»: заголовок-ЧИСЛО ширины не имеет и условие не выполняет. Прежде правило жило рукописным awg3RandomTrailersWithWideHeaders (awg3.go:256) и потому не работало на входе singbox — тот же класс, что находка №8 LEGACY_AUDIT; связь реестра снимает и это расхождение входов. severity здесь НЕ дублируется: info несёт сам код (warnings.json)."
+        "impl": "Свойство ПАРЫ настроек, ни одна из которых не битая, поэтому ни on_invalid, ни conflicts тут не подходят: узел живёт, менять нечего, человеку сообщается цена сочетания. Условие разнородное (булев флаг + ширина диапазона), отсюда kind cooccurrence, а не ranges_disjoint. Порог: ширина/2^32 на каждый data-пакет перестаёт быть пренебрежимой при hi-lo >= 65536 (docs-lx §2.10, SPEC 123 §91) — в записи это `gt: 65535`, потому что оператор строгий, а правило кода нестрогое (>=). Диапазоном считается только значение вида «lo-hi»: заголовок-ЧИСЛО ширины не имеет и условие не выполняет. Прежде правило жило рукописным awg3RandomTrailersWithWideHeaders (удалён) и потому не работало на входе singbox — тот же класс, что находка №8 LEGACY_AUDIT; связь реестра снимает и это расхождение входов. severity здесь НЕ дублируется: info несёт сам код (warnings.json)."
       }
     ],
     "build_tag": "with_wireguard",

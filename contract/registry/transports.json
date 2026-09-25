@@ -12,7 +12,7 @@
           "maps_to": "transport.path",
           "desc_en": "WebSocket request path.",
           "desc_ru": "Путь запроса WebSocket.",
-          "impl": "Может нести хвост '?ed=N' (Xray WS 0-RTT, issue #96): хвост ВСЕГДА срезается из path (иначе 404), см. ed. Dart дополнительно снимает остаточное двойное percent-кодирование (decodeResidualPercent §320, до 2 проходов) — Go residual-decode пути не делает (новое расхождение вне §9). Дефолт path: Dart '/', Go — ключ не пишется."
+          "impl": "Может нести хвост '?ed=N' (Xray WS 0-RTT, issue #96): хвост ВСЕГДА срезается из path (иначе 404), см. ed. Dart дополнительно снимает остаточное двойное percent-кодирование (decodeResidualPercent §320, до 2 проходов) — Go делает то же общим движком по decode_extra записи blocks.uri.ws.path (mode path, 2 прохода); прежнее расхождение (рукописный парсер residual-decode пути не делал) закрыто. Дефолт path: Dart '/', Go — ключ не пишется."
         },
         "host": {
           "type": "string",
@@ -95,7 +95,7 @@
           "impl": "В sing-box host — СПИСОК строк (не заголовок): оба заворачивают одиночное значение в [host]."
         }
       },
-      "impl": "Три пути к transport 'http': (1) type=http; (2) type=h2 — vmess net=h2 (оба, + принудительный TLS) и Xray network h2 (оба), но в URI-query vless/trojan ветка 'h2' есть ТОЛЬКО у Dart (host fallback sni → defaultHost) — Go молча теряет транспорт (новое расхождение вне §9 PLAN); (3) type=tcp|raw + headerType=http — Xray HTTP-камуфляж (оба).",
+      "impl": "Три пути к transport 'http': (1) type=http; (2) type=h2 — vmess net=h2 (оба, + принудительный TLS) и Xray network h2 (оба), но в URI-query vless/trojan ветка 'h2' есть ТОЛЬКО у Dart (host fallback sni → defaultHost) — Go молча теряет транспорт (новое расхождение вне §9 PLAN); (3) type=tcp|raw + headerType=http — Xray HTTP-камуфляж: с D133-58 (24.09.2026) он в transport http НЕ переводится — узел отбраковывается кодом transport_header_unsupported (записи blocks.uri.$selector.headerType и blocks.xray.raw.header): у ядра http — это HTTP/2, другой протокол на проводе.",
       "maps_to": "transport.type"
     },
     "httpupgrade": {
@@ -108,7 +108,7 @@
           "maps_to": "transport.path",
           "desc_en": "HTTP Upgrade request path.",
           "desc_ru": "Путь запроса HTTP Upgrade.",
-          "impl": "Early data у httpupgrade в sing-box НЕТ: хвост '?ed=N' срезается, значение отбрасывается. РАСХОЖДЕНИЕ (новое, вне §9): Dart срезает хвост во всех ветках; Go — только в Xray-JSON ветке (splitWSEarlyData), а в URI-ветке uriTransportFromQuery пишет path как есть — хвост уедет в конфиг и даст 404."
+          "impl": "Early data у httpupgrade в sing-box НЕТ: хвост '?ed=N' срезается, значение отбрасывается. Прежнее РАСХОЖДЕНИЕ (вне §9) закрыто: Dart срезает хвост во всех ветках; Go прежде срезал его только в Xray-JSON ветке (удалённый splitWSEarlyData), а в URI-ветке (удалённый uriTransportFromQuery) писал path как есть — хвост уезжал в конфиг и давал 404. Сейчас хвост срезает extract записей path блоков uri/httpupgrade и xray/httpupgrade на всех входах."
         },
         "host": {
           "type": "string",
@@ -119,7 +119,7 @@
           "maps_to": "transport.host",
           "desc_en": "Host of the HTTP Upgrade request.",
           "desc_ru": "Host запроса HTTP Upgrade.",
-          "impl": "host — строка (не список, в отличие от http). Fallback host→sni в URI-ветке есть только у Dart; у Go для vmess — host→sni, для vless/trojan — только host (мелкое расхождение)."
+          "impl": "host — строка (не список, в отличие от http). Fallback host→sni в URI-ветке есть только у Dart; у Go — только host у всех схем, включая vmess (запись host блока uri/httpupgrade; прежний рукописный vmess-парсер давал host→sni) — мелкое расхождение."
         }
       },
       "impl": "HTTP/1.1 Upgrade; ОТДЕЛЬНЫЙ wire-протокол от xhttp (SPEC 071 исправил историческую подмену). Плоские ed/eh здесь не читаются намеренно (§303/§320). Go share-URI vmess пишет httpupgrade как net='ws' — см. vmess.json emit.",
@@ -146,7 +146,7 @@
           "maps_to": "transport.host",
           "desc_en": "Host of the XHTTP request.",
           "desc_ru": "Host запроса XHTTP.",
-          "impl": "Fallback host→sni: Dart — всегда; Go — только в vmess-ветке (URI vless/trojan — только host) — мелкое расхождение канона. Берётся ТОЛЬКО из плоского параметра — одноимённый ключ в extra игнорируется (D-097)."
+          "impl": "Fallback host→sni: Dart — всегда; Go — ни у одной схемы (запись host блока uri/xhttp читает только host; прежде host→sni был в рукописной vmess-ветке) — мелкое расхождение канона. Берётся ТОЛЬКО из плоского параметра — одноимённый ключ в extra игнорируется (D-097)."
         },
         "mode": {
           "type": "enum",
@@ -212,7 +212,7 @@
           "maps_to": "transport.session_placement",
           "desc_en": "Where the session identifier is carried.",
           "desc_ru": "Где переносится идентификатор сессии.",
-          "impl": "Оба читают; валидация enum: Dart — на эмите с XhttpParamResetWarning (§217), Go — passthrough, валидирует ядро (расхождение политики, не набора полей)."
+          "impl": "Оба читают и оба валидируют enum: Dart — на эмите с XhttpParamResetWarning (§217), Go — правилом body.variants.xhttp.fields.session_placement (on_invalid drop, код xhttp_param_reset), исполнение — core/config/nodeflow/sanitize.go:Sanitize; прежде Go пропускал значение ядру как есть."
         },
         "session_key": {
           "type": "string",
@@ -269,7 +269,7 @@
           "maps_to": "transport.uplink_data_placement",
           "desc_en": "Where uplink data is carried.",
           "desc_ru": "Где переносятся данные восходящего потока.",
-          "impl": "Оба; header валиден только в packet-up — ядро отвергает ВЕСЬ конфиг (`uplink_data_placement can be header only in packet-up mode`). Норма §416/§217, обе стороны, в точке эмиссии узла с warning: header при ОТСУТСТВУЮЩЕМ режиме → дописать mode=packet-up (кейс xhttp_uplink_header_placement_adds_packet_up); header при ЯВНОМ другом режиме → снять placement, режим не трогать (кейс xhttp_uplink_header_placement_reset); packet-up — не трогать. Go: xhttpGuardUplinkPlacement."
+          "impl": "Оба; header валиден только в packet-up — ядро отвергает ВЕСЬ конфиг (`uplink_data_placement can be header only in packet-up mode`). Норма §416/§217, обе стороны, в точке эмиссии узла с warning: header при ОТСУТСТВУЮЩЕМ режиме → дописать mode=packet-up (кейс xhttp_uplink_header_placement_adds_packet_up); header при ЯВНОМ другом режиме → снять placement, режим не трогать (кейс xhttp_uplink_header_placement_reset); packet-up — не трогать. Go — данными: записи uplinkDataPlacement/uplinkDataPlacementOther блоков uri/xray (implies packet-up с кодом xhttp_mode_forced_packet_up, on_when_false → xhttp_param_reset), на входе singbox — default_when у body.variants.xhttp.fields.mode и requires у uplink_data_placement; исполнение — core/config/linkmap/exec.go:Exec и core/config/nodeflow/sanitize.go:Sanitize (прежний рукописный xhttpGuardUplinkPlacement удалён)."
         },
         "uplink_data_key": {
           "type": "string",
@@ -425,7 +425,7 @@
           "maps_to": "transport.no_sse_header",
           "desc_en": "Do not send the SSE header.",
           "desc_ru": "Не отправлять заголовок SSE.",
-          "impl": "SPEC 102: только Go — новое расхождение вне §9. NB: Go share-URI эмиттер transportToQuery это поле (и sc_max_buffered_posts, и xmux) НЕ возвращает в ссылку — внутренняя эмиттер/парсер-асимметрия Go (память emitter-parser-pairing)."
+          "impl": "SPEC 102: только Go — новое расхождение вне §9. NB (устарело): прежний Go-эмиттер share-URI (удалённый transportToQuery) это поле (и sc_max_buffered_posts, и xmux) в ссылку не возвращал — асимметрия эмиттер/парсер (память emitter-parser-pairing). Сейчас обратный ход ведёт общий эмиттер core/config/linkmap/emit.go:Emit по тем же записям blocks.uri.xhttp (noSSEHeader, scMaxBufferedPosts, члены xmux), что и чтение: round_trip у них не снят."
         },
         "xmux": {
           "type": "string",
@@ -437,10 +437,10 @@
           "maps_to": "transport.xmux",
           "desc_en": "XHTTP connection multiplexing settings.",
           "desc_ru": "Настройки мультиплексирования соединений XHTTP.",
-          "impl": "Вложенный объект мультиплексора Xray: max_concurrency/maxConcurrency, max_connections/maxConnections, c_max_reuse_times/cMaxReuseTimes, h_max_request_times/hMaxRequestTimes, h_max_reusable_secs/hMaxReusableSecs (строки-диапазоны) + h_keep_alive_period/hKeepAlivePeriod (int). Только Go (SPEC 102 R7 снял из «вне scope» в рабочей ветке; эмит — outbound_jsonbuilder.go:159-176); Dart не читает — новое расхождение вне §9. В share-URI Go xmux не кодирует."
+          "impl": "Вложенный объект мультиплексора Xray: max_concurrency/maxConcurrency, max_connections/maxConnections, c_max_reuse_times/cMaxReuseTimes, h_max_request_times/hMaxRequestTimes, h_max_reusable_secs/hMaxReusableSecs (строки-диапазоны) + h_keep_alive_period/hKeepAlivePeriod (int). Только Go (SPEC 102 R7 снял из «вне scope» в рабочей ветке; эмит в тело — core/config/nodeflow/emit.go:Emit по body.variants.xhttp.fields.xmux); Dart не читает — новое расхождение вне §9. В share-URI Go члены xmux объявлены записями maxConcurrency… блока blocks.uri.xhttp и пишутся общим эмиттером (core/config/linkmap/emit.go:Emit) плоскими параметрами; прежний эмиттер xmux не кодировал."
         }
       },
-      "impl": "Xray splithttp → sing-box-lx 'xhttp' (with_xhttp, SPEC 071). ВЫРАЖЕНО ДАННЫМИ (контракт 1.1.35, прежняя проза устарела): алиас живёт в $selector.network.value_map ('splithttp' → 'xhttp'), а контейнер — вторым написанием в source каждой записи xhttp ('json.streamSettings.splithttpSettings.*' рядом с 'xhttpSettings'). Рукописной ветки в коде нет ни у кого: секция читается общим движком. Прежде здесь было написано «читает ТОЛЬКО Go» со ссылкой на xray_outbound_convert.go:325-336 — тот конвертер снят целиком (контракт 1.1.28), и запись описывала мир, которого уже нет: LxBox читал её как «у нас этого не будет» и держал своё расхождение живым. Что проверить стороне: network 'splithttp' обязан давать transport.type 'xhttp' с полями из splithttpSettings, а не plain tcp. ОТЛИЧИЕ ОТ HTTPUPGRADE: другой wire-протокол (сессии/seq/padding/режимы против простого HTTP/1.1 Upgrade), другой набор полей, отдельный singbox_type; на стоковом ядре без with_xhttp конфиг с xhttp отвергается. Сверено с xhttp_v2_test.go и §127 LxBox / SPEC 002 v2.",
+      "impl": "Xray splithttp → sing-box-lx 'xhttp' (with_xhttp, SPEC 071). ВЫРАЖЕНО ДАННЫМИ (контракт 1.1.35, прежняя проза устарела): алиас живёт в $selector.network.value_map ('splithttp' → 'xhttp'), а контейнер — вторым написанием в source каждой записи xhttp ('json.streamSettings.splithttpSettings.*' рядом с 'xhttpSettings'). Рукописной ветки в коде нет ни у кого: секция читается общим движком. Прежде здесь было написано «читает ТОЛЬКО Go» со ссылкой на ветку splithttp рукописного конвертера Xray — тот конвертер снят целиком (контракт 1.1.28), и запись описывала мир, которого уже нет: LxBox читал её как «у нас этого не будет» и держал своё расхождение живым. Что проверить стороне: network 'splithttp' обязан давать transport.type 'xhttp' с полями из splithttpSettings, а не plain tcp. ОТЛИЧИЕ ОТ HTTPUPGRADE: другой wire-протокол (сессии/seq/padding/режимы против простого HTTP/1.1 Upgrade), другой набор полей, отдельный singbox_type; на стоковом ядре без with_xhttp конфиг с xhttp отвергается. Сверено с core/config/subscription/xhttp_v2_test.go и §127 LxBox / SPEC 002 v2.",
       "maps_to": "transport.type"
     }
   },
@@ -457,7 +457,7 @@
       "kind": "split",
       "desc_en": "Xray hides WebSocket early data in the path; sing-box needs two separate fields, and a node left unconverted answers 404 at runtime while `check` still passes.",
       "desc_ru": "Xray прячет ws early data в путь; sing-box требует два раздельных поля, а неконвертированный узел даёт 404 в рантайме при проходящем `check`.",
-      "impl": "core/config/subscription/node_parser_transport.go:748 splitWSEarlyData + :780 applyWSEarlyData. Один параметр ссылки → два поля тела (issue #96)."
+      "impl": "Данные: extract записей path блоков uri/ws и xray/ws — группа ed уходит в transport.max_early_data (у ссылки с кодом ws_early_data_converted), implies дописывает early_data_header_name=Sec-WebSocket-Protocol (implicit); плоская пара ed/eh — записи ed/eh блока uri/ws. Исполнение — core/config/linkmap/exec.go:execState.applyExtract; обратный ход — compose записи uri/ws.path, core/config/linkmap/emit.go:emitState.composeValue. Прежде — рукописные splitWSEarlyData/applyWSEarlyData. Один параметр ссылки → два поля тела (issue #96)."
     },
     {
       "id": "transport_name_dialect",
@@ -471,20 +471,18 @@
       "kind": "spelling",
       "desc_en": "Xray and vmess name transports differently from sing-box; the mapper translates the name, not the settings.",
       "desc_ru": "Xray и vmess называют транспорты иначе, чем sing-box; маппер переводит имя, а не настройки.",
-      "impl": "core/config/subscription/node_parser_transport.go:162 uriTransportFromQuery (headerType — :164-167, xhttp/splithttp — :235)."
+      "impl": "Данные: $selector.type блока uri (value_map splithttp → xhttp, tcp/raw/'' → транспорта нет; набор знаемых написаний — when.in), $selector.network блока xray (h2 → http, splithttp → xhttp), запись секции vmess (protocols/vmess.json, h2 → http). headerType=http в http больше НЕ переводится (D133-58): записи $selector.headerType блока uri и raw.header блока xray отбраковывают узел кодом transport_header_unsupported. Исполнение — core/config/linkmap/exec.go:applyValueMapCase и execState.applySets. Прежде — рукописный uriTransportFromQuery."
     }
   ],
   "refs": {
     "go": [
-      "core/config/subscription/node_parser_transport.go:114-192",
-      "core/config/subscription/node_parser_transport.go:206-258",
-      "core/config/subscription/node_parser_transport.go:267-342",
-      "core/config/subscription/node_parser_transport.go:426-468",
-      "core/config/subscription/node_parser_transport.go:487-551",
-      "core/config/subscription/xray_element_engine.go",
-      "core/config/subscription/shareuri_helpers.go:105-196",
-      "core/config/outbound_jsonbuilder.go:21-44",
-      "core/config/outbound_jsonbuilder.go:84-206"
+      "core/config/linkmap/exec.go:Exec",
+      "core/config/linkmap/exec.go:execState.applyExtract",
+      "core/config/linkmap/element.go:ParseElement",
+      "core/config/linkmap/emit.go:Emit",
+      "core/config/linkmap/emit.go:emitState.composeValue",
+      "core/config/nodeflow/sanitize.go:Sanitize",
+      "core/config/nodeflow/emit.go:Emit"
     ],
     "dart": [
       "lib/services/parser/transport.dart:16-96",
@@ -748,7 +746,7 @@
             },
             "desc_en": "XHTTP transfer mode.",
             "desc_ru": "Режим передачи XHTTP.",
-            "impl": "Иное значение = ошибка старта. Коды деградации — xhttp_mode_forced_packet_up, xhttp_param_reset. default_when (контракт 1.1.56, LxBox §546): режим не назван, а uplink_data_placement ∈ {header, cookie} → materialize packet-up с кодом — то же, что делает `implies` записи uplinkDataPlacement в блоках uri/xray, только на входе singbox; без режима пара «header + дефолт auto» роняет ВЕСЬ конфиг ядра (transport/v2rayxhttp/meta.go:115-117). body/auto ядро принимает в любом режиме — им режим не дописывается (решение LxBox/владельца 25.09.2026). Пустая строка placement — «не задано». mode идёт в order раньше uplink_data_placement, поэтому связь `requires … equals: packet-up` у placement уже видит материализованный режим."
+            "impl": "Иное значение = ошибка старта. Коды деградации — xhttp_mode_forced_packet_up, xhttp_param_reset. default_when (контракт 1.1.56, LxBox §546): режим не назван, а uplink_data_placement ∈ {header, cookie} → materialize packet-up с кодом — то же, что делает `implies` записи uplinkDataPlacement в блоках uri/xray, только на входе singbox; без режима пара «header + дефолт auto» роняет ВЕСЬ конфиг ядра (transport/v2rayxhttp/meta.go). body/auto ядро принимает в любом режиме — им режим не дописывается (решение LxBox/владельца 25.09.2026). Пустая строка placement — «не задано». mode идёт в order раньше uplink_data_placement, поэтому связь `requires … equals: packet-up` у placement уже видит материализованный режим."
           },
           "headers": {
             "type": "object",
@@ -895,7 +893,7 @@
             ],
             "desc_en": "Alphabet used to generate session ids.",
             "desc_ru": "Алфавит для генерации идентификаторов сессии.",
-            "impl": "Литеральный ASCII-алфавит ИЛИ имя: hex, HEX, number, alphabet, Alphabet, ALPHABET, base36, BASE36, Base62. Парное с session_length — «session_table and session_length must be set together» (meta.go:220)."
+            "impl": "Литеральный ASCII-алфавит ИЛИ имя: hex, HEX, number, alphabet, Alphabet, ALPHABET, base36, BASE36, Base62. Парное с session_length — «session_table and session_length must be set together» (transport/v2rayxhttp/meta.go)."
           },
           "session_length": {
             "type": "string",
@@ -907,7 +905,7 @@
             ],
             "desc_en": "Length range of the session id.",
             "desc_ru": "Диапазон длины идентификатора сессии.",
-            "impl": "«min-max»; нижняя граница > 0 и len(table)^min > 2^31, иначе ошибка (meta.go:220). Парное с session_table."
+            "impl": "«min-max»; нижняя граница > 0 и len(table)^min > 2^31, иначе ошибка (transport/v2rayxhttp/meta.go). Парное с session_table."
           },
           "uplink_data_placement": {
             "type": "enum",
@@ -940,7 +938,7 @@
             ],
             "desc_en": "Where uplink data is carried.",
             "desc_ru": "Где передаются данные исходящего потока.",
-            "impl": "header и cookie допустимы ТОЛЬКО при mode=packet-up, иначе ошибка старта (transport/v2rayxhttp/meta.go:115-117); body/auto законны в любом режиме. Правило условное по ЗНАЧЕНИЮ соседа И по собственному значению — `requires … equals: packet-up` с `when` по самому полю (контракт 1.1.56, LxBox §546): header/cookie при явном другом режиме → placement снят, режим не тронут, код xhttp_param_reset; режим не назван → его материализует default_when у mode (он раньше в order), и placement остаётся; body/auto — как есть. Та же семантика, что у записей uplinkDataPlacement/uplinkDataPlacementOther в блоках uri/xray (`$value` + `when not_in` + `implies`), теперь и на входе singbox. Безусловный conflicts с transport.mode тут не годился: он убивал рабочую пару packet-up+header (кейс uri/vless/xhttp_extra_empty_mode_keeps_flat)."
+            "impl": "header и cookie допустимы ТОЛЬКО при mode=packet-up, иначе ошибка старта (transport/v2rayxhttp/meta.go); body/auto законны в любом режиме. Правило условное по ЗНАЧЕНИЮ соседа И по собственному значению — `requires … equals: packet-up` с `when` по самому полю (контракт 1.1.56, LxBox §546): header/cookie при явном другом режиме → placement снят, режим не тронут, код xhttp_param_reset; режим не назван → его материализует default_when у mode (он раньше в order), и placement остаётся; body/auto — как есть. Та же семантика, что у записей uplinkDataPlacement/uplinkDataPlacementOther в блоках uri/xray (`$value` + `when not_in` + `implies`), теперь и на входе singbox. Безусловный conflicts с transport.mode тут не годился: он убивал рабочую пару packet-up+header (кейс uri/vless/xhttp_extra_empty_mode_keeps_flat)."
           },
           "uplink_data_key": {
             "type": "string",
@@ -1099,7 +1097,7 @@
               ]
             }
           },
-          "impl": "Набор ЗНАЕМЫХ написаний транспорта. Прежний путь — switch с этими же ветками (node_parser_transport.go:178-262) — на незнакомом значении не возвращал транспорта ВООБЩЕ, и в тело не попадало ничего. Без гейта движок писал незнакомое значение в transport.type как есть, санитайзер снимал его правилом enum и вешал узлу type_invalid: корпус uri/vless/h2_tls ждёт узел БЕЗ transport и БЕЗ кода. h2 в набор не входит намеренно: ветка network==h2 → type:http (node_parser_core.go:838) читает параметр network, то есть принадлежит VMESS, а у vless параметр зовётся type, и значения h2 он не знал. Перевод появится записью секции vmess; общий селектор навязал бы его и vless, изменив тела живых узлов. АЛИАС splithttp → xhttp (контракт 1.1.37): ТЕМ ЖЕ примитивом, что в диалекте xray ($selector.network.value_map). Прежде набор when.in был закрыт без него, и ссылка Xray с `type=splithttp` теряла транспорт МОЛЧА — узел уезжал голым TCP. Рукописный парсер алиаса тоже не знал (switch по типу имел только ветку `xhttp`), так что это не регрессия перехода, а давний дефект обеих реализаций. На ВЫХОДЕ пишется канон `xhttp`: обращение value_map неинъективно (в xhttp ведут два ключа), и emit_as: raw объявляет, что писать значение тела как есть."
+          "impl": "Набор ЗНАЕМЫХ написаний транспорта. Прежний путь — рукописный switch с этими же ветками (удалённый uriTransportFromQuery) — на незнакомом значении не возвращал транспорта ВООБЩЕ, и в тело не попадало ничего. Без гейта движок писал незнакомое значение в transport.type как есть, санитайзер снимал его правилом enum и вешал узлу type_invalid: корпус uri/vless/h2_tls ждёт узел БЕЗ transport и БЕЗ кода. h2 в набор не входит намеренно: ветка network==h2 → type:http прежнего парсера читала параметр network, то есть принадлежит VMESS, а у vless параметр зовётся type, и значения h2 он не знал. Перевод живёт записью секции vmess (protocols/vmess.json); общий селектор навязал бы его и vless, изменив тела живых узлов. АЛИАС splithttp → xhttp (контракт 1.1.37): ТЕМ ЖЕ примитивом, что в диалекте xray ($selector.network.value_map). Прежде набор when.in был закрыт без него, и ссылка Xray с `type=splithttp` теряла транспорт МОЛЧА — узел уезжал голым TCP. Рукописный парсер алиаса тоже не знал (switch по типу имел только ветку `xhttp`), так что это не регрессия перехода, а давний дефект обеих реализаций. На ВЫХОДЕ пишется канон `xhttp`: обращение value_map неинъективно (в xhttp ведут два ключа), и emit_as: raw объявляет, что писать значение тела как есть."
         },
         "headerType": {
           "source": "query.headerType",
@@ -1176,7 +1174,7 @@
           "when": {
             "transport.type": "ws"
           },
-          "impl": "Фолбэк-цепочка host → sni → obfsParam; сегодня живёт прозой в aliases."
+          "impl": "Фолбэк-цепочка host → sni → obfsParam; исполняется порядком source этой записи (прежде жила прозой в aliases)."
         },
         "ed": {
           "source": "query.ed",
@@ -1191,7 +1189,7 @@
           "when": {
             "transport.type": "ws"
           },
-          "impl": "QUIRKS Q133-35: ВТОРАЯ форма early data — плоская пара ed/eh в query (node_parser_transport.go:190-201). В реестре её не было вовсе, и движок терял max_early_data на живой форме подписок. priority 5 против хвоста пути (умолчание 0 → позже по объявлению): хвост адресует ОДИН путь, плоская пара — всю ссылку, поэтому хвост побеждает (SPEC 103 §9.E). eh ниже уточняет имя заголовка."
+          "impl": "QUIRKS Q133-35: ВТОРАЯ форма early data — плоская пара ed/eh в query (её читал прежний рукописный парсер). В реестре её не было вовсе, и движок терял max_early_data на живой форме подписок. priority 5 против хвоста пути (умолчание 0 → позже по объявлению): хвост адресует ОДИН путь, плоская пара — всю ссылку, поэтому хвост побеждает (SPEC 103 §9.E). eh ниже уточняет имя заголовка."
         },
         "eh": {
           "source": "query.eh",
@@ -1232,7 +1230,7 @@
           "when": {
             "transport.type": "httpupgrade"
           },
-          "impl": "У httpupgrade host — СКАЛЯР (у ws это headers.Host, у http — список): форма различается по типу транспорта, поэтому три записи, а не одна. Источник ОДИН: QUIRKS Q133-32 — фолбэка на sni у httpupgrade в коде нет (node_parser_transport.go:250-252), в отличие от ws. Черновик секции был написан по ws-образцу и начал подставлять sni; расширение фолбэка меняет тела живых узлов и обязано быть дельтой с решением владельца, а не побочным эффектом волны."
+          "impl": "У httpupgrade host — СКАЛЯР (у ws это headers.Host, у http — список): форма различается по типу транспорта, поэтому три записи, а не одна. Источник ОДИН: QUIRKS Q133-32 — фолбэка на sni у httpupgrade в прежнем рукописном парсере не было, в отличие от ws. Черновик секции был написан по ws-образцу и начал подставлять sni; расширение фолбэка меняет тела живых узлов и обязано быть дельтой с решением владельца, а не побочным эффектом волны."
         }
       },
       "http": {
@@ -1407,7 +1405,7 @@
             "code": "xhttp_param_reset"
           },
           "priority": 50,
-          "impl": "Структурное правило ЯДРА, а не значение поля: uplink_data_placement=header/cookie работает ТОЛЬКО в режиме packet-up («uplink_data_placement can be header only in packet-up mode» — фатал на весь конфиг, transport/v2rayxhttp/meta.go:115-117); body/auto законны в любом режиме. Селектор `$value in [header, cookie]` (контракт 1.1.56) отдаёт этой записи только два опасных значения, остальное пишет uplinkDataPlacementOther как есть — промах селектора on_when_false не даёт. Выражено ОПЕРАТОРОМ not_in, а не in: при отсутствующем режиме `in` ложен (сравнивать нечего), а нужно обратное — режима нет, значит запрета нет, и implies его допишет. not_in по несуществующему пути истинен по построению. implies дописывает packet-up только когда режим не назвали: priority 50 ставит запись ПОЗЖЕ записи mode (умолчание 0), поэтому явный режим она не перебивает."
+          "impl": "Структурное правило ЯДРА, а не значение поля: uplink_data_placement=header/cookie работает ТОЛЬКО в режиме packet-up («uplink_data_placement can be header only in packet-up mode» — фатал на весь конфиг, transport/v2rayxhttp/meta.go); body/auto законны в любом режиме. Селектор `$value in [header, cookie]` (контракт 1.1.56) отдаёт этой записи только два опасных значения, остальное пишет uplinkDataPlacementOther как есть — промах селектора on_when_false не даёт. Выражено ОПЕРАТОРОМ not_in, а не in: при отсутствующем режиме `in` ложен (сравнивать нечего), а нужно обратное — режима нет, значит запрета нет, и implies его допишет. not_in по несуществующему пути истинен по построению. implies дописывает packet-up только когда режим не назвали: priority 50 ставит запись ПОЗЖЕ записи mode (умолчание 0), поэтому явный режим она не перебивает."
         },
         "uplinkDataPlacementOther": {
           "source": [
@@ -1822,7 +1820,7 @@
           "when": {
             "transport.type": "http"
           },
-          "impl": "QUIRKS Q133-16: сегодня массив ['a.com','b.com'] уходит через fmt.Sprint и даёт host ['[a.com b.com]'] — типовой реальный конфиг даёт мусор. coerce_scalar принимает ОБЕ формы."
+          "impl": "QUIRKS Q133-16: прежде (рукописный конвертер) массив ['a.com','b.com'] уходил через fmt.Sprint и давал host ['[a.com b.com]'] — типовой реальный конфиг давал мусор. coerce_scalar принимает ОБЕ формы."
         },
         "method": {
           "source": "json.streamSettings.httpSettings.method",
@@ -2027,7 +2025,7 @@
           "when": {
             "transport.type": "xhttp"
           },
-          "impl": " ПЛОСКИЕ написания sessionID* (контракт 1.1.50, запрос LxBox): в 1.1.47 имя из json-тега Xray (transport_method.go:269-270 SessionIDPlacement/SessionIDKey) добавлено только в слой extra, а тот же ключ форки пишут и ПЛОСКО — тогда он не читался ни одним источником. Порядок тот же, что у остальных: слой extra впереди плоского (норма $note_extra), канон впереди алиаса."
+          "impl": " ПЛОСКИЕ написания sessionID* (контракт 1.1.50, запрос LxBox): в 1.1.47 имя из json-тега Xray (Xray infra/conf/transport_method.go, поля SessionIDPlacement/SessionIDKey) добавлено только в слой extra, а тот же ключ форки пишут и ПЛОСКО — тогда он не читался ни одним источником. Порядок тот же, что у остальных: слой extra впереди плоского (норма $note_extra), канон впереди алиаса."
         },
         "sessionKey": {
           "source": [
@@ -2052,7 +2050,7 @@
           "when": {
             "transport.type": "xhttp"
           },
-          "impl": " ПЛОСКИЕ написания sessionID* (контракт 1.1.50, запрос LxBox): в 1.1.47 имя из json-тега Xray (transport_method.go:269-270 SessionIDPlacement/SessionIDKey) добавлено только в слой extra, а тот же ключ форки пишут и ПЛОСКО — тогда он не читался ни одним источником. Порядок тот же, что у остальных: слой extra впереди плоского (норма $note_extra), канон впереди алиаса."
+          "impl": " ПЛОСКИЕ написания sessionID* (контракт 1.1.50, запрос LxBox): в 1.1.47 имя из json-тега Xray (Xray infra/conf/transport_method.go, поля SessionIDPlacement/SessionIDKey) добавлено только в слой extra, а тот же ключ форки пишут и ПЛОСКО — тогда он не читался ни одним источником. Порядок тот же, что у остальных: слой extra впереди плоского (норма $note_extra), канон впереди алиаса."
         },
         "seqPlacement": {
           "source": [
@@ -2126,7 +2124,7 @@
             "code": "xhttp_param_reset"
           },
           "priority": 50,
-          "impl": "Структурное правило ЯДРА, общее для всех входов: uplink_data_placement=header/cookie работает ТОЛЬКО в режиме packet-up («uplink_data_placement can be header only in packet-up mode» — фатал на весь конфиг); body/auto законны в любом режиме, их пишет uplinkDataPlacementOther. Запись повторяет blocks.uri.xhttp дословно, кроме источников: правило ядра от диалекта не зависит, и держать его на входе ссылки данными, а на входе Xray — рукописным гардом (noteXHTTPPlacementGuard) значило бы иметь две копии одного решения. Развёрнутое обоснование операторов и селектора `$value` — у записи блока uri."
+          "impl": "Структурное правило ЯДРА, общее для всех входов: uplink_data_placement=header/cookie работает ТОЛЬКО в режиме packet-up («uplink_data_placement can be header only in packet-up mode» — фатал на весь конфиг); body/auto законны в любом режиме, их пишет uplinkDataPlacementOther. Запись повторяет blocks.uri.xhttp дословно, кроме источников: правило ядра от диалекта не зависит, и держать его на входе ссылки данными, а на входе Xray — рукописным гардом (как прежний, удалённый noteXHTTPPlacementGuard) значило бы иметь две копии одного решения. Развёрнутое обоснование операторов и селектора `$value` — у записи блока uri."
         },
         "uplinkDataPlacementOther": {
           "source": [

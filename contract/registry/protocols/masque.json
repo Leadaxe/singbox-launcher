@@ -16,7 +16,7 @@
       "meaning": "private_key — base64(SEC1 DER) of the client ECDSA private key. SECRET",
       "desc_en": "Client private key.",
       "desc_ru": "Приватный ключ клиента.",
-      "impl": "Сырой '/' percent-энкодится до парса (общий с WG хелпер). Fallback из query ?private_key=/?privatekey= принимают оба проекта."
+      "impl": "Сырой '/': Go-движок режет authority по последнему '@' сам и слэш в ключе не теряет (core/config/linkmap/parse.go:lexURI; прежний общий с WG хелпер percent-кодирования снят), Dart percent-энкодит до разбора (общий с WG хелпер). Fallback из query ?private_key=/?privatekey= принимают оба проекта."
     },
     "query": {
       "publickey": {
@@ -28,7 +28,7 @@
         "maps_to": "public_key",
         "desc_en": "Server public key.",
         "desc_ru": "Публичный ключ сервера.",
-        "impl": "Обязателен. base64(PKIX DER) серверного ключа (pinning). Оба принимают оба написания; '+' в Go сохраняется через queryParamPreservePlus."
+        "impl": "Обязателен. base64(PKIX DER) серверного ключа (pinning). Оба принимают оба написания; '+' в Go сохраняется: движок разбирает query path-семантикой (core/config/linkmap/space.go:ParseQueryOrdered), а замену '+' на пробел запись с format base64* не получает (decode_extra.plus_literal)."
       },
       "private_key": {
         "type": "base64",
@@ -74,7 +74,7 @@
         "maps_to": "vhttp",
         "desc_en": "HTTP version carrying the tunnel.",
         "desc_ru": "Версия HTTP, несущая туннель.",
-        "impl": "Версия HTTP. Legacy-алиас network= снесён (0.8.0) — игнорируется, узел получает дефолт h3. Значение не h3/h2 → warn + force h3 — выровнено в обоих (фаза 1, фикстура masque/vhttp_invalid_forced_h3)."
+        "impl": "Версия HTTP. Legacy-алиас network= снесён (0.8.0) — игнорируется, узел получает дефолт h3. Значение вне enum (h3/h2/auto) → код masque_vhttp_invalid и подмена на h3 (body.fields.vhttp.on_invalid coerce) — выровнено в обоих (фаза 1, фикстура masque/vhttp_invalid_forced_h3)."
       },
       "sni": {
         "type": "string",
@@ -170,16 +170,13 @@
       "kind": "default",
       "desc_en": "A convention shared by both apps, not a core default (the core defaults to `auto`). The value is part of the identity hash of live MASQUE nodes.",
       "desc_ru": "Конвенция обеих сторон, а не дефолт ядра (у ядра `auto`). Значение входит в identity-хеш живых MASQUE-узлов.",
-      "impl": "core/config/subscription/node_parser_masque.go:104-106. Снятие изменило бы identity всех MASQUE-узлов (W2D_CHANGES §6)."
+      "impl": "Данные реестра: mappers.uri.params.vhttp (default_when absent → h3, materialize_default); исполняет движок core/config/linkmap/exec.go:Exec. Снятие изменило бы identity всех MASQUE-узлов (W2D_CHANGES §6)."
     }
   ],
   "refs": {
     "go": [
-      "core/config/subscription/node_parser_core.go:91-93",
-      "core/config/subscription/node_parser_masque.go:28",
-      "core/config/subscription/shareuri_masque.go:15",
-      "core/config/subscription/singbox_import.go:317-318",
-      "core/config/outbound_generator.go:281-287"
+      "core/warp/masque.go:MasqueAccount.ToMasqueURI",
+      "core/state/masque_uri_migration.go:rewriteLegacyMasqueURIs"
     ],
     "dart": [
       "app/lib/services/parser/uri_parsers/masque_parser.dart:21",
@@ -260,7 +257,7 @@
         "default": "auto",
         "desc_en": "HTTP version carrying the MASQUE tunnel.",
         "desc_ru": "Версия HTTP, несущая туннель MASQUE.",
-        "impl": "SPEC 062/074. Для profile=standard h2 не реализован — «vhttp h2 is not implemented for the standard profile» (protocol/masque/outbound.go:158). Код masque_vhttp_invalid."
+        "impl": "SPEC 062/074. Для profile=standard h2 не реализован — «vhttp h2 is not implemented for the standard profile» (protocol/masque/outbound.go resolveVHTTP). Код masque_vhttp_invalid."
       },
       "private_key": {
         "type": "string",
@@ -279,7 +276,7 @@
         ],
         "desc_en": "Client private key, base64 DER EC.",
         "desc_ru": "Закрытый ключ клиента, base64 DER EC.",
-        "impl": "Обязателен при profile=cloudflare вместе с public_key — «private_key and public_key are required for the cloudflare profile» (protocol/masque/outbound.go:198). Секрет."
+        "impl": "Обязателен при profile=cloudflare вместе с public_key — «private_key and public_key are required for the cloudflare profile» (protocol/masque/outbound.go NewOutbound). Секрет."
       },
       "public_key": {
         "type": "string",
@@ -296,7 +293,7 @@
         ],
         "desc_en": "Client public key, base64 DER PKIX.",
         "desc_ru": "Публичный ключ клиента, base64 DER PKIX.",
-        "impl": "Обязателен при profile=cloudflare вместе с private_key (protocol/masque/outbound.go:198)."
+        "impl": "Обязателен при profile=cloudflare вместе с private_key (protocol/masque/outbound.go NewOutbound)."
       },
       "ip": {
         "type": "string",
@@ -307,7 +304,7 @@
         },
         "desc_en": "IPv4 address assigned inside the tunnel.",
         "desc_ru": "Адрес IPv4, назначенный внутри туннеля.",
-        "impl": "Без маски трактуется как /32. Минимум один из ip/ipv6 обязателен, иначе ошибка parsePrefixes (protocol/masque/outbound.go:189)."
+        "impl": "Без маски трактуется как /32. Минимум один из ip/ipv6 обязателен, иначе ошибка parsePrefixes (protocol/masque/outbound.go)."
       },
       "ipv6": {
         "type": "string",
@@ -372,21 +369,21 @@
         "deprecated": true,
         "desc_en": "Deprecated alias of tls.fragment.",
         "desc_ru": "Устаревший синоним tls.fragment.",
-        "impl": "Переносится в tls.fragment."
+        "impl": "Ядро переносит в tls.fragment (sing-box-lx protocol/masque/legacy_options_lx.go resolveLegacyOptions); лаунчер значение не трогает."
       },
       "fragment_fallback_delay": {
         "type": "duration",
         "deprecated": true,
         "desc_en": "Deprecated alias of tls.fragment_fallback_delay.",
         "desc_ru": "Устаревший синоним tls.fragment_fallback_delay.",
-        "impl": "Переносится в tls.fragment_fallback_delay."
+        "impl": "Ядро переносит в tls.fragment_fallback_delay (sing-box-lx protocol/masque/legacy_options_lx.go resolveLegacyOptions); лаунчер значение не трогает."
       },
       "record_fragment": {
         "type": "bool",
         "deprecated": true,
         "desc_en": "Deprecated alias of tls.record_fragment.",
         "desc_ru": "Устаревший синоним tls.record_fragment.",
-        "impl": "Переносится в tls.record_fragment."
+        "impl": "Ядро переносит в tls.record_fragment (sing-box-lx protocol/masque/legacy_options_lx.go resolveLegacyOptions); лаунчер значение не трогает."
       },
       "__dialer": {
         "type": "ref",
@@ -431,7 +428,7 @@
           "private_key"
         ],
         "single_into": "private_key",
-        "impl": "Приватный ключ клиента, base64(SEC1 DER). Сырой '/' внутри ключа percent-энкодится ДО разбора authority (§106) — иначе платформа примет его за начало пути и ключ пропадёт. Одиночный userinfo — приватный ключ клиента: другого компонента у этой схемы нет. Объявлено явно, хотя совпадает с into[0]."
+        "impl": "Приватный ключ клиента, base64(SEC1 DER). Сырой '/' внутри ключа нельзя принять за начало пути (§106), иначе ключ пропадёт: Go-движок режет authority по последнему '@' сам (core/config/linkmap/parse.go:lexURI), платформенному URL-парсеру ключ надо percent-энкодить ДО разбора. Одиночный userinfo — приватный ключ клиента: другого компонента у этой схемы нет. Объявлено явно, хотя совпадает с into[0]."
       },
       "label": {
         "source": [

@@ -19,7 +19,7 @@
       "meaning": "base64(method:password)",
       "desc_en": "base64 of method:password.",
       "desc_ru": "base64 от method:password.",
-      "impl": "Две формы, обе поддержаны обоими: SIP002 ss://base64(method:password)@host:port[?query]#frag и legacy ss://base64(method:password@host:port)#frag. Userinfo сперва percent-декодируется, потом base64 (все 4 варианта). ПЛОСКИЙ (не-base64) SIP002-userinfo 'method:password@host' (разрешён RFC для ss2022) НЕ поддержан ни одним проектом — паритетная дыра, фиксируется фикстурой. ss2022 (2022-blake3-*) работает в обоих через base64-форму."
+      "impl": "Две формы, обе поддержаны обоими: SIP002 ss://base64(method:password)@host:port[?query]#frag и legacy ss://base64(method:password@host:port)#frag. Userinfo сперва percent-декодируется, потом base64 (все 4 варианта). ПЛОСКИЙ (не-base64) SIP002-userinfo 'method:password@host' (разрешён RFC для ss2022) прежде не поддерживал ни один проект — паритетная дыра, фиксировалась фикстурой; в Go закрыта delta480 (декодер 'base64?' в mappers.uri.userinfo: не base64 → как есть). ss2022 (2022-blake3-*) работает в обоих через base64-форму."
     },
     "query": {
       "method": {
@@ -41,7 +41,7 @@
         "maps_to": "method",
         "desc_en": "Encryption method.",
         "desc_ru": "Метод шифрования.",
-        "impl": "Не URL-параметр, а компонент userinfo; в Go живёт во внутреннем Query['method']. Allowlist идентичен посимвольно (Go isValidShadowsocksMethod ↔ Dart shadowsocksMethods). Метод вне allowlist → drop НОДЫ (не поля): неизвестный метод валит весь конфиг ядра."
+        "impl": "Не URL-параметр, а компонент userinfo; в Go — запись mappers.uri.params.method (source userinfo.user, до первого ':'). Allowlist идентичен посимвольно (Go — enum body.fields.method реестра, прежде рукописный isValidShadowsocksMethod ↔ Dart shadowsocksMethods). Метод вне allowlist → drop НОДЫ (не поля): неизвестный метод валит весь конфиг ядра."
       },
       "password": {
         "type": "string",
@@ -64,7 +64,7 @@
         "maps_to": "plugin",
         "desc_en": "SIP003 plugin name.",
         "desc_ru": "Имя плагина SIP003.",
-        "impl": "SIP003: 'name;k=v;…' — имя до первого ';'. Читает только Dart (→ outbound.plugin/plugin_opts); Go молча теряет query целиком — новое расхождение вне §9 PLAN. При этом Dart toUriShadowsocks plugin в URI НЕ возвращает (теряется на mobile URI-round-trip; в sing-box outbound эмитится)."
+        "impl": "SIP003: 'name;k=v;…' — имя до первого ';'. Dart → outbound.plugin/plugin_opts; Go прежде молча терял query целиком (расхождение вне §9 PLAN), сейчас читает записью mappers.uri.params.plugin (extract имени и хвоста опций). При этом Dart toUriShadowsocks plugin в URI НЕ возвращает (теряется на mobile URI-round-trip; в sing-box outbound эмитится)."
       },
       "plugin_opts": {
         "type": "string",
@@ -76,7 +76,7 @@
         "maps_to": "plugin_opts",
         "desc_en": "SIP003 plugin options.",
         "desc_ru": "Параметры плагина SIP003.",
-        "impl": "SIP003 opts: хвост plugin после первого ';' либо отдельный параметр plugin_opts. Только Dart (см. plugin)."
+        "impl": "SIP003 opts: хвост plugin после первого ';' либо отдельный параметр plugin_opts. Dart (см. plugin); Go — mappers.uri.params.plugin_opts."
       }
     },
     "fragment": "label"
@@ -87,15 +87,6 @@
     "note": "Эмит без query: ss://base64std(method:password)@host:port#frag. Расхождение формы: Go оставляет '='-padding, Dart срезает (оба парсят оба вида). Метод вне allowlist → ErrShareURINotSupported (Go). Dart НЕ эмитит plugin/plugin_opts в URI (см. plugin)."
   },
   "refs": {
-    "go": [
-      "core/config/subscription/node_parser_core.go:143-208",
-      "core/config/subscription/node_parser_core.go:338-345",
-      "core/config/subscription/node_parser_core.go:581-583",
-      "core/config/subscription/node_parser_core.go:767-773",
-      "core/config/subscription/node_parser_ss.go:6-21",
-      "core/config/subscription/xray_element_engine.go",
-      "core/config/subscription/shareuri_ss.go:11-33"
-    ],
     "dart": [
       "lib/services/parser/uri_parsers/shadowsocks_parser.dart:8-89",
       "lib/services/parser/uri_parsers/shadowsocks_parser.dart:91-104",
@@ -331,7 +322,7 @@
           "template": "{scheme}-{server}-{server_port}",
           "scheme_source": "as_written"
         },
-        "impl": "scheme_source: singbox_type — тег безымянного узла 'shadowsocks-host-8388', а не 'ss-host-8388'. Так делал старый парсер, identity живых узлов не двигается. scheme_source=as_written: generateDefaultTag зовётся со scheme='ss' (node_parser_core.go:186, :543), тег выходит ss-host-port. Переход на singbox_type (D133-6) сменил бы ТЕГ, то есть identity живых узлов, — делается волной D133-6 целиком, а не по одной схеме."
+        "impl": "scheme_source=as_written: тег безымянного узла — 'ss-host-port', а не 'shadowsocks-host-8388' (singbox_type). Так делал старый парсер (generateDefaultTag звался со scheme='ss'), identity живых узлов не двигается. Переход на singbox_type (D133-6) сменил бы ТЕГ, то есть identity живых узлов, — делается волной D133-6 целиком, а не по одной схеме."
       },
       "defaults": {
         "type": "shadowsocks",
@@ -348,7 +339,7 @@
           "maps_to": "server_port",
           "type": "int",
           "materialize_default": true,
-          "impl": "Дефолт 8388 — канонический порт shadowsocks (решение владельца, SPEC 133). ПРЕЖДЕ здесь стояло 443: node_parser_core.go:145 ставил 443 всем схемам, и ss-ветка его не переопределяла — в отличие от socks и ssh. Это был наш дефект, который корпус не ловил: ни одна из 9 фикстур uri/shadowsocks порт не опускает, поэтому дефолт не исполнялся нигде и разойтись было не с чем. Кейс на опущенный порт заведён вместе со сменой (uri/shadowsocks/no_port_default_8388)."
+          "impl": "Дефолт 8388 — канонический порт shadowsocks (решение владельца, SPEC 133). ПРЕЖДЕ здесь стояло 443: прежний рукописный разбор ставил 443 всем схемам, и ss-ветка его не переопределяла — в отличие от socks и ssh. Это был наш дефект, который корпус не ловил: ни одна из 9 фикстур uri/shadowsocks порт не опускает, поэтому дефолт не исполнялся нигде и разойтись было не с чем. Кейс на опущенный порт заведён вместе со сменой (uri/shadowsocks/no_port_default_8388)."
         },
         "method": {
           "source": "userinfo.user",
@@ -447,7 +438,7 @@
           "template": "{scheme}-{server}-{server_port}",
           "scheme_source": "as_written"
         },
-        "impl": "У Xray-входа имя схемы для фолбэка не равно типу тела: 'ss' при 'shadowsocks' (tagScheme в XrayMapping). Тег И ЕСТЬ identity, поэтому as_written здесь нормативен."
+        "impl": "У Xray-входа имя схемы для фолбэка не равно типу тела: 'ss' при 'shadowsocks' (прежде — tagScheme в XrayMapping рукописного пути). Тег И ЕСТЬ identity, поэтому as_written здесь нормативен."
       },
       "params": {
         "address": {
@@ -472,7 +463,7 @@
         "password": {
           "source": "json.$base.password",
           "maps_to": "password",
-          "impl": "required, а НЕ empty:significant: xray_protocols.go:284-286 отбраковывает узел при пустом method ИЛИ password. Это рубеж против плейсхолдеров просроченной подписки — «пишется даже пустым» из черновика его бы снесло.",
+          "impl": "required, а НЕ empty:significant: как и прежний рукописный конвертер, отбраковывавший узел при пустом method ИЛИ password (у записи method тоже required). Это рубеж против плейсхолдеров просроченной подписки — «пишется даже пустым» из черновика его бы снесло.",
           "required": true,
           "desc_en": "empty password — the server returned a placeholder, subscription may be expired"
         },

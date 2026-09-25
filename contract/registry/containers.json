@@ -36,13 +36,14 @@
       },
       "refs": {
         "go": [
-          "core/config/subscription/node_parser_core.go:84-86",
-          "core/config/subscription/node_parser_amnezia.go:35-46",
-          "core/config/subscription/node_parser_amnezia.go:49",
-          "core/config/subscription/node_parser_amnezia.go:86",
-          "core/config/subscription/node_parser_amnezia.go:142",
-          "core/config/subscription/node_parser_amnezia.go:182",
-          "core/config/subscription/node_parser_amnezia.go:269"
+          "core/config/subscription/node_parser_core.go:ParseNode",
+          "core/config/subscription/body_classify.go:ClassifySubscriptionBody",
+          "core/config/subscription/node_parser_amnezia.go:maxAmneziaLinkLength",
+          "core/config/subscription/node_parser_amnezia.go:parseAmneziaVPNLink",
+          "core/config/subscription/node_parser_amnezia.go:decodeAmneziaPayload",
+          "core/config/subscription/node_parser_amnezia.go:amneziaWGConfText",
+          "core/config/subscription/node_parser_amnezia.go:findWGIniText",
+          "core/config/subscription/node_parser_amnezia.go:ParseAmneziaVPNLinkAll"
         ],
         "dart": [
           "app/lib/services/parser/body_decoder.dart:86-88",
@@ -59,7 +60,7 @@
       "desc": "Классический WireGuard/AmneziaWG .conf ([Interface]/[Peer]) — как тело подписки/файла (Dart) и как вставка в поле Sources (Go). Разворачивается в канонический wireguard:// URI → штатный WG-парсер.",
       "detect": {
         "dart": "body-kind: первая не-comment строка == '[interface]' (case-insensitive) И тело содержит '[Peer]' (сравнение case-SENSITIVE — нюанс)",
-        "go": "ветки в ClassifySubscriptionBody НЕТ (§9.B11 — Go добавляет, иначе нормативная схема классификации невыполнима); сегодня только UI-paste: ExtractWGConfBlocks режет вставку по строкам '[Interface]' (case-insensitive), текст до первого блока уходит в обычную построчную классификацию"
+        "go": "тело подписки опознаёт ветка BodyKindWGConf в ClassifySubscriptionBody (§9.B11): looksLikeWGConf ищет строку '[Interface]' (case-insensitive), пропуская пустые строки и комментарии '#'; в UI-вставке ExtractWGConfBlocks режет вставку по строкам '[Interface]' (case-insensitive), текст до первого блока уходит в обычную построчную классификацию"
       },
       "expand": {
         "required": "privatekey ([Interface]), publickey + endpoint ([Peer]); Go дополнительно ТРЕБУЕТ address ([Interface]) — в Dart address опционален (разрыв)",
@@ -72,11 +73,12 @@
       "subscription_body": "как тело подписки INI работает только в LxBox (IniConfig — полноценный body-kind, в т.ч. файл-подписка *.conf); §9.B11: Go добавляет INI-ветку в ClassifySubscriptionBody",
       "refs": {
         "go": [
-          "core/config/subscription/wgconf_text.go:23",
-          "core/config/subscription/wgconf_text.go:52",
-          "core/config/subscription/node_parser_amnezia.go:228",
-          "core/config/subscription/node_parser_amnezia.go:269",
-          "core/config/subscription/body_classify.go:14-45"
+          "core/config/subscription/wgconf_text.go:ExtractWGConfBlocks",
+          "core/config/subscription/wgconf_text.go:WGConfBodyToConvertedBlocks",
+          "core/config/subscription/node_parser_engine.go:ParseWGConfByEngine",
+          "core/config/subscription/node_parser_amnezia.go:amneziaWGConfText",
+          "core/config/subscription/node_parser_amnezia.go:amneziaAllWGConfTexts",
+          "core/config/subscription/body_classify.go:looksLikeWGConf"
         ],
         "dart": [
           "app/lib/services/parser/body_decoder.dart:120-123",
@@ -97,11 +99,10 @@
       "vmess_legacy_note": "b64-декод отдельного vmess://<base64> — не этот контейнер, а протокольный декод (registry/protocols/vmess.json); паритет legacy-cleartext подтверждён (§9.B8).",
       "refs": {
         "go": [
-          "core/config/subscription/encoding_utils.go:30",
-          "core/config/subscription/decoder.go:21",
-          "core/config/subscription/decoder.go:68-71",
-          "core/config/subscription/fetcher.go:116",
-          "core/config/subscription/body_classify.go:74"
+          "core/config/subscription/encoding_utils.go:DecodeBase64Multi",
+          "core/config/subscription/decoder.go:DecodeSubscriptionContent",
+          "core/config/subscription/fetcher.go:FetchSubscriptionWithMetaFor",
+          "core/config/subscription/fetcher.go:MaxSubscriptionResponseSize"
         ],
         "dart": [
           "app/lib/services/parser/uri_utils.dart:22",

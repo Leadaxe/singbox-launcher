@@ -63,7 +63,7 @@
         },
         "desc_en": "Whole subscription re-encoded as base64. The decoded text is classified again from scratch, and must look like a real document before it wins.",
         "desc_ru": "Подписка, перекодированная в base64 целиком. Распакованный текст судится заново с самого начала и обязан быть похож на настоящий документ.",
-        "impl": "`redetect` — распакованный текст судится ЗАНОВО с самого начала (предел `max_unwrap_depth`): внутри бывает и список ссылок, и JSON, и ini, поэтому своего маппера у ветки нет. `requires_after_unwrap` — страховка от ложного срабатывания: строка ссылок без спецсимволов тоже проходит алфавит base64, и без проверки правдоподобия распакованный мусор вытеснил бы настоящий список. Сегодня то же делает DecodeSubscriptionContent (core/config/subscription/decoder.go) до классификации, и предела вложенности у неё нет вовсе — ограничение новое (DELTAS D133-35)."
+        "impl": "`redetect` — распакованный текст судится ЗАНОВО с самого начала (предел `max_unwrap_depth`): внутри бывает и список ссылок, и JSON, и ini, поэтому своего маппера у ветки нет. `requires_after_unwrap` — страховка от ложного срабатывания: строка ссылок без спецсимволов тоже проходит алфавит base64, и без проверки правдоподобия распакованный мусор вытеснил бы настоящий список. Сегодня то же делает core/config/subscription/decoder.go:DecodeSubscriptionContent до классификации, и предела вложенности у неё нет вовсе — ограничение новое (DELTAS D133-35)."
       },
       {
         "source_kind": "singbox_config_array",
@@ -81,7 +81,7 @@
         "elements": "[].outbounds[]",
         "desc_en": "Array of standalone sing-box configs (one node per config). Requires `type` and the absence of `protocol`: an ambiguous array stays with Xray.",
         "desc_ru": "Массив автономных sing-box-конфигов (по узлу на конфиг). Требует `type` и отсутствия `protocol`: неоднозначный массив остаётся за Xray.",
-        "impl": "Массив автономных sing-box-конфигов (подписка пер-узел), body_classify.go:172. Массив конфигов бывает и Xray, и sing-box: обе формы — список элементов с `outbounds`, и различаются они СОДЕРЖИМЫМ. Ветка требует `type` И ОТСУТСТВИЯ `protocol`: неоднозначный массив (есть оба признака либо нет ни одного) остаётся за Xray — так решал и рукописный код, где проверка xray стояла раньше. Композиция `not` живёт на уровне `detect`, а не внутри `json` (GRAMMAR_SYNC §1 №3)."
+        "impl": "Массив автономных sing-box-конфигов (подписка пер-узел), core/config/subscription/body_classify.go:classifyJSONArrayBody. Массив конфигов бывает и Xray, и sing-box: обе формы — список элементов с `outbounds`, и различаются они СОДЕРЖИМЫМ. Ветка требует `type` И ОТСУТСТВИЯ `protocol`: неоднозначный массив (есть оба признака либо нет ни одного) остаётся за Xray — так решал и рукописный код, где проверка xray стояла раньше. Композиция `not` живёт на уровне `detect`, а не внутри `json` (GRAMMAR_SYNC §1 №3)."
       },
       {
         "source_kind": "xray_config_array",
@@ -96,7 +96,7 @@
         "elements": "[].outbounds[]",
         "desc_en": "Array of standalone Xray configs, and the catch-all for a config array whose dialect did not name itself.",
         "desc_ru": "Массив автономных Xray-конфигов и ветка «массив конфигов, чей диалект не назвался».",
-        "impl": "Массив автономных Xray-конфигов И ветка «массив конфигов, чей диалект не назвался»: признак тут — сам `outbounds` у элемента, а приоритет ниже sing-box-ветки. Прежний xrayElementHasProtocolOutbounds (xray_json_array.go) смотрел ПЕРВЫЙ элемент-объект и решал за весь массив; `array_elem_any_keys` спрашивает массив целиком (DELTAS D133-36)."
+        "impl": "Массив автономных Xray-конфигов И ветка «массив конфигов, чей диалект не назвался»: признак тут — сам `outbounds` у элемента, а приоритет ниже sing-box-ветки. Сегодняшний Go-классификатор (core/config/subscription/body_classify.go:classifyJSONArrayBody, признак — core/config/subscription/xray_json_array.go:xrayElementHasProtocolOutbounds) смотрит ПЕРВЫЙ элемент-объект и решает за весь массив; `array_elem_any_keys` спрашивает массив целиком (DELTAS D133-36)."
       },
       {
         "source_kind": "singbox_outbound_array",
@@ -114,7 +114,7 @@
         "elements": "[]",
         "desc_en": "Array of bare sing-box outbounds.",
         "desc_ru": "Массив голых sing-box outbound'ов.",
-        "impl": "body_classify.go:166 — массив outbound'ов sing-box. Отрицание `[].outbounds` отделяет его от массива КОНФИГОВ: у конфига тоже бывает `type` (в его собственных outbound'ах), и без отрицания массив конфигов уехал бы сюда, где элементом стал бы конфиг целиком."
+        "impl": "core/config/subscription/body_classify.go:classifyJSONArrayBody — массив outbound'ов sing-box. Отрицание `[].outbounds` отделяет его от массива КОНФИГОВ: у конфига тоже бывает `type` (в его собственных outbound'ах), и без отрицания массив конфигов уехал бы сюда, где элементом стал бы конфиг целиком."
       },
       {
         "source_kind": "xray_outbound_array",
@@ -177,7 +177,7 @@
         "elements": "$self",
         "desc_en": "A single sing-box outbound object. `type` is checked before `outbounds`: a lone selector carries both and is an outbound, not a config.",
         "desc_ru": "Одиночный sing-box outbound. `type` проверяется раньше `outbounds`: одиночный selector несёт оба признака и является outbound'ом, а не конфигом.",
-        "impl": "body_classify.go:188. `type` проверяется РАНЬШЕ `outbounds`: одиночный `selector` несёт и `type`, и `outbounds` — он outbound, а не конфиг."
+        "impl": "core/config/subscription/body_classify.go:classifyJSONObjectBody. `type` проверяется РАНЬШЕ `outbounds`: одиночный `selector` несёт и `type`, и `outbounds` — он outbound, а не конфиг."
       },
       {
         "source_kind": "singbox_config",
@@ -196,7 +196,7 @@
         "elements": "outbounds[]+endpoints[]",
         "desc_en": "Full sing-box config. `endpoints` (sing-box >= 1.11) counts equally: a config may consist of WireGuard nodes alone.",
         "desc_ru": "Полный sing-box-конфиг. `endpoints` (sing-box >= 1.11) равноправен: конфиг может состоять из одних WireGuard-узлов.",
-        "impl": "body_classify.go:190. `endpoints` (sing-box ≥1.11) равноправен: конфиг может состоять из одних WireGuard-узлов, и требовать `outbounds` значило бы объявить такой конфиг неопознанным. Порядок в `elements` — сначала `outbounds`, потом `endpoints`: тот же, в каком их обходит сегодняшний разбор, и от него зависит нумерация тегов."
+        "impl": "core/config/subscription/body_classify.go:classifyJSONObjectBody. `endpoints` (sing-box ≥1.11) равноправен: конфиг может состоять из одних WireGuard-узлов, и требовать `outbounds` значило бы объявить такой конфиг неопознанным. Порядок в `elements` — сначала `outbounds`, потом `endpoints`: тот же, в каком их обходит сегодняшний разбор, и от него зависит нумерация тегов."
       },
       {
         "source_kind": "wireguard_conf",
@@ -208,7 +208,7 @@
         "elements": "$self",
         "desc_en": "A `wg-quick` / AmneziaWG `.conf` file. The first non-comment line is `[Interface]`; a `[Peer]` section is not required.",
         "desc_ru": "Файл `wg-quick` / AmneziaWG `.conf`. Первая не-комментарная строка — `[Interface]`; секция `[Peer]` не требуется.",
-        "impl": "Первая НЕ-КОММЕНТАРНАЯ строка — `[Interface]`: комментарий над ней законен и несёт имя узла. Требования `contains \"[Peer]\"` тут НЕТ, и это сверено с LxBox (GRAMMAR_SYNC §4 №10, правда наша): у заготовки без пира `[Peer]` отсутствует законно, и требование уронило бы такой файл в построчную ветку. Сегодня то же делает looksLikeWGConf (body_classify.go:131), но по НАЛИЧИЮ секции, а не по её порядку (DELTAS D133-38)."
+        "impl": "Первая НЕ-КОММЕНТАРНАЯ строка — `[Interface]`: комментарий над ней законен и несёт имя узла. Требования `contains \"[Peer]\"` тут НЕТ, и это сверено с LxBox (GRAMMAR_SYNC §4 №10, правда наша): у заготовки без пира `[Peer]` отсутствует законно, и требование уронило бы такой файл в построчную ветку. Сегодня то же делает core/config/subscription/body_classify.go:looksLikeWGConf, но по НАЛИЧИЮ секции, а не по её порядку (DELTAS D133-38)."
       },
       {
         "source_kind": "uri_lines",

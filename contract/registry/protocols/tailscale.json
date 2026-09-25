@@ -16,14 +16,11 @@
   },
   "refs": {
     "go": [
-      "core/config/subscription/singbox_import.go:344-359",
-      "core/config/subscription/singbox_import.go:371-379",
-      "core/config/outbound_generator.go:1054-1056",
-      "core/config/outbound_generator.go:1086",
-      "core/config/endpoint_schemes.go:1",
-      "core/core_capabilities.go:39",
-      "ui/configurator/dialogs/add_server_tailscale.go:1",
-      "ui/configurator/tabs/dns_server_form.go:44"
+      "core/config/endpoint_schemes.go:applyTailscaleStateDirectory",
+      "core/config/outbound_generator.go:TailscaleSupportProbe",
+      "core/core_capabilities.go:AppController.CoreSupportsTailscale",
+      "ui/configurator/dialogs/add_server_tailscale.go:tailscaleDocument",
+      "ui/configurator/tabs/dns_server_form.go:dnsTypeTailscale"
     ],
     "dart": [
       "lib/models/node_spec.dart (TailscaleSpec)",
@@ -88,7 +85,7 @@
         ],
         "desc_en": "Tailnet node used as the exit node.",
         "desc_ru": "Узел tailnet, используемый как выходной.",
-        "impl": "Конфликт с advertise_exit_node — «cannot advertise an exit node and use an exit node at the same time» (protocol/tailscale/endpoint.go:168)."
+        "impl": "Конфликт с advertise_exit_node — «cannot advertise an exit node and use an exit node at the same time» (protocol/tailscale/endpoint.go NewEndpoint)."
       },
       "exit_node_allow_lan_access": {
         "type": "bool",
@@ -119,7 +116,7 @@
         "default": false,
         "desc_en": "Offer this node as an exit node.",
         "desc_ru": "Предлагать этот узел как выходной.",
-        "impl": "Конфликт с exit_node (protocol/tailscale/endpoint.go:168)."
+        "impl": "Конфликт с exit_node (protocol/tailscale/endpoint.go NewEndpoint)."
       },
       "advertise_tags": {
         "type": "listable_string",

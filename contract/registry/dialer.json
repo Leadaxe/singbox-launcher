@@ -117,7 +117,7 @@
         "code": "field_conflict",
         "desc_en": "Use TCP Fast Open.",
         "desc_ru": "Использовать TCP Fast Open.",
-        "impl": "Запрещён у anytls: «tcp_fast_open is not supported with anytls outbound» (protocol/anytls/outbound.go:60) — одна такая нода не даёт ядру стартовать, поэтому поле снимается."
+        "impl": "Запрещён у anytls: «tcp_fast_open is not supported with anytls outbound» (protocol/anytls/outbound.go) — одна такая нода не даёт ядру стартовать, поэтому поле снимается."
       },
       "disable_tcp_keep_alive": {
         "type": "bool",
