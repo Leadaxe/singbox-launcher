@@ -20,7 +20,7 @@ func TestBuildReportAcceptsEveryKind(t *testing.T) {
 		{Kind: BuildReportSourceExcluded, Subject: "Proton NL", SourceID: "01SUB", SourceLabel: "Proton NL", Reason: "хоп не найден"},
 		{Kind: BuildReportNodesDropped, Subject: "Big Sub", SourceID: "01BIG", SourceLabel: "Big Sub", Reason: "цель detour исчезла", NodeCount: 500},
 		{Kind: BuildReportChainFailed, Subject: "двойной прыжок", Reason: "позиция не найдена"},
-		{Kind: BuildReportNaiveDegraded, Subject: "naive", Reason: "ядро без with_naive_outbound", NodeCount: 3},
+		{Kind: BuildReportCoreUnsupported, Subject: "naive", Reason: "ядро без with_naive_outbound", NodeCount: 3, Code: "naive_unavailable"},
 		{Kind: BuildReportTargetMissing, Subject: "vpn-select", SourceID: "01BIG", SourceLabel: "Big Sub", Reason: "селектор шаблона выключен"},
 	})
 
@@ -38,7 +38,7 @@ func TestBuildReportAcceptsEveryKind(t *testing.T) {
 	}
 	for _, kind := range []BuildReportKind{
 		BuildReportSourceExcluded, BuildReportNodesDropped,
-		BuildReportChainFailed, BuildReportNaiveDegraded, BuildReportTargetMissing,
+		BuildReportChainFailed, BuildReportCoreUnsupported, BuildReportTargetMissing,
 	} {
 		if seen[kind] != 1 {
 			t.Errorf("вид %q попал в отчёт %d раз, ожидался 1", kind, seen[kind])

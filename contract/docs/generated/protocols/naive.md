@@ -16,6 +16,7 @@
 | `aliases` | — |
 | `sources` | `uri`, `singbox` |
 | Core the schema was checked against | `1.14.1-lx.4` |
+| Core requirement | build tag `with_naive_outbound`; on a core that lacks it the node is dropped at build: `naive_unavailable` |
 | URI fragment | `label` |
 
 ## How to read this page

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/internal/locale"
 )
 
@@ -94,11 +95,9 @@ func finalReportLines(entries []config.BuildReportEntry) []finalReportLine {
 		config.BuildReportChainFailed:       4,
 		// Деградации обновления и эмиссии — частичные потери у источника,
 		// который работает: после всего, что стоило источника целиком.
-		config.BuildReportFetchDegraded:     5,
-		config.BuildReportEmitDegraded:      6,
-		config.BuildReportNaiveDegraded:     7,
-		config.BuildReportTailscaleDegraded: 8,
-		config.BuildReportAWG3Degraded:      9,
+		config.BuildReportFetchDegraded:   5,
+		config.BuildReportEmitDegraded:    6,
+		config.BuildReportCoreUnsupported: 7,
 	}
 	idx := make([]int, len(entries))
 	for i := range idx {
@@ -138,12 +137,14 @@ func finalReportEntryText(e config.BuildReportEntry) string {
 		return locale.Tf("Source %q: %d node(s) dropped — %s", subject, e.NodeCount, e.Reason)
 	case config.BuildReportChainFailed:
 		return locale.Tf("Chain %q did not build: %s", subject, e.Reason)
-	case config.BuildReportNaiveDegraded:
-		return locale.Tf("%d naive node(s) skipped: %s", e.NodeCount, e.Reason)
-	case config.BuildReportTailscaleDegraded:
-		return locale.Tf("%d tailscale node(s) skipped: %s", e.NodeCount, e.Reason)
-	case config.BuildReportAWG3Degraded:
-		return locale.Tf("%d AmneziaWG 3.x node(s) skipped: %s", e.NodeCount, e.Reason)
+	case config.BuildReportCoreUnsupported:
+		// Заголовок — из реестра по коду, на языке UI: он называет, ЧТО
+		// ядру не по силам (протокол или его расширение), а схема этого не
+		// скажет (узел AmneziaWG 3.x — это wireguard).
+		if title := coreUnsupportedTitle(e.Code); title != "" {
+			subject = title
+		}
+		return locale.Tf("%s — %d node(s) skipped: %s", subject, e.NodeCount, e.Reason)
 	case config.BuildReportTargetMissing:
 		return locale.Tf("Detour target %q is missing from the build: %s", subject, e.Reason)
 	case config.BuildReportEmitDegraded, config.BuildReportFetchDegraded:
@@ -217,4 +218,21 @@ func sourceIndexByID(ids []string, sourceID string) int {
 		}
 	}
 	return -1
+}
+
+// coreUnsupportedTitle — заголовок кода реестра на языке UI; "" — кода нет
+// или реестр не прочитался (строка отчёта тогда держится на схеме).
+func coreUnsupportedTitle(code string) string {
+	if code == "" {
+		return ""
+	}
+	reg, err := registry.Get()
+	if err != nil {
+		return ""
+	}
+	title, _, ok := reg.WarningText(code, locale.GetLang(), nil)
+	if !ok {
+		return ""
+	}
+	return title
 }

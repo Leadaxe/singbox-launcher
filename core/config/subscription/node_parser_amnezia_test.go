@@ -331,9 +331,6 @@ func TestParseNode_AmneziaVPN_AWG3(t *testing.T) {
 	if node.Scheme != "wireguard" || node.Server != "203.0.113.9" || node.Port != 30565 {
 		t.Fatalf("endpoint = %s %s:%d, want wireguard 203.0.113.9:30565", node.Scheme, node.Server, node.Port)
 	}
-	if !HasAWG3Fields(node.Outbound) {
-		t.Errorf("HasAWG3Fields = false for an AWG 3.1 import: %v", node.Outbound)
-	}
 	if got, _ := node.Outbound["header_protection_key"].(string); got != "Bw4VHCMqMTg/Rk1UW2JpcHd+hYyTmqGor7a9xMvS2eA=" {
 		t.Errorf("header_protection_key = %q, want the base64 from the .conf verbatim ('+'/'/' intact)", got)
 	}

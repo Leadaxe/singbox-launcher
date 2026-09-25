@@ -369,36 +369,11 @@ func clearAWGSettings(node *wizardmodels.Node) error {
 	if err != nil {
 		return err
 	}
-	// Набор полей AmneziaWG (1.x–3.x) — поля схемы с build_tag with_awg.
-	for _, k := range reg.FieldsWithBuildTag(scheme, awgBuildTag) {
-		delete(ob, k)
-	}
-	clearRangedKeepalive(ob)
+	// Набор AmneziaWG (1.x–3.x) — всё, чему реестр назначил build_tag
+	// with_awg: корневые поля снимаются, форма-диапазон keepalive
+	// (range_form) схлопывается в нижнюю границу.
+	reg.StripBuildTag(scheme, ob, awgBuildTag)
 	return writeAWGBody(node, ob, nil)
-}
-
-// clearRangedKeepalive заменяет диапазонный persistent_keepalive_interval
-// ("25-35", форма AWG 3.x) нижней границей: после json.Unmarshal peers — это
-// []interface{} из map[string]interface{}, а не типизированный срез парсера.
-func clearRangedKeepalive(ob map[string]interface{}) {
-	peers, _ := ob["peers"].([]interface{})
-	for _, p := range peers {
-		peer, ok := p.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		s, ok := peer["persistent_keepalive_interval"].(string)
-		if !ok || !strings.Contains(s, "-") {
-			continue
-		}
-		lo, _, _ := strings.Cut(s, "-")
-		n, err := strconv.Atoi(strings.TrimSpace(lo))
-		if err != nil || n <= 0 {
-			delete(peer, "persistent_keepalive_interval")
-			continue
-		}
-		peer["persistent_keepalive_interval"] = n
-	}
 }
 
 // awgBlock — блок обфускации в форме узла: виджеты плюс перечитывание из

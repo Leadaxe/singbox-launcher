@@ -7127,3 +7127,71 @@ share-ссылку.** Непустое значение (строка или с�
 строгий загрузчик споткнётся о неизвестный атрибут); выемку учётных
 данных и признак «ссылка несёт приватный ключ» — по роли. sha коммита —
 в сообщении сессии.
+
+## 56. Контракт 1.1.60 — узловой гейт ядра и уровень протокола данными реестра
+
+Курс владельца (SPEC 142, волна 5, находка C3): узел, который текущему
+ядру не по силам, снимается по данным реестра, а не пробой по имени
+протокола; подпись уровня AmneziaWG — тоже из реестра.
+
+**Новые атрибуты** (схема `registry_body`):
+
+- `on_core_unsupported: {action: "drop_node", code}` — у тела протокола
+  (`body`), у поля и внутри `range_form`. Требование рядом
+  (`build_tag`/`min_core` того же уровня) не выполнено ядром → УЗЕЛ
+  снимается на сборке с кодом, конфиг собирается без него. Без атрибута
+  `build_tag`/`min_core` тела остаются описательными, а у поля работает
+  прежний полевой гейт (снимается ключ, узел живёт).
+- `range_form: {min_core?, build_tag?, level?, on_core_unsupported?}` —
+  только у типа `awg_range`: требования и уровень ФОРМЫ-ДИАПАЗОНА `N-M`
+  (строка с дефисом), когда они отличаются от числовой формы.
+- `levels` (тело протокола, по возрастанию), `level` и `level_mark`
+  (поле), `range_form.level` — подпись уровня узла: старший уровень
+  заданных полей и их форм-диапазонов плюс суффиксы `level_mark`.
+
+**Данные:**
+
+- `naive` body: `on_core_unsupported {drop_node, naive_unavailable}` при
+  `build_tag: with_naive_outbound`. У нас purego-сборка ядра без
+  libcronet рядом с бинарём считается «тега нет» (свойство бинаря, в
+  реестре его нет).
+- `tailscale` body: `on_core_unsupported {drop_node,
+  tailscale_core_unsupported}` при `build_tag: with_tailscale`.
+- `wireguard`: поля AmneziaWG 3.x (`header_protection_key`,
+  `content_padding_addition`, `rekey_after_time`, `rekey_timeout`,
+  `reject_after_time`, `keepalive_timeout`, `max_handshake_attempts`,
+  `random_trailers`, `disable_cookies`) — `on_core_unsupported {drop_node,
+  awg3_core_unsupported}` (требование — их `build_tag: with_awg` +
+  `min_core: 1.14.0-lx.32`); `peers[].persistent_keepalive_interval` —
+  `range_form {min_core: 1.14.0-lx.32, build_tag: with_awg, level: awg3,
+  on_core_unsupported {drop_node, awg3_core_unsupported}}`: число годится
+  любому ядру, диапазон — только новому.
+- `wireguard` `levels: [awg, awg1.5, awg2, awg3, awg3.1]`; `level`: jc,
+  jmin, jmax, s1, s2, h1–h4 — `awg`; i1–i5 — `awg1.5`; s3, s4 — `awg2`;
+  поля 3.x — `awg3`; random_trailers, disable_cookies — `awg3.1`;
+  `range_form.level: awg2` у h1–h4; ip/id/ib — `awg1.5` + `level_mark:
+  "+"`. Итог совпадает с прежней подписью (AWG1.5+ при одной маскировке,
+  awg2+ при диапазоне h1 и маскировке и т.д.).
+
+**Правила исполнения:** теги сборки неизвестны (нет строки `Tags:`) — гейт
+по тегу не применяется; версия неизвестна — гейт по версии не применяется
+(деградируем только по положительному свидетельству, последним рубежом
+остаётся `sing-box check`). Снятие расширения по тегу (кнопка «убрать
+AmneziaWG» в форме) удаляет корневые поля с этим `build_tag` и схлопывает
+диапазон с `range_form.build_tag` того же тега в нижнюю границу (граница
+не число > 0 — поле снимается).
+
+Остальные схемы с `build_tag`/`min_core` тела (wireguard `with_wireguard`,
+tuic/hysteria/hysteria2 `with_quic`, masque, chain) гейтом не охвачены —
+атрибут у них не объявлен; включать их — отдельное решение, со сверкой
+строки `Tags:` реальных сборок ядра.
+
+**Коды:** новых нет (`naive_unavailable`, `tailscale_core_unsupported`,
+`awg3_core_unsupported`). **Корпус:** не менялся — гейт живёт на сборке,
+тело и identity не меняются.
+
+От вас: синк 1.1.60; принять новые атрибуты в своём разборе схемы
+реестра (иначе строгий загрузчик споткнётся); если у вас есть свой гейт
+по версии ядра для Tailscale/AWG 3.x или своя функция уровня AmneziaWG
+для подписи — сведите их к `on_core_unsupported` / `levels`. sha коммита
+— в сообщении сессии.

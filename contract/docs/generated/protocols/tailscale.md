@@ -15,6 +15,7 @@
 | `kind` | `endpoint` |
 | `sources` | `singbox` |
 | Core the schema was checked against | `1.14.1-lx.4` |
+| Core requirement | build tag `with_tailscale`; on a core that lacks it the node is dropped at build: `tailscale_core_unsupported` |
 
 ## How to read this page
 

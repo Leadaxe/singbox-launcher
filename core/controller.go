@@ -127,19 +127,11 @@ type AppController struct {
 	installedCoreVersionCache   string // после первой успешной проверки — без повторных запусков sing-box version
 	installedCoreVersionCacheMu sync.Mutex
 
-	// --- Naive-support probe cache (SPEC 044 feature-probe) ---
-	// Invalidated by the core binary's (mtime, size), so a core reinstall
-	// mid-session re-probes. See core_capabilities.go.
-	naiveSupportCache   *naiveSupportVerdict
-	naiveSupportCacheMu sync.Mutex
-
-	// SPEC 122: тот же кэш для гейта with_tailscale.
-	tailscaleSupportCache   *tailscaleSupportVerdict
-	tailscaleSupportCacheMu sync.Mutex
-
-	// SPEC 123: тот же кэш для гейта полей AmneziaWG 3.x (тег + версия ядра).
-	awg3SupportCache   *awg3SupportVerdict
-	awg3SupportCacheMu sync.Mutex
+	// --- Кэш тегов сборки ядра для узлового гейта (SPEC 142 волна 5) ---
+	// Сбрасывается по (mtime, size) бинаря ядра: переустановка ядра в той же
+	// сессии пробует заново. См. core_capabilities.go.
+	coreBuildTagsCache   *coreBuildTagsVerdict
+	coreBuildTagsCacheMu sync.Mutex
 
 	// D-121 / SPEC 131 W2c: кэша для гейта tls.reality.key_share здесь
 	// больше нет — полевые гейты считает табличный проход по реестру
@@ -282,17 +274,12 @@ func NewAppController(layout paths.Layout, appIconData, greyIconData, greenIconD
 	// (macOS) поднимается ниже из settings.json после инициализации сервисов.
 	ac.backend = NewLegacyBackend(ac)
 
-	// SPEC 044 feature-probe: генератор outbound'ов деградирует naive-ноды
-	// (drop + warning) вместо того чтобы отдать sing-box конфиг, который
-	// целиком завалит `check` на ядре без naive-поддержки.
-	config.NaiveSupportProbe = ac.CoreSupportsNaive
+	// Узловой гейт ядра (SPEC 044/122/123 → SPEC 142 волна 5): генератор
+	// снимает узел, который ядру не по силам (протокол без тега сборки, поле
+	// новее ядра), вместо того чтобы отдать конфиг, который целиком завалит
+	// `check`. Что чему нужно — реестр; отсюда только теги сборки ядра.
+	config.CoreBuildTagsProbe = ac.CoreBuildTags
 	config.ChainSupportProbe = ac.CoreSupportsChain
-	// SPEC 122: то же для tailscale — endpoint типа `tailscale` умеет только
-	// ядро с тегом with_tailscale, а один такой узел валит `check` целиком.
-	config.TailscaleSupportProbe = ac.CoreSupportsTailscale
-	// SPEC 123: то же для полей AmneziaWG 3.x — ядро до 1.14.0-lx.32
-	// отвергает конфиг с любым из них целиком.
-	config.AWG3SupportProbe = ac.CoreSupportsAWG3
 	// SPEC 131 W2c: полевые гейты (снимается ПОЛЕ, узел живёт) больше не
 	// заводятся пробой на каждое поле — их считает один табличный проход по
 	// реестру, которому нужна лишь версия ядра. Так ушла

@@ -61,10 +61,6 @@ const (
 	// WarnAmneziaContainerChoice — в vpn://-профиле несколько контейнеров,
 	// одиночный путь взял дефолтный.
 	WarnAmneziaContainerChoice = "amnezia_container_choice"
-	// WarnTailscaleCoreUnsupported — узел tailscale снят: ядро собрано без
-	// with_tailscale (SPEC 122). Не пометка на живом узле, а его выброс —
-	// оставленный, он завалил бы `sing-box check` для всего конфига.
-	WarnTailscaleCoreUnsupported = "tailscale_core_unsupported"
 	// WarnTailscaleFromSubscription — узел tailnet приехал ПОДПИСКОЙ.
 	// Узел живёт, поэтому info: но связки (MagicDNS + маршрут) подписка не
 	// приносит, а идентичность машины в tailnet — местная (NODE_SECTIONS.md §6).
@@ -85,9 +81,10 @@ const (
 	// ставит код САНИТАЙЗЕР — то есть на всех входах, а не только на
 	// ссылке. Рукописный awg3RandomTrailersWithWideHeaders снят
 	// (SPEC 133, секция wireguard).
-	// WarnAWG3CoreUnsupported — узел с AWG3-полями снят на сборке: ядро
-	// старше 1.14.0-lx.32 или без with_awg. Выброс, а не пометка.
-	WarnAWG3CoreUnsupported = "awg3_core_unsupported"
+	// СНЯТЫ (контракт 1.1.60): tailscale_core_unsupported,
+	// awg3_core_unsupported. Их называет реестр (`on_core_unsupported.code`
+	// тела tailscale и полей AWG 3.x), а ставит общий узловой гейт ядра
+	// nodeflow.NodeCoreRefusal на сборке.
 	// WarnDialerProxyUnusable — цель streamSettings.sockopt.dialerProxy
 	// непригодна: узел-владелец отбраковывается ЦЕЛИКОМ. Кода на узле не
 	// бывает (узла не будет) — он едет в отбраковке, поэтому severity=error.

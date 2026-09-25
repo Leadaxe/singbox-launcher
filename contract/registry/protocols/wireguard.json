@@ -2049,6 +2049,15 @@
             },
             "persistent_keepalive_interval": {
               "type": "awg_range",
+              "range_form": {
+                "min_core": "1.14.0-lx.32",
+                "build_tag": "with_awg",
+                "level": "awg3",
+                "on_core_unsupported": {
+                  "action": "drop_node",
+                  "code": "awg3_core_unsupported"
+                }
+              },
               "desc_en": "Keepalive interval in seconds, number or range.",
               "desc_ru": "Интервал keepalive в секундах: число или диапазон.",
               "impl": "AWGRange форка: число (как в upstream) ИЛИ «min-max». Форма-диапазон требует сборки с with_awg и ядра >= 1.14.0-lx.32. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
@@ -2126,6 +2135,7 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg",
         "desc_en": "Number of junk packets sent before the handshake.",
         "desc_ru": "Сколько мусорных пакетов слать перед рукопожатием.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build»."
@@ -2140,6 +2150,7 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg",
         "requires": [
           {
             "path": "jmax",
@@ -2160,6 +2171,7 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg",
         "desc_en": "Maximum size of a junk packet.",
         "desc_ru": "Максимальный размер мусорного пакета.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Требование jmin <= jmax."
@@ -2185,6 +2197,7 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg",
         "desc_en": "Junk prepended to the handshake initiation packet.",
         "desc_ru": "Мусор перед пакетом инициации рукопожатия.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Мусор перед пакетом инициации рукопожатия. min_when: при заданном header_protection_key значение не ниже 12 — nonce шифра заголовка берётся из первых 12 байт паддинга, и ядро отвергает такую пару на загрузке ВСЕГО конфига (docs-lx §2.9/§2.10), поэтому action=drop_node, а не снятие поля. absent_is_zero: незаданный паддинг ядро читает как 0, и «ключ есть, паддинга нет» так же фатально, как «ключ + паддинг 5». Прежде правило жило рукописным validateAWG3 в awg3.go, роняло узел МОЛЧА и не работало на входе singbox (находка №8 LEGACY_AUDIT, контракт 1.1.11)."
@@ -2210,6 +2223,7 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg",
         "desc_en": "Junk prepended to the handshake response packet.",
         "desc_ru": "Мусор перед пакетом ответа на рукопожатие.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Мусор перед пакетом ответа на рукопожатие. Порог при header_protection_key — как у s1 (min_when 12, drop_node, absent_is_zero)."
@@ -2235,6 +2249,7 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg2",
         "desc_en": "Junk prepended to the cookie reply packet.",
         "desc_ru": "Мусор перед пакетом cookie-reply.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Мусор перед пакетом cookie-reply. На MTU НЕ влияет. Порог при header_protection_key — как у s1 (min_when 12, drop_node, absent_is_zero)."
@@ -2260,6 +2275,7 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg2",
         "desc_en": "Junk prepended to every transport packet.",
         "desc_ru": "Мусор перед каждым транспортным пакетом.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Мусор перед каждым транспортным пакетом. Влияет на MTU: при s4 > 0 дефолт mtu становится 1280. Порог при header_protection_key — как у s1 (min_when 12, drop_node, absent_is_zero)."
@@ -2274,6 +2290,10 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg",
+        "range_form": {
+          "level": "awg2"
+        },
         "desc_en": "Magic header of the handshake initiation packet.",
         "desc_ru": "Магический заголовок пакета инициации рукопожатия.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». MagicHeader = AWGRange: ЧИСЛО либо строка «min-max», границы uint32 (шире 2^32-1 ядро отвергает разбором и роняет весь конфиг). normalize range_order СВОПАЕТ перевёрнутую пару («40-10» → «10-40») МОЛЧА: порядок границ смысла не несёт — ядро выбирает значение ИЗ диапазона, и [10,40] = [40,10]; кода тут нет по тому же правилу, что у trim — замена, не меняющая смысла, человеку не сообщается. У таймингов AWG 3.x своп ЗАПРЕЩЁН: там перевёрнутая пара — опечатка человека, и он обязан её увидеть (SPEC 123 §2). Негодное значение снимает ПОЛЕ с кодом awg_header_invalid; пересечение диапазонов h1..h4 — связь body.relations ranges_disjoint, код awg_headers_overlap, узел отбрасывается."
@@ -2288,6 +2308,10 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg",
+        "range_form": {
+          "level": "awg2"
+        },
         "desc_en": "Magic header of the handshake response packet.",
         "desc_ru": "Магический заголовок пакета ответа на рукопожатие.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». MagicHeader = AWGRange, правила как у h1: границы uint32, normalize range_order (тихий своп), on_invalid awg_header_invalid, связь ranges_disjoint."
@@ -2302,6 +2326,10 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg",
+        "range_form": {
+          "level": "awg2"
+        },
         "desc_en": "Magic header of the cookie reply packet.",
         "desc_ru": "Магический заголовок пакета cookie-reply.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». MagicHeader = AWGRange, правила как у h1: границы uint32, normalize range_order (тихий своп), on_invalid awg_header_invalid, связь ranges_disjoint."
@@ -2316,6 +2344,10 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg",
+        "range_form": {
+          "level": "awg2"
+        },
         "desc_en": "Magic header of the transport packet.",
         "desc_ru": "Магический заголовок транспортного пакета.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». MagicHeader = AWGRange, правила как у h1: границы uint32, normalize range_order (тихий своп), on_invalid awg_header_invalid, связь ranges_disjoint."
@@ -2325,6 +2357,7 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg1.5",
         "conflicts": [
           {
             "with": "id",
@@ -2348,6 +2381,7 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg1.5",
         "conflicts": [
           {
             "with": "ip",
@@ -2363,6 +2397,7 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg1.5",
         "desc_en": "Third custom junk packet.",
         "desc_ru": "Третий пользовательский мусорный пакет.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build»."
@@ -2372,6 +2407,7 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg1.5",
         "desc_en": "Fourth custom junk packet.",
         "desc_ru": "Четвёртый пользовательский мусорный пакет.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build»."
@@ -2381,6 +2417,7 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg1.5",
         "desc_en": "Fifth custom junk packet.",
         "desc_ru": "Пятый пользовательский мусорный пакет.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build»."
@@ -2397,6 +2434,8 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg1.5",
+        "level_mark": "+",
         "requires": [
           {
             "path": "ip",
@@ -2424,6 +2463,8 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg1.5",
+        "level_mark": "+",
         "requires": [
           {
             "path": "id",
@@ -2453,6 +2494,8 @@
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
         "build_tag": "with_awg",
+        "level": "awg1.5",
+        "level_mark": "+",
         "requires": [
           {
             "path": "ip",
@@ -2476,6 +2519,11 @@
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
+        "level": "awg3",
+        "on_core_unsupported": {
+          "action": "drop_node",
+          "code": "awg3_core_unsupported"
+        },
         "desc_en": "Key protecting packet headers.",
         "desc_ru": "Ключ защиты заголовков пакетов.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x: base64 ровно 32 байта (format base64_32) и НЕ все нули — запрет всех нулей выражен pattern'ом: строка из одних 'A' с паддингом и есть 32 нулевых байта, а пустую строку pattern пропускает, её снимает omitAsUnset как «не задано». Негодный ключ роняет УЗЕЛ (on_invalid drop_node, код awg3_header_key_invalid): без верного ключа рукопожатие невозможно, а ядро отвергает такой конфиг ЦЕЛИКОМ. Порог паддинга s1..s4 >= 12 выражен их min_when (код awg3_padding_too_short). Прежде обе проверки жили рукописным validateAWG3 в awg3.go, роняли узел МОЛЧА, и объявленные коды не ставились никогда (находка №8 LEGACY_AUDIT, контракт 1.1.11). Секрет."
@@ -2489,6 +2537,11 @@
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
+        "level": "awg3",
+        "on_core_unsupported": {
+          "action": "drop_node",
+          "code": "awg3_core_unsupported"
+        },
         "desc_en": "Extra content padding, number or range.",
         "desc_ru": "Добавочная набивка содержимого: число или диапазон.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c). Негодное значение (мусор либо, у диапазона, перевёрнутые границы N>M) снимает ПОЛЕ с кодом awg3_field_invalid: тайминги клиентские, узел живёт на дефолтах ядра. Своп перевёрнутой пары здесь ЗАПРЕЩЁН (normalize range_order не стоит) — это опечатка человека, и он обязан её увидеть, в отличие от h1..h4, где порядок границ смысла не несёт (SPEC 123 §2, контракт 1.1.11)."
@@ -2503,6 +2556,11 @@
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
+        "level": "awg3",
+        "on_core_unsupported": {
+          "action": "drop_node",
+          "code": "awg3_core_unsupported"
+        },
         "desc_en": "Rekey after this many seconds.",
         "desc_ru": "Смена ключей через столько секунд.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 120 секунд. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c). Негодное значение (мусор либо, у диапазона, перевёрнутые границы N>M) снимает ПОЛЕ с кодом awg3_field_invalid: тайминги клиентские, узел живёт на дефолтах ядра. Своп перевёрнутой пары здесь ЗАПРЕЩЁН (normalize range_order не стоит) — это опечатка человека, и он обязан её увидеть, в отличие от h1..h4, где порядок границ смысла не несёт (SPEC 123 §2, контракт 1.1.11)."
@@ -2517,6 +2575,11 @@
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
+        "level": "awg3",
+        "on_core_unsupported": {
+          "action": "drop_node",
+          "code": "awg3_core_unsupported"
+        },
         "desc_en": "Rekey attempt timeout in seconds.",
         "desc_ru": "Таймаут попытки смены ключей в секундах.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 5 секунд. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c). Негодное значение (мусор либо, у диапазона, перевёрнутые границы N>M) снимает ПОЛЕ с кодом awg3_field_invalid: тайминги клиентские, узел живёт на дефолтах ядра. Своп перевёрнутой пары здесь ЗАПРЕЩЁН (normalize range_order не стоит) — это опечатка человека, и он обязан её увидеть, в отличие от h1..h4, где порядок границ смысла не несёт (SPEC 123 §2, контракт 1.1.11)."
@@ -2531,6 +2594,11 @@
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
+        "level": "awg3",
+        "on_core_unsupported": {
+          "action": "drop_node",
+          "code": "awg3_core_unsupported"
+        },
         "desc_en": "Reject the session after this many seconds.",
         "desc_ru": "Отбрасывать сессию через столько секунд.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 180 секунд. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c). Негодное значение (мусор либо, у диапазона, перевёрнутые границы N>M) снимает ПОЛЕ с кодом awg3_field_invalid: тайминги клиентские, узел живёт на дефолтах ядра. Своп перевёрнутой пары здесь ЗАПРЕЩЁН (normalize range_order не стоит) — это опечатка человека, и он обязан её увидеть, в отличие от h1..h4, где порядок границ смысла не несёт (SPEC 123 §2, контракт 1.1.11)."
@@ -2545,6 +2613,11 @@
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
+        "level": "awg3",
+        "on_core_unsupported": {
+          "action": "drop_node",
+          "code": "awg3_core_unsupported"
+        },
         "desc_en": "Keepalive timeout in seconds.",
         "desc_ru": "Таймаут keepalive в секундах.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 10 секунд. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c). Негодное значение (мусор либо, у диапазона, перевёрнутые границы N>M) снимает ПОЛЕ с кодом awg3_field_invalid: тайминги клиентские, узел живёт на дефолтах ядра. Своп перевёрнутой пары здесь ЗАПРЕЩЁН (normalize range_order не стоит) — это опечатка человека, и он обязан её увидеть, в отличие от h1..h4, где порядок границ смысла не несёт (SPEC 123 §2, контракт 1.1.11)."
@@ -2559,6 +2632,11 @@
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
+        "level": "awg3",
+        "on_core_unsupported": {
+          "action": "drop_node",
+          "code": "awg3_core_unsupported"
+        },
         "desc_en": "Maximum handshake attempts, count not seconds.",
         "desc_ru": "Максимум попыток рукопожатия — попытки, не секунды.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.x, AWGRange; дефолт WireGuard 18 попыток. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c). Негодное значение (мусор либо, у диапазона, перевёрнутые границы N>M) снимает ПОЛЕ с кодом awg3_field_invalid: тайминги клиентские, узел живёт на дефолтах ядра. Своп перевёрнутой пары здесь ЗАПРЕЩЁН (normalize range_order не стоит) — это опечатка человека, и он обязан её увидеть, в отличие от h1..h4, где порядок границ смысла не несёт (SPEC 123 §2, контракт 1.1.11)."
@@ -2573,6 +2651,11 @@
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
+        "level": "awg3.1",
+        "on_core_unsupported": {
+          "action": "drop_node",
+          "code": "awg3_core_unsupported"
+        },
         "desc_en": "Append random trailing bytes to packets.",
         "desc_ru": "Дописывать случайные байты в хвост пакетов.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.1. Код awg3_random_trailers_wide_headers. Негодное значение (не булево) снимает ПОЛЕ с кодом awg3_field_invalid; узел живёт на дефолте ядра. Прежде поле ронял парсер ссылки молча, а на входе singbox проверки не было вовсе (контракт 1.1.11)."
@@ -2587,6 +2670,11 @@
         "lx_only": true,
         "min_core": "1.14.0-lx.32",
         "build_tag": "with_awg",
+        "level": "awg3.1",
+        "on_core_unsupported": {
+          "action": "drop_node",
+          "code": "awg3_core_unsupported"
+        },
         "desc_en": "Disable the cookie mechanism.",
         "desc_ru": "Отключить механизм cookie.",
         "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». AWG 3.1. Негодное значение (не булево) снимает ПОЛЕ с кодом awg3_field_invalid; узел живёт на дефолте ядра. Прежде поле ронял парсер ссылки молча, а на входе singbox проверки не было вовсе (контракт 1.1.11)."
@@ -2649,6 +2737,13 @@
         "impl": "Свойство ПАРЫ настроек, ни одна из которых не битая, поэтому ни on_invalid, ни conflicts тут не подходят: узел живёт, менять нечего, человеку сообщается цена сочетания. Условие разнородное (булев флаг + ширина диапазона), отсюда kind cooccurrence, а не ranges_disjoint. Порог: ширина/2^32 на каждый data-пакет перестаёт быть пренебрежимой при hi-lo >= 65536 (docs-lx §2.10, SPEC 123 §91) — в записи это `gt: 65535`, потому что оператор строгий, а правило кода нестрогое (>=). Диапазоном считается только значение вида «lo-hi»: заголовок-ЧИСЛО ширины не имеет и условие не выполняет. Прежде правило жило рукописным awg3RandomTrailersWithWideHeaders (awg3.go:256) и потому не работало на входе singbox — тот же класс, что находка №8 LEGACY_AUDIT; связь реестра снимает и это расхождение входов. severity здесь НЕ дублируется: info несёт сам код (warnings.json)."
       }
     ],
-    "build_tag": "with_wireguard"
+    "build_tag": "with_wireguard",
+    "levels": [
+      "awg",
+      "awg1.5",
+      "awg2",
+      "awg3",
+      "awg3.1"
+    ]
   }
 }

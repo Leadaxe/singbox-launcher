@@ -248,7 +248,11 @@
         "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
       }
     },
-    "build_tag": "with_naive_outbound"
+    "build_tag": "with_naive_outbound",
+    "on_core_unsupported": {
+      "action": "drop_node",
+      "code": "naive_unavailable"
+    }
   },
   "mappers": {
     "uri": {

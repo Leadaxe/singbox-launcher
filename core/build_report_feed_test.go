@@ -24,8 +24,9 @@ func TestFeedBuildReportFromParser(t *testing.T) {
 		BrokenChains: []config.ChainDegradation{
 			{Tag: "hop2", Name: "двойной прыжок", Reason: "позиция не найдена"},
 		},
-		SkippedNaiveNodes:  3,
-		SkippedNaiveReason: "ядро собрано без with_naive_outbound",
+		CoreSkips: []config.CoreSkip{
+			{Code: "naive_unavailable", Scheme: "naive", Reason: "ядро собрано без with_naive_outbound", Nodes: 3},
+		},
 	})
 
 	entries, _, _ := config.BuildReport()
@@ -40,10 +41,10 @@ func TestFeedBuildReportFromParser(t *testing.T) {
 	if got := byKind[config.BuildReportChainFailed].Subject; got != "двойной прыжок" {
 		t.Errorf("субъект несобравшейся цепочки = %q, ожидалось её имя", got)
 	}
-	if got := byKind[config.BuildReportNaiveDegraded].NodeCount; got != 3 {
+	if got := byKind[config.BuildReportCoreUnsupported].NodeCount; got != 3 {
 		t.Errorf("деградация naive насчитала %d узлов, ожидалось 3", got)
 	}
-	if got := byKind[config.BuildReportNaiveDegraded].Reason; got == "" {
+	if got := byKind[config.BuildReportCoreUnsupported].Reason; got == "" {
 		t.Error("деградация naive приехала без причины — пользователь не узнает, чего не хватает ядру")
 	}
 }

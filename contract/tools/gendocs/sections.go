@@ -494,6 +494,12 @@ func collectDegradation(out map[string][]string, scheme, path string, f *registr
 	if g := bodyGate(f); g != "" {
 		put("gated", "`"+path+"` — needs "+strings.TrimPrefix(g, "Only written when: "))
 	}
+	if a := f.OnCoreUnsupported; a != nil {
+		put("gated", "`"+path+"` — on a core that lacks it the whole node is dropped ("+code(a.Code)+")")
+	}
+	if rf := f.RangeForm; rf != nil && rf.OnCoreUnsupported != nil {
+		put("gated", "`"+path+"` as a range `N-M` — on a core that lacks it the whole node is dropped ("+code(rf.OnCoreUnsupported.Code)+")")
+	}
 
 	if len(f.Variants) > 0 {
 		names := make([]string, 0, len(f.Variants))

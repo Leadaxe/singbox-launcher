@@ -45,17 +45,11 @@ const (
 	// BuildReportChainFailed — источник-цепочка не стал узлом (SPEC 110).
 	BuildReportChainFailed BuildReportKind = "chain_failed"
 
-	// BuildReportNaiveDegraded — naive-узлы сняты, потому что ядро их не
-	// умеет (SPEC 044 feature-probe).
-	BuildReportNaiveDegraded BuildReportKind = "naive_degraded"
-
-	// BuildReportTailscaleDegraded — узлы tailscale сняты, потому что ядро
-	// собрано без with_tailscale (SPEC 122 feature-probe).
-	BuildReportTailscaleDegraded BuildReportKind = "tailscale_degraded"
-
-	// BuildReportAWG3Degraded — wireguard-узлы с полями AmneziaWG 3.x сняты,
-	// потому что ядро старше 1.14.0-lx.32 (SPEC 123 feature-probe).
-	BuildReportAWG3Degraded BuildReportKind = "awg3_degraded"
+	// BuildReportCoreUnsupported — узлы сняты узловым гейтом ядра: ядро не
+	// умеет их протокол или поле (SPEC 142 волна 5; прежде — три вида по
+	// протоколу: naive, tailscale, AmneziaWG 3.x). Одна запись на пару
+	// (код реестра, схема); Code — код из `on_core_unsupported` реестра.
+	BuildReportCoreUnsupported BuildReportKind = "core_unsupported"
 
 	// BuildReportSourceParseFailed — источник не дал конфигу НИ ОДНОГО узла:
 	// не фетчнулся, или фетчнулся и разобрался в ноль (SPEC 115).
@@ -112,9 +106,12 @@ type BuildReportEntry struct {
 	SourceID    string
 	SourceLabel string
 	Reason      string
-	// NodeCount — сколько узлов снято (только BuildReportNodesDropped).
-	// Ноль у остальных видов: там считать нечего.
+	// NodeCount — сколько узлов снято (BuildReportNodesDropped,
+	// BuildReportCoreUnsupported). Ноль у остальных видов: там считать нечего.
 	NodeCount int
+	// Code — код реестра записи (BuildReportCoreUnsupported): по нему UI
+	// берёт заголовок из warnings.json на своём языке.
+	Code string
 }
 
 // BuildGeneration — номер попытки сборки.

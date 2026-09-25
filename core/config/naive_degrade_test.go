@@ -72,15 +72,31 @@ func testNaiveNode(tag string) *ParsedNode {
 	}
 }
 
-func withNaiveProbe(t *testing.T, probe func() (bool, string)) {
+// withCoreTags подменяет теги сборки ядра для узлового гейта: tags == nil —
+// пробы нет вовсе (теги неизвестны).
+func withCoreTags(t *testing.T, tags []string) {
 	t.Helper()
-	prev := NaiveSupportProbe
-	NaiveSupportProbe = probe
-	t.Cleanup(func() { NaiveSupportProbe = prev })
+	prev := CoreBuildTagsProbe
+	if tags == nil {
+		CoreBuildTagsProbe = nil
+	} else {
+		CoreBuildTagsProbe = func() ([]string, map[string]string) { return tags, nil }
+	}
+	t.Cleanup(func() { CoreBuildTagsProbe = prev })
+}
+
+// coreSkipOf — сколько узлов схемы снял узловой гейт и с какой причиной.
+func coreSkipOf(result *OutboundGenerationResult, scheme string) (int, string) {
+	for _, s := range result.CoreSkips {
+		if s.Scheme == scheme {
+			return s.Nodes, s.Reason
+		}
+	}
+	return 0, ""
 }
 
 func TestGenerateOutbounds_NaiveDegradedWhenUnsupported(t *testing.T) {
-	withNaiveProbe(t, func() (bool, string) { return false, "core built without with_naive_outbound" })
+	withCoreTags(t, []string{"with_quic"})
 
 	nodes := []*ParsedNode{testSocksNode("socks-1"), testNaiveNode("naive-1")}
 	result, err := generateWithCanonicalNodes(t, naiveDegradeParserConfig(), nodes, DirectionBuildOptions{})
@@ -88,11 +104,8 @@ func TestGenerateOutbounds_NaiveDegradedWhenUnsupported(t *testing.T) {
 		t.Fatalf("GenerateOutboundsFromParserConfig: %v", err)
 	}
 
-	if result.SkippedNaiveNodes != 1 {
-		t.Errorf("SkippedNaiveNodes = %d, want 1", result.SkippedNaiveNodes)
-	}
-	if !strings.Contains(result.SkippedNaiveReason, "with_naive_outbound") {
-		t.Errorf("SkippedNaiveReason = %q, want probe reason", result.SkippedNaiveReason)
+	if n, reason := coreSkipOf(result, "naive"); n != 1 || !strings.Contains(reason, "with_naive_outbound") {
+		t.Errorf("naive skipped = %d (%q), want 1 with the missing tag named", n, reason)
 	}
 	all := strings.Join(result.OutboundsJSON, "\n")
 	if strings.Contains(all, "naive-1") {
@@ -104,7 +117,7 @@ func TestGenerateOutbounds_NaiveDegradedWhenUnsupported(t *testing.T) {
 }
 
 func TestGenerateOutbounds_NaiveKeptWhenSupported(t *testing.T) {
-	withNaiveProbe(t, func() (bool, string) { return true, "" })
+	withCoreTags(t, []string{"with_quic", "with_naive_outbound"})
 
 	nodes := []*ParsedNode{testSocksNode("socks-1"), testNaiveNode("naive-1")}
 	result, err := generateWithCanonicalNodes(t, naiveDegradeParserConfig(), nodes, DirectionBuildOptions{})
@@ -112,8 +125,8 @@ func TestGenerateOutbounds_NaiveKeptWhenSupported(t *testing.T) {
 		t.Fatalf("GenerateOutboundsFromParserConfig: %v", err)
 	}
 
-	if result.SkippedNaiveNodes != 0 {
-		t.Errorf("SkippedNaiveNodes = %d, want 0", result.SkippedNaiveNodes)
+	if n, _ := coreSkipOf(result, "naive"); n != 0 {
+		t.Errorf("naive skipped = %d, want 0", n)
 	}
 	all := strings.Join(result.OutboundsJSON, "\n")
 	if !strings.Contains(all, "naive-1") {
@@ -122,22 +135,22 @@ func TestGenerateOutbounds_NaiveKeptWhenSupported(t *testing.T) {
 }
 
 func TestGenerateOutbounds_NilProbeAssumesSupported(t *testing.T) {
-	withNaiveProbe(t, nil)
+	withCoreTags(t, nil)
 
 	nodes := []*ParsedNode{testNaiveNode("naive-1")}
 	result, err := generateWithCanonicalNodes(t, naiveDegradeParserConfig(), nodes, DirectionBuildOptions{})
 	if err != nil {
 		t.Fatalf("GenerateOutboundsFromParserConfig: %v", err)
 	}
-	if result.SkippedNaiveNodes != 0 {
-		t.Errorf("SkippedNaiveNodes = %d, want 0 with nil probe", result.SkippedNaiveNodes)
+	if n, _ := coreSkipOf(result, "naive"); n != 0 {
+		t.Errorf("naive skipped = %d, want 0 with nil probe", n)
 	}
 }
 
 // A source whose every node degrades must not be reported as silent-empty
 // failure, and an all-naive run must fail with a message naming the cause.
 func TestGenerateOutbounds_AllNaiveGivesActionableError(t *testing.T) {
-	withNaiveProbe(t, func() (bool, string) { return false, "core built without with_naive_outbound" })
+	withCoreTags(t, []string{"with_quic"})
 
 	nodes := []*ParsedNode{testNaiveNode("naive-1"), testNaiveNode("naive-2")}
 	_, err := generateWithCanonicalNodes(t, naiveDegradeParserConfig(), nodes, DirectionBuildOptions{})

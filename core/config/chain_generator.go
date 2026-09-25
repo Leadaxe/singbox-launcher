@@ -29,7 +29,7 @@ import (
 //
 // nil (тесты парсера, standalone) → считаем, что знает: деградировать на
 // догадке нельзя, а `sing-box check` остаётся последним рубежом. Тот же
-// приём, что у NaiveSupportProbe.
+// приём, что у CoreBuildTagsProbe.
 var ChainSupportProbe func() (supported bool, reason string)
 
 // chainSupported — вердикт пробы с безопасным умолчанием.

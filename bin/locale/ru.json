@@ -1027,14 +1027,8 @@
   "Chain %q did not build: %s": {
     "value": "Цепочка %q не собралась: %s"
   },
-  "%d naive node(s) skipped: %s": {
-    "value": "Узлов naive пропущено: %d — %s"
-  },
-  "%d tailscale node(s) skipped: %s": {
-    "value": "Узлов tailscale пропущено: %d — %s"
-  },
-  "%d AmneziaWG 3.x node(s) skipped: %s": {
-    "value": "Узлов AmneziaWG 3.x пропущено: %d — %s"
+  "%s — %d node(s) skipped: %s": {
+    "value": "%s — пропущено узлов: %d — %s"
   },
   "Detour target %q is missing from the build: %s": {
     "value": "Цели перехода %q нет в сборке: %s"

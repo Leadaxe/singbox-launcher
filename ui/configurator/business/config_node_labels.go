@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/registry"
-	"singbox-launcher/core/config/subscription"
 )
 
 // SPEC 095 D2/D3 — метки транспорта и security для подзаголовка узла.
@@ -12,16 +11,6 @@ import (
 // Правила один в один с LxBox (app/lib/models/config_node.dart,
 // _deriveTransport / _deriveSecurity): подзаголовок должен читаться одинаково
 // на телефоне и на десктопе, иначе пользователь сверяет два разных языка.
-
-// awgNumericKeys — базовые поля обфускации AmneziaWG 1.0.
-var awgNumericKeys = []string{"jc", "jmin", "jmax", "s1", "s2", "h1", "h2", "h3", "h4"}
-
-// awgSignatureKeys — signature-пакеты (CPS) AmneziaWG 1.5.
-var awgSignatureKeys = []string{"i1", "i2", "i3", "i4", "i5"}
-
-// awgMasqueradeKeys — masquerade-сахар: ядро разворачивает их в CPS-пакет,
-// то есть по сути это уже 1.5.
-var awgMasqueradeKeys = []string{"ip", "id", "ib"}
 
 // deriveTransport возвращает метку транспорта по типу тела ядра.
 func deriveTransport(nodeType string, raw map[string]interface{}) string {
@@ -76,21 +65,19 @@ func TransportLabel(scheme string, raw map[string]interface{}) string {
 
 // deriveSecurity возвращает метку защиты канала.
 //
-// Для WireGuard это уровень AmneziaWG, определяемый СТРУКТУРНО — по наличию
-// полей, потому что явной версии в конфиге нет:
-//
-//	awg3.1  — random_trailers / disable_cookies;
-//	awg3    — защита заголовка, тайминги или диапазонный keepalive (SPEC 123);
-//	awg2    — ranged-заголовки h1–h4 вида "N-M" либо transport-padding s3/s4;
-//	awg1.5  — signature-пакеты i1–i5;
-//	awg     — только базовые jc/jmin/jmax/s1/s2 или одиночные h1–h4;
-//	суффикс + — masquerade-поля ip/id/ib (ядро разворачивает их в CPS-пакет,
-//	            то есть поднимает минимум до 1.5).
+// Схема, у которой реестр объявил уровни расширения (`levels` тела —
+// AmneziaWG у wireguard), подписывается уровнем: явной версии в конфиге
+// нет, уровень выводится СТРУКТУРНО по заданным полям и формам-диапазонам
+// (`level`/`range_form.level`/`level_mark` в реестре, registry.Level).
 //
 // Для остальных — TLS/Reality плюс +Vision, если включён xtls-rprx-vision.
 func deriveSecurity(nodeType string, raw map[string]interface{}) string {
-	if nodeType == "wireguard" {
-		return deriveAWGLevel(raw)
+	if reg, err := registry.Get(); err == nil {
+		if scheme, ok := reg.SchemeForSingboxType(nodeType); ok {
+			if body, ok := reg.Body(scheme); ok && len(body.Levels) > 0 {
+				return reg.Level(scheme, raw)
+			}
+		}
 	}
 
 	tls, ok := raw["tls"].(map[string]interface{})
@@ -113,59 +100,4 @@ func deriveSecurity(nodeType string, raw map[string]interface{}) string {
 		return base + "+Vision"
 	}
 	return base
-}
-
-// deriveAWGLevel определяет уровень AmneziaWG по набору полей.
-func deriveAWGLevel(raw map[string]interface{}) string {
-	base := ""
-	switch {
-	// AWG 3.1 отличается от 3.0 ровно двумя полями (SPEC 123 §2): версия в
-	// теле не хранится, бейдж выводится структурно — как и у awg2.
-	case hasAnyKey(raw, "random_trailers", "disable_cookies"):
-		base = "awg3.1"
-	case subscription.HasAWG3Fields(raw):
-		base = "awg3"
-	case hasRangedHeader(raw) || hasAnyKey(raw, "s3", "s4"):
-		base = "awg2"
-	case hasAnyKey(raw, awgSignatureKeys...):
-		base = "awg1.5"
-	case hasAnyKey(raw, awgNumericKeys...):
-		base = "awg"
-	}
-
-	if hasAnyKey(raw, awgMasqueradeKeys...) {
-		// masquerade сам по себе = 1.5; на уже-2.0 и выше уровень сохраняется.
-		switch base {
-		case "awg3.1", "awg3", "awg2":
-			return base + "+"
-		}
-		return "awg1.5+"
-	}
-	return base
-}
-
-// hasRangedHeader сообщает, задан ли хоть один заголовок h1–h4 диапазоном
-// («N-M»), а не числом. Диапазон появился в AmneziaWG 2.0.
-func hasRangedHeader(raw map[string]interface{}) bool {
-	for _, key := range []string{"h1", "h2", "h3", "h4"} {
-		v, ok := raw[key]
-		if !ok {
-			continue
-		}
-		// Диапазон приезжает строкой; одиночное значение — числом.
-		if s, isStr := v.(string); isStr && strings.Contains(s, "-") {
-			return true
-		}
-	}
-	return false
-}
-
-// hasAnyKey сообщает, есть ли в map хоть один из ключей.
-func hasAnyKey(raw map[string]interface{}, keys ...string) bool {
-	for _, k := range keys {
-		if _, ok := raw[k]; ok {
-			return true
-		}
-	}
-	return false
 }

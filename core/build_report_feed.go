@@ -110,34 +110,15 @@ func FeedBuildReportFromParser(gen config.BuildGeneration, res *config.OutboundG
 		})
 	}
 
-	// naive без поддержки в ядре: узлы сняты, конфиг собран. Молчание тут
+	// Узлы, которые ядру не по силам: сняты, конфиг собран. Молчание тут
 	// читалось бы как баг парсера — «узлы были, узлов нет».
-	if res.SkippedNaiveNodes > 0 {
+	for _, skip := range res.CoreSkips {
 		entries = append(entries, config.BuildReportEntry{
-			Kind:      config.BuildReportNaiveDegraded,
-			Subject:   "naive",
-			Reason:    res.SkippedNaiveReason,
-			NodeCount: res.SkippedNaiveNodes,
-		})
-	}
-
-	// SPEC 122: то же для tailscale — узлы сняты, конфиг собран.
-	if res.SkippedTailscaleNodes > 0 {
-		entries = append(entries, config.BuildReportEntry{
-			Kind:      config.BuildReportTailscaleDegraded,
-			Subject:   "tailscale",
-			Reason:    res.SkippedTailscaleReason,
-			NodeCount: res.SkippedTailscaleNodes,
-		})
-	}
-
-	// SPEC 123: то же для узлов с полями AmneziaWG 3.x на старом ядре.
-	if res.SkippedAWG3Nodes > 0 {
-		entries = append(entries, config.BuildReportEntry{
-			Kind:      config.BuildReportAWG3Degraded,
-			Subject:   "amneziawg3",
-			Reason:    res.SkippedAWG3Reason,
-			NodeCount: res.SkippedAWG3Nodes,
+			Kind:      config.BuildReportCoreUnsupported,
+			Subject:   skip.Scheme,
+			Reason:    skip.Reason,
+			NodeCount: skip.Nodes,
+			Code:      skip.Code,
 		})
 	}
 

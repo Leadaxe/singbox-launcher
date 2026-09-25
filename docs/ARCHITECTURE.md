@@ -344,8 +344,14 @@ Two properties fall out of this, and both are load-bearing:
   core wrote it, so the version/platform gate (`nodeflow.GateForCore`, driven by
   `min_core`/`platform` in the registry) runs at *build* time and omits keys the
   target core does not know. The node stays; only the runtime is narrowed, so no
-  ⚠ is raised. Node-level gates (naive/chain/tailscale/AWG3) are a different
-  class: they drop the whole node and stay in the emitter.
+  ⚠ is raised. The node-level gate is a different class: it drops the whole
+  node before emission. It is table-driven too (`nodeflow.NodeCoreRefusal`):
+  a protocol body, a field or a range form (`range_form`) that declares
+  `on_core_unsupported: drop_node` names its requirement (`build_tag`/
+  `min_core`) and code; the app layer only supplies the core's build tags
+  (`config.CoreBuildTagsProbe`, from `sing-box version`) and version. Dropped
+  nodes travel as `OutboundGenerationResult.CoreSkips` into the build report
+  (`core_unsupported`). Chains keep their own gate (`ChainSupportProbe`).
 
 Warnings are derived data — recomputable from `origin.raw` — and are stored only
 so the UI can draw ⚠ without re-parsing. `nil` means "never counted" and an empty

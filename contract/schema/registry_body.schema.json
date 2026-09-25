@@ -96,6 +96,16 @@
       "required": ["path"],
       "additionalProperties": false
     },
+    "onCoreUnsupported": {
+      "description": "Контракт 1.1.60: что делать, когда протокол, поле или форма значения не по силам текущему ядру (теги сборки + версия). Единственное действие — `drop_node`: узел снимается на сборке с кодом, конфиг собирается без него.",
+      "type": "object",
+      "properties": {
+        "action": { "enum": ["drop_node"] },
+        "code": { "type": "string" }
+      },
+      "required": ["action", "code"],
+      "additionalProperties": false
+    },
     "onInvalid": {
       "description": "Что делать со значением, не прошедшим ограничение поля (enum/format/min/max/len/len_parity). SPEC 131 §3.2.",
       "type": "object",
@@ -461,6 +471,29 @@
           "type": "string",
           "description": "Тег сборки ядра, без которого поле не поддержано."
         },
+        "on_core_unsupported": {
+          "allOf": [{ "$ref": "#/definitions/onCoreUnsupported" }],
+          "description": "Контракт 1.1.60: заданное поле, чьи `build_tag`/`min_core` текущее ядро не выполняет, снимает УЗЕЛ с кодом (вместо снятия одного ключа полевым гейтом). Для полей, без которых узел с сервером не договорится, а ядро конфиг с ними не примет (AmneziaWG 3.x)."
+        },
+        "range_form": {
+          "type": "object",
+          "description": "Контракт 1.1.60, только у типа awg_range: требования и уровень ФОРМЫ-ДИАПАЗОНА значения («N-M»), когда они отличаются от числовой формы. `min_core`/`build_tag` — граница ядра для диапазона; `on_core_unsupported` — узел снимается, если ядро диапазон не умеет; `level` — уровень протокола, о котором говорит диапазон. Снятие расширения по тегу (форма «убрать AmneziaWG») схлопывает диапазон с этим `build_tag` в нижнюю границу.",
+          "properties": {
+            "min_core": { "type": "string" },
+            "build_tag": { "type": "string" },
+            "level": { "type": "string" },
+            "on_core_unsupported": { "$ref": "#/definitions/onCoreUnsupported" }
+          },
+          "additionalProperties": false
+        },
+        "level": {
+          "type": "string",
+          "description": "Контракт 1.1.60: уровень расширения протокола, о котором говорит заданное поле (подпись узла). Значение — из `levels` тела схемы; подпись = старший уровень заданных полей и их форм-диапазонов."
+        },
+        "level_mark": {
+          "type": "string",
+          "description": "Контракт 1.1.60: суффикс, который заданное поле добавляет к подписи уровня (masquerade AmneziaWG: «+»)."
+        },
         "forbidden_for": {
           "type": "array",
           "description": "Схемы, которым это поле запрещено; требует code.",
@@ -566,6 +599,15 @@
         "lx_only": { "type": "boolean" },
         "min_core": { "type": "string" },
         "build_tag": { "type": "string" },
+        "on_core_unsupported": {
+          "allOf": [{ "$ref": "#/definitions/onCoreUnsupported" }],
+          "description": "Контракт 1.1.60, у тела протокола: `build_tag`/`min_core` секции исполняются — узел схемы на ядре, которое их не выполняет, снимается на сборке с кодом. Без атрибута `build_tag`/`min_core` секции описательные."
+        },
+        "levels": {
+          "type": "array",
+          "description": "Контракт 1.1.60: словарь уровней расширения протокола ПО ВОЗРАСТАНИЮ (подпись узла); поля ссылаются на него атрибутом `level`.",
+          "items": { "type": "string" }
+        },
         "note": { "type": "string" }
       },
       "required": ["core", "order", "fields"],

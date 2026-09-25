@@ -240,6 +240,12 @@ type bodyField struct {
 	MinWhen        *bodyMinWhen          `json:"min_when"`
 	Skip           string                `json:"skip"`
 	Role           string                `json:"role"`
+	BuildTag       string                `json:"build_tag"`
+	MinCore        string                `json:"min_core"`
+	OnCoreUnsup    *bodyOnCoreUnsup      `json:"on_core_unsupported"`
+	RangeForm      *bodyRangeForm        `json:"range_form"`
+	Level          string                `json:"level"`
+	LevelMark      string                `json:"level_mark"`
 	DescEn         string                `json:"desc_en"`
 	DescRu         string                `json:"desc_ru"`
 }
@@ -358,13 +364,31 @@ type bodyRelation struct {
 }
 
 // bodySection — секция body (или common) одного файла реестра.
+// bodyOnCoreUnsup — `on_core_unsupported` (контракт 1.1.60).
+type bodyOnCoreUnsup struct {
+	Action string `json:"action"`
+	Code   string `json:"code"`
+}
+
+// bodyRangeForm — `range_form` поля awg_range (контракт 1.1.60).
+type bodyRangeForm struct {
+	MinCore     string           `json:"min_core"`
+	BuildTag    string           `json:"build_tag"`
+	Level       string           `json:"level"`
+	OnCoreUnsup *bodyOnCoreUnsup `json:"on_core_unsupported"`
+}
+
 type bodySection struct {
-	Core      string                `json:"core"`
-	Order     []string              `json:"order"`
-	Fields    map[string]*bodyField `json:"fields"`
-	Skipped   map[string]string     `json:"skipped"`
-	Relations []bodyRelation2       `json:"relations"`
-	Variants  map[string]*struct {
+	MinCore     string                `json:"min_core"`
+	BuildTag    string                `json:"build_tag"`
+	OnCoreUnsup *bodyOnCoreUnsup      `json:"on_core_unsupported"`
+	Levels      []string              `json:"levels"`
+	Core        string                `json:"core"`
+	Order       []string              `json:"order"`
+	Fields      map[string]*bodyField `json:"fields"`
+	Skipped     map[string]string     `json:"skipped"`
+	Relations   []bodyRelation2       `json:"relations"`
+	Variants    map[string]*struct {
 		Order  []string              `json:"order"`
 		Fields map[string]*bodyField `json:"fields"`
 	} `json:"variants"`
@@ -568,6 +592,72 @@ func TestRegistryBodyStructure(t *testing.T) {
 		}
 	}
 	checkFieldRoles(t, files)
+	checkCoreGates(t, files, codes)
+}
+
+// checkCoreGates — линтер узлового гейта ядра и уровней (контракт 1.1.60):
+// `on_core_unsupported` исполняется только при требовании, которое можно
+// не выполнить (build_tag/min_core рядом), с кодом из warnings.json;
+// `range_form` — только у awg_range; `level` — из словаря `levels` тела
+// протокола.
+func checkCoreGates(t *testing.T, files map[string]*registryBodyFile, codes map[string]bool) {
+	t.Helper()
+	checkAction := func(where string, a *bodyOnCoreUnsup, buildTag, minCore string) {
+		if a == nil {
+			return
+		}
+		if a.Action != "drop_node" {
+			t.Errorf("%s: on_core_unsupported.action %q — есть только drop_node", where, a.Action)
+		}
+		if a.Code == "" || !codes[a.Code] {
+			t.Errorf("%s: on_core_unsupported.code %q нет в warnings.json", where, a.Code)
+		}
+		if buildTag == "" && minCore == "" {
+			t.Errorf("%s: on_core_unsupported без build_tag/min_core — нечего не выполнить", where)
+		}
+	}
+	for name, f := range files {
+		protocol := strings.HasPrefix(name, "protocols/")
+		sections := map[string]*bodySection{"body": f.Body, "common": f.Common}
+		for secName, sec := range sections {
+			if sec == nil {
+				continue
+			}
+			where := name + " " + secName
+			isBody := protocol && secName == "body"
+			if !isBody && (sec.OnCoreUnsup != nil || len(sec.Levels) > 0) {
+				t.Errorf("%s: on_core_unsupported/levels ставятся только у тела протокола", where)
+			}
+			checkAction(where, sec.OnCoreUnsup, sec.BuildTag, sec.MinCore)
+			levels := map[string]bool{}
+			for _, l := range sec.Levels {
+				levels[l] = true
+			}
+			checkLevel := func(path, level string) {
+				if level != "" && !levels[level] {
+					t.Errorf("%s %s: level %q вне levels тела протокола", where, path, level)
+				}
+			}
+			visit := func(path string, fl *bodyField) {
+				checkAction(where+" "+path, fl.OnCoreUnsup, fl.BuildTag, fl.MinCore)
+				checkLevel(path, fl.Level)
+				if fl.LevelMark != "" && len(levels) == 0 {
+					t.Errorf("%s %s: level_mark у схемы без levels", where, path)
+				}
+				if rf := fl.RangeForm; rf != nil {
+					if fl.Type != "awg_range" {
+						t.Errorf("%s %s: range_form у поля типа %q — только awg_range", where, path, fl.Type)
+					}
+					checkAction(where+" "+path+".range_form", rf.OnCoreUnsup, rf.BuildTag, rf.MinCore)
+					checkLevel(path+".range_form", rf.Level)
+				}
+			}
+			walkFields("", sec.Order, sec.Fields, visit)
+			for vName, v := range sec.Variants {
+				walkFields(vName, v.Order, v.Fields, visit)
+			}
+		}
+	}
 }
 
 // registryFieldRoles — словарь атрибута `role` (контракт 1.1.59).

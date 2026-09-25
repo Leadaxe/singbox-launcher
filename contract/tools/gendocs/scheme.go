@@ -119,6 +119,20 @@ func renderSchemeHeader(b *strings.Builder, p *rawProtocol, body *registry.BodyS
 	if body != nil && body.Core != "" {
 		t.add("Core the schema was checked against", code(body.Core))
 	}
+	if body != nil && body.OnCoreUnsupported != nil {
+		var need []string
+		if body.MinCore != "" {
+			need = append(need, "core ≥ "+code(body.MinCore))
+		}
+		if body.BuildTag != "" {
+			need = append(need, "build tag "+code(body.BuildTag))
+		}
+		t.add("Core requirement", strings.Join(need, ", ")+
+			"; on a core that lacks it the node is dropped at build: "+code(body.OnCoreUnsupported.Code))
+	}
+	if body != nil && len(body.Levels) > 0 {
+		t.add("Protocol levels (node label, ascending)", codeList(body.Levels))
+	}
 	if p.URI != nil && p.URI.Fragment != "" {
 		t.add("URI fragment", code(p.URI.Fragment))
 	}
@@ -416,6 +430,9 @@ func writeBodyItems(l *list, prefix, name string, f *registry.Field, linkPrefix 
 	if g := bodyGate(f); g != "" {
 		l.attr(g)
 	}
+	for _, g := range bodyCoreGate(f) {
+		l.attr(g)
+	}
 
 	// Потомки запрещённого блока печатаются без своих правил: флаг снимается
 	// после обхода, чтобы соседний разрешённый блок его не унаследовал.
@@ -648,6 +665,46 @@ func bodyGate(f *registry.Field) string {
 		return ""
 	}
 	return "Only written when: " + strings.Join(parts, ", ")
+}
+
+// bodyCoreGate — узловой гейт ядра и уровень протокола у поля (контракт
+// 1.1.60): `on_core_unsupported`, `range_form`, `level`/`level_mark`.
+func bodyCoreGate(f *registry.Field) []string {
+	var out []string
+	if a := f.OnCoreUnsupported; a != nil {
+		out = append(out, "On a core that lacks it the whole node is dropped at build: "+code(a.Code))
+	}
+	if rf := f.RangeForm; rf != nil {
+		var parts []string
+		if rf.MinCore != "" {
+			parts = append(parts, "core ≥ "+code(rf.MinCore))
+		}
+		if rf.BuildTag != "" {
+			parts = append(parts, "build tag "+code(rf.BuildTag))
+		}
+		line := "Range form `N-M`"
+		if len(parts) > 0 {
+			line += " needs " + strings.Join(parts, ", ")
+		}
+		if rf.Level != "" {
+			line += "; means level " + code(rf.Level)
+		}
+		if a := rf.OnCoreUnsupported; a != nil {
+			line += "; on a core that lacks it the whole node is dropped at build: " + code(a.Code)
+		}
+		if len(parts) > 0 && rf.BuildTag != "" {
+			line += "; removing the extension collapses the range to its lower bound"
+		}
+		out = append(out, line)
+	}
+	if f.Level != "" {
+		line := "Means protocol level " + code(f.Level)
+		if f.LevelMark != "" {
+			line += ", adds " + code(f.LevelMark) + " to the level label"
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 // refPage говорит, есть ли у ссылочного поля собственная страница.

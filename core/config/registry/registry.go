@@ -13,6 +13,7 @@ package registry
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -189,6 +190,20 @@ type Field struct {
 	Platform string `json:"platform"`
 	LxOnly   bool   `json:"lx_only"`
 	BuildTag string `json:"build_tag"`
+	// OnCoreUnsupported — что делать, когда заданное поле не по силам
+	// текущему ядру (его `build_tag`/`min_core` не выполнены), контракт
+	// 1.1.60. Без атрибута поле снимается полевым гейтом (min_core/platform),
+	// узел остаётся. С `drop_node` снимается УЗЕЛ с кодом: поле, без которого
+	// узел с сервером не договорится, а ядро конфиг с ним не примет.
+	OnCoreUnsupported *OnCoreUnsupported `json:"on_core_unsupported"`
+	// RangeForm — свои требования ФОРМЫ-ДИАПАЗОНА значения типа awg_range
+	// («N-M»), когда они отличаются от числовой формы (контракт 1.1.60).
+	RangeForm *RangeForm `json:"range_form"`
+	// Level — уровень расширения протокола, о котором говорит наличие поля
+	// (подпись узла); словарь и порядок — `levels` тела схемы. LevelMark —
+	// суффикс подписи, который поле добавляет к итоговому уровню.
+	Level     string `json:"level"`
+	LevelMark string `json:"level_mark"`
 
 	// Тексты.
 	DescEn string `json:"desc_en"`
@@ -199,6 +214,36 @@ type Field struct {
 	// (transports): выбор варианта — по значению дискриминатора в карте.
 	Variants      map[string]*Field `json:"-"`
 	Discriminator string            `json:"-"`
+}
+
+// OnCoreUnsupported — действие, когда протокол, поле или форма значения не
+// по силам текущему ядру (контракт 1.1.60). Единственное действие —
+// `drop_node`: узел снимается на сборке с кодом Code, конфиг собирается без
+// него. Исполняет nodeflow.NodeCoreRefusal по возможностям ядра (теги
+// сборки + версия).
+type OnCoreUnsupported struct {
+	Action string `json:"action"`
+	Code   string `json:"code"`
+}
+
+// CoreUnsupportedDropNode — действие OnCoreUnsupported: снять узел.
+const CoreUnsupportedDropNode = "drop_node"
+
+// RangeForm — требования формы-диапазона («N-M») значения awg_range, у
+// которой своя граница ядра и свой уровень (контракт 1.1.60). Числовая форма
+// того же поля живёт по атрибутам самого поля.
+type RangeForm struct {
+	MinCore           string             `json:"min_core"`
+	BuildTag          string             `json:"build_tag"`
+	Level             string             `json:"level"`
+	OnCoreUnsupported *OnCoreUnsupported `json:"on_core_unsupported"`
+}
+
+// IsRangeValue — значение awg_range записано формой-диапазоном «N-M»
+// (строкой с дефисом); число и голое число строкой — числовая форма.
+func IsRangeValue(v interface{}) bool {
+	s, ok := v.(string)
+	return ok && strings.Contains(strings.TrimSpace(s), "-")
 }
 
 // OnInvalid — что делать со значением, не прошедшим ограничение поля.
@@ -394,6 +439,16 @@ type section struct {
 	Core   string            `json:"core"`
 	Order  []string          `json:"order"`
 	Fields map[string]*Field `json:"fields"`
+	// Требования протокола к ядру (у тела протокола): тег сборки и версия.
+	// Исполняются, только когда объявлено OnCoreUnsupported (контракт
+	// 1.1.60): у прочих схем атрибуты описательные.
+	MinCore           string             `json:"min_core"`
+	BuildTag          string             `json:"build_tag"`
+	OnCoreUnsupported *OnCoreUnsupported `json:"on_core_unsupported"`
+	// Levels — словарь уровней расширения протокола по возрастанию (подпись
+	// узла, контракт 1.1.60): поля и формы диапазона ссылаются на него
+	// атрибутом `level`.
+	Levels []string `json:"levels"`
 	// AbsentWhen — условие «этой секции нет» для суб-схемы, которую схемы
 	// подключают через `ref` (tls). Живёт у СЕКЦИИ, а не у ссылающегося поля:
 	// «tls:{enabled:false} = TLS не задан» — правило самой секции, и повторять
@@ -481,6 +536,13 @@ type BodySchema struct {
 	Fields map[string]*Field
 	// Relations — связи между несколькими полями тела (см. Relation2).
 	Relations []Relation2
+	// Требования протокола к ядру и действие, когда они не выполнены
+	// (контракт 1.1.60), — см. section.
+	MinCore           string
+	BuildTag          string
+	OnCoreUnsupported *OnCoreUnsupported
+	// Levels — словарь уровней расширения по возрастанию (см. section).
+	Levels []string
 }
 
 // WarningEntry — запись кода из registry/warnings.json.
@@ -743,6 +805,11 @@ func resolveSection(scheme string, sec *section, subs map[string]*section) (*Bod
 		Order:     make([]string, 0, len(sec.Order)),
 		Fields:    make(map[string]*Field, len(sec.Fields)),
 		Relations: sec.Relations,
+
+		MinCore:           sec.MinCore,
+		BuildTag:          sec.BuildTag,
+		OnCoreUnsupported: sec.OnCoreUnsupported,
+		Levels:            sec.Levels,
 	}
 	for _, name := range sec.Order {
 		src := sec.Fields[name]
@@ -1203,6 +1270,158 @@ func (r *Registry) FieldsWithBuildTag(scheme, tag string) []string {
 		}
 	}
 	return out
+}
+
+// WalkPresent обходит поля тела схемы, ЗАДАННЫЕ в body (ключ есть и не
+// null), в порядке реестра: вложенные объекты, элементы массивов объектов
+// (peers[]) и вариант по дискриминатору. path — путь поля ("tls.utls",
+// "peers[].persistent_keepalive_interval"). Общий обход для вопросов «что
+// в теле говорит о нужных ядру возможностях и об уровне протокола».
+func (r *Registry) WalkPresent(scheme string, body map[string]interface{}, fn func(path string, f *Field, v interface{})) {
+	b, ok := r.bodies[scheme]
+	if !ok || body == nil {
+		return
+	}
+	walkPresent("", b.Order, b.Fields, body, fn)
+}
+
+func walkPresent(prefix string, order []string, fields map[string]*Field, m map[string]interface{}, fn func(string, *Field, interface{})) {
+	for _, name := range order {
+		f := fields[name]
+		if f == nil {
+			continue
+		}
+		v, ok := m[name]
+		if !ok || v == nil {
+			continue
+		}
+		path := name
+		if prefix != "" {
+			path = prefix + "." + name
+		}
+		fn(path, f, v)
+		switch inner := v.(type) {
+		case map[string]interface{}:
+			if len(f.Variants) > 0 {
+				disc, _ := inner[f.Discriminator].(string)
+				if vf := f.Variants[strings.TrimSpace(disc)]; vf != nil {
+					walkPresent(path, vf.Order, vf.Fields, inner, fn)
+				}
+				continue
+			}
+			if len(f.Fields) > 0 {
+				walkPresent(path, f.Order, f.Fields, inner, fn)
+			}
+		case []interface{}:
+			if f.Items == nil || len(f.Items.Fields) == 0 {
+				continue
+			}
+			for _, it := range inner {
+				if im, ok := it.(map[string]interface{}); ok {
+					walkPresent(path+"[]", f.Items.Order, f.Items.Fields, im, fn)
+				}
+			}
+		case []map[string]interface{}:
+			if f.Items == nil || len(f.Items.Fields) == 0 {
+				continue
+			}
+			for _, im := range inner {
+				walkPresent(path+"[]", f.Items.Order, f.Items.Fields, im, fn)
+			}
+		}
+	}
+}
+
+// Level — подпись уровня расширения протокола по полям тела (контракт
+// 1.1.60): старший из уровней заданных полей (`level`) и их форм-диапазонов
+// (`range_form.level`) по словарю `levels` схемы, плюс суффиксы
+// `level_mark` заданных полей. Схема без `levels` или тело без размеченных
+// полей — "".
+func (r *Registry) Level(scheme string, body map[string]interface{}) string {
+	b, ok := r.bodies[scheme]
+	if !ok || len(b.Levels) == 0 {
+		return ""
+	}
+	rank := make(map[string]int, len(b.Levels))
+	for i, l := range b.Levels {
+		rank[l] = i + 1
+	}
+	best := 0
+	var marks []string
+	raise := func(level string) {
+		if n := rank[level]; n > best {
+			best = n
+		}
+	}
+	r.WalkPresent(scheme, body, func(_ string, f *Field, v interface{}) {
+		raise(f.Level)
+		if f.RangeForm != nil && IsRangeValue(v) {
+			raise(f.RangeForm.Level)
+		}
+		if f.LevelMark != "" {
+			for _, m := range marks {
+				if m == f.LevelMark {
+					return
+				}
+			}
+			marks = append(marks, f.LevelMark)
+		}
+	})
+	if best == 0 {
+		return ""
+	}
+	return b.Levels[best-1] + strings.Join(marks, "")
+}
+
+// StripBuildTag снимает с тела всё, чему нужна сборка ядра с тегом tag
+// (контракт 1.1.60): корневые поля с этим `build_tag` удаляются, а
+// форма-диапазон awg_range, которой нужен этот тег (`range_form.build_tag`),
+// схлопывается в свою нижнюю границу — само поле остаётся настройкой
+// соединения, пропадает только расширение. Негодная граница — поле
+// снимается.
+func (r *Registry) StripBuildTag(scheme string, body map[string]interface{}, tag string) {
+	for _, k := range r.FieldsWithBuildTag(scheme, tag) {
+		delete(body, k)
+	}
+	b, ok := r.bodies[scheme]
+	if !ok || tag == "" {
+		return
+	}
+	collapseRangeForms(b.Order, b.Fields, body, tag)
+}
+
+func collapseRangeForms(order []string, fields map[string]*Field, m map[string]interface{}, tag string) {
+	for _, name := range order {
+		f := fields[name]
+		v, ok := m[name]
+		if f == nil || !ok {
+			continue
+		}
+		if f.RangeForm != nil && f.RangeForm.BuildTag == tag && IsRangeValue(v) {
+			lo, _, _ := strings.Cut(strings.TrimSpace(v.(string)), "-")
+			if n, err := strconv.Atoi(strings.TrimSpace(lo)); err == nil && n > 0 {
+				m[name] = n
+			} else {
+				delete(m, name)
+			}
+			continue
+		}
+		switch inner := v.(type) {
+		case map[string]interface{}:
+			if len(f.Fields) > 0 {
+				collapseRangeForms(f.Order, f.Fields, inner, tag)
+			}
+		case []interface{}:
+			if f.Items == nil || len(f.Items.Fields) == 0 {
+				continue
+			}
+			for _, it := range inner {
+				if im, ok := it.(map[string]interface{}); ok {
+					collapseRangeForms(f.Items.Order, f.Items.Fields, im, tag)
+				}
+			}
+		}
+	}
 }
 
 // Роли полей тела (атрибут `role`, контракт 1.1.59).

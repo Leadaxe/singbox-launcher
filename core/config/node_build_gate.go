@@ -10,8 +10,9 @@
 // опускается, и это пишется в лог сборки WARN-строкой.
 //
 // ⚠ на узле от этого гейта НЕ ставится (§3.4): тело узла верное, ограничен
-// рантайм. Узловые гейты (Naive/Chain/Tailscale/AWG3) — другой класс и живут
-// отдельно: они выбрасывают узел целиком (ловушка Л17).
+// рантайм. Узловой гейт — другой класс: он выбрасывает узел целиком
+// (nodeflow.NodeCoreRefusal по `on_core_unsupported` реестра, SPEC 142
+// волна 5; цепочки — отдельно, ChainSupportProbe).
 //
 // До W2c ту же работу делала ОДНА частная проба на одно поле
 // (RealityKeyShareSupportProbe → tls.reality.key_share), зашитая внутрь
@@ -37,6 +38,13 @@ import (
 // что у соседних проб, и последним рубежом остаётся `sing-box check`.
 var CoreVersionProbe func() string
 
+// CoreBuildTagsProbe — теги сборки ядра и теги, которые в сборке есть, но
+// возможности не дают (тег → причина), для узлового гейта сборки
+// (nodeflow.NodeCoreRefusal). Ставится слоем приложения тем же приёмом.
+//
+// nil-хук или nil-теги = «теги неизвестны»: гейт по тегу не применяется.
+var CoreBuildTagsProbe func() (tags []string, issues map[string]string)
+
 // coreInfoForBuild — ядро и ОС текущей сборки.
 func coreInfoForBuild() nodeflow.CoreInfo {
 	version := ""
@@ -44,6 +52,17 @@ func coreInfoForBuild() nodeflow.CoreInfo {
 		version = strings.TrimSpace(CoreVersionProbe())
 	}
 	return nodeflow.CoreInfo{Version: version, GOOS: runtime.GOOS}
+}
+
+// coreCapabilitiesForBuild — coreInfoForBuild плюс теги сборки ядра: для
+// узлового гейта, один раз на прогон сборки (полевому гейту теги не нужны,
+// и спрашивать их на каждый узел незачем).
+func coreCapabilitiesForBuild() nodeflow.CoreInfo {
+	info := coreInfoForBuild()
+	if CoreBuildTagsProbe != nil {
+		info.Tags, info.TagIssues = CoreBuildTagsProbe()
+	}
+	return info
 }
 
 // gateLoggedOnce снимает повтор WARN-строки: одна подписка приносит сотни
