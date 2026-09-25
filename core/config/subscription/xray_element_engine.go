@@ -41,7 +41,10 @@ const xrayElementKind = "xray"
 //   - (nil, nil, false) — реестр не собрался, разбор этого элемента движком
 //     невозможен. Отдельным значением, а не ошибкой: это отказ СБОРКИ, а не
 //     свойство элемента, и объявлять подписку протухшей из-за него нельзя.
-func parseXrayElementByEngine(ob map[string]interface{}, label string) (*configtypes.ParsedNode, error, bool) {
+//
+// doc — элементы документа (массив outbounds), среди которых записи с
+// `deref` ищут соседа по ссылке; nil — соседей нет.
+func parseXrayElementByEngine(ob map[string]interface{}, doc []interface{}, label string) (*configtypes.ParsedNode, error, bool) {
 	plans, err := linkmap.Planes()
 	if err != nil {
 		return nil, nil, false
@@ -72,7 +75,7 @@ func parseXrayElementByEngine(ob map[string]interface{}, label string) (*configt
 	}
 
 	bodyType := reg.SingboxType(scheme)
-	res, execErr := linkmap.ParseElement(plan, ob, bodyType, nil)
+	res, execErr := linkmap.ParseElementInDoc(plan, ob, doc, bodyType, nil)
 	if execErr != nil {
 		return nil, execErr, true
 	}

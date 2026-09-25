@@ -1,0 +1,73 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "advertise_routes": [
+          "192.168.10.0/24",
+          "10.1.2.3/32",
+          "fd00::/64"
+        ],
+        "type": "tailscale"
+      },
+      "kind": "endpoint",
+      "label": "ts-routes",
+      "scheme": "tailscale",
+      "sections": {
+        "dns": {
+          "rules": [
+            {
+              "body": {
+                "domain_suffix": [
+                  ".ts.net"
+                ],
+                "server": "@{self}-dns"
+              },
+              "enabled": true,
+              "kind": "user"
+            }
+          ],
+          "servers": [
+            {
+              "body": {
+                "endpoint": "@self",
+                "type": "tailscale"
+              },
+              "enabled": true,
+              "kind": "user",
+              "tag": "@{self}-dns"
+            }
+          ]
+        },
+        "rules": [
+          {
+            "body": {
+              "outbound": "@self",
+              "preferred_by": [
+                "@self"
+              ]
+            },
+            "enabled": true,
+            "kind": "inline",
+            "name": "@{self} tailscale route"
+          }
+        ]
+      },
+      "warnings": [
+        {
+          "code": "tailscale_default_route_advertised",
+          "path": "advertise_routes[2]",
+          "value": "0.0.0.0/0"
+        },
+        {
+          "code": "tailscale_default_route_advertised",
+          "path": "advertise_routes[4]",
+          "value": "::/0"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

@@ -289,6 +289,9 @@ func walkField(out map[string][]usage, scheme, path string, f *registry.Field) {
 	if oh := f.OnHopRequired; oh != nil {
 		add(oh.Code, "a hop at position 2 or later requires this path", "not stripped")
 	}
+	if fi := f.ItemForbidden; fi != nil {
+		add(fi.Code, "a list item is "+scalarList(fi.Values), "item removed")
+	}
 	if len(f.ForbiddenFor) > 0 {
 		add(f.Code, "not supported by "+codeList(f.ForbiddenFor), actionRemoved)
 	} else if len(f.AllowedFor) > 0 {

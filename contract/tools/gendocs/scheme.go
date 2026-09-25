@@ -133,6 +133,24 @@ func renderSchemeHeader(b *strings.Builder, p *rawProtocol, body *registry.BodyS
 	if body != nil && len(body.Levels) > 0 {
 		t.add("Protocol levels (node label, ascending)", codeList(body.Levels))
 	}
+	if body != nil && body.ExitCapableWhen != nil {
+		t.add("Exit to the internet (Direction pools)", "only"+conditionPhrase(body.ExitCapableWhen))
+	}
+	if body != nil {
+		for _, rel := range body.Relations {
+			if rel.Kind != "ordered" {
+				continue
+			}
+			line := "must not decrease: " + codeList(rel.Paths)
+			switch rel.Action {
+			case "drop":
+				line += "; otherwise all of them are removed"
+			case "drop_node":
+				line += "; otherwise the node is dropped"
+			}
+			t.add("Field order", line+": "+code(rel.Code))
+		}
+	}
 	if p.URI != nil && p.URI.Fragment != "" {
 		t.add("URI fragment", code(p.URI.Fragment))
 	}
@@ -527,6 +545,10 @@ func fieldOutcomes(f *registry.Field, scheme, linkPrefix string) []string {
 	if cw := f.CoerceWhen; cw != nil {
 		out = append(out, "Replaced: "+scalarList(cw.Values)+" → "+scalar(cw.Value)+conditionPhrase(cw.When)+
 			" → "+warnLink(cw.Code, linkPrefix))
+	}
+	if fi := f.ItemForbidden; fi != nil {
+		out = append(out, "Items not accepted: "+scalarList(fi.Values)+" — removed, the rest stay → "+
+			warnLink(fi.Code, linkPrefix))
 	}
 	if f.NormalizeCode != "" {
 		out = append(out, "If the value had to be cleaned up: "+warnLink(f.NormalizeCode, linkPrefix))

@@ -715,6 +715,16 @@ func (st *execState) applyEntry(e *Entry) {
 	st.curParam = p
 	defer func() { st.curParam = nil }()
 
+	// `deref` — значение записи есть ссылка на соседа по документу: сосед
+	// кладётся в пространство ДО условия, потому что условие записи о нём и
+	// спрашивает (`ref.<as>.protocol`). Не нашёлся — слоя нет, условия по
+	// нему ложны, запись молчит.
+	if p.Deref != nil {
+		if ref, _, found := st.lookupSource(p); found {
+			st.space.bindRef(p.Deref.As, p.Deref.Key, strings.TrimSpace(ref))
+		}
+	}
+
 	// `$value` — СЕЛЕКТОР записи, а не условие: он выбирает, какая из
 	// записей с одним `maps_to` обслуживает это значение источника
 	// (`uplink_data_placement`: header/cookie — запись с implies packet-up,
@@ -788,6 +798,12 @@ func (st *execState) applyEntry(e *Entry) {
 	}
 
 	rawVal, src, found := st.lookupSource(p)
+	if found && p.Substitute != nil {
+		// Плейсхолдеры в значении разрешаются ДО всего остального: и код
+		// on_present, и запись в тело видят уже подставленное значение.
+		// Ничего не осталось — значения нет, как если бы источник молчал.
+		rawVal, found = st.substitute(p.Substitute, rawVal)
+	}
 	if !found {
 		// Запись, объявленная только ради on_len_gt / on_present, не несёт
 		// скалярного источника — lookupSource на массиве молчит, и без
@@ -2159,6 +2175,21 @@ func (st *execState) oneWhen(key string, want interface{}) bool {
 		got, present = getPath(st.res.Body, key)
 	}
 
+	// type_of — ТИП значения источника (object/array/string/number/bool),
+	// как у одноимённого предиката detect (контракт 1.1.63). Нужен условию
+	// о контейнере: `present` судит скаляр, а объект (`settings.fragment`
+	// у Xray-freedom) скаляром не читается.
+	if op, ok := want.(map[string]interface{}); ok {
+		if typ, ok := op["type_of"].(string); ok {
+			if !isSourceName(key) {
+				v, has := getPath(st.res.Body, key)
+				return has && jsonTypeOf(v) == typ
+			}
+			v, has := st.space.LookupRaw(key)
+			return has && jsonTypeOf(v) == typ
+		}
+	}
+
 	switch w := want.(type) {
 	case nil:
 		return !present
@@ -2185,6 +2216,57 @@ func (st *execState) oneWhen(key string, want interface{}) bool {
 		return st.whenOperator(got, present, w)
 	}
 	return false
+}
+
+// substitute разрешает плейсхолдеры значения записи (Param.Substitute).
+//
+// Значение режется по sep, каждый элемент обрезается; элемент, равный
+// плейсхолдеру, заменяется значением своего источника, а при пустом или
+// отсутствующем источнике снимается. Значение без единого плейсхолдера
+// возвращается как есть — написание автора не переписывается. Второй
+// результат false — не осталось ни одного элемента.
+func (st *execState) substitute(spec *registry.Substitute, raw string) (string, bool) {
+	if len(spec.Tokens) == 0 {
+		return raw, true
+	}
+	sep := spec.Sep
+	if sep == "" {
+		sep = ","
+	}
+	parts := strings.Split(raw, sep)
+	hit := false
+	for _, part := range parts {
+		if _, ok := spec.Tokens[strings.TrimSpace(part)]; ok {
+			hit = true
+			break
+		}
+	}
+	if !hit {
+		return raw, true
+	}
+	join := spec.Join
+	if join == "" {
+		join = sep
+	}
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if source, ok := spec.Tokens[item]; ok {
+			v, has := st.space.Lookup(st.substituteBase(source))
+			item = strings.TrimSpace(v)
+			if !has || item == "" {
+				continue
+			}
+		}
+		if item == "" {
+			continue
+		}
+		out = append(out, item)
+	}
+	if len(out) == 0 {
+		return "", false
+	}
+	return strings.Join(out, join), true
 }
 
 // whenOperator — операторы условия: in / not_in / present / absent / lt / gt.
@@ -2270,7 +2352,7 @@ func valueInList(got interface{}, list []interface{}) bool {
 
 // isSourceName — ключ адресует ВХОД, а не тело.
 func isSourceName(key string) bool {
-	for _, p := range []string{"query.", "json.", "ini.", "userinfo"} {
+	for _, p := range []string{"query.", "json.", "ini.", "userinfo", "context.", "ref."} {
 		if strings.HasPrefix(key, p) {
 			return true
 		}

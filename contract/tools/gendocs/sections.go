@@ -238,6 +238,9 @@ func collectSchemeUsages(out map[string][]usage, scheme, path string, f *registr
 	if oh := f.OnHopRequired; oh != nil {
 		add(oh.Code, "a hop at position 2 or later requires this path", "not stripped")
 	}
+	if fi := f.ItemForbidden; fi != nil {
+		add(fi.Code, "a list item is "+scalarList(fi.Values), "item removed")
+	}
 	if f.Required && f.OnInvalid == nil {
 		add("field_missing", "required and missing", actionNodeDropped)
 	}

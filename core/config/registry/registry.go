@@ -67,6 +67,13 @@ type Field struct {
 	// Имя то же, что у одноимённого оператора маппера (`extract` по элементам
 	// списка): операция одна, словарей два.
 	OnItemInvalid *OnItemInvalid `json:"on_item_invalid"`
+	// ItemForbidden — ЗНАЧЕНИЯ элемента списка, которых ядро не примет, хотя
+	// форма у них годная (контракт 1.1.63). У tailscale дефолтный маршрут
+	// `0.0.0.0/0` / `::/0` в advertise_routes — это «быть выходом», и ядро
+	// требует для него advertise_exit_node. `item_pattern` запрет конкретных
+	// значений не выражает (общее подмножество RE2 и ECMAScript без
+	// lookaround). Сверка — после normalize, элемент снимается со своим кодом.
+	ItemForbidden *ItemForbidden `json:"item_forbidden"`
 	// AbsentValues — литералы, которые означают «этого нет»: значение
 	// признаётся эквивалентом отсутствия ключа, поле в тело не пишется, кода
 	// нет. Проверяется ПОСЛЕ normalize и ДО остальных ограничений.
@@ -285,6 +292,12 @@ type OnItemInvalid struct {
 	Code   string `json:"code"`
 }
 
+// ItemForbidden — запрещённые значения элемента списка (Field.ItemForbidden).
+type ItemForbidden struct {
+	Values []interface{} `json:"values"`
+	Code   string        `json:"code"`
+}
+
 // Advisory — значения, которые ядро принимает, но узел получает код.
 //
 // `except` — значения-исключения; `when` — условие по соседнему полю. Пара
@@ -490,6 +503,10 @@ type section struct {
 	// узла, контракт 1.1.60): поля и формы диапазона ссылаются на него
 	// атрибутом `level`.
 	Levels []string `json:"levels"`
+	// ExitCapableWhen — условие, при котором узел схемы годится ВЫХОДОМ В
+	// ИНТЕРНЕТ, то есть кандидатом в состав Направления (контракт 1.1.63).
+	// Без атрибута — годится всегда.
+	ExitCapableWhen *Condition `json:"exit_capable_when"`
 	// AbsentWhen — условие «этой секции нет» для суб-схемы, которую схемы
 	// подключают через `ref` (tls). Живёт у СЕКЦИИ, а не у ссылающегося поля:
 	// «tls:{enabled:false} = TLS не задан» — правило самой секции, и повторять
@@ -584,6 +601,8 @@ type BodySchema struct {
 	OnCoreUnsupported *OnCoreUnsupported
 	// Levels — словарь уровней расширения по возрастанию (см. section).
 	Levels []string
+	// ExitCapableWhen — условие «узел годится выходом» (см. section).
+	ExitCapableWhen *Condition
 }
 
 // WarningEntry — запись кода из registry/warnings.json.
@@ -851,6 +870,7 @@ func resolveSection(scheme string, sec *section, subs map[string]*section) (*Bod
 		BuildTag:          sec.BuildTag,
 		OnCoreUnsupported: sec.OnCoreUnsupported,
 		Levels:            sec.Levels,
+		ExitCapableWhen:   sec.ExitCapableWhen,
 	}
 	for _, name := range sec.Order {
 		src := sec.Fields[name]
@@ -1500,6 +1520,98 @@ func (r *Registry) Credential(scheme string, body map[string]interface{}) string
 	}
 	s, _ := body[path].(string)
 	return s
+}
+
+// ExitCapable — годится ли узел схемы ВЫХОДОМ В ИНТЕРНЕТ, то есть кандидатом
+// в состав Направления (контракт 1.1.63, атрибут тела `exit_capable_when`).
+//
+// Схема без атрибута (и схема, которой реестр не знает) годится всегда:
+// обычный прокси-узел на то и заведён. С атрибутом решает условие по телу —
+// у tailscale узел без `exit_node` открывает доступ в саму tailnet, а не
+// выход наружу, и Направление, выбравшее его, отправило бы трафик в никуда.
+func (r *Registry) ExitCapable(scheme string, body map[string]interface{}) bool {
+	b, ok := r.bodies[scheme]
+	if !ok || b.ExitCapableWhen == nil {
+		return true
+	}
+	return b.ExitCapableWhen.HoldsOn(body)
+}
+
+// HoldsOn — выполнено ли условие на ГОТОВОМ теле (карта узла вне
+// санитайзера: модель, пул Направлений).
+//
+// `any_set` — задано ли любое из полей: ключ есть, значение не nil и не
+// пустая строка (для ядра пустая строка — отсутствие ключа, CANON §6.1).
+// Предикаты путей — скаляр (равенство по печатной форме) или `in`/`not_in`,
+// как у санитайзера. `source_kind` здесь не судится: рода входа у готового
+// тела нет, и ветка просто не проходит.
+func (c *Condition) HoldsOn(body map[string]interface{}) bool {
+	if c == nil {
+		return true
+	}
+	for path, want := range c.Values {
+		got, present := bodyValue(body, path)
+		if op, isOp := want.(map[string]interface{}); isOp {
+			if list, ok := op["in"].([]interface{}); ok {
+				if !present || !printedIn(list, got) {
+					return false
+				}
+				continue
+			}
+			if list, ok := op["not_in"].([]interface{}); ok {
+				if present && printedIn(list, got) {
+					return false
+				}
+				continue
+			}
+			return false
+		}
+		if !present || fmt.Sprintf("%v", got) != fmt.Sprintf("%v", want) {
+			return false
+		}
+	}
+	if len(c.AnySet) == 0 {
+		return len(c.Values) > 0 || len(c.SourceKind) == 0
+	}
+	for _, p := range c.AnySet {
+		if _, present := bodyValue(body, p); present {
+			return true
+		}
+	}
+	return false
+}
+
+// bodyValue — значение по пути от корня тела; пустая (из пробелов) строка и
+// nil — «не задано».
+func bodyValue(body map[string]interface{}, path string) (interface{}, bool) {
+	var cur interface{} = body
+	for _, part := range strings.Split(path, ".") {
+		m, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		cur, ok = m[part]
+		if !ok {
+			return nil, false
+		}
+	}
+	if cur == nil {
+		return nil, false
+	}
+	if s, ok := cur.(string); ok && strings.TrimSpace(s) == "" {
+		return nil, false
+	}
+	return cur, true
+}
+
+func printedIn(list []interface{}, v interface{}) bool {
+	got := fmt.Sprintf("%v", v)
+	for _, w := range list {
+		if fmt.Sprintf("%v", w) == got {
+			return true
+		}
+	}
+	return false
 }
 
 // FieldStrings — `values` поля строками (enum для выпадающих списков форм).

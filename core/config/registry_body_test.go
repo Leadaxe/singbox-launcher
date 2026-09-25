@@ -89,6 +89,9 @@ var registryNormalizeModes = map[string]bool{
 	// base64_rawurl — зеркало base64_std для ядра, которое декодирует ключ
 	// только RawURL (tls.reality.public_key).
 	"base64_rawurl": true,
+	// cidr_masked — префикс СЕТИ: голый адрес + обнуление битов хоста
+	// (контракт 1.1.63, tailscale advertise_routes).
+	"cidr_masked": true,
 }
 
 // registryItemInvalidActions — допустимые действия реакции на негодный
@@ -112,7 +115,7 @@ var registryMinWhenActions = map[string]bool{"drop": true, "drop_node": true}
 // Вид, которого нет в словаре, санитайзер пропускает МОЛЧА (реестр вправе
 // уехать вперёд кода), то есть опечатка в `kind` тихо отключила бы правило —
 // ловим её здесь, как и опечатку в `pattern`.
-var registryRelationKinds = map[string]bool{"ranges_disjoint": true, "cooccurrence": true}
+var registryRelationKinds = map[string]bool{"ranges_disjoint": true, "cooccurrence": true, "ordered": true}
 
 // registryRelationWhenOps — служебные операторы условия связи (`$…`).
 //
@@ -121,7 +124,10 @@ var registryRelationKinds = map[string]bool{"ranges_disjoint": true, "cooccurren
 var registryRelationWhenOps = map[string]bool{"$range_width": true}
 
 // registryRelationActions — что связь делает с узлом.
-var registryRelationActions = map[string]bool{"warn": true, "drop_node": true}
+//
+// `drop` (снять участвующие поля) — только у `ordered` (контракт 1.1.63): у
+// остальных видов исполнитель его не знает и связь молча стала бы `warn`.
+var registryRelationActions = map[string]bool{"warn": true, "drop_node": true, "drop": true}
 
 // registryOnInvalidActions — допустимые действия on_invalid.
 var registryOnInvalidActions = map[string]bool{
@@ -224,6 +230,7 @@ type bodyField struct {
 	Pattern        string                `json:"pattern"`
 	ItemPattern    string                `json:"item_pattern"`
 	OnItemInvalid  *bodyOnItemInvalid    `json:"on_item_invalid"`
+	ItemForbidden  *bodyItemForbidden    `json:"item_forbidden"`
 	AbsentValues   []interface{}         `json:"absent_values"`
 	Code           string                `json:"code"`
 	ForbiddenFor   []string              `json:"forbidden_for"`
@@ -343,6 +350,12 @@ type bodyOnInvalid struct {
 	ElseCode string      `json:"else_code"`
 }
 
+// bodyItemForbidden — запрещённые значения элемента списка (контракт 1.1.63).
+type bodyItemForbidden struct {
+	Values []interface{} `json:"values"`
+	Code   string        `json:"code"`
+}
+
 // bodyOnItemInvalid — реакция на негодный ЭЛЕМЕНТ списка (`item_pattern`).
 type bodyOnItemInvalid struct {
 	Action string `json:"action"`
@@ -401,6 +414,7 @@ type bodySection struct {
 	BuildTag    string                `json:"build_tag"`
 	OnCoreUnsup *bodyOnCoreUnsup      `json:"on_core_unsupported"`
 	Levels      []string              `json:"levels"`
+	ExitCapable *bodyCondition        `json:"exit_capable_when"`
 	Core        string                `json:"core"`
 	Order       []string              `json:"order"`
 	Fields      map[string]*bodyField `json:"fields"`
@@ -643,8 +657,22 @@ func checkCoreGates(t *testing.T, files map[string]*registryBodyFile, codes map[
 			}
 			where := name + " " + secName
 			isBody := protocol && secName == "body"
-			if !isBody && (sec.OnCoreUnsup != nil || len(sec.Levels) > 0) {
-				t.Errorf("%s: on_core_unsupported/levels ставятся только у тела протокола", where)
+			if !isBody && (sec.OnCoreUnsup != nil || len(sec.Levels) > 0 || sec.ExitCapable != nil) {
+				t.Errorf("%s: on_core_unsupported/levels/exit_capable_when ставятся только у тела протокола", where)
+			}
+			if ec := sec.ExitCapable; ec != nil {
+				// Условие судится по готовому телу: рода входа там нет, и
+				// ветка source_kind не выполнилась бы никогда.
+				if len(ec.SourceKind) > 0 {
+					t.Errorf("%s: exit_capable_when.source_kind — у готового тела рода входа нет", where)
+				}
+				checkBodyCondition(t, where+" exit_capable_when", ec)
+				known := collectPaths(sec.Order, sec.Fields)
+				for _, p := range ec.AnySet {
+					if !known[p] {
+						t.Errorf("%s: exit_capable_when.any_set: путь %q не описан в fields", where, p)
+					}
+				}
 			}
 			checkAction(where, sec.OnCoreUnsup, sec.BuildTag, sec.MinCore)
 			levels := map[string]bool{}
@@ -737,7 +765,10 @@ func checkBodyRelations(t *testing.T, where string, rels []bodyRelation2, order 
 			t.Errorf("%s: kind %q вне словаря связей — санитайзер такую связь пропустит молча", full, rel.Kind)
 		}
 		if !registryRelationActions[rel.Action] {
-			t.Errorf("%s: action %q вне словаря (warn|drop_node)", full, rel.Action)
+			t.Errorf("%s: action %q вне словаря (warn|drop_node|drop)", full, rel.Action)
+		}
+		if rel.Action == "drop" && rel.Kind != "ordered" {
+			t.Errorf("%s: action drop есть только у ordered — у %q санитайзер его не исполнит", full, rel.Kind)
 		}
 		if rel.Code == "" {
 			t.Errorf("%s: без code — срабатывание связи было бы молчаливым", full)
@@ -871,6 +902,17 @@ func checkField(t *testing.T, where, path string, f *bodyField, codes map[string
 			t.Errorf("%s: on_item_invalid без code — выброс элемента остался бы молчаливым", full)
 		} else if !codes[f.OnItemInvalid.Code] && !registryPendingCodes[f.OnItemInvalid.Code] {
 			t.Errorf("%s: on_item_invalid.code %q не объявлен в warnings.json", full, f.OnItemInvalid.Code)
+		}
+	}
+	if fi := f.ItemForbidden; fi != nil {
+		if !registryItemPatternTypes[f.Type] {
+			t.Errorf("%s: item_forbidden при type=%q — у скалярного поля элемента нет", full, f.Type)
+		}
+		if len(fi.Values) == 0 {
+			t.Errorf("%s: item_forbidden без values — запрещать нечего", full)
+		}
+		if fi.Code == "" || (!codes[fi.Code] && !registryPendingCodes[fi.Code]) {
+			t.Errorf("%s: item_forbidden.code %q не объявлен в warnings.json", full, fi.Code)
 		}
 	}
 	if len(f.Fields) > 0 && f.Type != "object" {

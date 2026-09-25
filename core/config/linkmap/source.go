@@ -323,3 +323,32 @@ func lastPathSegment(path string) string {
 	}
 	return path
 }
+
+// MatchesUnwrap — опознаёт ли текст вид источника, чья оболочка снимается
+// распаковщиком unwrap (атрибут `unwrap` вида).
+//
+// Нужен вызывающему, который сам исполняет распаковщик по его имени и должен
+// узнать свой вход, не держа у себя признака формата: у контейнера Amnezia
+// признак — префикс `vpn://` в `detect` вида `amnezia_link`, и строкой в коде
+// он больше не живёт. Судится ТОЛЬКО detect вида (без priority и без
+// default-ветки): вопрос не «чем оказался документ», а «это ли мой вход».
+func MatchesUnwrap(set *registry.MapperSet, unwrap, text string) bool {
+	if set == nil || unwrap == "" {
+		return false
+	}
+	spec := set.SourceKinds()
+	if spec == nil {
+		return false
+	}
+	c := NewContent(text)
+	for i := range spec.Kinds {
+		k := &spec.Kinds[i]
+		if k.Unwrap != unwrap || k.Detect == nil {
+			continue
+		}
+		if Matches(k.Detect, c) {
+			return true
+		}
+	}
+	return false
+}

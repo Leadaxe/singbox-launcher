@@ -1223,7 +1223,7 @@
         "Если имена разрешаются, делать ничего не нужно: за это уже отвечают настройки DNS лаунчера.",
         "Если нужен именно этот сервер, добавьте его в настройках DNS лаунчера, а не в узле."
       ],
-      "desc": "Interface.DNS из .conf/ссылки не переносится в тело: у endpoint'а sing-box поля DNS нет (лоссы by design). Код объявлен, чтобы потеря перестала быть молчаливой; запись в маппере обязана остаться и без кода — иначе ключ уехал бы в uri_param_unknown.",
+      "desc": "Interface.DNS из .conf/ссылки не переносится в тело: у endpoint'а sing-box поля DNS нет (лоссы by design). Код объявлен, чтобы потеря перестала быть молчаливой; запись в маппере обязана остаться и без кода — иначе ключ уехал бы в uri_param_unknown. Плейсхолдеры контейнера Amnezia ($PRIMARY_DNS/$SECONDARY_DNS) разрешает запись `substitute` из корня профиля (context.profile.dns1/dns2, контракт 1.1.63): код называет настоящие адреса; не разрешилось ничего — кода нет.",
       "dart": null,
       "go": "правило реестра contract/registry/protocols/wireguard.json mappers.conf.params.dns.on_present, mappers.uri.params.dns.on_present (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
     },
@@ -1345,7 +1345,7 @@
         "Проверьте, что первый пир — тот, который вам нужен: именно он стал узлом.",
         "Если нужны остальные, импортируйте каждый пир отдельной конфигурацией: та же [Interface] и по одной [Peer] в каждой."
       ],
-      "desc": "Несколько [Peer] в .conf — берётся первая, остальные снимаются. Сегодня Go делает это молча (parseWGConfSections: peerSections == 1); код делает потерю видимой.",
+      "desc": "Несколько [Peer] в .conf — берётся первая, остальные снимаются. Прежде Go делал это молча (рукописный разбор секций .conf, снят); код делает потерю видимой.",
       "dart": null,
       "go": "правило реестра contract/registry/protocols/wireguard.json mappers.conf.ini_dialect.sections.Peer.on_extra; исполнение — core/config/linkmap/exec.go:execState.noteINIDropped (все входы .conf, включая vpn://)"
     },
@@ -2250,6 +2250,56 @@
       "desc": "grpcSettings.multiMode Xray-элемента при ИСТИННОМ значении. Эквивалента у ядра нет (V2RayGRPCOptions знает service_name/idle_timeout/ping_timeout/permit_without_stream); режим gun — сегодняшнее поведение, и он принимается молча. Ложное значение кода не даёт: терять нечего, когда режим и не просили. Парный случай authority кода НЕ имеет намеренно — та потеря поведения не меняет и шумела бы на каждом grpc-узле всех четырёх панелей.",
       "dart": null,
       "go": "правило реестра contract/registry/transports.json blocks.xray.grpc.multiMode.on_present (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
+    },
+    "fields_order_invalid": {
+      "severity": "warning",
+      "params": [
+        "a",
+        "b",
+        "value",
+        "with"
+      ],
+      "title_en": "{a} is greater than {b}",
+      "title_ru": "{a} больше, чем {b}",
+      "text_en": "The node sets {a} = {value} above {b} = {with}, but the core requires {a} not to exceed {b} and would refuse to start the whole config with such a pair. Both fields were removed; the node works without them.",
+      "text_ru": "У узла {a} = {value} больше, чем {b} = {with}, а ядро требует, чтобы {a} не превышал {b}, и с такой парой не запустит весь конфиг. Оба поля сняты; узел работает без них.",
+      "cause_en": "The bounds were typed in the wrong order or swapped by hand. Which of the two numbers is wrong cannot be told from the node itself, so neither is kept.",
+      "cause_ru": "Границы набрали в неверном порядке или поменяли вручную. Какое из двух чисел ошибочно, по самому узлу не понять, поэтому не оставлено ни одно.",
+      "fix_en": [
+        "Take the configuration from the provider again.",
+        "If you set the values yourself, put the smaller bound first and import the configuration again."
+      ],
+      "fix_ru": [
+        "Возьмите конфигурацию у провайдера заново.",
+        "Если значения задавали вы сами, поставьте меньшую границу первой и импортируйте конфигурацию ещё раз."
+      ],
+      "desc": "Контракт 1.1.63, SPEC 142 C8: связь `ordered` в body.relations с action drop — значения полей обязаны идти по неубыванию; нарушение снимает ОБА поля пары, узел живёт. Первый потребитель — AmneziaWG jmin ≤ jmax: sing-box-lx transport/wireguard/device_awg.go validateJunk отвергает endpoint («amneziawg: jmin (N) must be <= jmax (M)»), вендорный amneziawg-go иначе паниковал бы на отрицательном rand. Junk-пакеты без размеров ядро пропускает как безвредные. Прежде правило держала только форма обфускации.",
+      "dart": null,
+      "go": "правило реестра contract/registry/protocols/wireguard.json body.relations (kind ordered); исполнение — core/config/nodeflow/sanitize.go:sanitizer.ordered"
+    },
+    "tailscale_default_route_advertised": {
+      "severity": "warning",
+      "params": [
+        "path",
+        "value"
+      ],
+      "title_en": "Tailscale: default route {value} removed from advertised routes",
+      "title_ru": "Tailscale: маршрут по умолчанию {value} снят с анонса",
+      "text_en": "The node advertises the default route {value} at {path}. The core refuses to start with it: offering this node as an exit to the internet is a separate setting, advertise_exit_node. The route was removed; the other advertised routes stay.",
+      "text_ru": "Узел анонсирует маршрут по умолчанию {value} в {path}. С ним ядро не запускается: чтобы предложить узел как выход в интернет, есть отдельная настройка advertise_exit_node. Маршрут снят; остальные анонсируемые маршруты остаются.",
+      "cause_en": "A default route was written into the list of subnets to share, meaning \"use this node as an exit\". Tailscale expresses that with its own flag and rejects the route form.",
+      "cause_ru": "В список раздаваемых подсетей записали маршрут по умолчанию — то есть «ходить через этот узел наружу». Tailscale выражает это отдельным флагом и форму маршрута отвергает.",
+      "fix_en": [
+        "To offer this node as an exit, turn on advertise_exit_node (the exit node checkbox of the Tailscale form).",
+        "Otherwise nothing to do: the remaining routes are advertised."
+      ],
+      "fix_ru": [
+        "Чтобы предложить узел как выход, включите advertise_exit_node (галка выхода в форме Tailscale).",
+        "Иначе делать ничего не нужно: остальные маршруты анонсируются."
+      ],
+      "desc": "Контракт 1.1.63, SPEC 142 C9: `item_forbidden` у tailscale advertise_routes — `0.0.0.0/0` и `::/0` после normalize cidr_masked. Ядро: protocol/tailscale/endpoint.go NewEndpoint — «`advertise_routes` cannot be default, use `advertise_exit_node` instead.», отказ всего конфига. Прежде элемент отбивала только форма добавления узла, и вход singbox/бэкап несли его в ядро.",
+      "dart": null,
+      "go": "правило реестра contract/registry/protocols/tailscale.json body.fields.advertise_routes.item_forbidden; исполнение — core/config/nodeflow/sanitize.go:sanitizer.filterItems"
     }
   }
 }

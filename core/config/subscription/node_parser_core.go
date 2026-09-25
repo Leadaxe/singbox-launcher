@@ -22,8 +22,9 @@ import (
 // новая схема реестра опознаётся ссылкой без правки кода. `http://` и
 // `https://` не ведёт ни одна секция — они остаются URL подписки.
 //
-// Контейнер Amnezia `vpn://` секцией протокола не описан (его detect в
-// containers.json — проза) и опознаётся тем же признаком, что в ParseNode.
+// Контейнер Amnezia `vpn://` секцией протокола не описан: его опознаёт detect
+// вида источника с распаковщиком `amnezia_vpn` (source_kinds.json), тем же
+// признаком, что в ParseNode.
 func IsDirectLink(input string) bool {
 	trimmed := strings.TrimSpace(input)
 	if isAmneziaVPNLink(trimmed) {
@@ -37,10 +38,23 @@ func IsDirectLink(input string) bool {
 	return ok
 }
 
-// isAmneziaVPNLink — строка это контейнер Amnezia `vpn://` (containers.json
-// amnezia_vpn_link): его ведёт parseAmneziaVPNLink, а не секция протокола.
+// amneziaUnwrap — имя распаковщика контейнера Amnezia в реестре (атрибут
+// `unwrap` вида источника, source_kinds.json). Распаковщик — код по
+// построению (qCompress предикатами не выражается), и его имя — единственное,
+// что этот файл знает о контейнере; признак входа живёт в detect вида.
+const amneziaUnwrap = "amnezia_vpn"
+
+// isAmneziaVPNLink — строка это контейнер Amnezia: её опознаёт detect вида
+// источника с распаковщиком `amnezia_vpn` (SPEC 142, хвост волны 1: прежде
+// здесь стоял литерал префикса, и регистр в нём судился строже, чем в
+// реестре — `prefix_fold`). Её ведёт parseAmneziaVPNLink, а не секция
+// протокола.
 func isAmneziaVPNLink(s string) bool {
-	return strings.HasPrefix(s, "vpn://")
+	plans, err := linkmap.Planes()
+	if err != nil {
+		return false
+	}
+	return linkmap.MatchesUnwrap(plans.Mappers(), amneziaUnwrap, strings.TrimSpace(s))
 }
 
 // MaxURILength — предел длины share-URI, из реестра контракта

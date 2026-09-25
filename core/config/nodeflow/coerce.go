@@ -3,6 +3,7 @@ package nodeflow
 import (
 	"encoding/base64"
 	"encoding/json"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -234,6 +235,31 @@ func normalize(mode, v string) string {
 			return t + "/128"
 		}
 		return t + "/32"
+	case "cidr_masked":
+		// Префикс СЕТИ, а не адрес с маской (контракт 1.1.63): голый адрес
+		// получает префикс «весь хост» (как cidr_prefix), а биты адреса за
+		// длиной префикса обнуляются — `192.168.10.5/24` → `192.168.10.0/24`.
+		// Нужен полям, где ядро требует маршрут, а не адрес интерфейса:
+		// tailscale отвергает анонс `192.168.10.5/24` («has non-address bits
+		// set»), хотя человек имел в виду ровно сеть 192.168.10.0/24.
+		//
+		// Мусор уезжает как есть — его судит format cidr.
+		t := strings.TrimSpace(v)
+		if t == "" {
+			return v
+		}
+		if !strings.Contains(t, "/") {
+			if strings.Contains(t, ":") {
+				t += "/128"
+			} else {
+				t += "/32"
+			}
+		}
+		p, err := netip.ParsePrefix(t)
+		if err != nil {
+			return v
+		}
+		return p.Masked().String()
 	case "base64_std":
 		// Четыре написания одних и тех же 32 байт → одно. Ядро декодирует
 		// ключи WireGuard исключительно base64.StdEncoding, а панели пишут

@@ -1,0 +1,12 @@
+# Xray: цепочка, чьё ЗВЕНО ходит наружу через служебный freedom с fragment
+# (контракт 1.1.63, SPEC 142 C5).
+#
+# Фрагментация ClientHello — свойство того TLS, который делает ПРЯМОЕ
+# соединение: здесь это звено-релей (его dialerProxy указывает на freedom с
+# settings.fragment), а не владелец цепочки, чей TLS идёт внутри туннеля
+# релея. Правило — запись реестра `fragment_via_dialer` (dialer.json, блок
+# xray): `deref` разыменовывает dialerProxy элемента в соседа по документу и
+# ставит tls.fragment тому элементу, чей dialer — freedom с fragment. Прежде
+# рукописное правило уровня документа ставило tls.fragment ВЛАДЕЛЬЦУ даже
+# тогда, когда наружу ходило звено. Сам freedom звеном не становится.
+[{"remarks": "chain frag", "outbounds": [{"tag": "proxy", "protocol": "trojan", "settings": {"servers": [{"address": "a.example", "port": 443, "password": "pw"}]}, "streamSettings": {"network": "tcp", "security": "tls", "sockopt": {"dialerProxy": "relay"}}}, {"tag": "relay", "protocol": "vless", "settings": {"vnext": [{"address": "r.example", "port": 443, "users": [{"id": "33333333-2222-3333-4444-555555555555", "encryption": "none"}]}]}, "streamSettings": {"network": "tcp", "security": "tls", "tlsSettings": {"serverName": "r.example"}, "sockopt": {"dialerProxy": "fragment"}}}, {"tag": "fragment", "protocol": "freedom", "settings": {"fragment": {"packets": "tlshello", "length": "100-200", "interval": "10-20"}}}]}]

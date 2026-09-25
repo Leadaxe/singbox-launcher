@@ -616,7 +616,7 @@ func parseXrayJSONArrayElementNodes(
 			label = fmt.Sprintf("xray-%d", elemIndex)
 		}
 
-		node, err := xrayNodeFromOutbound(ob, label)
+		node, err := xrayNodeFromOutboundInDoc(ob, outboundsRaw, label)
 		if err != nil {
 			// Два РАЗНЫХ класса отбраковки, и сваливать их в один список
 			// нельзя: до этого разделения элемент vless с пустым id объявлялся
@@ -659,7 +659,7 @@ func parseXrayJSONArrayElementNodes(
 		}
 
 		// dialerProxy → цепочка (C4). Глубина берётся из фазы B.
-		if err := attachXrayDialerChain(node, ob, byTag, node.Tag, label); err != nil {
+		if err := attachXrayDialerChain(node, ob, byTag, outboundsRaw, node.Tag, label); err != nil {
 			// Цепочка объявлена, но непригодна: узла не будет — значит,
 			// запись обязана остаться в составе неразобранной (W11).
 			// Код причины нормативен (D-088): текст ошибки у сторон свой,
@@ -729,6 +729,7 @@ func attachXrayDialerChain(
 	node *configtypes.ParsedNode,
 	ob map[string]interface{},
 	byTag map[string]map[string]interface{},
+	doc []interface{},
 	ownerTag, label string,
 ) error {
 	streamSettings, _ := ob["streamSettings"].(map[string]interface{})
@@ -755,19 +756,14 @@ func attachXrayDialerChain(
 
 		hopProtocol := strings.ToLower(strings.TrimSpace(xrayMapString(hopOb, "protocol")))
 		if hopProtocol == "freedom" {
-			// Служебный freedom с fragment — не хоп, а TLS ClientHello
-			// fragmentation (Xray DPI trick). Основной узел остаётся прямым;
-			// без fragment dialerProxy молча игнорируется.
-			// Предупреждение не ставится (решение владельца): Xray режет
-			// ClientHello вслепую по length и ждёт фиксированный interval;
-			// sing-box парсит ClientHello, режет каждую метку SNI (public
-			// suffix не трогается), включает TCP_NODELAY, ждёт ACK или
-			// fragment_fallback_delay (500 мс по умолчанию); record_fragment —
-			// тот же разрез на уровне TLS-записей. Механика ядра строго лучше.
-			if xrayFreedomFragmentSpec(hopOb) {
-				applyXrayFreedomFragment(node)
-			}
-			return nil
+			// Служебный freedom — не хоп: элемент ходит наружу напрямую.
+			// Если у него `settings.fragment`, это TLS ClientHello
+			// fragmentation (Xray DPI trick), и её уже перенесла в
+			// tls.fragment запись реестра `fragment_via_dialer`
+			// (dialer.json, блок xray, `deref` по dialerProxy) — у того
+			// элемента, чей dialerProxy указал на freedom. Звена цепочки
+			// здесь нет, dialerProxy без fragment молча игнорируется.
+			break
 		}
 
 		hopTag := fmt.Sprintf("%s%s", ownerTag, xrayJumpOutboundTagSuffix)
@@ -788,7 +784,7 @@ func attachXrayDialerChain(
 			hopLabel = label
 		}
 
-		hop, err := xrayChainHopFromOutbound(hopOb, hopTag, hopLabel)
+		hop, err := xrayChainHopFromOutbound(hopOb, doc, hopTag, hopLabel)
 		if err != nil {
 			return fmt.Errorf("dialerProxy %q: %w", ref, err)
 		}
@@ -809,44 +805,15 @@ func attachXrayDialerChain(
 	return nil
 }
 
-func xrayFreedomFragmentSpec(ob map[string]interface{}) bool {
-	settings, _ := ob["settings"].(map[string]interface{})
-	if settings == nil {
-		return false
-	}
-	frag, _ := settings["fragment"].(map[string]interface{})
-	return frag != nil
-}
-
-func nodeOutboundTLSEnabled(node *configtypes.ParsedNode) bool {
-	if node == nil || node.Outbound == nil {
-		return false
-	}
-	tls, ok := node.Outbound["tls"].(map[string]interface{})
-	if !ok {
-		return false
-	}
-	enabled, ok := tls["enabled"].(bool)
-	return ok && enabled
-}
-
-func applyXrayFreedomFragment(node *configtypes.ParsedNode) {
-	if !nodeOutboundTLSEnabled(node) {
-		return
-	}
-	tls, _ := node.Outbound["tls"].(map[string]interface{})
-	tls["fragment"] = true
-}
-
 // xrayChainHopFromOutbound строит звено цепочки.
 //
 // Звено разбирает тот же движок реестра, что и узел: секция `mappers.xray`
 // схемы (socks, vless, …) опознаёт элемент своим detect. Рукописной сборки
 // socks-звена больше нет (SPEC 142 A10) — тело хопа совпадает с телом того же
 // socks, пришедшего узлом.
-func xrayChainHopFromOutbound(ob map[string]interface{}, hopTag, label string) (*configtypes.ParsedNode, error) {
+func xrayChainHopFromOutbound(ob map[string]interface{}, doc []interface{}, hopTag, label string) (*configtypes.ParsedNode, error) {
 	protocol := strings.ToLower(strings.TrimSpace(xrayMapString(ob, "protocol")))
-	hop, err := xrayNodeFromOutbound(ob, label)
+	hop, err := xrayNodeFromOutboundInDoc(ob, doc, label)
 	if err != nil {
 		return nil, err
 	}

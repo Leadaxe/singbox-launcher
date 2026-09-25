@@ -80,6 +80,14 @@ func ParseWGConfByEngine(confText string, skipFilters []map[string]string) (*con
 // wireguard объявлено `ini.$comment.Peer` → `hint` → хост Endpoint, то есть
 // имя из файла сильнее внешнего, а внешнее — сильнее адреса.
 func ParseWGConfByEngineHint(confText, hint string, skipFilters []map[string]string) (*configtypes.ParsedNode, error, bool) {
+	return ParseWGConfByEngineContext(confText, hint, nil, skipFilters)
+}
+
+// ParseWGConfByEngineContext — то же с КОНТЕКСТОМ от распаковщика
+// контейнера (источник `context.<путь>`, контракт 1.1.63): то, что лежит
+// рядом с текстом, но не в нём. Что из этого поднять в узел, решают записи
+// секции `conf` реестра; nil — контекста нет.
+func ParseWGConfByEngineContext(confText, hint string, context map[string]interface{}, skipFilters []map[string]string) (*configtypes.ParsedNode, error, bool) {
 	plans, err := linkmap.Planes()
 	if err != nil {
 		return nil, nil, false
@@ -94,7 +102,11 @@ func ParseWGConfByEngineHint(confText, hint string, skipFilters []map[string]str
 	}
 	bodyType := reg.SingboxType(scheme)
 
-	res, execErr := linkmap.ParseURIHint(plan, confText, bodyType, hint, nil)
+	var ctx interface{}
+	if len(context) > 0 {
+		ctx = context
+	}
+	res, execErr := linkmap.ParseURIContext(plan, confText, bodyType, hint, ctx, nil)
 	if execErr != nil {
 		return nil, fmt.Errorf("invalid %s config: %w", scheme, execErr), true
 	}

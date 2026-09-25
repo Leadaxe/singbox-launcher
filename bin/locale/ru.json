@@ -4061,9 +4061,6 @@
   "Node has no body to edit": {
     "value": "У узла нет тела для правки"
   },
-  "jmin must not exceed jmax": {
-    "value": "jmin не может превышать jmax"
-  },
   "%s is required": {
     "value": "%s обязателен"
   },
@@ -4111,12 +4108,6 @@
   },
   "Advertised routes and exit nodes stay pending until they are approved in the tailnet admin console.": {
     "value": "Анонсированные маршруты и выход в интернет не заработают, пока их не подтвердят в админке tailnet."
-  },
-  "Not a valid CIDR: %s": {
-    "value": "Не похоже на CIDR: %s"
-  },
-  "Use the exit node checkbox instead of a default route": {
-    "value": "Для маршрута по умолчанию используйте галку «анонсировать как выход»"
   },
   "This rule belongs to node %q — edit it in that source's JSON tab.": {
     "value": "Это правило принадлежит узлу %q — правится на вкладке JSON его источника."

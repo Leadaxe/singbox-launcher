@@ -194,25 +194,18 @@ func awgNumberToString(v interface{}) (string, bool) {
 	return "", false
 }
 
-// validateAWGSettings — проверки ввода, которых реестр не выражает.
+// validateAWGSettings — проверка ввода, которой реестр не выражает: поля
+// формы заполнены все — форма пишет профиль целиком.
 //
 // Допустимость значений (тип, границы, enum, формат домена, «ip=quic требует
-// id») судит реестр: форма прогоняет тело через nodeflow.Sanitize и
-// отказывает, если санитайзер снял набранное поле (writeAWGBody). Здесь
-// остаются только два правила:
-//   - поля формы заполнены все — форма пишет профиль целиком;
-//   - jmin ≤ jmax — ограничение ядра (иначе отказ всего конфига), которое
-//     реестр пока не выражает: нужна связь-упорядочение полей (SPEC 142 C8).
+// id», jmin ≤ jmax — связь `ordered` реестра, SPEC 142 C8) судит реестр:
+// форма прогоняет тело через nodeflow.Sanitize и отказывает, если санитайзер
+// снял набранное поле (writeAWGBody).
 func validateAWGSettings(s awgSettings) error {
 	for _, f := range []struct{ raw, name string }{{s.JC, "jc"}, {s.JMin, "jmin"}, {s.JMax, "jmax"}} {
 		if strings.TrimSpace(f.raw) == "" {
 			return fmt.Errorf("%s", locale.Tf("%s is required", f.name))
 		}
-	}
-	jmin, errMin := strconv.Atoi(strings.TrimSpace(s.JMin))
-	jmax, errMax := strconv.Atoi(strings.TrimSpace(s.JMax))
-	if errMin == nil && errMax == nil && jmin > jmax {
-		return fmt.Errorf("%s", locale.T("jmin must not exceed jmax"))
 	}
 	return nil
 }

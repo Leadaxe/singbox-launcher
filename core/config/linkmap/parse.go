@@ -53,11 +53,20 @@ func ParseURI(plan *Plan, text, bodyType string, trace *Trace) (*Result, error) 
 // профиля `vpn://`, имя контейнера, имя файла. Куда его поставить в
 // цепочке метки, решает секция своим `label.source`, а не вызывающий.
 func ParseURIHint(plan *Plan, text, bodyType, hint string, trace *Trace) (*Result, error) {
+	return ParseURIContext(plan, text, bodyType, hint, nil, trace)
+}
+
+// ParseURIContext — то же со ЗНАЧЕНИЕМ ОТ ВЫЗЫВАЮЩЕГО (источник
+// `context.<путь>`, контракт 1.1.63): распаковщик контейнера кладёт сюда то,
+// что лежит рядом с текстом, но не в нём (MTU и адреса DNS профиля Amnezia).
+// Что из этого поднять в узел, решают записи секции; nil — источника нет.
+func ParseURIContext(plan *Plan, text, bodyType, hint string, context interface{}, trace *Trace) (*Result, error) {
 	space, form, err := UnwrapURI(plan, text)
 	if err != nil {
 		return nil, err
 	}
 	space.Hint = hint
+	space.SetContext(context)
 	return Exec(plan, space, form, bodyType, trace)
 }
 

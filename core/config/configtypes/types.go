@@ -910,24 +910,23 @@ func TruncateWarningValue(v string) string {
 // SchemeTailscale — схема узла tailnet (contract/registry/protocols/tailscale.json).
 //
 // Объявлена здесь, а не рядом с config.IsEndpointScheme: configtypes —
-// leaf-пакет, импортировать config он не может, а предикат IsExitCapable
-// живёт на модели (его зовут обе точки пула). config.SchemeTailscale
+// leaf-пакет, импортировать config он не может. config.SchemeTailscale
 // ссылается на ту же строку — расхождение поймал бы любой из тестов SPEC 122.
 const SchemeTailscale = "tailscale"
 
 // IsExitCapable — годится ли узел ВЫХОДОМ В ИНТЕРНЕТ, то есть кандидатом в
 // состав Направления (SPEC 122 §2.3).
 //
-// Всё, что не tailscale, годится: обычный прокси-узел на то и заведён.
-// Узел tailnet — нет: без `exit_node` он открывает доступ в САМУ tailnet
-// (адреса 100.64.0.0/10 и MagicDNS), а не выход наружу, и Направление,
-// выбравшее такой узел, отправило бы трафик в никуда. С непустым `exit_node`
-// он выходом становится и в пул возвращается.
+// Решает реестр атрибутом тела `exit_capable_when` (контракт 1.1.63, SPEC 142
+// C7): схема без атрибута годится всегда — обычный прокси-узел на то и
+// заведён; у tailscale условие — непустой `exit_node`. Без него узел tailnet
+// открывает доступ в САМУ tailnet (100.64.0.0/10 и MagicDNS), а не выход
+// наружу, и Направление, выбравшее такой узел, отправило бы трафик в никуда.
+// `advertise_exit_node` в условие не входит: это противоположная роль (узел
+// служит выходом ДЛЯ ДРУГИХ участников tailnet).
 //
-// `advertise_exit_node` сюда НЕ добавляется, хотя слова похожи: это
-// противоположная роль — узел служит выходом ДЛЯ ДРУГИХ участников tailnet,
-// сам наружу через него трафик не идёт. Ядро эти две роли вместе и не
-// принимает (отказ на старте), так что условие остаётся одним полем.
+// Реестр не прочитался — узел годится: отказ сборки реестра не повод
+// выкидывать узлы из пулов.
 //
 // Detour на такой узел предикат не запрещает: гнать чужой трафик через
 // tailnet — законный осознанный выбор, и запретов на цели detour здесь нет.
@@ -935,12 +934,11 @@ func (n *ParsedNode) IsExitCapable() bool {
 	if n == nil {
 		return false
 	}
-	if n.Scheme != SchemeTailscale {
+	reg, err := registry.Get()
+	if err != nil {
 		return true
 	}
-	// Тело приходит и из JSON (map), и из канона: строкой читается любое.
-	exit, _ := n.Outbound["exit_node"].(string)
-	return strings.TrimSpace(exit) != ""
+	return reg.ExitCapable(n.Scheme, n.Outbound)
 }
 
 // SyncJumpFromChain refreshes the deprecated Jump field from Chain[0].

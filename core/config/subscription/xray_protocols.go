@@ -74,9 +74,16 @@ func xrayUnsupportedProtocol(err error) (string, bool) {
 // для поддерживаемого протокола с битым содержимым — обычную ошибку с настоящей
 // причиной.
 func xrayNodeFromOutbound(ob map[string]interface{}, label string) (*configtypes.ParsedNode, error) {
+	return xrayNodeFromOutboundInDoc(ob, nil, label)
+}
+
+// xrayNodeFromOutboundInDoc — то же для элемента с соседями по документу
+// (массив outbounds): записи реестра с `deref` читают соседа, на которого
+// ссылается элемент (служебный freedom с fragment по dialerProxy).
+func xrayNodeFromOutboundInDoc(ob map[string]interface{}, doc []interface{}, label string) (*configtypes.ParsedNode, error) {
 	// Разбор ведёт ДВИЖОК реестра (xray_element_engine.go): какая схема
 	// забирает элемент, решает `detect` секции по полю `protocol`.
-	node, err, handled := parseXrayElementByEngine(ob, label)
+	node, err, handled := parseXrayElementByEngine(ob, doc, label)
 	if handled {
 		return node, err
 	}

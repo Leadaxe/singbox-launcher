@@ -122,6 +122,18 @@ type sanitizer struct {
 	// кодом», `absent` — «настройки нет вовсе, и сказать тут нечего». Для
 	// связей и условий оба означают отсутствие, поэтому проверяются парой.
 	absent map[string]bool
+	// dropped — пути, снятые ПРАВИЛОМ ЗНАЧЕНИЯ или СВЯЗИ по ходу обхода и
+	// после него (on_invalid, requires/conflicts, min_when, связь набора
+	// `ordered`), контракт 1.1.63.
+	//
+	// Снятое поле для последующих связей и условий — ОТСУТСТВУЮЩЕЕ, как и
+	// снятое запретом по схеме: в теле его не будет. Прежде такое поле
+	// оставалось видно соседям в исходной карте, и связь судила по значению,
+	// которого в теле нет: `ip` снят за пустой `id`, а `ib`, требующий `ip`,
+	// оставался. Набор отдельный от `removed`, потому что тот размечается ДО
+	// обхода (запрет по схеме известен заранее), а этот копится по ходу.
+	// Материализация связью `requires … set` снимает пометку с пути.
+	dropped map[string]bool
 	// missingRequired — обязательные поля, не пережившие обход текущего
 	// объекта. Накопитель, а не флаг: один объект может недосчитаться
 	// нескольких полей, и сообщить надо про каждое.
@@ -199,7 +211,7 @@ func SanitizeFromKind(scheme, source, kind string, m map[string]interface{}) Res
 			},
 		}
 	}
-	s := &sanitizer{reg: reg, scheme: scheme, source: source, kind: kind, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}, absent: map[string]bool{}, building: map[string]map[string]interface{}{}}
+	s := &sanitizer{reg: reg, scheme: scheme, source: source, kind: kind, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}, absent: map[string]bool{}, dropped: map[string]bool{}, building: map[string]map[string]interface{}{}}
 	s.cleanRoot = map[string]interface{}{}
 	s.res.Clean = s.cleanRoot
 	// Запреты по схеме размечаются ДО обхода, а не по ходу: связи
@@ -581,7 +593,10 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 			out[name] = v
 			continue
 		}
-		// Поле было, но не пережило проверки. Обязательное поле без
+		// Поле было, но не пережило проверки: для последующих связей и
+		// условий его больше нет (см. dropped).
+		s.dropped[path] = true
+		// Обязательное поле без
 		// значения означает, что объект, которому оно принадлежит, собрать
 		// нельзя; КАКОЙ объект при этом гибнет — тело узла или необязательная
 		// секция внутри него, — решает вызывающий уровень (requiredFailed).
@@ -761,7 +776,8 @@ func (s *sanitizer) noteNonStringItems(path string, f *registry.Field, raw inter
 // Не осталось ни одного годного элемента — поля нет, и второго кода на это не
 // ставится: причину уже назвал код на каждом выброшенном элементе.
 func (s *sanitizer) filterItems(path string, f *registry.Field, v interface{}) (interface{}, bool) {
-	if f.ItemPattern == "" {
+	forbidden := f.ItemForbidden != nil && len(f.ItemForbidden.Values) > 0
+	if f.ItemPattern == "" && !forbidden {
 		return v, true
 	}
 	items, ok := v.([]string)
@@ -774,7 +790,21 @@ func (s *sanitizer) filterItems(path string, f *registry.Field, v interface{}) (
 	}
 	out := make([]string, 0, len(items))
 	for i, item := range items {
-		if patternOK(f.ItemPattern, item) {
+		// Запрещённое ЗНАЧЕНИЕ элемента (`item_forbidden`, контракт 1.1.63):
+		// форма годная, но ядро такой элемент не примет — у tailscale
+		// дефолтный маршрут в advertise_routes означает «быть выходом», и
+		// ядро требует для этого advertise_exit_node. Сверяется значение
+		// ПОСЛЕ normalize (`1.2.3.4/0` маскируется в `0.0.0.0/0`), свой код.
+		if forbidden && inValues(f.ItemForbidden.Values, item) {
+			itemPath := path + "[" + strconv.Itoa(i) + "]"
+			params := map[string]string{"path": itemPath}
+			if !f.Secret {
+				params["value"] = item
+			}
+			s.warn(codeOr(f.ItemForbidden.Code, "type_invalid"), itemPath, item, f.Secret, params)
+			continue
+		}
+		if f.ItemPattern == "" || patternOK(f.ItemPattern, item) {
 			out = append(out, item)
 			continue
 		}
@@ -935,8 +965,86 @@ func (s *sanitizer) relations(rels []registry.Relation2) {
 			s.rangesDisjoint(&rels[i])
 		case "cooccurrence":
 			s.cooccurrence(&rels[i])
+		case "ordered":
+			s.ordered(&rels[i])
 		}
 	}
+}
+
+// ordered — значения перечисленных полей обязаны идти по НЕУБЫВАНИЮ
+// (контракт 1.1.63): paths[i] ≤ paths[i+1].
+//
+// Свойство ПАРЫ, а не одного поля: у AmneziaWG jmin > jmax ядро отвергает
+// endpoint целиком («jmin (N) must be <= jmax (M)», sing-box-lx
+// transport/wireguard/device_awg.go validateJunk) — без проверки падает ВЕСЬ
+// конфиг. Какое из двух чисел ошибочно, по телу не понять, поэтому связь не
+// назначает виноватого: действие `drop` снимает ВСЕ участвующие поля пары,
+// `drop_node` — узел, `warn` только сообщает.
+//
+// Читается только ЧИСТАЯ карта, как у rangesDisjoint: поле, снятое своим
+// правилом, в тело не поедет, и судить порядок по нему нельзя. Участник,
+// которого в теле нет, пару не образует — «одно поле без соседа» судят
+// requires/conflicts самих полей. Значение-диапазон сравнивается границами:
+// верхняя граница левого не выше нижней границы правого.
+func (s *sanitizer) ordered(rel *registry.Relation2) {
+	type bound struct {
+		path   string
+		lo, hi float64
+	}
+	present := make([]bound, 0, len(rel.Paths))
+	for _, p := range rel.Paths {
+		v, ok := lookupPath(s.cleanRoot, strings.Split(p, "."))
+		if !ok {
+			continue
+		}
+		lo, hi, parsed := rangeBounds(v)
+		if !parsed {
+			continue
+		}
+		present = append(present, bound{path: p, lo: lo, hi: hi})
+	}
+	for i := 0; i+1 < len(present); i++ {
+		a, b := present[i], present[i+1]
+		if a.hi <= b.lo {
+			continue
+		}
+		v, _ := lookupPath(s.cleanRoot, strings.Split(a.path, "."))
+		w, _ := lookupPath(s.cleanRoot, strings.Split(b.path, "."))
+		params := map[string]string{
+			"a": a.path, "b": b.path,
+			"value": displayValue(v), "with": displayValue(w),
+		}
+		switch rel.Action {
+		case "drop_node":
+			s.dropNode(rel.Code, a.path, nil, false, params)
+		case "drop":
+			s.warn(rel.Code, a.path, nil, false, params)
+			for _, p := range present {
+				parts := strings.Split(p.path, ".")
+				deleteClean(s.cleanRoot, parts)
+				s.dropped[p.path] = true
+			}
+		default:
+			s.warn(rel.Code, a.path, nil, false, params)
+		}
+		return
+	}
+}
+
+// deleteClean снимает путь из чистой карты (родителей не трогает).
+func deleteClean(m map[string]interface{}, parts []string) {
+	if len(parts) == 0 {
+		return
+	}
+	cur := m
+	for _, p := range parts[:len(parts)-1] {
+		next, ok := cur[p].(map[string]interface{})
+		if !ok {
+			return
+		}
+		cur = next
+	}
+	delete(cur, parts[len(parts)-1])
 }
 
 // cooccurrence — сочетание полей, о котором человеку стоит знать.
@@ -1410,6 +1518,14 @@ func (s *sanitizer) relationsOK(path, prefix string, f *registry.Field) bool {
 			s.deferImply(path, rq)
 			continue
 		}
+		if s.doomedWith(rq.Path, prefix) {
+			// Требуемый сосед — ОБЯЗАТЕЛЬНОЕ поле объекта, и его сняло своё
+			// правило значения: объект уходит целиком (requiredFailed), и
+			// поле уходит вместе с ним. Второго кода не ставим: причину уже
+			// назвал код на соседе (REALITY с негодным public_key — short_id
+			// и key_share снимаются не сами, а всем блоком).
+			return false
+		}
 		s.warn(codeOr(rq.Code, "field_requires"), path, nil, false,
 			map[string]string{"path": path, "requires": rq.Path})
 		return false
@@ -1418,6 +1534,33 @@ func (s *sanitizer) relationsOK(path, prefix string, f *registry.Field) bool {
 	// несло ни одно поле реестра и не знала схема. Обратная связь («поле
 	// запрещено, когда сосед задан») выражается `conflicts` у того же поля.
 	return true
+}
+
+// doomedWith — путь (от корня либо относительно текущего объекта) снят своим
+// правилом значения (dropped) И был обязательным полем своего объекта, то
+// есть объект, в котором он лежал, уже обречён (missingRequired).
+func (s *sanitizer) doomedWith(path, prefix string) bool {
+	candidates := []string{path}
+	if prefix != "" {
+		if i := strings.Index(path, "."); i >= 0 {
+			head := path[:i]
+			if head == prefix || strings.HasSuffix(prefix, "."+head) {
+				candidates = append(candidates, joinPath(prefix, path[i+1:]))
+			}
+		}
+		candidates = append(candidates, joinPath(prefix, path))
+	}
+	for _, p := range candidates {
+		if !s.dropped[p] {
+			continue
+		}
+		for _, m := range s.missingRequired {
+			if m.Path == p {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // anyPresent — задан ли хоть один из путей (Relation.UnlessSet). Наличие
@@ -1507,8 +1650,8 @@ func (s *sanitizer) lookupClean(parts []string) (interface{}, bool) {
 
 func (s *sanitizer) lookupNonEmpty(path string) bool {
 	if s.gone(path) {
-		// Поле снято запретом по схеме или объявлено незаданным
-		// (`absent_when`) — для связей его нет.
+		// Поле снято запретом по схеме, своим правилом или объявлено
+		// незаданным (`absent_when`) — для связей его нет.
 		return false
 	}
 	parts := strings.Split(path, ".")
@@ -1523,8 +1666,9 @@ func (s *sanitizer) lookupNonEmpty(path string) bool {
 
 // gone — «для проверок наличия этого пути в теле нет».
 //
-// Два источника: поле, снятое запретом по схеме (`removed`), и объект,
-// объявленный незаданным правилом `absent_when` (`absent`). Второй забирает с
+// Три источника: поле, снятое запретом по схеме (`removed`), поле, снятое
+// правилом значения или связи (`dropped`, контракт 1.1.63), и объект,
+// объявленный незаданным правилом `absent_when` (`absent`). Объект забирает с
 // собой и ВСЁ, что внутри: у выключенного блока `tls` пути
 // `tls.reality.enabled` для связей не существует — иначе `tls.ech.enabled`
 // продолжал бы конфликтовать с REALITY, которого в теле не будет.
@@ -1532,10 +1676,17 @@ func (s *sanitizer) lookupNonEmpty(path string) bool {
 // Префикс сверяется по сегменту пути, а не подстрокой: иначе `tls_fragment`
 // исчезал бы вместе с `tls`.
 func (s *sanitizer) gone(path string) bool {
-	if s.removed[path] || s.absent[path] {
+	if s.removed[path] || s.absent[path] || s.dropped[path] {
 		return true
 	}
 	for p := range s.absent {
+		if strings.HasPrefix(path, p+".") {
+			return true
+		}
+	}
+	// Объект, снятый правилом целиком (obfs без обязательного типа), забирает
+	// с собой всё, что внутри, — как и объект по absent_when.
+	for p := range s.dropped {
 		if strings.HasPrefix(path, p+".") {
 			return true
 		}
@@ -2147,6 +2298,12 @@ func (s *sanitizer) deferImply(path string, rq registry.Relation) {
 		}
 		if !setPath(s.cleanRoot, target, rq.Set) {
 			return Warning{}, false
+		}
+		// Путь снова ЗАДАН: если его (или объект на пути к нему) сняло своё
+		// правило, пометка снимается — иначе условия следующих отложенных
+		// правил не увидели бы материализованного значения.
+		for i := 1; i <= len(target); i++ {
+			delete(s.dropped, strings.Join(target[:i], "."))
 		}
 		s.res.Implied = append(s.res.Implied, rq.Path)
 		s.res.Repaired = append(s.res.Repaired, rq.Path)

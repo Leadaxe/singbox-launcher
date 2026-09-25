@@ -108,10 +108,9 @@ func ClassifySubscriptionBody(body string) BodyKind {
 		return BodyKindURIList
 	}
 
-	// vpn:// — раньше всех: ссылка целиком и есть тело (SPEC 103 §9.B12).
-	// EqualFold по префиксу, а не ToLower всего тела: тело бывает
-	// многомегабайтным, и копия ради шести символов — лишняя.
-	if len(trimmed) >= 6 && strings.EqualFold(trimmed[:6], "vpn://") {
+	// Контейнер Amnezia — раньше всех: ссылка целиком и есть тело (SPEC 103
+	// §9.B12). Признак — detect вида источника реестра (isAmneziaVPNLink).
+	if isAmneziaVPNLink(trimmed) {
 		return BodyKindVPNLink
 	}
 

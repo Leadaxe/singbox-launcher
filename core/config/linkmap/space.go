@@ -62,6 +62,21 @@ type Space struct {
 	// [Peer] и больше нигде (G7).
 	iniComments map[string]string
 
+	// context — значение JSON ОТ ВЫЗЫВАЮЩЕГО (источник `context.<путь>`,
+	// контракт 1.1.63): то, что распаковщик контейнера знает о тексте, но
+	// в самом тексте нет. Контейнер Amnezia кладёт MTU рядом с `.conf`
+	// (`last_config.mtu`), а адреса DNS — в корень профиля (`dns1`/`dns2`);
+	// ЧТО из этого поднять в узел, решает секция своими записями, а не код
+	// распаковщика. Необязательный источник — не передали, записи молчат.
+	context interface{}
+	// document — элементы ДОКУМЕНТА, в котором лежит разбираемый элемент
+	// (массив outbounds Xray-конфига), и refs — соседи, на которых сослались
+	// записи с `deref` (источник `ref.<имя>.<путь>`, контракт 1.1.63). Нужны
+	// правилам вида «свойство узла задаёт СОСЕД по документу»: служебный
+	// freedom с `fragment`, на который указывает dialerProxy элемента.
+	document []interface{}
+	refs     map[string]interface{}
+
 	// iniDropped — секции, чьи ПОВТОРЫ снял диалект (`repeat: first_only`),
 	// с общим числом вхождений. Решение принимает разборщик ini, а код
 	// ставит исполнитель записи `on_extra` — потеря едет отсюда туда.
@@ -75,6 +90,58 @@ type kv struct {
 
 // SetJSON кладёт разобранное значение JSON в пространство.
 func (s *Space) SetJSON(v interface{}) { s.json = v }
+
+// SetContext кладёт значение ОТ ВЫЗЫВАЮЩЕГО (источник `context.<путь>`).
+func (s *Space) SetContext(v interface{}) { s.context = v }
+
+// SetDocument кладёт элементы документа, среди которых записи с `deref`
+// ищут соседа по ссылке.
+func (s *Space) SetDocument(elems []interface{}) { s.document = elems }
+
+// bindRef находит в документе элемент, чей ключ key равен value, и кладёт
+// его под именем name (источник `ref.<name>.<путь>`). Не нашёлся — слоя нет,
+// и условия записей по нему ложны. Ключ сравнивается ДОСЛОВНО: тег — это
+// имя, а не значение для нормализации.
+func (s *Space) bindRef(name, key, value string) {
+	if s == nil || name == "" || key == "" || value == "" {
+		return
+	}
+	for _, e := range s.document {
+		got, ok := jsonScalar(e, key)
+		if !ok || got != value {
+			continue
+		}
+		if s.refs == nil {
+			s.refs = map[string]interface{}{}
+		}
+		s.refs[name] = e
+		return
+	}
+}
+
+// layerJSON — значение JSON-слоя (`context.…`, `ref.<имя>.…`) и путь
+// внутри него; ok=false — имя не адресует такой слой.
+func (s *Space) layerJSON(name string) (interface{}, string, bool) {
+	switch {
+	case strings.HasPrefix(name, "context."):
+		if s.context == nil {
+			return nil, "", false
+		}
+		return s.context, strings.TrimPrefix(name, "context."), true
+	case strings.HasPrefix(name, "ref."):
+		rest := strings.TrimPrefix(name, "ref.")
+		ref, path, ok := strings.Cut(rest, ".")
+		if !ok {
+			return nil, "", false
+		}
+		v, has := s.refs[ref]
+		if !has {
+			return nil, "", false
+		}
+		return v, path, true
+	}
+	return nil, "", false
+}
 
 // SetINI кладёт разобранные секции ini и комментарии секций.
 func (s *Space) SetINI(sections map[string]map[string]string, comments map[string]string) {
@@ -130,6 +197,12 @@ func (s *Space) Lookup(name string) (string, bool) {
 		return jsonScalar(s.json, strings.TrimPrefix(name, "json."))
 	case strings.HasPrefix(name, "ini."):
 		return s.iniValue(strings.TrimPrefix(name, "ini."))
+	case strings.HasPrefix(name, "context."), strings.HasPrefix(name, "ref."):
+		v, path, ok := s.layerJSON(name)
+		if !ok {
+			return "", false
+		}
+		return jsonScalar(v, path)
 	}
 	// Наложенный слой: "<имя слоя>.<ключ>". Проверяется ПОСЛЕ встроенных имён,
 	// чтобы слой не мог перекрыть `host`/`port`/`query.*`.
@@ -171,6 +244,9 @@ func (s *Space) LookupRaw(name string) (interface{}, bool) {
 	}
 	if strings.HasPrefix(name, "json.") {
 		return lookupPath(s.json, strings.TrimPrefix(name, "json."))
+	}
+	if v, path, ok := s.layerJSON(name); ok {
+		return lookupPath(v, path)
 	}
 	v, ok := s.Lookup(name)
 	if !ok {

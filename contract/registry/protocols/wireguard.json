@@ -1115,6 +1115,17 @@
             "action": "keep"
           }
         },
+        "mtu_container": {
+          "source": "context.container.mtu",
+          "maps_to": "mtu",
+          "type": "int",
+          "when": {
+            "context.container.mtu": {
+              "gt": 0
+            }
+          },
+          "impl": "Контракт 1.1.63, SPEC 142 C10: MTU, который контейнер Amnezia кладёт РЯДОМ с `.conf` (last_config.mtu, AWG3-экспорт пишет туда 1376), а не в [Interface]. Источник `context.*` — значение от распаковщика контейнера (core/config/subscription/node_parser_amnezia.go:amneziaConfContext): он отдаёт объект, содержавший текст (`container`), и корень профиля (`profile`), а что поднять в узел, решает эта запись. Явный MTU из [Interface] приоритетнее: запись `mtu` объявлена раньше и путь за ней (общее правило спора за путь). Гейт gt 0 — ноль и мусор не поднимаются. Потолок MTU у AmneziaWG накладывает тело (max_when), с кодом. Прежде подъём делал код, дописывая строку MTU в INI (amneziaPrepareConf, снят)."
+        },
         "listenport": {
           "source": "ini.Interface.ListenPort",
           "maps_to": "listen_port",
@@ -1125,11 +1136,20 @@
         },
         "dns": {
           "source": "ini.Interface.DNS",
+          "substitute": {
+            "sep": ",",
+            "join": ", ",
+            "tokens": {
+              "$PRIMARY_DNS": "context.profile.dns1",
+              "$SECONDARY_DNS": "context.profile.dns2"
+            }
+          },
           "maps_to": null,
           "on_present": {
             "action": "note",
             "code": "wgconf_dns_ignored"
-          }
+          },
+          "impl": "Контракт 1.1.63, SPEC 142 C10: `DNS = $PRIMARY_DNS, $SECONDARY_DNS` — плейсхолдеры контейнера Amnezia; адреса лежат в корне профиля (`dns1`/`dns2`), и распаковщик отдаёт его источником `context.profile`. `substitute` заменяет элемент-плейсхолдер значением источника, неразрешённый снимает, пустой итог = значения нет (кода не будет). В тело DNS не едет (maps_to null) — подстановка нужна, чтобы код wgconf_dns_ignored назвал настоящие адреса, а не `$PRIMARY_DNS`. Прежде подстановку делал код, переписывая строку DNS в INI (amneziaPrepareConf, снят)."
         },
         "jc": {
           "source": "ini.Interface.Jc",
@@ -2151,7 +2171,7 @@
         ],
         "desc_en": "Minimum size of a junk packet.",
         "desc_ru": "Минимальный размер мусорного пакета.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Требование jmin <= jmax, иначе ошибка. jmin БЕЗ jmax = фатал на весь конфиг («jmin (N) must be <= jmax (0)», проверено `sing-box check`): ядро читает отсутствующий jmax как 0. Поэтому requires jmax — в одиночку поле бессмысленно и смертельно (SPEC 131 W2c)."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». jmin БЕЗ jmax = фатал на весь конфиг («jmin (N) must be <= jmax (0)», проверено `sing-box check`): ядро читает отсутствующий jmax как 0. Поэтому requires jmax — в одиночку поле бессмысленно и смертельно (SPEC 131 W2c). Порядок пары jmin ≤ jmax — связь `ordered` в body.relations (контракт 1.1.63, SPEC 142 C8): прежде его держала только форма обфускации."
       },
       "jmax": {
         "type": "int",
@@ -2166,7 +2186,7 @@
         "level": "awg",
         "desc_en": "Maximum size of a junk packet.",
         "desc_ru": "Максимальный размер мусорного пакета.",
-        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Требование jmin <= jmax."
+        "impl": "AmneziaWG, встроено в корень endpoint'а плоско (option/wireguard_awg.go). Без сборки с with_awg ЛЮБОЕ заданное поле = ошибка старта «AmneziaWG (awg) support is not included in this build». Требование jmin <= jmax — связь `ordered` в body.relations."
       },
       "s1": {
         "type": "int",
@@ -2700,6 +2720,18 @@
         "desc_en": "The magic header ranges h1-h4 must not overlap: the core tells message types apart by them.",
         "desc_ru": "Диапазоны magic-заголовков h1-h4 не должны пересекаться: по ним ядро различает типы сообщений.",
         "impl": "Свойство НАБОРА, а не пары «поле и сосед», поэтому conflicts/requires его не выражают: виноват может быть любой из четырёх, и снятие одного пару не развело бы. Незаданный заголовок участвует своим дефолтом ядра (h1=1 … h4=4) — отсюда defaults. Ядро принимает такой endpoint на `sing-box check`, но отвергает на конфигурировании устройства («headers must not overlap», sing-box-lx submodules/wireguard-go/device/uapi.go), то есть падает ВЕСЬ конфиг, а не один узел — потому drop_node. Прежде правило жило рукописным awgHeaderOverlap (удалён), роняло узел МОЛЧА и не работало на входе singbox (находка №8 LEGACY_AUDIT, контракт 1.1.11)."
+      },
+      {
+        "kind": "ordered",
+        "paths": [
+          "jmin",
+          "jmax"
+        ],
+        "action": "drop",
+        "code": "fields_order_invalid",
+        "desc_en": "The junk packet size bounds must be ordered: jmin must not exceed jmax.",
+        "desc_ru": "Границы размера мусорных пакетов упорядочены: jmin не больше jmax.",
+        "impl": "Контракт 1.1.63, SPEC 142 C8. Ядро (sing-box-lx transport/wireguard/device_awg.go validateJunk) отвергает endpoint с jmin > jmax на сборке — «amneziawg: jmin (N) must be <= jmax (M)», то есть падает ВЕСЬ конфиг: вендорный amneziawg-go считает размер мусорного пакета rand(jmax-jmin)+jmin и паникует на отрицательном аргументе. Какое из двух чисел ошибочно, по телу не понять, поэтому `drop` снимает ОБА поля: junk-пакеты без размеров ядро считает безвредными (пустой мусор, validateJunk такое пропускает), узел работает. Прежде правило жило только в форме обфускации (ui/configurator/tabs/source_awg_edit.go:validateAWGSettings) и не действовало ни на одном входе разбора."
       },
       {
         "kind": "cooccurrence",

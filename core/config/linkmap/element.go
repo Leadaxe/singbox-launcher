@@ -60,10 +60,20 @@ func SelectElementSection(plans *PlanSet, kind string, value interface{}) (strin
 // Схему выбирает ВЫЗЫВАЮЩИЙ (SelectElementSection либо уровень документа):
 // выбор плана — уровень документа, а не таблицы. Движок только исполняет.
 func ParseElement(plan *Plan, value interface{}, bodyType string, trace *Trace) (*Result, error) {
+	return ParseElementInDoc(plan, value, nil, bodyType, trace)
+}
+
+// ParseElementInDoc — то же для элемента, у которого есть СОСЕДИ по
+// документу (контракт 1.1.63): записи с `deref` ищут среди doc элемент, на
+// который ссылается значение, и читают его источниками `ref.<имя>.<путь>`.
+// Какие элементы составляют документ, решает его уровень (массив outbounds
+// Xray-конфига), а не таблица.
+func ParseElementInDoc(plan *Plan, value interface{}, doc []interface{}, bodyType string, trace *Trace) (*Result, error) {
 	space, form, err := UnwrapElement(plan, value)
 	if err != nil {
 		return nil, err
 	}
+	space.SetDocument(doc)
 	return Exec(plan, space, form, bodyType, trace)
 }
 
