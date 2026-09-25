@@ -7195,3 +7195,85 @@ tuic/hysteria/hysteria2 `with_quic`, masque, chain) гейтом не охвач
 по версии ядра для Tailscale/AWG 3.x или своя функция уровня AmneziaWG
 для подписи — сведите их к `on_core_unsupported` / `levels`. sha коммита
 — в сообщении сессии.
+
+## 57. Контракт 1.1.61 — REALITY ↔ uTLS: одно правило реестра вместо сборочной починки
+
+Курс владельца (SPEC 142, волна 6, находки C4 и B4): у пары REALITY ↔ uTLS
+было два противоречащих ответа — реестр снимал `tls.reality.enabled` без
+uTLS (`field_requires`), а сборка тот же узел чинила: дописывала uTLS и
+молча меняла пустой/`random` отпечаток на `chrome` (у нас
+`HealRealityFingerprints`, у вас `post_steps/heal_unknown_utls_fingerprints.dart`).
+Теперь правило одно, в реестре, исполняет санитайзер на всех входах, с кодом
+на узле. Факты ядра (sing-box-lx 1.14.2-lx.3): без uTLS REALITY не
+поднимается — `common/tls/reality_client.go:61` «uTLS is required by reality
+client», отказ всего конфига; `random` ядро разворачивает ОДИН раз при
+старте процесса в один из chrome/firefox/edge/safari/ios
+(`common/tls/utls_client.go:363-370`), а edge = Edge 85 и ios = iOS 14
+(`submodules/utls u_common.go:649,657`) не несут X25519MLKEM768 — против
+Xray ≥ v26.9.8 узел не соединяется в двух запусках из пяти, при
+`key_share: hybrid` ядро отказывает на рукопожатии
+(`reality_client.go:225-227`); пустой отпечаток ядро читает как chrome
+(`utls_client.go:384`).
+
+**Новые примитивы** (схема `registry_body`):
+
+- `requires[].set` — связь `requires` со значением `set`: требуемого пути
+  нет → поле НЕ снимается, путь материализуется значением `set` (недостающие
+  объекты заводятся) с кодом связи. Путь, запрещённый схеме, не
+  материализуется — связь работает обычным снятием. Несовместимо с `equals`.
+- `coerce_when {values, value, when, code}` — атрибут поля: ГОДНОЕ значение
+  из `values` при условии `when` (грамматика `condition`) заменяется на
+  `value` с кодом (`value` — со значением исходного).
+- Оба судятся по **готовому телу, после обхода**: поле, не пережившее своих
+  правил, ничего не дописывает; условие читает только чистое тело (сосед,
+  снятый своим правилом, условия не выполняет); у отбракованного узла не
+  исполняются. Код встаёт в `warnings[]` туда, где встал бы при обходе
+  (порядок по `body.order`, CANON §6).
+- `on_hop_required {action: "unstrip", code}` — атрибут ключа каталога
+  `strip` цепочки (`chain.json`).
+
+**Данные:**
+
+- `tls.reality.enabled` requires `tls.utls.enabled` с `set: true`, код
+  `reality_utls_enabled` (info, новый; params `path`, `requires`): REALITY
+  без uTLS или с `utls.enabled: false` остаётся REALITY, uTLS дописывается
+  `{enabled: true}` без отпечатка (ядро = chrome). REALITY, снятый за
+  негодный `public_key`, uTLS не получает.
+- `tls.utls.fingerprint.coerce_when`: `random` при `tls.reality.enabled:
+  true` → `chrome`, код `reality_fp_random_pinned` (info, новый; params
+  `path`, `value`). Наш неявный дефолт D-009 (пустой fp у vless/anytls →
+  `random`) в теле от явного неотличим — код получают оба; маппер не
+  менялся. Узел, чей REALITY снят (pbk=enabled на TLS-узле), остаётся с
+  `random`. Advisory `reality_fp_not_chrome` не менялся.
+- `chain.json` strip `tls.utls`: `on_hop_required {unstrip,
+  chain_strip_utls_on_reality}`. Когда цепочка снимает `tls.utls`
+  (патч или strip_evasion по каталогу), а тело узла на позиции ≥ 1 этот путь
+  требует — прогон тела без пути через санитайзер вернул бы его связью с
+  `set`, — ключ снимается с патча цепочки (`strip: {"tls.utls": false}`),
+  цепочка собирается. Ядро применяет каталог ко всем звеньям разом, поэтому
+  uTLS остаётся у всех. Код `chain_strip_utls_on_reality` стал severity
+  `warning` с новыми текстами (было `error` и исключение цепочки целиком).
+
+**Тела вне санитайзера.** Замороженное тело состояния (эмитится как есть) и
+ручной `config_json` получают на сборке ТОЛЬКО правила-починки (`set`,
+`coerce_when`): тело прогоняется через санитайзер на копии, переносятся
+лишь записанные ими пути, код — в лог (у нас `nodeflow.Repairs`). Иначе
+сохранённый до 1.1.61 REALITY-узел с `random` дождался бы правки только с
+обновлением подписки.
+
+**Корпус:** 17 кейсов `uri/vless/*` с REALITY без `fp=` — `random` →
+`chrome` + `reality_fp_random_pinned` (`value: random`) перед кодами
+`tls.reality.*` (у `flow_vision_xhttp_suppressed` правлен и ваш override
+`.expected.lxbox.json`); `uri/vless/alpn_multiply_encoded` (явный
+`fp=random`) — то же. Новые `body/singbox/reality_without_utls` (второй узел
+— негодный pbk: uTLS не дописывается) и `body/singbox/reality_fp_random`
+(второй узел — random без REALITY: не трогается). Кейсы `reality_pbk_junk_*`
+не менялись.
+
+От вас: синк 1.1.61; принять `requires[].set`, `coerce_when`,
+`on_hop_required` в разборе схемы реестра и исполнить их в санитайзере по
+готовому телу; снять `heal_unknown_utls_fingerprints.dart` (или свести его к
+тем же двум правилам для тел, которые ваш санитайзер не ведёт); в форме
+цепочки находку `ChainIssueCode.stripUtlsOnReality` перевести из «цепочка
+не соберётся» в «uTLS останется у всех звеньев». sha коммита — в сообщении
+сессии.
