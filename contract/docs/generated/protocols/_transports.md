@@ -285,7 +285,7 @@ Discriminator: `type` — `http`, `ws`, `quic`, `grpc`, `httpupgrade`, `xhttp`
   - Type: enum, `""`, `body`, `auto`, `header`, `cookie`
   - Default: `auto`
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
-  - Meaningless without: `transport.mode` = `packet-up`
+  - Meaningless without: `transport.mode` = `packet-up` when `transport.uplink_data_placement` is one of `header`, `cookie`
 - <a id="body-xhttp-uplink-data-key"></a>**`xhttp.uplink_data_key`** — Name of the uplink data key.
   - Type: string
   - Default: `X-Data`

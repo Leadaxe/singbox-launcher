@@ -124,6 +124,18 @@ func isFirstHopTLSOutbound(ob map[string]interface{}) (map[string]interface{}, b
 	return tls, true
 }
 
+// fieldAllowedOn — оставил бы санитайзер поле path в теле outbound'а ob
+// (registry.Registry.FieldAllowedOn по схеме типа ядра).
+func fieldAllowedOn(ob map[string]interface{}, path string) bool {
+	reg, err := registry.Get()
+	if err != nil {
+		return false
+	}
+	t, _ := ob["type"].(string)
+	scheme, ok := reg.NodeSchemeForSingboxType(t)
+	return ok && reg.FieldAllowedOn(scheme, path, ob)
+}
+
 // applyTLSTransformToOutbound applies the enabled transforms to one outbound.
 // Returns true if the outbound was modified.
 func applyTLSTransformToOutbound(ob map[string]interface{}, opts TLSTransformOptions) bool {
@@ -132,14 +144,18 @@ func applyTLSTransformToOutbound(ob map[string]interface{}, opts TLSTransformOpt
 		return false
 	}
 	changed := false
-	if opts.Fragment {
+	// Каждое поле — тем же вопросом реестру, что задал бы санитайзер, но по
+	// ТЕЛУ узла: схема поле допускает, а связь при этом теле может его снять
+	// (masque на vhttp h3 — TLS внутри QUIC, фрагментировать нечего; контракт
+	// 1.1.64). Дописать то, что санитайзер снял бы, значило бы обойти правило.
+	if opts.Fragment && fieldAllowedOn(ob, "tls.fragment") {
 		tls["fragment"] = true
 		if opts.FragmentFallbackDelay != "" {
 			tls["fragment_fallback_delay"] = opts.FragmentFallbackDelay
 		}
 		changed = true
 	}
-	if opts.RecordFragment {
+	if opts.RecordFragment && fieldAllowedOn(ob, "tls.record_fragment") {
 		tls["record_fragment"] = true
 		changed = true
 	}

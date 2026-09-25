@@ -49,6 +49,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`hysteria2_server_ports_item_invalid`](#hysteria2_server_ports_item_invalid) · `warning` — Hysteria2: port hopping range dropped
 - [`hysteria_server_ports_item_invalid`](#hysteria_server_ports_item_invalid) · `warning` — Hysteria: port hopping range dropped
 - [`json_field_unknown`](#json_field_unknown) · `info` — Configuration: field {query_name} not read
+- [`masque_tls_field_ignored`](#masque_tls_field_ignored) · `info` — MASQUE: TLS field {path} not used
+- [`masque_tls_fragment_h3`](#masque_tls_fragment_h3) · `info` — MASQUE over h3: {path} removed
 - [`masque_vhttp_invalid`](#masque_vhttp_invalid) · `warning` — MASQUE: HTTP version {value} set to h3
 - [`max_nodes_exceeded`](#max_nodes_exceeded) · `warning` — {skipped} nodes over the limit skipped
 - [`naive_extra_headers_invalid`](#naive_extra_headers_invalid) · `info` — naive: header {entry} discarded
@@ -727,7 +729,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`wireguard`](protocols/wireguard.md)
   - [`ib`](protocols/wireguard.md#body-ib) — set without `ip` → removed
   - [`id`](protocols/wireguard.md#body-id) — set without `ip` → removed
-  - [`ip`](protocols/wireguard.md#body-ip) — set without `id` → removed
+  - [`ip`](protocols/wireguard.md#body-ip) — set without `id` when `ip` is `quic` → removed
 
 <a id="fields_order_invalid"></a>
 ### fields_order_invalid
@@ -882,6 +884,45 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="masque_tls_field_ignored"></a>
+### masque_tls_field_ignored
+
+**severity:** `info` · **params:** `path`
+
+**MASQUE: TLS field {path} not used**
+
+- **What happened:** MASQUE builds its TLS from the profile and the HTTP version (vhttp), and the core ignores the field {path} for this protocol. The field was removed; the node connects exactly as it would have anyway.
+- **Why it happens:** The subscription or a hand-written config applies one TLS template to every protocol, so a MASQUE node was handed ALPN, ECH, REALITY or kTLS settings it cannot use.
+- **What you can do:**
+  - Nothing to do: the node works, and the removed setting had no effect on MASQUE.
+
+**Where it comes from:**
+
+- [`tls`](protocols/_tls.md)
+  - [`ech`](protocols/_tls.md#body-ech) — not supported by `masque` → removed
+
+<a id="masque_tls_fragment_h3"></a>
+### masque_tls_fragment_h3
+
+**severity:** `info` · **params:** `path`, `with`
+
+**MASQUE over h3: {path} removed**
+
+- **What happened:** With {with} set to h3 the MASQUE tunnel runs over QUIC, where TLS travels inside QUIC packets and there are no TLS records over TCP to split. The core ignores {path} there, so the field was removed; the node works as before.
+- **Why it happens:** TLS fragmentation was set for a node that uses HTTP/3. It helps only on the HTTP/2 path (vhttp h2 or auto).
+- **What you can do:**
+  - Nothing to do if the node connects.
+  - If you need fragmentation against DPI, set vhttp to h2 or auto for this node.
+
+**Where it comes from:**
+
+- [`masque`](protocols/masque.md)
+  - [`fragment`](protocols/masque.md#body-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
+  - [`record_fragment`](protocols/masque.md#body-record-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
+- [`tls`](protocols/_tls.md)
+  - [`fragment`](protocols/_tls.md#body-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
+  - [`record_fragment`](protocols/_tls.md#body-record-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
 
 <a id="masque_vhttp_invalid"></a>
 ### masque_vhttp_invalid
@@ -1496,7 +1537,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`tls`](protocols/_tls.md)
-  - [`alpn`](protocols/_tls.md#body-alpn) — not supported by `naive` → removed
+  - [`alpn`](protocols/_tls.md#body-alpn) — not supported by `naive`, `masque` → removed
   - [`certificate_public_key_sha256`](protocols/_tls.md#body-certificate-public-key-sha256) — not supported by `naive` → removed
   - [`cipher_suites`](protocols/_tls.md#body-cipher-suites) — not supported by `naive` → removed
   - [`client_certificate`](protocols/_tls.md#body-client-certificate) — not supported by `naive` → removed
@@ -1510,8 +1551,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`fragment_fallback_delay`](protocols/_tls.md#body-fragment-fallback-delay) — not supported by `naive` → removed
   - [`handshake_timeout`](protocols/_tls.md#body-handshake-timeout) — not supported by `naive` → removed
   - [`insecure`](protocols/_tls.md#body-insecure) — not supported by `naive` → removed
-  - [`kernel_rx`](protocols/_tls.md#body-kernel-rx) — not supported by `naive` → removed
-  - [`kernel_tx`](protocols/_tls.md#body-kernel-tx) — not supported by `naive` → removed
+  - [`kernel_rx`](protocols/_tls.md#body-kernel-rx) — not supported by `naive`, `masque` → removed
+  - [`kernel_tx`](protocols/_tls.md#body-kernel-tx) — not supported by `naive`, `masque` → removed
   - [`max_version`](protocols/_tls.md#body-max-version) — not supported by `naive` → removed
   - [`min_version`](protocols/_tls.md#body-min-version) — not supported by `naive` → removed
   - [`reality`](protocols/_tls.md#body-reality) — not supported by `naive`, `hysteria`, `hysteria2`, `tuic`, `masque` → removed
@@ -1970,7 +2011,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`xhttp.mode`](protocols/_transports.md#body-xhttp-mode) — the value does not fit the field → removed
   - [`xhttp.seq_placement`](protocols/_transports.md#body-xhttp-seq-placement) — the value does not fit the field → removed
   - [`xhttp.session_placement`](protocols/_transports.md#body-xhttp-session-placement) — the value does not fit the field → removed
-  - [`xhttp.uplink_data_placement`](protocols/_transports.md#body-xhttp-uplink-data-placement) — set without `transport.mode` → removed
+  - [`xhttp.uplink_data_placement`](protocols/_transports.md#body-xhttp-uplink-data-placement) — set without `transport.mode` when `transport.uplink_data_placement` is one of `header`, `cookie` → removed
   - [`xhttp.uplink_data_placement`](protocols/_transports.md#body-xhttp-uplink-data-placement) — the value does not fit the field → removed
   - [`xhttp.x_padding_method`](protocols/_transports.md#body-xhttp-x-padding-method) — the value does not fit the field → removed
   - [`xhttp.x_padding_placement`](protocols/_transports.md#body-xhttp-x-padding-placement) — the value does not fit the field → removed

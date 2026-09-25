@@ -134,6 +134,8 @@
 (снятие vs явный отказ) — не описано ни одним из правил, принятых в рамках
 кампании; кандидат на отдельную находку.
 
+**Закрыто волной 9 (контракт 1.1.64).** Норма — как у ядра: `protocol/vless/outbound.go` сличает `none` точно (`Encryption != "none"` включает слой). Запись `mappers.xray.params.encryption` получила `normalize: trim` + `value_map_case: sensitive`: `None` у Xray-входа отбраковывает узел `vless_encryption_invalid`, как ссылка и тело sing-box. Корпус `body/xray/vless_encryption_none_wrong_case_rejected`.
+
 ### Мёртвый код
 
 - `core/config/subscription/hysteria2_ports.go` — используется только своим
@@ -144,6 +146,8 @@
   ссылается `node_parser_engine.go:191`) описывает функции, снятые волнами
   кампании; ссылка требует сверки/чистки.
 
+**Закрыто волной 9 (f82877c6).** `hysteria2_ports.go` удалён с тестом (правило — `normalize: port_range_spec` и `$multiport` реестра hysteria2/hysteria); `percentEncodeUserinfoSpaces` и его тест сняты; ссылка `node_parser_engine.go` на несуществующие строки `node_parser_core.go:316-325` заменена на `contract/docs/IDENTITY.md §4a-C`, устаревший комментарий о «прежнем пути» в `ParseNode` поправлен.
+
 ### `ParsedNode.UUID`
 
 В рабочем коде не читается (skip-фильтры и `getNodeValue` ключа `uuid` поле
@@ -151,6 +155,8 @@
 аудита C2. Поле продолжают читать только тесты (~70 мест) и копирование
 значения в звенья цепочки. Кандидат на снятие — отдельным решением, не
 входит в объём SPEC 142.
+
+**Закрыто волной 9 (f82877c6).** Поле снято с `ParsedNode` и `ParsedJump` (перенос в звенья цепочки — `SyncJumpFromChain`, `AdoptLegacyJump`, `normalizeChainHop`/`chainHopsOf` — эмиссией не читался), пять записей на входах и ставший мёртвым `registry.Registry.Credential` сняты; роль `credential` в реестре остаётся (контракт, линтер ролей). Тесты: утверждения о поле сняты, где они проверяли учётные данные по смыслу — переведены на тело (`Outbound["uuid"|"password"|"username"]`), ключи подписи в тестах дедупа — через тело.
 
 ### Гейт `build_tag` тела не объявлен у wireguard/quic/masque/chain
 
@@ -177,6 +183,8 @@ masque снимать `alpn`/`ech`/`reality`/`kernel_tx`/`kernel_rx` всегд�
 info-кодом; `fragment`/`record_fragment` снимать только при `vhttp: h3`
 (на h2 фрагментация уже применяется реестром, волна 3); `server_name`,
 `disable_sni`, `insecure` — оставлять как есть. Кандидат на отдельную задачу.
+
+**Закрыто волной 9 (контракт 1.1.64).** `tls.json`: `alpn`, `ech`, `kernel_tx`, `kernel_rx` — `forbidden_for: masque` с кодом `masque_tls_field_ignored` (новый, info), у `reality` код для masque сменён на него же; `fragment`, `record_fragment` (и плоские синонимы masque) — `conflicts {with: vhttp, when: {vhttp: h3}}`, код `masque_tls_fragment_h3` (новый, info). Пустой `vhttp` = auto ядра — фрагментация остаётся (вход ссылки материализует h3). Сборка: `core/build/tls_transforms.go` спрашивает `registry.Registry.FieldAllowedOn` по телу узла. Серая зона (utls, certificate, min_version, cipher_suites) не тронута. Корпус `body/singbox/masque_tls_owner_rules`.
 
 ## Переименование
 

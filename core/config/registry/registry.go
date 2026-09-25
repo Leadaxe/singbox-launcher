@@ -1316,6 +1316,39 @@ func (r *Registry) FieldAllowed(scheme, path string) bool {
 	return ok && f.AllowedForScheme(scheme)
 }
 
+// FieldAllowedOn — оставил бы санитайзер поле path в ГОТОВОМ теле body схемы:
+// поле разрешено схеме (FieldAllowed) и ни одна его связь `conflicts` при
+// этом теле не действует — условие `when` связи верно, сосед `with` задан, и
+// не задан ни один путь `unless_set`. Вопрос того, кто дописывает поле в тело
+// после санитайзера (глобальные анти-DPI трансформы сборки): ответ реестра по
+// ТЕЛУ, а не по схеме — у masque tls.fragment разрешён, но при vhttp = h3
+// снимается связью (контракт 1.1.64). Пути связей — от корня тела.
+func (r *Registry) FieldAllowedOn(scheme, path string, body map[string]interface{}) bool {
+	f, ok := r.Field(scheme, path)
+	if !ok || !f.AllowedForScheme(scheme) {
+		return false
+	}
+	for _, c := range f.Conflicts {
+		if c.With == "" || !c.When.HoldsOn(body) {
+			continue
+		}
+		if _, present := bodyValue(body, c.With); !present {
+			continue
+		}
+		unless := false
+		for _, u := range c.UnlessSet {
+			if _, present := bodyValue(body, u); present {
+				unless = true
+				break
+			}
+		}
+		if !unless {
+			return false
+		}
+	}
+	return true
+}
+
 // FieldsWithBuildTag — корневые поля тела схемы, которым нужна сборка ядра
 // с тегом tag (`build_tag`), в порядке тела. Так форма узнаёт набор полей
 // расширения (AmneziaWG: with_awg) из реестра, а не своим списком.

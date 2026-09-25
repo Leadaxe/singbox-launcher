@@ -192,7 +192,7 @@
       "kind": "spelling",
       "desc_en": "Hysteria2 links write port ranges with a hyphen and bare single ports; sing-box wants `low:high` pairs.",
       "desc_ru": "Ссылки Hysteria2 пишут диапазоны через дефис и одиночные порты голым числом; sing-box ждёт пары `low:high`.",
-      "impl": "Правило реестра: normalize port_range_spec записей mappers.uri.params.mport и $multiport (исполняет core/config/linkmap/exec.go:normalizeValue). Прежде — рукописный hysteria2MportSpecToSingBoxServerPorts, в рабочем пути больше не вызывается. Форма записи диапазона."
+      "impl": "Правило реестра: normalize port_range_spec записей mappers.uri.params.mport и $multiport (исполняет core/config/linkmap/exec.go:normalizeValue). Прежде — рукописный hysteria2MportSpecToSingBoxServerPorts, удалён вместе со своим файлом (SPEC 142 волна 9). Форма записи диапазона."
     }
   ],
   "refs": {

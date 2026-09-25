@@ -362,11 +362,17 @@ file or identifier no longer exists. Two attributes and two post-walk
 primitives came out of that work:
 
 - **Field role** (`role: credential | private_key`, top-level body fields
-  only) — `registry.Credential`/`registry.FieldWithRole` read a node's account
-  secret (UUID/password/username slot) and its private-key field by role
-  instead of a per-scheme table, so link and JSON inputs agree on what goes in
-  the userinfo slot and which share links need a "contains a private key"
+  only) — `registry.FieldWithRole` finds a node's account secret
+  (UUID/password/username slot) and its private-key field by role instead of
+  a per-scheme table, so link and JSON inputs agree on what goes in the
+  userinfo slot and which share links need a "contains a private key"
   confirmation.
+- **Field allowed on a body** — `registry.Registry.FieldAllowedOn` answers
+  "would the sanitizer keep this field in this finished body" (scheme gate plus
+  every `conflicts` relation with its `when`/`unless_set`). Code that writes
+  fields after the sanitizer — the build's global anti-DPI TLS transforms
+  (`core/build/tls_transforms.go`) — asks it per node, so MASQUE on
+  `vhttp: h3` gets no TLS fragmentation (contract 1.1.64).
 - **`requires[].set`** — a missing required neighbour is *materialised* (with
   a warning code) instead of the field being dropped, and **`coerce_when`** —
   a field's already-valid value is replaced under a condition (also coded).

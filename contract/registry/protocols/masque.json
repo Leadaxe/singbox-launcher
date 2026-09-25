@@ -362,14 +362,23 @@
         "ref": "tls",
         "desc_en": "TLS settings.",
         "desc_ru": "Настройки TLS.",
-        "impl": "Для profile=cloudflare server_name по умолчанию www.cloudflare.com. На QUIC-типе utls и reality вычищаются целиком."
+        "impl": "Для profile=cloudflare server_name по умолчанию www.cloudflare.com. utls и reality снимаются целиком (tls.json forbidden_for). Контракт 1.1.64 (решение владельца): alpn, ech, reality, kernel_tx, kernel_rx снимаются на любом vhttp кодом masque_tls_field_ignored; fragment и record_fragment — только при vhttp = h3 (masque_tls_fragment_h3); server_name, disable_sni, insecure остаются. Факты ядра — sing-box-lx protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions."
       },
       "fragment": {
         "type": "bool",
         "deprecated": true,
+        "conflicts": [
+          {
+            "with": "vhttp",
+            "when": {
+              "vhttp": "h3"
+            },
+            "code": "masque_tls_fragment_h3"
+          }
+        ],
         "desc_en": "Deprecated alias of tls.fragment.",
         "desc_ru": "Устаревший синоним tls.fragment.",
-        "impl": "Ядро переносит в tls.fragment (sing-box-lx protocol/masque/legacy_options_lx.go resolveLegacyOptions); лаунчер значение не трогает."
+        "impl": "Ядро переносит в tls.fragment (sing-box-lx protocol/masque/legacy_options_lx.go resolveLegacyOptions); лаунчер значение не трогает. Как у tls.fragment (контракт 1.1.64): при vhttp = h3 снимается кодом masque_tls_fragment_h3 — ядро переносит синоним в tls.fragment и на h3 его игнорирует."
       },
       "fragment_fallback_delay": {
         "type": "duration",
@@ -381,9 +390,18 @@
       "record_fragment": {
         "type": "bool",
         "deprecated": true,
+        "conflicts": [
+          {
+            "with": "vhttp",
+            "when": {
+              "vhttp": "h3"
+            },
+            "code": "masque_tls_fragment_h3"
+          }
+        ],
         "desc_en": "Deprecated alias of tls.record_fragment.",
         "desc_ru": "Устаревший синоним tls.record_fragment.",
-        "impl": "Ядро переносит в tls.record_fragment (sing-box-lx protocol/masque/legacy_options_lx.go resolveLegacyOptions); лаунчер значение не трогает."
+        "impl": "Ядро переносит в tls.record_fragment (sing-box-lx protocol/masque/legacy_options_lx.go resolveLegacyOptions); лаунчер значение не трогает. Как у tls.record_fragment (контракт 1.1.64): при vhttp = h3 снимается кодом masque_tls_fragment_h3 — ядро переносит синоним в tls.record_fragment и на h3 его игнорирует."
       },
       "__dialer": {
         "type": "ref",

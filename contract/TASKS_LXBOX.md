@@ -7422,3 +7422,62 @@ REALITY, коды не меняются); `requires … set` к снятому �
 исполнить их; норму CANON §6.2 — в своём санитайзере; если у вас свой
 запрет дефолтного маршрута, маскирование префикса или jmin ≤ jmax в формах —
 свести к правилам реестра. sha коммита — в сообщении сессии.
+
+## 60. Контракт 1.1.64 — TLS у masque по решению владельца; `encryption: None` у Xray-входа vless
+
+Хвосты кампании SPEC 142 (волна 9): два правила об узлах, у которых входы или
+сборка отвечали по-разному, сведены к данным реестра.
+
+**TLS masque (решение владельца).** Ядро (sing-box-lx
+`protocol/masque/legacy_options_lx.go` warnUnsupportedTLSOptions) часть
+общего TLS-блока у masque не исполняет и только пишет предупреждение: ALPN
+следует из `vhttp`, ECH/REALITY/kTLS не поддержаны, а фрагментация на `h3`
+бессмысленна — TLS едет внутри QUIC, записей поверх TCP нет. Теперь:
+
+- `tls.alpn`, `tls.ech`, `tls.reality`, `tls.kernel_tx`, `tls.kernel_rx` —
+  снимаются у masque на ЛЮБОМ `vhttp` кодом `masque_tls_field_ignored`
+  (новый, info, params `path`). Данные: `forbidden_for` + `forbidden_codes`
+  (у `ech` — `forbidden_for: [masque]`, `code`). У `tls.reality` код для
+  masque сменён с `tls_not_applicable_quic` (его текст про QUIC неверен для
+  `vhttp: h2`); `tls.utls` у masque — по-прежнему `tls_not_applicable_quic`.
+- `tls.fragment`, `tls.record_fragment` и устаревшие плоские синонимы masque
+  `fragment`, `record_fragment` — связь `conflicts: [{with: "vhttp", when:
+  {"vhttp": "h3"}, code: "masque_tls_fragment_h3"}]` (новый код, info, params
+  `path`, `with`). Снимаются только при `vhttp: h3`; на `h2` и `auto` (у auto
+  есть h2-плечо) остаются. `vhttp` есть только у masque — у прочих схем связь
+  не срабатывает, отдельного списка схем нет.
+- Пустой `vhttp`: у ядра это `auto` (`protocol/masque/outbound.go`
+  resolveVHTTP) — тело без `vhttp` фрагментацию сохраняет. Вход ссылки без
+  `vhttp=` материализует `h3` (конвенция `vhttp_empty_defaults_to_h3`) —
+  там правило сработает на `h3`.
+- `server_name`, `disable_sni`, `insecure` — не тронуты. `utls`,
+  `certificate`, `min_version`, `cipher_suites` — вне решения, не менялись.
+- Сборка: глобальные анти-DPI трансформы (у нас `core/build/tls_transforms.go`,
+  у вас `post_steps/tls_transforms.dart`) обязаны спрашивать то же правило ПО
+  ТЕЛУ узла, а не по схеме: поле разрешено схеме И ни одна его связь
+  `conflicts` при этом теле не действует (`when` верно, `with` задан,
+  `unless_set` не задан). У нас это `registry.Registry.FieldAllowedOn`;
+  masque на `h3` не получает `fragment`/`record_fragment` от сборки.
+
+**vless, Xray-вход, `encryption`.** Запись `mappers.xray.params.encryption`
+получила `normalize: trim` и `value_map_case: sensitive` — как у записи
+ссылки. Ядро сличает литерал `none` точно (`protocol/vless/outbound.go`:
+`Encryption != "none"` включает слой), поэтому `None` с заглавной —
+настоящее значение, не прошедшее `pattern`: узел отбраковывается кодом
+`vless_encryption_invalid` на всех трёх входах. Прежде Xray-вход сравнивал
+без учёта регистра и молча снимал `None` как «слоя нет» (тихое понижение
+защиты), а ссылка и тело sing-box тот же случай отбраковывали.
+
+**gendocs:** у связей `conflicts`/`requires` в сгенерированных документах
+теперь печатается и условие `when` (прежде терялось).
+
+**Корпус +2:** `body/singbox/masque_tls_owner_rules` (h3 со всем набором —
+семь кодов; h2 — снимается только `alpn`; без `vhttp` — ничего),
+`body/xray/vless_encryption_none_wrong_case_rejected`. Прежние ожидания не
+менялись.
+
+От вас: синк 1.1.64; принять новые коды и данные `tls.json`/`masque.json`
+(если ваш санитайзер уже исполняет `conflicts` с `when` и `forbidden_codes`,
+новых примитивов нет); свести проверку сборки перед анти-DPI трансформами к
+вопросу «оставил бы санитайзер поле при этом теле»; у Xray-входа vless
+сравнивать `none` с учётом регистра. sha коммита — в сообщении сессии.

@@ -1,0 +1,6 @@
+# Xray: `users[0].encryption` = "None" с заглавной. Ядро сличает литерал 'none'
+# точно (protocol/vless/outbound.go), поэтому 'None' — настоящее значение слоя,
+# не прошедшее форму: узел отбраковывается кодом vless_encryption_invalid, как
+# на ссылке (uri/vless/encryption_none_wrong_case_rejected) и в теле sing-box
+# (body/singbox/vless_encryption_none_wrong_case_rejected). Контракт 1.1.64.
+[{"remarks": "enc upper", "outbounds": [{"tag": "proxy", "protocol": "vless", "settings": {"vnext": [{"address": "h.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555", "encryption": "None"}]}]}, "streamSettings": {"network": "tcp", "security": "none"}}]}]

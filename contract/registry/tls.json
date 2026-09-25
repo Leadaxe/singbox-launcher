@@ -423,12 +423,16 @@
           "code": "tls_alpn_item_invalid"
         },
         "forbidden_for": [
-          "naive"
+          "naive",
+          "masque"
         ],
         "code": "tls_field_unsupported_naive",
+        "forbidden_codes": {
+          "masque": "masque_tls_field_ignored"
+        },
         "desc_en": "ALPN protocols offered in the handshake.",
         "desc_ru": "Список протоколов ALPN, предлагаемых в рукопожатии.",
-        "impl": "Фиксированного enum в ядре нет; практические значения http/1.1, h2, h3. Listable: пишется в той форме, в какой пришло. У naive — фатал старта. item_pattern — формат ЭЛЕМЕНТА (второй случай запроса LxBox 19.09.2026): идентификатор ALPN — это токен из букв, цифр и `._/+-`, и элемент с запятой или пробелом внутри означает, что список не разрезали. Такой элемент уезжает в ClientHello как отдельный протокол, которого не существует, и сервер обрывает рукопожатие; годные соседи при этом остаются. normalize trim стоит рядом НАМЕРЕННО: `alpn=h2, h3` даёт элемент с ведущим пробелом, и без обрезки формат выбросил бы живое значение вместо того, чтобы его починить."
+        "impl": "Фиксированного enum в ядре нет; практические значения http/1.1, h2, h3. Listable: пишется в той форме, в какой пришло. У naive — фатал старта. item_pattern — формат ЭЛЕМЕНТА (второй случай запроса LxBox 19.09.2026): идентификатор ALPN — это токен из букв, цифр и `._/+-`, и элемент с запятой или пробелом внутри означает, что список не разрезали. Такой элемент уезжает в ClientHello как отдельный протокол, которого не существует, и сервер обрывает рукопожатие; годные соседи при этом остаются. normalize trim стоит рядом НАМЕРЕННО: `alpn=h2, h3` даёт элемент с ведущим пробелом, и без обрезки формат выбросил бы живое значение вместо того, чтобы его починить. У masque (контракт 1.1.64, решение владельца) снимается ВСЕГДА кодом masque_tls_field_ignored (info): ALPN у masque следует из vhttp (h3 → \"h3\", h2 → \"h2\"), и ядро поле игнорирует с предупреждением (sing-box-lx protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions)."
       },
       "min_version": {
         "type": "enum",
@@ -599,9 +603,18 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "conflicts": [
+          {
+            "with": "vhttp",
+            "when": {
+              "vhttp": "h3"
+            },
+            "code": "masque_tls_fragment_h3"
+          }
+        ],
         "desc_en": "Split the ClientHello across TCP segments.",
         "desc_ru": "Разбивать ClientHello по TCP-сегментам.",
-        "impl": "У naive — фатал старта."
+        "impl": "У naive — фатал старта. Связь conflicts с vhttp при vhttp = h3 (контракт 1.1.64, решение владельца по masque): на h3 TLS едет внутри QUIC, TLS-записей поверх TCP нет, и ядро фрагментацию игнорирует с предупреждением (sing-box-lx protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions). На h2 и auto (у auto есть h2-плечо) поле остаётся. Пустой vhttp у тела = auto ядра (protocol/masque/outbound.go resolveVHTTP) — поле остаётся; вход ссылки без vhttp материализует h3 (конвенция vhttp_empty_defaults_to_h3), и там поле снимается. vhttp есть только у masque, поэтому у прочих схем связь не срабатывает. Сборка (core/build/tls_transforms.go) спрашивает то же правило по телу узла (registry.Registry.FieldAllowedOn) и на h3 фрагментацию не дописывает."
       },
       "fragment_fallback_delay": {
         "type": "duration",
@@ -620,9 +633,18 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "conflicts": [
+          {
+            "with": "vhttp",
+            "when": {
+              "vhttp": "h3"
+            },
+            "code": "masque_tls_fragment_h3"
+          }
+        ],
         "desc_en": "Split the ClientHello across TLS records.",
         "desc_ru": "Разбивать ClientHello по TLS-записям.",
-        "impl": "SPEC 060: при непустом detour ядро само ставит true, если не заданы ни fragment, ни record_fragment. У naive — фатал старта."
+        "impl": "SPEC 060: при непустом detour ядро само ставит true, если не заданы ни fragment, ни record_fragment. У naive — фатал старта. Связь conflicts с vhttp при vhttp = h3 (контракт 1.1.64, решение владельца по masque): на h3 TLS едет внутри QUIC, TLS-записей поверх TCP нет, и ядро фрагментацию игнорирует с предупреждением (sing-box-lx protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions). На h2 и auto (у auto есть h2-плечо) поле остаётся. Пустой vhttp у тела = auto ядра (protocol/masque/outbound.go resolveVHTTP) — поле остаётся; вход ссылки без vhttp материализует h3 (конвенция vhttp_empty_defaults_to_h3), и там поле снимается. vhttp есть только у masque, поэтому у прочих схем связь не срабатывает. Сборка (core/build/tls_transforms.go) спрашивает то же правило по телу узла (registry.Registry.FieldAllowedOn) и на h3 фрагментацию не дописывает."
       },
       "spoof": {
         "type": "string",
@@ -684,24 +706,32 @@
         "default": false,
         "platform": "linux",
         "forbidden_for": [
-          "naive"
+          "naive",
+          "masque"
         ],
         "code": "tls_field_unsupported_naive",
+        "forbidden_codes": {
+          "masque": "masque_tls_field_ignored"
+        },
         "desc_en": "Offload TLS transmission to the kernel (kTLS).",
         "desc_ru": "Передавать шифрование исходящего трафика ядру ОС (kTLS).",
-        "impl": "Вне Linux = «kTLS is only supported on Linux» на весь конфиг (common/tls/std_client.go, common/tls/utls_client.go) — гейт platform снимает ключ на сборке. У naive — фатал старта."
+        "impl": "Вне Linux = «kTLS is only supported on Linux» на весь конфиг (common/tls/std_client.go, common/tls/utls_client.go) — гейт platform снимает ключ на сборке. У naive — фатал старта. У masque (контракт 1.1.64) снимается всегда кодом masque_tls_field_ignored: ядро kTLS для masque игнорирует с предупреждением (protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions)."
       },
       "kernel_rx": {
         "type": "bool",
         "default": false,
         "platform": "linux",
         "forbidden_for": [
-          "naive"
+          "naive",
+          "masque"
         ],
         "code": "tls_field_unsupported_naive",
+        "forbidden_codes": {
+          "masque": "masque_tls_field_ignored"
+        },
         "desc_en": "Offload TLS reception to the kernel (kTLS).",
         "desc_ru": "Передавать расшифровку входящего трафика ядру ОС (kTLS).",
-        "impl": "Вне Linux = «kTLS is only supported on Linux» (common/tls/utls_client.go). У naive — фатал старта."
+        "impl": "Вне Linux = «kTLS is only supported on Linux» (common/tls/utls_client.go). У naive — фатал старта. У masque (контракт 1.1.64) снимается всегда кодом masque_tls_field_ignored: ядро kTLS для masque игнорирует с предупреждением (protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions)."
       },
       "handshake_timeout": {
         "type": "duration",
@@ -715,6 +745,10 @@
       },
       "ech": {
         "type": "object",
+        "forbidden_for": [
+          "masque"
+        ],
+        "code": "masque_tls_field_ignored",
         "absent_when": {
           "enabled": false
         },
@@ -775,7 +809,7 @@
         },
         "desc_en": "Encrypted Client Hello settings.",
         "desc_ru": "Настройки Encrypted Client Hello.",
-        "impl": "OutboundECHOptions, option/tls.go. Блок из sing-box-JSON/ручного тела ПРОПУСКАЕТСЯ (D-122, пересмотр D-006: ECH в ядре компилируется всегда); блок с enabled:false снимает absent_when. Код ech_ignored ставит только URI-параметр ech= (blocks.uri.ech). У naive ядро читает enabled/config/config_path/query_server_name — блок разрешён целиком.",
+        "impl": "OutboundECHOptions, option/tls.go. Блок из sing-box-JSON/ручного тела ПРОПУСКАЕТСЯ (D-122, пересмотр D-006: ECH в ядре компилируется всегда); блок с enabled:false снимает absent_when. Код ech_ignored ставит только URI-параметр ech= (blocks.uri.ech). У naive ядро читает enabled/config/config_path/query_server_name — блок разрешён целиком. У masque (контракт 1.1.64) снимается всегда кодом masque_tls_field_ignored: ядро ECH для masque не поддерживает и игнорирует с предупреждением (protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions).",
         "impl_decision": "D-122: тело пропускает, URI-параметр снимается (ech_ignored)."
       },
       "utls": {
@@ -893,7 +927,7 @@
           "hysteria": "tls_not_applicable_quic",
           "hysteria2": "tls_not_applicable_quic",
           "tuic": "tls_not_applicable_quic",
-          "masque": "tls_not_applicable_quic"
+          "masque": "masque_tls_field_ignored"
         },
         "absent_when": {
           "enabled": false

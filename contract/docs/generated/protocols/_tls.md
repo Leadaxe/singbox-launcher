@@ -71,7 +71,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Not supported by: `naive`
 - <a id="body-alpn"></a>**`alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string, normalized: `trim`
-  - Not supported by: `naive`
+  - Not supported by: `naive`, `masque`
 - <a id="body-min-version"></a>**`min_version`** — Minimum accepted TLS version.
   - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -115,6 +115,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Type: bool
   - Default: `false`
   - Not supported by: `naive`
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-fragment-fallback-delay"></a>**`fragment_fallback_delay`** — Delay before falling back when fragmenting.
   - Type: duration
   - Not supported by: `naive`
@@ -122,6 +123,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Type: bool
   - Default: `false`
   - Not supported by: `naive`
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-spoof"></a>**`spoof`** — Domain used for the spoofed ClientHello.
   - Type: string, format `host`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -137,18 +139,19 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
 - <a id="body-kernel-tx"></a>**`kernel_tx`** — Offload TLS transmission to the kernel (kTLS).
   - Type: bool
   - Default: `false`
-  - Not supported by: `naive`
+  - Not supported by: `naive`, `masque`
   - Only written when: OS `linux`
 - <a id="body-kernel-rx"></a>**`kernel_rx`** — Offload TLS reception to the kernel (kTLS).
   - Type: bool
   - Default: `false`
-  - Not supported by: `naive`
+  - Not supported by: `naive`, `masque`
   - Only written when: OS `linux`
 - <a id="body-handshake-timeout"></a>**`handshake_timeout`** — Timeout for the TLS handshake.
   - Type: duration
   - Not supported by: `naive`
 - <a id="body-ech"></a>**`ech`** — Encrypted Client Hello settings.
   - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
+  - Not supported by: `masque`
 - <a id="body-ech-enabled"></a>**`ech.enabled`** — Enable Encrypted Client Hello.
   - Type: bool
   - Default: `false`

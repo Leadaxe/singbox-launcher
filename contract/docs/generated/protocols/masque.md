@@ -109,13 +109,6 @@ Shared across every scheme that carries a TLS block; the reference page is [`_tl
 - <a id="link-tls-security"></a>**`security`** — Whether the link asks for TLS, and in which flavour.
   - Type: enum: `""`, `none`, `tls`, `reality` · Default: `""`
   - Maps to: [`tls.enabled`](#body-tls-enabled)
-- <a id="link-tls-alpn"></a>**`alpn`** — Comma-separated list of ALPN protocols.
-  - Type: string · Default: `""`
-  - Maps to: [`tls.alpn`](#body-tls-alpn)
-- <a id="link-tls-ech"></a>**`ech`** — Encrypted Client Hello parameters in the Xray form.
-  - Also spelled: `echfq`
-  - Type: string · Default: `""`
-  - Maps to: nothing — the parameter is read and then deliberately dropped
 
 ## Body fields
 
@@ -203,7 +196,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
 - <a id="body-tls-alpn"></a>**`tls.alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string, normalized: `trim`
-  - Set by link parameter: [`alpn`](#link-tls-alpn)
+  - Not applicable to `masque`: removed → [`masque_tls_field_ignored`](../warnings.md#masque_tls_field_ignored)
 - <a id="body-tls-min-version"></a>**`tls.min_version`** — Minimum accepted TLS version.
   - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -237,11 +230,13 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-fragment"></a>**`tls.fragment`** — Split the ClientHello across TCP segments.
   - Type: bool
   - Default: `false`
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-tls-fragment-fallback-delay"></a>**`tls.fragment_fallback_delay`** — Delay before falling back when fragmenting.
   - Type: duration
 - <a id="body-tls-record-fragment"></a>**`tls.record_fragment`** — Split the ClientHello across TLS records.
   - Type: bool
   - Default: `false`
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-tls-spoof"></a>**`tls.spoof`** — Domain used for the spoofed ClientHello.
   - Type: string, format `host`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -255,15 +250,18 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-kernel-tx"></a>**`tls.kernel_tx`** — Offload TLS transmission to the kernel (kTLS).
   - Type: bool
   - Default: `false`
+  - Not applicable to `masque`: removed → [`masque_tls_field_ignored`](../warnings.md#masque_tls_field_ignored)
   - Only written when: OS `linux`
 - <a id="body-tls-kernel-rx"></a>**`tls.kernel_rx`** — Offload TLS reception to the kernel (kTLS).
   - Type: bool
   - Default: `false`
+  - Not applicable to `masque`: removed → [`masque_tls_field_ignored`](../warnings.md#masque_tls_field_ignored)
   - Only written when: OS `linux`
 - <a id="body-tls-handshake-timeout"></a>**`tls.handshake_timeout`** — Timeout for the TLS handshake.
   - Type: duration
 - <a id="body-tls-ech"></a>**`tls.ech`** — Encrypted Client Hello settings.
   - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
+  - Not applicable to `masque`: removed → [`masque_tls_field_ignored`](../warnings.md#masque_tls_field_ignored)
 - <a id="body-tls-ech-enabled"></a>**`tls.ech.enabled`** — Enable Encrypted Client Hello.
   - Type: bool
   - Default: `false`
@@ -289,7 +287,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `chrome`
 - <a id="body-tls-reality"></a>**`tls.reality`** — REALITY settings.
   - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
-  - Not applicable to `masque`: removed → [`tls_not_applicable_quic`](../warnings.md#tls_not_applicable_quic)
+  - Not applicable to `masque`: removed → [`masque_tls_field_ignored`](../warnings.md#masque_tls_field_ignored)
 - <a id="body-tls-reality-enabled"></a>**`tls.reality.enabled`** — Enable REALITY handshake camouflage.
   - Type: bool
   - Default: `false`
@@ -310,10 +308,12 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Only written when: core ≥ `1.14.1-lx.4`, lx fork only
 - <a id="body-fragment"></a>**`fragment`** — Deprecated alias of tls.fragment.
   - Type: bool, deprecated
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-fragment-fallback-delay"></a>**`fragment_fallback_delay`** — Deprecated alias of tls.fragment_fallback_delay.
   - Type: duration, deprecated
 - <a id="body-record-fragment"></a>**`record_fragment`** — Deprecated alias of tls.record_fragment.
   - Type: bool, deprecated
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
   - Type: string, set by config build
 - <a id="body-bind-interface"></a>**`bind_interface`** — Network interface the connection is bound to.
@@ -358,7 +358,6 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.certificate_public_key_sha256`](#body-tls-certificate-public-key-sha256) — conflicts with `tls.certificate_path` → removed
   - [`tls.spoof`](#body-tls-spoof) — conflicts with `tls.reality.enabled` → removed
   - [`tls.spoof`](#body-tls-spoof) — conflicts with `tls.disable_sni` → removed
-  - [`tls.ech.enabled`](#body-tls-ech-enabled) — conflicts with `tls.reality.enabled` → removed
 - [`field_missing`](../warnings.md#field_missing)
   - [`server`](#body-server) — the value does not fit the field → node dropped
   - [`private_key`](#body-private-key) — the value does not fit the field → node dropped
@@ -369,6 +368,17 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.client_certificate`](#body-tls-client-certificate) — set without `tls.client_key` → removed
   - [`tls.client_key`](#body-tls-client-key) — set without `tls.client_certificate` → removed
   - [`tls.spoof_method`](#body-tls-spoof-method) — set without `tls.spoof` → removed
+- [`masque_tls_field_ignored`](../warnings.md#masque_tls_field_ignored)
+  - [`tls.alpn`](#body-tls-alpn) — not supported by `masque` → removed
+  - [`tls.kernel_tx`](#body-tls-kernel-tx) — not supported by `masque` → removed
+  - [`tls.kernel_rx`](#body-tls-kernel-rx) — not supported by `masque` → removed
+  - [`tls.ech`](#body-tls-ech) — not supported by `masque` → removed
+  - [`tls.reality`](#body-tls-reality) — not supported by `masque` → removed
+- [`masque_tls_fragment_h3`](../warnings.md#masque_tls_fragment_h3)
+  - [`tls.fragment`](#body-tls-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
+  - [`tls.record_fragment`](#body-tls-record-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
+  - [`fragment`](#body-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
+  - [`record_fragment`](#body-record-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
 - [`masque_vhttp_invalid`](../warnings.md#masque_vhttp_invalid)
   - [`vhttp`](#body-vhttp) — the value does not fit the field → replaced with `h3`
 - [`port_invalid`](../warnings.md#port_invalid)
@@ -377,7 +387,6 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.insecure`](#body-tls-insecure) — the value is `true` → kept with a notice
 - [`tls_not_applicable_quic`](../warnings.md#tls_not_applicable_quic)
   - [`tls.utls`](#body-tls-utls) — not supported by `masque` → removed
-  - [`tls.reality`](#body-tls-reality) — not supported by `masque` → removed
 - [`type_invalid`](../warnings.md#type_invalid)
   - [`profile`](#body-profile) — the value does not fit the field → removed
   - [`ip`](#body-ip) — the value does not fit the field → removed
@@ -442,6 +451,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **The field is removed, the node lives on**
 
+- `fragment` — conflicts with another field of the same node
 - `inet4_bind_address` — invalid value
 - `ip` — invalid value
 - `ipv6` — invalid value
@@ -450,17 +460,23 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `private_key` — conflicts with another field of the same node
 - `profile` — invalid value
 - `public_key` — conflicts with another field of the same node
+- `record_fragment` — conflicts with another field of the same node
+- `tls.alpn` — not supported by this protocol
 - `tls.certificate_public_key_sha256` — conflicts with another field of the same node
 - `tls.certificate_public_key_sha256` — invalid value
 - `tls.client_certificate` — conflicts with another field of the same node
 - `tls.client_key` — conflicts with another field of the same node
 - `tls.curve_preferences` — invalid value
 - `tls.disable_sni` — conflicts with another field of the same node
-- `tls.ech.enabled` — conflicts with another field of the same node
+- `tls.ech` — not supported by this protocol
 - `tls.engine` — invalid value
+- `tls.fragment` — conflicts with another field of the same node
+- `tls.kernel_rx` — not supported by this protocol
+- `tls.kernel_tx` — not supported by this protocol
 - `tls.max_version` — invalid value
 - `tls.min_version` — invalid value
 - `tls.reality` — not supported by this protocol
+- `tls.record_fragment` — conflicts with another field of the same node
 - `tls.server_name` — invalid value
 - `tls.spoof_method` — conflicts with another field of the same node
 - `tls.spoof_method` — invalid value
@@ -475,9 +491,4 @@ Every code that can be raised on a node of this scheme, including the ones comin
 **Kept as is, with a notice**
 
 - `tls.insecure` — accepted, but worth knowing about
-
-**Left out when the running core is too old**
-
-- `tls.kernel_rx` — needs OS `linux`
-- `tls.kernel_tx` — needs OS `linux`
 

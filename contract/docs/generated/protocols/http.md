@@ -187,11 +187,13 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-fragment"></a>**`tls.fragment`** — Split the ClientHello across TCP segments.
   - Type: bool
   - Default: `false`
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-tls-fragment-fallback-delay"></a>**`tls.fragment_fallback_delay`** — Delay before falling back when fragmenting.
   - Type: duration
 - <a id="body-tls-record-fragment"></a>**`tls.record_fragment`** — Split the ClientHello across TLS records.
   - Type: bool
   - Default: `false`
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-tls-spoof"></a>**`tls.spoof`** — Domain used for the spoofed ClientHello.
   - Type: string, format `host`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -323,6 +325,9 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.spoof_method`](#body-tls-spoof-method) — set without `tls.spoof` → removed
   - [`tls.reality.short_id`](#body-tls-reality-short-id) — set without `tls.reality.public_key` → removed
   - [`tls.reality.key_share`](#body-tls-reality-key-share) — set without `tls.reality.public_key` → removed
+- [`masque_tls_fragment_h3`](../warnings.md#masque_tls_fragment_h3)
+  - [`tls.fragment`](#body-tls-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
+  - [`tls.record_fragment`](#body-tls-record-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
 - [`port_invalid`](../warnings.md#port_invalid)
   - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
 - [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
@@ -400,6 +405,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `tls.disable_sni` — conflicts with another field of the same node
 - `tls.ech.enabled` — conflicts with another field of the same node
 - `tls.engine` — invalid value
+- `tls.fragment` — conflicts with another field of the same node
 - `tls.max_version` — invalid value
 - `tls.min_version` — invalid value
 - `tls.reality.enabled` — conflicts with another field of the same node
@@ -408,6 +414,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `tls.reality.public_key` — invalid value
 - `tls.reality.short_id` — conflicts with another field of the same node
 - `tls.reality.short_id` — invalid value
+- `tls.record_fragment` — conflicts with another field of the same node
 - `tls.server_name` — invalid value
 - `tls.spoof_method` — conflicts with another field of the same node
 - `tls.spoof_method` — invalid value

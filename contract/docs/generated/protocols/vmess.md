@@ -357,11 +357,13 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-fragment"></a>**`tls.fragment`** — Split the ClientHello across TCP segments.
   - Type: bool
   - Default: `false`
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-tls-fragment-fallback-delay"></a>**`tls.fragment_fallback_delay`** — Delay before falling back when fragmenting.
   - Type: duration
 - <a id="body-tls-record-fragment"></a>**`tls.record_fragment`** — Split the ClientHello across TLS records.
   - Type: bool
   - Default: `false`
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-tls-spoof"></a>**`tls.spoof`** — Domain used for the spoofed ClientHello.
   - Type: string, format `host`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -589,7 +591,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `auto`
   - Set by link parameter: [`uplink_data_placement`](#link-tr-xhttp-uplink-data-placement)
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
-  - Meaningless without: `transport.mode` = `packet-up`
+  - Meaningless without: `transport.mode` = `packet-up` when `transport.uplink_data_placement` is one of `header`, `cookie`
 - <a id="body-transport-xhttp-uplink-data-key"></a>**`transport.xhttp.uplink_data_key`** — Name of the uplink data key.
   - Type: string
   - Default: `X-Data`
@@ -704,6 +706,9 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.reality.key_share`](#body-tls-reality-key-share) — set without `tls.reality.public_key` → removed
   - [`transport.xhttp.session_table`](#body-transport-xhttp-session-table) — set without `transport.session_length` → removed
   - [`transport.xhttp.session_length`](#body-transport-xhttp-session-length) — set without `transport.session_table` → removed
+- [`masque_tls_fragment_h3`](../warnings.md#masque_tls_fragment_h3)
+  - [`tls.fragment`](#body-tls-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
+  - [`tls.record_fragment`](#body-tls-record-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
 - [`packet_encoding_unknown`](../warnings.md#packet_encoding_unknown)
   - [`packet_encoding`](#body-packet-encoding) — the value does not fit the field → removed
 - [`port_invalid`](../warnings.md#port_invalid)
@@ -753,7 +758,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`transport.xhttp.session_placement`](#body-transport-xhttp-session-placement) — the value does not fit the field → removed
   - [`transport.xhttp.seq_placement`](#body-transport-xhttp-seq-placement) — the value does not fit the field → removed
   - [`transport.xhttp.uplink_data_placement`](#body-transport-xhttp-uplink-data-placement) — the value does not fit the field → removed
-  - [`transport.xhttp.uplink_data_placement`](#body-transport-xhttp-uplink-data-placement) — set without `transport.mode` → removed
+  - [`transport.xhttp.uplink_data_placement`](#body-transport-xhttp-uplink-data-placement) — set without `transport.mode` when `transport.uplink_data_placement` is one of `header`, `cookie` → removed
   - [`transport.xhttp.x_padding_placement`](#body-transport-xhttp-x-padding-placement) — the value does not fit the field → removed
   - [`transport.xhttp.x_padding_method`](#body-transport-xhttp-x-padding-method) — the value does not fit the field → removed
 
@@ -835,6 +840,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `tls.disable_sni` — conflicts with another field of the same node
 - `tls.ech.enabled` — conflicts with another field of the same node
 - `tls.engine` — invalid value
+- `tls.fragment` — conflicts with another field of the same node
 - `tls.max_version` — invalid value
 - `tls.min_version` — invalid value
 - `tls.reality.enabled` — conflicts with another field of the same node
@@ -843,6 +849,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `tls.reality.public_key` — invalid value
 - `tls.reality.short_id` — conflicts with another field of the same node
 - `tls.reality.short_id` — invalid value
+- `tls.record_fragment` — conflicts with another field of the same node
 - `tls.server_name` — invalid value
 - `tls.spoof_method` — conflicts with another field of the same node
 - `tls.spoof_method` — invalid value

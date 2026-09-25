@@ -592,11 +592,13 @@
         "encryption": {
           "source": "json.$base.users.0.encryption",
           "maps_to": "encryption",
+          "normalize": "trim",
           "value_map": {
             "": null,
             "none": null
           },
-          "impl": "Прежняя рукописная Xray-ветка сравнивала ТОЧНО (не EqualFold). У этой записи value_map_case не объявлен, и сравнение value_map регистронезависимое: 'None' из Xray-элемента снимается как «слоя нет», тогда как вход ссылки (mappers.uri.params.encryption, value_map_case sensitive) хоронит его кодом vless_encryption_invalid — расхождение входов, открыто."
+          "value_map_case": "sensitive",
+          "impl": "Тот же порядок, что у входа ссылки (mappers.uri.params.encryption) и тела (body.fields.encryption): края обрезаются, пустое и ТОЧНОЕ 'none' = «слоя нет», всё прочее едет в тело и судится pattern. value_map_case: sensitive (контракт 1.1.64): ядро сличает литерал точно (protocol/vless/outbound.go: Encryption != \"none\" → слой включается), поэтому 'None' из Xray-элемента — настоящее значение, drop_node vless_encryption_invalid, как на ссылке и в теле sing-box; до 1.1.64 эта запись сравнивала без учёта регистра и молча снимала 'None' как «слоя нет». Корпус body/xray/vless_encryption_none_wrong_case_rejected."
         },
         "$extra_vnext": {
           "source": "json.settings.vnext",

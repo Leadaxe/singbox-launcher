@@ -350,7 +350,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: enum, `""`, `quic`, `dns`, `stun`, `sip`, normalized: `trim_lower`
   - Set by link parameter: [`ip`](#link-proto-ip)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-  - Meaningless without: `id`
+  - Meaningless without: `id` when `ip` is `quic`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Means protocol level `awg1.5`, adds `+` to the level label
 - <a id="body-ib"></a>**`ib`** — Client profile imitated inside the masquerade.
@@ -501,7 +501,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`peers.address`](#body-peers-address) — the value does not fit the field → node dropped
 - [`field_requires`](../warnings.md#field_requires)
   - [`id`](#body-id) — set without `ip` → removed
-  - [`ip`](#body-ip) — set without `id` → removed
+  - [`ip`](#body-ip) — set without `id` when `ip` is `quic` → removed
   - [`ib`](#body-ib) — set without `ip` → removed
 - [`port_invalid`](../warnings.md#port_invalid)
   - [`peers.port`](#body-peers-port) — the value does not fit the field → node dropped

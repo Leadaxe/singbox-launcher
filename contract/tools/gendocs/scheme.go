@@ -592,10 +592,14 @@ func fieldRelations(f *registry.Field, withSchemes bool) []string {
 
 // unlessPhrase — хвост «unless … is set» для связи с Relation.UnlessSet.
 func unlessPhrase(r registry.Relation) string {
+	// Условие действия связи (`when`, контракт 1.1.56) — часть правила:
+	// «conflicts with `vhttp`» без «when `vhttp` is h3» читалось бы как
+	// запрет поля при любом vhttp.
+	out := conditionPhrase(r.When)
 	if len(r.UnlessSet) == 0 {
-		return ""
+		return out
 	}
-	return " (unless " + codeList(r.UnlessSet) + " is set)"
+	return out + " (unless " + codeList(r.UnlessSet) + " is set)"
 }
 
 func bodyType(f *registry.Field) string {

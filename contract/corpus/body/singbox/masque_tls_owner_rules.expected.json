@@ -1,0 +1,107 @@
+{
+  "meta": {
+    "body_kind": "singbox-outbound-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "ip": "172.16.0.2/32",
+        "private_key": "MHcCAQEEIB5oxGzgOdLvTY2aAbRsyJslxnlvPpOzLR076h3cgsncoAoGCCqGSM49AwEHoUQDQgAEDQBTbtpEikpJDklVHdnMhgIR8YatYDJLUILDQWGdwBbqaLiKKiuawVQz6MIaHr0I/4mNM/TfUUnoENKv9qZEWw==",
+        "profile": "cloudflare",
+        "public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDQBTbtpEikpJDklVHdnMhgIR8YatYDJLUILDQWGdwBbqaLiKKiuawVQz6MIaHr0I/4mNM/TfUUnoENKv9qZEWw==",
+        "server": "192.0.2.44",
+        "server_port": 443,
+        "tls": {
+          "server_name": "masque.example-14.com"
+        },
+        "type": "masque",
+        "vhttp": "h3"
+      },
+      "kind": "outbound",
+      "label": "masque-h3-tls-extras",
+      "scheme": "masque",
+      "warnings": [
+        {
+          "code": "masque_tls_field_ignored",
+          "path": "tls.alpn",
+          "value": "h3"
+        },
+        {
+          "code": "masque_tls_fragment_h3",
+          "path": "tls.fragment"
+        },
+        {
+          "code": "masque_tls_fragment_h3",
+          "path": "tls.record_fragment"
+        },
+        {
+          "code": "masque_tls_field_ignored",
+          "path": "tls.kernel_tx",
+          "value": "true"
+        },
+        {
+          "code": "masque_tls_field_ignored",
+          "path": "tls.kernel_rx",
+          "value": "true"
+        },
+        {
+          "code": "masque_tls_field_ignored",
+          "path": "tls.ech",
+          "value": "map[enabled:true]"
+        },
+        {
+          "code": "masque_tls_field_ignored",
+          "path": "tls.reality",
+          "value": "map[enabled:true public_key:AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5…"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "ip": "172.16.0.3/32",
+        "private_key": "MHcCAQEEIB5oxGzgOdLvTY2aAbRsyJslxnlvPpOzLR076h3cgsncoAoGCCqGSM49AwEHoUQDQgAEDQBTbtpEikpJDklVHdnMhgIR8YatYDJLUILDQWGdwBbqaLiKKiuawVQz6MIaHr0I/4mNM/TfUUnoENKv9qZEWw==",
+        "profile": "cloudflare",
+        "public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDQBTbtpEikpJDklVHdnMhgIR8YatYDJLUILDQWGdwBbqaLiKKiuawVQz6MIaHr0I/4mNM/TfUUnoENKv9qZEWw==",
+        "server": "192.0.2.44",
+        "server_port": 443,
+        "tls": {
+          "fragment": true,
+          "record_fragment": true,
+          "server_name": "masque.example-14.com"
+        },
+        "type": "masque",
+        "vhttp": "h2"
+      },
+      "kind": "outbound",
+      "label": "masque-h2-fragment",
+      "scheme": "masque",
+      "warnings": [
+        {
+          "code": "masque_tls_field_ignored",
+          "path": "tls.alpn",
+          "value": "h2"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "ip": "172.16.0.4/32",
+        "private_key": "MHcCAQEEIB5oxGzgOdLvTY2aAbRsyJslxnlvPpOzLR076h3cgsncoAoGCCqGSM49AwEHoUQDQgAEDQBTbtpEikpJDklVHdnMhgIR8YatYDJLUILDQWGdwBbqaLiKKiuawVQz6MIaHr0I/4mNM/TfUUnoENKv9qZEWw==",
+        "profile": "cloudflare",
+        "public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDQBTbtpEikpJDklVHdnMhgIR8YatYDJLUILDQWGdwBbqaLiKKiuawVQz6MIaHr0I/4mNM/TfUUnoENKv9qZEWw==",
+        "server": "192.0.2.44",
+        "server_port": 443,
+        "tls": {
+          "fragment": true,
+          "record_fragment": true,
+          "server_name": "masque.example-14.com"
+        },
+        "type": "masque"
+      },
+      "kind": "outbound",
+      "label": "masque-no-vhttp-fragment",
+      "scheme": "masque"
+    }
+  ],
+  "v": 1
+}
