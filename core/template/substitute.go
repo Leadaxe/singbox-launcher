@@ -99,9 +99,33 @@ func SubstituteVarsInJSONStrict(data []byte, vars []TemplateVar, resolved map[st
 //   - имя объявлено, но значения нет (optional-var) — Dropped-каскад §5.1:
 //     ключ удаляется из объекта, элемент — из массива, сборка продолжается.
 //
-// Возвращает дерево, список кодов warning'ов и ошибку только на невалидном
-// JSON. Ни один unresolved не роняет сборку — деградация пофрагментная.
+// Возвращает дерево, отсортированный список кодов warning'ов без дублей и
+// ошибку только на невалидном JSON. Ни один unresolved не роняет сборку —
+// деградация пофрагментная. Параметры warning'ов — у
+// SubstituteVarsInJSONCanonWarnings.
 func SubstituteVarsInJSONCanon(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) ([]byte, []string, error) {
+	out, warnings, err := SubstituteVarsInJSONCanonWarnings(data, vars, resolved, target)
+	if err != nil {
+		return nil, nil, err
+	}
+	seen := make(map[string]bool, len(warnings))
+	codes := make([]string, 0, len(warnings))
+	for _, w := range warnings {
+		if seen[w.Code] {
+			continue
+		}
+		seen[w.Code] = true
+		codes = append(codes, w.Code)
+	}
+	sort.Strings(codes)
+	return out, codes, nil
+}
+
+// SubstituteVarsInJSONCanonWarnings — та же подстановка по канону, но warning'и
+// отдаются с параметрами по реестру (template_var_undeclared {name},
+// template_unknown_directive {key}, template_int_* {name, value}), без дублей
+// по паре (код, параметры). Порядок не нормирован: обход объекта идёт по map.
+func SubstituteVarsInJSONCanonWarnings(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) (json.RawMessage, []TemplateWarning, error) {
 	varTypes := make(map[string]string, len(vars))
 	declared := make(map[string]bool, len(vars))
 	for _, v := range vars {
