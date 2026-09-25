@@ -30,6 +30,7 @@
 | 8 | `8fa95fc3`, `697894fd`, `687da4be` | 1.1.62 | D1–D4: ссылки реестра на код приведены к правде (`refs.go` 141→53 записи, ~335 строк `impl`/`go`/`note` переведены на актуальное место исполнения). Новый линтер `TestRegistryCodeRefsResolve` (`core/config/registry_refs_test.go`) — Contract CI job проверяет его на любой `.go`-диф. Данные реестра не менялись. |
 | 10a | `30a0bd06` | без бампа (1.1.64) | Коды `warnings.json`, жившие в логе/тексте, доезжают до пользователя: detour-коды импорта на узле, `group_empty` в отбраковке/`update_status`, `max_nodes_exceeded`, `source_detour_missing` (одна запись на пару источник→цель), `chain_*` в отчёте; `Code/Params` у `ChainDegradation`, `EmissionWarning`, `FetchWarning`, `BuildReportEntry`; отчёт переводит по коду. Реестр не менялся. |
 | 10b | `122ea5f1` | 1.1.65 | Хвосты кодов с правкой реестра: поле `go` у 13 кодов 10a — на место постановки; `ssh_user_default` данными (`ssh.json` `user.default_when`, root явно, identity = тег не задета); `body_dialect_unrecognized` снят вместе с мёртвой константой; `direction_filter_matched_nothing` зарегистрирован; `detour_with_listen_port` — живой дефект исправлен общим правилом: после проставления detour сборка спрашивает `registry.Registry.YieldsTo` и снимает уступающие поля с кодом связи (`wireguard.json` `listen_port.conflicts` → код `detour_with_listen_port`), detour не трогается; новые коды сборки `source_detour_self`, `source_detour_cycle` в `EmissionWarning.Code`. Корпус +1 (`body/singbox/ssh_user_default`). |
+| 11a | `3782fbe0` | 1.1.66 | Решение владельца 25.09: `warnings[]` у узла-группы (`kind=auto`). `backup.schema.json` «server и auto», BACKUP.md §2 строка `warnings[]`, CANON §6 абзац про группу; импорт бэкапа кладёт записи группы как есть (`core/backup/import10.go:decode10Source`). `group_member_missing` — на узле-группе: `subscription/singbox_groups.go:singboxGroupToNode`, `xray_json_array.go:resolveGroupMembers`, `parse_body.go:bodyParseState.finish` (код уровня тела 5d2cf47b снят, текст в сводке остался), общий `markGroupMemberMissing` складывает число; в состояние — `migrate_materialize.go:canonicalNodeFromEntry` (Auto-ветка). UI: подстрока группы в списке — «[N] … — ⚠ <заголовок кода>» (`preview_row_view.go:previewRowSubtitle`). Корпус +1 (`body/singbox/group_member_missing`). |
 
 Контракт прошёл путь 1.1.56 → 1.1.63 (семь бампов; волна 1 и волна 8 — без
 изменения данных, только структура/ссылки). Подробности каждой волны и
@@ -138,6 +139,10 @@
 - `group_member_missing` на узле-группе: `backup.schema.json` описывает
   `warnings` узла как «server only», у `kind=auto` слота нет — нужна правка
   контракта (10b); текст потери членов остаётся в `update_status`.
+  **Закрыто волной 11a (контракт 1.1.66):** код на узле-группе, `warnings`
+  у `kind=auto` разрешены и переживают бэкап. Потеря члена у Auto-группы
+  канона на сборке (`nodelink_resolve.go:resolveCanonicalGroup`) осталась
+  текстом отчёта — это сборка, не разбор.
 - Мёртвый `LoadNodesFromSource(Ex)`/`ProcessProxySource`/`rebindImportedGroupNodes`
   не снят: на него опираются семь тестовых файлов (`singbox_import_e2e_test`,
   `dedup_test`, `identity_stamp_test`, `dedup_group_rebind_test`,
@@ -161,7 +166,8 @@
   уступает `listen_port` с кодом. Самоссылка и кольцо detour на сборке —
   новые коды `source_detour_self`/`source_detour_cycle`. Остались:
   `template_*` (миграция сборки на канонический обход — решение владельца),
-  `group_member_missing`/`warnings` у `kind=auto` (решение владельца),
+  `group_member_missing`/`warnings` у `kind=auto` (решение владельца —
+  **закрыто волной 11a, контракт 1.1.66**),
   `EmptyDirections`/`DetourCycles` в отчёт сборки не выводятся (код
   `direction_filter_matched_nothing` ставит только раннер корпуса).
   Проверка связей после managed-поля сделана в одном месте проставления —
