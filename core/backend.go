@@ -457,6 +457,49 @@ func (ac *AppController) SetChainPositionEnabled(chainTag string, pos int, enabl
 	return src.SetPositionEnabled(chainTag, pos, enabled)
 }
 
+// endpointSource — источник, умеющий состояние и выключатель WG/AWG-узла
+// (gRPC: локальный демон или удалённая машина; в classic этого API нет).
+type endpointSource interface {
+	EndpointStatus(tag string) (services.EndpointStatus, bool, error)
+	SetEndpointEnabled(tag string, enabled bool) (string, error)
+}
+
+func (ac *AppController) endpointSource() (endpointSource, bool) {
+	if ac.APIService != nil {
+		if src, ok := ac.APIService.TransportOverride().(endpointSource); ok {
+			return src, true
+		}
+	}
+	src, ok := ac.Backend().(endpointSource)
+	return src, ok
+}
+
+// EndpointControlAvailable — текущий источник отдаёт состояние WG/AWG-узлов.
+func (ac *AppController) EndpointControlAvailable() bool {
+	_, ok := ac.endpointSource()
+	return ok
+}
+
+// EndpointStatus — состояние WG/AWG-узла у текущего источника.
+func (ac *AppController) EndpointStatus(tag string) (services.EndpointStatus, bool, error) {
+	src, ok := ac.endpointSource()
+	if !ok {
+		return services.EndpointStatus{}, false, fmt.Errorf("endpoint state is not available in this mode")
+	}
+	return src.EndpointStatus(tag)
+}
+
+// SetEndpointEnabled включает/выключает WG/AWG-узел в работающем ядре и
+// возвращает его состояние после вызова. Не сохраняется: перезапуск ядра
+// или применение конфига поднимают узел включённым.
+func (ac *AppController) SetEndpointEnabled(tag string, enabled bool) (string, error) {
+	src, ok := ac.endpointSource()
+	if !ok {
+		return "", fmt.Errorf("WireGuard on/off is not available in this mode")
+	}
+	return src.SetEndpointEnabled(tag, enabled)
+}
+
 // DaemonCoreLogLines отдаёт хвост логов ядра из бэкенда (daemon-режим:
 // кольцевой буфер SubscribeLog). ok=false — источник недоступен, читать файл.
 func (ac *AppController) DaemonCoreLogLines(max int) ([]string, bool) {

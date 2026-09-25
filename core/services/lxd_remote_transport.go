@@ -671,6 +671,88 @@ func (t *LxdRemoteTransport) Outbounds() ([]string, error) {
 	return out, nil
 }
 
+// Состояния WG/AWG-endpoint'а из GroupItem.endpointState (SPEC 097/106 ядра).
+const (
+	EndpointStateNeverBuilt = "never_built"
+	EndpointStateBuilding   = "building"
+	EndpointStateUp         = "up"
+	EndpointStateAsleep     = "asleep"
+	EndpointStateTornDown   = "torn_down"
+	EndpointStateDown       = "down"
+	EndpointStateDisabled   = "disabled"
+)
+
+// EndpointStatus — состояние WG/AWG-узла в работающем ядре.
+type EndpointStatus struct {
+	State string
+	// IdleSince — сколько прошло с последнего dial через узел.
+	IdleSince time.Duration
+}
+
+// ErrEndpointToggleUnsupported — ядро старше 1.14.2-lx.4, SetEndpointEnabled
+// в нём не реализован.
+var ErrEndpointToggleUnsupported = errors.New("core does not support WireGuard on/off — update the core")
+
+// EndpointStatusRPC читает состояние узла из GetOutbounds. ok=false — тега
+// нет или ядро не отдаёт endpointState (старше lx-SPEC 097).
+func EndpointStatusRPC(ctx context.Context, client daemonpb.StartedServiceClient, tag string) (EndpointStatus, bool, error) {
+	list, err := client.GetOutbounds(ctx, &emptypb.Empty{})
+	if err != nil {
+		return EndpointStatus{}, false, fmt.Errorf("GetOutbounds: %w", err)
+	}
+	for _, o := range list.GetOutbounds() {
+		if o.GetTag() != tag {
+			continue
+		}
+		if o.GetEndpointState() == "" {
+			return EndpointStatus{}, false, nil
+		}
+		return EndpointStatus{
+			State:     o.GetEndpointState(),
+			IdleSince: time.Duration(o.GetIdleSinceSeconds()) * time.Second,
+		}, true, nil
+	}
+	return EndpointStatus{}, false, nil
+}
+
+// SetEndpointEnabledRPC включает/выключает WG/AWG-узел и возвращает его
+// состояние после вызова. Ошибка ядра (NotFound, FailedPrecondition,
+// Unavailable) отдаётся своим текстом: это диагноз, показываемый человеку.
+func SetEndpointEnabledRPC(ctx context.Context, client daemonpb.StartedServiceClient, tag string, enabled bool) (string, error) {
+	resp, err := client.SetEndpointEnabled(ctx, &daemonpb.SetEndpointEnabledRequest{Tag: tag, Enabled: enabled})
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			if st.Code() == codes.Unimplemented {
+				return "", ErrEndpointToggleUnsupported
+			}
+			return "", errors.New(st.Message())
+		}
+		return "", err
+	}
+	return resp.GetState(), nil
+}
+
+// EndpointStatus — состояние WG/AWG-узла на УДАЛЁННОМ ядре.
+func (t *LxdRemoteTransport) EndpointStatus(tag string) (EndpointStatus, bool, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return EndpointStatus{}, false, err
+	}
+	defer cancel()
+	return EndpointStatusRPC(ctx, client, tag)
+}
+
+// SetEndpointEnabled — выключатель WG/AWG-узла на УДАЛЁННОМ ядре. Бюджет как
+// у URL-теста: включение будит устройство (хендшейк).
+func (t *LxdRemoteTransport) SetEndpointEnabled(tag string, enabled bool) (string, error) {
+	client, ctx, cancel, err := t.rpcForURLTest()
+	if err != nil {
+		return "", err
+	}
+	defer cancel()
+	return SetEndpointEnabledRPC(ctx, client, tag, enabled)
+}
+
 // StartedAt — момент запуска ядра машины (точка отсчёта uptime).
 func (t *LxdRemoteTransport) StartedAt() (time.Time, error) {
 	client, ctx, cancel, err := t.rpc()

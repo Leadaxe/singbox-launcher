@@ -276,6 +276,12 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		addTailscaleSection(ac, body, proxy.Name)
 	}
 
+	// WG/AWG: состояние в ядре и выключатель. Секция сама решает, рисоваться
+	// ли, — по ответу ядра (addWireGuardSection).
+	if !node.IsGroup() {
+		addWireGuardSection(ac, body, win, proxy.Name)
+	}
+
 	// TLS-подробности отдельной секцией: их много и они длинные.
 	if tlsRows := tlsInfoRows(node); len(tlsRows) > 0 {
 		body.Add(widget.NewSeparator())
@@ -451,6 +457,12 @@ const nodeInfoScrollbarGutter = 5
 // Значение в Entry, а не Label: его можно выделить и скопировать, а длинное
 // значение не растягивает окно (Entry сжимается, Label — нет).
 func infoRow(key, value string) *fyne.Container {
+	row, _ := infoRowEntry(key, value)
+	return row
+}
+
+// infoRowEntry — infoRow, отдающий поле значения для последующих обновлений.
+func infoRowEntry(key, value string) (*fyne.Container, *widget.Entry) {
 	keyLabel := widget.NewLabel(key)
 	keyLabel.TextStyle.Bold = true
 	keyLabel.Truncation = fyne.TextTruncateEllipsis
@@ -464,7 +476,7 @@ func infoRow(key, value string) *fyne.Container {
 	valueEntry.SetText(value)
 	valueEntry.Wrapping = fyne.TextWrapOff
 
-	return container.NewBorder(nil, nil, keyCell, nil, valueEntry)
+	return container.NewBorder(nil, nil, keyCell, nil, valueEntry), valueEntry
 }
 
 // memberRow — строка члена группы с его собственным подзаголовком.

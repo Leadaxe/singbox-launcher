@@ -4756,5 +4756,29 @@
   },
   "Imported %d remote servers": {
     "value": "Импортировано удалённых серверов: %d"
+  },
+  "up": {
+    "value": "поднят"
+  },
+  "asleep": {
+    "value": "усыплён"
+  },
+  "released": {
+    "value": "освобождён"
+  },
+  "not started yet": {
+    "value": "ещё не поднимался"
+  },
+  "disabled": {
+    "value": "выключен"
+  },
+  "idle %s": {
+    "value": "простой %s"
+  },
+  "Until the core restarts or the config is applied.": {
+    "value": "До перезапуска ядра или применения конфига."
+  },
+  "Disable": {
+    "value": "Выключить"
   }
 }
