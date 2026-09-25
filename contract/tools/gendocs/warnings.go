@@ -271,10 +271,10 @@ func walkField(out map[string][]usage, scheme, path string, f *registry.Field) {
 		add(f.NormalizeCode, "the value had to be cleaned up ("+f.Normalize+")", "value cleaned up")
 	}
 	for _, c := range f.Conflicts {
-		add(c.Code, "conflicts with `"+c.With+"`", actionRemoved)
+		add(c.Code, "conflicts with `"+c.With+"`"+unlessPhrase(c), actionRemoved)
 	}
 	for _, rq := range f.Requires {
-		add(rq.Code, "set without `"+rq.Path+"`", actionRemoved)
+		add(rq.Code, "set without `"+rq.Path+"`"+unlessPhrase(rq), actionRemoved)
 	}
 	if len(f.ForbiddenFor) > 0 {
 		add(f.Code, "not supported by "+codeList(f.ForbiddenFor), actionRemoved)

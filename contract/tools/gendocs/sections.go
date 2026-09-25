@@ -180,10 +180,10 @@ func collectSchemeUsages(out map[string][]usage, scheme, path string, f *registr
 		add(f.NormalizeCode, "the value had to be cleaned up ("+f.Normalize+")", "value cleaned up")
 	}
 	for _, c := range f.Conflicts {
-		add(codeOr(c.Code, "field_conflict"), "conflicts with `"+c.With+"`", actionRemoved)
+		add(codeOr(c.Code, "field_conflict"), "conflicts with `"+c.With+"`"+unlessPhrase(c), actionRemoved)
 	}
 	for _, rq := range f.Requires {
-		add(codeOr(rq.Code, "field_requires"), "set without `"+rq.Path+"`", actionRemoved)
+		add(codeOr(rq.Code, "field_requires"), "set without `"+rq.Path+"`"+unlessPhrase(rq), actionRemoved)
 	}
 	if f.Required && f.OnInvalid == nil {
 		add("field_missing", "required and missing", actionNodeDropped)

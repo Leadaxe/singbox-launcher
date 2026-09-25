@@ -150,17 +150,17 @@
       ],
       "title_en": "flow removed: incompatible with transport",
       "title_ru": "flow снят: несовместим с транспортом",
-      "text_en": "xtls-rprx-vision works only over bare TLS, but the node has {with} set. The flow field at {path} was removed, because the value has no effect here; the node keeps working.",
-      "text_ru": "xtls-rprx-vision работает только поверх голого TLS, а у узла задан {with}. Поле flow ({path}) снято: значение не влияет и удалено. Узел продолжает работать.",
-      "cause_en": "The panel put flow=xtls-rprx-vision into every link it generates, without looking at whether the node uses a transport. Vision only exists over bare TLS, so on a WebSocket, gRPC or HTTP node it is simply left over.",
-      "cause_ru": "Панель проставляет flow=xtls-rprx-vision во все ссылки подряд, не глядя, есть ли у узла транспорт. Vision существует только поверх голого TLS, поэтому на узле с WebSocket, gRPC или HTTP он просто лишний.",
+      "text_en": "Without a VLESS Encryption layer, xtls-rprx-vision works only over bare TLS, but the node has {with} set and no encryption. The flow field at {path} was removed, because the value has no effect here; the node keeps working.",
+      "text_ru": "Без слоя VLESS Encryption xtls-rprx-vision работает только поверх голого TLS, а у узла задан {with} и нет encryption. Поле flow ({path}) снято: значение не влияет и удалено. Узел продолжает работать.",
+      "cause_en": "The panel put flow=xtls-rprx-vision into every link it generates, without looking at whether the node uses a transport. Without an encryption layer Vision only exists over bare TLS, so on a WebSocket, gRPC or HTTP node it is simply left over.",
+      "cause_ru": "Панель проставляет flow=xtls-rprx-vision во все ссылки подряд, не глядя, есть ли у узла транспорт. Без слоя шифрования Vision существует только поверх голого TLS, поэтому на узле с WebSocket, gRPC или HTTP он просто лишний.",
       "fix_en": [
         "Nothing to do: the node works, and the removed value had no effect on this transport."
       ],
       "fix_ru": [
         "Делать ничего не нужно: узел работает, а снятое значение на этом транспорте ни на что не влияло."
       ],
-      "desc": "xtls-rprx-vision валиден только на голом TLS; при любом v2ray-транспорте flow гасится, узел живёт. Ставится ПРАВИЛОМ РЕЕСТРА — conflicts у vless.flow с собственным кодом (контракт 1.1.6); рукописного места в Go нет и не было, прежние ссылки на singbox_sanitize.go/outbound_generator.go были строками legacy-аудита, а не эмиттерами кода.",
+      "desc": "xtls-rprx-vision без VLESS Encryption валиден только на голом TLS; при любом v2ray-транспорте и отсутствии encryption flow гасится, узел живёт. С encryption код не ставится (unless_set, контракт 1.1.55, LxBox §544). Ставится ПРАВИЛОМ РЕЕСТРА — conflicts у vless.flow с собственным кодом (контракт 1.1.6); рукописного места в Go нет и не было, прежние ссылки на singbox_sanitize.go/outbound_generator.go были строками legacy-аудита, а не эмиттерами кода.",
       "dart": "VisionWithTransportWarning",
       "go": "core/config/nodeflow/sanitize.go relationsOK (по contract/registry/protocols/vless.json flow.conflicts)"
     },

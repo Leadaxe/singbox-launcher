@@ -527,16 +527,25 @@ func fieldRelations(f *registry.Field, withSchemes bool) []string {
 		out = append(out, "Only for: "+codeList(f.AllowedFor))
 	}
 	for _, c := range f.Conflicts {
-		out = append(out, "Conflicts with: "+code(c.With))
+		out = append(out, "Conflicts with: "+code(c.With)+unlessPhrase(c))
 	}
 	for _, rq := range f.Requires {
 		req := "Meaningless without: " + code(rq.Path)
 		if rq.Equals != nil {
 			req += " = " + scalar(rq.Equals)
 		}
+		req += unlessPhrase(rq)
 		out = append(out, req)
 	}
 	return out
+}
+
+// unlessPhrase — хвост «unless … is set» для связи с Relation.UnlessSet.
+func unlessPhrase(r registry.Relation) string {
+	if len(r.UnlessSet) == 0 {
+		return ""
+	}
+	return " (unless " + codeList(r.UnlessSet) + " is set)"
 }
 
 func bodyType(f *registry.Field) string {

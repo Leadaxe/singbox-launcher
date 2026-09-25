@@ -1700,15 +1700,15 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **flow removed: incompatible with transport**
 
-- **What happened:** xtls-rprx-vision works only over bare TLS, but the node has {with} set. The flow field at {path} was removed, because the value has no effect here; the node keeps working.
-- **Why it happens:** The panel put flow=xtls-rprx-vision into every link it generates, without looking at whether the node uses a transport. Vision only exists over bare TLS, so on a WebSocket, gRPC or HTTP node it is simply left over.
+- **What happened:** Without a VLESS Encryption layer, xtls-rprx-vision works only over bare TLS, but the node has {with} set and no encryption. The flow field at {path} was removed, because the value has no effect here; the node keeps working.
+- **Why it happens:** The panel put flow=xtls-rprx-vision into every link it generates, without looking at whether the node uses a transport. Without an encryption layer Vision only exists over bare TLS, so on a WebSocket, gRPC or HTTP node it is simply left over.
 - **What you can do:**
   - Nothing to do: the node works, and the removed value had no effect on this transport.
 
 **Where it comes from:**
 
 - [`vless`](protocols/vless.md)
-  - [`flow`](protocols/vless.md#body-flow) — conflicts with `transport` → removed
+  - [`flow`](protocols/vless.md#body-flow) — conflicts with `transport` (unless `encryption` is set) → removed
 
 <a id="vless_encryption_invalid"></a>
 ### vless_encryption_invalid

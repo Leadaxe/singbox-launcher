@@ -302,7 +302,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `""`
   - Set by link parameter: [`flow`](#link-proto-flow)
   - If invalid: removed → [`flow_deprecated`](../warnings.md#flow_deprecated)
-  - Conflicts with: `transport`
+  - Conflicts with: `transport` (unless `encryption` is set)
 - <a id="body-encryption"></a>**`encryption`** — Post-quantum encryption layer.
   - Type: string, must match `^mlkem768x25519plus(\.[^.]+){3,}$`, means "not set": `none`, normalized: `trim`
   - Set by link parameter: [`encryption`](#link-proto-encryption)
@@ -767,7 +767,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
   - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value does not fit the field → replaced with `chrome`
 - [`vision_with_transport`](../warnings.md#vision_with_transport)
-  - [`flow`](#body-flow) — conflicts with `transport` → removed
+  - [`flow`](#body-flow) — conflicts with `transport` (unless `encryption` is set) → removed
 - [`vless_encryption_invalid`](../warnings.md#vless_encryption_invalid)
   - [`encryption`](#body-encryption) — the value does not fit the field → node dropped
 - [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)

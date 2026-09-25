@@ -6770,3 +6770,45 @@ gecko-обфускацией давала три `uri_param_unknown`: `minPacket
 
 От вас: синк 1.1.54; Dart-движок исполняет алиасы и запись `security` по
 реестру, правок кода ожидать не должно.
+
+## 51. Контракт 1.1.55 — VLESS: Vision с VLESS Encryption не снимается из-за транспорта
+
+Ваш §544. Подписка Assassin VPN отдаёт VLESS + REALITY + xhttp +
+`flow=xtls-rprx-vision` + `encryption=mlkem768x25519plus…`. Связь
+`flow.conflicts[transport]` снимала flow у любого узла с транспортом, и сервер
+с Vision рвал соединение. С VLESS Encryption Vision работает поверх слоя
+шифрования (CommonConn), нижний TLS не трогает — транспорт ему не важен
+(Xray; ядро починено в sing-box-lx#29, SPEC 105 ядра).
+
+- **`relation.unless_set`** (schema/registry_body.schema.json,
+  `definitions/relation`) — общее условие-исключение: связь (`conflicts` и
+  `requires`) не действует, если задан ЛЮБОЙ из путей от корня тела.
+  «Задан» — ТОТ ЖЕ предикат, что у соседа самой связи (у вас
+  `_presentInSource`, у нас `pathPresent`): непустое значение по исходному
+  телу, не снятое запретом схемы и не литерал-выключатель. Наличие ключа
+  НЕ считается: `encryption: ""` исключения не даёт.
+- **Литерал-выключатель невидим связям.** Поле с `absent_values`, значение
+  которого после `normalize` совпало с литералом (точно, с учётом регистра),
+  помечается незаданным предварительным проходом — как объект по
+  `absent_when`. Иначе `encryption: "none"` из исходного тела отменял бы
+  конфликт, хотя слоя нет. Исполняется до обхода, поэтому `body.order`
+  (encryption идёт после flow) на исход не влияет.
+- **`vless.flow`**: `conflicts: [{with: transport, code: vision_with_transport,
+  unless_set: [encryption]}]`; impl и тексты `vision_with_transport`
+  (warnings.json) уточнены — код только у узла без encryption, severity info.
+- `encryption=None` (регистр) отдельного кейса не получает: это настоящее
+  значение, но оно не проходит pattern и хоронит весь узел
+  (`vless_encryption_invalid`, кейс `body/singbox/vless_encryption_none_wrong_case_rejected`).
+- `min_core` у пары не заводится: без flow узел мёртв на любом ядре.
+- Identity не меняется (flow в IDENTITY не участвует), меняется только тело.
+
+Кейсы корпуса (4): `uri/vless/flow_vision_xhttp_encryption_kept`,
+`uri/vless/flow_vision_xhttp_encryption_none_suppressed` (регрессия `none`),
+`body/xray/vless_vision_xhttp_encryption` (форма Assassin),
+`body/singbox/vless_vision_transport_encryption_kept`. Существующие
+`flow_vision_xhttp_suppressed`, `flow_vision_ws_suppressed`,
+`body/xray/vless_vision_with_transport` не меняются.
+
+От вас: синк 1.1.55; Dart-движок связей поддерживает `relation.unless_set`
+(одна проверка перед снятием декларанта) и невидимость литерала-выключателя
+для связей.

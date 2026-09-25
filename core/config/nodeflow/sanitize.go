@@ -273,6 +273,16 @@ func (s *sanitizer) markAbsentObjects(prefix string, order []string, fields map[
 			// Поле уже снято запретом по схеме — заглядывать внутрь незачем.
 			continue
 		}
+		if len(f.AbsentValues) > 0 && f.Type != "object" && f.Type != "array" {
+			// Литерал-выключатель (`encryption: none`) — та же запись
+			// «настройки нет»: связи соседей не должны видеть его в исходном
+			// теле, иначе поле, идущее по order раньше, приняло бы
+			// выключатель за значение. Обход снимет его сам (isAbsentValue).
+			if v, ok := coerce(f, raw); ok && isAbsentValue(f, v) {
+				s.absent[path] = true
+			}
+			continue
+		}
 		inner, ok := asObject(raw)
 		if !ok {
 			continue
@@ -1258,7 +1268,7 @@ func (s *sanitizer) relationsOK(path, prefix string, f *registry.Field) bool {
 		if c.With == "" {
 			continue
 		}
-		if !s.pathPresent(c.With, prefix) {
+		if !s.pathPresent(c.With, prefix) || s.anyPresent(c.UnlessSet, prefix) {
 			continue
 		}
 		s.warn(codeOr(c.Code, "field_conflict"), path, nil, false,
@@ -1266,7 +1276,7 @@ func (s *sanitizer) relationsOK(path, prefix string, f *registry.Field) bool {
 		return false
 	}
 	for _, rq := range f.Requires {
-		if rq.Path == "" {
+		if rq.Path == "" || s.anyPresent(rq.UnlessSet, prefix) {
 			continue
 		}
 		if rq.Equals != nil {
@@ -1288,6 +1298,18 @@ func (s *sanitizer) relationsOK(path, prefix string, f *registry.Field) bool {
 	// несло ни одно поле реестра и не знала схема. Обратная связь («поле
 	// запрещено, когда сосед задан») выражается `conflicts` у того же поля.
 	return true
+}
+
+// anyPresent — задан ли хоть один из путей (Relation.UnlessSet). Наличие
+// судится тем же pathPresent, что и сама связь: непустое значение, не снятое
+// схемой и не литерал-выключатель — `encryption: none` слоя не задаёт.
+func (s *sanitizer) anyPresent(paths []string, prefix string) bool {
+	for _, p := range paths {
+		if p != "" && s.pathPresent(p, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // pathPresent — есть ли по пути непустое значение.
