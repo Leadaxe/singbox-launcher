@@ -28,6 +28,7 @@
 | 6 | `47e163af` | 1.1.61 | C4 + B4: REALITY↔uTLS одним правилом реестра. Новые примитивы `requires[].set`, `coerce_when`, `on_hop_required {unstrip}`. Сняты `EnforceRealityFingerprint`, `HealRealityFingerprints` и шаг сборки, `NodeUsesReality`/`ChainStripsUTLS`/`ChainRealityConflict`. |
 | 7 | `a7377d1f` | 1.1.63 | C5, C7–C10 + хвосты волн 1 и 3 (`vpn://`-литерал, `jmin ≤ jmax`, запрет дефолтного маршрута, `format: cidr` голого адреса) + пробел движка (CANON §6.2: снятое правилом поле недоступно последующим связям/условиям). Новые примитивы тела: `relations.kind: ordered` + `action: drop`, `item_forbidden`, normalize `cidr_masked`, `exit_capable_when`. Новые примитивы маппера: `context.<путь>`, `ref.<as>.<путь>` + `deref`, `substitute`, `when.type_of`. Сняты `applyXrayFreedomFragment`+хелперы, `amneziaPrepareConf`+хелперы, `parseTailscalePrefixList`, проверка jmin≤jmax формы AWG. |
 | 8 | `8fa95fc3`, `697894fd`, `687da4be` | 1.1.62 | D1–D4: ссылки реестра на код приведены к правде (`refs.go` 141→53 записи, ~335 строк `impl`/`go`/`note` переведены на актуальное место исполнения). Новый линтер `TestRegistryCodeRefsResolve` (`core/config/registry_refs_test.go`) — Contract CI job проверяет его на любой `.go`-диф. Данные реестра не менялись. |
+| 10a | `30a0bd06` | без бампа (1.1.64) | Коды `warnings.json`, жившие в логе/тексте, доезжают до пользователя: detour-коды импорта на узле, `group_empty` в отбраковке/`update_status`, `max_nodes_exceeded`, `source_detour_missing` (одна запись на пару источник→цель), `chain_*` в отчёте; `Code/Params` у `ChainDegradation`, `EmissionWarning`, `FetchWarning`, `BuildReportEntry`; отчёт переводит по коду. Реестр не менялся. |
 
 Контракт прошёл путь 1.1.56 → 1.1.63 (семь бампов; волна 1 и волна 8 — без
 изменения данных, только структура/ссылки). Подробности каждой волны и
@@ -105,25 +106,50 @@
 либо задокументированное ограничение нормы, которое требует отдельной волны
 для снятия (неподвижная точка обхода — за рамками SPEC 142).
 
-### Коды `warnings.json`, которые Go не ставит на узел (только лог/текст)
+### Коды `warnings.json`, которые Go не ставил (волна 10a)
 
-Около 20 кодов объявлены в реестре, но не проставляются как предупреждение
-узла в `state.Node.Warnings` — только в debuglog или в тексте отчёта сборки:
+Волна 10a (без изменения реестра) довела коды до пользователя:
 
 - `detour_cycle_broken`, `detour_target_missing`, `detour_to_group`,
-  `detour_chain_too_deep`, `group_member_missing`, `group_empty`,
-  `max_nodes_exceeded`, `source_detour_missing` — уровень источника/сборки
-  подписки, а не уровень узла.
-- `naive_unavailable` — теперь ставится в лог гейтом `NodeCoreRefusal`
-  (волна 5), не как warning узла.
-- `chain_*` (6 кодов) — уровень цепочки, у цепочки нет слота warnings.
-- `awg3_core_unsupported` / `tailscale_core_unsupported` — только лог
-  (тот же `NodeCoreRefusal`, волна 5).
-- `template_*` (4 кода) — функция, которая их ставит, вызывается только
-  тестами.
+  `detour_chain_too_deep` — на узле импорта sing-box
+  (`subscription/detour_chain.go:singboxChainInfo.attachChain`), ⚠ в строке узла.
+- `group_empty` — код отбраковки (`dropped[].code`) у пустой sing-box-группы
+  (`singbox_groups.go:singboxGroupToNode` → `singbox_import.go`) и у группы,
+  опустевшей в `parse_body.go:bodyParseState.finish`; у синтезированной
+  Xray-группы исходника нет — код уровня тела (`FetchWarning.Code`,
+  `xray_json_array.go:resolveGroupMembers` → `ParseSubscriptionBody`); на
+  сборке — `EmissionWarning.Code` (`nodelink_resolve.go:ApplyCanonicalNodeLinks`).
+- `max_nodes_exceeded` — `FetchWarning.Code/Params` (`parse_body.go:finish`,
+  `ParsedBody.WarningCodes` → `config_service_subscriptions.go:parseFetchWarnings`).
+- `source_detour_missing` — одна запись отчёта на пару источник→цель с числом
+  узлов (`nodelink_resolve.go:ApplyCanonicalNodeLinks`, `resolveCanonicalDetour`).
+- `chain_unsupported_by_core`, `chain_invalid`, `chain_hop_missing`,
+  `chain_nested_position` — `ChainDegradation.Code/Params`
+  (`chain_nodes.go:buildChainNode`); `chain_strip_utls_on_reality` —
+  предупреждение эмиссии (`ResolveChainSources`); `chain_cycle_through_direction`
+  — `chain_cycle.go:chainCycleWarnings`. Тест корпуса Направлений читает
+  `ChainDegradation.Code` вместо разбора текста.
+- Отчёт «Итога» переводит любую запись с кодом текстом реестра
+  (`final_report_model.go:registryCodeText`).
 
-Отдельно **не ставятся вовсе**: `ssh_user_default`, `body_dialect_unrecognized`,
-`detour_with_listen_port`.
+Не сделано в 10a:
+
+- `group_member_missing` на узле-группе: `backup.schema.json` описывает
+  `warnings` узла как «server only», у `kind=auto` слота нет — нужна правка
+  контракта (10b); текст потери членов остаётся в `update_status`.
+- Мёртвый `LoadNodesFromSource(Ex)`/`ProcessProxySource`/`rebindImportedGroupNodes`
+  не снят: на него опираются семь тестовых файлов (`singbox_import_e2e_test`,
+  `dedup_test`, `identity_stamp_test`, `dedup_group_rebind_test`,
+  `uniquify_collision_test`, `xray_ownership_test`, `manual_config_emit_test`)
+  и `integration_test` — снятие = перевод этих тестов на `ParseSubscriptionBody`,
+  отдельная задача.
+- Поля `go` в `warnings.json` у кодов выше ещё описывают прежнее «кодом не
+  ставится» — обновит волна 10b вместе с бампом.
+- `naive_unavailable`, `awg3_core_unsupported`, `tailscale_core_unsupported`
+  доставлены с волны 5 (отчёт `core_unsupported` с заголовком реестра).
+- `template_*` (4 кода), `ssh_user_default`, `body_dialect_unrecognized`,
+  `detour_with_listen_port`, `direction_filter_matched_nothing` — решения
+  владельца / 10b.
 
 ### vless Xray-вход: `encryption: None` расходится со входом-ссылкой
 
