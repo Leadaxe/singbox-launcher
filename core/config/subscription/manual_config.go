@@ -71,7 +71,7 @@ func NodeFromManualConfigJSON(raw []byte) (*configtypes.ParsedNode, error) {
 		SourceIndex: configtypes.UnsetSourceIndex,
 		EmitRaw:     true,
 	}
-	node.UUID = singboxCredentialFromMap(ob, scheme)
+	node.UUID = registry.MustGet().Credential(scheme, ob)
 	node.Flow = mapString(ob, "flow")
 	return node, nil
 }

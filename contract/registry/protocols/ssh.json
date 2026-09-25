@@ -135,6 +135,7 @@
       },
       "user": {
         "type": "string",
+        "role": "credential",
         "default": "root",
         "desc_en": "SSH user name.",
         "desc_ru": "Имя пользователя SSH.",
@@ -149,6 +150,7 @@
       },
       "private_key": {
         "type": "listable_string",
+        "role": "private_key",
         "secret": true,
         "desc_en": "Private key contents, PEM form.",
         "desc_ru": "Содержимое закрытого ключа в форме PEM.",

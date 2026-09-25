@@ -126,6 +126,12 @@ type Field struct {
 	Advisory     []Advisory  `json:"advisory"`
 	DropAlways   bool        `json:"drop_always"`
 	Aliases      interface{} `json:"aliases"`
+
+	// Role — роль поля в узле (контракт 1.1.59): по ней общий код находит
+	// поле, не зная имени схемы. Только у поля верхнего уровня тела
+	// протокола, каждая роль — не больше одного поля на схему (линтер
+	// реестра). Словарь — RoleCredential, RolePrivateKey.
+	Role string `json:"role"`
 	// DefaultWhen — дефолт, который реестр велит МАТЕРИАЛИЗОВАТЬ явно
 	// (SPEC §3.2). Обычные `default` в тело не пишутся: дефолты ядра не
 	// материализуются. Исключение — поля, без которых ядро не собирает
@@ -1197,6 +1203,43 @@ func (r *Registry) FieldsWithBuildTag(scheme, tag string) []string {
 		}
 	}
 	return out
+}
+
+// Роли полей тела (атрибут `role`, контракт 1.1.59).
+const (
+	// RoleCredential — учётные данные узла: поле учётной записи в слоте
+	// userinfo ссылки (uuid, пароль, auth_str, имя пользователя). Шифр
+	// ss/vmess учётными данными не считается.
+	RoleCredential = "credential"
+	// RolePrivateKey — приватный ключ, который уезжает в share-ссылку.
+	RolePrivateKey = "private_key"
+)
+
+// FieldWithRole — путь поля схемы с ролью role; false — у схемы такого поля
+// нет. Схема адресуется и типом ядра ("shadowsocks"), как Body.
+func (r *Registry) FieldWithRole(scheme, role string) (string, bool) {
+	b, ok := r.bodies[scheme]
+	if !ok || role == "" {
+		return "", false
+	}
+	for _, name := range b.Order {
+		if f := b.Fields[name]; f != nil && f.Role == role {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// Credential — учётные данные узла из тела по роли `credential`: одно
+// правило для всех входов (ссылка, sing-box JSON, Xray, тело состояния).
+// Схема без роли или поле не строкой — "".
+func (r *Registry) Credential(scheme string, body map[string]interface{}) string {
+	path, ok := r.FieldWithRole(scheme, RoleCredential)
+	if !ok {
+		return ""
+	}
+	s, _ := body[path].(string)
+	return s
 }
 
 // FieldStrings — `values` поля строками (enum для выпадающих списков форм).

@@ -142,7 +142,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Set by link parameter: [`vhttp`](#link-proto-vhttp)
   - If invalid: replaced with `h3` → [`masque_vhttp_invalid`](../warnings.md#masque_vhttp_invalid)
 - <a id="body-private-key"></a>**`private_key`** — Client private key, base64 DER EC.
-  - Type: string, secret, format `base64`
+  - Type: string, secret, role `private_key`, format `base64`
   - Set by link parameter: [`userinfo`](#link-common-userinfo), [`private_key`](#link-proto-private-key)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
   - Meaningless without: `public_key`

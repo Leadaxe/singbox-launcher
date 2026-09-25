@@ -11,20 +11,11 @@ package subscription
 // ссылке нет), и промахнулся бы мимо wireguard/masque, где ключ лежит в
 // userinfo без имени параметра.
 
-import "strings"
+import (
+	"strings"
 
-// shareURISecretCarrierFields — поля тела, чьё НЕПУСТОЕ значение уезжает в
-// share-URI как приватный ключ. Ключ карты — sing-box type узла.
-//
-// Пара с эмиттерами: shareuri_ssh.go (?private_key=),
-// shareuri_wireguard.go и shareuri_masque.go (userinfo). Новая схема с
-// приватным ключом добавляется сюда в тот же заход, что и её эмиссионная
-// ветка, иначе ссылка утечёт молча.
-var shareURISecretCarrierFields = map[string][]string{
-	"ssh":       {"private_key"},
-	"wireguard": {"private_key"},
-	"masque":    {"private_key"},
-}
+	"singbox-launcher/core/config/registry"
+)
 
 // ShareURICarriesPrivateKey сообщает, будет ли share-URI этого узла нести
 // приватный ключ.
@@ -32,23 +23,22 @@ var shareURISecretCarrierFields = map[string][]string{
 // out — тело узла из config.json (outbounds[] либо endpoints[]), в той же
 // форме, что принимает ShareURIFromOutbound.
 //
-// private_key_path не считается: в ссылку уезжает ПУТЬ к файлу, а не сам
-// ключ. private_key_passphrase тоже не ключ — без ключа она бесполезна.
+// Какое поле несёт ключ, говорит реестр: поле тела с ролью `private_key`
+// (контракт 1.1.59; сегодня ssh, wireguard, masque). Новая схема с
+// приватным ключом в ссылке отмечает поле ролью в том же заходе, что и
+// эмиссионную ветку, иначе ссылка утечёт молча. private_key_path и
+// private_key_passphrase ролью не отмечены: в ссылку уезжает ПУТЬ к файлу,
+// а фраза без ключа бесполезна.
 func ShareURICarriesPrivateKey(out map[string]interface{}) bool {
 	if out == nil {
 		return false
 	}
 	typ := strings.ToLower(strings.TrimSpace(mapGetString(out, "type")))
-	fields, ok := shareURISecretCarrierFields[typ]
+	field, ok := registry.MustGet().FieldWithRole(typ, registry.RolePrivateKey)
 	if !ok {
 		return false
 	}
-	for _, f := range fields {
-		if shareURISecretFieldFilled(out[f]) {
-			return true
-		}
-	}
-	return false
+	return shareURISecretFieldFilled(out[field])
 }
 
 // ShareURITextCarriesPrivateKey — тот же вопрос там, где тела узла на руках

@@ -294,7 +294,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
 - <a id="body-uuid"></a>**`uuid`** — User identifier.
-  - Type: string, secret
+  - Type: string, secret, role `credential`
   - Required: the node is dropped without it
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
 - <a id="body-flow"></a>**`flow`** — XTLS flow control mode.

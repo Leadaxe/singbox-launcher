@@ -92,13 +92,9 @@ func parseXrayElementByEngine(ob map[string]interface{}, label string) (*configt
 		Outbound: body,
 	}
 	applyEngineBody(node, plan, body)
-	// «Главный секрет» узла — общая выемка входа sing-box
-	// (singboxCredentialFromMap), а не своя копия: поле у обоих входов одно
-	// и то же, и второй список полей разъехался бы с первым на первой же
-	// схеме. Сама выемка — рукописный switch по схеме, и снимется она
-	// вместе с переводом входа `singbox` на движок; заводить здесь ВТОРУЮ
-	// такую же ради того, чтобы не трогать чужую, значит удвоить работу.
-	node.UUID = singboxCredentialFromMap(body, scheme)
+	// Учётные данные — поле с ролью `credential` реестра (одно правило на
+	// все входы).
+	node.UUID = registry.MustGet().Credential(scheme, body)
 	if flow, _ := body["flow"].(string); flow != "" {
 		node.Flow = flow
 	}

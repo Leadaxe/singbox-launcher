@@ -559,6 +559,9 @@ func bodyType(f *registry.Field) string {
 	if f.Secret {
 		typ += ", secret"
 	}
+	if f.Role != "" {
+		typ += ", role `" + f.Role + "`"
+	}
 	if f.Deprecated {
 		typ += ", deprecated"
 	}

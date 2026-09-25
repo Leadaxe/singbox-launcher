@@ -124,7 +124,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
 - <a id="body-password"></a>**`password`** — Account password.
-  - Type: string, secret
+  - Type: string, secret, role `credential`
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
 - <a id="body-idle-session-check-interval"></a>**`idle_session_check_interval`** — How often idle sessions are checked.
   - Type: duration, normalized: `duration_bare_seconds`

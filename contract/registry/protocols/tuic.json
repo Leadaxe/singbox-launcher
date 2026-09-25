@@ -196,6 +196,7 @@
       },
       "uuid": {
         "type": "string",
+        "role": "credential",
         "format": "uuid",
         "on_invalid": {
           "action": "drop",

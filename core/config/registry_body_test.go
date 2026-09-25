@@ -239,6 +239,7 @@ type bodyField struct {
 	MaxWhen        *bodyMaxWhen          `json:"max_when"`
 	MinWhen        *bodyMinWhen          `json:"min_when"`
 	Skip           string                `json:"skip"`
+	Role           string                `json:"role"`
 	DescEn         string                `json:"desc_en"`
 	DescRu         string                `json:"desc_ru"`
 }
@@ -564,6 +565,51 @@ func TestRegistryBodyStructure(t *testing.T) {
 				checkField(t, where, path, fl, codes)
 			})
 			checkBodyRelations(t, where, sec.Relations, sec.Order, sec.Fields, codes)
+		}
+	}
+	checkFieldRoles(t, files)
+}
+
+// registryFieldRoles — словарь атрибута `role` (контракт 1.1.59).
+var registryFieldRoles = map[string]bool{"credential": true, "private_key": true}
+
+// checkFieldRoles — линтер атрибута `role`: общий код находит поле по роли
+// ПЕРВЫМ совпадением в order, поэтому вторая такая же роль у схемы молча
+// осталась бы без действия, а роль во вложенном поле или в общей суб-схеме
+// не нашлась бы вовсе (поиск идёт по верхнему уровню тела протокола).
+func checkFieldRoles(t *testing.T, files map[string]*registryBodyFile) {
+	t.Helper()
+	for name, f := range files {
+		topLevel := strings.HasPrefix(name, "protocols/")
+		sections := map[string]*bodySection{"body": f.Body, "common": f.Common}
+		for secName, sec := range sections {
+			if sec == nil {
+				continue
+			}
+			where := name + " " + secName
+			seen := map[string]string{}
+			visit := func(path string, fl *bodyField) {
+				if fl.Role == "" {
+					return
+				}
+				if !registryFieldRoles[fl.Role] {
+					t.Errorf("%s %s: role %q вне словаря (credential|private_key)", where, path, fl.Role)
+				}
+				if !topLevel || secName != "body" || strings.Contains(path, ".") {
+					t.Errorf("%s %s: role ставится только у поля верхнего уровня тела протокола", where, path)
+				}
+				if fl.Type != "string" && fl.Type != "listable_string" {
+					t.Errorf("%s %s: role у поля типа %q — роль несёт строку", where, path, fl.Type)
+				}
+				if prev, dup := seen[fl.Role]; dup {
+					t.Errorf("%s: role %q у двух полей (%s, %s) — действует только первое", where, fl.Role, prev, path)
+				}
+				seen[fl.Role] = path
+			}
+			walkFields("", sec.Order, sec.Fields, visit)
+			for vName, v := range sec.Variants {
+				walkFields(vName, v.Order, v.Fields, visit)
+			}
 		}
 	}
 }

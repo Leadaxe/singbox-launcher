@@ -264,6 +264,7 @@
       },
       "private_key": {
         "type": "string",
+        "role": "private_key",
         "format": "base64",
         "on_invalid": {
           "action": "drop_node",

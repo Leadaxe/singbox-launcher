@@ -91,7 +91,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - If invalid: node dropped → [`ss_method_invalid`](../warnings.md#ss_method_invalid)
   - Accepted with a notice for `aes-128-ctr`, `aes-192-ctr`, `aes-256-ctr`, `aes-128-cfb`, `aes-192-cfb`, `aes-256-cfb`, `rc4-md5`, `chacha20-ietf`, `xchacha20` → [`ss_method_legacy`](../warnings.md#ss_method_legacy)
 - <a id="body-password"></a>**`password`** — Account password.
-  - Type: string, secret
+  - Type: string, secret, role `credential`
   - Required: the node is dropped without it
   - Set by link parameter: [`userinfo`](#link-common-userinfo), [`password`](#link-proto-password)
 - <a id="body-plugin"></a>**`plugin`** — SIP003 plugin name.

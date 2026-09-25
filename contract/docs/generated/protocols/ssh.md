@@ -89,14 +89,14 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
 - <a id="body-user"></a>**`user`** — SSH user name.
-  - Type: string
+  - Type: string, role `credential`
   - Default: `root`
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
 - <a id="body-password"></a>**`password`** — SSH password.
   - Type: string, secret
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
 - <a id="body-private-key"></a>**`private_key`** — Private key contents, PEM form.
-  - Type: listable_string, secret
+  - Type: listable_string, secret, role `private_key`
   - Set by link parameter: [`private_key`](#link-proto-private-key)
 - <a id="body-private-key-path"></a>**`private_key_path`** — Path to the private key file.
   - Type: string, secret

@@ -191,6 +191,7 @@
       },
       "password": {
         "type": "string",
+        "role": "credential",
         "required": true,
         "secret": true,
         "desc_en": "Account password.",

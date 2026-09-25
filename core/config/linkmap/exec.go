@@ -47,9 +47,6 @@ type Result struct {
 	// свойство узла зависит от ФОРМЫ, а не от тела: у vmess userinfo есть
 	// только у cleartext-формы, а у контейнера v2rayN его нет вовсе.
 	FormID string
-	// HadUserInfo — нёс ли вход userinfo. Отличает «userinfo пуст» от
-	// «userinfo в этой форме не предусмотрен».
-	HadUserInfo bool
 	// Query — параметры РАСПАКОВАННОГО входа, как справка вызывающему
 	// (skip-фильтры, UI). Не вход разбора: его движок читает из
 	// пространства сам.
@@ -328,12 +325,11 @@ func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *
 		schemeVals: map[string]interface{}{},
 		bodyType:   bodyType,
 		res: &Result{
-			Body:        map[string]interface{}{},
-			BodySource:  plan.Mapper.BodySource,
-			FormID:      form.ID,
-			HadUserInfo: space != nil && space.UserInfo != "",
-			Query:       space.QueryValues(),
-			Trace:       trace,
+			Body:       map[string]interface{}{},
+			BodySource: plan.Mapper.BodySource,
+			FormID:     form.ID,
+			Query:      space.QueryValues(),
+			Trace:      trace,
 		},
 	}
 	st.mapperName = plan.Mapper.Scheme() + "." + plan.Mapper.Kind()

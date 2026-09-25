@@ -173,7 +173,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
   - Meaningless without: `obfs.type` = `gecko`
 - <a id="body-password"></a>**`password`** — Account password.
-  - Type: string, secret
+  - Type: string, secret, role `credential`
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
 - <a id="body-network"></a>**`network`** — Networks this outbound handles.
   - Type: listable_string, `tcp`, `udp`, normalized: `trim_lower`

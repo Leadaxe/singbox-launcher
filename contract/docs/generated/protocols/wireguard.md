@@ -187,7 +187,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Set by link parameter: [`address`](#link-proto-address)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="body-private-key"></a>**`private_key`** — Local private key.
-  - Type: string, secret, format `base64_32`, normalized: `base64_std`
+  - Type: string, secret, role `private_key`, format `base64_32`, normalized: `base64_std`
   - Required: the node is dropped without it
   - Set by link parameter: [`userinfo`](#link-common-userinfo), [`privatekey`](#link-proto-privatekey)
   - If invalid: node dropped → [`wg_key_invalid`](../warnings.md#wg_key_invalid)

@@ -401,33 +401,15 @@ func parseSingboxEntry(entry map[string]interface{}, cfgIdx, entryIdx int) (*con
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}
 
-	// UUID/Flow заполняются для skip-фильтров и эмиссии: getNodeValue и
-	// GenerateNodeJSON читают их из скалярных полей, а не из map.
-	node.UUID = singboxCredentialFromMap(ob, scheme)
+	// Учётные данные — поле с ролью `credential` реестра, одно правило на
+	// все входы.
+	node.UUID = registry.MustGet().Credential(scheme, ob)
 	node.Flow = mapString(ob, "flow")
 
 	// D-119 — reality, переживший санитайз, с отпечатком вне chrome-семейства:
 	// отпечаток уходит как есть, узел предупреждает (SPEC 083 ядра).
 
 	return node, nil
-}
-
-// singboxCredentialFromMap достаёт учётные данные в поле UUID ParsedNode.
-//
-// ParsedNode.UUID исторически хранит «главный секрет» узла независимо от
-// протокола (для trojan/ss/hysteria2 это пароль) — см. GenerateNodeJSON.
-func singboxCredentialFromMap(ob map[string]interface{}, scheme string) string {
-	switch scheme {
-	case "vless", "vmess", "tuic":
-		return mapString(ob, "uuid")
-	case "trojan", "hysteria2", "anytls", "ss":
-		return mapString(ob, "password")
-	case "hysteria":
-		// v1 хранит секрет в auth_str (а не password): см. option/hysteria.go.
-		return mapString(ob, "auth_str")
-	default:
-		return ""
-	}
 }
 
 // copyJSONMap делает глубокую копию декодированного JSON.

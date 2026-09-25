@@ -341,6 +341,7 @@
       },
       "auth_str": {
         "type": "string",
+        "role": "credential",
         "secret": true,
         "desc_en": "Authentication payload as a plain string.",
         "desc_ru": "Данные аутентификации обычной строкой.",

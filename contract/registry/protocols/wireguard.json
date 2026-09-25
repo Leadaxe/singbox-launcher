@@ -1929,6 +1929,7 @@
       },
       "private_key": {
         "type": "string",
+        "role": "private_key",
         "format": "base64_32",
         "normalize": "base64_std",
         "on_invalid": {

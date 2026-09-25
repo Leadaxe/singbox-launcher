@@ -182,6 +182,7 @@
       },
       "password": {
         "type": "string",
+        "role": "credential",
         "secret": true,
         "desc_en": "Account password.",
         "desc_ru": "Пароль учётной записи.",

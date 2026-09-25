@@ -209,6 +209,7 @@
       },
       "uuid": {
         "type": "string",
+        "role": "credential",
         "required": true,
         "secret": true,
         "desc_en": "User identifier.",

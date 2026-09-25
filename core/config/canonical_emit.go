@@ -197,7 +197,7 @@ func buildCanonicalServer(cs *configtypes.CanonicalSource, cn *configtypes.Canon
 		Service:     cn.Service,
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}
-	node.UUID = canonicalCredential(outbound, scheme)
+	node.UUID = registry.MustGet().Credential(scheme, outbound)
 	node.Flow = canonicalString(outbound["flow"])
 	// SPEC 132: обратный путь «финальный тег → узел состояния». Ставится
 	// ВСЕГДА, в отличие от SectionsLink (тот едет только с секциями).
@@ -490,21 +490,6 @@ func canonicalSchemeFromType(t string) string {
 		return s
 	}
 	return t
-}
-
-// canonicalCredential — «главный секрет» узла в поле UUID (его читают
-// фильтры и превью, эмиссия — нет).
-func canonicalCredential(ob map[string]interface{}, scheme string) string {
-	switch scheme {
-	case "vless", "vmess", "tuic":
-		return canonicalString(ob["uuid"])
-	case "trojan", "hysteria2", "anytls", "ss":
-		return canonicalString(ob["password"])
-	case "hysteria":
-		// v1 держит секрет в auth_str — см. singboxCredentialFromMap.
-		return canonicalString(ob["auth_str"])
-	}
-	return ""
 }
 
 func canonicalString(v interface{}) string {

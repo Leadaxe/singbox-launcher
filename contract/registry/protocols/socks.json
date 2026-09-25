@@ -106,6 +106,7 @@
       },
       "username": {
         "type": "string",
+        "role": "credential",
         "desc_en": "Account user name.",
         "desc_ru": "Имя пользователя учётной записи.",
         "impl": "option/socks.go Username."

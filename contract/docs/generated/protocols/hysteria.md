@@ -159,7 +159,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: string, secret, format `base64`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="body-auth-str"></a>**`auth_str`** — Authentication payload as a plain string.
-  - Type: string, secret
+  - Type: string, secret, role `credential`
   - Set by link parameter: [`userinfo`](#link-common-userinfo), [`auth`](#link-proto-auth)
 - <a id="body-network"></a>**`network`** — Networks this outbound handles.
   - Type: listable_string, `tcp`, `udp`, normalized: `trim_lower`
