@@ -251,8 +251,17 @@ func TestEngineEmitRoundTrip(t *testing.T) {
 			if sr.Drop != nil {
 				t.Fatalf("санитайзер отверг круг: %s\nссылка: %s", sr.Drop.Code, uri)
 			}
+			// Эталон проходит ТОТ ЖЕ санитайзер с тем же входом, что и круг:
+			// снимок заморожен до правил реестра, которые приводят значение
+			// (`coerce_when`), и сырое тело сравнивалось бы с уже приведённым.
+			// Потерю поля это не прячет: санитайзер годное поле не убирает, и
+			// выпавшее из ссылки останется только в эталоне.
+			wr := nodeflow.SanitizeFrom(scheme, plan.Mapper.BodySource, entry.Body)
+			if wr.Drop != nil {
+				t.Fatalf("санитайзер отверг эталон: %s", wr.Drop.Code)
+			}
 			want := map[string]interface{}{}
-			for k, v := range entry.Body {
+			for k, v := range wr.Clean {
 				if k == "tag" || k == "type" {
 					continue
 				}
