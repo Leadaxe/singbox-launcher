@@ -197,7 +197,6 @@ func buildCanonicalServer(cs *configtypes.CanonicalSource, cn *configtypes.Canon
 		Service:     cn.Service,
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}
-	node.UUID = registry.MustGet().Credential(scheme, outbound)
 	node.Flow = canonicalString(outbound["flow"])
 	// SPEC 132: обратный путь «финальный тег → узел состояния». Ставится
 	// ВСЕГДА, в отличие от SectionsLink (тот едет только с секциями).

@@ -42,9 +42,6 @@ func TestSingboxImportSingleOutbound(t *testing.T) {
 	if n.Tag != "node-a" || n.Scheme != "vless" || n.Server != "example.com" || n.Port != 443 {
 		t.Fatalf("unexpected node: tag=%q scheme=%q server=%q port=%d", n.Tag, n.Scheme, n.Server, n.Port)
 	}
-	if n.UUID != "11111111-1111-1111-1111-111111111111" {
-		t.Errorf("UUID not lifted from map: %q", n.UUID)
-	}
 }
 
 // Критерий 2: массив outbound'ов даёт по ноде на элемент.
@@ -62,9 +59,6 @@ func TestSingboxImportOutboundArray(t *testing.T) {
 		t.Fatalf("unexpected schemes: %q, %q", res.Nodes[0].Scheme, res.Nodes[1].Scheme)
 	}
 	// trojan: пароль поднимается в UUID (там его читает GenerateNodeJSON).
-	if res.Nodes[1].UUID != "p2" {
-		t.Errorf("trojan password not lifted: %q", res.Nodes[1].UUID)
-	}
 }
 
 // Критерий 3: целый конфиг — только outbounds; route/dns/inbounds отмечены как игнор.

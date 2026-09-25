@@ -191,13 +191,13 @@ func TestXrayOwnershipWorksWithoutIdentityHook(t *testing.T) {
 func TestXrayServerKeyIsIndependentOfTag(t *testing.T) {
 	withContentSignatureHook(t)
 
-	a := &configtypes.ParsedNode{Tag: "🇩🇪 Германия", Scheme: "vless", Server: "1.1.1.1", Port: 443, UUID: "u1"}
-	b := &configtypes.ParsedNode{Tag: "proxy-1-1-1-1-direct", Scheme: "vless", Server: "1.1.1.1", Port: 443, UUID: "u1"}
+	a := &configtypes.ParsedNode{Tag: "🇩🇪 Германия", Scheme: "vless", Server: "1.1.1.1", Port: 443}
+	b := &configtypes.ParsedNode{Tag: "proxy-1-1-1-1-direct", Scheme: "vless", Server: "1.1.1.1", Port: 443}
 	if xrayServerKey(a) != xrayServerKey(b) {
 		t.Fatalf("один узел под двумя именами дал разные ключи: %q и %q",
 			xrayServerKey(a), xrayServerKey(b))
 	}
-	other := &configtypes.ParsedNode{Tag: "🇩🇪 Германия", Scheme: "vless", Server: "2.2.2.2", Port: 443, UUID: "u1"}
+	other := &configtypes.ParsedNode{Tag: "🇩🇪 Германия", Scheme: "vless", Server: "2.2.2.2", Port: 443}
 	if xrayServerKey(a) == xrayServerKey(other) {
 		t.Fatal("разные адреса дали один ключ")
 	}

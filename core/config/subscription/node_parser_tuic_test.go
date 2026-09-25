@@ -16,7 +16,6 @@ func TestParseNode_Tuic_Canonical(t *testing.T) {
 	assertEq(t, node.Scheme, "tuic")
 	assertEq(t, node.Server, "tuic.example.test")
 	assertEq(t, node.Port, 443)
-	assertEq(t, node.UUID, "00000000-0000-0000-0000-000000000001")
 	// node.Query — справка о ТОМ, ЧТО НАПИСАНО в ссылке. Пароль стоит в
 	// userinfo, а не параметром: в Query его клала воронка прежнего пути
 	// (QUIRKS Q133-49). Проверяем там, где он и живёт, — в теле.

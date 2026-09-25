@@ -99,7 +99,6 @@ func TestChainHopsEmitValidJSON(t *testing.T) {
 	// конвейер по реестру, а он читает карту, не поля структуры. Trojan без
 	// пароля ядро отвергает фаталом на весь конфиг, и конвейер такой узел не
 	// выпускает (контракт 1.1.11).
-	hops[1].UUID = "secret"
 	hops[1].Outbound["password"] = "secret"
 
 	for _, hop := range hops {

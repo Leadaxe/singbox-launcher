@@ -388,7 +388,6 @@ func TestGenerateNodeJSON_DisabledTLSMapDropped(t *testing.T) {
 		Tag:    "t-raw-disabled",
 		Server: "example.com",
 		Port:   8080,
-		UUID:   "secretpass",
 		Outbound: map[string]interface{}{
 			"password": "secretpass",
 			"tls": map[string]interface{}{
@@ -417,7 +416,6 @@ func TestGenerateNodeJSON_UTLSFingerprintLowercase(t *testing.T) {
 		Tag:    "t-fp",
 		Server: "example.com",
 		Port:   443,
-		UUID:   "a0ee37a5-1844-4087-bc5c-1db6f416d38c",
 		Outbound: map[string]interface{}{
 			// Креденшл лежит В КАРТЕ, как его кладут настоящие парсеры:
 			// тело собирает конвейер по реестру, а он читает карту, не поля
@@ -454,7 +452,6 @@ func TestGenerateNodeJSON_UTLSRawIdentifierMapped(t *testing.T) {
 		Tag:    "t-fp-raw",
 		Server: "example.com",
 		Port:   443,
-		UUID:   "a0ee37a5-1844-4087-bc5c-1db6f416d38c",
 		Outbound: map[string]interface{}{
 			// Креденшл лежит В КАРТЕ, как его кладут настоящие парсеры:
 			// тело собирает конвейер по реестру, а он читает карту, не поля
@@ -498,7 +495,6 @@ func TestGenerateNodeJSON_UTLSUnknownFingerprintCoerced(t *testing.T) {
 		Tag:    "t-fp-junk",
 		Server: "example.com",
 		Port:   443,
-		UUID:   "a0ee37a5-1844-4087-bc5c-1db6f416d38c",
 		Outbound: map[string]interface{}{
 			// Креденшл лежит В КАРТЕ, как его кладут настоящие парсеры:
 			// тело собирает конвейер по реестру, а он читает карту, не поля
@@ -579,7 +575,6 @@ func TestGenerateNodeJSON_InvalidUTF8PathAndNewlineLabelStillValidJSON(t *testin
 		Tag:    "t-invalid-utf8",
 		Server: "1.2.3.4",
 		Port:   443,
-		UUID:   "00000000-0000-0000-0000-000000000001",
 		Label:  "line1\nline2",
 		Outbound: map[string]interface{}{
 			// Креденшл лежит В КАРТЕ, как его кладут настоящие парсеры:
@@ -756,7 +751,6 @@ func TestGenerateNodeJSON_DetourEmitted(t *testing.T) {
 		Tag:    "main-tag",
 		Server: "example.com",
 		Port:   443,
-		UUID:   "00000000-0000-0000-0000-000000000099",
 		Flow:   "xtls-rprx-vision",
 		Label:  "chain",
 		Outbound: map[string]interface{}{

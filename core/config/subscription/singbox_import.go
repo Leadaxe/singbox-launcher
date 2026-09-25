@@ -401,9 +401,6 @@ func parseSingboxEntry(entry map[string]interface{}, cfgIdx, entryIdx int) (*con
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}
 
-	// Учётные данные — поле с ролью `credential` реестра, одно правило на
-	// все входы.
-	node.UUID = registry.MustGet().Credential(scheme, ob)
 	node.Flow = mapString(ob, "flow")
 
 	// D-119 — reality, переживший санитайз, с отпечатком вне chrome-семейства:

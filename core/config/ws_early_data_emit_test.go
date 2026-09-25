@@ -55,7 +55,6 @@ func TestGenerateNodeJSON_WS_EarlyDataFloat64RoundTrip(t *testing.T) {
 		Scheme: "vless",
 		Server: "h.test",
 		Port:   443,
-		UUID:   "c59eb5ed-6324-4d53-ad4f-8cda48b30811",
 		Outbound: map[string]interface{}{
 			"type":        "vless",
 			"tag":         "rt",

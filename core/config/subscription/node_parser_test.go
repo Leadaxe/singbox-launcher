@@ -75,9 +75,6 @@ func TestParseNode_VLESS(t *testing.T) {
 				if node.Port != 443 {
 					t.Errorf("Expected port 443, got %d", node.Port)
 				}
-				if node.UUID != "4a3ece53-6000-4ba3-a9fa-fd0d7ba61cf3" {
-					t.Errorf("Expected UUID '4a3ece53-6000-4ba3-a9fa-fd0d7ba61cf3', got '%s'", node.UUID)
-				}
 				if node.Flow != "xtls-rprx-vision" {
 					t.Errorf("Expected flow 'xtls-rprx-vision', got '%s'", node.Flow)
 				}
@@ -204,9 +201,6 @@ func TestParseNode_VMess(t *testing.T) {
 		}
 		if node.Port != 443 {
 			t.Errorf("Expected port 443, got %d", node.Port)
-		}
-		if node.UUID != "12345678-1234-1234-1234-123456789abc" {
-			t.Errorf("Expected UUID '12345678-1234-1234-1234-123456789abc', got '%s'", node.UUID)
 		}
 	})
 
@@ -361,9 +355,6 @@ func TestParseNode_Trojan(t *testing.T) {
 				}
 				if node.Scheme != "trojan" {
 					t.Errorf("Expected scheme 'trojan', got '%s'", node.Scheme)
-				}
-				if node.UUID != "password123" {
-					t.Errorf("Expected password 'password123', got '%s'", node.UUID)
 				}
 			},
 		},
@@ -1074,9 +1065,6 @@ func TestParseNode_Hysteria2(t *testing.T) {
 				if node.Port != 443 {
 					t.Errorf("Expected port 443, got %d", node.Port)
 				}
-				if node.UUID != "password123" {
-					t.Errorf("Expected password 'password123', got '%s'", node.UUID)
-				}
 				if node.Query.Get("sni") != "example.com" {
 					t.Errorf("Expected SNI 'example.com', got '%s'", node.Query.Get("sni"))
 				}
@@ -1111,9 +1099,6 @@ func TestParseNode_Hysteria2(t *testing.T) {
 				}
 				if node.Port != 27200 {
 					t.Errorf("Expected port 27200, got %d", node.Port)
-				}
-				if node.UUID != "47db373b-d23c-4acb-bfd9-dace39c4f1e4" {
-					t.Errorf("Expected password '47db373b-d23c-4acb-bfd9-dace39c4f1e4', got '%s'", node.UUID)
 				}
 				if node.Query.Get("sni") != "hl.kaixincloud.top" {
 					t.Errorf("Expected SNI 'hl.kaixincloud.top', got '%s'", node.Query.Get("sni"))
@@ -1169,9 +1154,6 @@ func TestParseNode_Hysteria2(t *testing.T) {
 				if node.Server != "example.com" {
 					t.Errorf("Expected server 'example.com', got '%s'", node.Server)
 				}
-				if node.UUID != "password123" {
-					t.Errorf("Expected password 'password123', got '%s'", node.UUID)
-				}
 			},
 		},
 		{
@@ -1183,9 +1165,6 @@ func TestParseNode_Hysteria2(t *testing.T) {
 					t.Fatal("Expected node, got nil")
 				}
 				// Password is empty, but node is still parsed (with warning)
-				if node.UUID != "" {
-					t.Errorf("Expected empty password, got '%s'", node.UUID)
-				}
 			},
 		},
 		{
@@ -1462,9 +1441,6 @@ func TestParseNode_SSH(t *testing.T) {
 				if node.Port != 22 {
 					t.Errorf("Expected port 22, got %d", node.Port)
 				}
-				if node.UUID != "root" {
-					t.Errorf("Expected user 'root', got '%s'", node.UUID)
-				}
 				// Пароль — в ТЕЛЕ: досочинение значения обратно в node.Query
 				// было договорённостью рукописного парсера с buildOutbound.
 				if pw, _ := node.Outbound["password"].(string); pw != "admin" {
@@ -1480,9 +1456,6 @@ func TestParseNode_SSH(t *testing.T) {
 			uri:         "ssh://user@example.com:2222#SSH Server",
 			expectError: false,
 			checkFields: func(t *testing.T, node *config.ParsedNode) {
-				if node.UUID != "user" {
-					t.Errorf("Expected user 'user', got '%s'", node.UUID)
-				}
 				if node.Port != 2222 {
 					t.Errorf("Expected port 2222, got %d", node.Port)
 				}
@@ -1496,9 +1469,6 @@ func TestParseNode_SSH(t *testing.T) {
 			uri:         "ssh://deploy@git.example.com:22?private_key_path=$HOME/.ssh/deploy_key#Git Server",
 			expectError: false,
 			checkFields: func(t *testing.T, node *config.ParsedNode) {
-				if node.UUID != "deploy" {
-					t.Errorf("Expected user 'deploy', got '%s'", node.UUID)
-				}
 				if node.Query.Get("private_key_path") != "$HOME/.ssh/deploy_key" {
 					t.Errorf("Expected private_key_path '$HOME/.ssh/deploy_key', got '%s'", node.Query.Get("private_key_path"))
 				}
@@ -1602,10 +1572,6 @@ func TestParseNode_SSH(t *testing.T) {
 			if serverPort, ok := node.Outbound["server_port"].(int); !ok || serverPort != node.Port {
 				t.Errorf("Expected outbound server_port %d, got '%v'", node.Port, node.Outbound["server_port"])
 			}
-
-			if user, ok := node.Outbound["user"].(string); !ok || user != node.UUID {
-				t.Errorf("Expected outbound user '%s', got '%v'", node.UUID, node.Outbound["user"])
-			}
 		})
 	}
 }
@@ -1632,9 +1598,6 @@ func TestParseNode_SOCKS5(t *testing.T) {
 				if node.Port != 1080 {
 					t.Errorf("Expected port 1080, got %d", node.Port)
 				}
-				if node.UUID != "myuser" {
-					t.Errorf("Expected username 'myuser', got '%s'", node.UUID)
-				}
 				if pw, _ := node.Outbound["password"].(string); pw != "mypass" {
 					t.Errorf("Expected password 'mypass', got '%s'", pw)
 				}
@@ -1653,9 +1616,6 @@ func TestParseNode_SOCKS5(t *testing.T) {
 				}
 				if node.Server != "proxy.example.com" {
 					t.Errorf("Expected server 'proxy.example.com', got '%s'", node.Server)
-				}
-				if node.UUID != "" {
-					t.Errorf("Expected empty username, got '%s'", node.UUID)
 				}
 				if pw, has := node.Outbound["password"]; has {
 					t.Errorf("Expected empty password, got '%v'", pw)

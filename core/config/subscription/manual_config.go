@@ -25,7 +25,7 @@ import (
 // NodeFromManualConfigJSON строит ParsedNode из ручного sing-box объекта.
 //
 // Требования к вводу минимальны: валидный JSON-объект с непустым "type".
-// Server/Port/UUID заполняются best-effort — они нужны только UI-спискам и
+// Server/Port заполняются best-effort — они нужны только UI-спискам и
 // skip-фильтрам, сборка их не пересобирает.
 //
 // Scheme: для известных sing-box типов — каноническая схема лаунчера (та же,
@@ -71,7 +71,6 @@ func NodeFromManualConfigJSON(raw []byte) (*configtypes.ParsedNode, error) {
 		SourceIndex: configtypes.UnsetSourceIndex,
 		EmitRaw:     true,
 	}
-	node.UUID = registry.MustGet().Credential(scheme, ob)
 	node.Flow = mapString(ob, "flow")
 	return node, nil
 }

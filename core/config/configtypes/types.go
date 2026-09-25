@@ -670,26 +670,24 @@ const SchemeGroup = "group"
 const GroupMembersKey = "outbounds"
 
 // ParsedJump is an optional first hop for Xray dialerProxy → sing-box detour (SOCKS, VLESS, …).
-// Scheme empty means "socks" (backward compatibility). UUID/Flow are set for vless/vmess hops when GenerateNodeJSON needs them.
+// Scheme empty means "socks" (backward compatibility). Flow is set for vless hops.
 type ParsedJump struct {
 	Tag      string
 	Scheme   string // socks, vless, …
 	Server   string
 	Port     int
-	UUID     string
 	Flow     string
 	Outbound map[string]interface{}
 }
 
 // ParsedNode represents a parsed proxy node with all extracted information.
-// It contains protocol-specific fields (UUID, Flow, etc.) and the generated
+// It contains protocol-specific fields (Flow, etc.) and the generated
 // outbound configuration ready for JSON serialization.
 type ParsedNode struct {
 	Tag      string
 	Scheme   string
 	Server   string
 	Port     int
-	UUID     string
 	Flow     string
 	Label    string
 	Comment  string
@@ -963,7 +961,6 @@ func (n *ParsedNode) SyncJumpFromChain() {
 		Scheme:   hop.Scheme,
 		Server:   hop.Server,
 		Port:     hop.Port,
-		UUID:     hop.UUID,
 		Flow:     hop.Flow,
 		Outbound: hop.Outbound,
 	}
@@ -983,7 +980,6 @@ func (n *ParsedNode) AdoptLegacyJump() {
 		Scheme:      n.Jump.Scheme,
 		Server:      n.Jump.Server,
 		Port:        n.Jump.Port,
-		UUID:        n.Jump.UUID,
 		Flow:        n.Jump.Flow,
 		Outbound:    n.Jump.Outbound,
 		SourceIndex: UnsetSourceIndex,

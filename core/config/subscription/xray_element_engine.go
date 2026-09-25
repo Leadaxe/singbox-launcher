@@ -95,9 +95,6 @@ func parseXrayElementByEngine(ob map[string]interface{}, doc []interface{}, labe
 		Outbound: body,
 	}
 	applyEngineBody(node, plan, body)
-	// Учётные данные — поле с ролью `credential` реестра (одно правило на
-	// все входы).
-	node.UUID = registry.MustGet().Credential(scheme, body)
 	if flow, _ := body["flow"].(string); flow != "" {
 		node.Flow = flow
 	}

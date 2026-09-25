@@ -263,19 +263,19 @@ func TestDedupIsPerSource(t *testing.T) {
 func TestXrayServerKeyUsesTheSameSignatureAsDedup(t *testing.T) {
 	withContentSignatureHook(t)
 
-	node := &configtypes.ParsedNode{Scheme: "vless", Server: "e.com", Port: 443, UUID: "u1"}
+	node := &configtypes.ParsedNode{Scheme: "vless", Server: "e.com", Port: 443, Outbound: map[string]interface{}{"uuid": "u1"}}
 	if got, want := xrayServerKey(node), dedupSignature(node); got != want {
 		t.Fatalf("xrayServerKey() = %q, дедуп считает %q — ключ во всём парсере обязан быть один", got, want)
 	}
 
 	// Узел-группа подписи не имеет ни там, ни там.
-	group := &configtypes.ParsedNode{Scheme: configtypes.SchemeGroup, Server: "e.com", Port: 443, UUID: "u1"}
+	group := &configtypes.ParsedNode{Scheme: configtypes.SchemeGroup, Server: "e.com", Port: 443}
 	if got := xrayServerKey(group); got != "" {
 		t.Fatalf("узел-группа получил подпись %q", got)
 	}
 
 	// Разные креды на одном адресе — разные подписи (это разные аккаунты).
-	other := &configtypes.ParsedNode{Scheme: "vless", Server: "e.com", Port: 443, UUID: "u2"}
+	other := &configtypes.ParsedNode{Scheme: "vless", Server: "e.com", Port: 443, Outbound: map[string]interface{}{"uuid": "u2"}}
 	if xrayServerKey(node) == xrayServerKey(other) {
 		t.Fatal("узлы с разными кредами получили одну подпись")
 	}

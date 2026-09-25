@@ -65,7 +65,7 @@ func testSocksNode(tag string) *ParsedNode {
 
 func testNaiveNode(tag string) *ParsedNode {
 	return &ParsedNode{
-		Tag: tag, Scheme: "naive", Server: "example.com", Port: 443, UUID: "user",
+		Tag: tag, Scheme: "naive", Server: "example.com", Port: 443,
 		Outbound: map[string]interface{}{
 			"tls": map[string]interface{}{"enabled": true, "server_name": "example.com"},
 		},

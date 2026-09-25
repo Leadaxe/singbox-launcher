@@ -75,7 +75,7 @@ func TestDedupParsedNodesRebindsGroupMembers(t *testing.T) {
 
 	node := func(tag, server string) *configtypes.ParsedNode {
 		return &configtypes.ParsedNode{
-			Tag: tag, Scheme: "vless", Server: server, Port: 443, UUID: "u1",
+			Tag: tag, Scheme: "vless", Server: server, Port: 443,
 			Outbound: map[string]interface{}{"type": "vless", "tag": tag, "server": server},
 		}
 	}

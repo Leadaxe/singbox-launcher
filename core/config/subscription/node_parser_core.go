@@ -102,43 +102,6 @@ func maxURILengthFromRegistry() int {
 	return maxURILengthDefault
 }
 
-// percentEncodeUserinfoSpaces percent-encodes raw spaces inside the userinfo
-// segment of a proxy URI (between "://" and the authority's '@').
-//
-// Some public lists paste a promo login with a stray space —
-// `vless://Telegramjoin:TurboConfigs @1.2.3.4:80?...` — and net/url refuses the
-// whole URI with "invalid userinfo", dropping an otherwise usable node. A space
-// is never meaningful there, so encoding it is lossless: callers unescape the
-// userinfo anyway.
-//
-// Mirrors percentEncodeWGUserinfoSlashes (node_parser_wireguard.go), which
-// solves the same class of problem for raw '/' in base64 keys.
-func percentEncodeUserinfoSpaces(uri string) string {
-	const sep = "://"
-	si := strings.Index(uri, sep)
-	if si < 0 {
-		return uri
-	}
-	start := si + len(sep)
-	rest := uri[start:]
-
-	// Only the authority's '@' counts; a '@' inside the query or fragment
-	// (a Telegram handle in the node name, say) is not a userinfo separator.
-	at := strings.IndexByte(rest, '@')
-	if at < 0 {
-		return uri
-	}
-	if strings.ContainsAny(rest[:at], "?#") {
-		return uri
-	}
-
-	userinfo := rest[:at]
-	if !strings.Contains(userinfo, " ") {
-		return uri
-	}
-	return uri[:start] + strings.ReplaceAll(userinfo, " ", "%20") + uri[start+at:]
-}
-
 // ParseNode parses a single node URI and applies skip filters
 func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.ParsedNode, error) {
 	// Amnezia vpn:// (compressed profile JSON, SPEC 075) is dispatched before the
@@ -153,10 +116,9 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		return nil, err
 	}
 
-	// SPEC 133: сначала спрашиваем ДВИЖОК реестра. Ведёт ли он эту ссылку,
-	// решает секция схемы (`live: true` + её собственный detect), а не список
-	// имён здесь. Не ведёт — идём прежним путём ниже; развилка временная и
-	// исчезнет вместе с атрибутом, когда переведены будут все схемы.
+	// SPEC 133: ссылку ведёт ДВИЖОК реестра. Ведёт ли он её, решает секция
+	// схемы своим detect, а не список имён здесь. Не ведёт — ниже только
+	// отказ с кодом.
 	if node, engErr, handled := parseURIByEngine(uri, skipFilters); handled {
 		return node, engErr
 	}

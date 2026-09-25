@@ -64,7 +64,7 @@ func TestXrayArrayParsesTrojanAndShadowsocks(t *testing.T) {
 		t.Fatalf("got %d nodes, want 2", len(nodes))
 	}
 
-	if nodes[0].Scheme != "trojan" || nodes[0].UUID != "pw" {
+	if nodes[0].Scheme != "trojan" || nodes[0].Outbound["password"] != "pw" {
 		t.Errorf("trojan node = %+v", nodes[0])
 	}
 	if nodes[1].Scheme != "ss" || nodes[1].Outbound["method"] != "aes-256-gcm" {

@@ -15,7 +15,6 @@ func vlessNodeForIdentity(tag string) *ParsedNode {
 		Scheme: "vless",
 		Server: "e.example.com",
 		Port:   443,
-		UUID:   "b831381d-6324-4d53-ad4f-8cda48b30811",
 		Outbound: map[string]interface{}{
 			"type":        "vless",
 			"tag":         tag,
@@ -75,7 +74,6 @@ func TestNodeIdentityIgnoresConnectionFields(t *testing.T) {
 		{"port", func(n *ParsedNode) { n.Port = 8443; n.Outbound["server_port"] = 8443 }},
 		{"server", func(n *ParsedNode) { n.Server = "other.example.com"; n.Outbound["server"] = "other.example.com" }},
 		{"uuid", func(n *ParsedNode) {
-			n.UUID = "11111111-2222-3333-4444-555555555555"
 			n.Outbound["uuid"] = "11111111-2222-3333-4444-555555555555"
 		}},
 		{"sni", func(n *ParsedNode) {

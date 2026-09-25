@@ -1447,7 +1447,6 @@ func chainOfNode(node *ParsedNode) []*ParsedNode {
 		Scheme:   node.Jump.Scheme,
 		Server:   node.Jump.Server,
 		Port:     node.Jump.Port,
-		UUID:     node.Jump.UUID,
 		Flow:     node.Jump.Flow,
 		Outbound: node.Jump.Outbound,
 	}, node)}
@@ -1465,7 +1464,6 @@ func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 		Scheme:   hop.Scheme,
 		Server:   hop.Server,
 		Port:     hop.Port,
-		UUID:     hop.UUID,
 		Flow:     hop.Flow,
 		Outbound: hop.Outbound,
 		Label:    owner.Label,

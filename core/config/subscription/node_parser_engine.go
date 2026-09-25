@@ -134,9 +134,6 @@ func nodeFromEngine(plan *linkmap.Plan, res *linkmap.Result, scheme, source, bod
 		Query: res.Query,
 	}
 	applyEngineBody(node, plan, res.Body)
-	// Учётные данные — поле с ролью `credential` реестра: то же правило,
-	// что у входов sing-box, Xray и тела состояния.
-	node.UUID = registry.MustGet().Credential(scheme, res.Body)
 
 	node.Label = textnorm.NormalizeProxyDisplay(sanitizeForDisplay(res.Label))
 	node.Tag, node.Comment = extractTagAndComment(node.Label)
@@ -188,7 +185,7 @@ func nodeFromEngine(plan *linkmap.Plan, res *linkmap.Result, scheme, source, bod
 // тег входит в identity узла. У socks написание сохраняется намеренно:
 // канонизация socks5 → socks переименовала бы тег socks5-host-1080 у ВСЕХ
 // живых узлов и сбросила бы отметки disabled и ссылки цепочек
-// (node_parser_core.go:316-325, docs/IDENTITY.md §4a-C).
+// (contract/docs/IDENTITY.md §4a-C).
 //
 // Два источника истины здесь не заводятся: атрибут один, и Scheme с тегом
 // расходиться не могут по построению.

@@ -1510,18 +1510,6 @@ func (r *Registry) FieldWithRole(scheme, role string) (string, bool) {
 	return "", false
 }
 
-// Credential — учётные данные узла из тела по роли `credential`: одно
-// правило для всех входов (ссылка, sing-box JSON, Xray, тело состояния).
-// Схема без роли или поле не строкой — "".
-func (r *Registry) Credential(scheme string, body map[string]interface{}) string {
-	path, ok := r.FieldWithRole(scheme, RoleCredential)
-	if !ok {
-		return ""
-	}
-	s, _ := body[path].(string)
-	return s
-}
-
 // ExitCapable — годится ли узел схемы ВЫХОДОМ В ИНТЕРНЕТ, то есть кандидатом
 // в состав Направления (контракт 1.1.63, атрибут тела `exit_capable_when`).
 //

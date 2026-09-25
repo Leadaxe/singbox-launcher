@@ -41,7 +41,6 @@ func plainNode(tag, server string) *ParsedNode {
 		Scheme: "vless",
 		Server: server,
 		Port:   443,
-		UUID:   "b831381d-6324-4d53-ad4f-8cda48b30811",
 		Outbound: map[string]interface{}{
 			"type":        "vless",
 			"tag":         tag,

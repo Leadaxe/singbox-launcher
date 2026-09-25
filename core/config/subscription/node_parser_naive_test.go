@@ -78,8 +78,8 @@ func TestParseNode_Naive_Canonical(t *testing.T) {
 			// договорённость рукописного парсера с его же buildOutbound.
 			// Движок тело собирает сам, и такой договорённости у него нет:
 			// query остаётся СПРАВКОЙ о ссылке, какой приехала.
-			if node.UUID != tc.wantUser {
-				t.Errorf("UUID (username) = %q, want %q", node.UUID, tc.wantUser)
+			if got, _ := node.Outbound["username"].(string); got != tc.wantUser {
+				t.Errorf("username = %q, want %q", got, tc.wantUser)
 			}
 			if got, _ := node.Outbound["password"].(string); got != tc.wantPass {
 				t.Errorf("password = %q, want %q", got, tc.wantPass)
@@ -134,9 +134,6 @@ func TestParseNode_Naive_PasswordOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseNode error: %v", err)
 	}
-	if node.UUID != "" {
-		t.Errorf("UUID = %q, want empty (одиночный userinfo — пароль)", node.UUID)
-	}
 	// Пароль проверяется в ТЕЛЕ: досочинение значения обратно в node.Query
 	// было договорённостью рукописного парсера с его же buildOutbound.
 	if got, _ := node.Outbound["password"].(string); got != "secret" {
@@ -151,9 +148,6 @@ func TestParseNode_Naive_Anonymous(t *testing.T) {
 	node, err := ParseNode("naive+https://host.tld", nil)
 	if err != nil {
 		t.Fatalf("ParseNode error: %v", err)
-	}
-	if node.UUID != "" {
-		t.Errorf("UUID must be empty for anonymous URI, got %q", node.UUID)
 	}
 	if got := node.Query.Get("password"); got != "" {
 		t.Errorf("password must be empty, got %q", got)
