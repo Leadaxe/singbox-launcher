@@ -45,8 +45,6 @@ const (
 	emitDetourTargetDroppedText = "node %q dropped: its detour target %q fell out of the config itself"
 	emitDetourSelfText          = "node %q dropped: its detour points at itself"
 	emitDetourCycleText         = "node %q dropped: detour loop — the chain of hops leads traffic back to itself"
-	emitDetourTargetMissingText = "%d node(s) dropped: detour target %q is gone"
-	emitDetourFieldYieldText    = "node %q: %s removed — it cannot be combined with detour %q"
 
 	emitGroupMemberLostText     = "group %q: member %q left the group (%s)"
 	emitMemberDroppedReasonText = "the node fell out of the config"

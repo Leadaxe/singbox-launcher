@@ -463,6 +463,14 @@ func resolveCanonicalDetour(n *ParsedNode, targets *NodeLinkTargets, dropped map
 // (resolveCanonicalDetour).
 const buildDetourField = "detour"
 
+// Фразы отчёта сборки о detour. Константы живут в файле использования:
+// проверка локализации (tools/l10n) резолвит locale.T(const) только по
+// константам того же файла.
+const (
+	emitDetourTargetMissingText = "%d node(s) dropped: detour target %q is gone"
+	emitDetourFieldYieldText    = "node %q: %s removed — it cannot be combined with detour %q"
+)
+
 // yieldToBuildDetour снимает с тела узла поля, которые реестр объявил
 // несовместимыми с detour (registry.Registry.YieldsTo), и возвращает их.
 // Правило — данные реестра; имён схем здесь нет.
