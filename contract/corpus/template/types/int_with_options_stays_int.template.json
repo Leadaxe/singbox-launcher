@@ -1,0 +1,9 @@
+{
+  "_comment": "§2.1 (SPEC 143, D-125): объектная форма options НЕ меняет type — int с объектными options уезжает в JSON числом",
+  "vars": [{"name": "tol_ms", "type": "int", "default_value": "100", "options": [
+    {"title": "Low", "value": "50"},
+    {"title": "Medium", "value": "100"},
+    {"title": "High", "value": "300"}
+  ]}],
+  "config": {"tolerance": "@tol_ms"}
+}

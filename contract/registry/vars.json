@@ -90,13 +90,13 @@
       "type": "int",
       "portable": true,
       "in": "both",
-      "note": "urltest.tolerance (ms); desktop сегодня enum + int-каст по хардкод-имени (разрыв C5, Go мигрирует на type int), mobile уже int; дефолты 100 vs 30"
+      "note": "urltest.tolerance (ms); type int на обеих сторонах, объектные options тип не меняют (SPEC 143); дефолты 100 vs 30"
     },
     "tun_mtu": {
       "type": "int",
       "portable": true,
       "in": "both",
-      "note": "tun.mtu; desktop сегодня type text + int-каст по имени (разрыв C5), mobile int с clamp; дефолт 1492 совпадает"
+      "note": "tun.mtu; type int на обеих сторонах, clamp по §2.2 TEMPLATE_LANG (SPEC 143); дефолт 1492 совпадает"
     },
     "tun_stack": {
       "type": "enum",
@@ -192,7 +192,7 @@
       "type": "int",
       "portable": false,
       "in": "desktop",
-      "note": "listen_port mixed-инбаунда (сегодня text + int-каст по имени, C5); РАЗРЫВ N1: на mobile — proxy_port"
+      "note": "listen_port mixed-инбаунда; type int (SPEC 143); РАЗРЫВ N1: на mobile — proxy_port"
     },
     "proxy_port": {
       "type": "int",

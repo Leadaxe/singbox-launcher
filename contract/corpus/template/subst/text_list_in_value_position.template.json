@@ -1,0 +1,5 @@
+{
+  "_comment": "§3: голая ссылка на text_list в позиции значения ключа даёт JSON-массив строк",
+  "vars": [{"name": "list_a", "type": "text_list", "default_value": ""}],
+  "config": {"servers": "@list_a"}
+}
