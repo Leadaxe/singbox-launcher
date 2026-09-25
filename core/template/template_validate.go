@@ -105,13 +105,11 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 		}
 		// options ортогональны type (SPEC 143 Т8), кроме bool: у флага два
 		// значения, и список поверх них либо дублирует чекбокс, либо
-		// противоречит ему. options_open без options ничего не открывает —
-		// это опечатка в объявлении, а не свободный ввод.
+		// противоречит ему. options_open без options ничего не открывает и
+		// ничего не значит (TEMPLATE_LANG §2.1) — по правилу толерантности
+		// §1 поле просто игнорируется.
 		if strings.TrimSpace(v.Type) == "bool" && len(v.Options) > 0 {
 			return fmt.Errorf("vars[%d]: bool var %q must not set options", i, nm)
-		}
-		if v.OptionsOpen && len(v.Options) == 0 {
-			return fmt.Errorf("vars[%d]: var %q sets options_open without options", i, nm)
 		}
 		names[nm] = struct{}{}
 		varByName[nm] = v

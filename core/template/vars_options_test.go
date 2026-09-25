@@ -106,7 +106,7 @@ func TestValidateTemplateVarOptionsShape(t *testing.T) {
 		reject bool
 	}{
 		{`{"name":"flag","type":"bool","options":[{"title":"On","value":"true"}]}`, true},
-		{`{"name":"mtu","type":"int","options_open":true}`, true},
+		{`{"name":"mtu","type":"int","options_open":true}`, false},
 		{`{"name":"mtu","type":"int","options":["1280","1492"],"options_open":true}`, false},
 		{`{"name":"flag","type":"bool"}`, false},
 	} {
