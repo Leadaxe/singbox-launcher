@@ -22,6 +22,9 @@ package config
 import (
 	"fmt"
 	"strings"
+
+	"singbox-launcher/core/config/registry"
+	"singbox-launcher/internal/locale"
 )
 
 // Фразы эмиссии: ключ локали = АНГЛИЙСКИЙ текст (общий механизм проекта,
@@ -42,6 +45,7 @@ const (
 	emitDetourTargetDroppedText = "node %q dropped: its detour target %q fell out of the config itself"
 	emitDetourSelfText          = "node %q dropped: its detour points at itself"
 	emitDetourCycleText         = "node %q dropped: detour loop — the chain of hops leads traffic back to itself"
+	emitDetourTargetMissingText = "%d node(s) dropped: detour target %q is gone"
 
 	emitGroupMemberLostText     = "group %q: member %q left the group (%s)"
 	emitMemberDroppedReasonText = "the node fell out of the config"
@@ -52,6 +56,17 @@ const (
 	emitNodeNotEmittableText   = "node %q is not emittable — dropped: %v"
 
 	emitTagConflictText = "tag %q is claimed twice: %s and %s"
+)
+
+// Коды реестра (contract/registry/warnings.json), которые ставит сборка.
+const (
+	codeSourceDetourMissing        = "source_detour_missing"
+	codeGroupEmpty                 = "group_empty"
+	codeChainUnsupportedByCore     = "chain_unsupported_by_core"
+	codeChainInvalid               = "chain_invalid"
+	codeChainHopMissing            = "chain_hop_missing"
+	codeChainNestedPosition        = "chain_nested_position"
+	codeChainCycleThroughDirection = "chain_cycle_through_direction"
 )
 
 // EmissionWarning — одна деградация эмиссии.
@@ -67,6 +82,25 @@ type EmissionWarning struct {
 	SourceLabel string
 	// DirectionTag — Направление-виновник, если источника нет.
 	DirectionTag string
+	// Code / Params — код реестра (warnings.json) и его подстановки, если
+	// деградации код назначен. UI отчёта переводит запись по коду; Text
+	// остаётся запасным текстом (лог, строка Sources).
+	Code   string
+	Params map[string]string
+}
+
+// registryWarningText — текст кода реестра на текущем языке UI с
+// подстановками; fallback — если кода в реестре нет или он не прочитался.
+func registryWarningText(code string, params map[string]string, fallback string) string {
+	reg, err := registry.Get()
+	if err != nil {
+		return fallback
+	}
+	_, text, ok := reg.WarningText(code, locale.GetLang(), params)
+	if !ok || strings.TrimSpace(text) == "" {
+		return fallback
+	}
+	return text
 }
 
 // String — фраза без адресата: для лога и для мест, которым нужен просто текст.

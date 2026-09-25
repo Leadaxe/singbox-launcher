@@ -197,9 +197,7 @@ func refreshOneSubscriptionSource(src *state.Source, settings locale.Settings) b
 		st := failedSubStatus(src.UpdateStatus, src.URL, now, reason, res.HTTPStatus, "")
 		if material != nil {
 			// Причины «почему не родилось» — пользователю в диагностику.
-			for _, w := range material.Warnings {
-				st.Warnings = append(st.Warnings, state.FetchWarning{Kind: "parse", Message: w})
-			}
+			st.Warnings = append(st.Warnings, parseFetchWarnings(material)...)
 		}
 		src.UpdateStatus = st
 		debuglog.WarnLog("refreshOneSubscriptionSource: source %s body untrusted: %v — nodes kept", src.ID, reason)
@@ -252,6 +250,26 @@ func failedSubStatus(prev *state.SubUpdateStatus, url, now string, err error, ht
 	return st
 }
 
+// parseFetchWarnings — деградации разбора в форме updateStatus: строка
+// разбора плюс её машинный код, если он назначен.
+func parseFetchWarnings(material *config.SubscriptionFetchMaterial) []state.FetchWarning {
+	if material == nil || len(material.Warnings) == 0 {
+		return nil
+	}
+	out := make([]state.FetchWarning, 0, len(material.Warnings))
+	for _, w := range material.Warnings {
+		out = append(out, state.FetchWarning{Kind: "parse", Message: w})
+	}
+	for _, c := range material.WarningCodes {
+		if c.Index < 0 || c.Index >= len(out) {
+			continue
+		}
+		out[c.Index].Code = c.Code
+		out[c.Index].Params = c.Params
+	}
+	return out
+}
+
 // successSubStatus — канонический updateStatus успешного fetch+merge:
 // per-record деградации парсера и merge персистятся здесь — отчёт сборки и
 // UI читают их из состояния, ничего не перепарсивая (jsontab-К4).
@@ -270,9 +288,7 @@ func successSubStatus(url, now string, httpStatus int, rawBytes int64, material 
 		// показывает отдельным слагаемым («38 + 5 unsupported»).
 		st.NodesCountFetched = material.Supported
 		st.Truncated = material.Truncated
-		for _, w := range material.Warnings {
-			st.Warnings = append(st.Warnings, state.FetchWarning{Kind: "parse", Message: w})
-		}
+		st.Warnings = append(st.Warnings, parseFetchWarnings(material)...)
 	}
 	for _, w := range mergeWarns {
 		st.Warnings = append(st.Warnings, state.FetchWarning{Kind: "merge", Message: w})

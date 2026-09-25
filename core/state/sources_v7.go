@@ -454,6 +454,12 @@ type FetchWarning struct {
 	Message string `json:"message,omitempty"`
 	// Count — счётчик для агрегируемых видов (skip).
 	Count int `json:"count,omitempty"`
+	// Code / Params — машинный код из contract/registry/warnings.json и его
+	// подстановки, если деградации код назначен. UI переводит по коду;
+	// Message остаётся запасным текстом. updateStatus — состояние машины,
+	// в бэкап не едет: поля аддитивны и контракта не касаются.
+	Code   string            `json:"code,omitempty"`
+	Params map[string]string `json:"params,omitempty"`
 }
 
 // SubUpdateStatus — диагностика fetch подписки (SPEC Т2). UI и отчёт сборки

@@ -1,6 +1,7 @@
 package subscription
 
 import (
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
@@ -160,6 +161,9 @@ func (c *singboxChainInfo) attachChain(
 		if c.isBrokenEdge(currentTag) {
 			// Ребро снято как замыкающее кольцо (B3).
 			debuglog.DebugLog("Parser: singbox import %q: detour edge broken (cycle)", node.Tag)
+			node.AddWarningWithParams(WarnDetourCycleBroken, map[string]string{
+				"target": strings.TrimSpace(mapString(current, "detour")),
+			})
 			break
 		}
 
@@ -170,6 +174,7 @@ func (c *singboxChainInfo) attachChain(
 
 		if _, seen := visited[target]; seen {
 			debuglog.DebugLog("Parser: singbox import %q: detour cycle at %q — chain truncated", node.Tag, target)
+			node.AddWarningWithParams(WarnDetourCycleBroken, map[string]string{"target": target})
 			break
 		}
 
@@ -177,6 +182,7 @@ func (c *singboxChainInfo) attachChain(
 		if !ok {
 			// B5: висячая ссылка — узел живёт, дозванивается напрямую.
 			debuglog.DebugLog("Parser: singbox import %q: detour target %q not found — chain truncated", node.Tag, target)
+			node.AddWarningWithParams(WarnDetourTargetMissing, map[string]string{"target": target})
 			break
 		}
 
@@ -188,6 +194,7 @@ func (c *singboxChainInfo) attachChain(
 		if IsSingboxGroupType(targetType) {
 			// B5: развёрнутая группа в detour дала бы её без членов.
 			debuglog.DebugLog("Parser: singbox import %q: detour target %q is a group — chain truncated", node.Tag, target)
+			node.AddWarningWithParams(WarnDetourToGroup, map[string]string{"target": target})
 			break
 		}
 
@@ -208,6 +215,9 @@ func (c *singboxChainInfo) attachChain(
 		if next := strings.TrimSpace(mapString(current, "detour")); next != "" {
 			debuglog.WarnLog("Parser: singbox import %q: detour chain exceeds depth %d — truncated",
 				node.Tag, maxDetourChainDepth)
+			node.AddWarningWithParams(WarnDetourChainTooDeep, map[string]string{
+				"limit": strconv.Itoa(maxDetourChainDepth),
+			})
 		}
 	}
 

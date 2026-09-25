@@ -352,18 +352,10 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 			got.Warnings = append(got.Warnings, "direction_filter_matched_nothing")
 		}
 		for _, c := range res.BrokenChains {
-			// Код различает причину: «ядро не умеет» и «позиция потерялась»
-			// требуют от пользователя разных действий — обновить ядро или
-			// починить состав, — и один общий код скрыл бы это различие.
-			// Имена — из contract/registry/warnings.json.
-			code := "chain_invalid"
-			switch {
-			case strings.Contains(c.Reason, "with_lx_chain"):
-				code = "chain_unsupported_by_core"
-			case strings.Contains(c.Reason, "not found among nodes"):
-				code = "chain_hop_missing"
-			}
-			got.Warnings = append(got.Warnings, code)
+			// Код ставит сама сборка (ChainDegradation.Code): «ядро не
+			// умеет» и «позиция потерялась» требуют от пользователя разных
+			// действий, и один общий код скрыл бы это различие.
+			got.Warnings = append(got.Warnings, c.Code)
 		}
 		for range res.ChainCycles {
 			got.Warnings = append(got.Warnings, "chain_cycle_through_direction")

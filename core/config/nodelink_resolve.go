@@ -33,6 +33,7 @@ package config
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
@@ -301,15 +302,25 @@ func ApplyCanonicalNodeLinks(
 	// Итерация до фикспойнта: каждое выпадение может открыть следующее.
 	// Верхняя граница защитная — каждый содержательный проход что-то
 	// удаляет, их конечное число.
+	//
+	// Потерянная цель detour (source_detour_missing) пишется ОДНОЙ записью на
+	// пару «источник → цель» с числом узлов: у папки на полсотни узлов с
+	// общим detour иначе было бы полсотни одинаковых строк отчёта. Каждый
+	// узел по-прежнему называется в логе.
+	var missing []detourMissingGroup
 	for iter := 0; iter <= len(allNodes)+1; iter++ {
 		changed := false
 		for _, n := range allNodes {
 			if n == nil || dropped[n] {
 				continue
 			}
-			if reason := resolveCanonicalDetour(n, targets, dropped); reason != "" {
+			if reason, lostTarget := resolveCanonicalDetour(n, targets, dropped); reason != "" {
 				dropped[n] = true
-				warnings = append(warnings, addr(n, reason))
+				if lostTarget != "" {
+					missing = addDetourMissing(missing, addr(n, ""), lostTarget, n.Tag)
+				} else {
+					warnings = append(warnings, addr(n, reason))
+				}
 				debuglog.WarnLog("nodelink: %s", reason)
 				changed = true
 			}
@@ -317,6 +328,18 @@ func ApplyCanonicalNodeLinks(
 		if !changed {
 			break
 		}
+	}
+	for _, m := range missing {
+		w := m.w
+		w.Code = codeSourceDetourMissing
+		w.Params = map[string]string{"target": m.target, "count": strconv.Itoa(m.count)}
+		// Имена узлов — в запасном тексте (лог, строка Sources): отчёт
+		// переводит запись по коду, а человеку, читающему лог, нужно знать,
+		// кого именно сняли.
+		w.Text = registryWarningText(w.Code, w.Params,
+			locale.Tf(emitDetourTargetMissingText, m.count, m.target)) +
+			" (" + detourMissingNodeList(m.nodes) + ")"
+		warnings = append(warnings, w)
 	}
 
 	// Кольца detour: то, что осталось после фикспойнта и ходит по кругу.
@@ -343,7 +366,10 @@ func ApplyCanonicalNodeLinks(
 		if len(groupMemberTags(n)) == 0 {
 			dropped[n] = true
 			reason := locale.Tf(emitGroupEmptyText, n.Tag)
-			warnings = append(warnings, addr(n, reason))
+			w := addr(n, reason)
+			w.Code = codeGroupEmpty
+			w.Params = map[string]string{"tag": n.Tag}
+			warnings = append(warnings, w)
 			debuglog.WarnLog("nodelink: %s", reason)
 		}
 	}
@@ -362,10 +388,12 @@ func ApplyCanonicalNodeLinks(
 }
 
 // resolveCanonicalDetour штампует detour узлу. Возвращает непустую причину,
-// если носитель обязан выпасть (fail-closed).
-func resolveCanonicalDetour(n *ParsedNode, targets *NodeLinkTargets, dropped map[*ParsedNode]bool) string {
+// если носитель обязан выпасть (fail-closed); lostTarget — имя цели, когда
+// причина в том, что цели нет (не разрешилась или сама выпала): такие узлы
+// сводятся в одну запись source_detour_missing на пару источник→цель.
+func resolveCanonicalDetour(n *ParsedNode, targets *NodeLinkTargets, dropped map[*ParsedNode]bool) (reason, lostTarget string) {
 	if n.CanonicalDetour == nil {
-		return ""
+		return "", ""
 	}
 	// Исключения для WireGuard ЗДЕСЬ НЕТ (проверено запуском ядра
 	// 1.14.0-lx.28: endpoint/wireguard с `detour` стартует и честно
@@ -378,19 +406,53 @@ func resolveCanonicalDetour(n *ParsedNode, targets *NodeLinkTargets, dropped map
 	// работал.
 	res := targets.Resolve(*n.CanonicalDetour)
 	if res.Problem != "" {
-		return locale.Tf(emitDetourUnresolvedText, n.Tag, res.Problem)
+		target := strings.TrimSpace(n.CanonicalDetour.Tag)
+		if target == "" {
+			target = res.Problem
+		}
+		return locale.Tf(emitDetourUnresolvedText, n.Tag, res.Problem), target
 	}
 	if res.Node != nil && dropped[res.Node] {
-		return locale.Tf(emitDetourTargetDroppedText, n.Tag, res.Tag)
+		return locale.Tf(emitDetourTargetDroppedText, n.Tag, res.Tag), res.Tag
 	}
 	if res.Tag == n.Tag {
-		return locale.Tf(emitDetourSelfText, n.Tag)
+		return locale.Tf(emitDetourSelfText, n.Tag), ""
 	}
 	if n.Outbound == nil {
 		n.Outbound = map[string]interface{}{}
 	}
 	n.Outbound["detour"] = res.Tag
-	return ""
+	return "", ""
+}
+
+// detourMissingGroup — узлы одного источника, выпавшие из-за одной и той же
+// потерянной цели detour.
+type detourMissingGroup struct {
+	w      EmissionWarning // адресат (источник)
+	target string
+	count  int
+	nodes  []string
+}
+
+func addDetourMissing(groups []detourMissingGroup, w EmissionWarning, target, node string) []detourMissingGroup {
+	for i := range groups {
+		if groups[i].w.SourceID == w.SourceID && groups[i].w.SourceLabel == w.SourceLabel && groups[i].target == target {
+			groups[i].count++
+			groups[i].nodes = append(groups[i].nodes, node)
+			return groups
+		}
+	}
+	return append(groups, detourMissingGroup{w: w, target: target, count: 1, nodes: []string{node}})
+}
+
+// detourMissingNodeList — имена снятых узлов для запасного текста; длинный
+// список обрезается: папка на сотни узлов дала бы строку на экран.
+func detourMissingNodeList(nodes []string) string {
+	const shown = 5
+	if len(nodes) <= shown {
+		return strings.Join(nodes, ", ")
+	}
+	return strings.Join(nodes[:shown], ", ") + ", …"
 }
 
 // detectCanonicalDetourCycles — участники колец по рёбрам detour среди

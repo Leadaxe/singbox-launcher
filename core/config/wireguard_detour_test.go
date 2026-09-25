@@ -31,7 +31,7 @@ func TestWireguardNodeKeepsDetour(t *testing.T) {
 	proxies := []ProxySource{{Canonical: &configtypes.CanonicalSource{}}}
 	targets := BuildNodeLinkTargets(proxies, nodesBySource, nil)
 
-	if problem := resolveCanonicalDetour(wg, targets, map[*ParsedNode]bool{}); problem != "" {
+	if problem, _ := resolveCanonicalDetour(wg, targets, map[*ParsedNode]bool{}); problem != "" {
 		t.Fatalf("резолв отказал: %s", problem)
 	}
 	got, _ := wg.Outbound["detour"].(string)

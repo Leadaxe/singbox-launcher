@@ -1027,6 +1027,9 @@
   "Chain %q did not build: %s": {
     "value": "Цепочка %q не собралась: %s"
   },
+  "%d node(s) dropped: detour target %q is gone": {
+    "value": "Снято узлов: %d — цели detour %q больше нет"
+  },
   "%s — %d node(s) skipped: %s": {
     "value": "%s — пропущено узлов: %d — %s"
   },

@@ -81,6 +81,8 @@ func FeedBuildReportFromParser(gen config.BuildGeneration, res *config.OutboundG
 			Kind:    config.BuildReportChainFailed,
 			Subject: c.Name,
 			Reason:  c.Reason,
+			Code:    c.Code,
+			Params:  c.Params,
 		})
 	}
 
@@ -107,6 +109,8 @@ func FeedBuildReportFromParser(gen config.BuildGeneration, res *config.OutboundG
 			SourceID:    w.SourceID,
 			SourceLabel: w.SourceLabel,
 			Reason:      w.Text,
+			Code:        w.Code,
+			Params:      w.Params,
 		})
 	}
 
@@ -209,6 +213,8 @@ func FeedBuildReportFromFetchStatus(gen config.BuildGeneration, sources []state.
 				SourceLabel: label,
 				Reason:      reason,
 				NodeCount:   w.Count,
+				Code:        w.Code,
+				Params:      w.Params,
 			})
 		}
 	}

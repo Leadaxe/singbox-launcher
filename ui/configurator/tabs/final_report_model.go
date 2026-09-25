@@ -128,6 +128,14 @@ func finalReportEntryText(e config.BuildReportEntry) string {
 	if subject == "" {
 		subject = strings.TrimSpace(e.SourceLabel)
 	}
+	// Запись с кодом реестра читается текстом кода на языке UI: причину
+	// сборка знает кодом, а Reason — её запасная английская формулировка.
+	// У core_unsupported код даёт заголовок (ниже), причину — Reason.
+	if e.Kind != config.BuildReportCoreUnsupported {
+		if text := registryCodeText(e.Code, e.Params); text != "" {
+			e.Reason = text
+		}
+	}
 	switch e.Kind {
 	case config.BuildReportSourceParseFailed:
 		return locale.Tf("Source %q produced no nodes: %s", subject, e.Reason)
@@ -235,4 +243,21 @@ func coreUnsupportedTitle(code string) string {
 		return ""
 	}
 	return title
+}
+
+// registryCodeText — текст кода реестра с подстановками на языке UI; "" —
+// кода нет или реестр не прочитался (строка отчёта держится на Reason).
+func registryCodeText(code string, params map[string]string) string {
+	if code == "" {
+		return ""
+	}
+	reg, err := registry.Get()
+	if err != nil {
+		return ""
+	}
+	_, text, ok := reg.WarningText(code, locale.GetLang(), params)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(text)
 }

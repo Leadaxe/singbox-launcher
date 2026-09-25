@@ -51,12 +51,13 @@ var singboxGroupOptionKeys = []string{
 // Возвращает пустую rejectReason при успехе; непустую — когда группу эмитить
 // нельзя, и тогда запись становится неразобранной (unsupported) на своей
 // позиции, а не молчаливой пропажей (обкатка W13 заход 3: «пустая группа —
-// как сломанный узел»).
+// как сломанный узел»). rejectCode — код отбраковки (dropped[].code):
+// group_empty у группы без единого разрешённого члена.
 func singboxGroupToNode(
 	entry map[string]interface{},
 	nodeByTag map[string]*configtypes.ParsedNode,
 	warns *[]string,
-) (*configtypes.ParsedNode, string) {
+) (*configtypes.ParsedNode, string, string) {
 	warn := func(msg string) {
 		if warns != nil {
 			*warns = append(*warns, msg)
@@ -66,7 +67,7 @@ func singboxGroupToNode(
 	tag := strings.TrimSpace(mapString(entry, "tag"))
 	if tag == "" {
 		debuglog.WarnLog("Parser: singbox import: %s group without tag — skipped", groupType)
-		return nil, fmt.Sprintf("%s group rejected: missing tag", groupType)
+		return nil, fmt.Sprintf("%s group rejected: missing tag", groupType), ""
 	}
 
 	membersRaw, _ := entry["outbounds"].([]interface{})
@@ -110,7 +111,7 @@ func singboxGroupToNode(
 		// Пустой urltest роняет старт ядра — не эмитим вовсе (A5).
 		debuglog.WarnLog("Parser: singbox import: group %q has no resolvable members — skipped", tag)
 		warn(fmt.Sprintf("group %q lost all members — dropped", tag))
-		return nil, fmt.Sprintf("%s group rejected: no resolvable members", groupType)
+		return nil, fmt.Sprintf("%s group rejected: no resolvable members", groupType), WarnGroupEmpty
 	}
 
 	// Состав хранится как []interface{} — та же форма, в которой он приходит
@@ -149,5 +150,5 @@ func singboxGroupToNode(
 		Label:       tag,
 		Outbound:    outbound,
 		SourceIndex: configtypes.UnsetSourceIndex,
-	}, ""
+	}, "", ""
 }

@@ -1043,7 +1043,8 @@ func GenerateOutboundsFromParserConfig(
 	// как у деградаций подписок.
 	emissionWarnings := ResolveCanonicalChainHops(parserConfig, linkTargets)
 
-	allNodes, brokenChains := ResolveChainSources(parserConfig, allNodes, nodesBySource, directionTagsForChains)
+	allNodes, brokenChains, chainNotes := ResolveChainSources(parserConfig, allNodes, nodesBySource, directionTagsForChains)
+	emissionWarnings = append(emissionWarnings, chainNotes...)
 	// Вердикт по источникам-цепочкам, отложенный с прохода 1: пуст только тот,
 	// у кого не собралась ни одна цепочка.
 	for _, i := range chainOnlySources {
@@ -1211,6 +1212,7 @@ func GenerateOutboundsFromParserConfig(
 	selectorJSONs, localSelectorsCount, globalSelectorsCount, emptyDirections := generateSelectorJSONs(
 		parserConfig, nodesBySource, globalPool, outboundsInfo, exposeCandidates, progressCallback, directions)
 	selectorsJSON = append(selectorsJSON, selectorJSONs...)
+	emissionWarnings = append(emissionWarnings, chainCycleWarnings(chainCycles)...)
 
 	return &OutboundGenerationResult{
 		OutboundsJSON:        selectorsJSON,

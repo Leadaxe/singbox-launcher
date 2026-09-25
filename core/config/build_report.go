@@ -109,9 +109,12 @@ type BuildReportEntry struct {
 	// NodeCount — сколько узлов снято (BuildReportNodesDropped,
 	// BuildReportCoreUnsupported). Ноль у остальных видов: там считать нечего.
 	NodeCount int
-	// Code — код реестра записи (BuildReportCoreUnsupported): по нему UI
-	// берёт заголовок из warnings.json на своём языке.
+	// Code — код реестра записи (warnings.json): по нему UI берёт текст на
+	// своём языке (у BuildReportCoreUnsupported — заголовок). Пустой код —
+	// запись показывается по Reason.
 	Code string
+	// Params — подстановки текста кода ({target}, {count}, ...).
+	Params map[string]string
 }
 
 // BuildGeneration — номер попытки сборки.

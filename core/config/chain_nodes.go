@@ -25,6 +25,10 @@ type ChainDegradation struct {
 	Tag    string
 	Name   string
 	Reason string
+	// Code / Params — код реестра (warnings.json, chain_*) и подстановки:
+	// по коду отчёт сборки переводит запись; Reason — запасной текст.
+	Code   string
+	Params map[string]string
 }
 
 // chainNodeTag — тег будущего узла цепочки.
@@ -101,9 +105,9 @@ func ResolveChainSources(
 	allNodes []*ParsedNode,
 	nodesBySource map[int][]*ParsedNode,
 	directionTags map[string]bool,
-) ([]*ParsedNode, []ChainDegradation) {
+) ([]*ParsedNode, []ChainDegradation, []EmissionWarning) {
 	if parserConfig == nil {
-		return allNodes, nil
+		return allNodes, nil, nil
 	}
 
 	// Есть ли вообще цепочки: конфиги без них должны собираться ровно так
@@ -116,7 +120,7 @@ func ResolveChainSources(
 		}
 	}
 	if !hasChain {
-		return allNodes, nil
+		return allNodes, nil, nil
 	}
 
 	supported, unsupportedReason := chainSupported()
@@ -172,6 +176,9 @@ func ResolveChainSources(
 	chainTags := make(map[string]bool, 4)
 
 	var broken []ChainDegradation
+	// notes — цепочки, которые собрались, но не так, как настроены
+	// (strip ключа, нужного звену): код в отчёт сборки.
+	var notes []EmissionWarning
 	for i, src := range parserConfig.ParserConfig.Proxies {
 		if src.Disabled {
 			continue
@@ -182,7 +189,18 @@ func ResolveChainSources(
 			if bc.Chain == nil {
 				continue
 			}
-			if node, reason := buildChainNode(src, i, ci, bc, supported, unsupportedReason, known, nodesByTag, chainTags); node != nil {
+			node, reason, unstripped := buildChainNode(src, i, ci, bc, supported, unsupportedReason, known, nodesByTag, chainTags)
+			if node != nil {
+				for _, n := range unstripped {
+					params := map[string]string{"target": strings.Join(n.Hops, ", ")}
+					notes = append(notes, EmissionWarning{
+						Text:        node.Tag + ": " + registryWarningText(n.Code, params, n.Code),
+						SourceID:    strings.TrimSpace(src.ID),
+						SourceLabel: sourceDisplayName(src, i),
+						Code:        n.Code,
+						Params:      params,
+					})
+				}
 				allNodes = append(allNodes, node)
 				nodesBySource[i] = append(nodesBySource[i], node)
 				known[node.Tag] = true
@@ -195,7 +213,7 @@ func ResolveChainSources(
 			}
 		}
 	}
-	return allNodes, broken
+	return allNodes, broken, notes
 }
 
 // buildChainNode — одна цепочка источника: узел либо причина, по которой он
@@ -212,7 +230,7 @@ func buildChainNode(
 	known map[string]bool,
 	nodesByTag map[string]*ParsedNode,
 	chainTags map[string]bool,
-) (*ParsedNode, ChainDegradation) {
+) (*ParsedNode, ChainDegradation, []ChainUnstripNote) {
 	tag := chainNodeTag(bc, sourceIndex, chainIndex)
 	name := tag
 	// Подпись источника называет цепочку только у корневой записи: у папки
@@ -222,15 +240,20 @@ func buildChainNode(
 			name = s
 		}
 	}
-	degrade := func(reason string) (*ParsedNode, ChainDegradation) {
-		return nil, ChainDegradation{Tag: tag, Name: name, Reason: reason}
+	degrade := func(reason, code string, params map[string]string) (*ParsedNode, ChainDegradation, []ChainUnstripNote) {
+		return nil, ChainDegradation{Tag: tag, Name: name, Reason: reason, Code: code, Params: params}, nil
 	}
 
 	if !supported {
-		return degrade(unsupportedReason)
+		version := coreInfoForBuild().Version
+		if version == "" {
+			version = "?"
+		}
+		return degrade(unsupportedReason, codeChainUnsupportedByCore,
+			map[string]string{"version": version, "tag": tag})
 	}
 	if reason := ChainEmitError(tag, bc.Chain); reason != "" {
-		return degrade(reason)
+		return degrade(reason, codeChainInvalid, map[string]string{"reason": reason})
 	}
 	// Коллизия имени: цепочка, названная как существующий узел, Направление
 	// или другая цепочка, дала бы два outbound'а с одним тегом — ядро
@@ -238,18 +261,23 @@ func buildChainNode(
 	// (MakeTagUnique), цепочки шли в обход. После ChainEmitError: собственные
 	// диагностики цепочки информативнее.
 	if known[tag] {
-		return degrade("the name “" + tag + "” is already taken by another node, Direction or chain")
+		reason := "the name “" + tag + "” is already taken by another node, Direction or chain"
+		return degrade(reason, codeChainInvalid, map[string]string{"reason": reason})
 	}
 	// Позиция, которой нет среди известных тегов, — ссылка в никуда, на
 	// которой ядро не стартует. Цепочка выпадает ЦЕЛИКОМ, а не теряет
 	// позицию: маршрут без хопа — это другой маршрут, и подменять его молча
 	// нельзя.
-	for _, hop := range bc.Chain.Hops {
+	for pos, hop := range bc.Chain.Hops {
 		// Маркер проверяется ПЕРВЫМ: позиция, про которую проход 2 уже знает,
 		// что её цель не нашлась, роняет цепочку независимо от того, носит ли
 		// кто-то в корне такое же имя.
 		if chainHopIsUnresolved(hop) || !known[hop] {
-			return degrade("position " + chainHopDisplayTag(hop) + " not found among nodes and Directions")
+			return degrade("position "+chainHopDisplayTag(hop)+" not found among nodes and Directions",
+				codeChainHopMissing, map[string]string{
+					"position": strconv.Itoa(pos + 1),
+					"target":   chainHopDisplayTag(hop),
+				})
 		}
 	}
 	// Ключ каталога strip, который снял бы с звена то, что его тело требует
@@ -261,8 +289,12 @@ func buildChainNode(
 			tag, n.Code, n.Key, strings.Join(n.Hops, ", "))
 	}
 	if nested := ChainNestedConflict(bc.Chain, chainTags); len(nested) > 0 {
-		return degrade("chains " + strings.Join(nested, ", ") +
-			" are not in the first position — the core allows a nested chain only at position 0")
+		return degrade("chains "+strings.Join(nested, ", ")+
+			" are not in the first position — the core allows a nested chain only at position 0",
+			codeChainNestedPosition, map[string]string{
+				"position": chainNestedPositions(bc.Chain, nested),
+				"target":   strings.Join(nested, ", "),
+			})
 	}
 
 	return &ParsedNode{
@@ -282,7 +314,24 @@ func buildChainNode(
 		// сборочной формы, положенной вызывающим напрямую, ссылки нет —
 		// такому узлу тег не сопоставится, и страховка на него не действует.
 		CanonicalLink: bc.Link,
-	}, ChainDegradation{}
+	}, ChainDegradation{}, unstripped
+}
+
+// chainNestedPositions — номера позиций (с единицы), на которых стоят
+// вложенные цепочки nested, через запятую.
+func chainNestedPositions(chain *configtypes.SourceChain, nested []string) string {
+	want := make(map[string]bool, len(nested))
+	for _, t := range nested {
+		want[t] = true
+	}
+	var pos []string
+	hops := chain.HopsOrNil()
+	for i := 1; i < len(hops); i++ { // позиция 0 вложенной цепочке разрешена
+		if want[hops[i]] {
+			pos = append(pos, strconv.Itoa(i+1))
+		}
+	}
+	return strings.Join(pos, ", ")
 }
 
 // sourceHasPendingChains — есть ли у источника цепочки, которые соберёт

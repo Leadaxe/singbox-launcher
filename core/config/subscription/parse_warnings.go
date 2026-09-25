@@ -118,6 +118,24 @@ const (
 	// (Xray против sing-box) спрошен не был, и записи читал чужой разбор.
 	// Код ступени КЛАССИФИКАЦИИ и уровня ПОДПИСКИ, а не узла; severity=error.
 	WarnBodyDialectUnrecognized = "body_dialect_unrecognized"
+
+	// Коды detour-цепочки импортируемого sing-box-конфига: их видно только
+	// по ВСЕМУ телу (граф detour), одной записи для них мало. Узел живёт,
+	// цепочка укорочена — код едет на узле (singboxChainInfo.attachChain).
+	WarnDetourCycleBroken   = "detour_cycle_broken"
+	WarnDetourTargetMissing = "detour_target_missing"
+	WarnDetourToGroup       = "detour_to_group"
+	WarnDetourChainTooDeep  = "detour_chain_too_deep"
+
+	// WarnGroupEmpty — ни один член группы тела не разрешился в узел:
+	// группа уходит в отбраковку с этим кодом (dropped[].code).
+	WarnGroupEmpty = "group_empty"
+	// WarnGroupMemberMissing — часть членов группы не разрешилась; группа
+	// живёт без них, код на узле-группе с числом потерянных.
+	WarnGroupMemberMissing = "group_member_missing"
+	// WarnMaxNodesExceeded — тело длиннее капа узлов: хвост отброшен. Код
+	// уровня ПОДПИСКИ (FetchWarning), а не узла.
+	WarnMaxNodesExceeded = "max_nodes_exceeded"
 )
 
 // Предикаты «значение будет испорчено» (realityShortIDWouldDegrade,

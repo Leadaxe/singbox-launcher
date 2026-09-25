@@ -60,7 +60,7 @@ func ParseNodesFromXrayJSONArrayEx(
 	jsonBody string,
 	skip []map[string]string,
 ) ([]*configtypes.ParsedNode, []string, error) {
-	nodes, reasons, _, err := parseNodesFromXrayJSONArrayFull(jsonBody, skip)
+	nodes, reasons, _, _, err := parseNodesFromXrayJSONArrayFull(jsonBody, skip)
 	return nodes, reasons, err
 }
 
@@ -72,15 +72,17 @@ func ParseNodesFromXrayJSONArrayEx(
 // неразобранные записи — разные сущности с разными адресатами (см.
 // json_body_rejects.go), и единственный, кому нужны обе, — чистый парсер тела
 // `ParseSubscriptionBody`. Полутора десяткам точек вызова `Ex` четвёртое
-// значение не нужно.
+// значение не нужно. Пятое — теги групп, выброшенных резолвом состава
+// (ни один член не выжил): у синтезированной группы нет исходника, и
+// отбраковкой она не становится — вызывающий называет её кодом group_empty.
 func parseNodesFromXrayJSONArrayFull(
 	jsonBody string,
 	skip []map[string]string,
-) ([]*configtypes.ParsedNode, []string, []jsonRejectedRecord, error) {
+) ([]*configtypes.ParsedNode, []string, []jsonRejectedRecord, []string, error) {
 	jsonBody = strings.TrimSpace(jsonBody)
 	var elems []json.RawMessage
 	if err := json.Unmarshal([]byte(jsonBody), &elems); err != nil {
-		return nil, nil, nil, fmt.Errorf("subscription JSON array: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("subscription JSON array: %w", err)
 	}
 
 	rejected := &ParseFailureReasons{}
@@ -143,13 +145,13 @@ func parseNodesFromXrayJSONArrayFull(
 
 	// Состав групп резолвится ПОСЛЕ всех элементов: член мог достаться
 	// элементу, который ещё не разобран.
-	resolved := resolveGroupMembers(out, memberServers, finalTagByServer)
+	resolved, emptyGroups := resolveGroupMembers(out, memberServers, finalTagByServer)
 	// Резолв мог выбросить группы, потерявшие всех членов, — позиции считаются
 	// по ИТОГОВОМУ списку, поэтому пересчитываем ещё раз. Группа, которую
 	// выбросили здесь, неразобранной записью не становится: это не запись
 	// провайдера, а синтезированный лаунчером узел (origin у неё пуст).
 	rejectedRecords = remapRejectsToKeptNodes(rejectedRecords, out, resolved)
-	return resolved, rejected.List(), rejectedRecords, nil
+	return resolved, rejected.List(), rejectedRecords, emptyGroups, nil
 }
 
 // remapRejectsToKeptNodes пересчитывает позиции отбраковок с чернового списка
@@ -297,9 +299,9 @@ func resolveGroupMembers(
 	nodes []*configtypes.ParsedNode,
 	memberServers map[*configtypes.ParsedNode][]string,
 	finalTagByServer map[string]string,
-) []*configtypes.ParsedNode {
+) (resolved []*configtypes.ParsedNode, emptyGroups []string) {
 	if len(memberServers) == 0 {
-		return nodes
+		return nodes, nil
 	}
 
 	out := make([]*configtypes.ParsedNode, 0, len(nodes))
@@ -334,12 +336,13 @@ func resolveGroupMembers(
 
 		if len(members) == 0 {
 			debuglog.WarnLog("Parser: Xray group %q has no surviving members — dropped", node.Tag)
+			emptyGroups = append(emptyGroups, node.Tag)
 			continue
 		}
 		node.Outbound[configtypes.GroupMembersKey] = members
 		out = append(out, node)
 	}
-	return out
+	return out, emptyGroups
 }
 
 // computeXrayServerOwners — проход 1 §342: определяет, какой элемент вправе

@@ -30,6 +30,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -288,6 +289,10 @@ type ParsedBody struct {
 	// Warnings — per-record деградации (битые записи, потерянные
 	// группы-члены, пустые группы). Персистятся в updateStatus (W3).
 	Warnings []string
+	// WarningCodes — машинные коды тех из Warnings, которым код назначен
+	// (warnings.json), по индексу строки. Текст остаётся запасным: UI
+	// переводит по коду, а строка без кода показывается как есть.
+	WarningCodes []BodyWarningCode
 	// IgnoredSections — секции целого sing-box-конфига, которые импорт не
 	// читает (route/dns/inbounds/...).
 	IgnoredSections []string
@@ -427,9 +432,15 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 		if bodyKind == BodyKindXrayConfig {
 			xrayBody = XrayConfigToArray(contentStr)
 		}
-		arrayNodes, xrayReasons, xrayRejects, err := parseNodesFromXrayJSONArrayFull(xrayBody, skip)
+		arrayNodes, xrayReasons, xrayRejects, emptyGroups, err := parseNodesFromXrayJSONArrayFull(xrayBody, skip)
 		for _, r := range xrayReasons {
 			st.warn(r)
+		}
+		// Группа-балансировщик без единого выжившего члена: исходника у неё
+		// нет (синтезирована), поэтому не отбраковка, а код уровня тела.
+		for _, tag := range emptyGroups {
+			st.warnCoded(fmt.Sprintf("group %q lost all members — dropped", tag),
+				WarnGroupEmpty, map[string]string{"tag": tag})
 		}
 		if err != nil {
 			st.warn(fmt.Sprintf("Xray JSON array body rejected: %v", err))
@@ -562,6 +573,24 @@ func (st *bodyParseState) warn(msg string) {
 	st.res.Warnings = append(st.res.Warnings, msg)
 }
 
+// warnCoded — то же предупреждение уровня тела с машинным кодом.
+func (st *bodyParseState) warnCoded(msg, code string, params map[string]string) {
+	st.res.WarningCodes = append(st.res.WarningCodes, BodyWarningCode{
+		Index:  len(st.res.Warnings),
+		Code:   code,
+		Params: params,
+	})
+	st.warn(msg)
+}
+
+// BodyWarningCode — код предупреждения уровня тела подписки: Index — номер
+// строки в ParsedBody.Warnings, к которой код относится.
+type BodyWarningCode struct {
+	Index  int
+	Code   string
+	Params map[string]string
+}
+
 // reject запоминает неразобранную запись на её позиции (SPEC 116 W11).
 //
 // Счётчик принятых НЕ трогается: отбракованная запись не занимает ни номер
@@ -689,7 +718,11 @@ func (st *bodyParseState) accept(node *configtypes.ParsedNode, originKind, origi
 func (st *bodyParseState) finish() {
 	if st.skipped > 0 {
 		st.res.Truncated = true
-		st.warn(fmt.Sprintf("body truncated: %d record(s) beyond the cap of %d", st.skipped, st.capN))
+		st.warnCoded(fmt.Sprintf("body truncated: %d record(s) beyond the cap of %d", st.skipped, st.capN),
+			WarnMaxNodesExceeded, map[string]string{
+				"limit":   strconv.Itoa(st.capN),
+				"skipped": strconv.Itoa(st.skipped),
+			})
 	}
 
 	// Сырые теги групп — ПОСЛЕ всех узлов, тем же счётчиком и в порядке тела
@@ -764,7 +797,21 @@ func (st *bodyParseState) finish() {
 			}
 		}
 		if len(members) == 0 {
-			st.warn(fmt.Sprintf("group %q lost all members — dropped", e.RawTag))
+			st.warnCoded(fmt.Sprintf("group %q lost all members — dropped", e.RawTag),
+				WarnGroupEmpty, map[string]string{"tag": e.RawTag})
+			// Не молчаливая пропажа: группа с исходником встаёт в состав
+			// отбраковкой с кодом на своём месте среди выживших (контракт
+			// 1.1.49 — у каждой отбраковки код). Синтезированная группа
+			// Xray исходника не имеет, и rejectCoded её не запомнит.
+			if strings.TrimSpace(e.OriginRaw) != "" {
+				st.res.Rejected = append(st.res.Rejected, RejectedBodyRecord{
+					After:      len(kept),
+					Reason:     fmt.Sprintf("group %q rejected: no resolvable members", e.RawTag),
+					Code:       WarnGroupEmpty,
+					OriginKind: e.OriginKind,
+					OriginRaw:  e.OriginRaw,
+				})
+			}
 			continue
 		}
 		e.MemberRawTags = members
