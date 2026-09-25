@@ -524,6 +524,10 @@ func fieldOutcomes(f *registry.Field, scheme, linkPrefix string) []string {
 	if mw := f.MaxWhen; mw != nil {
 		out = append(out, maxWhenPhrase(mw, linkPrefix))
 	}
+	if cw := f.CoerceWhen; cw != nil {
+		out = append(out, "Replaced: "+scalarList(cw.Values)+" → "+scalar(cw.Value)+conditionPhrase(cw.When)+
+			" → "+warnLink(cw.Code, linkPrefix))
+	}
 	if f.NormalizeCode != "" {
 		out = append(out, "If the value had to be cleaned up: "+warnLink(f.NormalizeCode, linkPrefix))
 	}
@@ -547,12 +551,19 @@ func fieldRelations(f *registry.Field, withSchemes bool) []string {
 		out = append(out, "Conflicts with: "+code(c.With)+unlessPhrase(c))
 	}
 	for _, rq := range f.Requires {
+		if rq.Set != nil {
+			out = append(out, "Requires: "+code(rq.Path)+unlessPhrase(rq)+" — if missing, filled in with "+scalar(rq.Set))
+			continue
+		}
 		req := "Meaningless without: " + code(rq.Path)
 		if rq.Equals != nil {
 			req += " = " + scalar(rq.Equals)
 		}
 		req += unlessPhrase(rq)
 		out = append(out, req)
+	}
+	if oh := f.OnHopRequired; oh != nil {
+		out = append(out, "Not stripped when a hop at position 2 or later requires this path ("+code(oh.Code)+")")
 	}
 	return out
 }

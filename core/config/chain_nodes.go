@@ -252,9 +252,13 @@ func buildChainNode(
 			return degrade("position " + chainHopDisplayTag(hop) + " not found among nodes and Directions")
 		}
 	}
-	if conflicts := ChainRealityConflict(bc.Chain, nodesByTag); len(conflicts) > 0 {
-		return degrade("strip removes tls.utls while positions " + strings.Join(conflicts, ", ") +
-			" are reality nodes: the core refuses to start with such a config")
+	// Ключ каталога strip, который снял бы с звена то, что его тело требует
+	// (tls.utls у REALITY), по правилу реестра не снимается: цепочка
+	// собирается, а о снятом ключе сообщает код (chain.json on_hop_required).
+	chain, unstripped := ChainUnstripRequired(bc.Chain, nodesByTag)
+	for _, n := range unstripped {
+		debuglog.WarnLog("chain: source %q: %s — strip %q turned off, positions %s require it",
+			tag, n.Code, n.Key, strings.Join(n.Hops, ", "))
 	}
 	if nested := ChainNestedConflict(bc.Chain, chainTags); len(nested) > 0 {
 		return degrade("chains " + strings.Join(nested, ", ") +
@@ -271,7 +275,7 @@ func buildChainNode(
 		// падала на запасное правило.
 		IdentityTag: tag,
 		Scheme:      configtypes.ChainOutboundType,
-		Outbound:    ChainOutboundObject(tag, bc.Chain),
+		Outbound:    ChainOutboundObject(tag, chain),
 		SourceIndex: sourceIndex,
 		EmitRaw:     true,
 		// SPEC 132: обратный путь «финальный тег → узел состояния». У

@@ -14,7 +14,7 @@
           "server_name": "example-1.com",
           "utls": {
             "enabled": true,
-            "fingerprint": "random"
+            "fingerprint": "chrome"
           }
         },
         "type": "vless",
@@ -27,6 +27,11 @@
         {
           "code": "ech_ignored",
           "path": "ech"
+        },
+        {
+          "code": "reality_fp_random_pinned",
+          "path": "tls.utls.fingerprint",
+          "value": "random"
         }
       ]
     }

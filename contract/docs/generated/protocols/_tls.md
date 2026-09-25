@@ -175,6 +175,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Default: `chrome`
   - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
   - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
+  - Replaced: `random` → `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
 - <a id="body-reality"></a>**`reality`** — REALITY settings.
   - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
   - Not supported by: `naive`, `hysteria`, `hysteria2`, `tuic`, `masque`
@@ -185,7 +186,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Conflicts with: `tls.ech.enabled`
   - Conflicts with: `tls.disable_sni`
   - Conflicts with: `tls.spoof`
-  - Meaningless without: `tls.utls.enabled`
+  - Requires: `tls.utls.enabled` — if missing, filled in with `true`
 - <a id="body-reality-public-key"></a>**`reality.public_key`** — Server REALITY public key (x25519).
   - Type: string, format `base64_32`, normalized: `base64_rawurl`
   - Required: the node is dropped without it

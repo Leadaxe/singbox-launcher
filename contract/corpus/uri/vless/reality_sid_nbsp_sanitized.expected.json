@@ -14,7 +14,7 @@
           "server_name": "example-1.com",
           "utls": {
             "enabled": true,
-            "fingerprint": "random"
+            "fingerprint": "chrome"
           }
         },
         "type": "vless",
@@ -23,6 +23,11 @@
       "kind": "outbound",
       "scheme": "vless",
       "warnings": [
+        {
+          "code": "reality_fp_random_pinned",
+          "path": "tls.utls.fingerprint",
+          "value": "random"
+        },
         {
           "code": "reality_short_id_invalid",
           "path": "tls.reality.short_id",

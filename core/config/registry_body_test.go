@@ -238,6 +238,8 @@ type bodyField struct {
 	DefaultWhen    *bodyDefaultWhen      `json:"default_when"`
 	MaxWhen        *bodyMaxWhen          `json:"max_when"`
 	MinWhen        *bodyMinWhen          `json:"min_when"`
+	CoerceWhen     *bodyCoerceWhen       `json:"coerce_when"`
+	OnHopRequired  *bodyOnHopRequired    `json:"on_hop_required"`
 	Skip           string                `json:"skip"`
 	Role           string                `json:"role"`
 	BuildTag       string                `json:"build_tag"`
@@ -358,9 +360,25 @@ type bodyAdvisory struct {
 }
 
 type bodyRelation struct {
-	With string `json:"with"`
-	Path string `json:"path"`
-	Code string `json:"code"`
+	With   string      `json:"with"`
+	Path   string      `json:"path"`
+	Equals interface{} `json:"equals"`
+	Set    interface{} `json:"set"`
+	Code   string      `json:"code"`
+}
+
+// bodyCoerceWhen — условная замена годного значения (контракт 1.1.61).
+type bodyCoerceWhen struct {
+	Values []interface{}  `json:"values"`
+	Value  interface{}    `json:"value"`
+	Code   string         `json:"code"`
+	When   *bodyCondition `json:"when"`
+}
+
+// bodyOnHopRequired — действие ключа каталога strip цепочки (контракт 1.1.61).
+type bodyOnHopRequired struct {
+	Action string `json:"action"`
+	Code   string `json:"code"`
 }
 
 // bodySection — секция body (или common) одного файла реестра.
@@ -957,6 +975,40 @@ func checkField(t *testing.T, where, path string, f *bodyField, codes map[string
 			}
 		}
 	}
+	if cw := f.CoerceWhen; cw != nil {
+		// Замена годного значения — всегда условная и всегда с кодом:
+		// безусловная выражается сужением values, молчаливая запрещена.
+		if len(cw.Values) == 0 || cw.Value == nil {
+			t.Errorf("%s: coerce_when без values/value — менять нечего", full)
+		}
+		if cw.When == nil {
+			t.Errorf("%s: coerce_when без when — безусловная замена пишется сужением values", full)
+		}
+		if cw.Code == "" || (!codes[cw.Code] && !registryPendingCodes[cw.Code]) {
+			t.Errorf("%s: coerce_when.code %q не объявлен в warnings.json", full, cw.Code)
+		}
+		if f.Type == "enum" && len(f.Values) > 0 && cw.Value != nil {
+			ok := false
+			for _, v := range f.Values {
+				if fmt.Sprintf("%v", v) == fmt.Sprintf("%v", cw.Value) {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				t.Errorf("%s: coerce_when подставляет %v — значения нет в values", full, cw.Value)
+			}
+		}
+		checkBodyCondition(t, full+" coerce_when", cw.When)
+	}
+	if oh := f.OnHopRequired; oh != nil {
+		if oh.Action != "unstrip" {
+			t.Errorf("%s: on_hop_required.action %q вне словаря (unstrip)", full, oh.Action)
+		}
+		if !codes[oh.Code] {
+			t.Errorf("%s: on_hop_required.code %q не объявлен в warnings.json", full, oh.Code)
+		}
+	}
 	if mw := f.MinWhen; mw != nil {
 		if mw.Min == nil {
 			t.Errorf("%s: min_when без min — порога нет", full)
@@ -1073,6 +1125,9 @@ func checkField(t *testing.T, where, path string, f *bodyField, codes map[string
 	for _, rel := range f.Requires {
 		if rel.Path == "" {
 			t.Errorf("%s: requires без path", full)
+		}
+		if rel.Set != nil && rel.Equals != nil {
+			t.Errorf("%s: requires с set и equals сразу — материализуется только наличие", full)
 		}
 		if !codes[rel.Code] {
 			t.Errorf("%s: код требования %q не объявлен в warnings.json", full, rel.Code)

@@ -161,6 +161,15 @@ type Field struct {
 	// человек» означало бы оставить пользователя без VPN (в отличие от
 	// потолка MTU, где узел собирается и работает хуже).
 	MinWhen *MinWhen `json:"min_when"`
+	// CoerceWhen — УСЛОВНАЯ замена годного значения (контракт 1.1.61):
+	// значение из `values` при выполненном `when` заменяется на `value` с
+	// кодом. Условие судится по ГОТОВОМУ телу, после обхода: сосед, снятый
+	// своим правилом (REALITY с негодным ключом), условия не выполняет.
+	CoerceWhen *CoerceWhen `json:"coerce_when"`
+	// OnHopRequired — у ключа каталога `strip` цепочки (контракт 1.1.61):
+	// что делать, когда ключ снял бы с тела хопа на позиции ≥ 1 путь, который
+	// тело само требует (связь `requires` с `set` вернула бы его обратно).
+	OnHopRequired *OnHopRequired `json:"on_hop_required"`
 	// СНЯТО (контракт 1.1.4): ForbiddenWhen. Атрибут `forbidden_when` был
 	// объявлен в SPEC 131 §3.2 и реализован в трёх местах (здесь, в
 	// санитайзере, в генераторе доков), но НИ ОДНО поле реестра его так и не
@@ -341,6 +350,32 @@ type MinWhen struct {
 	When         *Condition `json:"when"`
 }
 
+// CoerceWhen — условная замена значения (см. Field.CoerceWhen).
+//
+// Отличие от `on_invalid: coerce`: значение ГОДНОЕ (ядро его принимает), но
+// при условии `when` ведёт себя не так, как обещает: `random` под REALITY
+// выбирает при старте ядра один из пяти отпечатков, и два из них без
+// гибридного шара. Отличие от `advisory`: значение меняется.
+type CoerceWhen struct {
+	Values []interface{} `json:"values"`
+	Value  interface{}   `json:"value"`
+	Code   string        `json:"code"`
+	When   *Condition    `json:"when"`
+}
+
+// OnHopRequired — действие у ключа каталога `strip` цепочки, когда тело хопа
+// этот путь требует (контракт 1.1.61). Единственное действие — `unstrip`:
+// ключ снимается с патча цепочки (ядро применяет каталог ко всем позициям
+// разом, выборочно «не снимать у одной» оно не умеет), цепочка собирается,
+// о снятом ключе сообщает Code.
+type OnHopRequired struct {
+	Action string `json:"action"`
+	Code   string `json:"code"`
+}
+
+// HopRequiredUnstrip — действие OnHopRequired: не снимать ключ.
+const HopRequiredUnstrip = "unstrip"
+
 // Condition — условие применимости правила значения.
 //
 // `any_set` — «задано ЛЮБОЕ из перечисленных полей». Одного `Relation.Path`
@@ -431,7 +466,13 @@ type Relation struct {
 	// значения поля: `uplink_data_placement` требует mode=packet-up только
 	// при header/cookie, а body/auto ядро принимает в любом режиме.
 	When *Condition `json:"when"`
-	Code string     `json:"code"`
+	// Set — только у `requires` (контракт 1.1.61): требуемого пути нет —
+	// поле НЕ снимается, а путь материализуется этим значением с кодом Code.
+	// Исполняется по готовому телу: если поле само не пережило обход, дописывать
+	// нечего. Путь, запрещённый схеме, не материализуется — связь работает
+	// обычным снятием.
+	Set  interface{} `json:"set"`
+	Code string      `json:"code"`
 }
 
 // section — секция body/common одного файла реестра, как она лежит на диске.

@@ -361,18 +361,6 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutbou
 				cache = &c
 			}
 		}
-		// D-119: у REALITY включается uTLS и ставится chrome там, где
-		// отпечаток не выбирал никто; явный отпечаток узла не трогается.
-		// Живёт здесь, а не в парсере: значение узла нормативно (CANON §2),
-		// LxBox делает то же на том же шаге сборки.
-		if cache != nil {
-			healed := HealRealityFingerprints(cache.Outbounds)
-			if len(healed) == len(cache.Outbounds) {
-				c := *cache
-				c.Outbounds = healed
-				cache = &c
-			}
-		}
 		// SPEC 129 Н10: `domain_resolver` узла на DNS-сервер, выпавший второй
 		// линией, — замена резолвером (без него ядро не стартует).
 		if cache != nil && ctx.dnsFailClosed.active() {

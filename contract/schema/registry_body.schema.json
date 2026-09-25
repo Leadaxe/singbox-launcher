@@ -78,12 +78,38 @@
           "items": { "type": "string" },
           "minItems": 1
         },
+        "set": {
+          "description": "Только у `requires` (контракт 1.1.61): требуемого пути нет — поле НЕ снимается, путь материализуется этим значением с кодом `code` (недостающие объекты заводятся). Судится по ГОТОВОМУ телу, после обхода: поле, не пережившее своих правил, ничего не дописывает. Путь, запрещённый схеме, не материализуется — связь работает обычным снятием. Первый потребитель: `tls.reality.enabled` requires `tls.utls.enabled` с `set: true` — ядро не поднимает REALITY без uTLS («uTLS is required by reality client»). Несовместимо с `equals`.",
+          "type": ["string", "number", "boolean"]
+        },
         "code": {
           "type": "string",
           "description": "Код из registry/warnings.json."
         }
       },
       "required": ["code"],
+      "additionalProperties": false
+    },
+    "coerceWhen": {
+      "description": "УСЛОВНАЯ замена ГОДНОГО значения (контракт 1.1.61): значение из `values` при выполненном `when` заменяется на `value` с кодом `code`. От `on_invalid: coerce` отличается тем, что значение ядро принимает, но при условии оно ведёт себя не так, как обещает; от `advisory` — тем, что значение меняется. Условие судится по ГОТОВОМУ телу, после обхода: сосед, снятый своим правилом, условия не выполняет. Первый потребитель: `tls.utls.fingerprint` `random` при `tls.reality.enabled` → `chrome` — ядро выбирает random один раз при старте из пяти отпечатков, два из которых без гибридного шара.",
+      "type": "object",
+      "properties": {
+        "values": { "type": "array", "items": { "type": ["string", "number", "boolean"] }, "minItems": 1 },
+        "value": { "type": ["string", "number", "boolean"] },
+        "code": { "type": "string", "description": "Код из registry/warnings.json." },
+        "when": { "$ref": "#/definitions/condition" }
+      },
+      "required": ["values", "value", "code", "when"],
+      "additionalProperties": false
+    },
+    "onHopRequired": {
+      "description": "У ключа каталога `strip` цепочки (chain.json, контракт 1.1.61): что делать, когда ключ снял бы с тела звена на позиции >= 1 путь, который это тело ТРЕБУЕТ (санитайзер вернул бы его связью `requires` с `set`). `unstrip` — ключ снимается с патча цепочки (ядро применяет каталог ко всем звеньям разом), цепочка собирается, о снятом ключе сообщает `code`.",
+      "type": "object",
+      "properties": {
+        "action": { "enum": ["unstrip"] },
+        "code": { "type": "string", "description": "Код из registry/warnings.json." }
+      },
+      "required": ["action", "code"],
       "additionalProperties": false
     },
     "advisoryWhen": {
@@ -391,6 +417,8 @@
         "default_when": { "$ref": "#/definitions/defaultWhen" },
         "max_when": { "$ref": "#/definitions/maxWhen" },
         "min_when": { "$ref": "#/definitions/minWhen" },
+        "coerce_when": { "$ref": "#/definitions/coerceWhen" },
+        "on_hop_required": { "$ref": "#/definitions/onHopRequired" },
         "required": {
           "type": "boolean",
           "description": "Без поля узел не собирается — уходит в dropped с кодом field_missing."

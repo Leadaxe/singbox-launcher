@@ -1318,13 +1318,17 @@ func generateRawNodeJSON(node *ParsedNode) (string, error) {
 	if typ == "" {
 		return "", fmt.Errorf("manual node %q has no type", node.Tag)
 	}
+	// Правила-починки реестра (REALITY без uTLS, random под REALITY) — и у
+	// ручного объекта: это свойство ядра, а не входа. Остальное — как есть.
+	ob, notes := nodeflow.Repairs(node.Scheme, node.Outbound)
+	logBuildRepairs(node.Scheme, node.Tag, notes)
 
 	var parts []string
 	parts = append(parts, fmt.Sprintf(`"tag":%s`, marshalJSONString(node.Tag)))
 	parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString(typ)))
 
-	extraKeys := make([]string, 0, len(node.Outbound))
-	for k := range node.Outbound {
+	extraKeys := make([]string, 0, len(ob))
+	for k := range ob {
 		if k == "tag" || k == "type" {
 			continue
 		}
@@ -1333,7 +1337,7 @@ func generateRawNodeJSON(node *ParsedNode) (string, error) {
 	sort.Strings(extraKeys)
 
 	for _, k := range extraKeys {
-		encoded, err := json.Marshal(node.Outbound[k])
+		encoded, err := json.Marshal(ob[k])
 		if err != nil {
 			debuglog.WarnLog("GenerateNodeJSON: manual node %q: dropping unencodable field %q: %v", node.Tag, k, err)
 			continue
@@ -1358,7 +1362,7 @@ func generateCanonicalBodyJSON(node *ParsedNode) (string, error) {
 	// Здесь единственное место, где сохранённое тело становится outbound'ом
 	// config.json, — значит и гейту место здесь, одной табличной проверкой
 	// по реестру вместо частной пробы на каждое поле.
-	gated, _ := gateBodyForCore(node.Scheme, node.Tag, node.EmitBody)
+	gated, _ := gateBodyForCore(node.Scheme, node.Tag, repairBodyForBuild(node.Scheme, node.Tag, node.EmitBody))
 	return stampTagAndDetour(gated, node)
 }
 

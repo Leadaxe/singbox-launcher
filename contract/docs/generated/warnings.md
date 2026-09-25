@@ -27,7 +27,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`chain_hop_missing`](#chain_hop_missing) · `error` — Chain: hop {position} not found
 - [`chain_invalid`](#chain_invalid) · `error` — Chain is malformed
 - [`chain_nested_position`](#chain_nested_position) · `error` — Chain: nested chain at position {position}
-- [`chain_strip_utls_on_reality`](#chain_strip_utls_on_reality) · `error` — Chain: cannot strip uTLS on REALITY
+- [`chain_strip_utls_on_reality`](#chain_strip_utls_on_reality) · `warning` — Chain: uTLS kept because of REALITY
 - [`chain_unsupported_by_core`](#chain_unsupported_by_core) · `error` — Chains are unavailable in core {version}
 - [`core_rejected`](#core_rejected) · `error` — The core rejected this server
 - [`detour_chain_too_deep`](#detour_chain_too_deep) · `warning` — Chain shortened to {limit} hops
@@ -62,9 +62,11 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`protocol_unsupported`](#protocol_unsupported) · `error` — Protocol {scheme} is not supported
 - [`provider_banner_link`](#provider_banner_link) · `info` — Subscription: provider notice instead of a server
 - [`reality_fp_not_chrome`](#reality_fp_not_chrome) · `info` — REALITY: fingerprint {value} may not connect
+- [`reality_fp_random_pinned`](#reality_fp_random_pinned) · `info` — REALITY: fingerprint random pinned to chrome
 - [`reality_key_share_invalid`](#reality_key_share_invalid) · `info` — REALITY: key_share removed
 - [`reality_pbk_invalid`](#reality_pbk_invalid) · `warning` — REALITY disabled: invalid public key
 - [`reality_short_id_invalid`](#reality_short_id_invalid) · `info` — REALITY: short_id cleaned up
+- [`reality_utls_enabled`](#reality_utls_enabled) · `info` — REALITY: uTLS switched on
 - [`scheme_unsupported`](#scheme_unsupported) · `error` — Link: scheme {scheme} is not supported
 - [`selector_as_auto`](#selector_as_auto) · `info` — Manual selector imported as auto-select
 - [`service_record_ignored`](#service_record_ignored) · `info` — Subscription: service record {scheme} skipped
@@ -426,19 +428,20 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="chain_strip_utls_on_reality"></a>
 ### chain_strip_utls_on_reality
 
-**severity:** `error` · **params:** `target`
+**severity:** `warning` · **params:** `target`
 
-**Chain: cannot strip uTLS on REALITY**
+**Chain: uTLS kept because of REALITY**
 
-- **What happened:** The chain strips uTLS from hop {target}, whose node runs REALITY, where the fingerprint is a load-bearing part of the protocol rather than camouflage. The chain was excluded, because the core rejects such an entry and would refuse to start the whole config.
-- **Why it happens:** The chain was set up to strip uTLS from a hop, and the node in that position runs REALITY. In REALITY the TLS fingerprint (the ClientHello) is a load-bearing part of the protocol, not camouflage, so the core refuses to remove it.
+- **What happened:** The chain is set to strip uTLS, but hop {target} runs REALITY, which cannot work without it. Stripping uTLS was turned off for this chain, so every hop keeps its fingerprint; the chain works.
+- **Why it happens:** The chain was set up to strip uTLS from its inner hops, and a node in one of those positions runs REALITY. In REALITY the TLS fingerprint (the ClientHello) is a load-bearing part of the protocol, not camouflage, and the core applies the strip list to all hops at once, so it cannot spare just one.
 - **What you can do:**
-  - Turn off stripping uTLS for that position in the chain.
-  - Or put a node without REALITY into that position.
+  - Nothing to do if the chain works.
+  - To strip uTLS on the other hops, put a node without REALITY into that position.
 
 **Where it comes from:**
 
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+- [`chain`](protocols/chain.md)
+  - [`strip.tls.utls`](protocols/chain.md#body-strip-tls-utls) — a hop at position 2 or later requires this path → not stripped
 
 <a id="chain_unsupported_by_core"></a>
 ### chain_unsupported_by_core
@@ -713,7 +716,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`tls`](protocols/_tls.md)
   - [`client_certificate`](protocols/_tls.md#body-client-certificate) — set without `tls.client_key` → removed
   - [`client_key`](protocols/_tls.md#body-client-key) — set without `tls.client_certificate` → removed
-  - [`reality.enabled`](protocols/_tls.md#body-reality-enabled) — set without `tls.utls.enabled` → removed
   - [`reality.key_share`](protocols/_tls.md#body-reality-key-share) — set without `tls.reality.public_key` → removed
   - [`reality.short_id`](protocols/_tls.md#body-reality-short-id) — set without `tls.reality.public_key` → removed
   - [`spoof_method`](protocols/_tls.md#body-spoof-method) — set without `tls.spoof` → removed
@@ -1112,6 +1114,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`tls`](protocols/_tls.md)
   - [`utls.fingerprint`](protocols/_tls.md#body-utls-fingerprint) — the value is anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random` → kept with a notice
 
+<a id="reality_fp_random_pinned"></a>
+### reality_fp_random_pinned
+
+**severity:** `info` · **params:** `path`, `value`
+
+**REALITY: fingerprint random pinned to chrome**
+
+- **What happened:** The node uses REALITY with uTLS fingerprint random at {path}. It was replaced with chrome: random makes the core pick one fingerprint per start, and two of the five it picks from lack the hybrid key exchange modern REALITY servers expect.
+- **Why it happens:** The subscription asked for the fingerprint random. The core resolves it once per start to chrome, firefox, edge, safari or ios; edge and ios carry no X25519MLKEM768 key share, so against Xray v26.9.8 and newer such a node would fail in roughly two starts out of five, and with key_share hybrid the core would refuse the handshake.
+- **What you can do:**
+  - Nothing to do: chrome is one of the fingerprints random picks from, and it works with every REALITY server.
+
+**Where it comes from:**
+
+- [`tls`](protocols/_tls.md)
+  - [`utls.fingerprint`](protocols/_tls.md#body-utls-fingerprint) — the value is `random` when `tls.reality.enabled` is `true` → replaced with `chrome`
+
 <a id="reality_key_share_invalid"></a>
 ### reality_key_share_invalid
 
@@ -1168,6 +1187,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`tls`](protocols/_tls.md)
   - [`reality.short_id`](protocols/_tls.md#body-reality-short-id) — the value does not fit the field → removed
   - [`reality.short_id`](protocols/_tls.md#body-reality-short-id) — the value had to be cleaned up (hex_only) → value cleaned up
+
+<a id="reality_utls_enabled"></a>
+### reality_utls_enabled
+
+**severity:** `info` · **params:** `path`, `requires`
+
+**REALITY: uTLS switched on**
+
+- **What happened:** The node uses REALITY ({path}), but {requires} was missing or off. uTLS was switched on with the default chrome fingerprint, because the core refuses REALITY without it and would not start the whole config.
+- **Why it happens:** REALITY is built on top of uTLS: the core requires the uTLS block to be enabled on every REALITY node. Hand-written configs and some converters leave it out.
+- **What you can do:**
+  - Nothing to do: the node connects with the chrome fingerprint.
+
+**Where it comes from:**
+
+- [`tls`](protocols/_tls.md)
+  - [`reality.enabled`](protocols/_tls.md#body-reality-enabled) — set without `tls.utls.enabled` → `tls.utls.enabled` filled in with `true`
 
 <a id="scheme_unsupported"></a>
 ### scheme_unsupported

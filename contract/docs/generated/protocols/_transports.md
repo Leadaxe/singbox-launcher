@@ -232,7 +232,7 @@ Discriminator: `type` — `http`, `ws`, `quic`, `grpc`, `httpupgrade`, `xhttp`
   - Type: enum, `""`, `auto`, `packet-up`, `stream-up`, `stream-one`
   - Default: `auto`
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
-  - If absent: filled in with `packet-up` → [`xhttp_mode_forced_packet_up`](../warnings.md#xhttp_mode_forced_packet_up)
+  - If absent: filled in with `packet-up` when `transport.uplink_data_placement` is one of `header`, `cookie` → [`xhttp_mode_forced_packet_up`](../warnings.md#xhttp_mode_forced_packet_up)
 - <a id="body-xhttp-headers"></a>**`xhttp.headers`** — Extra HTTP headers sent with each request.
   - Type: object
 - <a id="body-xhttp-x-padding-bytes"></a>**`xhttp.x_padding_bytes`** — Size range of the padding block.

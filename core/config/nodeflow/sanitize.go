@@ -36,6 +36,16 @@ type Result struct {
 	// Drop — узел не собирается (required / on_invalid drop_node). Остальные
 	// поля Result при этом заполнены, но телу узла ходу нет.
 	Drop *Warning
+	// Implied — пути, которые санитайзер ДОПИСАЛ связью `requires` с `set`
+	// (контракт 1.1.61): поле требовало соседа, соседа не было, и реестр
+	// велел его материализовать, а не снимать поле. По нему общий код узнаёт,
+	// что путь телу необходим (StripBlocked), не зная имён схем.
+	Implied []string
+	// Repaired — пути, которые записали правила-починки по готовому телу
+	// (`requires … set` и `coerce_when`), и RepairWarnings — их коды. По ним
+	// Repairs переносит те же правки на тело, которое санитайзер не ведёт.
+	Repaired       []string
+	RepairWarnings []Warning
 }
 
 // maskedValue — то, что пишется в Warning.Value вместо секрета.
@@ -116,6 +126,24 @@ type sanitizer struct {
 	// объекта. Накопитель, а не флаг: один объект может недосчитаться
 	// нескольких полей, и сообщить надо про каждое.
 	missingRequired []missingRequired
+	// deferred — правила, которые судятся по ГОТОВОМУ телу, после обхода
+	// (`requires … set`, `coerce_when`). Судить их по ходу нельзя: условие
+	// смотрит на соседа, который ещё не обойдён и может не пережить своих
+	// правил (REALITY с негодным ключом снимается позже uTLS). Каждое помнит
+	// место в warnings[], где встал бы его код при обходе, — порядок кодов
+	// по body.order нормативен (CANON §6).
+	deferred []deferredRule
+	// final — идёт суд отложенных правил: условия читают только чистое тело.
+	// Исходная карта им не годится — в ней лежит и то, что правила уже сняли.
+	final bool
+}
+
+// deferredRule — отложенное правило: idx — длина warnings[] в момент, когда
+// правило встретилось при обходе; apply исполняет его по готовому телу и
+// возвращает код, если правило сработало.
+type deferredRule struct {
+	idx   int
+	apply func() (Warning, bool)
 }
 
 // Sanitize приводит карту тела узла к правилам реестра для схемы scheme.
@@ -213,6 +241,11 @@ func SanitizeFromKind(scheme, source, kind string, m map[string]interface{}) Res
 			}
 		}
 	}
+	// Правила, которые судятся по готовому телу (`requires … set`,
+	// `coerce_when`), — после всех снятий и после решения об отказе по узлу:
+	// иначе они дописывали бы или меняли тело по соседу, которого в нём уже
+	// нет, или вешали коды на узел, которому ходу нет.
+	s.applyDeferred()
 	return s.res
 }
 
@@ -672,6 +705,7 @@ func (s *sanitizer) value(path, prefix string, f *registry.Field, raw interface{
 	v = s.applyMaxWhen(path, f, v)
 	s.noteNormalized(path, f, raw, v)
 	s.advisory(path, prefix, f, v)
+	s.deferCoerce(path, f, v)
 	return v, true
 }
 
@@ -1153,6 +1187,9 @@ func (s *sanitizer) conditionHolds(c *registry.Condition) bool {
 		if _, ok := s.lookupClean(parts); ok {
 			return true
 		}
+		if s.final {
+			continue
+		}
 		if v, ok := lookupPath(s.srcRoot, parts); ok {
 			// Пустая строка — не значение, а «не задано» (omitAsUnset):
 			// `uplink_data_placement: ""` не должен будить default_when у
@@ -1178,6 +1215,8 @@ func (s *sanitizer) valuePredicateHolds(path string, want interface{}) bool {
 		parts := strings.Split(path, ".")
 		if v, ok := s.lookupClean(parts); ok {
 			got, present = v, true
+		} else if s.final {
+			// Суд по готовому телу: чего нет в чистой карте, того нет.
 		} else if v, ok := lookupPath(s.srcRoot, parts); ok {
 			got, present = v, true
 		}
@@ -1363,6 +1402,12 @@ func (s *sanitizer) relationsOK(path, prefix string, f *registry.Field) bool {
 				continue
 			}
 		} else if s.pathPresent(rq.Path, prefix) {
+			continue
+		}
+		if rq.Set != nil && rq.Equals == nil && !s.schemeRemoved(rq.Path) {
+			// `set`: требуемого соседа нет — поле остаётся, соседа
+			// дописывает отложенное правило по готовому телу.
+			s.deferImply(path, rq)
 			continue
 		}
 		s.warn(codeOr(rq.Code, "field_requires"), path, nil, false,
@@ -2073,4 +2118,212 @@ func decodedKeyLen(v string) int {
 		}
 	}
 	return -1
+}
+
+// schemeRemoved — снят ли путь (или объект, в котором он лежит) запретом по
+// схеме. Такой путь материализовать нельзя: ядро отвергло бы его у этой
+// схемы так же, как исходное значение.
+func (s *sanitizer) schemeRemoved(path string) bool {
+	parts := strings.Split(path, ".")
+	for i := 1; i <= len(parts); i++ {
+		if s.removed[strings.Join(parts[:i], ".")] {
+			return true
+		}
+	}
+	return false
+}
+
+// deferImply откладывает `requires … set`: поле path требует rq.Path, а его
+// нет. Дописывается по готовому телу — только если само поле пережило обход
+// (REALITY с негодным ключом снимается позже, и uTLS ему тогда не нужен).
+func (s *sanitizer) deferImply(path string, rq registry.Relation) {
+	s.deferred = append(s.deferred, deferredRule{idx: len(s.res.Warnings), apply: func() (Warning, bool) {
+		if _, ok := lookupPath(s.cleanRoot, strings.Split(path, ".")); !ok {
+			return Warning{}, false
+		}
+		target := strings.Split(rq.Path, ".")
+		if v, ok := lookupPath(s.cleanRoot, target); ok && !isEmptyValue(v) {
+			return Warning{}, false
+		}
+		if !setPath(s.cleanRoot, target, rq.Set) {
+			return Warning{}, false
+		}
+		s.res.Implied = append(s.res.Implied, rq.Path)
+		s.res.Repaired = append(s.res.Repaired, rq.Path)
+		code := codeOr(rq.Code, "field_requires")
+		return Warning{Code: code, Path: path,
+			Params: s.declaredParams(code, map[string]string{"path": path, "requires": rq.Path})}, true
+	}})
+}
+
+// deferCoerce откладывает `coerce_when`: значение v из списка правила
+// меняется, только если условие верно на ГОТОВОМ теле и на пути всё ещё
+// лежит то же значение.
+func (s *sanitizer) deferCoerce(path string, f *registry.Field, v interface{}) {
+	cw := f.CoerceWhen
+	if cw == nil || cw.Value == nil || !inValues(cw.Values, v) {
+		return
+	}
+	s.deferred = append(s.deferred, deferredRule{idx: len(s.res.Warnings), apply: func() (Warning, bool) {
+		parts := strings.Split(path, ".")
+		cur, ok := lookupPath(s.cleanRoot, parts)
+		if !ok || !sameValue(v, cur) || !s.conditionHolds(cw.When) {
+			return Warning{}, false
+		}
+		nv, ok := coerce(f, cw.Value)
+		if !ok || !setPath(s.cleanRoot, parts, nv) {
+			return Warning{}, false
+		}
+		s.res.Repaired = append(s.res.Repaired, path)
+		code := cw.Code
+		w := Warning{Code: code, Path: path, Params: s.declaredParams(code, map[string]string{"path": path})}
+		if f.Secret {
+			w.Value = maskedValue
+		} else {
+			w.Value = configtypes.TruncateWarningValue(displayValue(v))
+		}
+		return w, true
+	}})
+}
+
+// applyDeferred исполняет отложенные правила в порядке обхода и ставит их
+// коды туда, где они встали бы при обходе (порядок по body.order, CANON §6).
+// У отбракованного узла тела нет — дописывать и менять нечего.
+func (s *sanitizer) applyDeferred() {
+	if s.res.Drop != nil || len(s.deferred) == 0 {
+		return
+	}
+	s.final = true
+	defer func() { s.final = false }()
+	shift := 0
+	for _, d := range s.deferred {
+		w, ok := d.apply()
+		if !ok || w.Code == "" {
+			continue
+		}
+		key := w.Code + "\x00" + w.Path
+		if s.seen[key] {
+			continue
+		}
+		s.seen[key] = true
+		at := d.idx + shift
+		if at > len(s.res.Warnings) {
+			at = len(s.res.Warnings)
+		}
+		s.res.Warnings = append(s.res.Warnings, Warning{})
+		copy(s.res.Warnings[at+1:], s.res.Warnings[at:])
+		s.res.Warnings[at] = w
+		s.res.RepairWarnings = append(s.res.RepairWarnings, w)
+		shift++
+	}
+}
+
+// setPath пишет значение по пути, заводя недостающие объекты. Путь, на
+// котором по дороге лежит не объект, не пишется.
+func setPath(m map[string]interface{}, parts []string, v interface{}) bool {
+	if len(parts) == 0 {
+		return false
+	}
+	cur := m
+	for _, p := range parts[:len(parts)-1] {
+		next, ok := cur[p]
+		if !ok {
+			nm := map[string]interface{}{}
+			cur[p] = nm
+			cur = nm
+			continue
+		}
+		nm, ok := next.(map[string]interface{})
+		if !ok {
+			return false
+		}
+		cur = nm
+	}
+	cur[parts[len(parts)-1]] = v
+	return true
+}
+
+// StripBlocked — нужен ли телу узла путь path так, что без него санитайзер
+// дописал бы его обратно (связь `requires` с `set`, контракт 1.1.61).
+//
+// Общий вопрос каталога `strip` цепочки: ключ `tls.utls` снял бы блок, а
+// REALITY тела его требует. Отвечает сам реестр — тело без пути прогоняется
+// через санитайзер, и если он вернул путь (или что-то внутри него), снимать
+// его нельзя. Имён схем и полей здесь нет.
+func StripBlocked(scheme string, body map[string]interface{}, path string) bool {
+	if body == nil || path == "" {
+		return false
+	}
+	parts := strings.Split(path, ".")
+	cp := deepCopyMap(body)
+	parent := cp
+	for _, p := range parts[:len(parts)-1] {
+		next, ok := parent[p].(map[string]interface{})
+		if !ok {
+			return false
+		}
+		parent = next
+	}
+	if _, ok := parent[parts[len(parts)-1]]; !ok {
+		return false
+	}
+	delete(parent, parts[len(parts)-1])
+	res := Sanitize(scheme, cp)
+	for _, p := range res.Implied {
+		if p == path || strings.HasPrefix(p, path+".") {
+			return true
+		}
+	}
+	return false
+}
+
+// deepCopyMap — копия карты тела с вложенными объектами и массивами.
+func deepCopyMap(m map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		out[k] = deepCopyValue(v)
+	}
+	return out
+}
+
+func deepCopyValue(v interface{}) interface{} {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		return deepCopyMap(t)
+	case []interface{}:
+		out := make([]interface{}, len(t))
+		for i, x := range t {
+			out[i] = deepCopyValue(x)
+		}
+		return out
+	}
+	return v
+}
+
+// Repairs переносит правила-починки реестра (`requires … set`,
+// `coerce_when`) на тело, которое санитайзер при сборке не ведёт: замороженное
+// тело состояния (канон v7 эмитится как есть) и ручной config_json. Тело
+// прогоняется через санитайзер на копии; из его результата берутся ТОЛЬКО
+// записанные починками пути, всё остальное остаётся как было — ни снятий, ни
+// приведений, которых такое тело по своей природе не проходит.
+//
+// Нужны они там потому, что правило — свойство ядра, а не входа: REALITY без
+// uTLS ядро не поднимает, чьё бы тело это ни было. Без правок возвращается
+// та же карта.
+func Repairs(scheme string, m map[string]interface{}) (map[string]interface{}, []Warning) {
+	if m == nil {
+		return m, nil
+	}
+	res := Sanitize(scheme, deepCopyMap(m))
+	if len(res.Repaired) == 0 {
+		return m, nil
+	}
+	out := deepCopyMap(m)
+	for _, p := range res.Repaired {
+		parts := strings.Split(p, ".")
+		if v, ok := lookupPath(res.Clean, parts); ok {
+			setPath(out, parts, v)
+		}
+	}
+	return out, res.RepairWarnings
 }

@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/registry"
-	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -198,58 +197,4 @@ func mixedCaseSNI(host string) string {
 		labels[li] = string(b)
 	}
 	return strings.Join(labels, ".")
-}
-
-// HealRealityFingerprints доводит uTLS у КАЖДОГО outbound'а с живым reality
-// — финальный рубеж перед эмиссией (D-119, заменяет D-104): включает uTLS-блок,
-// которого reality требует, и ставит chrome там, где отпечаток не выбирал
-// никто (пусто или наш неявный `random`). Явный отпечаток узла не трогается:
-// отпечаток — выбор подписки, и сборка делает так, как она велит.
-//
-// Живёт здесь, а не в парсере: значение в узле — нормативный `entry`
-// контракта (CANON §2); LxBox правит на том же шаге
-// (post_steps/heal_unknown_utls_fingerprints.dart).
-//
-// В отличие от ApplyTLSTransforms правка НЕ опциональна и НЕ ограничена
-// первым хопом: reality без uTLS не стартует на любой позиции цепочки.
-//
-// Возвращает новый слайс; вход не мутируется.
-func HealRealityFingerprints(outbounds []json.RawMessage) []json.RawMessage {
-	if len(outbounds) == 0 {
-		return outbounds
-	}
-	out := make([]json.RawMessage, len(outbounds))
-	healed := 0
-	for i, raw := range outbounds {
-		var ob map[string]interface{}
-		if err := json.Unmarshal(raw, &ob); err != nil {
-			out[i] = raw // не объект — оставляем как есть
-			continue
-		}
-		tls, ok := ob["tls"].(map[string]interface{})
-		if !ok {
-			out[i] = raw
-			continue
-		}
-		original, changed := subscription.EnforceRealityFingerprint(tls)
-		if !changed && original != "" {
-			out[i] = raw
-			continue
-		}
-		reencoded, err := json.Marshal(ob)
-		if err != nil {
-			out[i] = raw
-			continue
-		}
-		out[i] = reencoded
-		if changed {
-			healed++
-			tag, _ := ob["tag"].(string)
-			debuglog.InfoLog("Build: outbound %q: REALITY with the implicit uTLS fingerprint %q — chrome written instead (D-119)", tag, original)
-		}
-	}
-	if healed > 0 {
-		debuglog.InfoLog("Build: REALITY implicit fingerprint set to chrome on %d outbound(s)", healed)
-	}
-	return out
 }

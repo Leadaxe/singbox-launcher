@@ -70,7 +70,7 @@ Everything a link of this scheme can carry, including the TLS and transport para
 - <a id="link-proto-fp"></a>**`fp`** — Browser fingerprint mimicked in the ClientHello.
   - Type: enum (other spellings of the same value are accepted) (allowlist `utls_fingerprints`) · Default: `""`
   - Maps to: [`tls.utls.fingerprint`](#body-tls-utls-fingerprint)
-  - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown) · Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
+  - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown) · Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome) · Replaced: `random` → `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
 - <a id="link-proto-alpn"></a>**`alpn`** — Comma-separated list of ALPN protocols.
   - Type: string · Default: `""`
   - Maps to: [`tls.alpn`](#body-tls-alpn)
@@ -167,7 +167,7 @@ Read when the link says `type=xhttp`; the reference page is [`_transports.md`](_
 - <a id="link-tr-xhttp-mode"></a>**`mode`** — XHTTP transfer mode.
   - Type: enum: `""`, `auto`, `packet-up`, `stream-up`, `stream-one` · Default: `""`
   - Maps to: [`transport.xhttp.mode`](#body-transport-xhttp-mode)
-  - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset) · If absent: filled in with `packet-up` → [`xhttp_mode_forced_packet_up`](../warnings.md#xhttp_mode_forced_packet_up)
+  - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset) · If absent: filled in with `packet-up` when `transport.uplink_data_placement` is one of `header`, `cookie` → [`xhttp_mode_forced_packet_up`](../warnings.md#xhttp_mode_forced_packet_up)
 - <a id="link-tr-xhttp-extra"></a>**`extra`** — Nested JSON object with the same XHTTP fields.
   - Also spelled: `xhttpSettings.extra`
   - Type: string · Default: `""`
@@ -397,6 +397,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Set by link parameter: [`fp`](#link-proto-fp)
   - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
   - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
+  - Replaced: `random` → `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
 - <a id="body-tls-reality"></a>**`tls.reality`** — REALITY settings.
   - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
 - <a id="body-tls-reality-enabled"></a>**`tls.reality.enabled`** — Enable REALITY handshake camouflage.
@@ -405,7 +406,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Conflicts with: `tls.ech.enabled`
   - Conflicts with: `tls.disable_sni`
   - Conflicts with: `tls.spoof`
-  - Meaningless without: `tls.utls.enabled`
+  - Requires: `tls.utls.enabled` — if missing, filled in with `true`
 - <a id="body-tls-reality-public-key"></a>**`tls.reality.public_key`** — Server REALITY public key (x25519).
   - Type: string, format `base64_32`, normalized: `base64_rawurl`
   - Required: the node is dropped without it
@@ -524,7 +525,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `auto`
   - Set by link parameter: [`mode`](#link-tr-xhttp-mode)
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
-  - If absent: filled in with `packet-up` → [`xhttp_mode_forced_packet_up`](../warnings.md#xhttp_mode_forced_packet_up)
+  - If absent: filled in with `packet-up` when `transport.uplink_data_placement` is one of `header`, `cookie` → [`xhttp_mode_forced_packet_up`](../warnings.md#xhttp_mode_forced_packet_up)
 - <a id="body-transport-xhttp-headers"></a>**`transport.xhttp.headers`** — Extra HTTP headers sent with each request.
   - Type: object
 - <a id="body-transport-xhttp-x-padding-bytes"></a>**`transport.xhttp.x_padding_bytes`** — Size range of the padding block.
@@ -696,7 +697,6 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.client_certificate`](#body-tls-client-certificate) — set without `tls.client_key` → removed
   - [`tls.client_key`](#body-tls-client-key) — set without `tls.client_certificate` → removed
   - [`tls.spoof_method`](#body-tls-spoof-method) — set without `tls.spoof` → removed
-  - [`tls.reality.enabled`](#body-tls-reality-enabled) — set without `tls.utls.enabled` → removed
   - [`tls.reality.short_id`](#body-tls-reality-short-id) — set without `tls.reality.public_key` → removed
   - [`tls.reality.key_share`](#body-tls-reality-key-share) — set without `tls.reality.public_key` → removed
   - [`transport.xhttp.session_table`](#body-transport-xhttp-session-table) — set without `transport.session_length` → removed
@@ -705,6 +705,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
 - [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
   - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value is anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random` → kept with a notice
+- [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
+  - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value is `random` when `tls.reality.enabled` is `true` → replaced with `chrome`
 - [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
   - [`tls.reality.key_share`](#body-tls-reality-key-share) — the value does not fit the field → removed
 - [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
@@ -712,6 +714,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
   - [`tls.reality.short_id`](#body-tls-reality-short-id) — the value does not fit the field → removed
   - [`tls.reality.short_id`](#body-tls-reality-short-id) — the value had to be cleaned up (hex_only) → value cleaned up
+- [`reality_utls_enabled`](../warnings.md#reality_utls_enabled)
+  - [`tls.reality.enabled`](#body-tls-reality-enabled) — set without `tls.utls.enabled` → `tls.utls.enabled` filled in with `true`
 - [`tls_insecure`](../warnings.md#tls_insecure)
   - [`tls.insecure`](#body-tls-insecure) — the value is `true` → kept with a notice
 - [`type_invalid`](../warnings.md#type_invalid)
@@ -760,11 +764,13 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `tls.spoof_method` — normalized: `trim_lower`
 - `tls.utls.fingerprint` — normalized: `trim_lower`
 - `tls.utls.fingerprint` — an invalid value is replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
+- `tls.utls.fingerprint` — `random` is replaced with `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
+- `tls.reality.enabled` — without `tls.utls.enabled`, it is filled in with `true` → [`reality_utls_enabled`](../warnings.md#reality_utls_enabled)
 - `tls.reality.public_key` — normalized: `base64_rawurl`
 - `tls.reality.short_id` — normalized: `hex_only` → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
 - `tls.reality.key_share` — normalized: `trim_lower`
 - `multiplex.protocol` — normalized: `trim_lower`
-- `transport.xhttp.mode` — when absent, filled in with `packet-up` → [`xhttp_mode_forced_packet_up`](../warnings.md#xhttp_mode_forced_packet_up)
+- `transport.xhttp.mode` — when absent, filled in with `packet-up` when `transport.uplink_data_placement` is one of `header`, `cookie` → [`xhttp_mode_forced_packet_up`](../warnings.md#xhttp_mode_forced_packet_up)
 - `tcp_keep_alive` — normalized: `duration_bare_seconds`
 - `tcp_keep_alive_interval` — normalized: `duration_bare_seconds`
 
@@ -838,8 +844,10 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **The value is replaced, the node lives on**
 
+- `tls.utls.enabled` — filled in with `true` when `tls.reality.enabled` needs it
+- `tls.utls.fingerprint` — `random` is replaced with `chrome` when `tls.reality.enabled` is `true`
 - `tls.utls.fingerprint` — invalid value becomes `chrome`
-- `transport.xhttp.mode` — absent value is filled in with `packet-up`
+- `transport.xhttp.mode` — absent value is filled in with `packet-up` when `transport.uplink_data_placement` is one of `header`, `cookie`
 
 **Kept as is, with a notice**
 

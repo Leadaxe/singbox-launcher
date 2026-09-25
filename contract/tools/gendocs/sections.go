@@ -22,8 +22,11 @@ import (
 // понять, к нему ли это относится, а не чтобы сверить набор. Поэтому — первые
 // несколько имён и «and N more», а полный набор виден в самом реестре.
 func conditionPhrase(c *registry.Condition) string {
-	if c == nil || len(c.AnySet) == 0 {
+	if c == nil {
 		return ""
+	}
+	if len(c.AnySet) == 0 {
+		return valuesPhrase(c.Values)
 	}
 	const shown = 3
 	names := c.AnySet
@@ -36,7 +39,43 @@ func conditionPhrase(c *registry.Condition) string {
 	if tail > 0 {
 		out += " (and " + strconv.Itoa(tail) + " more)"
 	}
+	if v := valuesPhrase(c.Values); v != "" {
+		out += "," + v
+	}
 	return out
+}
+
+// valuesPhrase — предикаты условия по значению путей (контракт 1.1.56):
+// «when `tls.reality.enabled` is true», операторы in / not_in — списком.
+func valuesPhrase(values map[string]interface{}) string {
+	if len(values) == 0 {
+		return ""
+	}
+	paths := make([]string, 0, len(values))
+	for p := range values {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	parts := make([]string, 0, len(paths))
+	for _, p := range paths {
+		want := values[p]
+		if op, ok := want.(map[string]interface{}); ok {
+			if list, ok := op["in"].([]interface{}); ok {
+				parts = append(parts, code(p)+" is one of "+scalarList(list))
+				continue
+			}
+			if list, ok := op["not_in"].([]interface{}); ok {
+				parts = append(parts, code(p)+" is none of "+scalarList(list))
+				continue
+			}
+			continue
+		}
+		parts = append(parts, code(p)+" is "+scalar(want))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " when " + strings.Join(parts, " and ")
 }
 
 // maxWhenPhrase — английская запись условного потолка: что заменяется, когда
@@ -186,7 +225,18 @@ func collectSchemeUsages(out map[string][]usage, scheme, path string, f *registr
 		add(codeOr(c.Code, "field_conflict"), "conflicts with `"+c.With+"`"+unlessPhrase(c), actionRemoved)
 	}
 	for _, rq := range f.Requires {
+		if rq.Set != nil {
+			add(codeOr(rq.Code, "field_requires"), "set without `"+rq.Path+"`"+unlessPhrase(rq),
+				"`"+rq.Path+"` filled in with "+scalar(rq.Set))
+			continue
+		}
 		add(codeOr(rq.Code, "field_requires"), "set without `"+rq.Path+"`"+unlessPhrase(rq), actionRemoved)
+	}
+	if cw := f.CoerceWhen; cw != nil {
+		add(cw.Code, "the value is "+scalarList(cw.Values)+conditionPhrase(cw.When), "replaced with "+scalar(cw.Value))
+	}
+	if oh := f.OnHopRequired; oh != nil {
+		add(oh.Code, "a hop at position 2 or later requires this path", "not stripped")
 	}
 	if f.Required && f.OnInvalid == nil {
 		add("field_missing", "required and missing", actionNodeDropped)
@@ -367,6 +417,16 @@ func collectReplacements(out *[]string, prefix string, order []string, fields ma
 		if mw := f.MaxWhen; mw != nil {
 			*out = append(*out, "`"+path+"` — "+lowerFirst(maxWhenPhrase(mw, "../")))
 		}
+		if cw := f.CoerceWhen; cw != nil {
+			*out = append(*out, "`"+path+"` — "+scalarList(cw.Values)+" is replaced with "+scalar(cw.Value)+
+				conditionPhrase(cw.When)+" → "+warnLink(cw.Code, "../"))
+		}
+		for _, rq := range f.Requires {
+			if rq.Set != nil {
+				*out = append(*out, "`"+path+"` — without `"+rq.Path+"`, it is filled in with "+scalar(rq.Set)+
+					" → "+warnLink(codeOr(rq.Code, "field_requires"), "../"))
+			}
+		}
 		if names := fieldAliasNames(f.Aliases); len(names) > 0 {
 			*out = append(*out, "`"+path+"` — also read from "+codeList(names))
 		}
@@ -478,6 +538,14 @@ func collectDegradation(out map[string][]string, scheme, path string, f *registr
 	}
 	if len(f.Conflicts) > 0 || len(f.Requires) > 0 {
 		put(actionRemoved, "`"+path+"` — conflicts with another field of the same node")
+	}
+	for _, rq := range f.Requires {
+		if rq.Set != nil {
+			put("replaced", "`"+rq.Path+"` — filled in with "+scalar(rq.Set)+" when `"+path+"` needs it")
+		}
+	}
+	if cw := f.CoerceWhen; cw != nil {
+		put("replaced", "`"+path+"` — "+scalarList(cw.Values)+" is replaced with "+scalar(cw.Value)+conditionPhrase(cw.When))
 	}
 	if dw := f.DefaultWhen; dw != nil && dw.Absent {
 		put("replaced", "`"+path+"` — absent value is filled in with "+scalar(dw.Value)+

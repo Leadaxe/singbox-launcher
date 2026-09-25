@@ -2071,8 +2071,8 @@
   "Nothing left to add: every available target is already in the chain.": {
     "value": "Больше нечего добавить: все доступные цели уже в цепочке."
   },
-  "ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the core will not start. Re-check tls.utls.": {
-    "value": "Отпечаток ClientHello снят, но на позициях %s стоят reality-узлы — им он нужен, и ядро не запустится. Верните галку tls.utls."
+  "ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the chain will keep tls.utls on every position. Clear tls.utls to match.": {
+    "value": "Отпечаток ClientHello снят, но на позициях %s стоят reality-узлы — им он нужен, и цепочка оставит tls.utls у всех позиций. Снимите галку tls.utls, чтобы форма совпадала."
   },
   "A nested chain (%s) is only allowed at the first position — move it to the top or remove it.": {
     "value": "Вложенная цепочка (%s) допустима только первой позицией — переставьте её наверх или уберите."

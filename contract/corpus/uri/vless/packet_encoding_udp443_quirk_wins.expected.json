@@ -16,7 +16,7 @@
           "server_name": "w.example.com",
           "utls": {
             "enabled": true,
-            "fingerprint": "random"
+            "fingerprint": "chrome"
           }
         },
         "type": "vless",
@@ -24,7 +24,14 @@
       },
       "kind": "outbound",
       "label": "pe-quirk",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "reality_fp_random_pinned",
+          "path": "tls.utls.fingerprint",
+          "value": "random"
+        }
+      ]
     }
   ],
   "v": 1

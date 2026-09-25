@@ -1,9 +1,10 @@
 {
+  "meta": {
+    "body_kind": "singbox-outbound-array"
+  },
   "nodes": [
     {
       "entry": {
-        "encryption": "mlkem768x25519plus.native.0rtt.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        "flow": "xtls-rprx-vision",
         "server": "example-1.com",
         "server_port": 443,
         "tls": {
@@ -11,23 +12,19 @@
           "reality": {
             "enabled": true,
             "public_key": "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw",
-            "short_id": "abcd"
+            "short_id": "6c3a75b342477f24"
           },
-          "server_name": "w.example.com",
+          "server_name": "example-2.com",
           "utls": {
             "enabled": true,
             "fingerprint": "chrome"
           }
         },
-        "transport": {
-          "host": "cdn.example-1.com",
-          "type": "xhttp"
-        },
         "type": "vless",
         "uuid": "11111111-1111-1111-1111-111111111111"
       },
       "kind": "outbound",
-      "label": "flow-xhttp-enc",
+      "label": "reality-fp-random",
       "scheme": "vless",
       "warnings": [
         {
@@ -36,6 +33,25 @@
           "value": "random"
         }
       ]
+    },
+    {
+      "entry": {
+        "server": "example-3.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-4.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "random"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "tls-fp-random",
+      "scheme": "vless"
     }
   ],
   "v": 1

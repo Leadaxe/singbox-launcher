@@ -21,6 +21,7 @@
 package config
 
 import (
+	"encoding/json"
 	"runtime"
 	"strings"
 	"sync"
@@ -109,4 +110,37 @@ func coreVersionLabel(v string) string {
 		return "неизвестной версии"
 	}
 	return v
+}
+
+// repairBodyForBuild — правила-починки реестра (`requires … set`,
+// `coerce_when`, контракт 1.1.61) поверх замороженного тела состояния: тело
+// записано при материализации, и правило, появившееся позже (REALITY без
+// uTLS, random под REALITY), иначе доехало бы до ядра только с обновлением
+// подписки. Правок нет — тело возвращается байт-в-байт.
+func repairBodyForBuild(scheme, tag string, body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(body, &m); err != nil {
+		return body
+	}
+	fixed, notes := nodeflow.Repairs(scheme, m)
+	if len(notes) == 0 {
+		return body
+	}
+	out, err := json.Marshal(fixed)
+	if err != nil {
+		return body
+	}
+	logBuildRepairs(scheme, tag, notes)
+	return out
+}
+
+// logBuildRepairs — коды починок, сделанных на сборке: у замороженного тела
+// кодов на узле нет до следующей материализации, поэтому код уходит в лог.
+func logBuildRepairs(scheme, tag string, notes []nodeflow.Warning) {
+	for _, w := range notes {
+		debuglog.InfoLog("Build: node %q (%s): %s at %s", tag, scheme, w.Code, w.Path)
+	}
 }

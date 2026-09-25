@@ -277,7 +277,17 @@ func walkField(out map[string][]usage, scheme, path string, f *registry.Field) {
 		add(c.Code, "conflicts with `"+c.With+"`"+unlessPhrase(c), actionRemoved)
 	}
 	for _, rq := range f.Requires {
+		if rq.Set != nil {
+			add(rq.Code, "set without `"+rq.Path+"`"+unlessPhrase(rq), "`"+rq.Path+"` filled in with "+scalar(rq.Set))
+			continue
+		}
 		add(rq.Code, "set without `"+rq.Path+"`"+unlessPhrase(rq), actionRemoved)
+	}
+	if cw := f.CoerceWhen; cw != nil {
+		add(cw.Code, "the value is "+scalarList(cw.Values)+conditionPhrase(cw.When), "replaced with "+scalar(cw.Value))
+	}
+	if oh := f.OnHopRequired; oh != nil {
+		add(oh.Code, "a hop at position 2 or later requires this path", "not stripped")
 	}
 	if len(f.ForbiddenFor) > 0 {
 		add(f.Code, "not supported by "+codeList(f.ForbiddenFor), actionRemoved)

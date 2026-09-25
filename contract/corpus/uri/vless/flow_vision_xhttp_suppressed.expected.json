@@ -14,7 +14,7 @@
           "server_name": "w.example.com",
           "utls": {
             "enabled": true,
-            "fingerprint": "random"
+            "fingerprint": "chrome"
           }
         },
         "transport": {
@@ -31,6 +31,11 @@
         {
           "code": "vision_with_transport",
           "path": "flow"
+        },
+        {
+          "code": "reality_fp_random_pinned",
+          "path": "tls.utls.fingerprint",
+          "value": "random"
         }
       ]
     }

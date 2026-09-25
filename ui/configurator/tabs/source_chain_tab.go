@@ -40,7 +40,7 @@ import (
 const (
 	chainConflictDetourEntryText = "The first position (%s) dials through its own detour — the real path is longer than shown: one more hop precedes it that is not in this list."
 	chainConflictForwardRefText  = "Chains %s are declared below this one in the sources list — a chain may only reference chains above it. Drag them higher, or this chain will not build."
-	chainConflictRealityText     = "ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the core will not start. Re-check tls.utls."
+	chainConflictRealityText     = "ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the chain will keep tls.utls on every position. Clear tls.utls to match."
 	chainConflictTagTakenText    = "The name “%s” is already taken by another node, Direction or chain — two outbounds with one tag cannot coexist, this chain will be dropped at build."
 	chainNoteDetourIgnoredText   = "Positions %s have their own detour — it does not apply inside a chain: a link always dials through the previous position. The path is exactly as shown."
 )
@@ -804,7 +804,9 @@ func chainNodeFlags(m *wizardmodels.WizardModel) (reality, detoured map[string]b
 		if n == nil {
 			continue
 		}
-		if config.NodeUsesReality(n) {
+		// Требует ли тело узла uTLS, судит реестр (связь requires с set у
+		// tls.reality.enabled), а не проверка reality в форме.
+		if config.NodeRequiresPath(n, configtypes.ChainStripTLSUTLS) {
 			reality[n.Tag] = true
 		}
 		if d, ok := n.Outbound["detour"].(string); ok && strings.TrimSpace(d) != "" {

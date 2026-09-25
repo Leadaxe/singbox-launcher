@@ -1120,6 +1120,20 @@ func ChainStripDefault(key string) (def, known bool) {
 	return b, true
 }
 
+// ChainStripOnHopRequired — `on_hop_required` ключа каталога `strip`
+// (контракт 1.1.61): что делать, когда звено цепочки этот путь требует.
+// nil — правила у ключа нет.
+func ChainStripOnHopRequired(key string) *registry.OnHopRequired {
+	f := chainStripField()
+	if f == nil {
+		return nil
+	}
+	if kf, ok := f.Fields[key]; ok && kf != nil {
+		return kf.OnHopRequired
+	}
+	return nil
+}
+
 func chainStripField() *registry.Field {
 	reg, err := registry.Get()
 	if err != nil {
