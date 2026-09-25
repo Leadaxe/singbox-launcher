@@ -263,6 +263,12 @@
         "protocol": "dns"
       },
       {
+        "action": "resolve",
+        "inbound": [
+          "tun-in"
+        ]
+      },
+      {
         "ip_is_private": true,
         "outbound": "direct-out"
       },

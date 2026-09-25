@@ -274,6 +274,13 @@
         "protocol": "dns"
       },
       {
+        "action": "resolve",
+        "inbound": [
+          "tun-in",
+          "proxy-in"
+        ]
+      },
+      {
         "ip_is_private": true,
         "outbound": "direct-out"
       },
