@@ -206,7 +206,7 @@
     ],
     "dart": [
       "lib/services/parser/uri_parsers/hysteria2_parser.dart:12-82",
-      "lib/services/parser/hysteria2_obfs.dart:23-47",
+      "lib/services/parser/json_parsers.dart:979-990",
       "lib/models/node_spec_emit.dart:314-363",
       "lib/services/parser/json_parsers.dart:513-520",
       "lib/services/parser/json_parsers.dart:638-650"
