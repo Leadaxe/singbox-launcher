@@ -197,9 +197,15 @@
       },
       "plugin_opts": {
         "type": "string",
+        "requires": [
+          {
+            "path": "plugin",
+            "code": "field_requires"
+          }
+        ],
         "desc_en": "Options string passed to the plugin.",
         "desc_ru": "Строка настроек, передаваемая плагину.",
-        "impl": "option/shadowsocks.go PluginOptions."
+        "impl": "option/shadowsocks.go PluginOptions. Без plugin ядро строку не читает (плагин не запускается), а в теле узла она расходилась бы с тем же узлом с другого входа — requires (контракт 1.1.56, LxBox §546), код field_requires. Маппер ссылки эту пару не судит: там опции берутся из хвоста `plugin`, а отдельный `plugin_opts` без `plugin` доезжает до тела и снимается здесь."
       },
       "network": {
         "type": "ref",

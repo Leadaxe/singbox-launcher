@@ -733,9 +733,22 @@
               "code": "xhttp_param_reset"
             },
             "default": "auto",
+            "default_when": {
+              "absent": true,
+              "value": "packet-up",
+              "code": "xhttp_mode_forced_packet_up",
+              "when": {
+                "transport.uplink_data_placement": {
+                  "in": [
+                    "header",
+                    "cookie"
+                  ]
+                }
+              }
+            },
             "desc_en": "XHTTP transfer mode.",
             "desc_ru": "Режим передачи XHTTP.",
-            "impl": "Иное значение = ошибка старта. Коды деградации — xhttp_mode_forced_packet_up, xhttp_param_reset."
+            "impl": "Иное значение = ошибка старта. Коды деградации — xhttp_mode_forced_packet_up, xhttp_param_reset. default_when (контракт 1.1.56, LxBox §546): режим не назван, а uplink_data_placement ∈ {header, cookie} → materialize packet-up с кодом — то же, что делает `implies` записи uplinkDataPlacement в блоках uri/xray, только на входе singbox; без режима пара «header + дефолт auto» роняет ВЕСЬ конфиг ядра (transport/v2rayxhttp/meta.go:115-117). body/auto ядро принимает в любом режиме — им режим не дописывается (решение LxBox/владельца 25.09.2026). Пустая строка placement — «не задано». mode идёт в order раньше uplink_data_placement, поэтому связь `requires … equals: packet-up` у placement уже видит материализованный режим."
           },
           "headers": {
             "type": "object",
@@ -910,9 +923,24 @@
               "code": "xhttp_param_reset"
             },
             "default": "auto",
+            "requires": [
+              {
+                "path": "transport.mode",
+                "equals": "packet-up",
+                "when": {
+                  "transport.uplink_data_placement": {
+                    "in": [
+                      "header",
+                      "cookie"
+                    ]
+                  }
+                },
+                "code": "xhttp_param_reset"
+              }
+            ],
             "desc_en": "Where uplink data is carried.",
             "desc_ru": "Где передаются данные исходящего потока.",
-            "impl": "header и cookie допустимы ТОЛЬКО при mode=packet-up, иначе ошибка старта (transport/v2rayxhttp/meta.go:117); конфликт разрешается в пользу mode. Правило УСЛОВНОЕ по ЗНАЧЕНИЮ соседа, а conflicts/forbidden_when его не выражают (у Relation нет сравнения значения): безусловный conflicts с transport.mode убивал рабочую пару packet-up+header (кейс uri/vless/xhttp_extra_empty_mode_keeps_flat). До появления value-условия правило живёт в маппере (xhttpGuardUplinkPlacement, node_parser_transport.go:515) — SPEC 131 W2c, вынос в W2d."
+            "impl": "header и cookie допустимы ТОЛЬКО при mode=packet-up, иначе ошибка старта (transport/v2rayxhttp/meta.go:115-117); body/auto законны в любом режиме. Правило условное по ЗНАЧЕНИЮ соседа И по собственному значению — `requires … equals: packet-up` с `when` по самому полю (контракт 1.1.56, LxBox §546): header/cookie при явном другом режиме → placement снят, режим не тронут, код xhttp_param_reset; режим не назван → его материализует default_when у mode (он раньше в order), и placement остаётся; body/auto — как есть. Та же семантика, что у записей uplinkDataPlacement/uplinkDataPlacementOther в блоках uri/xray (`$value` + `when not_in` + `implies`), теперь и на входе singbox. Безусловный conflicts с transport.mode тут не годился: он убивал рабочую пару packet-up+header (кейс uri/vless/xhttp_extra_empty_mode_keeps_flat)."
           },
           "uplink_data_key": {
             "type": "string",
@@ -1352,6 +1380,12 @@
           ],
           "maps_to": "transport.uplink_data_placement",
           "when": {
+            "$value": {
+              "in": [
+                "header",
+                "cookie"
+              ]
+            },
             "transport.type": "xhttp",
             "transport.mode": {
               "not_in": [
@@ -1373,7 +1407,27 @@
             "code": "xhttp_param_reset"
           },
           "priority": 50,
-          "impl": "Структурное правило ЯДРА, а не значение поля: uplink_data_placement=header работает ТОЛЬКО в режиме packet-up («uplink_data_placement can be header only in packet-up mode» — фатал на весь конфиг). Выражено ОПЕРАТОРОМ not_in, а не in: при отсутствующем режиме `in` ложен (сравнивать нечего), а нужно обратное — режима нет, значит запрета нет, и implies его допишет. not_in по несуществующему пути истинен по построению. implies дописывает packet-up только когда режим не назвали: priority 50 ставит запись ПОЗЖЕ записи mode (умолчание 0), поэтому явный режим она не перебивает."
+          "impl": "Структурное правило ЯДРА, а не значение поля: uplink_data_placement=header/cookie работает ТОЛЬКО в режиме packet-up («uplink_data_placement can be header only in packet-up mode» — фатал на весь конфиг, transport/v2rayxhttp/meta.go:115-117); body/auto законны в любом режиме. Селектор `$value in [header, cookie]` (контракт 1.1.56) отдаёт этой записи только два опасных значения, остальное пишет uplinkDataPlacementOther как есть — промах селектора on_when_false не даёт. Выражено ОПЕРАТОРОМ not_in, а не in: при отсутствующем режиме `in` ложен (сравнивать нечего), а нужно обратное — режима нет, значит запрета нет, и implies его допишет. not_in по несуществующему пути истинен по построению. implies дописывает packet-up только когда режим не назвали: priority 50 ставит запись ПОЗЖЕ записи mode (умолчание 0), поэтому явный режим она не перебивает."
+        },
+        "uplinkDataPlacementOther": {
+          "source": [
+            "extra.uplinkDataPlacement",
+            "extra.uplink_data_placement",
+            "query.uplinkDataPlacement",
+            "query.uplink_data_placement"
+          ],
+          "maps_to": "transport.uplink_data_placement",
+          "when": {
+            "$value": {
+              "not_in": [
+                "header",
+                "cookie"
+              ]
+            },
+            "transport.type": "xhttp"
+          },
+          "round_trip_only": "parse",
+          "impl": "Вторая половина uplinkDataPlacement (контракт 1.1.56): body/auto и любое иное значение пишутся как есть — ядро принимает body/auto в любом режиме, мусор снимет enum тела (xhttp_param_reset). round_trip_only: parse — обратный ход ведёт основная запись, иначе параметр писался бы дважды."
         },
         "uplinkDataKey": {
           "source": [
@@ -2045,6 +2099,12 @@
           ],
           "maps_to": "transport.uplink_data_placement",
           "when": {
+            "$value": {
+              "in": [
+                "header",
+                "cookie"
+              ]
+            },
             "transport.type": "xhttp",
             "transport.mode": {
               "not_in": [
@@ -2066,7 +2126,31 @@
             "code": "xhttp_param_reset"
           },
           "priority": 50,
-          "impl": "Структурное правило ЯДРА, общее для всех входов: uplink_data_placement=header работает ТОЛЬКО в режиме packet-up («uplink_data_placement can be header only in packet-up mode» — фатал на весь конфиг). Запись повторяет blocks.uri.xhttp дословно, кроме источников: правило ядра от диалекта не зависит, и держать его на входе ссылки данными, а на входе Xray — рукописным гардом (noteXHTTPPlacementGuard) значило бы иметь две копии одного решения. Развёрнутое обоснование операторов — у записи блока uri."
+          "impl": "Структурное правило ЯДРА, общее для всех входов: uplink_data_placement=header/cookie работает ТОЛЬКО в режиме packet-up («uplink_data_placement can be header only in packet-up mode» — фатал на весь конфиг); body/auto законны в любом режиме, их пишет uplinkDataPlacementOther. Запись повторяет blocks.uri.xhttp дословно, кроме источников: правило ядра от диалекта не зависит, и держать его на входе ссылки данными, а на входе Xray — рукописным гардом (noteXHTTPPlacementGuard) значило бы иметь две копии одного решения. Развёрнутое обоснование операторов и селектора `$value` — у записи блока uri."
+        },
+        "uplinkDataPlacementOther": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.uplinkDataPlacement",
+            "json.streamSettings.xhttpSettings.extra.uplink_data_placement",
+            "json.streamSettings.splithttpSettings.extra.uplinkDataPlacement",
+            "json.streamSettings.splithttpSettings.extra.uplink_data_placement",
+            "json.streamSettings.xhttpSettings.uplinkDataPlacement",
+            "json.streamSettings.xhttpSettings.uplink_data_placement",
+            "json.streamSettings.splithttpSettings.uplinkDataPlacement",
+            "json.streamSettings.splithttpSettings.uplink_data_placement"
+          ],
+          "maps_to": "transport.uplink_data_placement",
+          "when": {
+            "$value": {
+              "not_in": [
+                "header",
+                "cookie"
+              ]
+            },
+            "transport.type": "xhttp"
+          },
+          "round_trip_only": "parse",
+          "impl": "Вторая половина uplinkDataPlacement (контракт 1.1.56), зеркало записи блока uri: body/auto и любое иное значение пишутся как есть; мусор снимет enum тела."
         },
         "uplinkDataKey": {
           "source": [

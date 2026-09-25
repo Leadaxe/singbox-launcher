@@ -147,8 +147,31 @@ func checkBodyCondition(t *testing.T, where string, c *bodyCondition) {
 	if c == nil {
 		return
 	}
+	// Предикаты путей: скаляр либо ровно один из операторов in / not_in с
+	// непустым списком. Незнакомый оператор санитайзер считает ложным, и
+	// правило молча перестало бы работать — ловим здесь.
+	for path, want := range c.Values {
+		if strings.TrimSpace(path) == "" {
+			t.Errorf("%s: when содержит пустой путь-предикат", where)
+			continue
+		}
+		op, isOp := want.(map[string]interface{})
+		if !isOp {
+			continue
+		}
+		list, ok := op["in"].([]interface{})
+		if !ok {
+			list, ok = op["not_in"].([]interface{})
+		}
+		if !ok || len(list) == 0 || len(op) != 1 {
+			t.Errorf("%s: предикат %s — допустим только один оператор in / not_in с непустым списком", where, path)
+		}
+	}
 	if len(c.AnySet) == 0 {
-		t.Errorf("%s: when без any_set — условие выполнено всегда, правило перестаёт быть условным", where)
+		if len(c.Values) > 0 || len(c.SourceKind) > 0 {
+			return
+		}
+		t.Errorf("%s: when без any_set и без предикатов путей — условие выполнено всегда, правило перестаёт быть условным", where)
 		return
 	}
 	seen := make(map[string]bool, len(c.AnySet))
@@ -261,8 +284,44 @@ type bodyRelation2 struct {
 }
 
 // bodyCondition — условие применимости правила значения.
+//
+// Кроме `any_set`/`source_kind` условие несёт предикаты по значению путей
+// (контракт 1.1.56): ключ — путь тела, значение — скаляр либо оператор
+// `{"in": […]}` / `{"not_in": […]}`, грамматика `when` маппера.
 type bodyCondition struct {
-	AnySet []string `json:"any_set"`
+	AnySet     []string
+	SourceKind []string
+	Values     map[string]interface{}
+}
+
+func (c *bodyCondition) UnmarshalJSON(data []byte) error {
+	raw := map[string]json.RawMessage{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*c = bodyCondition{}
+	for key, val := range raw {
+		switch key {
+		case "any_set":
+			if err := json.Unmarshal(val, &c.AnySet); err != nil {
+				return err
+			}
+		case "source_kind":
+			if err := json.Unmarshal(val, &c.SourceKind); err != nil {
+				return err
+			}
+		default:
+			var v interface{}
+			if err := json.Unmarshal(val, &v); err != nil {
+				return err
+			}
+			if c.Values == nil {
+				c.Values = map[string]interface{}{}
+			}
+			c.Values[key] = v
+		}
+	}
+	return nil
 }
 
 // bodyOnInvalid — правило SPEC 131 §3.2: что делать со значением, не

@@ -1,0 +1,2 @@
+# sing-box JSON: shadowsocks plugin + plugin_opts -> пара остаётся, кодов нет (LxBox §546, контракт 1.1.56).
+{"type": "shadowsocks", "tag": "sb-ss-opts-plugin", "server": "example-6.com", "server_port": 8388, "method": "aes-256-gcm", "password": "pw", "plugin": "obfs-local", "plugin_opts": "obfs=http;obfs-host=example.com"}

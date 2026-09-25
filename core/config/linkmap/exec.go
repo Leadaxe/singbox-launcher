@@ -244,6 +244,9 @@ type execState struct {
 	form  registry.Form
 	res   *Result
 	trace *Trace
+	// curParam — запись, которую исполняет applyEntry в данный момент: нужна
+	// ключу `$value` условия `when` (собственное значение записи).
+	curParam *registry.Param
 
 	// writtenBy — какая запись заняла путь тела: нужно разрешению конфликта
 	// (priority, затем порядок объявления) и трассе.
@@ -685,6 +688,21 @@ func (st *execState) applyEntry(e *Entry) {
 	// исполняется: значение, пришедшее по ссылке, указывало бы на тег чужого
 	// конфига, которого у нас нет.
 	if p.RoundTripOnly == roundTripEmitOnly {
+		return
+	}
+	st.curParam = p
+	defer func() { st.curParam = nil }()
+
+	// `$value` — СЕЛЕКТОР записи, а не условие: он выбирает, какая из
+	// записей с одним `maps_to` обслуживает это значение источника
+	// (`uplink_data_placement`: header/cookie — запись с implies packet-up,
+	// прочее — запись «как есть»). Промах селектора — молчаливый пропуск без
+	// on_when_false: значение не подавлено, его пишет другая запись.
+	if pred, ok := p.When["$value"]; ok && !st.oneWhen("$value", pred) {
+		st.trace.Add(Event{
+			Stage: StageField, Mapper: st.mapperName, Entry: e.Name,
+			Src: "-", Raw: nil, Val: nil, Path: nil, Act: ActSkip, Why: WhyWhenFalse,
+		})
 		return
 	}
 
@@ -2103,6 +2121,14 @@ func (st *execState) oneWhen(key string, want interface{}) bool {
 		got, present = st.bodyType, st.bodyType != ""
 	case key == "$form":
 		got, present = st.form.ID, st.form.ID != ""
+	case key == "$value":
+		// Собственное значение записи — то, что она прочтёт из своих
+		// `source` (первый найденный, пустое = отсутствует). Источник при
+		// этом прочитанным не отмечается (§10.2).
+		if st.curParam != nil {
+			v, _, ok := st.lookupSource(st.curParam)
+			got, present = v, ok
+		}
 	case isSourceName(key):
 		key = st.substituteBase(key)
 		v, ok := st.space.Lookup(key)

@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "body_kind": "singbox-outbound"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "method": "aes-256-gcm",
+        "password": "pw",
+        "plugin": "obfs-local",
+        "plugin_opts": "obfs=http;obfs-host=example.com",
+        "server": "example-6.com",
+        "server_port": 8388,
+        "type": "shadowsocks"
+      },
+      "kind": "outbound",
+      "label": "sb-ss-opts-plugin",
+      "scheme": "ss"
+    }
+  ],
+  "v": 1
+}

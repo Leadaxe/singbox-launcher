@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "transport": {
+          "host": "cdn.example-1.com",
+          "mode": "stream-one",
+          "path": "/x",
+          "type": "xhttp",
+          "uplink_data_placement": "body"
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "xhttp-body-streamone",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

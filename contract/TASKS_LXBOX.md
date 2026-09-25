@@ -6812,3 +6812,101 @@ gecko-обфускацией давала три `uri_param_unknown`: `minPacket
 От вас: синк 1.1.55; Dart-движок связей поддерживает `relation.unless_set`
 (одна проверка перед снятием декларанта) и невидимость литерала-выключателя
 для связей.
+
+## 52. Контракт 1.1.56 — xhttp `uplink_data_placement` ↔ `mode` только для header/cookie на всех входах; ss `plugin_opts` ↔ `plugin` (ваши §546/§547)
+
+Ваш запрос от 25.09.2026 (§546) принят, поправка сессии «новый релиз» по
+§547 тоже: ядро (transport/v2rayxhttp/meta.go:115-117) отвергает вне
+packet-up ТОЛЬКО `header`/`cookie`, `body`/`auto` законны в любом режиме.
+Прежняя запись маппера uri/xray судила любое placement: дописывала
+packet-up узлам с body/auto и снимала их при stream-one с ложным
+`xhttp_param_reset`. Исправлено одной волной — тело и оба маппера.
+
+- **Тело, `transports.json` body.variants.xhttp:**
+  - `mode.default_when: {absent: true, value: "packet-up", code:
+    xhttp_mode_forced_packet_up, when: {"transport.uplink_data_placement":
+    {"in": ["header", "cookie"]}}}` — режим не назван, placement header/cookie
+    → дописать packet-up с кодом.
+  - `uplink_data_placement.requires: [{path: transport.mode, equals:
+    "packet-up", when: {"transport.uplink_data_placement": {"in": ["header",
+    "cookie"]}}, code: xhttp_param_reset}]` — header/cookie при явном другом
+    режиме → placement снят, режим не тронут. body/auto — как есть в любом
+    режиме, без кодов.
+  - Пустая строка = «не задано» на уровне движка, не данных (тест структуры
+    реестра отвергает `absent_values: [""]` как дубль `omitAsUnset`):
+    `uplink_data_placement: ""` предикат не выполняет; `mode: ""` + header
+    ведёт себя как отсутствующий mode (packet-up дописан, placement
+    остаётся). Параметров у кодов нет — как у `note` маппера.
+- **Мапперы uri и xray, `transports.json`:** запись `uplinkDataPlacement`
+  получает селектор `"$value": {"in": ["header", "cookie"]}` (остальное в
+  ней без изменений: `when not_in` по mode, `implies`, `on_implies_written`,
+  `on_when_false`, priority 50). Новая запись `uplinkDataPlacementOther` с
+  теми же `source`/`maps_to`, `when: {"$value": {"not_in": ["header",
+  "cookie"]}, "transport.type": "xhttp"}`, `round_trip_only: "parse"` —
+  пишет body/auto и любое иное значение как есть; мусор снимает enum тела.
+  Обратный ход ведёт основная запись (её `when` эмит не судит).
+- **shadowsocks, `shadowsocks.json` body:** `plugin_opts.requires:
+  [{path: plugin, code: field_requires}]`. Отдельный код не заводился:
+  `field_requires` несёт `{path}`/`{requires}` и описывает случай точно.
+
+**Три новых примитива** (схемы `registry_body` и `registry_mapper`):
+
+1. `condition` тела (`default_when.when`, `max_when.when`, `min_when.when`,
+   `advisory.when` и т. д.) принимает, кроме `any_set`/`source_kind`,
+   предикаты по ЗНАЧЕНИЮ путей: ключ — путь от корня тела, значение —
+   скаляр (равенство по печатной форме) либо ровно один оператор
+   `{"in": […]}` / `{"not_in": […]}`. Грамматика — та же, что у `when`
+   маппера (PRIMITIVES §0.13: второго имени для одной операции не
+   заводится). Предикаты — И между собой и И с ветками any_set/source_kind.
+   Значение берётся из чистой карты (включая объект, обход которого ещё
+   идёт), иначе из исходной; снятое поле и пустая строка — «не задано»
+   (`in` ложен, `not_in` истинен, равенство ложно). Незнакомый оператор —
+   ложь (реестр вправе уехать вперёд кода).
+2. `relation.when` — та же `condition` у `requires`/`conflicts`: ложно —
+   связь не судится вовсе. Нужно там, где связь зависит от собственного
+   значения поля; к моменту проверки оно в чистой карте ещё не лежит и
+   читается из исходного тела.
+3. `$value` в `when` маппера — собственное значение записи (первый
+   найденный из её `source`, пустое = отсутствует). Это СЕЛЕКТОР, не
+   условие: делит одно значение источника между записями с одним
+   `maps_to`; промах — молчаливый пропуск БЕЗ `on_when_false` (значение не
+   подавлено, его пишет другая запись). Источник прочитанным не
+   отмечается (§10.2). Проверяется до остальных ключей `when`.
+
+**Три нормы движка санитайзера** (без них правило (1) не работает; у нас
+`core/config/nodeflow/sanitize.go`, у вас `body_sanitizer.dart`):
+
+1. Связи и условия (`requires`/`conflicts`/`any_set`/предикаты) видят поля
+   объекта, обход которого ЕЩЁ ИДЁТ. Вложенный объект (`transport`)
+   попадает в чистую карту только по завершении обхода, а `requires …
+   equals` у placement судится посреди него — материализованный
+   `default_when` у `mode` для соседа не существовал бы (в чистой карте его
+   ещё нет, в исходной не было никогда), и placement снимался бы у узла,
+   которому мы сами только что дописали packet-up. У нас: карта строящегося
+   объекта по префиксу пути (`building`), поиск в ней после чистой карты и
+   до исходной. Порядок `order` обязателен: `mode` раньше
+   `uplink_data_placement`.
+2. Пустая строка у обычного (не required, не tristate) поля и скаляр с
+   литералом-выключателем (`absent_values`) для `default_when` равны
+   отсутствию ключа (раньше только снимались молча); материализация снимает
+   пометку «выключатель», иначе связи соседей не увидели бы дописанное
+   значение.
+3. Пустая строка не выполняет `any_set` и предикаты путей: для ядра это
+   отсутствие ключа. Число 0 — по-прежнему значение (`jc: 0` у AmneziaWG).
+
+Identity не меняется. Существующие expected корпуса не изменились
+(`uri/vless/xhttp_uplink_*` зелёные как были).
+
+Кейсы корпуса (9): `body/singbox/vless_xhttp_uplink_header_no_mode_adds_packet_up`,
+`…_header_stream_one_reset`, `…_header_packet_up_kept`,
+`…_body_stream_one_kept`, `…_auto_no_mode_kept`,
+`body/singbox/shadowsocks_plugin_opts_without_plugin_dropped`,
+`…_with_plugin_kept`, `uri/vless/xhttp_uplink_body_stream_one_kept`,
+`body/xray/vless_xhttp_uplink_body_stream_one_kept`.
+
+От вас: синк 1.1.56; Dart исполняет три примитива и три нормы выше
+(`body_sanitizer.dart` по нашему грепу `default_when` сейчас не читает —
+`registry.dart` только парсит; `$value` — в интерпретаторе маппера); после
+зелёного корпуса — снять ветку `uplink_data_placement` ↔ `mode` из
+`XhttpTransport.toSingbox` и `plugin_opts`-гейт из `emitShadowsocks`
+(§546 «Нерешённое», §547 фаза B). sha коммита — в сообщении сессии.

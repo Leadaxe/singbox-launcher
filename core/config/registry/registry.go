@@ -102,10 +102,10 @@ type Field struct {
 	// объект снимается, только когда совпали ВСЕ.
 	AbsentWhen map[string]interface{} `json:"absent_when"`
 	Min        *float64               `json:"min"`
-	Max          *float64      `json:"max"`
-	Len          *int          `json:"len"`
-	LenParity    string        `json:"len_parity"`
-	Normalize    string        `json:"normalize"`
+	Max        *float64               `json:"max"`
+	Len        *int                   `json:"len"`
+	LenParity  string                 `json:"len_parity"`
+	Normalize  string                 `json:"normalize"`
 	// NormalizeCode — код, который ставится, когда normalize РЕАЛЬНО изменил
 	// значение (не просто обрезал пробелы или регистр). Нужен чистке, которая
 	// теряет данные: hex_only выбрасывает не-hex руны, и `0x1a2` становится
@@ -297,9 +297,56 @@ type MinWhen struct {
 // Перечислены оба ключа — условие верно, когда верен ЛЮБОЙ (ИЛИ, не И):
 // у входа `singbox` рода от входа нет вовсе, и судить там можно только по
 // телу, поэтому `any_set` из правила не уходит никогда.
+//
+// Остальные ключи — ПУТИ тела с предикатом по ЗНАЧЕНИЮ (контракт 1.1.56):
+// скаляр (равенство по печатной форме) либо оператор `{"in": […]}` /
+// `{"not_in": […]}` — та же грамматика, что у `when` маппера (PRIMITIVES
+// §0.13: второго имени для одной операции не заводится). Предикаты путей
+// связаны И между собой и И с ветками any_set/source_kind: правило «дописать
+// mode=packet-up» действует только при `uplink_data_placement ∈ {header,
+// cookie}` — ядро отвергает вне packet-up только эти два размещения, а
+// `body`/`auto` законны в любом режиме. Значение читается из чистой карты
+// (в том числе объекта, обход которого ещё идёт), иначе из исходной;
+// пустая строка и снятое поле — «не задано»: `in` ложен, `not_in` истинен.
 type Condition struct {
 	AnySet     []string `json:"any_set"`
 	SourceKind []string `json:"source_kind"`
+	// Values — предикаты по значению путей тела (см. выше). Ключи — пути от
+	// корня, значения — скаляр либо объект-оператор.
+	Values map[string]interface{} `json:"-"`
+}
+
+// UnmarshalJSON читает известные ключи в поля, остальные — как предикаты
+// путей (Values). Отдельного имени для словаря предикатов не заводится: путь
+// тела с точкой ни с `any_set`, ни с `source_kind` не столкнётся.
+func (c *Condition) UnmarshalJSON(data []byte) error {
+	raw := map[string]json.RawMessage{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*c = Condition{}
+	for key, val := range raw {
+		switch key {
+		case "any_set":
+			if err := json.Unmarshal(val, &c.AnySet); err != nil {
+				return fmt.Errorf("condition.any_set: %w", err)
+			}
+		case "source_kind":
+			if err := json.Unmarshal(val, &c.SourceKind); err != nil {
+				return fmt.Errorf("condition.source_kind: %w", err)
+			}
+		default:
+			var v interface{}
+			if err := json.Unmarshal(val, &v); err != nil {
+				return fmt.Errorf("condition.%s: %w", key, err)
+			}
+			if c.Values == nil {
+				c.Values = map[string]interface{}{}
+			}
+			c.Values[key] = v
+		}
+	}
+	return nil
 }
 
 // Relation — связь поля с другим полем (conflicts / requires / advisory.when).
@@ -317,7 +364,12 @@ type Relation struct {
 	// поверх транспорта бессмыслен, но при слое VLESS Encryption он работает
 	// поверх шифрования и транспорт ему не важен.
 	UnlessSet []string `json:"unless_set"`
-	Code      string   `json:"code"`
+	// When — условие действия связи (контракт 1.1.56): та же Condition, что
+	// у правил значения. Нужно там, где связь зависит от СОБСТВЕННОГО
+	// значения поля: `uplink_data_placement` требует mode=packet-up только
+	// при header/cookie, а body/auto ядро принимает в любом режиме.
+	When *Condition `json:"when"`
+	Code string     `json:"code"`
 }
 
 // section — секция body/common одного файла реестра, как она лежит на диске.
@@ -335,7 +387,7 @@ type section struct {
 	Skipped       map[string]string      `json:"skipped"`
 	Relations     []Relation2            `json:"relations"`
 	Discriminator string                 `json:"discriminator"`
-	Values        []string          `json:"values"`
+	Values        []string               `json:"values"`
 	Variants      map[string]*struct {
 		Order  []string          `json:"order"`
 		Fields map[string]*Field `json:"fields"`

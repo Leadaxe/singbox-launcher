@@ -1,0 +1,2 @@
+# sing-box JSON: shadowsocks plugin_opts БЕЗ plugin -> plugin_opts снят (requires), код field_requires; ядро без plugin строку не читает (LxBox §546, контракт 1.1.56).
+{"type": "shadowsocks", "tag": "sb-ss-opts-noplugin", "server": "example-6.com", "server_port": 8388, "method": "aes-256-gcm", "password": "pw", "plugin_opts": "obfs=http;obfs-host=example.com"}

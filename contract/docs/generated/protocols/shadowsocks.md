@@ -100,6 +100,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-plugin-opts"></a>**`plugin_opts`** — Options string passed to the plugin.
   - Type: string
   - Set by link parameter: [`plugin_opts`](#link-proto-plugin-opts)
+  - Meaningless without: `plugin`
 - <a id="body-network"></a>**`network`** — Networks this outbound handles.
   - Type: listable_string, `tcp`, `udp`, normalized: `trim_lower`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -190,6 +191,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - [`field_missing`](../warnings.md#field_missing)
   - [`server`](#body-server) — the value does not fit the field → node dropped
   - [`password`](#body-password) — required and missing → node dropped
+- [`field_requires`](../warnings.md#field_requires)
+  - [`plugin_opts`](#body-plugin-opts) — set without `plugin` → removed
 - [`port_invalid`](../warnings.md#port_invalid)
   - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
 - [`ss_method_invalid`](../warnings.md#ss_method_invalid)
@@ -235,6 +238,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `multiplex.min_streams` — invalid value
 - `multiplex.protocol` — invalid value
 - `network` — invalid value
+- `plugin_opts` — conflicts with another field of the same node
 - `udp_over_tcp.version` — invalid value
 
 **Kept as is, with a notice**

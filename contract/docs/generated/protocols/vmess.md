@@ -527,6 +527,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: enum, `""`, `auto`, `packet-up`, `stream-up`, `stream-one`
   - Default: `auto`
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
+  - If absent: filled in with `packet-up` → [`xhttp_mode_forced_packet_up`](../warnings.md#xhttp_mode_forced_packet_up)
 - <a id="body-transport-xhttp-headers"></a>**`transport.xhttp.headers`** — Extra HTTP headers sent with each request.
   - Type: object
 - <a id="body-transport-xhttp-x-padding-bytes"></a>**`transport.xhttp.x_padding_bytes`** — Size range of the padding block.
@@ -587,6 +588,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `auto`
   - Set by link parameter: [`uplink_data_placement`](#link-tr-xhttp-uplink-data-placement)
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
+  - Meaningless without: `transport.mode` = `packet-up`
 - <a id="body-transport-xhttp-uplink-data-key"></a>**`transport.xhttp.uplink_data_key`** — Name of the uplink data key.
   - Type: string
   - Default: `X-Data`
@@ -740,11 +742,14 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value does not fit the field → replaced with `chrome`
 - [`vmess_security_unknown`](../warnings.md#vmess_security_unknown)
   - [`security`](#body-security) — the value does not fit the field → replaced with `auto`
+- [`xhttp_mode_forced_packet_up`](../warnings.md#xhttp_mode_forced_packet_up)
+  - [`transport.xhttp.mode`](#body-transport-xhttp-mode) — the field is absent → filled in with `packet-up`
 - [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
   - [`transport.xhttp.mode`](#body-transport-xhttp-mode) — the value does not fit the field → removed
   - [`transport.xhttp.session_placement`](#body-transport-xhttp-session-placement) — the value does not fit the field → removed
   - [`transport.xhttp.seq_placement`](#body-transport-xhttp-seq-placement) — the value does not fit the field → removed
   - [`transport.xhttp.uplink_data_placement`](#body-transport-xhttp-uplink-data-placement) — the value does not fit the field → removed
+  - [`transport.xhttp.uplink_data_placement`](#body-transport-xhttp-uplink-data-placement) — set without `transport.mode` → removed
   - [`transport.xhttp.x_padding_placement`](#body-transport-xhttp-x-padding-placement) — the value does not fit the field → removed
   - [`transport.xhttp.x_padding_method`](#body-transport-xhttp-x-padding-method) — the value does not fit the field → removed
 
@@ -773,6 +778,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `tls.reality.short_id` — normalized: `hex_only` → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
 - `tls.reality.key_share` — normalized: `trim_lower`
 - `multiplex.protocol` — normalized: `trim_lower`
+- `transport.xhttp.mode` — when absent, filled in with `packet-up` → [`xhttp_mode_forced_packet_up`](../warnings.md#xhttp_mode_forced_packet_up)
 - `tcp_keep_alive` — normalized: `duration_bare_seconds`
 - `tcp_keep_alive_interval` — normalized: `duration_bare_seconds`
 
@@ -842,6 +848,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `transport.xhttp.session_length` — conflicts with another field of the same node
 - `transport.xhttp.session_placement` — invalid value
 - `transport.xhttp.session_table` — conflicts with another field of the same node
+- `transport.xhttp.uplink_data_placement` — conflicts with another field of the same node
 - `transport.xhttp.uplink_data_placement` — invalid value
 - `transport.xhttp.x_padding_method` — invalid value
 - `transport.xhttp.x_padding_placement` — invalid value
@@ -851,6 +858,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 - `security` — invalid value becomes `auto`
 - `tls.utls.fingerprint` — invalid value becomes `chrome`
+- `transport.xhttp.mode` — absent value is filled in with `packet-up`
 
 **Kept as is, with a notice**
 

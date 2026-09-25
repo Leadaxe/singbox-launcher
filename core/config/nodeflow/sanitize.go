@@ -77,7 +77,7 @@ type sanitizer struct {
 	// тело», этот — «какой протокол вход просил».
 	kind string
 	res  Result
-	seen   map[string]bool // дедуп по (code, path)
+	seen map[string]bool // дедуп по (code, path)
 	// srcRoot — исходная карта тела целиком, cleanRoot — уже собранная
 	// чистая. Пути в conflicts/requires реестра пишутся ОТ КОРНЯ тела
 	// ("tls.reality.public_key"), поэтому связи считаются по корню, а не по
@@ -85,6 +85,17 @@ type sanitizer struct {
 	// tls.reality.enabled в один «enabled» и снимал бы reality на ровном месте.
 	srcRoot   map[string]interface{}
 	cleanRoot map[string]interface{}
+	// building — чистые карты вложенных объектов, обход которых ещё идёт,
+	// по префиксу пути ("transport"). Вложенный объект попадает в cleanRoot
+	// только когда его обход закончен, а связи и условия соседей
+	// (requires/conflicts/any_set) судятся ПО ХОДУ обхода. Без этого поле,
+	// которое реестр материализовал внутри объекта (`default_when` у
+	// transport.mode), для соседа по тому же объекту не существовало бы:
+	// в cleanRoot его ещё нет, в srcRoot не было никогда — и
+	// `requires … equals: packet-up` снимал бы placement у узла, которому
+	// сам же только что дописал packet-up. Карта живёт ровно на время обхода
+	// объекта: если объект потом не будет принят, его следов здесь нет.
+	building map[string]map[string]interface{}
 	// removed — пути, снятые запретом по схеме (allowed_for/forbidden_for).
 	//
 	// Связи (conflicts/requires) обязаны считать такое поле
@@ -160,7 +171,7 @@ func SanitizeFromKind(scheme, source, kind string, m map[string]interface{}) Res
 			},
 		}
 	}
-	s := &sanitizer{reg: reg, scheme: scheme, source: source, kind: kind, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}, absent: map[string]bool{}}
+	s := &sanitizer{reg: reg, scheme: scheme, source: source, kind: kind, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}, absent: map[string]bool{}, building: map[string]map[string]interface{}{}}
 	s.cleanRoot = map[string]interface{}{}
 	s.res.Clean = s.cleanRoot
 	// Запреты по схеме размечаются ДО обхода, а не по ходу: связи
@@ -439,6 +450,11 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 	out := map[string]interface{}{}
 	if prefix == "" && s.cleanRoot != nil {
 		out = s.cleanRoot
+	} else if prefix != "" {
+		// Пока объект строится, его чистая карта видна связям и условиям
+		// соседей (см. поле building).
+		s.building[prefix] = out
+		defer delete(s.building, prefix)
 	}
 	if src == nil {
 		src = map[string]interface{}{}
@@ -467,7 +483,23 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 		// нет», а не ошибка источника. Разметку сделал предварительный проход
 		// (markAbsentObjects), чтобы связи соседей тоже не видели объекта.
 		if present && s.absent[path] {
-			continue
+			if f.Type == "object" || f.Type == "array" {
+				continue
+			}
+			// Скаляр с литералом-выключателем (`absent_values`:
+			// `encryption: none`) — та же запись «не задано», что и
+			// отсутствие ключа: дальше он судится как отсутствующий, и
+			// `default_when` у такого поля срабатывает так же, как при
+			// пропущенном ключе. Снимается молча — это не ошибка источника.
+			present, raw = false, nil
+		}
+		if present && s.omitAsUnset(f, raw) {
+			// Пустая строка у обычного поля — «не задано» (см. omitAsUnset
+			// ниже): для ядра ключ с "" и отсутствие ключа одно и то же,
+			// поэтому и `default_when` обязан сработать на `mode: ""` так
+			// же, как на пропущенный mode. Required/tristate сюда не
+			// попадают — у них пустое значимо.
+			present, raw = false, nil
 		}
 		if !s.allowedForScheme(f) {
 			if present {
@@ -485,6 +517,10 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 			if dw := f.DefaultWhen; dw != nil && dw.Absent && dw.Value != nil && s.conditionHolds(dw.When) {
 				if v, ok := coerce(f, dw.Value); ok {
 					out[name] = v
+					// Поле снова ЗАДАНО: если сюда привёл литерал-выключатель
+					// (`mode: ""`), пометка предпрохода снимается, иначе
+					// связи соседей не увидели бы материализованное значение.
+					delete(s.absent, path)
 					if dw.Code != "" {
 						s.warn(dw.Code, path, nil, false, map[string]string{"path": path})
 					}
@@ -1094,7 +1130,18 @@ func (s *sanitizer) sourceExcepted(sources []string) bool {
 // «поля нет» значило бы снять с такого узла потолок MTU и вернуть ему ровно
 // ту тихую поломку, от которой правило заведено.
 func (s *sanitizer) conditionHolds(c *registry.Condition) bool {
-	if c == nil || (len(c.AnySet) == 0 && len(c.SourceKind) == 0) {
+	if c == nil {
+		return true
+	}
+	// Предикаты по значению путей (Condition.Values) — И между собой и И с
+	// ветками ниже: правило «дописать mode=packet-up» действует только при
+	// uplink_data_placement ∈ {header, cookie}.
+	for path, want := range c.Values {
+		if !s.valuePredicateHolds(path, want) {
+			return false
+		}
+	}
+	if len(c.AnySet) == 0 && len(c.SourceKind) == 0 {
 		return true
 	}
 	// Род узла объявил ВХОД, и это ИЛИ-ветка условия, а не отдельное правило:
@@ -1116,14 +1163,53 @@ func (s *sanitizer) conditionHolds(c *registry.Condition) bool {
 			continue
 		}
 		parts := strings.Split(p, ".")
-		if _, ok := lookupPath(s.cleanRoot, parts); ok {
+		if _, ok := s.lookupClean(parts); ok {
 			return true
 		}
-		if _, ok := lookupPath(s.srcRoot, parts); ok {
+		if v, ok := lookupPath(s.srcRoot, parts); ok {
+			// Пустая строка — не значение, а «не задано» (omitAsUnset):
+			// `uplink_data_placement: ""` не должен будить default_when у
+			// mode. Число 0 остаётся значением (jc: 0).
+			if str, isStr := v.(string); isStr && str == "" {
+				continue
+			}
 			return true
 		}
 	}
 	return false
+}
+
+// valuePredicateHolds — предикат по значению пути (Condition.Values):
+// скаляр = равенство по печатной форме, объект = оператор `in` / `not_in`
+// (грамматика `when` маппера). Значение берётся из чистой карты, включая
+// объект, обход которого ещё идёт, иначе из исходной; снятое поле и пустая
+// строка — «не задано»: `in` ложен, `not_in` истинен, равенство ложно.
+func (s *sanitizer) valuePredicateHolds(path string, want interface{}) bool {
+	var got interface{}
+	present := false
+	if !s.gone(path) {
+		parts := strings.Split(path, ".")
+		if v, ok := s.lookupClean(parts); ok {
+			got, present = v, true
+		} else if v, ok := lookupPath(s.srcRoot, parts); ok {
+			got, present = v, true
+		}
+		if str, isStr := got.(string); present && isStr && str == "" {
+			present = false
+		}
+	}
+	if op, ok := want.(map[string]interface{}); ok {
+		if list, ok := op["in"].([]interface{}); ok {
+			return present && inValues(list, got)
+		}
+		if list, ok := op["not_in"].([]interface{}); ok {
+			return !present || !inValues(list, got)
+		}
+		// Неизвестный оператор — реестр вправе уехать вперёд кода; правило
+		// с опечаткой не должно ронять узлы.
+		return false
+	}
+	return present && sameValue(want, got)
 }
 
 // numericValue — число из приведённого значения, если оно число.
@@ -1265,7 +1351,7 @@ func (s *sanitizer) arrayField(path string, f *registry.Field, raw interface{}) 
 // старший сосед уже прошёл обход и лежит в clean.
 func (s *sanitizer) relationsOK(path, prefix string, f *registry.Field) bool {
 	for _, c := range f.Conflicts {
-		if c.With == "" {
+		if c.With == "" || !s.conditionHolds(c.When) {
 			continue
 		}
 		if !s.pathPresent(c.With, prefix) || s.anyPresent(c.UnlessSet, prefix) {
@@ -1276,7 +1362,9 @@ func (s *sanitizer) relationsOK(path, prefix string, f *registry.Field) bool {
 		return false
 	}
 	for _, rq := range f.Requires {
-		if rq.Path == "" || s.anyPresent(rq.UnlessSet, prefix) {
+		// `when` связи: требование действует только при условии — у
+		// uplink_data_placement mode=packet-up нужен лишь header/cookie.
+		if rq.Path == "" || s.anyPresent(rq.UnlessSet, prefix) || !s.conditionHolds(rq.When) {
 			continue
 		}
 		if rq.Equals != nil {
@@ -1358,7 +1446,7 @@ func (s *sanitizer) pathEquals(path, prefix string, want interface{}) bool {
 			continue
 		}
 		parts := strings.Split(p, ".")
-		if v, ok := lookupPath(s.cleanRoot, parts); ok {
+		if v, ok := s.lookupClean(parts); ok {
 			return sameValue(want, v)
 		}
 		if v, ok := lookupPath(s.srcRoot, parts); ok {
@@ -1368,6 +1456,23 @@ func (s *sanitizer) pathEquals(path, prefix string, want interface{}) bool {
 	return false
 }
 
+// lookupClean — значение по пути в ЧИСТОЙ карте: в собранной части
+// (cleanRoot) либо в объекте, обход которого ещё идёт (building). Второе
+// нужно связям и условиям между соседями одного вложенного объекта: сосед,
+// приведённый или материализованный по ходу обхода, в cleanRoot появится
+// только вместе со всем объектом.
+func (s *sanitizer) lookupClean(parts []string) (interface{}, bool) {
+	if v, ok := lookupPath(s.cleanRoot, parts); ok {
+		return v, true
+	}
+	for i := len(parts) - 1; i > 0; i-- {
+		if m, ok := s.building[strings.Join(parts[:i], ".")]; ok {
+			return lookupPath(m, parts[i:])
+		}
+	}
+	return nil, false
+}
+
 func (s *sanitizer) lookupNonEmpty(path string) bool {
 	if s.gone(path) {
 		// Поле снято запретом по схеме или объявлено незаданным
@@ -1375,7 +1480,7 @@ func (s *sanitizer) lookupNonEmpty(path string) bool {
 		return false
 	}
 	parts := strings.Split(path, ".")
-	if v, ok := lookupPath(s.cleanRoot, parts); ok {
+	if v, ok := s.lookupClean(parts); ok {
 		return !isEmptyValue(v)
 	}
 	if v, ok := lookupPath(s.srcRoot, parts); ok {
