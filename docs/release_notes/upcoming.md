@@ -4,6 +4,7 @@
 
 ## EN
 ### Highlights
+- Preset DNS servers now honour their own `#enable` condition: with DNS override switched off, the `russian` preset's Yandex DoH/DoT servers no longer end up in `config.json` (they were emitted regardless; only the preset's rules respected the switch).
 - Hysteria2 links from 3x-ui with gecko obfuscation no longer lose the packet size range: `minPacketSize`/`maxPacketSize` are read, and `security=tls` is accepted silently (contract 1.1.54).
 - VLESS nodes with Vision flow over a transport (xhttp, ws, …) keep `flow` when the node has VLESS Encryption: the flow was stripped before and the server dropped the connection (contract 1.1.55).
 - XHTTP `uplink_data_placement=header|cookie` without `mode` gets `mode: packet-up` filled in on every input, sing-box JSON included; with another explicit mode the placement is dropped instead of the core rejecting the whole config. `body`/`auto` placements are no longer touched: links with `uplinkDataPlacement=body` and `mode=stream-one` used to get a false warning. Shadowsocks `plugin_opts` without `plugin` is dropped (contract 1.1.56).
@@ -35,6 +36,7 @@
 
 ## RU
 ### Основное
+- Пресетные DNS-серверы теперь подчиняются своему условию `#enable`: при выключенном DNS override серверы Yandex DoH/DoT пресета `russian` больше не попадают в `config.json` (раньше они уезжали всегда, переключатель учитывали только правила пресета).
 - Ссылки hysteria2 из 3x-ui с gecko-обфускацией больше не теряют диапазон размеров пакетов: `minPacketSize`/`maxPacketSize` читаются, `security=tls` принимается молча (контракт 1.1.54).
 - VLESS-узлы с Vision поверх транспорта (xhttp, ws и др.) сохраняют `flow`, если у узла есть VLESS Encryption: раньше flow снимался, и сервер рвал соединение (контракт 1.1.55).
 - XHTTP `uplink_data_placement=header|cookie` без `mode` получает `mode: packet-up` на любом входе, включая sing-box JSON; при явном другом режиме placement снимается, а не роняет весь конфиг ядра. `body`/`auto` больше не трогаются: ссылки с `uplinkDataPlacement=body` и `mode=stream-one` раньше получали ложное предупреждение. У Shadowsocks `plugin_opts` без `plugin` снимается (контракт 1.1.56).

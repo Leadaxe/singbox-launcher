@@ -24,27 +24,6 @@
         "type": "udp"
       },
       {
-        "path": "/dns-query",
-        "server": "77.88.8.88",
-        "server_port": 443,
-        "tag": "russian:yandex_doh",
-        "tls": {
-          "enabled": true,
-          "server_name": "safe.dot.dns.yandex.net"
-        },
-        "type": "https"
-      },
-      {
-        "server": "77.88.8.88",
-        "server_port": 853,
-        "tag": "russian:yandex_dot",
-        "tls": {
-          "enabled": true,
-          "server_name": "safe.dot.dns.yandex.net"
-        },
-        "type": "tls"
-      },
-      {
         "inet4_range": "198.18.0.0/15",
         "inet6_range": "fc00::/18",
         "tag": "fakeip:fakeip",

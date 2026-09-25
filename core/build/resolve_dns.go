@@ -269,6 +269,14 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 					continue
 				}
 				active, reason := evalIfWithReason(ds.If, ds.IfOr, presetVars)
+				// Полный гейт сервера (#enable вместе с if/if_or) — на тех же
+				// переменных, что и у тел пресета в ExpandPresetWithGlobals:
+				// глобали шаблона плюс локальные. Сервер, снятый автором через
+				// `#enable: ["@use_dns_override"]`, в конфиг не попадает.
+				gated := template.NormalizeGate(ds.EnableRaw(), ds.If, ds.IfOr).SatisfiedVars(serverVars, target)
+				if active && !gated {
+					active, reason = false, "enable="+gateVarNames(ds.EnableRaw())
+				}
 				bodyMap, warns := substitutePresetDNSServer(ds, p.Vars, td.Vars, serverVars, target)
 				ref := p.ID + ":" + ds.Tag
 				bodyMap["tag"] = ref
@@ -281,7 +289,6 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 				// деградация: отчёту о нём сказать нечего.
 				if active && dnsServerMissingAddress(bodyMap) {
 					active, reason = false, "no server address after substitution"
-					gated := template.NormalizeGate(ds.EnableRaw(), ds.If, ds.IfOr).SatisfiedVars(presetVars, target)
 					if enabled && gated {
 						out.Warnings = append(out.Warnings, fragmentDropped(p.ID, fragmentKindDNSServer, "server").templateWarning())
 					}
@@ -700,4 +707,23 @@ func cloneDNSRuleMap(src map[string]interface{}) map[string]interface{} {
 // Single source of truth: template.EvalIfWithReason (shared with the UI).
 func evalIfWithReason(ifList, ifOrList []string, varsMap map[string]string) (bool, string) {
 	return template.EvalIfWithReason(ifList, ifOrList, varsMap)
+}
+
+// gateVarNames — имена переменных из bare-формы `#enable` для InactiveReason
+// («enable=use_dns_override»); у объектных предикатов имён нет, тогда «#enable».
+func gateVarNames(enableRaw interface{}) string {
+	list, ok := enableRaw.([]interface{})
+	if !ok {
+		return "#enable"
+	}
+	names := make([]string, 0, len(list))
+	for _, it := range list {
+		if s, ok := it.(string); ok && strings.HasPrefix(s, "@") {
+			names = append(names, s[1:])
+		}
+	}
+	if len(names) == 0 {
+		return "#enable"
+	}
+	return strings.Join(names, ",")
 }
