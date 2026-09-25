@@ -29,6 +29,7 @@
 | 7 | `a7377d1f` | 1.1.63 | C5, C7–C10 + хвосты волн 1 и 3 (`vpn://`-литерал, `jmin ≤ jmax`, запрет дефолтного маршрута, `format: cidr` голого адреса) + пробел движка (CANON §6.2: снятое правилом поле недоступно последующим связям/условиям). Новые примитивы тела: `relations.kind: ordered` + `action: drop`, `item_forbidden`, normalize `cidr_masked`, `exit_capable_when`. Новые примитивы маппера: `context.<путь>`, `ref.<as>.<путь>` + `deref`, `substitute`, `when.type_of`. Сняты `applyXrayFreedomFragment`+хелперы, `amneziaPrepareConf`+хелперы, `parseTailscalePrefixList`, проверка jmin≤jmax формы AWG. |
 | 8 | `8fa95fc3`, `697894fd`, `687da4be` | 1.1.62 | D1–D4: ссылки реестра на код приведены к правде (`refs.go` 141→53 записи, ~335 строк `impl`/`go`/`note` переведены на актуальное место исполнения). Новый линтер `TestRegistryCodeRefsResolve` (`core/config/registry_refs_test.go`) — Contract CI job проверяет его на любой `.go`-диф. Данные реестра не менялись. |
 | 10a | `30a0bd06` | без бампа (1.1.64) | Коды `warnings.json`, жившие в логе/тексте, доезжают до пользователя: detour-коды импорта на узле, `group_empty` в отбраковке/`update_status`, `max_nodes_exceeded`, `source_detour_missing` (одна запись на пару источник→цель), `chain_*` в отчёте; `Code/Params` у `ChainDegradation`, `EmissionWarning`, `FetchWarning`, `BuildReportEntry`; отчёт переводит по коду. Реестр не менялся. |
+| 10b | `122ea5f1` | 1.1.65 | Хвосты кодов с правкой реестра: поле `go` у 13 кодов 10a — на место постановки; `ssh_user_default` данными (`ssh.json` `user.default_when`, root явно, identity = тег не задета); `body_dialect_unrecognized` снят вместе с мёртвой константой; `direction_filter_matched_nothing` зарегистрирован; `detour_with_listen_port` — живой дефект исправлен общим правилом: после проставления detour сборка спрашивает `registry.Registry.YieldsTo` и снимает уступающие поля с кодом связи (`wireguard.json` `listen_port.conflicts` → код `detour_with_listen_port`), detour не трогается; новые коды сборки `source_detour_self`, `source_detour_cycle` в `EmissionWarning.Code`. Корпус +1 (`body/singbox/ssh_user_default`). |
 
 Контракт прошёл путь 1.1.56 → 1.1.63 (семь бампов; волна 1 и волна 8 — без
 изменения данных, только структура/ссылки). Подробности каждой волны и
@@ -145,11 +146,29 @@
   отдельная задача.
 - Поля `go` в `warnings.json` у кодов выше ещё описывают прежнее «кодом не
   ставится» — обновит волна 10b вместе с бампом.
+  **Закрыто волной 10b (контракт 1.1.65).**
 - `naive_unavailable`, `awg3_core_unsupported`, `tailscale_core_unsupported`
   доставлены с волны 5 (отчёт `core_unsupported` с заголовком реестра).
 - `template_*` (4 кода), `ssh_user_default`, `body_dialect_unrecognized`,
   `detour_with_listen_port`, `direction_filter_matched_nothing` — решения
   владельца / 10b.
+  **Волна 10b (контракт 1.1.65):** `ssh_user_default` — данными
+  (`ssh.json` `body.fields.user.default_when`); `body_dialect_unrecognized`
+  снят (события нет); `direction_filter_matched_nothing` зарегистрирован;
+  `detour_with_listen_port` — сборка после проставления detour перепроверяет
+  связи `conflicts {with: detour}` реестра по готовому телу
+  (`registry.Registry.YieldsTo`, `nodelink_resolve.go:yieldToBuildDetour`),
+  уступает `listen_port` с кодом. Самоссылка и кольцо detour на сборке —
+  новые коды `source_detour_self`/`source_detour_cycle`. Остались:
+  `template_*` (миграция сборки на канонический обход — решение владельца),
+  `group_member_missing`/`warnings` у `kind=auto` (решение владельца),
+  `EmptyDirections`/`DetourCycles` в отчёт сборки не выводятся (код
+  `direction_filter_matched_nothing` ставит только раннер корпуса).
+  Проверка связей после managed-поля сделана в одном месте проставления —
+  `ApplyCanonicalNodeLinks`; detour звена импортированной цепочки
+  (`EmitNodeJSONs`, копия тела на эмиссии) её не проходит: endpoint-схемы
+  туда не попадают (ранний выход), другим схемам связей с detour в реестре
+  нет.
 
 ### vless Xray-вход: `encryption: None` расходится со входом-ссылкой
 
