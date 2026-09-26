@@ -13,8 +13,6 @@ package backup
 //
 //   - directions[] — форма контракта (direction.schema.json): в ней живут
 //     LxBox-поля label/ping_*, которых в модели лаунчера нет;
-//   - fold — форма контракта (source_fold.schema.json), а не state-ный
-//     `replace`: у свёртки в контракте уже есть имя;
 //   - disabled{} — карта «тег → unix seconds» формы 0.12: у LxBox отметка
 //     живёт с TTL, и менять её форму значило бы ломать обе стороны разом;
 //   - identity{} — объект (он и в состоянии v8 объект, см.
@@ -143,16 +141,9 @@ type Source10 struct {
 	// (`{mode, tag, auto?}`, контракт 1.1.78): одно имя и одна форма в
 	// state.json, в файле и у LxBox, поэтому конвертера у поля нет.
 	Replace *state.FolderReplace `json:"replace,omitempty"`
-
-	// Fold и FoldTag — ПРЕЖНЯЯ форма свёртки в файле 1.0 (контракт 1.0 —
-	// 1.1.77): объект `fold{mode: select|auto|select_auto, auto?}` формы
-	// source_fold.schema.json плюс явное имя группы ключом рядом. Писатель
-	// их больше не пишет; читатель терпит (legacy-вход, BACKUP.md §2):
-	// select → manual, select_auto → both, fold_tag → tag, а без fold_tag
-	// имя выводится прежним позиционным деривативом (foldTag10). При
-	// `replace` в той же записи эти ключи не читаются.
-	Fold    *Fold  `json:"fold,omitempty"`
-	FoldTag string `json:"fold_tag,omitempty"`
+	// Прежней пары `fold` + `fold_tag` (1.0 до 1.1.78) у записи нет
+	// намеренно: с контракта 1.1.79 она не читается, и общий обход
+	// неизвестных ключей называет её backup_unknown_field.
 }
 
 // source10ExcludedStateKeys — json-ключи state.Source, которых в файле 1.0

@@ -390,7 +390,7 @@ var (
 	subscriptionKeys = mergeKeys(sourceRefKeys, map[string]bool{
 		"id": true, "url": true, "label": true, "enabled": true,
 		"max_nodes": true, "tag": true, "update": true, "disabled": true,
-		"skip": true, "outbounds": true, "fold": true, "identity": true,
+		"skip": true, "outbounds": true, "identity": true,
 		"exclude_from_global": true, "expose_group_tags_to_global": true,
 	})
 	serverKeys = mergeKeys(sourceRefKeys, map[string]bool{

@@ -72,10 +72,10 @@ type corpusDirectionCase struct {
 	GroupTags  []string          `json:"group_tags,omitempty"`
 	Magic      map[string]string `json:"magic,omitempty"`
 
-	// Fold — свёртка единственной подписки кейса (SPEC 108,
-	// schema/source_fold.schema.json). nil — подписка не свёрнута, её узлы
-	// идут в Направления по отдельности.
-	Fold *corpusSourceFold `json:"fold,omitempty"`
+	// Replace — свёртка единственной подписки кейса формой `replace`
+	// (backup.schema.json#/$defs/replace, контракт 1.1.78). nil — подписка
+	// не свёрнута, её узлы идут в Направления по отдельности.
+	Replace *corpusReplace `json:"replace,omitempty"`
 
 	// TagPrefix — префикс тегов подписки: от него зависят теги её групп.
 	TagPrefix string `json:"tag_prefix,omitempty"`
@@ -92,10 +92,11 @@ type corpusDirectionCase struct {
 	CoreSupportsChain *bool `json:"core_supports_chain,omitempty"`
 }
 
-// corpusSourceFold — каноническая форма свёртки
-// (contract/schema/source_fold.schema.json).
-type corpusSourceFold struct {
-	Mode string           `json:"mode,omitempty"`
+// corpusReplace — свёртка формой `replace {mode, tag, auto?}`
+// (contract/schema/backup.schema.json#/$defs/replace).
+type corpusReplace struct {
+	Mode string           `json:"mode"`
+	Tag  string           `json:"tag"`
 	Auto *corpusAutoGroup `json:"auto,omitempty"`
 }
 
@@ -177,24 +178,11 @@ func TestContractCorpusDirection(t *testing.T) {
 	}
 }
 
-// corpusDivergence — кейсы корпуса, ожидания которых относятся к УПРАЗДНЁННОЙ
-// свёртке (`fold` с позиционным тегом), а не к её наследнику в модели v7
-// (`FolderReplace` с ЯВНЫМ тегом).
-//
-// SPEC 118, расхождение Р2 (задекларировано в etalon/README.md и утверждено
-// капитаном): в режиме «селектор + автогруппа» пара тегов перестала быть
-// `<PFX>select` + `<PFX>auto` — автогруппа стала ДВОЙНИКОМ селектора и носит
-// производный тег `<tag>-auto`, той же формулой, что твины Направлений. На
-// совпадении формулы держится узнавание пар, и второй схемы имён быть не
-// может.
-//
-// Корпус — общий контракт с LxBox-стороной и в этой кампании не меняется
-// (SPEC 118 §2). Поэтому кейс не «подгоняется» и не удаляется: он назван
-// здесь вслух и вернётся, когда контракт догонит модель (этап 4).
-var corpusDivergence = map[string]string{
-	"fold_select_auto": "SPEC 118 Р2: пара тегов свёртки both стала `<tag>` + `<tag>-auto` " +
-		"(двойник), корпус ждёт прежние `<PFX>select` + `<PFX>auto`; контракт догоняет модель на этапе 4",
-}
+// corpusDivergence — кейсы корпуса, которые лаунчер сознательно не
+// проходит, с причиной. Сейчас пусто: расхождение SPEC 118 Р2
+// (`fold_select_auto`, пара `<PFX>select` + `<PFX>auto`) снято контрактом
+// 1.1.79 — кейс переведён на `replace {both, tag}` с двойником `<tag>-auto`.
+var corpusDivergence = map[string]string{}
 
 func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 	t.Helper()
@@ -212,29 +200,15 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 	pc.ParserConfig.Version = ParserConfigVersion
 	src := ProxySource{Source: "https://example.com/sub", TagPrefix: in.TagPrefix}
 	var folderReplace *configtypes.FolderReplace
-	// SPEC 118 W5: свёртка контракта (fold) переводится в замену канона
-	// (FolderReplace) — тем же соответствием, что конвертеры бэкапа. Тег
-	// замены материализуем прежним позиционным деривативом: корпус ссылается
-	// на `<PFX>select`/`<PFX>auto` из своих Направлений.
-	if in.Fold != nil {
-		prefix := strings.TrimSpace(in.TagPrefix)
-		if prefix == "" {
-			prefix = "1:"
+	// Свёртка кейса едет формой состояния (`replace`, контракт 1.1.78):
+	// режим и явный тег — как есть, без деривативов.
+	if in.Replace != nil {
+		rep := &configtypes.FolderReplace{
+			Mode: in.Replace.Mode,
+			Tag:  in.Replace.Tag,
 		}
-		rep := &configtypes.FolderReplace{}
-		switch in.Fold.Mode {
-		case "auto":
-			rep.Mode = configtypes.FolderReplaceAuto
-			rep.Tag = prefix + "auto"
-		case "select_auto":
-			rep.Mode = configtypes.FolderReplaceBoth
-			rep.Tag = prefix + "select"
-		default:
-			rep.Mode = configtypes.FolderReplaceManual
-			rep.Tag = prefix + "select"
-		}
-		if in.Fold.Auto != nil {
-			rep.Strategy = in.Fold.Auto.toDirectionAuto()
+		if in.Replace.Auto != nil {
+			rep.Strategy = in.Replace.Auto.toDirectionAuto()
 		}
 		folderReplace = rep
 	}

@@ -35,8 +35,9 @@ func findSourceByID(t *testing.T, s *state.State, id string) *state.Source {
 }
 
 // legacyV7Model012 — файл 0.12, который прежний писатель снимал с состояния
-// TestRoundTripV7ModelEquivalent: свёртка без имени группы, detour-тройня,
-// хопы строками, канон цепочки в `chain`, disabled-карта.
+// TestRoundTripV7ModelEquivalent: detour-тройня, хопы строками, канон
+// цепочки в `chain`, disabled-карта. Свёртки (`fold`) в нём нет: с контракта
+// 1.1.79 её не читает ни один вход (TestImportLegacy15xBackup).
 const legacyV7Model012 = `{
   "lx_backup": 1,
   "exported_by": {"app": "launcher", "version": "1.5.9", "platform": "darwin"},
@@ -50,7 +51,6 @@ const legacyV7Model012 = `{
     "update": {"interval_hours": 12, "auto": true},
     "disabled": {"NL-2": 0, "node-a": 0, "node-b": 0},
     "skip": [{"contains": "trial", "field": "tag"}],
-    "fold": {"mode": "select"},
     "detour_node_source_id": "01SRV0000000000000000000",
     "detour_node_tag": "🔥 WARP",
     "detour_node_label": "🔥 WARP"
@@ -101,8 +101,8 @@ const legacyV7Model012 = `{
 // модель выходит из файла 0.12, снятого с неё прежним лаунчером.
 //
 // Проверяются конвертации, ради которых существует convert_v7.go: enabled ⇄
-// disabled-карта и replace ⇄ fold у обоих входов, NodeLink ⇄ тройня и хопы ⇄
-// строки у входа 0.12. Задокументированные потери названы прямо в
+// disabled-карта у обоих входов, replace у входа 1.0, NodeLink ⇄ тройня и
+// хопы ⇄ строки у входа 0.12. Задокументированные потери названы прямо в
 // утверждениях.
 func TestRoundTripV7ModelEquivalent(t *testing.T) {
 	src := richState()
@@ -116,21 +116,19 @@ func TestRoundTripV7ModelEquivalent(t *testing.T) {
 	// PendingDisabled уже стоит в richState (node-a/node-b) — обе половины
 	// отметок обязаны уехать одним списком и вернуться одним же.
 
-	// Тег замены выставлен ровно тем деривативом, который файл 0.12 умеет
-	// воспроизвести из префикса: имени группы в свёртке 0.12 нет, и другое
-	// явное имя такой файл не переживал (1.0 везёт его ключом fold_tag).
-	src.Sources[0].Replace.Tag = "[A]select"
-
 	for _, in := range importBothFormats(t, src, legacyV7Model012, importKnowsEverything()) {
 		t.Run(in.format, func(t *testing.T) {
-			assertV7ModelEquivalent(t, src, in.state, in.warns)
+			assertV7ModelEquivalent(t, src, in.state, in.warns, in.format == "1.0")
 		})
 	}
 }
 
 // assertV7ModelEquivalent — утверждения TestRoundTripV7ModelEquivalent на
 // один вход импорта.
-func assertV7ModelEquivalent(t *testing.T, src, dst *state.State, warns []Warning) {
+//
+// withReplace — вход несёт свёртку (`replace` файла 1.0); у файла 0.12 её
+// нет, и подписка обязана приехать несвёрнутой.
+func assertV7ModelEquivalent(t *testing.T, src, dst *state.State, warns []Warning, withReplace bool) {
 	t.Helper()
 	for _, w := range warns {
 		if w.Code != WarnBackupSourceKindUnsupported {
@@ -157,18 +155,22 @@ func assertV7ModelEquivalent(t *testing.T, src, dst *state.State, warns []Warnin
 		}
 	}
 
-	// replace ⇄ fold: режим и тег обязаны совпасть. 1.0 везёт имя группы
-	// явно (fold_tag), 0.12 — нет: там импорт материализует его прежним
-	// позиционным деривативом, и он обязан совпасть с исходным, иначе
-	// правила того же файла указывают в никуда.
-	if sub.Replace == nil {
+	// replace: 1.0 везёт его формой состояния — режим и тег обязаны
+	// совпасть; у 0.12 свёртки нет, и выдумывать её импорт не должен.
+	switch {
+	case !withReplace:
+		if sub.Replace != nil {
+			t.Errorf("свёртка появилась из файла без неё: %+v", sub.Replace)
+		}
+	case sub.Replace == nil:
 		t.Fatal("replace потерян на roundtrip")
-	}
-	if sub.Replace.Mode != src.Sources[0].Replace.Mode {
-		t.Errorf("replace.mode: %q, было %q", sub.Replace.Mode, src.Sources[0].Replace.Mode)
-	}
-	if sub.Replace.Tag != src.Sources[0].Replace.Tag {
-		t.Errorf("replace.tag: %q, было %q", sub.Replace.Tag, src.Sources[0].Replace.Tag)
+	default:
+		if sub.Replace.Mode != src.Sources[0].Replace.Mode {
+			t.Errorf("replace.mode: %q, было %q", sub.Replace.Mode, src.Sources[0].Replace.Mode)
+		}
+		if sub.Replace.Tag != src.Sources[0].Replace.Tag {
+			t.Errorf("replace.tag: %q, было %q", sub.Replace.Tag, src.Sources[0].Replace.Tag)
+		}
 	}
 
 	// detour-NodeLink на корневой узел ⇄ объект `{tag}` / тройня 0.12 с id
@@ -306,7 +308,9 @@ func TestRoundTripV7ResolvesHopIntoContainer(t *testing.T) {
 // Все четыре механизма упразднены в v7, и каждый обязан либо приехать своей
 // новой формой, либо быть НАЗВАННЫМ. Молчаливых потерь нет — иначе
 // пользователь, восстановившийся из бэкапа полуторагодичной давности, получит
-// тихо другую маршрутизацию.
+// тихо другую маршрутизацию. Свёртка (`fold`) с контракта 1.1.79 не
+// мигрирует (решение владельца 26.09.2026): это неизвестный ключ, и его
+// потеря названа backup_unknown_field.
 func TestImportLegacy15xBackup(t *testing.T) {
 	raw := []byte(`{
   "lx_backup": 1,
@@ -338,7 +342,7 @@ func TestImportLegacy15xBackup(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	dst := &state.State{}
-	res, err := ImportFile(dst, b, ImportOptions{KnownOutbounds: []string{"[P]select"}})
+	res, err := ImportFile(dst, b, ImportOptions{KnownOutbounds: []string{"direct-out"}})
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -349,19 +353,18 @@ func TestImportLegacy15xBackup(t *testing.T) {
 	}
 	sub := dst.Sources[0]
 
-	// Свёртка → замена. Тег замены — тот же, на который ссылается правило
-	// того же файла: префикс подписки плюс `select`.
-	if sub.Replace == nil {
-		t.Fatal("fold не стал replace — маршрутизация бэкапа v1.5.x потеряна")
+	// Свёртка не читается: замены нет, а ключ `fold` назван неизвестным.
+	if sub.Replace != nil {
+		t.Errorf("fold стал replace (%+v) — legacy-свёртка не мигрирует с 1.1.79", sub.Replace)
 	}
-	if sub.Replace.Mode != state.FolderReplaceBoth {
-		t.Errorf("режим замены: %q, ожидался both (select_auto)", sub.Replace.Mode)
+	foldNamed := false
+	for _, w := range warns {
+		if w.Code == WarnBackupUnknownField && strings.HasSuffix(w.Detail, ".fold") {
+			foldNamed = true
+		}
 	}
-	if sub.Replace.Tag != "[P]select" {
-		t.Errorf("тег замены: %q, ожидался %q — правило файла метит именно в него", sub.Replace.Tag, "[P]select")
-	}
-	if sub.Replace.Strategy == nil || sub.Replace.Strategy.Interval != "3m" {
-		t.Errorf("параметры автогруппы потеряны: %+v", sub.Replace.Strategy)
+	if !foldNamed {
+		t.Errorf("fold выброшен молча; предупреждения: %v", warns)
 	}
 
 	// prefix жив, mask — потеря, и она названа.
@@ -378,25 +381,30 @@ func TestImportLegacy15xBackup(t *testing.T) {
 		t.Errorf("отметки выключения потеряны: %v", sub.PendingDisabled)
 	}
 
-	// Локальные Направления: пара, порождённая свёрткой, приехала заменой и
-	// молчит; произвольное `[P] streaming` — названо.
-	if !hasWarn(warns, WarnBackupLocalDirectionDropped) {
-		t.Errorf("локальное Направление выброшено молча; предупреждения: %v", warns)
-	}
-	for _, w := range warns {
-		if w.Code == WarnBackupLocalDirectionDropped &&
-			(strings.Contains(w.Detail, "[P]select") || strings.Contains(w.Detail, "[P]auto")) {
-			t.Errorf("производная свёртки названа потерей: %v — она приехала заменой", w)
+	// Локальные Направления названы все три: пара, которую порождала
+	// свёртка, заменой больше не приезжает — это такая же потеря, как
+	// произвольное `[P] streaming`.
+	for _, want := range []string{"[P]select", "[P]auto", "[P] streaming"} {
+		named := false
+		for _, w := range warns {
+			if w.Code == WarnBackupLocalDirectionDropped && strings.HasSuffix(w.Detail, "→ "+want) {
+				named = true
+			}
+		}
+		if !named {
+			t.Errorf("локальное Направление %q выброшено молча; предупреждения: %v", want, warns)
 		}
 	}
 
-	// Правило, метящее в тег замены, обязано приехать ВКЛЮЧЁННЫМ: цель
-	// существует, просто её теперь зовут заменой, а не свёрткой.
+	// Правило, метящее в группу свёртки, приезжает ВЫКЛЮЧЕННЫМ: цели нет.
 	if len(dst.Rules) != 1 {
 		t.Fatalf("правил после импорта: %d", len(dst.Rules))
 	}
-	if !dst.Rules[0].Enabled {
-		t.Errorf("правило на тег замены приехало выключенным — цель считается несуществующей")
+	if dst.Rules[0].Enabled {
+		t.Errorf("правило на несуществующую группу свёртки приехало включённым")
+	}
+	if !hasWarn(warns, WarnBackupUnknownOutbound) {
+		t.Errorf("выключенное правило не названо; предупреждения: %v", warns)
 	}
 }
 

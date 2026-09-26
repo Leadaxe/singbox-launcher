@@ -194,9 +194,10 @@ type corpusExpectation struct {
 	// папки или URL подписки, значение — объект `replace` `{mode, tag,
 	// auto?}` deep-equal. Проверяется дважды: в состоянии после импорта и в
 	// записи повторного экспорта 1.0 — там `replace` обязан совпасть с
-	// состоянием байт в байт, а прежних `fold`/`fold_tag` быть не должно.
-	// `replace_tags` видит только имя; режим и авто-половина, потерянные
-	// legacy-переводом (select_auto → both) или писателем, видны здесь.
+	// состоянием байт в байт (прежних `fold`/`fold_tag` у записи 1.0 нет
+	// вовсе — их отсутствие в файле сторожит purity_test). `replace_tags`
+	// видит только имя; режим и авто-половина, потерянные писателем, видны
+	// здесь.
 	//
 	// Поле необязательное: отсутствие ключа значит «не проверяем».
 	Replaces map[string]json.RawMessage `json:"replaces"`
@@ -1093,9 +1094,6 @@ func checkReplaces(t *testing.T, dst *state.State, exp corpusExpectation) {
 		}
 		if string(fileJSON) != string(stateJSON) {
 			t.Errorf("%s: replace в экспорте %s, в состоянии %s — не байт в байт", k, fileJSON, stateJSON)
-		}
-		if rec.Fold != nil || rec.FoldTag != "" {
-			t.Errorf("%s: экспорт пишет прежнюю форму fold/fold_tag (%+v, %q)", k, rec.Fold, rec.FoldTag)
 		}
 	}
 }
