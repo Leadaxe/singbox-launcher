@@ -247,7 +247,7 @@ type Node struct {
 	// формулировки одной причины.
 	Reason string `json:"reason,omitempty"`
 	// Warnings — коды деградаций, применённых к узлу конвейером разбора
-	// (SPEC 131, контракт 1.1.0, CANON §6): что именно у узла сняли или
+	// (SPEC 131, контракт 1.1.0, PARSING_PRINCIPLES §6): что именно у узла сняли или
 	// привели, с путём поля в теле. Рисуются как ⚠ на строке узла и
 	// расшифровываются по contract/registry/warnings.json.
 	//
@@ -279,7 +279,7 @@ type Node struct {
 	Sections *NodeSections `json:"sections,omitempty"`
 }
 
-// NodeWarning — запись деградации узла в состоянии (CANON §6, контракт
+// NodeWarning — запись деградации узла в состоянии (PARSING_PRINCIPLES §6, контракт
 // 1.1.0): код из contract/registry/warnings.json, путь поля в теле sing-box
 // (`tls.reality.short_id`), исходное значение до деградации (≤64 символов; у
 // secret-полей реестра — "***") и подстановки шаблона текста кода.

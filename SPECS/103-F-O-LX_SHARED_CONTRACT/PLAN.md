@@ -29,7 +29,7 @@ contract/
   VERSION                     # semver контракта
   README.md                   # как читать, как гонять раннеры, правила PR
   docs/
-    CANON.md                  # правила канонизации узла (нормативно)
+    PARSING_PRINCIPLES.md                  # правила канонизации узла (нормативно)
     IDENTITY.md               # алгоритм identity-ключа/хеша (нормативно, как есть)
     TEMPLATE_LANG.md          # язык шаблонов v1 (нормативно)
     BACKUP.md                 # семантика LX Backup v1 (нормативно)
@@ -84,7 +84,7 @@ contract/
 }
 ```
 
-Правила канонизации (`CANON.md`):
+Правила канонизации (`PARSING_PRINCIPLES.md`):
 - `entry` — sing-box map **без** `tag`; ключи отсортированы; поля с дефолтными
   значениями не пишутся; числа — числами.
 - `kind:"endpoint"` — wireguard/awg (и будущие endpoint-протоколы); `kind:"group"` —
@@ -307,7 +307,7 @@ preview с merge/replace и default-deny allowlist §159; лаунчер сег�
 
 | # | Расхождение | Go | Dart | Решение (рекомендация) |
 |---|---|---|---|---|
-| A1 | HTML-escaping в каноническом JSON (`<>&` в пароле/SNI/path; теоретически также U+2028/U+2029) | `json.Marshal` экранирует `<…` и U+2028/29 | `jsonEncode` не экранирует | Канон = **без escaping** (сырой UTF-8, включая U+2028/29 — CANON.md фиксирует явно); Go переходит на `SetEscapeHTML(false)` + выравнивание юникод-эскейпов в `marshalCanonicalJSON` |
+| A1 | HTML-escaping в каноническом JSON (`<>&` в пароле/SNI/path; теоретически также U+2028/U+2029) | `json.Marshal` экранирует `<…` и U+2028/29 | `jsonEncode` не экранирует | Канон = **без escaping** (сырой UTF-8, включая U+2028/29 — PARSING_PRINCIPLES.md фиксирует явно); Go переходит на `SetEscapeHTML(false)` + выравнивание юникод-эскейпов в `marshalCanonicalJSON` |
 | A2 | ws `?ed=N` без `eh` | эмитит `max_early_data` + `early_data_header_name:"Sec-WebSocket-Protocol"` | только `max_early_data` (`transport.dart:44-53`) | Решить по конвенции экосистемы (v2ray ed = заголовок Sec-WebSocket-Protocol); рекомендация — **поведение Go**, Dart добавляет дефолт |
 | A3 | anytls без `fp=` в URI | `utls` не эмитится (`node_parser_anytls.go:71-80`) | дефолт `fp='random'` через VLESS-конвенцию (`transport.dart:333`) | Выровнять по vless-конвенции (оба проекта дефолтят `random` для vless) → **Go добавляет дефолт** |
 | A4 | wireguard endpoint | эмитит `name:"singbox-wg0"` и `system:false` (`node_parser_wireguard.go:136-138`) | не эмитит ни то, ни другое | Канон = **без дефолтных полей** → Go перестаёт эмитить дефолты |

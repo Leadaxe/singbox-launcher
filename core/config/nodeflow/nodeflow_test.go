@@ -210,7 +210,7 @@ func TestSanitizeEmit(t *testing.T) {
 			want: `{"server":"a.e.com","server_port":443,"uuid":"` + testUUID + `"}`,
 		},
 		{
-			// Секрет в warnings не светится (CANON §6).
+			// Секрет в warnings не светится (PARSING_PRINCIPLES §6).
 			//
 			// Схема — tuic, а не vless: у tuic ядро разбирает uuid строго
 			// (`invalid uuid: incorrect UUID length` на весь конфиг), а vless
@@ -282,7 +282,7 @@ func runPipeCases(t *testing.T, cases []pipeCase) {
 // TestAbsentWhenObjects — атрибут реестра `absent_when`: объект, чьи ключи
 // совпали с условием, снимается ЦЕЛИКОМ и ТИХО.
 //
-// Проверяется не только исчезновение блока, но и НОРМА ПОРЯДКА (CANON §6):
+// Проверяется не только исчезновение блока, но и НОРМА ПОРЯДКА (PARSING_PRINCIPLES §6):
 // снятый объект «не задан» для правил своих полей и для связей соседей. Без
 // неё `tls{enabled:false, reality{мусор}}` дал бы коды на поля блока, которого
 // в теле не будет, а `tls.ech.enabled` продолжал бы конфликтовать с REALITY

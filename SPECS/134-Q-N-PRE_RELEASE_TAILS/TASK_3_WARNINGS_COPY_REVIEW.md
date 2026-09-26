@@ -155,7 +155,7 @@ PY
 
 | code | строка | замечание |
 |------|--------|-----------|
-| `core_rejected` | 194 | `{reason}` — сырая строка ядра вида `initialize outbound[0] vless[proxy-de-1]: …`. Осознанное решение (норма — `contract/docs/CANON.md` §9), но текст вокруг обязан подготовить читателя к техническому куску |
+| `core_rejected` | 194 | `{reason}` — сырая строка ядра вида `initialize outbound[0] vless[proxy-de-1]: …`. Осознанное решение (норма — `contract/docs/PARSING_PRINCIPLES.md` §9), но текст вокруг обязан подготовить читателя к техническому куску |
 | `chain_invalid` | 1526 | `{reason}` — проверить, человеческая ли это фраза или идентификатор правила |
 | `dialer_proxy_unusable` | 1620 | `{cause}` — то же; если это токен (`not_found`, `cycle`), в UI он читается как мусор |
 | `awg3_core_unsupported` | 1007 | `{reason}` — проверить |

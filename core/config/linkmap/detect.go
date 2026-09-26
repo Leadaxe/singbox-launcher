@@ -95,7 +95,7 @@ func schemeOfText(text string) string {
 // SchemeOfText — схема ссылки формы `scheme://` в нижнем регистре; "" —
 // текст этой формы не имеет. Слою подписки нужна та же граница, что у
 // движка: отказ `scheme_unsupported` ставится только строке `xxx://`
-// (CANON §4.1), прочий непрочитанный текст — `form_unrecognized`.
+// (PARSING_PRINCIPLES §4.1), прочий непрочитанный текст — `form_unrecognized`.
 func SchemeOfText(text string) string { return schemeOfText(text) }
 
 // NewElementContent — контент одного элемента документа: разобранное

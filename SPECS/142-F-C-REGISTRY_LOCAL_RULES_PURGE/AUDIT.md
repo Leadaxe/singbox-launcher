@@ -99,7 +99,7 @@
   - `core/config/outbound_generator.go:1525-1545` (`normalizeChainHop`: пустая схема → socks, `version` = "5").
 - **Что делает:** собирает socks-хоп из `settings.servers[0]` (адрес, порт, user/pass) мимо движка и явно пишет `version: "5"`.
 - **Входы:** Xray (dialerProxy → socks), старое состояние с `Jump`.
-- **В реестре:** дубль и расхождение. У `socks.json` есть секция `mappers.xray`. `body.version` = `default: "5"`, а по CANON §2.4 дефолт ядра не материализуется. Тело хопа здесь не совпадает с телом того же socks, пришедшего ссылкой.
+- **В реестре:** дубль и расхождение. У `socks.json` есть секция `mappers.xray`. `body.version` = `default: "5"`, а по PARSING_PRINCIPLES §2.4 дефолт ядра не материализуется. Тело хопа здесь не совпадает с телом того же socks, пришедшего ссылкой.
 - **Замена:** хоп строить `parseXrayElementByEngine` (секция `socks#xray`). Дефолт `version` не дописывать: реестр и ядро трактуют пустое как 5, комментарий «ядро иначе отвергнет» противоречит `socks.json` impl. Проверить `sing-box check` одним кейсом корпуса.
 - **Тесты:** Xray-цепочки с socks (`xray_json_array*_test.go`, `detour_chain_emit_test.go`) — возможна правка эталонов (исчезнет `version:"5"`).
 - **Риск:** med.

@@ -6,7 +6,7 @@ These pages are generated from the `contract/registry/` registry by `go generate
 
 |  | Version |
 |---|---|
-| Contract (`contract/VERSION`) | `1.1.75` |
+| Contract (`contract/VERSION`) | `1.1.76` |
 | Core (`body.core`) | `1.14.1-lx.4` |
 
 ## How to read these pages
@@ -28,7 +28,7 @@ Every input — a share URI, sing-box or Xray JSON, a wg-conf, a hand-written bo
 2. **sanitizer** — runs the registry `body` sections: type, enum, format, `allowed_for`/`forbidden_for`, `conflicts`/`requires`. Every drop or coercion is recorded in `warnings[]` ([codes](warnings.md)).
 3. **emitter** — serializes in `body.order`; there is no per-scheme branching in the code.
 
-The normative text is [`contract/docs/CANON.md` §8](../CANON.md).
+The normative text is [`contract/docs/PARSING_PRINCIPLES.md` §8](../PARSING_PRINCIPLES.md).
 
 ## Schemes
 

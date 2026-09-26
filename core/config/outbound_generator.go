@@ -155,7 +155,7 @@ type OutboundGenerationResult struct {
 	// нельзя — тег-политика с переменными (`{$num}`) раскрывается только
 	// эмиссией, и суффикс глобальной уникализации знает тоже только она.
 	// Отсюда решение: карту отдаёт та же сборка, которая теги и выдала
-	// (CANON §9.3).
+	// (PARSING_PRINCIPLES §9.3).
 	//
 	// Попадают ТОЛЬКО узлы канона. Селекторы, Направления, группы шаблона,
 	// `direct`/`block` и хопы, собранные не из канона, узлами не являются:
@@ -1458,7 +1458,7 @@ func chainOfNode(node *ParsedNode) []*ParsedNode {
 //
 // An empty scheme means SOCKS for backward compatibility (ParsedJump documented
 // it that way). A missing SOCKS `version` is NOT filled in: the core treats an
-// empty version as 5 (registry socks.json body.version), and CANON §2.4 does
+// empty version as 5 (registry socks.json body.version), and PARSING_PRINCIPLES §2.4 does
 // not materialize core defaults (SPEC 142 A10).
 func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 	out := &ParsedNode{

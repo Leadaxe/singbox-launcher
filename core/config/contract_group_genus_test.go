@@ -1,6 +1,6 @@
 package config
 
-// Страж рода группы (контракт 1.1.49, TASKS_LXBOX §45.2, CANON §5).
+// Страж рода группы (контракт 1.1.49, TASKS_LXBOX §45.2, PARSING_PRINCIPLES §5).
 //
 // Род группы — это тип тела sing-box, и таблица `genus` в
 // `registry/protocols/group.json` называет его у каждого вида источника.

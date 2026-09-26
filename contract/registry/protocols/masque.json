@@ -541,7 +541,7 @@
             "value": "cloudflare"
           },
           "materialize_default": true,
-          "impl": "Дефолт пишется в тело ЯВНО: default реестра по CANON §2.4 в тело не материализуется, а корпус присутствия ждёт и на нём стоит identity живых узлов."
+          "impl": "Дефолт пишется в тело ЯВНО: default реестра по PARSING_PRINCIPLES §2.4 в тело не материализуется, а корпус присутствия ждёт и на нём стоит identity живых узлов."
         },
         "vhttp": {
           "source": "query.vhttp",

@@ -73,7 +73,7 @@ func goWarningConstants(t *testing.T) map[string]string {
 
 // Каждый Go-код обязан быть объявлен в реестре: код, которого реестр не
 // знает, — это деградация, о которой вторая сторона (LxBox) не в курсе, и
-// сверить конверты становится нечем. Так `ws_early_data_converted` прожил
+// сверить результаты разбора становится нечем. Так `ws_early_data_converted` прожил
 // весь цикл в Go, отсутствуя в нормативном словаре.
 func TestRegistrySyncWarningCodesDeclared(t *testing.T) {
 	reg := loadWarningsRegistry(t)

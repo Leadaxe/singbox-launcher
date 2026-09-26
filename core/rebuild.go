@@ -227,7 +227,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	//
 	// Круг отказа, назвавшего НАШ узел, выключает этот узел в состоянии и
 	// пересобирает конфиг — и так до чистого прохода либо до стоп-условия
-	// (CANON §9.5). Всё это живёт в ОБЩЕЙ функции сборки, поэтому цикл
+	// (PARSING_PRINCIPLES §9.5). Всё это живёт в ОБЩЕЙ функции сборки, поэтому цикл
 	// достаётся всем входам сразу: pre-start обоих движков, кнопка Rebuild,
 	// автообновление подписок, API /action/rebuild-config.
 	disabler := &savedStateDisabler{s: s, path: statePath}

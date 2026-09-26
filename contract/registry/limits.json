@@ -47,7 +47,7 @@
         "go": 8,
         "dart": 8
       },
-      "note": "Совпадает. Go: core/config/subscription/detour_chain.go:maxDetourChainDepth (тот же лимит у цепочки dialerProxy Xray в core/config/subscription/xray_json_array.go); Dart: services/parser/singbox_config.dart:37 (kMaxDetourDepth). Превышение → warning detour_chain_too_deep, цепочка усекается, узел живёт. Тот же cap 8 зафиксирован для chain[] канонического конверта (PLAN §2)."
+      "note": "Совпадает. Go: core/config/subscription/detour_chain.go:maxDetourChainDepth (тот же лимит у цепочки dialerProxy Xray в core/config/subscription/xray_json_array.go); Dart: services/parser/singbox_config.dart:37 (kMaxDetourDepth). Превышение → warning detour_chain_too_deep, цепочка усекается, узел живёт. Тот же cap 8 зафиксирован для chain[] результата разбора (PLAN §2)."
     },
     "amnezia_scan_depth": {
       "value": 8,

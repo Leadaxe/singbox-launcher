@@ -50,7 +50,7 @@
         "new_reno",
         "bbr"
       ],
-      "note": "Прежний Go isValidTuicCongestionControl (удалён; сегодня — tuic.body.fields.congestion_control, enum + on_invalid с кодом tuic_congestion_invalid) и Dart _normalizeCongestion (tuic_parser.dart:59-61) — один набор; ядро на мусоре даёт B «unknown congestion control algorithm», то есть гард обязателен. ЦЕЛЕВОЕ (DRIFT §7.7, против правила «целевое = LxBox»): мусор → снять ключ + код (вариант Go), и ДЕФОЛТ НЕ ПИШЕТСЯ. Dart сегодня материализует congestion_control:cubic и alpn:[\"h3\"] всегда — это ломает identity-паритет tuic-узлов между платформами, мешает ядру сменить дефолт и прямо противоречит CANON «дефолты не пишутся» и ТЗ §3.2 «дефолты ядра не материализуются»."
+      "note": "Прежний Go isValidTuicCongestionControl (удалён; сегодня — tuic.body.fields.congestion_control, enum + on_invalid с кодом tuic_congestion_invalid) и Dart _normalizeCongestion (tuic_parser.dart:59-61) — один набор; ядро на мусоре даёт B «unknown congestion control algorithm», то есть гард обязателен. ЦЕЛЕВОЕ (DRIFT §7.7, против правила «целевое = LxBox»): мусор → снять ключ + код (вариант Go), и ДЕФОЛТ НЕ ПИШЕТСЯ. Dart сегодня материализует congestion_control:cubic и alpn:[\"h3\"] всегда — это ломает identity-паритет tuic-узлов между платформами, мешает ядру сменить дефолт и прямо противоречит PARSING_PRINCIPLES «дефолты не пишутся» и ТЗ §3.2 «дефолты ядра не материализуются»."
     },
     "tuic_udp_relay_mode": {
       "values": [

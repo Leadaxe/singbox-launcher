@@ -2,7 +2,7 @@ package corereject
 
 import "testing"
 
-// TestParseCanonTable — таблица примеров CANON §9.2 целиком плюс формы, о
+// TestParseCanonTable — таблица примеров PARSING_PRINCIPLES §9.2 целиком плюс формы, о
 // которых норма говорит отдельно: `endpoint`, теги с эмодзи, пробелами,
 // двоеточиями и `]`, строка без тега (ядра до lx.7), ошибки не про узел.
 //

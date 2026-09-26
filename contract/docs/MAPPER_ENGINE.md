@@ -1,6 +1,6 @@
 # MAPPER_ENGINE — архитектура движка маппера
 
-Общий документ контракта (SPEC 133). Рядом с `CANON.md`; к LxBox едет синком.
+Общий документ контракта (SPEC 133). Рядом с `PARSING_PRINCIPLES.md`; к LxBox едет синком.
 
 Грамматика (имена атрибутов, FROZEN/DRAFT) —
 `SPECS/133-F-N-REGISTRY_DRIVEN_LINK_MAPPER/PRIMITIVES.md` §0, машиночитаемая
@@ -71,7 +71,7 @@ cp1251 и мусор в метках узлов, и один битый байт
 Корпус: `uri/vless/label_invalid_utf8_byte`, `uri/vmess/ps_invalid_utf8_byte`.
 
 «Не раскрылось» судит не декодер, а ФОРМА: пейлоад, который ни одна форма
-секции не прочитала, — отказ `form_unrecognized` (CANON §4.1), а не
+секции не прочитала, — отказ `form_unrecognized` (PARSING_PRINCIPLES §4.1), а не
 `field_missing` от пустого разбора. Форма читает пейлоад, если её предикат
 `detect` сошёлся и её пространство разобрало тело: форма `space: json` не
 читает то, что не разобралось как JSON-объект, форма `space: url` после

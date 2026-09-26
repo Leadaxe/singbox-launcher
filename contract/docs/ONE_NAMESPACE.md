@@ -148,7 +148,7 @@ srs: `{ "kind": "srs", "name": "…", "enabled": true, "num": 1010, "refs": ["ht
 
 | Сторона | Что меняется | Объём |
 |---|---|---|
-| Контракт | схема бэкапа 1.0 (`sources[]`, `body` у всех сущностей, `tag`, `num`, `refs`, DNS `tag`+`body`), BACKUP.md, CANON.md, корпус `corpus/backup/**` перегенерировать, `NODE_SECTIONS.md` §1 | средний |
+| Контракт | схема бэкапа 1.0 (`sources[]`, `body` у всех сущностей, `tag`, `num`, `refs`, DNS `tag`+`body`), BACKUP.md, PARSING_PRINCIPLES.md, корпус `corpus/backup/**` перегенерировать, `NODE_SECTIONS.md` §1 | средний |
 | Лаунчер | state v8: правила `order_num` → `num`, `body{name,match,outbound}` → `name` + `body` = правило sing-box целиком, `srs_url` → `refs[]`; DNS плоско → `body`, миграция v7→v8 с эталоном; бэкап = состояние без маппера; legacy-чтение файлов 0.x (`node_tag`/`config_json`/`uri`/`value`/`servers[]`) | большой |
 | LxBox | хранение: `type`→`kind`, `name`→`tag`, `raw_body`(строка)→`body`+`origin`, матчеры camelCase + `outbound` → `body` sing-box с типами sing-box, `srsUrl`→`refs[]`, DNS `inline`→`user`, `rule`→`body`, `enabled` у DNS-правил; миграция `lxbox_settings.json` на диске при обновлении приложения, allowlist импорта, Debug API, STORAGE.md; legacy-чтение файлов 0.x; **смена поведения**: сегодня узел из ссылки перепарсивается при каждой сборке и правки парсера применяются к старым узлам сами — после 1.0 узел замораживается в момент импорта, поэтому обязательна кнопка Regen «пересобрать из ссылки» в редакторе узла | большой |
 

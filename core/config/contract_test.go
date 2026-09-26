@@ -4,7 +4,7 @@ package config
 //
 // Гоняет contract/corpus/uri/**/*.uri через subscription.ParseNode и сравнивает
 // результат с <case>.expected.json (или <case>.expected.launcher.json —
-// per-app override, contract/docs/CANON.md §7).
+// per-app override, contract/docs/PARSING_PRINCIPLES.md §7).
 //
 // Регенерация ожиданий:
 //
@@ -51,7 +51,7 @@ func readCorpusURI(t *testing.T, path string) string {
 	return uri
 }
 
-// expectedPathFor выбирает per-app override, если он есть (CANON §7).
+// expectedPathFor выбирает per-app override, если он есть (PARSING_PRINCIPLES §7).
 func expectedPathFor(base string) string {
 	override := base + ".expected.launcher.json"
 	if _, err := os.Stat(override); err == nil {
@@ -105,7 +105,7 @@ func TestContractCorpusURI(t *testing.T) {
 			node, parseErr := subscription.ParseNode(uri, nil)
 			switch {
 			case parseErr != nil:
-				// CANON §4: битая нода → dropped, подписка живёт. Код ставит
+				// PARSING_PRINCIPLES §4: битая нода → dropped, подписка живёт. Код ставит
 				// тот, кто отказал (linkmap.RejectError); ссылка корпуса —
 				// документ из ОДНОГО элемента, поэтому index всегда 0.
 				env.Dropped = append(env.Dropped, contractDrop{Ref: uri, Index: dropIndex(0),
@@ -127,7 +127,7 @@ func TestContractCorpusURI(t *testing.T) {
 			requireDropCodes(t, env)
 			got, err := marshalEnvelopePretty(env)
 			if err != nil {
-				t.Fatalf("сериализация конверта: %v", err)
+				t.Fatalf("сериализация результата разбора: %v", err)
 			}
 
 			expPath := expectedPathFor(base)
@@ -149,7 +149,7 @@ func TestContractCorpusURI(t *testing.T) {
 	}
 }
 
-// marshalEnvelopePretty пишет конверт читаемо (для файла), сохраняя канон
+// marshalEnvelopePretty пишет результат разбора читаемо (для файла), сохраняя канон
 // значений; строгое сравнение идёт по разобранному JSON, не по байтам.
 func marshalEnvelopePretty(env contractEnvelope) ([]byte, error) {
 	// Пустой список сериализуется как `[]`, а не `null`. Go отдаёт nil-срез
@@ -180,11 +180,11 @@ func marshalEnvelopePretty(env contractEnvelope) ([]byte, error) {
 	return pretty.Bytes(), nil
 }
 
-// equalEnvelopeJSON сравнивает конверты корпуса с поправкой на D-088:
+// equalEnvelopeJSON сравнивает результаты разбора в корпусе с поправкой на D-088:
 // в записях `dropped[]` нормативны `ref` и `code`, а `reason` — нет.
 //
-// Почему нормализация перед сравнением, а не отдельный обход двух конвертов:
-// сравнение по значению после канонизации (CANON §7) — единственная точка
+// Почему нормализация перед сравнением, а не отдельный обход двух результатов разбора:
+// сравнение по значению после канонизации (PARSING_PRINCIPLES §7) — единственная точка
 // правды раннеров, и второй, «почти такой же» путь сверки рано или поздно
 // разъехался бы с ней. Поэтому из обеих сторон вычёркивается ровно то, что
 // ненормативно: `reason` — всегда, `code` — только если ожидание его не
@@ -199,7 +199,7 @@ func equalEnvelopeJSON(t *testing.T, got, want []byte) bool {
 	return canonJSONString(t, gv) == canonJSONString(t, wv)
 }
 
-// parseEnvelopeJSON разбирает конверт в generic-значение.
+// parseEnvelopeJSON разбирает результат разбора в generic-значение.
 func parseEnvelopeJSON(t *testing.T, side string, data []byte) any {
 	t.Helper()
 	var v any
@@ -246,9 +246,9 @@ func normalizeDropsForCompare(got, want any) {
 }
 
 // normalizeWarningsForCompare приводит `warnings[]` обеих сторон к сравнимому
-// виду (CANON §6, контракт 1.1.0).
+// виду (PARSING_PRINCIPLES §6, контракт 1.1.0).
 //
-// До 1.1.0 конверт нёс здесь строки-коды, и весь существующий корпус написан
+// До 1.1.0 результат разбора нёс здесь строки-коды, и весь существующий корпус написан
 // так; с 1.1.0 сторона отдаёт объекты {code, path?, value?}. Нормативен ровно
 // тот объём, который ОЖИДАНИЕ объявило:
 //
@@ -318,7 +318,7 @@ func normalizeNodeWarnings(node, want map[string]any) {
 }
 
 // warningObjects достаёт warnings[] узла как изменяемые карты, ПЕРЕПИСЫВАЯ
-// строки-коды объектами прямо в конверте: дальше сравниваются уже однородные
+// строки-коды объектами прямо в результате разбора: дальше сравниваются уже однородные
 // значения, и второй ветки «а вдруг строка» ниже по коду нет.
 func warningObjects(node map[string]any) []map[string]any {
 	list, ok := node["warnings"].([]any)
@@ -339,7 +339,7 @@ func warningObjects(node map[string]any) []map[string]any {
 	return out
 }
 
-// envelopeNodes — записи nodes[] конверта как изменяемые карты.
+// envelopeNodes — записи nodes[] результата разбора как изменяемые карты.
 func envelopeNodes(v any) []map[string]any {
 	root, ok := v.(map[string]any)
 	if !ok {
@@ -363,7 +363,7 @@ func childNodes(m map[string]any, key string) []map[string]any {
 	return out
 }
 
-// envelopeDrops достаёт записи `dropped[]` конверта как изменяемые карты.
+// envelopeDrops достаёт записи `dropped[]` результата разбора как изменяемые карты.
 func envelopeDrops(v any) []map[string]any {
 	root, ok := v.(map[string]any)
 	if !ok {
@@ -382,7 +382,7 @@ func envelopeDrops(v any) []map[string]any {
 	return out
 }
 
-// equalJSON сравнивает по значению (CANON §7), не по байтам файла.
+// equalJSON сравнивает по значению (PARSING_PRINCIPLES §7), не по байтам файла.
 func equalJSON(t *testing.T, a, b []byte) bool {
 	t.Helper()
 	var av, bv any

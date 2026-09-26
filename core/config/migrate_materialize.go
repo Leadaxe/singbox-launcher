@@ -121,7 +121,7 @@ func materializeSubscriptionForMigration(req state.MigrationSubRequest) (*state.
 //
 // Пара конвертеров живёт здесь, а не в state: направление импорта
 // config → state, и обратной зависимости у state быть не может (иначе цикл).
-// Форма у типов одна (CANON §6) — конверсия механическая. Обратный
+// Форма у типов одна (PARSING_PRINCIPLES §6) — конверсия механическая. Обратный
 // конвертер (state → configtypes) заводится волной W2c вместе со своим
 // вызывающим: пустой, он немедленно уехал бы в `unused`.
 func stateWarnings(in []configtypes.Warning) []state.NodeWarning {

@@ -252,10 +252,10 @@ DRIFT.md, часть уже существует под другими имен�
 
 ### 5.2 Контракт (1.1.0, аддитивно)
 
-- `docs/CANON.md` §6: `warnings[]` конверта = `[{code, path, value?, params?}]`,
+- `docs/PARSING_PRINCIPLES.md` §6: `warnings[]` конверта = `[{code, path, value?, params?}]`,
   порядок = порядок `body.order` реестра; `path` обязателен для кодов уровня
   поля, отсутствует для кодов уровня узла.
-- `docs/CANON.md` новый §8 «Конвейер»: три ступени и инвариант «fatal-значение
+- `docs/PARSING_PRINCIPLES.md` новый §8 «Конвейер»: три ступени и инвариант «fatal-значение
   в entry не попадает» — теперь проверяемый по реестру, а не по памяти.
 - `schema/backup.schema.json`: у узла `warnings` опционально; импорт их
   **не** доверяет (§3.5).
@@ -315,7 +315,7 @@ Go (Win7-джоба собирает весь модуль): без `slices`/`ma
 
 | Волна | Содержимое | Релизится |
 |---|---|---|
-| **W1 контракт** | `body`-секции для всех схем + tls/transports/multiplex/dialer из `CORE_SCHEMA`; `maps_to` в `uri.*`; `note`→`desc_en/desc_ru/impl`; тексты кодов; новые коды; CANON §6/§8; schema бэкапа; линтер реестра; VERSION 1.1.0; README version log; TASKS_LXBOX §24 | нет (только контракт; корпус пока проходит на старом коде — новые `path` в expected допускаются пустыми до W2) |
+| **W1 контракт** | `body`-секции для всех схем + tls/transports/multiplex/dialer из `CORE_SCHEMA`; `maps_to` в `uri.*`; `note`→`desc_en/desc_ru/impl`; тексты кодов; новые коды; PARSING_PRINCIPLES §6/§8; schema бэкапа; линтер реестра; VERSION 1.1.0; README version log; TASKS_LXBOX §24 | нет (только контракт; корпус пока проходит на старом коде — новые `path` в expected допускаются пустыми до W2) |
 | **W2 ядро конвейера** | `core/nodeflow` (маппер-обвязка, санитайзер по реестру, эмиттер по реестру, гейт сборки), `Node.Warnings`, перевод всех входов §3.5, вынос решений из парсеров, удаление allowlist-эмиттера и `*SupportProbe`; корпус зелёный на новых expected | да, patch |
 | **W3 UI** | ⚠ в списках, секция в карточке, превью Add, ссылка, обвязочные locale-ключи + ru.json | да, patch |
 | **W4 документация** | gendocs, CI-джоба, замена `docs/Protocols*.md`, ссылка из UI на сгенерированный якорь | да (вместе с W3 или отдельно) |

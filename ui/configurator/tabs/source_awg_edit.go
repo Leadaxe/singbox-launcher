@@ -308,7 +308,7 @@ func writeAWGBody(node *wizardmodels.Node, ob map[string]interface{}, keep []str
 	node.ReplaceDerivedWarnings(nodewarn.FromParsed(res.Warnings))
 	// Вердикт ядра привязан к ТЕЛУ: правка обфускации сменила тело — приговор
 	// о прежнем недействителен, узел включается обратно и проверится
-	// следующей сборкой (SPEC 132, CANON §9.4).
+	// следующей сборкой (SPEC 132, PARSING_PRINCIPLES §9.4).
 	node.RevalidateCoreVerdictAfterBodyChange(bodyBefore)
 	return nil
 }

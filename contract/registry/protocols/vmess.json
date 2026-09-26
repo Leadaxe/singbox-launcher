@@ -296,7 +296,7 @@
       "kind": "structure",
       "desc_en": "Older panels emit an unencoded vmess link; it is tried before the node is given up on.",
       "desc_ru": "Старые панели выдают vmess-ссылку без JSON; эта форма пробуется, прежде чем узел отбросят.",
-      "impl": "Правило реестра: форма legacy секции mappers.uri пробуется ПОСЛЕ формы v2rayn — именно откат (прежде — рукописный parseVMessLegacyCleartext). С контракта 1.1.74 её detect — не default, а структура самой формы: в раскрытом тексте до метки есть userinfo (`method:uuid@`, regex `^[^#]*@`). Пейлоад, который не прочитали ни JSON-форма, ни legacy (мусор из `vmess://not-base64`), — form_unrecognized (CANON §4.1), а не field_missing от пустого разбора. Query-хвост такой ссылки читается (network/type/tls → транспорт и TLS)."
+      "impl": "Правило реестра: форма legacy секции mappers.uri пробуется ПОСЛЕ формы v2rayn — именно откат (прежде — рукописный parseVMessLegacyCleartext). С контракта 1.1.74 её detect — не default, а структура самой формы: в раскрытом тексте до метки есть userinfo (`method:uuid@`, regex `^[^#]*@`). Пейлоад, который не прочитали ни JSON-форма, ни legacy (мусор из `vmess://not-base64`), — form_unrecognized (PARSING_PRINCIPLES §4.1), а не field_missing от пустого разбора. Query-хвост такой ссылки читается (network/type/tls → транспорт и TLS)."
     }
   ],
   "refs": {

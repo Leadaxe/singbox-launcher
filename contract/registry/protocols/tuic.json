@@ -28,7 +28,7 @@
         "maps_to": "congestion_control",
         "desc_en": "QUIC congestion control algorithm.",
         "desc_ru": "Алгоритм контроля перегрузки QUIC.",
-        "impl": "РАЗРЫВ ДЕФОЛТА В ЭМИТЕ (новое, вне §9): Dart всегда пишет congestion_control (дефолт cubic) в outbound-JSON, Go — только при наличии в URI. Ломает identity-паритет tuic-нод и противоречит CANON «дефолты не пишутся». Невалидное значение: Go дропает ключ с warning, Dart заменяет на cubic — итог для ядра одинаков."
+        "impl": "РАЗРЫВ ДЕФОЛТА В ЭМИТЕ (новое, вне §9): Dart всегда пишет congestion_control (дефолт cubic) в outbound-JSON, Go — только при наличии в URI. Ломает identity-паритет tuic-нод и противоречит PARSING_PRINCIPLES «дефолты не пишутся». Невалидное значение: Go дропает ключ с warning, Dart заменяет на cubic — итог для ядра одинаков."
       },
       "udp_relay_mode": {
         "type": "enum",

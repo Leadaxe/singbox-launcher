@@ -788,7 +788,7 @@ type ParsedNode struct {
 	//
 	// Пустой Tag = узел собран не из канона (служебная запись, WARP): такой
 	// тег узлу не сопоставляется, и страховка на него не действует
-	// (CANON §9.3).
+	// (PARSING_PRINCIPLES §9.3).
 	CanonicalLink NodeLink
 	// CanonicalGroupMembers / CanonicalGroupDefault — состав провайдерской
 	// Auto-группы канона и её умолчание по ссылкам NodeLink. Резолв на
@@ -804,7 +804,7 @@ type ParsedNode struct {
 	// отпечаток. Коды позволяют показать это в UI и сверять поведение
 	// обоих приложений по общему корпусу, а не по тексту лога.
 	//
-	// Порядок = порядок вызовов AddWarning/AddFieldWarning (CANON §6, Л14):
+	// Порядок = порядок вызовов AddWarning/AddFieldWarning (PARSING_PRINCIPLES §6, Л14):
 	// сортировать его при записи в state нельзя — сверка с корпусом идёт по
 	// последовательности слоёв разбора. Дубли по паре (Code, Path) не
 	// хранятся: запись отвечает на вопрос «что случилось с этим полем», а не
@@ -839,7 +839,7 @@ func (n *ParsedNode) AddSourceWarning(code, path string, params map[string]strin
 
 // AddFieldWarning помечает узел кодом деградации уровня поля: путь в теле
 // sing-box (`tls.reality.short_id`) и исходное значение до деградации,
-// обрезанное до WarningValueMax (CANON §6).
+// обрезанное до WarningValueMax (PARSING_PRINCIPLES §6).
 //
 // Маскировать секреты здесь нечем: реестр протоколов (какие поля объявлены
 // `secret: true`) читает санитайзер — он и подменяет значение на "***".
@@ -879,7 +879,7 @@ func (n *ParsedNode) HasWarning(code string) bool {
 	return false
 }
 
-// Warning — запись деградации узла (CANON §6, контракт 1.1.0, SPEC 131):
+// Warning — запись деградации узла (PARSING_PRINCIPLES §6, контракт 1.1.0, SPEC 131):
 // код из contract/registry/warnings.json плюс путь поля в теле sing-box
 // (`tls.reality.short_id`), исходное значение (≤64 символов; у secret-полей
 // реестра — "***") и подстановки шаблона text_* кода. Path пуст у кодов
@@ -893,7 +893,7 @@ type Warning struct {
 	Params map[string]string `json:"params,omitempty"`
 }
 
-// WarningValueMax — предел длины Warning.Value (CANON §6).
+// WarningValueMax — предел длины Warning.Value (PARSING_PRINCIPLES §6).
 const WarningValueMax = 64
 
 // TruncateWarningValue обрезает исходное значение до WarningValueMax рун.

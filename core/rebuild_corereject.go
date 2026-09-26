@@ -1,5 +1,5 @@
 // File rebuild_corereject.go — страховка «ядро отвергло узел → авто-выключение»
-// (SPEC 132, норма contract/docs/CANON.md §9).
+// (SPEC 132, норма contract/docs/PARSING_PRINCIPLES.md §9).
 //
 // # Что тут происходит
 //
@@ -25,7 +25,7 @@
 //
 // Каждый круг обязан выключить НОВЫЙ узел. Круг, на котором выключить нечего
 // — ошибка не про узел, тег не сопоставился, тот же тег назван повторно, —
-// цикл прерывает (CANON §9.5, три нормативных запрета). Плюс жёсткие пределы
+// цикл прерывает (PARSING_PRINCIPLES §9.5, три нормативных запрета). Плюс жёсткие пределы
 // §Пределы ниже.
 //
 // # Чего тут НЕТ
@@ -294,7 +294,7 @@ type buildRound struct {
 	// NodeLinks — финальный тег → узел состояния. Строит СБОРКА, которая эти
 	// теги и выдала: пересчитать путь снаружи нельзя (тег-политика с
 	// переменными и суффикс уникализации раскрываются только эмиссией) —
-	// CANON §9.3.
+	// PARSING_PRINCIPLES §9.3.
 	NodeLinks map[string]state.NodeLink
 }
 
@@ -310,7 +310,7 @@ func (l *coreRejectLoop) run(first buildRound, rebuild func() (buildRound, error
 	limit := coreRejectAskAfter
 	unlimited := false
 	// Теги, уже названные ядром: повторно названный тег прекращает
-	// автоматику (CANON §9.5 запрет 3) — иначе цикл перестаёт быть конечным.
+	// автоматику (PARSING_PRINCIPLES §9.5 запрет 3) — иначе цикл перестаёт быть конечным.
 	named := make(map[string]bool, 8)
 
 	for {
@@ -425,7 +425,7 @@ func (l *coreRejectLoop) nextVictim(
 		return coreRejectVictim{}, named, true
 	}
 	if named[rej.Tag] {
-		debuglog.WarnLog("corereject: tag %q named twice — stopping (CANON §9.5)", rej.Tag)
+		debuglog.WarnLog("corereject: tag %q named twice — stopping (PARSING_PRINCIPLES §9.5)", rej.Tag)
 		return coreRejectVictim{}, named, true
 	}
 	link, has := links[rej.Tag]
@@ -446,7 +446,7 @@ func coreRejectCheck(singboxPath, configPath string) error {
 }
 
 // stateNodeLinks — карта «финальный тег → узел состояния» из результата
-// эмиссии (SPEC 132, CANON §9.3).
+// эмиссии (SPEC 132, PARSING_PRINCIPLES §9.3).
 //
 // Перевод формы, а не пересчёт: карту строит сама эмиссия, потому что только
 // она знает раскрытую тег-политику и суффикс глобальной уникализации.

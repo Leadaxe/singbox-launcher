@@ -119,7 +119,7 @@ func decode10Source(in Source10, subIndex int, ruleGroup func(node int) bool) (d
 		Group:   in.Group,
 		Service: in.Service,
 		Reason:  in.Reason,
-		// in.Warnings НЕ переносится намеренно (CANON §6): коды —
+		// in.Warnings НЕ переносится намеренно (PARSING_PRINCIPLES §6): коды —
 		// производная тела, и чужой набор, посчитанный другой версией
 		// реестра, врал бы про наш узел. Поле прочитано (значит не
 		// «неизвестный ключ») и отброшено молча; пересчёт делает
@@ -188,7 +188,7 @@ func decode10Source(in Source10, subIndex int, ruleGroup func(node int) bool) (d
 			}
 			member := cloneNode(n)
 			// Коды деградации при импорте не переносятся — по той же причине,
-			// что и у корневого узла (CANON §6): они производная тела и
+			// что и у корневого узла (PARSING_PRINCIPLES §6): они производная тела и
 			// посчитаны чужим реестром. Читаются и отбрасываются молча.
 			//
 			// Исключение — провайдерская группа (kind=auto, контракт 1.1.66):

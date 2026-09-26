@@ -4,7 +4,7 @@
 // Ни одного `if scheme == "..."`: все схемные различия живут в реестре
 // контракта (contract/registry), код лишь исполняет его правила. Из этого
 // следует и порядок warnings — он равен порядку обхода body.order, а значит
-// детерминирован и сравним в корпусе (CANON §6).
+// детерминирован и сравним в корпусе (PARSING_PRINCIPLES §6).
 //
 // go1.20-совместимо (Win7-джоба): без slices/maps/min/max/clear.
 package nodeflow
@@ -23,7 +23,7 @@ import (
 	"singbox-launcher/core/config/registry"
 )
 
-// Warning — запись о снятом или приведённом поле (CANON §6).
+// Warning — запись о снятом или приведённом поле (PARSING_PRINCIPLES §6).
 type Warning = configtypes.Warning
 
 // Result — исход санитайзера.
@@ -143,7 +143,7 @@ type sanitizer struct {
 	// смотрит на соседа, который ещё не обойдён и может не пережить своих
 	// правил (REALITY с негодным ключом снимается позже uTLS). Каждое помнит
 	// место в warnings[], где встал бы его код при обходе, — порядок кодов
-	// по body.order нормативен (CANON §6).
+	// по body.order нормативен (PARSING_PRINCIPLES §6).
 	deferred []deferredRule
 	// final — идёт суд отложенных правил: условия читают только чистое тело.
 	// Исходная карта им не годится — в ней лежит и то, что правила уже сняли.
@@ -225,7 +225,7 @@ func SanitizeFromKind(scheme, source, kind string, m map[string]interface{}) Res
 	// «Объект не задан» размечается тем же предварительным проходом и по той
 	// же причине: tls:{enabled:false} для ядра значит «TLS нет», и объекта,
 	// которого нет, не должны видеть НИ правила его полей, НИ связи соседей
-	// (CANON §6.1). Проход идёт после запретов по схеме: поле, запрещённое
+	// (PARSING_PRINCIPLES §6.1). Проход идёт после запретов по схеме: поле, запрещённое
 	// схеме, снято раньше и внутрь него заглядывать незачем.
 	s.markAbsentObjects("", body.Order, body.Fields, m)
 	s.object("", body.Order, body.Fields, m)
@@ -303,7 +303,7 @@ func (s *sanitizer) markSchemeForbidden(prefix string, order []string, fields ma
 // Объект снимается ЦЕЛИКОМ и ТИХО: это запись «настройки нет», а не деградация,
 // и сообщать человеку нечего.
 //
-// Почему проход отдельный и предварительный (норма порядка, CANON §6.1):
+// Почему проход отдельный и предварительный (норма порядка, PARSING_PRINCIPLES §6.1):
 // объекта, которого нет, не должны видеть ни правила его собственных полей, ни
 // связи соседей. Иначе `tls: {enabled: false, reality: {…}}` дал бы коды на
 // поля несуществующего блока, а сосед потерял бы своё значение из-за конфликта
@@ -456,7 +456,7 @@ func (s *sanitizer) dropNode(code, path string, value interface{}, secret bool, 
 //     obfs задан, в нём обязан быть тип». Узел без обфускации работает, и
 //     хоронить его за неё нельзя: коды obfs_unknown и obfs_password_missing
 //     объявлены в реестре с severity `warning`, а warning на отброшенном узле
-//     стоять не может (CANON §4, ловушка Л11). Такой объект снимается целиком,
+//     стоять не может (PARSING_PRINCIPLES §4, ловушка Л11). Такой объект снимается целиком,
 //     узел живёт.
 //
 // Поэтому здесь только отметка, а разбирает её objectField (для вложенного
@@ -556,7 +556,7 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 		if !present {
 			// Дефолт, который реестр велит МАТЕРИАЛИЗОВАТЬ (default_when).
 			// Обычный `default` сюда не попадает: дефолты ядра в тело не
-			// пишутся (CANON §2.4). Сюда попадают только поля, без которых
+			// пишутся (PARSING_PRINCIPLES §2.4). Сюда попадают только поля, без которых
 			// ядро не собирает outbound вовсе — у hysteria v1 отсутствующий
 			// up_mbps даёт «missing upload speed» фаталом на весь конфиг.
 			if dw := f.DefaultWhen; dw != nil && dw.Absent && dw.Value != nil && s.conditionHolds(dw.When) {
@@ -1767,7 +1767,7 @@ func advisoryValueMatches(a registry.Advisory, v interface{}) bool {
 
 // onInvalid исполняет правило on_invalid: снять, подставить, развернуть
 // обёртку (unwrap) или отбросить узел. Без правила — снять с type_invalid: значение, которое ядро отвергает
-// фатально, в теле остаться не может (CANON §8).
+// фатально, в теле остаться не может (PARSING_PRINCIPLES §8).
 func (s *sanitizer) onInvalid(path string, f *registry.Field, raw interface{}) (interface{}, bool) {
 	oi := f.OnInvalid
 	if oi == nil {
@@ -2344,7 +2344,7 @@ func (s *sanitizer) deferCoerce(path string, f *registry.Field, v interface{}) {
 }
 
 // applyDeferred исполняет отложенные правила в порядке обхода и ставит их
-// коды туда, где они встали бы при обходе (порядок по body.order, CANON §6).
+// коды туда, где они встали бы при обходе (порядок по body.order, PARSING_PRINCIPLES §6).
 // У отбракованного узла тела нет — дописывать и менять нечего.
 func (s *sanitizer) applyDeferred() {
 	if s.res.Drop != nil || len(s.deferred) == 0 {

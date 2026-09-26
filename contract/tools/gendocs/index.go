@@ -39,7 +39,7 @@ func renderIndex(raw *rawRegistry, reg *registry.Registry, schemes []string) str
 		"recorded in `warnings[]` ([codes](warnings.md)).\n")
 	b.WriteString("3. **emitter** — serializes in `body.order`; there is no per-scheme " +
 		"branching in the code.\n\n")
-	b.WriteString("The normative text is [`contract/docs/CANON.md` §8](../CANON.md).\n\n")
+	b.WriteString("The normative text is [`contract/docs/PARSING_PRINCIPLES.md` §8](../PARSING_PRINCIPLES.md).\n\n")
 
 	b.WriteString("## Schemes\n\n")
 	// Колонка `extension` снята: она пуста почти у всех строк, а «поддержано

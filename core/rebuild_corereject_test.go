@@ -61,7 +61,7 @@ func (d *memDisabler) Disable(link state.NodeLink, reason string) bool {
 func (d *memDisabler) Commit() error               { return nil }
 func (d *memDisabler) Label(state.NodeLink) string { return "sub" }
 
-// rejectLine — строка отказа ядра нормативной формы (CANON §9.1).
+// rejectLine — строка отказа ядра нормативной формы (PARSING_PRINCIPLES §9.1).
 func rejectLine(i int, tag, text string) string {
 	return fmt.Sprintf("initialize outbound[%d] vless[%s]: %s", i, tag, text)
 }
@@ -127,7 +127,7 @@ func TestCoreRejectLoopScenarios(t *testing.T) {
 			wantRounds:   1,
 		},
 		{
-			name: "тот же тег назван повторно — цикл прерван (CANON §9.5)",
+			name: "тот же тег назван повторно — цикл прерван (PARSING_PRINCIPLES §9.5)",
 			verdicts: []string{
 				rejectLine(1, "B", "bad flow"),
 				rejectLine(1, "B", "bad flow"),

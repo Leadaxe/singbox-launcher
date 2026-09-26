@@ -39,7 +39,7 @@ wgconf-INI вообще не читался.
 `ssh/full_config` и `ssh/private_key_path` — поля `client_version` и
 `private_key_path` помечены `ext: desktop` в реестре (путь к файлу ключа на
 мобиле бессмыслен). Кейсы несут per-app override `<case>.expected.launcher.json`
-по CANON §7 (D-036), поэтому расхождением не считаются.
+по PARSING_PRINCIPLES §7 (D-036), поэтому расхождением не считаются.
 
 ## Что дала последняя итерация
 

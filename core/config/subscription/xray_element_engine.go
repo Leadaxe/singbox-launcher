@@ -104,7 +104,7 @@ func parseXrayElementByEngine(ob map[string]interface{}, doc []interface{}, labe
 
 	// Коды движка становятся деградациями узла. Коды санитайзера к ним
 	// припишет конвейер (mergeWarnings) — порядок «сперва разбор, затем
-	// судья значений» нормативен (CANON §6, Л14).
+	// судья значений» нормативен (PARSING_PRINCIPLES §6, Л14).
 	for _, n := range res.Notes {
 		if n.Path != "" {
 			node.AddSourceWarning(n.Code, n.Path, n.Params)

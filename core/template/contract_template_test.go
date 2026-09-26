@@ -167,7 +167,7 @@ func normalizeWarnings(in []string) []string {
 	return out
 }
 
-// jsonEqual сравнивает два JSON-дерева по значению, не по байтам (CANON §7).
+// jsonEqual сравнивает два JSON-дерева по значению, не по байтам (PARSING_PRINCIPLES §7).
 func jsonEqual(a, b json.RawMessage) bool {
 	var x, y interface{}
 	if err := json.Unmarshal(a, &x); err != nil {
