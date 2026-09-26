@@ -1,0 +1,6 @@
+# Битые байты в метке под base64 не роняют раскрытие: JSON-контейнер v2rayN,
+# ключ ps несёт cp1251 («Москва» = CC EE F1 EA E2 E0) — после base64 это не
+# UTF-8. Невалидные последовательности заменены U+FFFD, JSON разбирается, узел
+# доезжает (контракт 1.1.74, MAPPER_ENGINE §1). Синтетика.
+# источник: норма владельца 26.09.2026 (агрегаторы шлют cp1251 в метках узлов)
+vmess://eyJ2IjoiMiIsInBzIjoiTm9kZS3M7vHq4uAtMSIsImFkZCI6IjE5Mi4wLjIuNDEiLCJwb3J0IjoiNDQzIiwiaWQiOiIxMTExMTExMS0xMTExLTExMTEtMTExMS0xMTExMTExMTExMTEiLCJhaWQiOiIwIiwic2N5IjoiYXV0byIsIm5ldCI6InRjcCIsInR5cGUiOiJub25lIiwidGxzIjoidGxzIiwic25pIjoiZXhhbXBsZS00MS5jb20ifQ==
