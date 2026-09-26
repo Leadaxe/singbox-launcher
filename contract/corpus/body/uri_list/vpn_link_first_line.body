@@ -1,0 +1,9 @@
+# URI-список, у которого ПЕРВАЯ строка — vpn://-профиль Amnezia с двумя
+# WG/AWG-контейнерами (тот же профиль, что body/vpn/multi_container), а
+# вторая — обычная ссылка. Норма (контракт 1.1.80): detect вида amnezia_link
+# требует, чтобы ни одна следующая строка не начиналась со схемы xxx://, —
+# такой текст список, а не одна ссылка, и идёт веткой uri_lines; строка vpn://
+# там разворачивается в контейнер целиком. Ожидание: три узла, vpn-узлы
+# первыми, их тела — как в multi_container.
+vpn://AAADPnjarZLfS8MwEMf_lZJn13XVwRzsYagPczAK-rYMuSXXGUiTkmSbWvq_e-kehsikoneB8L0f3PHhGiasCaAMOs-mybo5a5IMKoMfCgZw3LErkvRNk4Zp8OGFCksVNWs4OwlOirP1wgR0JQjccG4Kpw4QcInvySyB3jafUe9cSofeU-MoSydplubD65zi96unGEs7J01vXSC6bt5-q5U4jdv2tm7cg5G1VSZQJ75BVWscjFJhq-l4NMmzuI_W9ohyUcSVsrTzYUwUhE_5gCYsEWvQ6oBUkY_jbgSOs0dxYnPDWcva9iq5APqoHO724GTEfRZ_gi5623fot7-HLnvbJej5P0CPlDfEUGIJex3ufrhqiV44VQdlTcw-ow9J4WypNMb0q_VhBRXG3JezYO0nIBQX8w
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=tcp&security=tls&sni=example-1.com#node-a

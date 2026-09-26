@@ -10,7 +10,10 @@
         "source_kind": "amnezia_link",
         "priority": 10,
         "detect": {
-          "text": { "prefix_fold": "vpn://" }
+          "all": [
+            { "text": { "prefix_fold": "vpn://" } },
+            { "not": { "regex": "\\n\\s*[A-Za-z][A-Za-z0-9+.\\-]*://" } }
+          ]
         },
         "unwrap": "amnezia_vpn",
         "mapper": "conf",
@@ -21,9 +24,9 @@
             "detect": {
               "default": true
             },
-            "desc_en": "Amnezia profile bundle: JSON with `containers[]`, either bare or inside qCompress framing. The branch by default: qCompress framing is not expressible by predicates.",
-            "desc_ru": "Пакет-профиль Amnezia: JSON с `containers[]`, голый либо под фреймингом qCompress. Форма по умолчанию: фрейминг qCompress предикатами не выражается.",
-            "impl": "Историческая и основная форма: распаковщик достаёт из профиля по одному ini-тексту на WG/AWG-контейнер. `default: true`, а не предикат: голый JSON опознался бы по `prefix_trim: \"{\"`, но сжатый профиль начинается с четырёх байт ДЛИНЫ, и выразить его предикатом о тексте нельзя — фрейминг судит сам распаковщик. Объявить половину условия значило бы соврать, что вторая половина проверяется здесь же. Как и у видов источника, форма по умолчанию ровно одна и с настоящими предикатами не конкурирует. СТРОКА `vpn://` ВНУТРИ СПИСКА ССЫЛОК (ветка `uri_lines`) и вставка `vpn://` в форму источника дают ТЕ ЖЕ узлы, что тело из одной этой ссылки (контракт 1.1.80): все WG/AWG-контейнеры профиля, origin каждого — самодостаточный текст `.conf` (`wg_ini`), номер записи у узлов одного контейнера — подряд; ссылка, не распаковавшаяся вовсе, — отбраковка записи на её позиции с исходником-строкой (origin `uri`). Go: core/config/subscription/parse_body.go:bodyParseState.acceptVPNLinkLine, core/config/migrate_materialize.go:MaterializeVPNLinkNodes. Кейс корпуса body/uri_list/vpn_link_line."
+            "desc_en": "Amnezia profile bundle: JSON with `containers[]`, either bare or inside qCompress framing. The branch by default: qCompress framing is not expressible by predicates. A text whose later lines start with another `xxx://` link is a list, not one container, and goes to `uri_lines`.",
+            "desc_ru": "Пакет-профиль Amnezia: JSON с `containers[]`, голый либо под фреймингом qCompress. Форма по умолчанию: фрейминг qCompress предикатами не выражается. Текст, где следующие строки начинаются другой ссылкой `xxx://`, — список, а не один контейнер, и уходит в `uri_lines`.",
+            "impl": "Историческая и основная форма: распаковщик достаёт из профиля по одному ini-тексту на WG/AWG-контейнер. `default: true`, а не предикат: голый JSON опознался бы по `prefix_trim: \"{\"`, но сжатый профиль начинается с четырёх байт ДЛИНЫ, и выразить его предикатом о тексте нельзя — фрейминг судит сам распаковщик. Объявить половину условия значило бы соврать, что вторая половина проверяется здесь же. Как и у видов источника, форма по умолчанию ровно одна и с настоящими предикатами не конкурирует. СТРОКА `vpn://` ВНУТРИ СПИСКА ССЫЛОК (ветка `uri_lines`) и вставка `vpn://` в форму источника дают ТЕ ЖЕ узлы, что тело из одной этой ссылки (контракт 1.1.80): все WG/AWG-контейнеры профиля, origin каждого — самодостаточный текст `.conf` (`wg_ini`), номер записи у узлов одного контейнера — подряд; ссылка, не распаковавшаяся вовсе, — отбраковка записи на её позиции с исходником-строкой (origin `uri`). Go: core/config/subscription/parse_body.go:bodyParseState.acceptVPNLinkLine, core/config/migrate_materialize.go:MaterializeVPNLinkNodes. Кейс корпуса body/uri_list/vpn_link_line. ОДНА ССЫЛКА, А НЕ СПИСОК (контракт 1.1.80): второе условие detect — «ни одна строка после первой не начинается со схемы `xxx://`». Без него список, у которого первая строка `vpn://`, опознавался телом-ссылкой ЦЕЛИКОМ: распаковщик склеивал все строки в один base64 и терял и профиль, и остальные ссылки. Теперь такой текст уходит в `uri_lines`, и строка `vpn://` разворачивается там в контейнер целиком. Условие НЕ «одна строка»: ссылку из чата переносят с переводами строк внутри base64 (payload_forms, распаковщик выбрасывает пробелы и переводы), и строки-продолжения схемы не несут — такой перенос остаётся телом-ссылкой. Текст судится после trim, завершающий перевод строки на вывод не влияет. Кейс корпуса body/uri_list/vpn_link_first_line."
           },
           {
             "id": "bare_conf",
