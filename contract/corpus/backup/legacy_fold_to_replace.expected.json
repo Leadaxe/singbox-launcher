@@ -1,0 +1,21 @@
+{
+  "rules": [
+    { "name": "Work via Proton", "enabled": true, "outbound": "Proton" },
+    { "name": "Media via derived", "enabled": true, "outbound": "2:select" }
+  ],
+  "warnings": [],
+  "route_final_applied": true,
+  "replace_tags": {
+    "https://example-1.com/sub-legacy-tag": "Named-pick",
+    "https://example-1.com/sub-legacy-derived": "2:select"
+  },
+  "replaces": {
+    "Proton": {
+      "mode": "both",
+      "tag": "Proton",
+      "auto": { "mode": "least_test", "url": "https://example-9.com/generate_204", "interval": "15m", "tolerance": 50 }
+    },
+    "https://example-1.com/sub-legacy-tag": { "mode": "manual", "tag": "Named-pick" },
+    "https://example-1.com/sub-legacy-derived": { "mode": "manual", "tag": "2:select" }
+  }
+}

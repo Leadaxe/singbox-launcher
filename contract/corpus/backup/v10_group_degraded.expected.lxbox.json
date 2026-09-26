@@ -1,8 +1,6 @@
 {
   "rules": [],
-  "warnings": [
-    "backup_group_degraded"
-  ],
+  "warnings": [],
   "folders": {
     "Rules": ["a", "b", "by-rule", "pick"]
   },
@@ -17,7 +15,8 @@
       "members": [
         { "tag": "a", "folder": "Rules" },
         { "tag": "b", "folder": "Rules" }
-      ]
+      ],
+      "default": { "tag": "b", "folder": "Rules" }
     }
   },
   "chains": [

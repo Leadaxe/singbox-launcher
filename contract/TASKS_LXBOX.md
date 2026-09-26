@@ -7926,3 +7926,134 @@ U+FFFD, как `strings.ToValidUTF8`. Кейсы `uri/vless/label_invalid_utf8_b
 `_canonScheme`, nodeIdentityKey) — можно прислать пары «ваше слово — слово
 контракта», добавим колонкой в словарь.
 
+
+## 74. Контракт 1.1.78 — свёртка = поле replace внутри записи папки/подписки
+
+Решение владельца 26.09.2026: свёртка источника в группу — настройка папки или
+подписки, поле `replace` ВНУТРИ записи `sources[]` (`kind: folder |
+subscription`), ОДИНАКОВОЕ в состоянии лаунчера, в файле бэкапа и у LxBox.
+
+**Форма** (`schema/backup.schema.json#/$defs/replace`, `docs/BACKUP.md` §2
+«`replace` — свёртка источника»):
+
+```json
+"replace": {
+  "mode": "both",
+  "tag": "Proton",
+  "auto": { "mode": "least_test", "url": "https://…/generate_204", "interval": "15m", "tolerance": 50 }
+}
+```
+
+- `mode`: `manual` — selector `tag`; `auto` — urltest `tag`; `both` — selector
+  `tag` с авто-двойником `<tag>-auto`. Неизвестное значение читается как
+  `manual`.
+- `tag`: явное имя группы, КОРНЕВОЕ имя (ссылка `{tag}` без `folder_id`).
+  При `both` занято и второе имя `<tag>-auto`; оба — известные цели правил,
+  `route.final` и опций Направлений.
+- `auto`: форма `direction.schema.json#/$defs/auto` (mode `least_test` |
+  `round_robin`, url, interval, tolerance, idle_timeout,
+  interrupt_exist_connections, pool, pool_tolerance, sticky_hash); при
+  `manual` отсутствует.
+- Нет объекта — источник не свёрнут.
+
+**Legacy-чтение.** Файлы 1.0, записанные до 1.1.78, несут `fold {mode:
+select|auto|select_auto, auto?}` + `fold_tag`: `select` → `manual`,
+`select_auto` → `both`, `auto` → `auto`, `fold_tag` → `tag`; без `fold_tag` —
+прежний позиционный дериватив «префикс тегов, при пустом — `<номер
+подписки>:`» + `select` (D-081). При `replace` в записи `fold`/`fold_tag` не
+читаются. Предупреждения нет: перевод взаимно однозначный, потерь нет (П6), а
+форму писал сам лаунчер. Писатели `fold`/`fold_tag` больше не пишут;
+`schema/source_fold.schema.json` оставлена для чтения 0.x и старых 1.0.
+Формат 0.x (`subscriptions[].fold`) читается как прежде. У лаунчера state.json
+хранил ту же форму с ключом `strategy` вместо `auto` — ключ переименован,
+старый читается.
+
+**Как лаунчер разворачивает свёртку на сборке** (справка, факты кода):
+
+1. Где. `core/config/folder_replaces.go:PrepareFolderReplaces` —
+   для каждого включённого источника с `Canonical.Replace` добавляет группы
+   `buildReplaceGroups` в `LocalGroups` источника; вызов — в
+   `core/config/outbound_generator.go` после `PrepareDirections`. Путь один для
+   папки и подписки: `core/state/adapter_source.go:canonicalProjection` ставит
+   `IsContainer` и `Replace` обоим видам (`canonicalReplace`). Пустой `tag` —
+   групп нет (`buildReplaceGroups`, warning в лог).
+2. Группы по режиму (`buildReplaceGroups`):
+   - `manual` → selector `tag`, опция `interrupt_exist_connections: true`;
+   - `auto` → urltest `tag` (`buildTwin` — опции шаблона
+     `group_templates.auto.options` слиты с `replace.auto`, `round_robin`
+     раскрыт в mode+balancer), `NoGroupMembers`: провайдерские группы
+     (`kind: auto`) источника в состав НЕ входят;
+   - `both` → сначала urltest `<tag>-auto` (как `auto`), затем selector `tag` с
+     `AddOutbounds = [<tag>-auto]` и `default = <tag>-auto`.
+   Суффикс двойника — `core/config/direction_twins.go:twinSuffix` = `"-auto"`,
+   та же формула, что у двойников Направлений.
+3. Порядок опций. `core/config/outbound_generator.go:GenerateSelectorWithFilteredAddOutbounds`
+   кладёт сначала `AddOutbounds` (только непустые динамические группы и
+   константы), затем узлы пула без дублей. Пул локальной группы — узлы
+   источника в порядке модели. Итог `both`: у selector `tag` первая опция
+   `<tag>-auto`, дальше узлы источника (включая его провайдерские группы —
+   у selector пул не урезается); у urltest — узлы источника без групп
+   (`dropGroupNodes`). `default` выводится, только если тег есть в составе.
+   В outbounds узлы идут раньше локальных групп, внутри источника — urltest
+   раньше selector, глобальные Направления — после.
+4. Ноль узлов или все выключены. Выключенный узел в сборку не попадает
+   (`core/config/canonical_emit.go`). Группы в `LocalGroups` создаются
+   всё равно, но `core/config/outbound_validity.go:computeOutboundValidity`
+   считает их пустыми (у selector двойник засчитывается, только если сам
+   непуст), и `generateSelectorJSONs` пропускает пустую локальную группу
+   («Skipping empty local selector») — в конфиг не пишется ни одна; запасного
+   состава `[block, direct]`, как у пустого Направления, у замены нет.
+   Ссылки на выпавший тег: кандидатом Направления он не засчитывается
+   (Направление без иных опций получает `[block, direct]`, default `block`);
+   член группы и `default` на него вычищаются
+   (`core/build/outbound_graph_sanitize.go:sanitizeEntryRefs`, группа без
+   членов удаляется); detour на него снимает узел-носитель, позиция цепочки —
+   всю цепочку (fail-closed); `outbound` правила подменяется на `route.final`,
+   если тот жив, иначе правило снимается
+   (`core/build/preset_outbounds.go:cleanDanglingOutboundRefInRule`). Отдельной
+   проверки самого `route.final` на выпавший тег у лаунчера нет. Пустой
+   urltest ядро не принимает — поэтому группа снимается, а не пишется пустой.
+5. Пул Направлений. `core/config/outbound_filter.go:FilterDirectionCandidatePool`
+   убирает из пула узлы свёрнутого контейнера; `core/config/outbound_validity.go:collectExposeTagCandidates`
+   добавляет кандидатом `FolderReplacePoolTag` = `tag` (при `both` — только
+   selector, двойник вторым кандидатом не идёт). Узлы свёрнутого источника
+   по-прежнему эмитятся в outbounds и остаются законными целями detour,
+   позиций цепочек и членами провайдерских групп. Оба тега замены
+   (`FolderReplaceTags`) заняты для имён Направлений
+   (`core/config/tag_guard.go:BuildTagGuard`) и объявлены корневыми целями
+   ссылок (`core/config/nodelink_resolve.go`).
+
+**Что делать LxBox:** реализовать фазу B по этой форме — хранить свёртку
+папки и подписки как `replace {mode, tag, auto?}` в модели, читать и писать её
+в бэкапе 1.0 (писать только `replace`, читать legacy `fold`/`fold_tag` по
+правилу выше), разворачивать на сборке по пунктам 2–5. Кейсы корпуса:
+`corpus/backup/replace_roundtrip` (текущая форма: папка `both` с `auto`,
+подписка `manual`; правила на `tag` и `<tag>-auto`, `route.final` на тег
+подписки; ожидание `replaces` сверяет объект в состоянии и в повторном
+экспорте) и `corpus/backup/legacy_fold_to_replace` (старый 1.0: `fold` +
+`fold_tag` и дериватив без `fold_tag`). `v10_direction_include` и
+`v10_sources_union` переведены на `replace`; `replace_tag_index` (0.x)
+остался legacy-кейсом. До фазы B у вас остаются side-specific ожидания
+`replace_tag_index.expected.lxbox.json`, `v10_sources_union.expected.lxbox.json`
+и `v10_direction_include.expected.lxbox.json` (свёртка не применяется); с
+фазой B их стоит сверить и снять лишнее. Для новых кейсов override нет —
+если до фазы B они у вас красные, пришлите `.expected.lxbox.json`, добавим.
+
+## 75. Контракт 1.1.78 — род группы сохраняется обеими сторонами
+
+По вашему отчёту о фазе A задачи 565: selector остаётся selector вместе с
+`default`, приведения к urltest и кода `selector→urltest` больше нет. В том же
+бампе:
+
+- удалены override `corpus/backup/v10_dev_forms.expected.lxbox.json` и
+  `v10_group_links.expected.lxbox.json` — без деградации они совпадают с
+  базовым ожиданием (включая `default` в `groups`);
+- `v10_group_degraded.expected.lxbox.json`: `pick` — selector с умолчанием,
+  предупреждений нет; отличие от базового осталось одно — `by-rule` вы
+  ввозите группой по правилу;
+- `registry/protocols/group.json`: `note` и `genus.round_trip.impl`
+  описывают сохранение рода обеими сторонами; норма `preserve_unexecuted`
+  оставлена на случай будущего поля рода, которое одна из сторон исполнять не
+  умеет. Код `selector_as_auto` в `registry/warnings.json` пока не тронут —
+  если у вас его больше никто не ставит, скажите, выведем из словаря
+  отдельным бампом.

@@ -8,8 +8,7 @@
       "id": "01FLDINCLUDE00000000000000",
       "name": "Fold",
       "enabled": true,
-      "fold": { "mode": "select" },
-      "fold_tag": "fold-pick",
+      "replace": { "mode": "manual", "tag": "fold-pick" },
       "nodes": [
         {
           "kind": "server",

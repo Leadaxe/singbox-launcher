@@ -26,7 +26,7 @@
                          "subscriptions": {...}, "root_servers": [...],
                          "folders": {...}, "folder_ids": {...},
                          "dns": {...}, "sections": {...},
-                         "replace_tags": {...},
+                         "replace_tags": {...}, "replaces": {...},
                          "extensions_dropped": true|false}
 
 ссылка = {"tag", "folder"? | "subscription"? | "folder_id"?}
@@ -273,8 +273,8 @@ LxBox поддерживает их по этому описанию. Фикст
   правило и отброшенный final.
 
 Ожидание `replace_tags` (`{URL подписки: имя группы}`) — необязательное поле
-ожидания: отсутствие ключа значит «не проверяем». Оно единственное место, где
-имя группы видно снаружи, — в самом контракте такого поля нет.
+ожидания: отсутствие ключа значит «не проверяем». В формате 0.x это
+единственное место, где имя группы видно снаружи, — поля имени там нет.
 
 **Часть входных файлов НЕ валидна против `backup.schema.json` — намеренно.**
 Схема нормативна для 0.11.0 и обязана отвергать `skip: true`; терпимость к
@@ -353,8 +353,8 @@ Side-specific ожидание `directions_ping_roundtrip.expected.lxbox.json` (
 ровно в двух ключах; всё прочее у ожиданий совпадает.
 
 Side-specific ожидание `replace_tag_index.expected.lxbox.json` (класс различия
-A по `docs/IDENTITY.md` §4a, решение D-081): у LxBox свёртка (`fold`) не
-применяется и группа `1:select` не создаётся, поэтому правило `Work` и
+A по `docs/IDENTITY.md` §4a, решение D-081): у LxBox свёртка (`fold` 0.x, в 1.0
+— `replace`) не применяется и группа `1:select` не создаётся, поэтому правило `Work` и
 `route.final`, метящие в неё, приезжают выключенными с предупреждениями
 `backup_unknown_outbound` и `backup_final_dropped`; поля `replace_tags` в
 ожидании нет. Базовое ожидание описывает сторону лаунчера, где группа
@@ -475,14 +475,12 @@ Side-specific ожидание `v10_sources_union.expected.lxbox.json` (форм
 `{folder_id, "d:G"}`. Обязано получиться: члены — пары на **Dev**, умолчание —
 пара `y`, позиция — сырой тег `G`; предупреждений нет.
 
-Side-specific ожидания `v10_group_links.expected.lxbox.json` и
-`v10_dev_forms.expected.lxbox.json` (ответ на вопрос 6, `TASKS_LXBOX.md` §17.8;
-класс различия A по `docs/IDENTITY.md` §4a): selector с `default` LxBox читает
-как urltest — умолчание отброшено (ключа `default` в `groups` нет) и названо
-`backup_group_degraded` с reason `selector→urltest, default dropped`
-(`warning_reasons`), как у `pick` в `v10_group_degraded`. Члены, позиция
-цепочки, состав папки и `folder_ids` — как в базовом ожидании; «предупреждений
-нет» выше — сторона лаунчера.
+Side-specific ожиданий у `v10_group_links` и `v10_dev_forms` больше нет
+(контракт 1.1.78): LxBox сохраняет род группы (фаза A задачи 565) — selector
+приезжает selector'ом вместе с `default`, деградации `selector→urltest` нет, и
+базовое ожидание одно на обе стороны. До 1.1.78 здесь лежали
+`.expected.lxbox.json` с `backup_group_degraded` (reason `selector→urltest,
+default dropped`) и без `default` в `groups`.
 
 **`v10_direction_include`** (+ `.expected.lxbox.json`). Направление
 `streaming` несёт в `include` тег Направления файла `proxy-eu`, тег свёртки
@@ -531,8 +529,10 @@ Side-specific ожидание LxBox (ответ на вопрос 5, `TASKS_LXB
 `members_rule unsupported` (`warning_reasons`), `pick` приезжает как есть с
 умолчанием, позиция цепочки остаётся ссылкой на невввезённую группу и
 разбирается сборкой fail-closed. LxBox (side-specific ожидание, класс A по
-`docs/IDENTITY.md` §4a): `by-rule` ввозится группой по правилу, а `pick`
-становится urltest без умолчания — тот же код со своей причиной.
+`docs/IDENTITY.md` §4a): `by-rule` ввозится группой по правилу, `pick` — как у
+лаунчера, selector с умолчанием (род сохраняется с контракта 1.1.78), поэтому
+предупреждений у LxBox нет. До 1.1.78 `pick` становился urltest без умолчания
+с тем же кодом `backup_group_degraded`.
 
 ## Значения переменных записи (контракт 1.0.2, D-118)
 
@@ -564,3 +564,27 @@ Side-specific ожидание LxBox (ответ на вопрос 5, `TASKS_LXB
   (`no_record`); корневых `dns_*` в состоянии не остаётся;
 - `rules[russian].vars` — `out` равен умолчанию и снят, `bogus` не объявлен
   (`undeclared`), `dns_ip` остался.
+
+## Свёртка `replace` (контракт 1.1.78)
+
+Норма — `docs/BACKUP.md` §2, «`replace` — свёртка источника». Ожидание
+`replaces` — `{имя папки | URL подписки: объект replace}`, deep-equal
+`{mode, tag, auto?}`. Проверяется дважды: в состоянии после импорта и в записи
+ПОВТОРНОГО экспорта 1.0 — там `replace` обязан совпасть с состоянием байт в
+байт, а ключей `fold`/`fold_tag` быть не должно. Отсутствие ключа `replaces`
+— «не проверяем».
+
+- **`replace_roundtrip`** — текущая форма: папка **Proton** с
+  `replace {mode: both, tag: Proton, auto{least_test, url, interval,
+  tolerance}}` и подписка с `replace {mode: manual, tag: Sub-pick}`. Правила
+  файла метят в `Proton` и в двойник `Proton-auto`, `route.final` — в
+  `Sub-pick`: цели приезжают этим же файлом, и всё приезжает включённым,
+  предупреждений нет. Сломать кейс: потерять авто-половину или режим, не
+  объявить двойник известной целью, писать на экспорте прежнюю форму.
+- **`legacy_fold_to_replace`** — файл 1.0, записанный до 1.1.78: `fold` +
+  `fold_tag`. Папка с `fold {select_auto, auto{…}}` + `fold_tag: Proton` →
+  `replace {both, Proton, auto{…}}`; подписка с `fold {select}` + `fold_tag`
+  → `manual` с этим тегом; подписка с `fold` без `fold_tag` → прежний
+  позиционный дериватив (вторая подписка файла — `2:select`, D-081).
+  Предупреждений нет: перевод взаимно однозначный, потерь нет (П6 не задет),
+  а форму писала сама сторона. Повторный экспорт пишет уже `replace`.
