@@ -319,7 +319,7 @@ func ExpandPresetWithGlobals(
 		}
 		stripGateKeys(m)
 		// Rewrite rule_set refs: local → prefixed, filter dangling.
-		rewriteRuleSetRefs(m, preset.ID, emittedTags)
+		ruleSetLost := rewriteRuleSetRefs(m, preset.ID, emittedTags)
 		// Apply outbound sentinels (reject/drop) — shared util с UI.
 		if outbound, ok := m["outbound"].(string); ok {
 			m = outboundutil.ApplyOutboundToRule(m, outbound)
@@ -334,7 +334,7 @@ func ExpandPresetWithGlobals(
 				Message: fmt.Sprintf("rules[%d] is empty after #if — skipped", idx)})
 		case isRuleUnusable(m):
 			warnings = append(warnings, fragmentDropped(preset.ID, fragmentKindRule, "outbound/action"))
-		case isRuleEmpty(m, emittedTags):
+		case ruleSetLost, isRuleEmpty(m, emittedTags):
 			warnings = append(warnings, fragmentDropped(preset.ID, fragmentKindRule, "rule_set"))
 		default:
 			frags.RoutingRules = append(frags.RoutingRules, m)
@@ -614,24 +614,27 @@ func splitTextList(scalar string) []string {
 
 // rewriteRuleSetRefs — переписывает rule_set refs:
 //   - string "local_tag" → "<preset_id>:<local_tag>" если local_tag в validTags;
-//     если local_tag НЕ в validTags (dangling после if-filter) — НИЧЕГО не делаем
-//     с этим string'ом (caller сам решит что rule пустой — см. isRuleEmpty)
-//   - []interface{} с локальными именами → filter+prefix; dangling выкидываются
-func rewriteRuleSetRefs(m map[string]interface{}, presetID string, validTags map[string]bool) {
+//   - []interface{} с локальными именами → filter+prefix; dangling выкидываются.
+//
+// Возвращает true, если ссылки были и висячими оказались ВСЕ (контракт
+// 1.1.82, TEMPLATE_LANG §5.1): такое правило выпадает целиком, даже когда у
+// него остались другие условия, — снятое условие расширило бы совпадение.
+// Висячее имя рядом с живыми просто убирается: список наборов сужается.
+func rewriteRuleSetRefs(m map[string]interface{}, presetID string, validTags map[string]bool) bool {
 	ref, ok := m["rule_set"]
 	if !ok {
-		return
+		return false
 	}
 	switch v := ref.(type) {
 	case string:
 		if v == "" {
-			return
+			return false
 		}
 		if validTags[v] {
 			m["rule_set"] = presetID + TagSeparator + v
 		} else {
-			// Dangling — удалить ключ (isRuleEmpty проверит).
 			delete(m, "rule_set")
+			return true
 		}
 	case []interface{}:
 		out := make([]interface{}, 0, len(v))
@@ -649,8 +652,10 @@ func rewriteRuleSetRefs(m map[string]interface{}, presetID string, validTags map
 			m["rule_set"] = out
 		} else {
 			delete(m, "rule_set")
+			return len(v) > 0
 		}
 	}
+	return false
 }
 
 // Имена списков полей-условий в реестре (allowlists.json). Набор условий —
@@ -689,9 +694,30 @@ func hasRuleCondition(m map[string]interface{}, list string) bool {
 		return true
 	}
 	for _, k := range conds {
-		if _, ok := m[k]; ok {
+		if v, ok := m[k]; ok && !isZeroJSONValue(v) {
 			return true
 		}
+	}
+	return false
+}
+
+// isZeroJSONValue — нулевое значение JSON (null, "", [], {}, false, 0).
+// Ключ-условие с таким значением условием не считается (контракт 1.1.82):
+// ядро по пустому полю сопоставление не строит, и правило матчило бы всё.
+func isZeroJSONValue(v interface{}) bool {
+	switch x := v.(type) {
+	case nil:
+		return true
+	case string:
+		return strings.TrimSpace(x) == ""
+	case []interface{}:
+		return len(x) == 0
+	case map[string]interface{}:
+		return len(x) == 0
+	case bool:
+		return !x
+	case float64:
+		return x == 0
 	}
 	return false
 }
@@ -790,7 +816,7 @@ func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{},
 	}
 	delete(m, "if")
 	delete(m, "if_or")
-	rewriteRuleSetRefs(m, preset.ID, emittedTags)
+	ruleSetLost := rewriteRuleSetRefs(m, preset.ID, emittedTags)
 	// dns_rule.server — может быть локальный bundled tag (без префикса), prefix'ить.
 	if srv, ok := m["server"].(string); ok && srv != "" && !strings.HasPrefix(srv, "@") {
 		for _, ds := range preset.DNSServers {
@@ -811,7 +837,7 @@ func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{},
 		*warnings = append(*warnings, fragmentDropped(preset.ID, fragmentKindDNSRule, "server/action"))
 		return nil, false
 	}
-	if isDNSRuleEmpty(m, emittedTags) {
+	if ruleSetLost || isDNSRuleEmpty(m, emittedTags) {
 		*warnings = append(*warnings, fragmentDropped(preset.ID, fragmentKindDNSRule, "rule_set"))
 		return nil, false
 	}
