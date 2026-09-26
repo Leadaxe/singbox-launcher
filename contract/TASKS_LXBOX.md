@@ -8221,3 +8221,46 @@ vpn-1}` при Направлении `vpn-1` → Направление соб�
 его в отчёт сборки вместо строки лога «Skipping empty local selector»
 (`core/config/outbound_validity.go:replaceGroupEmptyWarning`). *За LxBox:*
 ставьте тот же код в своём отчёте сборки.
+
+## 78. Контракт 1.1.81 — поля-условия правил в реестре; `wg://`; dart-ссылка wireguard
+
+Ответ на ваши четыре запроса по итогам задачи 570 (решения согласованы
+перепиской 26.09.2026).
+
+**1. Гейт «правило без условий» — данными реестра.** В
+`registry/allowlists.json` два списка:
+
+- `route_rule_conditions` — зеркало `RawDefaultRule` ядра
+  (`option/rule.go`) без `invert`, плюс `rules` логического правила;
+- `dns_rule_conditions` — зеркало `RawDefaultDNSRule`
+  (`option/rule_dns.go`) без `invert` и модификаторов (`match_response`,
+  `rule_set_ip_cidr_match_source`, `rule_set_ip_cidr_accept_empty`), плюс
+  `rules`. `outbound` в DNS-правиле — условие, а не цель.
+
+Норма (`docs/TEMPLATE_LANG.md` §5.1): правило, в котором после подстановки и
+Dropped-каскада не осталось ни одного ключа из списка своего вида, выпадает с
+`template_fragment_dropped`. `action` условием не считается ни в route, ни в
+dns. У Go DNS-правило с `action` без условий раньше выживало — снято. Go
+`core/build/preset_expand.go:hasRuleCondition` читает списки из реестра,
+имён полей в коде нет. На пресетах и корпусе шаблонов решение не изменилось
+ни у одного правила.
+
+*За LxBox:* замените узкий гейт по `rule_set` на общий по этим спискам.
+
+**2. `wg://` принимается.** Во всех протоколах `aliases` ⊆ `scheme_in`
+секции `uri`; у wireguard `wg` выпал из `scheme_in` при переносе на движок
+(c28f378e), и Go отбраковывал ссылку, которую вы принимали. `wg` добавлен в
+`scheme_in`, Go принимает её по реестру без правки кода. Новый кейс
+`corpus/uri/wireguard/wg_scheme_alias` (тело как у
+`plain_wg_default_mtu_1408`, `scheme` узла — `wireguard`). *За LxBox:*
+прогоните кейс.
+
+**3. dart-ссылка** `registry/protocols/wireguard.json` →
+`app/lib/services/parser/engine/interpreter.dart:runSection`. *За LxBox:*
+снимите строку из `registry_dart_refs_known_stale.txt`.
+
+**4. `group_defaults` подписки в бэкап не едет.** Живой выбор члена
+провайдерского selector у лаунчера — рантайм (Clash API и cache_file ядра),
+в state и бэкап он не пишется; объявленный провайдером `default` группы и
+так едет в `entry`. Держите `group_defaults` локальным состоянием. Перенос
+выбора между устройствами — отдельная задача по решению владельца.

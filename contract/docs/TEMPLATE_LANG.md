@@ -418,7 +418,13 @@ Sentinel `Dropped` (`if_engine.dart:21-24`) — «этого значения б
 - гейты валидности фрагментов пресета (после каскада): rule без
   `outbound`/`action` → фрагмент выпадает (`preset_expand.dart:296-301`);
   dns_rule без `server` и без serverless-`action` → выпадает
-  (`preset_expand.dart:234-241`); `required`-переменная пустая → весь пресет
+  (`preset_expand.dart:234-241`); rule / dns_rule, в котором не осталось ни
+  одного поля-условия, → выпадает: иначе он матчил бы весь трафик или все
+  запросы. Поля-условия — данные реестра, списки `route_rule_conditions` и
+  `dns_rule_conditions` в `registry/allowlists.json` (зеркало полей правила
+  ядра; `action`, `outbound` маршрута, опции действий и `invert` условиями
+  не считаются, `outbound` DNS-правила — условие). Контракт 1.1.81;
+  `required`-переменная пустая → весь пресет
   не собирается и попадает в warnings (`preset_expand.dart:121-144`).
 
 Итог: деградация **пофрагментная** — битая часть пресета выпадает с warning,
