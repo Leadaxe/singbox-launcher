@@ -444,6 +444,31 @@ func TestParseSubscriptionBody_AmneziaVPNLineInList(t *testing.T) {
 	if got.Entries[0].OriginKind != OriginKindURI {
 		t.Errorf("plain link origin kind = %q, want uri", got.Entries[0].OriginKind)
 	}
+
+	// Контракт 1.1.80: vpn:// ПЕРВОЙ строкой списка — всё равно список
+	// (detect amnezia_link не матчит текст, где следующая строка начинается
+	// со схемы); завершающий перевод строки и перенос base64 ссылки по
+	// строкам остаются телом-ссылкой.
+	first, err := ParseSubscriptionBody([]byte(link+"\n"+strings.SplitN(list, "\n", 2)[0]+"\n"), nil, 0)
+	if err != nil || len(first.Entries) != 3 || first.Entries[2].OriginKind != OriginKindURI {
+		t.Fatalf("vpn:// first line of a list: err=%v entries=%d, want 3 with the plain link last", err, len(first.Entries))
+	}
+	if ClassifySubscriptionBody(strings.TrimSpace(link+"\n")) != BodyKindVPNLink {
+		t.Errorf("trailing newline: vpn:// body must stay a vpn-link body")
+	}
+	var wrapped strings.Builder
+	for i := 0; i < len(link); i += 40 {
+		end := i + 40
+		if end > len(link) {
+			end = len(link)
+		}
+		wrapped.WriteString(link[i:end])
+		wrapped.WriteString("\n")
+	}
+	wr, err := ParseSubscriptionBody([]byte(wrapped.String()), nil, 0)
+	if err != nil || len(wr.Entries) != 2 {
+		t.Errorf("vpn:// wrapped across lines: err=%v entries=%d, want 2 (one profile)", err, len(wr.Entries))
+	}
 	for i, w := range whole.Entries {
 		e := got.Entries[i+1]
 		if e.OriginKind != OriginKindWGIni || !strings.HasPrefix(e.OriginRaw, "[Interface]") {
