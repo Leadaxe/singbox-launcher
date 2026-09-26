@@ -1757,7 +1757,7 @@
       "core/config/subscription/node_parser_amnezia.go:ParseAmneziaVPNLinkAll"
     ],
     "dart": [
-      "app/lib/services/parser/uri_parsers/wireguard_parser.dart:8",
+      "app/lib/services/parser/uri_parsers/wireguard_parser.dart:parseWireguardUri",
       "app/lib/services/parser/uri_utils.dart:45",
       "app/lib/services/parser/uri_utils.dart:170",
       "app/lib/services/parser/uri_utils.dart:181",

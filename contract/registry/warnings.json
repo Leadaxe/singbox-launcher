@@ -1401,6 +1401,54 @@
       "dart": null,
       "go": "код отбраковки (dropped[].code): пустая группа sing-box — core/config/subscription/singbox_groups.go:singboxGroupToNode → core/config/subscription/singbox_import.go:parseSingboxConfig; группа, опустевшая при дорезолве состава — core/config/subscription/parse_body.go:bodyParseState.finish. Синтезированная Xray-группа исходника не имеет — код уровня тела (FetchWarning.Code): core/config/subscription/xray_json_array.go:resolveGroupMembers → core/config/subscription/parse_body.go:ParseSubscriptionBody. Auto-группа канона на сборке — EmissionWarning.Code в отчёт: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks"
     },
+    "replace_tag_conflict": {
+      "severity": "error",
+      "params": [
+        "tag",
+        "other"
+      ],
+      "title_en": "Swap group {tag}: the tag is already declared",
+      "title_ru": "Группа свёртки {tag}: тег уже объявлен",
+      "text_en": "The swap group {tag} was not built: that name is already declared by another owner ({other}: a Direction, another source's swap above in the list, or a template tag). The source was built unfolded, and the rest of the config was built without the group, because two outbounds with one tag make the core refuse the whole config.",
+      "text_ru": "Группа свёртки {tag} не собрана: это имя уже объявлено другим владельцем ({other}: Направление, свёртка другого источника выше по списку или тег шаблона). Источник собран несвёрнутым, а конфиг — без этой группы: два outbound'а с одним тегом ядро отвергло бы целиком.",
+      "cause_en": "The tag of a swap is a declared root name, just like the tag of a Direction. Two declared names cannot share a tag; a node with the same name is not a conflict — it gets a suffix.",
+      "cause_ru": "Тег свёртки — объявленное корневое имя, как тег Направления. Два объявленных имени не могут делить один тег; узел с тем же именем конфликтом не считается — он получает суффикс.",
+      "fix_en": [
+        "Open the source's Group tab and give the swap a tag nobody else uses.",
+        "Or rename the Direction that carries this tag."
+      ],
+      "fix_ru": [
+        "Откройте вкладку «Группа» источника и дайте свёртке тег, которого нет ни у кого другого.",
+        "Либо переименуйте Направление с этим тегом."
+      ],
+      "desc": "Контракт 1.1.80. replace.tag (и двойник <tag>-auto режима both) совпал с объявленным именем: Направлением или его твином (other=direction), свёрткой источника ВЫШЕ по списку (other=replace; первая по списку владеет именем) или системным тегом шаблона/пресета (other=system). Свёртка не собирается, источник эмитится несвёрнутым, конфиг собирается без группы. Узел-тёзка — НЕ конфликт: тег замены занимает имя в пространстве финальных тегов раньше узлов, и узел уникализируется суффиксом (X-2), как при любой коллизии финальных тегов. Редактор при вводе занятого тега предупреждает, но не запрещает (норма обеих сторон).",
+      "dart": null,
+      "go": "EmissionWarning.Code/Params → отчёт сборки: core/config/folder_replaces.go:PrepareFolderReplaces"
+    },
+    "replace_group_empty": {
+      "severity": "warning",
+      "params": [
+        "tag",
+        "mode"
+      ],
+      "title_en": "Swap group {tag} is not built",
+      "title_ru": "Группа свёртки {tag} не собрана",
+      "text_en": "The swap group {tag} ({mode}) was not built: the source has no enabled nodes. Rules and Directions aimed at it will not work.",
+      "text_ru": "Группа свёртки {tag} ({mode}) не собрана: в источнике нет включённых узлов; правила и Направления на неё не сработают.",
+      "cause_en": "An empty selector or auto group makes the core refuse the whole config, so the group is left out. The source either has no nodes yet (the subscription was never updated or came back empty) or every node in it is turned off.",
+      "cause_ru": "Пустой селектор или автогруппа заставят ядро отвергнуть весь конфиг, поэтому группа не собирается. В источнике либо ещё нет узлов (подписку не обновляли или она пришла пустой), либо все его узлы выключены.",
+      "fix_en": [
+        "Update the subscription or add nodes to the folder.",
+        "Turn on at least one node of the source."
+      ],
+      "fix_ru": [
+        "Обновите подписку или добавьте узлы в папку.",
+        "Включите хотя бы один узел источника."
+      ],
+      "desc": "Контракт 1.1.80. Свёрнутый источник (replace {mode, tag}) без единого включённого узла: группа свёртки в конфиг не идёт, один код на свёртку (у both пустеют обе половины). Прежде лаунчер писал только строку лога «Skipping empty local selector». LxBox ставит тот же код в своём отчёте сборки.",
+      "dart": null,
+      "go": "EmissionWarning.Code/Params → отчёт сборки: core/config/outbound_validity.go:replaceGroupEmptyWarning"
+    },
     "detour_with_listen_port": {
       "severity": "warning",
       "params": [

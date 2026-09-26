@@ -730,7 +730,8 @@
         "sni": {
           "source": [
             "query.sni",
-            "query.peer"
+            "query.peer",
+            "query.servername"
           ],
           "maps_to": "tls.server_name",
           "default_from": "host",
@@ -742,7 +743,7 @@
               }
             }
           },
-          "impl": "sni_heuristic_falls_back_to_server — у hysteria2 эвристика НАПИСАНИЯ есть на обоих проектах (uri.query.sni.impl), в отличие от trojan и vless. Имя без точки и двоеточия адресом быть не может, а '🔒' — витринный значок подписки: и то и другое уступает адресу сервера. Общий блок tls#uri несёт только цепочку источников и фолбэк на пустом; вторая половина правила объявляется здесь, потому что исполняют её НЕ ВСЕ схемы. Блок tls#uri_reality подключается ЯВНО: контракт 1.1.16 вынес записи REALITY из общего tls#uri, потому что разбирают их не все схемы (у trojan и http веток pbk нет вовсе). hysteria2 их разбирает — фикстура reality_fp_stripped_quic_pair ждёт блок reality в теле, и снимает его потом САНИТАЙЗЕР правилом forbidden_for с кодом tls_not_applicable_quic. Код называет то, что написал автор ссылки, а молчаливый пропуск не называл бы ничего."
+          "impl": "sni_heuristic_falls_back_to_server — у hysteria2 эвристика НАПИСАНИЯ есть на обоих проектах (uri.query.sni.impl), в отличие от trojan и vless. Имя без точки и двоеточия адресом быть не может, а '🔒' — витринный значок подписки: и то и другое уступает адресу сервера. Общий блок tls#uri несёт только цепочку источников и фолбэк на пустом; вторая половина правила объявляется здесь, потому что исполняют её НЕ ВСЕ схемы. Блок tls#uri_reality подключается ЯВНО: контракт 1.1.16 вынес записи REALITY из общего tls#uri, потому что разбирают их не все схемы (у trojan и http веток pbk нет вовсе). hysteria2 их разбирает — фикстура reality_fp_stripped_quic_pair ждёт блок reality в теле, и снимает его потом САНИТАЙЗЕР правилом forbidden_for с кодом tls_not_applicable_quic. Код называет то, что написал автор ссылки, а молчаливый пропуск не называл бы ничего. КОНТРАКТ 1.1.80: цепочка источников дополнена третьим звеном `query.servername` — как у общего блока tls#uri (переопределение его теряло), и негодное значение уступает сперва СЛЕДУЮЩЕМУ звену цепочки с годным значением, а адресу сервера — только если такого звена нет (`sni=Germany&servername=real.host` → server_name = real.host). Движок: core/config/linkmap/exec.go:execState.applyNextValidSource. Кейс корпуса uri/anytls/sni_label_servername_host."
         },
         "security": {
           "source": "query.security",

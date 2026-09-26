@@ -215,7 +215,7 @@
       "app/lib/services/parser/singbox_config.dart:33",
       "app/lib/services/parser/singbox_config.dart:414-480",
       "app/lib/services/parser/json_parsers.dart:229-316",
-      "app/lib/services/parser/uri_parsers/auto_group_parser.dart:11",
+      "app/lib/services/storage_migration/legacy_autogroup.dart:kLegacyAutogroupScheme",
       "app/lib/models/auto_select.dart:73",
       "app/lib/models/auto_select.dart:141",
       "app/lib/models/auto_select.dart:201-283",

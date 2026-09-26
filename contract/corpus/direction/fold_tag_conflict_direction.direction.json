@@ -1,0 +1,10 @@
+{
+  "_": "Тег свёртки совпал с тегом Направления (контракт 1.1.80): оба — объявленные корневые имена, и два outbound'а с одним тегом ядро отвергло бы целиком. Свёртка не собирается (replace_tag_conflict {tag: vpn-1, other: direction}), источник собирается несвёрнутым — его узлы приходят в Направление сами, конфиг собирается без группы свёртки",
+  "tag_prefix": "AL:",
+  "replace": { "mode": "manual", "tag": "vpn-1" },
+  "directions": [
+    { "tag": "vpn-1" }
+  ],
+  "node_tags": ["AL:tokyo", "AL:osaka"],
+  "magic": { "block": "block-out", "direct": "direct-out" }
+}

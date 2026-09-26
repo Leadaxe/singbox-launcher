@@ -71,6 +71,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`reality_pbk_invalid`](#reality_pbk_invalid) · `warning` — REALITY disabled: invalid public key
 - [`reality_short_id_invalid`](#reality_short_id_invalid) · `info` — REALITY: short_id cleaned up
 - [`reality_utls_enabled`](#reality_utls_enabled) · `info` — REALITY: uTLS switched on
+- [`replace_group_empty`](#replace_group_empty) · `warning` — Swap group {tag} is not built
+- [`replace_tag_conflict`](#replace_tag_conflict) · `error` — Swap group {tag}: the tag is already declared
 - [`scheme_unsupported`](#scheme_unsupported) · `error` — Link: scheme {scheme} is not supported
 - [`service_record_ignored`](#service_record_ignored) · `info` — Subscription: service record {scheme} skipped
 - [`source_detour_cycle`](#source_detour_cycle) · `error` — Node {tag} excluded: hops form a loop
@@ -1283,6 +1285,40 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - [`tls`](protocols/_tls.md)
   - [`reality.enabled`](protocols/_tls.md#body-reality-enabled) — set without `tls.utls.enabled` → `tls.utls.enabled` filled in with `true`
+
+<a id="replace_group_empty"></a>
+### replace_group_empty
+
+**severity:** `warning` · **params:** `tag`, `mode`
+
+**Swap group {tag} is not built**
+
+- **What happened:** The swap group {tag} ({mode}) was not built: the source has no enabled nodes. Rules and Directions aimed at it will not work.
+- **Why it happens:** An empty selector or auto group makes the core refuse the whole config, so the group is left out. The source either has no nodes yet (the subscription was never updated or came back empty) or every node in it is turned off.
+- **What you can do:**
+  - Update the subscription or add nodes to the folder.
+  - Turn on at least one node of the source.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="replace_tag_conflict"></a>
+### replace_tag_conflict
+
+**severity:** `error` · **params:** `tag`, `other`
+
+**Swap group {tag}: the tag is already declared**
+
+- **What happened:** The swap group {tag} was not built: that name is already declared by another owner ({other}: a Direction, another source's swap above in the list, or a template tag). The source was built unfolded, and the rest of the config was built without the group, because two outbounds with one tag make the core refuse the whole config.
+- **Why it happens:** The tag of a swap is a declared root name, just like the tag of a Direction. Two declared names cannot share a tag; a node with the same name is not a conflict — it gets a suffix.
+- **What you can do:**
+  - Open the source's Group tab and give the swap a tag nobody else uses.
+  - Or rename the Direction that carries this tag.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
 <a id="scheme_unsupported"></a>
 ### scheme_unsupported

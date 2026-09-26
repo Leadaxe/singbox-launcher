@@ -32,6 +32,9 @@
 - `<case>.expected.json` — нормативный выход:
   - `groups[]` — группы как они уедут в `config.json`, в порядке эмиссии;
   - `warnings[]` — коды предупреждений (`registry/warnings.json`).
+    С контракта 1.1.80 сюда входят и коды свёртки уровня сборки —
+    `replace_tag_conflict`, `replace_group_empty` (кейс
+    `fold_tag_conflict_direction`).
 
 ## Что нормативно, а что нет
 

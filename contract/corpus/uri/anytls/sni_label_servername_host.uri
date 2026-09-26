@@ -1,0 +1,7 @@
+# sni= несёт МЕТКУ (ни точки, ни двоеточия), а servername= — настоящее имя
+# хоста. Запись `sni` у anytls объявляет цепочку [sni, peer, servername] и
+# `on_invalid: {action: default_from, when: value not_matches "[.:]"}`.
+# Норма (контракт 1.1.80): негодное значение уступает сперва СЛЕДУЮЩЕМУ звену
+# цепочки с годным значением, и лишь без такого звена — адресу сервера.
+# tls.server_name = sni.example-2.com (из servername=), а не any.example-1.com.
+anytls://pass123@any.example-1.com:443/?sni=Germany&servername=sni.example-2.com&fp=chrome#at-sni-label-servername
