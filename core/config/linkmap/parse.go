@@ -659,30 +659,37 @@ func decodeNamed(name, body string) (string, error) {
 }
 
 // decodeBase64Any пробует четыре варианта base64 (std/url × с padding и без).
+//
+// Невалидный UTF-8 в результате раскрытие НЕ роняет (контракт 1.1.74,
+// MAPPER_ENGINE §1): битые последовательности заменяются U+FFFD, и разбор
+// идёт дальше. Агрегаторы шлют cp1251 и мусор в метках узлов, и один битый
+// байт в имени не стоит узлу разбора целиком. Мусор вместо пейлоада
+// отсеивает не декодер, а форма: пейлоад, который ни одна форма секции не
+// прочитала (JSON не разобрался, предикат формы не сошёлся), даёт
+// form_unrecognized (CANON §4.1).
+//
+// Из вариантов, раскрывшихся без ошибки, берётся первый, давший корректный
+// UTF-8; если таких нет — первый раскрывшийся, с заменой.
 func decodeBase64Any(s string) (string, error) {
 	s = strings.TrimSpace(s)
 	encs := []*base64.Encoding{
 		base64.StdEncoding, base64.RawStdEncoding,
 		base64.URLEncoding, base64.RawURLEncoding,
 	}
-	decodedBinary := false
+	var lenient []byte
+	decoded := false
 	for _, enc := range encs {
 		if b, err := enc.DecodeString(s); err == nil {
-			// Оболочка base64 у ссылок и userinfo всегда несёт ТЕКСТ (JSON,
-			// ссылку, `.conf`, `user:pass`). Алфавит base64url покрывает
-			// обычные слова (`not-base64` декодируется без ошибки), и без
-			// этой проверки мусор проходил дальше как «раскрытый» пейлоад:
-			// форма читала пустоту, и отказ приходил не тем кодом
-			// (field_missing вместо form_unrecognized, CANON §4.1).
-			if !utf8.Valid(b) {
-				decodedBinary = true
-				continue
+			if utf8.Valid(b) {
+				return string(b), nil
 			}
-			return string(b), nil
+			if !decoded {
+				lenient, decoded = b, true
+			}
 		}
 	}
-	if decodedBinary {
-		return "", fmt.Errorf("не base64: результат не текст")
+	if decoded {
+		return strings.ToValidUTF8(string(lenient), "\uFFFD"), nil
 	}
 	return "", fmt.Errorf("не base64")
 }

@@ -3077,11 +3077,16 @@ func normalizeBandwidthMbps(v string) string {
 }
 
 // stripControl снимает C0-управляющие и DEL, оставляя tab/CR/LF.
+//
+// Невалидный UTF-8 не выбрасывается, а заменяется U+FFFD (контракт 1.1.74,
+// MAPPER_ENGINE §1): битый байт в метке — след мусора (cp1251 от
+// агрегатора), и молча склеивать соседние куски имени нельзя — место
+// повреждения должно остаться видно.
 func stripControl(s string) string {
 	if s == "" {
 		return s
 	}
-	s = strings.ToValidUTF8(s, "")
+	s = strings.ToValidUTF8(s, "\uFFFD")
 	var b strings.Builder
 	for _, r := range s {
 		if r == '\t' || r == '\n' || r == '\r' {
