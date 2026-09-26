@@ -3,6 +3,7 @@ package tabs
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -15,6 +16,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
@@ -22,8 +24,12 @@ import (
 // quota. Содержимое pere-render'ится при `refreshOverviewTab` (вызывается
 // при открытии вкладки и после Refresh-кнопки).
 //
+// У окна УЗЛА контейнера (непустой nodeLink.Tag) sourceIndex указывает на
+// папку, поэтому сводка строится по самому узлу, найденному по адресу, —
+// иначе обзор узла показывал папку: её тип, имя и «Nodes: N».
+//
 // Возвращает (rootCanvas, refresh).
-func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex int) (fyne.CanvasObject, func()) {
+func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex int, nodeLink corestate.NodeLink) (fyne.CanvasObject, func()) {
 	body := container.NewVBox()
 	scroll := container.NewVScroll(body)
 	scroll.SetMinSize(fyne.NewSize(0, sourceEditSettingsScrollMinH))
@@ -40,6 +46,16 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		m := presenter.Model()
 		if m == nil || sourceIndex >= len(m.Sources) {
 			body.Add(widget.NewLabel(locale.T("No meta yet — press Refresh to fetch this subscription.")))
+			body.Refresh()
+			return
+		}
+		if strings.TrimSpace(nodeLink.Tag) != "" {
+			node := wizardbusiness.NodeByLink(m, nodeLink)
+			if node == nil {
+				body.Refresh()
+				return
+			}
+			appendNodeOverview(body, *node)
 			body.Refresh()
 			return
 		}
@@ -261,7 +277,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 // всеми материализованными узлами, их origin и отметками включённости.
 // Раньше этот снапшот был вкладкой JSON; переехал сюда, когда вкладка JSON
 // стала показывать распакованный sing-box outbound.
-func appendStorageRecordSection(body *fyne.Container, src corestate.Source) {
+func appendStorageRecordSection(body *fyne.Container, src any) {
 	body.Add(widget.NewSeparator())
 	body.Add(sectionHeader(locale.T("Storage record (state.json)")))
 
@@ -288,6 +304,21 @@ func appendStorageRecordSection(body *fyne.Container, src corestate.Source) {
 	))
 	entryScroll.SetMinSize(fyne.NewSize(0, 240))
 	body.Add(entryScroll)
+}
+
+// appendNodeOverview — сводка узла контейнера: его вид, тег, включённость и запись узла внутри контейнера в state.json. Полей
+// контейнера (ID, имя, состав) у узла нет — их и не показываем.
+func appendNodeOverview(body *fyne.Container, node corestate.Node) {
+	body.Add(sectionHeader(locale.T("Status")))
+	body.Add(kvRow(locale.T("Type"), sourceKindLabel(node.Kind)))
+	if node.Origin != nil && node.Origin.Raw != "" {
+		body.Add(kvRow(locale.T("Origin"), node.Origin.Raw))
+	}
+	if tag := node.Tag; tag != "" {
+		body.Add(kvRow(locale.T("Node tag"), tag))
+	}
+	body.Add(kvRow(locale.T("Enabled"), boolStr(node.Enabled)))
+	appendStorageRecordSection(body, node)
 }
 
 // sectionHeader — bold-section-header label.

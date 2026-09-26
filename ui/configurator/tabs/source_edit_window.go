@@ -2240,7 +2240,7 @@ func showSourceEditWindowAt(
 
 	// SPEC 052 phase 8: Overview-tab включает raw body section (раньше был
 	// отдельный Raw tab — слили чтобы не дублировать read-only inspection).
-	overviewContent, refreshOverviewTab := buildOverviewTab(presenter, sourceIndex)
+	overviewContent, refreshOverviewTab := buildOverviewTab(presenter, sourceIndex, nodeLink)
 
 	settingsTab := container.NewTabItem(locale.T("Settings"), settingsWithGutter)
 	previewTab := container.NewTabItem(locale.TN(1, "Preview"), previewBox)
