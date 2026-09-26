@@ -10,7 +10,7 @@
         "qCompress-фрейминг: 4 байта big-endian заявленной несжатой длины + zlib-поток → JSON профиля",
         "fallback несжатого payload (голый base64-JSON, паритет importController Amnezia): принимают ОБЕ стороны. Проверка идёт ДО qCompress-фрейминга — первые 4 байта такого payload суть начало JSON, а не длина. РАСХОЖДЕНИЕ ЗАКРЫТО (фаза 2).",
         "профиль: containers[] (по одному на протокол) → под-объект awg/wireguard → last_config (JSON-СТРОКА) → .config = классический [Interface]/[Peer] INI (с AWG Jc/Jmin/.../I1-I5)",
-        "INI → канонический wireguard:// URI → штатный WG-парсер (CIDR-нормализация, AWG-промоушен, MTU-кламп применяются как обычно)"
+        "INI + значения контейнера (context.*) → самодостаточный INI (контракт 1.1.72: MTU из last_config и адреса dns1/dns2 перенесены в текст записями секции `conf` wireguard) → origin узла (wg_ini) → штатная секция `conf` (CIDR-нормализация, AWG-промоушен, MTU-кламп применяются как обычно)"
       ],
       "limits": {
         "link_max_bytes": {
@@ -27,7 +27,7 @@
       "selection": {
         "go": "рекурсивный поиск [Interface]-текста по профилю (глубина <= 8, known-keys first: config/last_config/awg/wireguard), defaultContainer первым; ParseAmneziaVPNLinkAll импортирует ВСЕ WG/AWG-контейнеры, одиночный ParseNode — один (сигнатура отдаёт одну ноду)",
         "dart": "плоский проход по containers[] строго по пути <container>.awg|.wireguard.last_config.config; импортируются ВСЕ WG/AWG контейнеры",
-        "note": "РЕШЕНО (фаза 2): импортируются ВСЕ контейнеры — профиль с несколькими локациями штатен для Amnezia, и терять их незачем. Порядок детерминирован: дефолтный первым. Остаётся разница глубины поиска (Go рекурсивно, Dart по фиксированному пути) — не расхождение результата на валидных профилях, а запас Go на дрейф схемы. Подъём данных профиля в узел — ПРАВИЛА РЕЕСТРА, а не код распаковщика (контракт 1.1.63, SPEC 142 C10): распаковщик отдаёт секции `conf` протокола wireguard источник `context` — `context.container` (объект, непосредственно содержавший `.conf`; у AWG3-экспорта это last_config с `mtu`) и `context.profile` (корень профиля с `dns1`/`dns2`). Запись `mtu_container` поднимает MTU, когда в [Interface] его нет (явный MTU в [Interface] приоритетнее — объявлен раньше); `dns` с `substitute` разрешает $PRIMARY_DNS/$SECONDARY_DNS (неразрешённый плейсхолдер снимается, пустой итог = кода wgconf_dns_ignored нет). Прежде обе правки делал Go, переписывая INI-текст (снято)."
+        "note": "РЕШЕНО (фаза 2): импортируются ВСЕ контейнеры — профиль с несколькими локациями штатен для Amnezia, и терять их незачем. Порядок детерминирован: дефолтный первым. Остаётся разница глубины поиска (Go рекурсивно, Dart по фиксированному пути) — не расхождение результата на валидных профилях, а запас Go на дрейф схемы. Перенос данных профиля — ПРАВИЛА РЕЕСТРА, а не код распаковщика (контракт 1.1.63, SPEC 142 C10): распаковщик отдаёт секции `conf` протокола wireguard источник `context` — `context.container` (объект, непосредственно содержавший `.conf`; у AWG3-экспорта это last_config с `mtu`) и `context.profile` (корень профиля с `dns1`/`dns2`). Запись `mtu_container` дописывает MTU, когда в [Interface] его нет (явный MTU приоритетнее); `dns` с `substitute` разрешает $PRIMARY_DNS/$SECONDARY_DNS (неразрешённый плейсхолдер снимается, пустой итог удаляет строку DNS). Контракт 1.1.72 (решение владельца 26.09.2026): правила исполняются ОДИН раз при распаковке и пишут в ТЕКСТ — ссылка `vpn://` источник-контейнер, а не происхождение узла; origin каждого узла — `wg_ini` с этим самодостаточным текстом (BACKUP.md «Происхождение из контейнера»), Regen контейнера не требует. Вида origin `amnezia_link` и указателя на контейнер нет."
       },
       "label": {
         "go": "description → hostName → имя контейнера",
@@ -45,6 +45,9 @@
           "core/config/subscription/node_parser_amnezia.go:findWGIniText",
           "core/config/subscription/node_parser_amnezia.go:ParseAmneziaVPNLinkAll",
           "core/config/subscription/node_parser_amnezia.go:amneziaConfContext",
+          "core/config/subscription/node_parser_amnezia.go:parseAmneziaVPNLinkWithOrigins",
+          "core/config/subscription/node_parser_engine.go:MaterializeWGConfContext",
+          "core/config/linkmap/materialize.go:MaterializeContext",
           "core/config/linkmap/source.go:MatchesUnwrap"
         ],
         "dart": [

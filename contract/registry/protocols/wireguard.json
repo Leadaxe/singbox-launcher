@@ -1124,7 +1124,7 @@
               "gt": 0
             }
           },
-          "impl": "Контракт 1.1.63, SPEC 142 C10: MTU, который контейнер Amnezia кладёт РЯДОМ с `.conf` (last_config.mtu, AWG3-экспорт пишет туда 1376), а не в [Interface]. Источник `context.*` — значение от распаковщика контейнера (core/config/subscription/node_parser_amnezia.go:amneziaConfContext): он отдаёт объект, содержавший текст (`container`), и корень профиля (`profile`), а что поднять в узел, решает эта запись. Явный MTU из [Interface] приоритетнее: запись `mtu` объявлена раньше и путь за ней (общее правило спора за путь). Гейт gt 0 — ноль и мусор не поднимаются. Потолок MTU у AmneziaWG накладывает тело (max_when), с кодом. Прежде подъём делал код, дописывая строку MTU в INI (amneziaPrepareConf, снят)."
+          "impl": "Контракт 1.1.63, SPEC 142 C10: MTU, который контейнер Amnezia кладёт РЯДОМ с `.conf` (last_config.mtu, AWG3-экспорт пишет туда 1376), а не в [Interface]. Источник `context.*` — значение от распаковщика контейнера (core/config/subscription/node_parser_amnezia.go:amneziaConfContext): он отдаёт объект, содержавший текст (`container`), и корень профиля (`profile`), а что поднять, решает эта запись. Контракт 1.1.72: запись исполняется ОДИН раз при распаковке и пишет в ТЕКСТ — строка `MTU = N` встаёт сразу за [Interface] (ключ даёт запись-сосед `mtu` с тем же maps_to; core/config/linkmap/materialize.go:MaterializeContext, вызов — core/config/subscription/node_parser_engine.go:MaterializeWGConfContext); текст становится origin.raw узла (wg_ini, BACKUP.md «Происхождение из контейнера»), и тело строится из него уже без контекста. Явный MTU из [Interface] приоритетнее: при нём строка не дописывается. Гейт gt 0 — ноль и мусор не переносятся. Потолок MTU у AmneziaWG накладывает тело (max_when), с кодом."
         },
         "listenport": {
           "source": "ini.Interface.ListenPort",
@@ -1149,7 +1149,7 @@
             "action": "note",
             "code": "wgconf_dns_ignored"
           },
-          "impl": "Контракт 1.1.63, SPEC 142 C10: `DNS = $PRIMARY_DNS, $SECONDARY_DNS` — плейсхолдеры контейнера Amnezia; адреса лежат в корне профиля (`dns1`/`dns2`), и распаковщик отдаёт его источником `context.profile`. `substitute` заменяет элемент-плейсхолдер значением источника, неразрешённый снимает, пустой итог = значения нет (кода не будет). В тело DNS не едет (maps_to null) — подстановка нужна, чтобы код wgconf_dns_ignored назвал настоящие адреса, а не `$PRIMARY_DNS`. Прежде подстановку делал код, переписывая строку DNS в INI (amneziaPrepareConf, снят)."
+          "impl": "Контракт 1.1.63, SPEC 142 C10: `DNS = $PRIMARY_DNS, $SECONDARY_DNS` — плейсхолдеры контейнера Amnezia; адреса лежат в корне профиля (`dns1`/`dns2`), и распаковщик отдаёт его источником `context.profile`. `substitute` заменяет элемент-плейсхолдер значением источника, неразрешённый снимает, пустой итог = значения нет (кода не будет). Контракт 1.1.72: при распаковке контейнера подстановка исполняется ОДИН раз и переписывает строку DNS в ТЕКСТЕ (пустой итог удаляет строку; core/config/linkmap/materialize.go:MaterializeContext), текст становится origin.raw узла (wg_ini) и самодостаточен; на разборе такого текста плейсхолдеров уже нет и substitute ничего не меняет. Старый origin с плейсхолдерами разбирается без контекста — они снимаются. В тело DNS не едет (maps_to null) — подстановка нужна, чтобы и origin, и код wgconf_dns_ignored несли настоящие адреса, а не `$PRIMARY_DNS`."
         },
         "jc": {
           "source": "ini.Interface.Jc",
