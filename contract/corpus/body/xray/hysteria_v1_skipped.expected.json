@@ -1,6 +1,7 @@
 {
   "meta": {
-    "body_kind": "xray-array"
+    "body_kind": "xray-array",
+    "extension": "desktop"
   },
   "nodes": [
     {

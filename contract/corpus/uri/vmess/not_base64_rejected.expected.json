@@ -1,7 +1,7 @@
 {
   "dropped": [
     {
-      "code": "field_missing",
+      "code": "form_unrecognized",
       "index": 0,
       "reason": "parse_error",
       "ref": "vmess://not-base64"

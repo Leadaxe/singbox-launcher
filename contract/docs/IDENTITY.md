@@ -254,7 +254,7 @@ Dart использует строковый ключ `protocol|server|port|cred
 **B. Desktop-only поля entry** — `ssh` `client_version` и `private_key_path`
 (2 кейса), `"ext": "desktop"` в `registry/protocols/ssh.json`.
 
-**C. Алиас схемы `socks5` у Go** — `socks` (6 кейсов). Канон требует `socks`;
+**C. Алиас схемы `socks5` у Go** — `socks` (8 кейсов). Канон требует `socks`;
 Go сохраняет алиас, которым пришла ссылка, потому что дефолтный тег узла
 строится из схемы, а какое её написание берётся, объявляет РЕЕСТР —
 `label.fallback.scheme_source: as_written` у секции `socks` (кодом это больше

@@ -7,7 +7,7 @@
         "server_port": 443,
         "tls": {
           "enabled": true,
-          "server_name": "Germany",
+          "server_name": "any.example-1.com",
           "utls": {
             "enabled": true,
             "fingerprint": "chrome"

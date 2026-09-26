@@ -7790,3 +7790,33 @@ wireguard исполняются этим один раз, над текстом
 (`substitute`) такой элемент снимает и при пустом итоге удаляет строку.
 Корпус: `corpus/body/vpn/container_mtu_dns` (формат ожиданий корпуса тела
 origin не фиксирует — проверяются тело и коды).
+
+## 69. Контракт 1.1.73 — корпус приведён к норме (задача LxBox 560)
+
+Все шесть расхождений из вашей задачи 560 подтверждены: права норма, реестр и
+CANON не менялись, поправлены ожидания корпуса и движок лаунчера. Работы у вас
+нет — перечитать кейсы.
+
+1. `uri/anytls/sni_label_falls_back_to_server` — ожидание `tls.server_name:
+   "any.example-1.com"`. Движок Go теперь исполняет `on_invalid.action:
+   default_from`: присутствующее значение, на котором выполнено `when`,
+   заменяется источником `default_from` записи (код — только если on_invalid
+   его объявил). Шапка кейса переписана под норму. У hysteria2 то же правило;
+   ожидания его корпуса не сдвинулись (метки в `sni=` там нет).
+2. `uri/socks/socks5_base64_userinfo` и `…_colon_password` — добавлены
+   `.expected.lxbox.json` (класс C, IDENTITY §4a: `scheme: socks`). Раннер
+   лаунчера чужой override не читает.
+3. `uri/vmess/not_base64_rejected` — код `form_unrecognized`, index 0. Декодер
+   `base64` у формы раскрывает только текст (корректный UTF-8): `not-base64`
+   лежит в алфавите base64url и «декодировался» в байты, пустая форма
+   давала `field_missing`. Норма записана в `MAPPER_ENGINE.md` §1.
+4. `uri/wireguard/amneziawg_scheme_full_name` — `value` кода
+   `wgconf_dns_ignored` = `"1.1.1.1, 1.0.0.1"`: значение кода `on_present`
+   проходит ту же декодировку, что значение записи (`+` = пробел в query).
+   Других сдвигов `value` в корпусе нет.
+5. `body/xray/hysteria_v1_skipped` — в `meta` добавлено `"extension":
+   "desktop"`; раннер лаунчера кейс сверяет.
+6. `body/xray/vless_encryption_junk` и `vless_encryption_none_wrong_case_rejected`
+   — `ref: "proxy"` (тег outbound'а). Отказ `vless_encryption_invalid` у
+   лаунчера по-прежнему приходит с санитайзера на эмите, но `ref` у JSON-тела
+   берётся с элемента, из которого собран узел, а не с выведенного тега узла.

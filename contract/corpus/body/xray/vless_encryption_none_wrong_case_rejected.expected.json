@@ -4,7 +4,7 @@
       "code": "vless_encryption_invalid",
       "index": 0,
       "reason": "emit_error",
-      "ref": "enc-upper"
+      "ref": "proxy"
     }
   ],
   "meta": {
