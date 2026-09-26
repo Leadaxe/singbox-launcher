@@ -8284,3 +8284,64 @@ Go переведён (`rewriteRuleSetRefs` сообщает о полной п�
 
 *За LxBox:* если вы снимаете правило и при ЧАСТИЧНО висячем списке —
 перейдите на сужение списка.
+
+## 80. Контракт 1.1.83 — Xray `finalmask.tcp` fragment → `tls.fragment`; селектор элемента массива; пустой контейнер; тройка `extra`
+
+Ответ на задачу LxBox 573, часть A. Норма A1–A4 принята, с одним расширением
+в A3 и одним уточнением в A1 (оба ниже).
+
+**A1 — записи `fragment_via_finalmask` и `fragment_via_finalmask_direct_dialer`**
+в `registry/dialer.json`, блок `xray` (рядом с `fragment_via_dialer`, так что
+их получают все xray-секции, подключающие `dialer#xray`). Обе:
+`source: json.streamSettings.finalmask.tcp[type=fragment]`, `type: object`,
+`maps_to: null`, `implies {tls.fragment: true}`. Условия:
+
+- первая — `tls.enabled: true`, `$type not_in [hysteria, hysteria2]`,
+  `json.streamSettings.sockopt.dialerProxy {absent: true}`;
+- вторая — `tls.enabled: true`, тот же гейт `$type`,
+  `ref.dialer.protocol: freedom`. Слой `ref.dialer` кладёт `deref` записи
+  `fragment_via_dialer`: она объявлена раньше и разыменовывает `dialerProxy`
+  до своего `when`, так что слой есть и у freedom без fragment.
+
+Уточнение к A1: `dialerProxy` на служебный freedom (любой) — не хоп, узел
+ходит наружу напрямую, и его finalmask действует (кейс
+`finalmask_tcp_fragment_freedom_dialer`). Гейт `$type`: `finalmask.tcp` у
+узла поверх UDP Xray не применяет. Версия ядра записана в `impl` записи:
+на REALITY флаг действует с 1.14.1-lx.4.
+
+**Новый примитив пути — селектор элемента** `имя[ключ=значение]`
+(`docs/MAPPER_ENGINE.md` §4). Чтение: ПЕРВЫЙ элемент массива, который есть
+объект и у которого скаляр по `ключ` равен `значению` (без учёта регистра,
+как `value_of`). Работает в `source`, в ключах `when` и в raw-чтении.
+Объявленность (§8): путь с селектором раскрывается в числовые пути ВСЕХ
+подходящих элементов (`finalmask.tcp.0`, `finalmask.tcp.2`, …), их листья
+молчат по правилу предка; элемент другого `type` необъявлен. Объявленность
+статична и от `when` не зависит — поэтому без TLS поля элемента тоже молчат.
+
+**A2 — общей нормой движка, без записи.** Пустой объект или массив внутри
+контейнера листом не считается и `json_field_unknown` не даёт (§8,
+«Внутри контейнеров»). Непустой `tcpSettings` — как раньше.
+
+**A3 — безусловно и на всю тройку.** Запись `$extra_base_triple` в
+`transports.json`, блок `xray/xhttp`: чтение без записи
+`xhttpSettings.extra.{mode,path,host}` и то же под `splithttpSettings`.
+Xray эту тройку из extra не применяет НИКОГДА: `SplitHTTPConfig.Build`
+затирает её внешними значениями, пустыми тоже (D-097). Поэтому:
+совпадает — дубль; внешнего `mode` нет — Xray берёт пустое (auto), наш узел
+тоже без `mode`; расходятся — побеждает внешнее. Во всех трёх случаях кода нет,
+значение из extra не пишется. `path`/`host` добавлены по той же причине.
+
+**A4 — корпус `body/xray/`:** `finalmask_tcp_fragment`,
+`finalmask_tcp_fragment_no_tls`, `finalmask_tcp_fragment_with_hop`,
+`finalmask_tcp_other_type`, `tcp_settings_empty`, `xhttp_extra_mode_duplicate`
+и сверх списка `finalmask_tcp_fragment_freedom_dialer`,
+`xhttp_extra_mode_diverges`, `xhttp_extra_mode_only`. Изменены ожидания:
+`single_config_vless_reality_mlkem` (снят код на `tcpSettings: {}`),
+`xhttp_empty_extra_member_keeps_flat` и `xhttp_extra_beats_flat_field`
+(сняты коды на тройку extra).
+
+*За LxBox:* (1) селектор `[k=v]` в пути `json.` — чтение первого элемента и
+раскрытие на все элементы в объявленности; (2) пустой контейнер не лист;
+(3) проверить, что `$type` с `not_in` и `ref.dialer.*` из `deref` соседней
+записи исполняются в `when` в этом порядке. Та же форма пригодна для
+`finalmask.udp.0.*` у hysteria2 (сейчас индекс 0) — переводить не просим.

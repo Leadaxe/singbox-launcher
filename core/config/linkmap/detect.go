@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -455,20 +456,30 @@ func lookupPath(v interface{}, path string) (interface{}, bool) {
 		if seg == "" {
 			continue
 		}
-		switch node := cur.(type) {
-		case map[string]interface{}:
-			next, ok := node[seg]
+		name, key, want, sel := splitElemSelector(seg)
+		if name != "" {
+			next, ok := stepPath(cur, name)
 			if !ok {
 				return nil, false
 			}
 			cur = next
-		case []interface{}:
-			idx, ok := atoiStrict(seg)
-			if !ok || idx < 0 || idx >= len(node) {
-				return nil, false
+		}
+		if !sel {
+			continue
+		}
+		// Селектор элемента: ПЕРВЫЙ элемент массива, чей ключ равен значению.
+		arr, ok := cur.([]interface{})
+		if !ok {
+			return nil, false
+		}
+		found := false
+		for _, e := range arr {
+			if elemMatches(e, key, want) {
+				cur, found = e, true
+				break
 			}
-			cur = node[idx]
-		default:
+		}
+		if !found {
 			return nil, false
 		}
 	}
@@ -476,6 +487,113 @@ func lookupPath(v interface{}, path string) (interface{}, bool) {
 		return nil, false
 	}
 	return cur, true
+}
+
+// stepPath — один сегмент пути: ключ объекта или числовой индекс массива.
+func stepPath(cur interface{}, seg string) (interface{}, bool) {
+	switch node := cur.(type) {
+	case map[string]interface{}:
+		next, ok := node[seg]
+		return next, ok
+	case []interface{}:
+		idx, ok := atoiStrict(seg)
+		if !ok || idx < 0 || idx >= len(node) {
+			return nil, false
+		}
+		return node[idx], true
+	}
+	return nil, false
+}
+
+// splitElemSelector разбирает сегмент-селектор элемента массива
+// `имя[ключ=значение]` (контракт 1.1.83, MAPPER_ENGINE.md §4): `tcp[type=fragment]`
+// → массив `tcp`, элемент с `type` = `fragment`. Имя может быть пустым
+// (`[type=fragment]` — селектор по уже достигнутому массиву). Сегмент без
+// скобок — обычный ключ, sel=false.
+//
+// Позиция элемента в массиве принадлежит подписке, а не реестру: Xray пишет
+// маскировщики `finalmask.tcp[]` списком, и `fragment` стоит на любом месте.
+// Числовой индекс адресовал бы позицию, селектор адресует смысл.
+func splitElemSelector(seg string) (name, key, want string, sel bool) {
+	open := strings.IndexByte(seg, '[')
+	if open < 0 || !strings.HasSuffix(seg, "]") {
+		return seg, "", "", false
+	}
+	k, w, ok := strings.Cut(seg[open+1:len(seg)-1], "=")
+	if !ok || k == "" {
+		return seg, "", "", false
+	}
+	return seg[:open], k, w, true
+}
+
+// elemMatches — элемент массива есть объект, и его ключ key равен want.
+// Сравнение то же, что у `value_of`: строка со строкой без учёта регистра.
+func elemMatches(e interface{}, key, want string) bool {
+	m, ok := e.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	got, ok := jsonScalar(m, key)
+	return ok && strings.EqualFold(got, want)
+}
+
+// expandSelectorPath раскрывает путь с селекторами элементов в КОНКРЕТНЫЕ пути
+// с числовыми индексами — по одному на каждый подходящий элемент, а не только
+// на первый. Нужен объявленности (`json_field_unknown`): запись, назвавшая
+// `finalmask.tcp[type=fragment]`, читает каждый такой элемент, а элементы
+// другого типа остаются необъявленными. Путь без селектора возвращается как
+// есть; путь, не нашедший ни одного элемента, — пустым списком.
+func expandSelectorPath(root interface{}, path string) []string {
+	if !strings.Contains(path, "[") {
+		return []string{path}
+	}
+	type at struct {
+		node interface{}
+		path string
+	}
+	cur := []at{{node: root}}
+	join := func(prefix, seg string) string {
+		if prefix == "" {
+			return seg
+		}
+		return prefix + "." + seg
+	}
+	for _, seg := range strings.Split(path, ".") {
+		if seg == "" {
+			continue
+		}
+		name, key, want, sel := splitElemSelector(seg)
+		next := make([]at, 0, len(cur))
+		for _, c := range cur {
+			node, p := c.node, c.path
+			if name != "" {
+				v, ok := stepPath(node, name)
+				if !ok {
+					continue
+				}
+				node, p = v, join(p, name)
+			}
+			if !sel {
+				next = append(next, at{node: node, path: p})
+				continue
+			}
+			arr, ok := node.([]interface{})
+			if !ok {
+				continue
+			}
+			for i, e := range arr {
+				if elemMatches(e, key, want) {
+					next = append(next, at{node: e, path: join(p, strconv.Itoa(i))})
+				}
+			}
+		}
+		cur = next
+	}
+	out := make([]string, 0, len(cur))
+	for _, c := range cur {
+		out = append(out, c.path)
+	}
+	return out
 }
 
 func atoiStrict(s string) (int, bool) {

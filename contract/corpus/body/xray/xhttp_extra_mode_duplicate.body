@@ -1,0 +1,5 @@
+# Xray: mode продублирован в xhttpSettings.extra. Xray тройку mode/path/host
+# из extra не применяет никогда (SplitHTTPConfig.Build затирает её внешними
+# значениями, D-097) — дубль молчит (запись $extra_base_triple, контракт
+# 1.1.83, LxBox §573).
+[{"remarks":"xhttp-extra-dup","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"example-1.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"xhttp","xhttpSettings":{"path":"/x","mode":"packet-up","extra":{"mode":"packet-up","xPaddingBytes":"100-1000"}},"security":"tls","tlsSettings":{"serverName":"example-1.com"}}}]}]

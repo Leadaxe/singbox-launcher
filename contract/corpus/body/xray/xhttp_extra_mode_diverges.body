@@ -1,0 +1,4 @@
+# Xray: extra.mode расходится с внешним mode. Побеждает внешнее, как у Xray
+# (D-097); extra.mode молчит — поведения, которое узел потерял бы, у Xray
+# нет (контракт 1.1.83, LxBox §573).
+[{"remarks":"xhttp-extra-diff","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"example-1.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"xhttp","xhttpSettings":{"path":"/x","mode":"stream-one","extra":{"mode":"packet-up"}},"security":"tls","tlsSettings":{"serverName":"example-1.com"}}}]}]

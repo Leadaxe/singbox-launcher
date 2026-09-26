@@ -1,0 +1,5 @@
+# Xray: finalmask.tcp fragment у узла, чей dialerProxy указывает на
+# служебный freedom БЕЗ fragment. Freedom — не хоп, узел ходит наружу
+# напрямую, и собственный маскировщик действует: tls.fragment ставит запись
+# fragment_via_finalmask_direct_dialer (контракт 1.1.83, LxBox §573).
+[{"remarks":"fm-frag-freedom","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"example-1.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"example-1.com"},"sockopt":{"dialerProxy":"direct-out"},"finalmask":{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"20-40","delay":"3-10","maxSplit":"3-6"}}]}}},{"tag":"direct-out","protocol":"freedom","settings":{"domainStrategy":"UseIP"}}]}]

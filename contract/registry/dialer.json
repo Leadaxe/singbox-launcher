@@ -415,6 +415,46 @@
           "tls.fragment": true
         },
         "impl": "Контракт 1.1.63, SPEC 142 C5. У Xray фрагментация ClientHello живёт не в узле, а в СОСЕДЕ по документу: `streamSettings.sockopt.dialerProxy` указывает на служебный freedom с `settings.fragment` (DPI-трюк). Это не звено цепочки — элемент ходит наружу напрямую, — а свойство его собственного TLS, и у ядра оно называется tls.fragment. `deref` кладёт соседа с тем же `tag` в слой `ref.dialer`, условие проверяет его протокол и что fragment — объект; `implies` ставит tls.fragment только узлу с TLS. Параметры Xray (packets/length/interval) не переносятся и кода не получают (решение владельца): Xray режет ClientHello вслепую по length и ждёт фиксированный interval, ядро парсит ClientHello и режет по меткам SNI, с TCP_NODELAY и ожиданием ACK — механика строго лучше. Звено цепочки, чей dialerProxy указывает на такой freedom, получает фрагментацию СВОЕГО TLS (оно и делает прямое соединение). Прежде правило жило рукописно на уровне документа (applyXrayFreedomFragment, снят) и ставило tls.fragment ВЛАДЕЛЬЦУ цепочки даже тогда, когда наружу ходило звено. Уровень документа (core/config/subscription/xray_json_array.go:attachXrayDialerChain) по-прежнему только не заводит freedom звеном."
+      },
+      "fragment_via_finalmask": {
+        "source": "json.streamSettings.finalmask.tcp[type=fragment]",
+        "type": "object",
+        "maps_to": null,
+        "when": {
+          "tls.enabled": true,
+          "$type": {
+            "not_in": [
+              "hysteria",
+              "hysteria2"
+            ]
+          },
+          "json.streamSettings.sockopt.dialerProxy": {
+            "absent": true
+          }
+        },
+        "implies": {
+          "tls.fragment": true
+        },
+        "impl": "Контракт 1.1.83, LxBox §573. ВТОРАЯ форма фрагментации ClientHello у Xray: маскировщик в самом узле — `streamSettings.finalmask.tcp[]`, элемент `{type: fragment, settings: {packets, length, delay, maxSplit}}`. Смысл тот же, что у `fragment_via_dialer`, и перенос тот же: у ядра это tls.fragment, только узлу с TLS. Элемент ищется СЕЛЕКТОРОМ `tcp[type=fragment]` (MAPPER_ENGINE.md §4): позиция в списке маскировщиков принадлежит подписке. Селектор же объявляет элемент прочитанным целиком (§8): его поля не дают json_field_unknown ни при каком исходе, в том числе без TLS, а элемент другого `type` остаётся необъявленным и получает код по своим полям. Параметры Xray (packets/length/delay/maxSplit) не переносятся и кода не получают — та же норма, что у fragment_via_dialer: ядро режет ClientHello по меткам SNI с ожиданием ACK, механика строго лучше. record_fragment не включается. Гейт dialerProxy: узел, ходящий через хоп, фрагментирует свой TLS ВНУТРИ туннеля хопа, и у ядра флаг ничего бы не дал — флаг не ставится; dialerProxy на служебный freedom хопом не является, его ведёт запись fragment_via_finalmask_direct_dialer. Гейт $type: finalmask.tcp у узла поверх UDP (hysteria/hysteria2) Xray не применяет — TCP-соединения нет. Обе формы разом дают один флаг: implies пишет то же значение в тот же путь. Ядро: на узлах с REALITY tls.fragment действует с 1.14.1-lx.4 (SPEC 088), на более старом молча игнорируется без отказа старта; xhttp поверх h3 — QUIC, флаг игнорируется там же молча. tls.engine apple/windows с fragment ядро не стартует (ValidateSystemTLSOptions), но Xray-вход engine не пишет — сочетание приходит только руками или входом singbox."
+      },
+      "fragment_via_finalmask_direct_dialer": {
+        "source": "json.streamSettings.finalmask.tcp[type=fragment]",
+        "type": "object",
+        "maps_to": null,
+        "when": {
+          "tls.enabled": true,
+          "$type": {
+            "not_in": [
+              "hysteria",
+              "hysteria2"
+            ]
+          },
+          "ref.dialer.protocol": "freedom"
+        },
+        "implies": {
+          "tls.fragment": true
+        },
+        "impl": "Пара к fragment_via_finalmask: dialerProxy указывает на служебный freedom (любой, с fragment или без) — это не хоп, элемент ходит наружу напрямую (уровень документа тоже не заводит freedom звеном), и собственный finalmask узла действует. Слой ref.dialer кладёт deref записи fragment_via_dialer — она объявлена раньше и разыменовывает dialerProxy до своего when, так что слой есть и тогда, когда у freedom fragment нет. dialerProxy на прокси-узел этой записи не проходит: протокол соседа не freedom."
       }
     }
   }
