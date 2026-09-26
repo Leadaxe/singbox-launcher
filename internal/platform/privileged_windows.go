@@ -11,6 +11,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"singbox-launcher/internal/debuglog"
 )
 
 // Classic-ядро под правами администратора на Windows (SPEC 141 §8):
@@ -78,7 +80,8 @@ func privilegedCoreLogFile() string {
 // OpenPrivilegedCoreLog открывает classic.log для вывода повышенного ядра
 // (SPEC 141 §8): каталог logs\ и цепочка <ProgramData>\sing-box-lxd — по
 // инварианту §6.1 (нет каталога — ErrPrivilegedLogDirMissing); > 2 МиБ —
-// rename в classic.log.old; файл открывается без следования ссылкам
+// rename в classic.log.old (не вышло — старт не валится, ротация ждёт
+// следующего старта); файл открывается без следования ссылкам
 // (reparse point или каталог на его месте — отказ) на дозапись, и на
 // каждом старте ему заново ставится явный DACL: SYSTEM и Administrators —
 // полный доступ, пользователь лаунчера — чтение (install/copy снимают его).
@@ -99,7 +102,10 @@ func OpenPrivilegedCoreLog() (*os.File, error) {
 		old := path + ".old"
 		_ = os.Remove(old)
 		if err := os.Rename(path, old); err != nil {
-			return nil, fmt.Errorf("rotate %s: %w", path, err)
+			// Файл держит чужой дескриптор без FILE_SHARE_DELETE (открытый
+			// в редакторе лог, антивирус): ротация откладывается до
+			// следующего старта, ядро пишет дальше в тот же файл.
+			debuglog.WarnLog("OpenPrivilegedCoreLog: rotate %s skipped: %v", path, err)
 		}
 	}
 	sddl, err := privilegedLogSDDL()

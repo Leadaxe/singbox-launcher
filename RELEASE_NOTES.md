@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v2.3.1
+
+Хотфикс v2.3.0 для Windows: лаунчер с правами администратора больше не отказывается запускать ядро с ошибкой «classic.log: rotate … being used by another process», когда лог ядра перерос 2 МиБ. Подробнее: [docs/release_notes/2-3-1.md](docs/release_notes/2-3-1.md).
+
+### Highlights (EN) — v2.3.1
+
+A Windows hotfix for v2.3.0: a launcher run as administrator no longer refuses to start the core with “classic.log: rotate … being used by another process” once the core log has grown over 2 MiB. Details: [docs/release_notes/2-3-1.md](docs/release_notes/2-3-1.md).
+
 ### Выжимка (RU) — v2.3.0
 
 Минорный релиз после v2.2.0, ядро `sing-box-lx 1.14.2-lx.4` (было 1.14.2-lx.2), контракт 1.1.80 (было 1.1.53). Релиз про узлы. **WireGuard / AmneziaWG вживую:** в списке **Servers** подзаголовок строки показывает состояние узла в ядре (`up` / `sleep` / `freed` / `starting` / `off`), выключенный вручную узел — серое `off` вместо красного Error, пункт меню **Disable / Enable WireGuard** гасит и поднимает узел без правки конфига, а в окне **Info** появилась секция WireGuard с состоянием, временем с последнего трафика и кнопкой **Выключить / Включить**; работает в daemon-режиме и на удалённых машинах, нужно ядро lx.4 — лаунчер предложит его обновить. **Правила об узлах — только из реестра (SPEC 142):** ссылки, подписки, конфиги sing-box и Xray и бэкапы судятся одинаково на любом входе, и многие узлы, из-за которых ядро раньше отвергало весь конфиг (REALITY без uTLS, AmneziaWG с `jmin` > `jmax`, WireGuard с портом прослушивания за хопом, XHTTP с placement без mode), теперь чинятся с понятным предупреждением; предупреждения, прежде доходившие только до лога, видны в списке узлов (⚠) и в отчёте сборки. **Шаблон конфигурации (SPEC 143):** ошибки в настройках шаблона видны первыми строками «Итога» отчёта сборки, в **Settings** — выпадающие списки и проверка чисел; в своих шаблонах, где MTU или порт объявлены `type: text`, объявите `type: int`. **Amnezia `vpn://`:** Origin узла теперь полный `.conf` с MTU и DNS профиля — пересборка не требует ссылки; строка `vpn://` внутри списка ссылок даёт все контейнеры профиля, как подписка из одной этой ссылки. Битые байты в имени узла (cp1251) больше не стоят узла — имя получает `�`. Свёртка папки и подписки едет в бэкапе той же формой `replace`, что в состоянии; старые бэкапы со свёрткой формы `fold` её теряют — свёртку настраивают заново. Исправлено: пресетные DNS-серверы Yandex при выключенном DNS override больше не попадают в конфиг, вкладка Overview у узла в папке описывает сам узел. Подробнее: [docs/release_notes/2-3-0.md](docs/release_notes/2-3-0.md).
@@ -712,6 +720,8 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.3.1** | [docs/release_notes/2-3-1.md](docs/release_notes/2-3-1.md) |
+| **v2.3.0** | [docs/release_notes/2-3-0.md](docs/release_notes/2-3-0.md) |
 | **v2.2.0** | [docs/release_notes/2-2-0.md](docs/release_notes/2-2-0.md) |
 | **v2.1.0** | [docs/release_notes/2-1-0.md](docs/release_notes/2-1-0.md) |
 | **v2.0.2** | [docs/release_notes/2-0-2.md](docs/release_notes/2-0-2.md) |
