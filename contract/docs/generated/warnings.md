@@ -34,6 +34,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`detour_target_missing`](#detour_target_missing) · `warning` — Chain cut: {target} not found
 - [`detour_to_group`](#detour_to_group) · `warning` — Chain cut: {target} is a group
 - [`detour_with_listen_port`](#detour_with_listen_port) · `warning` — {tag}: listening port removed for the hop
+- [`detour_with_tls_fragment`](#detour_with_tls_fragment) · `info` — {tag}: TLS fragmentation removed for the hop
 - [`dialer_proxy_unusable`](#dialer_proxy_unusable) · `error` — Preceding proxy {target} is unusable
 - [`direction_filter_matched_nothing`](#direction_filter_matched_nothing) · `warning` — Direction {direction}: filter matched no nodes
 - [`ech_ignored`](#ech_ignored) · `info` — ECH from the link removed
@@ -91,6 +92,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`template_var_undeclared`](#template_var_undeclared) · `warning` — Variable {name} is not declared
 - [`tls_alpn_item_invalid`](#tls_alpn_item_invalid) · `warning` — TLS: bogus ALPN entry dropped
 - [`tls_field_unsupported_naive`](#tls_field_unsupported_naive) · `warning` — naive: TLS field {path} removed
+- [`tls_fragment_system_engine`](#tls_fragment_system_engine) · `warning` — System TLS engine: {path} removed
 - [`tls_insecure`](#tls_insecure) · `info` — Certificate verification disabled
 - [`tls_not_applicable_quic`](#tls_not_applicable_quic) · `info` — QUIC: TLS field {path} not applicable
 - [`transport_header_unsupported`](#transport_header_unsupported) · `error` — TCP header obfuscation {value} is not supported
@@ -556,6 +558,24 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - [`wireguard`](protocols/wireguard.md)
   - [`listen_port`](protocols/wireguard.md#body-listen-port) — conflicts with `detour` → removed
+
+<a id="detour_with_tls_fragment"></a>
+### detour_with_tls_fragment
+
+**severity:** `info` · **params:** `tag`, `target`
+
+**{tag}: TLS fragmentation removed for the hop**
+
+- **What happened:** Node {tag} is routed through {target}, so its TLS runs inside the hop's tunnel, where splitting the ClientHello does not help against DPI. An explicit fragmentation setting would also turn off the record fragmentation the core applies to such nodes on its own and add a 500 ms pause per segment. The setting was removed; the core's own default applies.
+- **Why it happens:** The node arrived with TLS fragmentation (from a subscription or a link), and you assigned a hop to it — personally, through its folder or in a chain.
+- **What you can do:**
+  - Nothing to do: fragmentation belongs on the hop that connects directly.
+  - If the hop itself needs fragmentation, turn it on for the hop node.
+
+**Where it comes from:**
+
+- [`tls`](protocols/_tls.md)
+  - [`fragment`](protocols/_tls.md#body-fragment) — conflicts with `detour` → removed
 
 <a id="dialer_proxy_unusable"></a>
 ### dialer_proxy_unusable
@@ -1653,6 +1673,25 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`spoof_method`](protocols/_tls.md#body-spoof-method) — not supported by `naive` → removed
   - [`utls`](protocols/_tls.md#body-utls) — not supported by `naive`, `hysteria`, `hysteria2`, `tuic`, `masque` → removed
   - [`utls.enabled`](protocols/_tls.md#body-utls-enabled) — not supported by `naive` → removed
+
+<a id="tls_fragment_system_engine"></a>
+### tls_fragment_system_engine
+
+**severity:** `warning` · **params:** `path`, `with`
+
+**System TLS engine: {path} removed**
+
+- **What happened:** The node uses the system TLS engine ({with}), which cannot split the ClientHello. The core would refuse to start the whole config with this combination, so {path} was removed; the engine stays and the node works without fragmentation.
+- **Why it happens:** TLS fragmentation and the apple or windows TLS engine were both set for the node, usually in an imported sing-box config or by hand.
+- **What you can do:**
+  - Nothing to do if the node connects.
+  - If you need fragmentation against DPI, remove the engine setting so the node uses the default Go TLS.
+
+**Where it comes from:**
+
+- [`tls`](protocols/_tls.md)
+  - [`fragment`](protocols/_tls.md#body-fragment) — conflicts with `tls.engine` when `tls.engine` is one of `apple`, `windows` → removed
+  - [`record_fragment`](protocols/_tls.md#body-record-fragment) — conflicts with `tls.engine` when `tls.engine` is one of `apple`, `windows` → removed
 
 <a id="tls_insecure"></a>
 ### tls_insecure

@@ -1,0 +1,5 @@
+# sing-box: узел с fragment и detour в теле. detour — managed-поле, вход его
+# не несёт (снимает санитайзер), и связь fragment ↔ detour на разборе не
+# срабатывает: fragment остаётся. Уступку исполняет сборка, когда сама
+# проставит detour (контракт 1.1.84, код detour_with_tls_fragment).
+{"outbounds":[{"type":"vless","tag":"frag-detour","server":"example-1.com","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111","detour":"other","tls":{"enabled":true,"server_name":"example-1.com","fragment":true}},{"type":"direct","tag":"other"}]}

@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v2.3.2
+
+Патч-релиз после v2.3.1, ядро `sing-box-lx 1.14.2-lx.4` без изменений, контракт 1.1.84. **Подписки Xray:** фрагментация ClientHello в форме `finalmask.tcp` (`type: fragment`) теперь включает фрагментацию TLS узла, как старая форма `dialerProxy` → freedom; пустой `tcpSettings` и дубли `mode`/`path`/`host` в `extra` у XHTTP больше не дают пометок «неизвестное поле». **Исправлено:** узел за хопом или в цепочке больше не несёт собственную фрагментацию TLS (она отключала встроенное разбиение записей ядра и добавляла паузы); фрагментация вместе с движком TLS `apple`/`windows` больше не мешает ядру стартовать; поля, уступающие хопу (`listen_port` у WireGuard), теперь действительно снимаются в `config.json`; правило пресета без условий выпадает, а не ловит весь трафик. Принимаются ссылки `wg://`. Подробнее: [docs/release_notes/2-3-2.md](docs/release_notes/2-3-2.md).
+
+### Highlights (EN) — v2.3.2
+
+A patch release after v2.3.1, core `sing-box-lx 1.14.2-lx.4` unchanged, contract 1.1.84. **Xray subscriptions:** ClientHello fragmentation in the `finalmask.tcp` form (`type: fragment`) now turns on the node's TLS fragmentation, like the older `dialerProxy` → freedom form; an empty `tcpSettings` and `mode`/`path`/`host` repeated inside XHTTP `extra` no longer produce "unknown field" notes. **Fixed:** a node behind a hop or in a chain no longer carries its own TLS fragmentation (it turned off the core's built-in record splitting and added pauses); fragmentation together with the `apple`/`windows` TLS engine no longer stops the core from starting; fields that give way to a hop (WireGuard `listen_port`) are now really removed in `config.json`; a preset rule with no conditions is dropped instead of matching all traffic. `wg://` links are accepted. Details: [docs/release_notes/2-3-2.md](docs/release_notes/2-3-2.md).
+
 ### Выжимка (RU) — v2.3.1
 
 Хотфикс v2.3.0 для Windows: лаунчер с правами администратора больше не отказывается запускать ядро с ошибкой «classic.log: rotate … being used by another process», когда лог ядра перерос 2 МиБ. Подробнее: [docs/release_notes/2-3-1.md](docs/release_notes/2-3-1.md).

@@ -45,6 +45,7 @@ import (
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/nodeflow"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 )
@@ -788,7 +789,7 @@ func EmitNodeJSONs(node *ParsedNode) (outboundJSONs []string, endpointJSON strin
 
 	var jsons []string
 	for _, hop := range chain {
-		hopJSON, hopErr := GenerateNodeJSON(hop)
+		hopJSON, hopErr := generateWithDetourYield(hop)
 		if hopErr != nil {
 			return nil, "", fmt.Errorf("chain hop %s: %w", hop.Tag, hopErr)
 		}
@@ -803,6 +804,7 @@ func EmitNodeJSONs(node *ParsedNode) (outboundJSONs []string, endpointJSON strin
 		}
 		cp["detour"] = chain[0].Tag
 		node.Outbound = cp
+		yieldChainDetour(node)
 	}
 	mainJSON, err := GenerateNodeJSON(node)
 	if len(chain) > 0 {
@@ -812,6 +814,36 @@ func EmitNodeJSONs(node *ParsedNode) (outboundJSONs []string, endpointJSON strin
 		return nil, "", err
 	}
 	return append(jsons, mainJSON), "", nil
+}
+
+// generateWithDetourYield эмитит звено цепочки, снимая поля, уступающие его
+// собственному detour (звено Xray-цепочки несёт detour в теле с разбора).
+func generateWithDetourYield(hop *ParsedNode) (string, error) {
+	if _, has := hop.Outbound[buildDetourField]; !has {
+		return GenerateNodeJSON(hop)
+	}
+	orig := hop.Outbound
+	cp := make(map[string]interface{}, len(orig))
+	for k, v := range orig {
+		cp[k] = v
+	}
+	hop.Outbound = cp
+	yieldChainDetour(hop)
+	out, err := GenerateNodeJSON(hop)
+	hop.Outbound = orig
+	return out, err
+}
+
+// yieldChainDetour — связи реестра `conflicts {with: detour}` для detour,
+// который цепочка проставляет на эмите (контракт 1.1.84): тот же вопрос
+// реестру, что у yieldToBuildDetour после detour Направлений. Отчёта сборки
+// у эмита нет — снятие пишется в лог. Тело заменяется копией: вызывающий
+// восстанавливает исходное.
+func yieldChainDetour(n *ParsedNode) {
+	for _, y := range yieldToBuildDetour(n) {
+		target, _ := n.Outbound[buildDetourField].(string)
+		debuglog.WarnLog("chain: %s (%s)", fmt.Sprintf(emitDetourFieldYieldText, n.Tag, y.Path, target), y.Code)
+	}
 }
 
 // GenerateOutboundsFromParserConfig is the main entry point: эмитит узлы из
@@ -1402,10 +1434,55 @@ func stampTagAndDetour(body []byte, node *ParsedNode) (string, error) {
 		if d, ok := node.Outbound["detour"].(string); ok {
 			if d = strings.TrimSpace(d); d != "" {
 				obj.setLast("detour", marshalJSONStringRaw(d))
+				yieldBodyToDetour(obj, node.Scheme)
 			}
 		}
 	}
 	return string(obj.encode()), nil
+}
+
+// yieldBodyToDetour снимает с готового тела поля, которые реестр объявил
+// уступающими detour (`conflicts {with: detour}`, registry.Registry.YieldsTo).
+//
+// Отчёт о снятии ставит тот, кто detour проставил (yieldToBuildDetour у
+// Направлений, yieldChainDetour у цепочек), но снимает он с карты Outbound, а
+// материализованный узел эмитится из замороженного EmitBody. Поэтому
+// исполнение правила — здесь, на границе «тело → outbound», где detour и
+// встречается с телом (контракт 1.1.84).
+func yieldBodyToDetour(obj *orderedJSONObject, scheme string) {
+	reg, err := registry.Get()
+	if err != nil {
+		return
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(obj.encode(), &m); err != nil {
+		return
+	}
+	for _, y := range reg.YieldsTo(scheme, buildDetourField, m) {
+		deleteOrderedPath(obj, strings.Split(y.Path, "."))
+	}
+}
+
+// deleteOrderedPath убирает ключ по пути, сохраняя порядок ключей объектов
+// на пути к нему.
+func deleteOrderedPath(obj *orderedJSONObject, parts []string) {
+	if obj == nil || len(parts) == 0 {
+		return
+	}
+	if len(parts) == 1 {
+		obj.delete(parts[0])
+		return
+	}
+	raw, ok := obj.values[parts[0]]
+	if !ok {
+		return
+	}
+	inner, err := decodeOrderedJSONObject(raw)
+	if err != nil {
+		return
+	}
+	deleteOrderedPath(inner, parts[1:])
+	obj.values[parts[0]] = inner.encode()
 }
 
 // groupMemberTags returns the group's member tags in order.

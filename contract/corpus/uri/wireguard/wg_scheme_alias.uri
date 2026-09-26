@@ -1,0 +1,6 @@
+# Схема `wg://` — алиас wireguard-секции (aliases протокола и scheme_in
+# секции uri, contract/registry/protocols/wireguard.json). До 1.1.81 алиас
+# стоял только в aliases протокола: LxBox принимал ссылку по нему, а Go —
+# по scheme_in, где `wg` выпал при переносе на движок, и отбраковывал её.
+# Тело — как у plain_wg_default_mtu_1408; scheme узла каноничен: wireguard.
+wg://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32#wg-plain

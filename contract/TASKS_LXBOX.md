@@ -8221,3 +8221,155 @@ vpn-1}` при Направлении `vpn-1` → Направление соб�
 его в отчёт сборки вместо строки лога «Skipping empty local selector»
 (`core/config/outbound_validity.go:replaceGroupEmptyWarning`). *За LxBox:*
 ставьте тот же код в своём отчёте сборки.
+
+## 78. Контракт 1.1.81 — поля-условия правил в реестре; `wg://`; dart-ссылка wireguard
+
+Ответ на ваши четыре запроса по итогам задачи 570 (решения согласованы
+перепиской 26.09.2026).
+
+**1. Гейт «правило без условий» — данными реестра.** В
+`registry/allowlists.json` два списка:
+
+- `route_rule_conditions` — зеркало `RawDefaultRule` ядра
+  (`option/rule.go`) без `invert`, плюс `rules` логического правила;
+- `dns_rule_conditions` — зеркало `RawDefaultDNSRule`
+  (`option/rule_dns.go`) без `invert` и модификаторов (`match_response`,
+  `rule_set_ip_cidr_match_source`, `rule_set_ip_cidr_accept_empty`), плюс
+  `rules`. `outbound` в DNS-правиле — условие, а не цель.
+
+Норма (`docs/TEMPLATE_LANG.md` §5.1): правило, в котором после подстановки и
+Dropped-каскада не осталось ни одного ключа из списка своего вида, выпадает с
+`template_fragment_dropped`. `action` условием не считается ни в route, ни в
+dns. У Go DNS-правило с `action` без условий раньше выживало — снято. Go
+`core/build/preset_expand.go:hasRuleCondition` читает списки из реестра,
+имён полей в коде нет. На пресетах и корпусе шаблонов решение не изменилось
+ни у одного правила.
+
+*За LxBox:* замените узкий гейт по `rule_set` на общий по этим спискам.
+
+**2. `wg://` принимается.** Во всех протоколах `aliases` ⊆ `scheme_in`
+секции `uri`; у wireguard `wg` выпал из `scheme_in` при переносе на движок
+(c28f378e), и Go отбраковывал ссылку, которую вы принимали. `wg` добавлен в
+`scheme_in`, Go принимает её по реестру без правки кода. Новый кейс
+`corpus/uri/wireguard/wg_scheme_alias` (тело как у
+`plain_wg_default_mtu_1408`, `scheme` узла — `wireguard`). *За LxBox:*
+прогоните кейс.
+
+**3. dart-ссылка** `registry/protocols/wireguard.json` →
+`app/lib/services/parser/engine/interpreter.dart:runSection`. *За LxBox:*
+снимите строку из `registry_dart_refs_known_stale.txt`.
+
+**4. `group_defaults` подписки в бэкап не едет.** Живой выбор члена
+провайдерского selector у лаунчера — рантайм (Clash API и cache_file ядра),
+в state и бэкап он не пишется; объявленный провайдером `default` группы и
+так едет в `entry`. Держите `group_defaults` локальным состоянием. Перенос
+выбора между устройствами — отдельная задача по решению владельца.
+
+## 79. Контракт 1.1.82 — гейт «правило без условий»: нулевое значение и висячий `rule_set`
+
+Ответ на два уточнения по задаче 571. Норма — `docs/TEMPLATE_LANG.md` §5.1.
+
+**1. Нулевое значение — не условие.** Ключ из `route_rule_conditions` /
+`dns_rule_conditions` со значением `null`, `""`, `[]`, `{}`, `false` или `0`
+условием не считается: ядро по пустому полю сопоставление не строит, и
+правило матчило бы всё. Верен ваш вариант; Go переведён
+(`isZeroJSONValue`).
+
+**2. Висячий `rule_set`.** Имя рядом с живыми убирается, список сужается —
+правило живёт. Если висячими оказались ВСЕ ссылки, правило выпадает целиком
+с `template_fragment_dropped`, даже когда у него остались другие условия:
+`{rule_set: [missing], port: 443}` без набора стало бы «весь 443-й трафик».
+Go переведён (`rewriteRuleSetRefs` сообщает о полной потере), тест
+`core/build/rule_condition_gate_test.go`.
+
+*За LxBox:* если вы снимаете правило и при ЧАСТИЧНО висячем списке —
+перейдите на сужение списка.
+
+## 80. Контракт 1.1.83 — Xray `finalmask.tcp` fragment → `tls.fragment`; селектор элемента массива; пустой контейнер; тройка `extra`
+
+Ответ на задачу LxBox 573, часть A. Норма A1–A4 принята, с одним расширением
+в A3 и одним уточнением в A1 (оба ниже).
+
+**A1 — записи `fragment_via_finalmask` и `fragment_via_finalmask_direct_dialer`**
+в `registry/dialer.json`, блок `xray` (рядом с `fragment_via_dialer`, так что
+их получают все xray-секции, подключающие `dialer#xray`). Обе:
+`source: json.streamSettings.finalmask.tcp[type=fragment]`, `type: object`,
+`maps_to: null`, `implies {tls.fragment: true}`. Условия:
+
+- первая — `tls.enabled: true`, `$type not_in [hysteria, hysteria2]`,
+  `json.streamSettings.sockopt.dialerProxy {absent: true}`;
+- вторая — `tls.enabled: true`, тот же гейт `$type`,
+  `ref.dialer.protocol: freedom`. Слой `ref.dialer` кладёт `deref` записи
+  `fragment_via_dialer`: она объявлена раньше и разыменовывает `dialerProxy`
+  до своего `when`, так что слой есть и у freedom без fragment.
+
+Уточнение к A1: `dialerProxy` на служебный freedom (любой) — не хоп, узел
+ходит наружу напрямую, и его finalmask действует (кейс
+`finalmask_tcp_fragment_freedom_dialer`). Гейт `$type`: `finalmask.tcp` у
+узла поверх UDP Xray не применяет. Версия ядра записана в `impl` записи:
+на REALITY флаг действует с 1.14.1-lx.4.
+
+**Новый примитив пути — селектор элемента** `имя[ключ=значение]`
+(`docs/MAPPER_ENGINE.md` §4). Чтение: ПЕРВЫЙ элемент массива, который есть
+объект и у которого скаляр по `ключ` равен `значению` (без учёта регистра,
+как `value_of`). Работает в `source`, в ключах `when` и в raw-чтении.
+Объявленность (§8): путь с селектором раскрывается в числовые пути ВСЕХ
+подходящих элементов (`finalmask.tcp.0`, `finalmask.tcp.2`, …), их листья
+молчат по правилу предка; элемент другого `type` необъявлен. Объявленность
+статична и от `when` не зависит — поэтому без TLS поля элемента тоже молчат.
+
+**A2 — общей нормой движка, без записи.** Пустой объект или массив внутри
+контейнера листом не считается и `json_field_unknown` не даёт (§8,
+«Внутри контейнеров»). Непустой `tcpSettings` — как раньше.
+
+**A3 — безусловно и на всю тройку.** Запись `$extra_base_triple` в
+`transports.json`, блок `xray/xhttp`: чтение без записи
+`xhttpSettings.extra.{mode,path,host}` и то же под `splithttpSettings`.
+Xray эту тройку из extra не применяет НИКОГДА: `SplitHTTPConfig.Build`
+затирает её внешними значениями, пустыми тоже (D-097). Поэтому:
+совпадает — дубль; внешнего `mode` нет — Xray берёт пустое (auto), наш узел
+тоже без `mode`; расходятся — побеждает внешнее. Во всех трёх случаях кода нет,
+значение из extra не пишется. `path`/`host` добавлены по той же причине.
+
+**A4 — корпус `body/xray/`:** `finalmask_tcp_fragment`,
+`finalmask_tcp_fragment_no_tls`, `finalmask_tcp_fragment_with_hop`,
+`finalmask_tcp_other_type`, `tcp_settings_empty`, `xhttp_extra_mode_duplicate`
+и сверх списка `finalmask_tcp_fragment_freedom_dialer`,
+`xhttp_extra_mode_diverges`, `xhttp_extra_mode_only`. Изменены ожидания:
+`single_config_vless_reality_mlkem` (снят код на `tcpSettings: {}`),
+`xhttp_empty_extra_member_keeps_flat` и `xhttp_extra_beats_flat_field`
+(сняты коды на тройку extra).
+
+*За LxBox:* (1) селектор `[k=v]` в пути `json.` — чтение первого элемента и
+раскрытие на все элементы в объявленности; (2) пустой контейнер не лист;
+(3) проверить, что `$type` с `not_in` и `ref.dialer.*` из `deref` соседней
+записи исполняются в `when` в этом порядке. Та же форма пригодна для
+`finalmask.udp.0.*` у hysteria2 (сейчас индекс 0) — переводить не просим.
+
+## 81. Контракт 1.1.84 — `tls.fragment` уступает `detour` сборки и системному TLS-движку
+
+По фактам ядра из дополнения к задаче 573 (п. 1 и 5), решение владельца
+27.09.2026 — «решайте сами».
+
+**1. `detour`.** `tls.json` → `fragment.conflicts`:
+`{with: detour, code: detour_with_tls_fragment}` (info, params `tag`,
+`target`). Тот же механизм, что у `listen_port` (1.1.65): detour пишет
+сборка, связь проверяется по готовому телу. У вас это уже сделано в
+post-step — теперь то же правило записано данными, `record_fragment` связи
+с detour НЕ имеет (это дефолт ядра под detour).
+
+**2. Системный движок.** `fragment` и `record_fragment` →
+`conflicts {with: tls.engine, when: {tls.engine: {in: [apple, windows]}},
+code: tls_fragment_system_engine}` (warning, params `path`, `with`).
+Уступает фрагментация, движок остаётся. На Android не встречается, но
+правило общее — исполняет санитайзер на любом входе.
+
+**3. Норма санитайзера:** managed-поле (`detour`) для связей соседей
+отсутствует. `detour`, пришедший во входе sing-box, до ядра не доезжает —
+снимать из-за него `fragment`/`listen_port` нельзя. Кейс
+`body/singbox/tls_fragment_detour_in_body` (fragment остаётся, кода нет).
+
+*За LxBox:* (1) если ваш санитайзер видит `detour` входа в связях —
+перевести на правило п. 3; (2) код `tls_fragment_system_engine` в
+санитайзере (кейс `body/singbox/tls_fragment_system_engine`); (3) ваш
+post-step по detour может ставить код `detour_with_tls_fragment`.

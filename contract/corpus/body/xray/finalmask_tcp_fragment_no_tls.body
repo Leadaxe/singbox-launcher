@@ -1,0 +1,4 @@
+# Xray: finalmask.tcp с type=fragment у узла БЕЗ TLS (контракт 1.1.83,
+# LxBox §573). Фрагментировать нечего — флаг не ставится; поля элемента
+# объявлены селектором целиком и json_field_unknown не дают.
+[{"remarks":"fm-frag-plain","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"example-1.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"none","finalmask":{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"20-40","delay":"3-10","maxSplit":"3-6"}}]}}}]}]

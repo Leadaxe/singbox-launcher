@@ -29,6 +29,7 @@ import (
 	"sort"
 	"strings"
 
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/outboundutil"
 )
@@ -318,7 +319,7 @@ func ExpandPresetWithGlobals(
 		}
 		stripGateKeys(m)
 		// Rewrite rule_set refs: local → prefixed, filter dangling.
-		rewriteRuleSetRefs(m, preset.ID, emittedTags)
+		ruleSetLost := rewriteRuleSetRefs(m, preset.ID, emittedTags)
 		// Apply outbound sentinels (reject/drop) — shared util с UI.
 		if outbound, ok := m["outbound"].(string); ok {
 			m = outboundutil.ApplyOutboundToRule(m, outbound)
@@ -333,7 +334,7 @@ func ExpandPresetWithGlobals(
 				Message: fmt.Sprintf("rules[%d] is empty after #if — skipped", idx)})
 		case isRuleUnusable(m):
 			warnings = append(warnings, fragmentDropped(preset.ID, fragmentKindRule, "outbound/action"))
-		case isRuleEmpty(m, emittedTags):
+		case ruleSetLost, isRuleEmpty(m, emittedTags):
 			warnings = append(warnings, fragmentDropped(preset.ID, fragmentKindRule, "rule_set"))
 		default:
 			frags.RoutingRules = append(frags.RoutingRules, m)
@@ -613,24 +614,27 @@ func splitTextList(scalar string) []string {
 
 // rewriteRuleSetRefs — переписывает rule_set refs:
 //   - string "local_tag" → "<preset_id>:<local_tag>" если local_tag в validTags;
-//     если local_tag НЕ в validTags (dangling после if-filter) — НИЧЕГО не делаем
-//     с этим string'ом (caller сам решит что rule пустой — см. isRuleEmpty)
-//   - []interface{} с локальными именами → filter+prefix; dangling выкидываются
-func rewriteRuleSetRefs(m map[string]interface{}, presetID string, validTags map[string]bool) {
+//   - []interface{} с локальными именами → filter+prefix; dangling выкидываются.
+//
+// Возвращает true, если ссылки были и висячими оказались ВСЕ (контракт
+// 1.1.82, TEMPLATE_LANG §5.1): такое правило выпадает целиком, даже когда у
+// него остались другие условия, — снятое условие расширило бы совпадение.
+// Висячее имя рядом с живыми просто убирается: список наборов сужается.
+func rewriteRuleSetRefs(m map[string]interface{}, presetID string, validTags map[string]bool) bool {
 	ref, ok := m["rule_set"]
 	if !ok {
-		return
+		return false
 	}
 	switch v := ref.(type) {
 	case string:
 		if v == "" {
-			return
+			return false
 		}
 		if validTags[v] {
 			m["rule_set"] = presetID + TagSeparator + v
 		} else {
-			// Dangling — удалить ключ (isRuleEmpty проверит).
 			delete(m, "rule_set")
+			return true
 		}
 	case []interface{}:
 		out := make([]interface{}, 0, len(v))
@@ -648,54 +652,74 @@ func rewriteRuleSetRefs(m map[string]interface{}, presetID string, validTags map
 			m["rule_set"] = out
 		} else {
 			delete(m, "rule_set")
+			return len(v) > 0
 		}
 	}
+	return false
 }
 
-// isRuleEmpty — rule пустой если нет ни rule_set, ни других match-полей.
-// Под "другими match-полями" подразумеваются sing-box match-keys (ip_is_private,
-// domain_suffix, и т.п.) — то есть всё кроме action/outbound/method/network/if/if_or.
+// Имена списков полей-условий в реестре (allowlists.json). Набор условий —
+// данные контракта, общие с LxBox: здесь нет ни одного имени поля правила.
+const (
+	routeRuleConditionsList = "route_rule_conditions"
+	dnsRuleConditionsList   = "dns_rule_conditions"
+)
+
+// isRuleEmpty — правило маршрута без единого поля-условия (реестр,
+// route_rule_conditions): после Dropped-каскада оно матчило бы весь трафик.
 func isRuleEmpty(m map[string]interface{}, _ map[string]bool) bool {
-	if m == nil {
-		return true
-	}
-	nonMatchKeys := map[string]bool{
-		"outbound": true, "action": true, "method": true,
-		"if": true, "if_or": true,
-	}
-	for k := range m {
-		if !nonMatchKeys[k] {
-			return false
-		}
-	}
-	return true
+	return !hasRuleCondition(m, routeRuleConditionsList)
 }
 
-// isDNSRuleEmpty — dns_rule пустой если нет server или нет rule_set + других match-полей.
+// isDNSRuleEmpty — DNS-правило без единого поля-условия (реестр,
+// dns_rule_conditions). action условием не считается: action-правило без
+// условий перехватило бы все запросы так же, как правило с server.
 func isDNSRuleEmpty(m map[string]interface{}, _ map[string]bool) bool {
+	return !hasRuleCondition(m, dnsRuleConditionsList)
+}
+
+// hasRuleCondition — в правиле есть хоть одно поле из списка условий
+// реестра. Реестр вшит в бинарь; если он не прочитался, гейт не срабатывает
+// (правило остаётся как написано), а не выбрасывает все правила разом.
+func hasRuleCondition(m map[string]interface{}, list string) bool {
 	if m == nil {
-		return true
-	}
-	// SPEC 085.1: an action rule (predefined / reject / route-options) is valid
-	// WITHOUT a server — e.g. FakeIP's HTTPS/SVCB predefined block. A rule
-	// carrying an `action` or a `query_type` matcher is never "empty".
-	if _, hasAction := m["action"]; hasAction {
 		return false
 	}
-	if _, hasQT := m["query_type"]; hasQT {
-		return false
-	}
-	if _, ok := m["server"]; !ok {
+	reg, err := registry.Get()
+	if err != nil {
 		return true
 	}
-	matchFields := 0
-	for k := range m {
-		if k == "server" || k == "if" || k == "if_or" {
-			continue
+	conds := reg.Allowlist(list)
+	if len(conds) == 0 {
+		return true
+	}
+	for _, k := range conds {
+		if v, ok := m[k]; ok && !isZeroJSONValue(v) {
+			return true
 		}
-		matchFields++
 	}
-	return matchFields == 0
+	return false
+}
+
+// isZeroJSONValue — нулевое значение JSON (null, "", [], {}, false, 0).
+// Ключ-условие с таким значением условием не считается (контракт 1.1.82):
+// ядро по пустому полю сопоставление не строит, и правило матчило бы всё.
+func isZeroJSONValue(v interface{}) bool {
+	switch x := v.(type) {
+	case nil:
+		return true
+	case string:
+		return strings.TrimSpace(x) == ""
+	case []interface{}:
+		return len(x) == 0
+	case map[string]interface{}:
+		return len(x) == 0
+	case bool:
+		return !x
+	case float64:
+		return x == 0
+	}
+	return false
 }
 
 // ── Гейты валидности фрагмента после Dropped-каскада (SPEC 143 Т3,
@@ -792,7 +816,7 @@ func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{},
 	}
 	delete(m, "if")
 	delete(m, "if_or")
-	rewriteRuleSetRefs(m, preset.ID, emittedTags)
+	ruleSetLost := rewriteRuleSetRefs(m, preset.ID, emittedTags)
 	// dns_rule.server — может быть локальный bundled tag (без префикса), prefix'ить.
 	if srv, ok := m["server"].(string); ok && srv != "" && !strings.HasPrefix(srv, "@") {
 		for _, ds := range preset.DNSServers {
@@ -813,7 +837,7 @@ func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{},
 		*warnings = append(*warnings, fragmentDropped(preset.ID, fragmentKindDNSRule, "server/action"))
 		return nil, false
 	}
-	if isDNSRuleEmpty(m, emittedTags) {
+	if ruleSetLost || isDNSRuleEmpty(m, emittedTags) {
 		*warnings = append(*warnings, fragmentDropped(preset.ID, fragmentKindDNSRule, "rule_set"))
 		return nil, false
 	}

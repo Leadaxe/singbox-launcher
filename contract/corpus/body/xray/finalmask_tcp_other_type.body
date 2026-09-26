@@ -1,0 +1,4 @@
+# Xray: элемент finalmask.tcp[] другого типа. Селектор tcp[type=fragment]
+# его не объявляет: как и до 1.1.83, каждое поле даёт json_field_unknown,
+# флага нет (контракт 1.1.83, LxBox §573).
+[{"remarks":"fm-other","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"example-1.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"example-1.com"},"finalmask":{"tcp":[{"type":"header-custom","settings":{"clients":["x"]}}]}}}]}]

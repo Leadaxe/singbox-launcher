@@ -1986,6 +1986,18 @@
           },
           "impl": "Базовая тройка: читается ТОЛЬКО плоский слой, одноимённый ключ из extra игнорируется целиком — см. $note_extra."
         },
+        "$extra_base_triple": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.mode",
+            "json.streamSettings.xhttpSettings.extra.path",
+            "json.streamSettings.xhttpSettings.extra.host",
+            "json.streamSettings.splithttpSettings.extra.mode",
+            "json.streamSettings.splithttpSettings.extra.path",
+            "json.streamSettings.splithttpSettings.extra.host"
+          ],
+          "maps_to": null,
+          "impl": "Контракт 1.1.83, LxBox §573 A3. Чтение без записи: mode/path/host внутри extra Xray не применяет НИКОГДА — SplitHTTPConfig.Build после разбора extra безусловно затирает их внешними значениями, пустыми тоже (см. $note_extra, D-097). Поведение, которое потерял бы узел, у самого Xray отсутствует, поэтому json_field_unknown тут не сведение, а шум: подписки дублируют mode в extra на каждом xhttp-узле. Молчание БЕЗУСЛОВНОЕ, при любом соотношении с внешним полем: совпадает — дубль; внешнего нет — Xray берёт пустое (auto), и наш узел получает тот же auto; расходятся — побеждает внешнее, как у Xray. Значение из extra не пишется ни в одном случае."
+        },
         "xPaddingBytes": {
           "source": [
             "json.streamSettings.xhttpSettings.extra.xPaddingBytes",

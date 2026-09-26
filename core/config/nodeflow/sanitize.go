@@ -325,6 +325,15 @@ func (s *sanitizer) markAbsentObjects(prefix string, order []string, fields map[
 			continue
 		}
 		path := joinPath(prefix, name)
+		if f.Managed {
+			// Managed-поле (detour) тело не несёт: обход снимает его молча, и
+			// для связей соседей его нет. Иначе `conflicts {with: detour}`
+			// срабатывал бы на detour ВХОДА, который до ядра не доедет, и
+			// снимал бы поле зря; связь с detour сборки проверяет сборка
+			// (контракт 1.1.84).
+			s.absent[path] = true
+			continue
+		}
 		if s.removed[path] {
 			// Поле уже снято запретом по схеме — заглядывать внутрь незачем.
 			continue

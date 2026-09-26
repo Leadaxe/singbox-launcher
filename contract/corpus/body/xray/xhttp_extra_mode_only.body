@@ -1,0 +1,4 @@
+# Xray: mode есть только в extra. Xray затирает его пустым внешним значением
+# (auto), и узел получает то же, что получил бы у Xray; extra.mode молчит
+# (контракт 1.1.83, LxBox §573).
+[{"remarks":"xhttp-extra-only","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"example-1.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"xhttp","xhttpSettings":{"path":"/x","extra":{"mode":"packet-up"}},"security":"tls","tlsSettings":{"serverName":"example-1.com"}}}]}]

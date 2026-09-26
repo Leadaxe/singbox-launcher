@@ -2765,11 +2765,16 @@ func (st *execState) declaredJSONPaths() map[string]bool {
 		if !strings.HasPrefix(src, "json.") {
 			return
 		}
-		name := strings.ToLower(st.substituteBase(strings.TrimPrefix(src, "json.")))
+		name := st.substituteBase(strings.TrimPrefix(src, "json."))
 		if name == "" {
 			return
 		}
-		out[name] = true
+		// Селектор элемента (`tcp[type=fragment]`) объявляет КАЖДЫЙ подходящий
+		// элемент своим числовым путём: листья сверяются с индексом, а
+		// элементы другого типа остаются необъявленными.
+		for _, p := range expandSelectorPath(st.space.json, name) {
+			out[strings.ToLower(p)] = true
+		}
 	}
 	for _, e := range st.plan.Selectors {
 		for _, s := range e.Param.Source.All() {

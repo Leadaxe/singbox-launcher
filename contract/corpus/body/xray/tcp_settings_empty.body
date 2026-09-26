@@ -1,0 +1,4 @@
+# Xray: tcpSettings: {} — «умолчания транспорта». Пустой объект листом не
+# считается (MAPPER_ENGINE.md §8, контракт 1.1.83, LxBox §573): значения нет,
+# терять нечего, json_field_unknown не ставится.
+[{"remarks":"tcp-empty","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"example-1.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"tcp","tcpSettings":{},"security":"tls","tlsSettings":{"serverName":"example-1.com"}}}]}]

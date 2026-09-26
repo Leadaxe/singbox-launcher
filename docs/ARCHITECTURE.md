@@ -381,8 +381,15 @@ primitives came out of that work:
   `resolveCanonicalDetour`), so right after it is set
   `yieldToBuildDetour` drops the yielding fields with the relation's code into
   the build report — WireGuard `listen_port` gives way to `detour`
-  (`detour_with_listen_port`); the detour itself stays (fail-closed). No
-  scheme names in code (contract 1.1.65).
+  (`detour_with_listen_port`), `tls.fragment` too (`detour_with_tls_fragment`,
+  contract 1.1.84); the detour itself stays (fail-closed). No
+  scheme names in code (contract 1.1.65). A materialised node is emitted
+  from its frozen `EmitBody`, so the removal itself happens where `detour`
+  meets the body — `stampTagAndDetour` → `yieldBodyToDetour` — for
+  Directions and chain owners alike (chains log it via `yieldChainDetour`).
+  During the sanitizer walk a managed field counts as absent for relations:
+  a `detour` that arrived in the input never reaches the core and must not
+  drop a neighbour.
 - **`requires[].set`** — a missing required neighbour is *materialised* (with
   a warning code) instead of the field being dropped, and **`coerce_when`** —
   a field's already-valid value is replaced under a condition (also coded).

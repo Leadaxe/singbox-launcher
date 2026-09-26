@@ -1,0 +1,5 @@
+# sing-box: фрагментация TLS вместе с системным движком (engine apple).
+# Ядро с таким сочетанием не стартует («tls fragment is unsupported in …»,
+# ValidateSystemTLSOptions) — уступают fragment и record_fragment с кодом
+# tls_fragment_system_engine, движок остаётся (контракт 1.1.84, LxBox §573).
+{"outbounds":[{"type":"vless","tag":"frag-apple","server":"example-1.com","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111","tls":{"enabled":true,"server_name":"example-1.com","engine":"apple","fragment":true,"record_fragment":true}}]}

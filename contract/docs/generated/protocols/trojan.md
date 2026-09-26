@@ -346,12 +346,15 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool
   - Default: `false`
   - Conflicts with: `vhttp` when `vhttp` is `h3`
+  - Conflicts with: `tls.engine` when `tls.engine` is one of `apple`, `windows`
+  - Conflicts with: `detour`
 - <a id="body-tls-fragment-fallback-delay"></a>**`tls.fragment_fallback_delay`** — Delay before falling back when fragmenting.
   - Type: duration
 - <a id="body-tls-record-fragment"></a>**`tls.record_fragment`** — Split the ClientHello across TLS records.
   - Type: bool
   - Default: `false`
   - Conflicts with: `vhttp` when `vhttp` is `h3`
+  - Conflicts with: `tls.engine` when `tls.engine` is one of `apple`, `windows`
 - <a id="body-tls-spoof"></a>**`tls.spoof`** — Domain used for the spoofed ClientHello.
   - Type: string, format `host`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -681,6 +684,8 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 
 Every code that can be raised on a node of this scheme, including the ones coming from the shared TLS, transport, multiplex and dialer sub-schemas. Follow a code for what it means and what to do about it.
 
+- [`detour_with_tls_fragment`](../warnings.md#detour_with_tls_fragment)
+  - [`tls.fragment`](#body-tls-fragment) — conflicts with `detour` → removed
 - [`field_conflict`](../warnings.md#field_conflict)
   - [`tls.disable_sni`](#body-tls-disable-sni) — conflicts with `tls.reality.enabled` → removed
   - [`tls.certificate_public_key_sha256`](#body-tls-certificate-public-key-sha256) — conflicts with `tls.certificate` → removed
@@ -721,6 +726,9 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.reality.short_id`](#body-tls-reality-short-id) — the value had to be cleaned up (hex_only) → value cleaned up
 - [`reality_utls_enabled`](../warnings.md#reality_utls_enabled)
   - [`tls.reality.enabled`](#body-tls-reality-enabled) — set without `tls.utls.enabled` → `tls.utls.enabled` filled in with `true`
+- [`tls_fragment_system_engine`](../warnings.md#tls_fragment_system_engine)
+  - [`tls.fragment`](#body-tls-fragment) — conflicts with `tls.engine` when `tls.engine` is one of `apple`, `windows` → removed
+  - [`tls.record_fragment`](#body-tls-record-fragment) — conflicts with `tls.engine` when `tls.engine` is one of `apple`, `windows` → removed
 - [`tls_insecure`](../warnings.md#tls_insecure)
   - [`tls.insecure`](#body-tls-insecure) — the value is `true` → kept with a notice
 - [`type_invalid`](../warnings.md#type_invalid)

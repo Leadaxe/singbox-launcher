@@ -610,11 +610,27 @@
               "vhttp": "h3"
             },
             "code": "masque_tls_fragment_h3"
+          },
+          {
+            "with": "tls.engine",
+            "when": {
+              "tls.engine": {
+                "in": [
+                  "apple",
+                  "windows"
+                ]
+              }
+            },
+            "code": "tls_fragment_system_engine"
+          },
+          {
+            "with": "detour",
+            "code": "detour_with_tls_fragment"
           }
         ],
         "desc_en": "Split the ClientHello across TCP segments.",
         "desc_ru": "Разбивать ClientHello по TCP-сегментам.",
-        "impl": "У naive — фатал старта. Связь conflicts с vhttp при vhttp = h3 (контракт 1.1.64, решение владельца по masque): на h3 TLS едет внутри QUIC, TLS-записей поверх TCP нет, и ядро фрагментацию игнорирует с предупреждением (sing-box-lx protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions). На h2 и auto (у auto есть h2-плечо) поле остаётся. Пустой vhttp у тела = auto ядра (protocol/masque/outbound.go resolveVHTTP) — поле остаётся; вход ссылки без vhttp материализует h3 (конвенция vhttp_empty_defaults_to_h3), и там поле снимается. vhttp есть только у masque, поэтому у прочих схем связь не срабатывает. Сборка (core/build/tls_transforms.go) спрашивает то же правило по телу узла (registry.Registry.FieldAllowedOn) и на h3 фрагментацию не дописывает."
+        "impl": "У naive — фатал старта. Связь conflicts с vhttp при vhttp = h3 (контракт 1.1.64, решение владельца по masque): на h3 TLS едет внутри QUIC, TLS-записей поверх TCP нет, и ядро фрагментацию игнорирует с предупреждением (sing-box-lx protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions). На h2 и auto (у auto есть h2-плечо) поле остаётся. Пустой vhttp у тела = auto ядра (protocol/masque/outbound.go resolveVHTTP) — поле остаётся; вход ссылки без vhttp материализует h3 (конвенция vhttp_empty_defaults_to_h3), и там поле снимается. vhttp есть только у masque, поэтому у прочих схем связь не срабатывает. Сборка (core/build/tls_transforms.go) спрашивает то же правило по телу узла (registry.Registry.FieldAllowedOn) и на h3 фрагментацию не дописывает. Связь с tls.engine (контракт 1.1.84): системный TLS-движок (apple, windows) фрагментацию не умеет, и ядро отказывает в старте всего конфига («tls fragment is unsupported in …», common/tls/system_client.go ValidateSystemTLSOptions) — уступает fragment с кодом tls_fragment_system_engine, движок остаётся. Связь с detour (контракт 1.1.84): узел под detour ведёт TLS внутри туннеля хопа, и явный fragment там ничего не режет, зато отключает record_fragment, который ядро при detour включает само, и добавляет паузу 500 мс на сегмент; detour пишет сборка после санитайзера, поэтому связь исполняет сборка по готовому телу (core/config/nodelink_resolve.go:yieldToBuildDetour, для владельца цепочки — core/config/outbound_generator.go:EmitNodeJSONs), уступает fragment с кодом detour_with_tls_fragment. Та же норма у LxBox (post-step сборки не эмитит узловой fragment у outbound с detour)."
       },
       "fragment_fallback_delay": {
         "type": "duration",
@@ -640,11 +656,23 @@
               "vhttp": "h3"
             },
             "code": "masque_tls_fragment_h3"
+          },
+          {
+            "with": "tls.engine",
+            "when": {
+              "tls.engine": {
+                "in": [
+                  "apple",
+                  "windows"
+                ]
+              }
+            },
+            "code": "tls_fragment_system_engine"
           }
         ],
         "desc_en": "Split the ClientHello across TLS records.",
         "desc_ru": "Разбивать ClientHello по TLS-записям.",
-        "impl": "SPEC 060: при непустом detour ядро само ставит true, если не заданы ни fragment, ни record_fragment. У naive — фатал старта. Связь conflicts с vhttp при vhttp = h3 (контракт 1.1.64, решение владельца по masque): на h3 TLS едет внутри QUIC, TLS-записей поверх TCP нет, и ядро фрагментацию игнорирует с предупреждением (sing-box-lx protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions). На h2 и auto (у auto есть h2-плечо) поле остаётся. Пустой vhttp у тела = auto ядра (protocol/masque/outbound.go resolveVHTTP) — поле остаётся; вход ссылки без vhttp материализует h3 (конвенция vhttp_empty_defaults_to_h3), и там поле снимается. vhttp есть только у masque, поэтому у прочих схем связь не срабатывает. Сборка (core/build/tls_transforms.go) спрашивает то же правило по телу узла (registry.Registry.FieldAllowedOn) и на h3 фрагментацию не дописывает."
+        "impl": "SPEC 060: при непустом detour ядро само ставит true, если не заданы ни fragment, ни record_fragment. У naive — фатал старта. Связь conflicts с vhttp при vhttp = h3 (контракт 1.1.64, решение владельца по masque): на h3 TLS едет внутри QUIC, TLS-записей поверх TCP нет, и ядро фрагментацию игнорирует с предупреждением (sing-box-lx protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions). На h2 и auto (у auto есть h2-плечо) поле остаётся. Пустой vhttp у тела = auto ядра (protocol/masque/outbound.go resolveVHTTP) — поле остаётся; вход ссылки без vhttp материализует h3 (конвенция vhttp_empty_defaults_to_h3), и там поле снимается. vhttp есть только у masque, поэтому у прочих схем связь не срабатывает. Сборка (core/build/tls_transforms.go) спрашивает то же правило по телу узла (registry.Registry.FieldAllowedOn) и на h3 фрагментацию не дописывает. Связь с tls.engine (контракт 1.1.84) — как у fragment: системный движок record_fragment не умеет, ядро не стартует; уступает record_fragment с кодом tls_fragment_system_engine. С detour связи нет: record_fragment под detour — дефолт самого ядра."
       },
       "spoof": {
         "type": "string",

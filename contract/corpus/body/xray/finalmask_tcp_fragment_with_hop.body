@@ -1,0 +1,5 @@
+# Xray: finalmask.tcp fragment у узла, который ходит через хоп (dialerProxy
+# на прокси-узел). Его TLS идёт ВНУТРИ туннеля хопа, у ядра флаг ничего бы
+# не дал (и снял бы дефолтный record_fragment узла под detour) — флаг не
+# ставится, цепочка как раньше (контракт 1.1.83, LxBox §573).
+[{"remarks":"fm-frag-hop","outbounds":[{"tag":"proxy","protocol":"trojan","settings":{"servers":[{"address":"a.example","port":443,"password":"pw"}]},"streamSettings":{"network":"tcp","security":"tls","sockopt":{"dialerProxy":"relay"},"finalmask":{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"20-40","delay":"3-10","maxSplit":"3-6"}}]}}},{"tag":"relay","protocol":"vless","settings":{"vnext":[{"address":"r.example","port":443,"users":[{"id":"33333333-2222-3333-4444-555555555555","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"r.example"}}}]}]
