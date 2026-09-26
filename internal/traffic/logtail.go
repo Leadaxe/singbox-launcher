@@ -88,7 +88,7 @@ func (t *LogTailer) Run(ctx context.Context) {
 			_ = f.Close()
 			f = nil
 		}
-		nf, err := os.Open(t.path)
+		nf, err := openShared(t.path)
 		if err != nil {
 			return
 		}

@@ -15,3 +15,6 @@ func inode(fi os.FileInfo) uint64 {
 	}
 	return 0
 }
+
+// openShared — os.Open: на unix открытый файл не мешает его rename.
+func openShared(path string) (*os.File, error) { return os.Open(path) }
