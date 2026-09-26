@@ -393,4 +393,26 @@ func TestParseNode_AmneziaVPN_AWG3(t *testing.T) {
 	if string(single) != string(multi) {
 		t.Errorf("ParseAmneziaVPNLinkAll gave a different endpoint:\nsingle=%s\nmulti =%s", single, multi)
 	}
+
+	// Контракт 1.1.72: origin узла — САМОДОСТАТОЧНЫЙ текст `.conf`. Значения
+	// контейнера перенесены в него при распаковке (MTU сразу за [Interface],
+	// адреса DNS вместо плейсхолдеров), и пересборка из одного этого текста,
+	// без контейнера, даёт то же тело — так работает Regen по origin.raw.
+	_, origins, _, err := parseAmneziaVPNLinkWithOrigins(link, nil)
+	if err != nil || len(origins) != 1 {
+		t.Fatalf("parseAmneziaVPNLinkWithOrigins: err=%v origins=%d, want 1", err, len(origins))
+	}
+	if !strings.HasPrefix(origins[0], "[Interface]\nMTU = 1376\nAddress = 10.8.1.7/32\nDNS = 172.29.172.254, 1.0.0.1\n") {
+		t.Errorf("origin must carry container MTU and resolved DNS:\n%s", origins[0])
+	}
+	// Имя профиля — не часть тела: тег узла хранится отдельно и пересборкой
+	// не меняется, поэтому оно подаётся тем же `hint`, что и при импорте.
+	regen, regenErr, known := ParseWGConfByEngineHint(origins[0], "AWG3 Node", nil)
+	if !known || regenErr != nil || regen == nil {
+		t.Fatalf("origin must re-parse on its own: known=%v err=%v", known, regenErr)
+	}
+	regenBody, _ := json.Marshal(regen.Outbound)
+	if string(regenBody) != string(single) {
+		t.Errorf("regen from origin differs from import:\nimport=%s\nregen =%s", single, regenBody)
+	}
 }

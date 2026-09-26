@@ -89,9 +89,9 @@ type ParsedBodyEntry struct {
 	// Node — разобранный узел. У группы Scheme == configtypes.SchemeGroup.
 	Node *configtypes.ParsedNode
 	// OriginKind / OriginRaw — происхождение записи ("uri" — строка
-	// URI-списка, "json" — объект sing-box/Xray-тела). Пустой kind =
-	// пофрагментного происхождения нет (синтезированные группы Xray,
-	// vpn://-контейнеры).
+	// URI-списка, "json" — объект sing-box/Xray-тела, "wg_ini" — блок .conf,
+	// в том числе из vpn://-контейнера). Пустой kind =
+	// пофрагментного происхождения нет (синтезированные группы Xray).
 	OriginKind string
 	OriginRaw  string
 	// Группа: тип, default и члены ПО СЫРЫМ тегам (после дедупа и
@@ -328,17 +328,19 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 	bodyKind := ClassifySubscriptionBody(contentStr)
 
 	// vpn:// — Amnezia-профиль: все WG/AWG-контейнеры (SPEC 103 §9.B12).
-	// Пофрагментного raw у контейнеров нет — origin остаётся пустым.
+	// Ссылка — источник-контейнер, а не происхождение узла: origin каждого
+	// узла — текст `.conf` из контейнера (wg_ini) с уже перенесёнными
+	// значениями контейнера, самодостаточный для пересборки (контракт 1.1.72).
 	if bodyKind == BodyKindVPNLink {
-		vpnNodes, skippedContainers, vpnErr := ParseAmneziaVPNLinkAll(contentStr, skip)
+		vpnNodes, vpnOrigins, skippedContainers, vpnErr := parseAmneziaVPNLinkWithOrigins(contentStr, skip)
 		if vpnErr != nil {
 			st.warn(fmt.Sprintf("vpn:// body rejected: %v", vpnErr))
 		} else {
 			if skippedContainers > 0 {
 				st.warn(fmt.Sprintf("vpn:// body: %d container(s) skipped", skippedContainers))
 			}
-			for _, node := range vpnNodes {
-				st.accept(node, "", "")
+			for i, node := range vpnNodes {
+				st.accept(node, OriginKindWGIni, vpnOrigins[i])
 			}
 		}
 		st.finish()

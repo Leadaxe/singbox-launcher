@@ -89,10 +89,13 @@ func parseAmneziaVPNLink(uri string, skipFilters []map[string]string) (*configty
 		label = containerName
 	}
 
-	// Текст `.conf` ведёт СЕКЦИЯ реестра напрямую; имя профиля едет
+	// Значения контейнера (MTU рядом с `.conf`, адреса DNS профиля) сначала
+	// переносятся В ТЕКСТ записями секции `conf` реестра (контракт 1.1.72),
+	// и тело строится уже из самодостаточного текста. Имя профиля едет
 	// источником `hint`, и куда его поставить в цепочке метки, решает сама
 	// секция (SPEC 133).
-	node, err, known := ParseWGConfByEngineContext(confText, label, confContext, skipFilters)
+	confText = MaterializeWGConfContext(confText, confContext)
+	node, err, known := ParseWGConfByEngineHint(confText, label, skipFilters)
 	if !known {
 		return nil, fmt.Errorf("vpn:// container %q is not a WireGuard config", containerName)
 	}
@@ -301,15 +304,30 @@ func amneziaAllWGConfTexts(profile map[string]interface{}) (texts []string, cont
 // Битый контейнер пропускается со счётчиком: профиль с четырьмя локациями,
 // одна из которых без Endpoint, обязан дать три ноды, а не ошибку.
 func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*configtypes.ParsedNode, int, error) {
+	nodes, _, skipped, err := parseAmneziaVPNLinkWithOrigins(uri, skipFilters)
+	return nodes, skipped, err
+}
+
+// parseAmneziaVPNLinkWithOrigins — ParseAmneziaVPNLinkAll вместе с
+// ПРОИСХОЖДЕНИЕМ каждого узла: текстом `.conf` (origin.kind = wg_ini), из
+// которого узел собран (контракт 1.1.72, решение владельца 26.09.2026).
+//
+// Ссылка `vpn://` — источник-контейнер с группой серверов, а не
+// происхождение узла: origin — текст INI из контейнера, в который при
+// распаковке уже перенесены значения контейнера (MTU из last_config, адреса
+// DNS профиля вместо плейсхолдеров). Такой текст самодостаточен: пересборка
+// узла из origin.raw контейнера не требует. origins[i] — происхождение
+// nodes[i].
+func parseAmneziaVPNLinkWithOrigins(uri string, skipFilters []map[string]string) ([]*configtypes.ParsedNode, []string, int, error) {
 	if len(uri) > maxAmneziaLinkLength {
-		return nil, 0, linkmap.NewReject(WarnURITooLong,
+		return nil, nil, 0, linkmap.NewReject(WarnURITooLong,
 			map[string]string{"length": strconv.Itoa(len(uri)), "limit": strconv.Itoa(maxAmneziaLinkLength)},
 			fmt.Errorf("vpn:// link length (%d) exceeds maximum (%d)", len(uri), maxAmneziaLinkLength))
 	}
 	payload := amneziaPayload(uri)
 	profile, bareConf, err := decodeAmneziaPayload(payload)
 	if err != nil {
-		return nil, 0, linkmap.NewReject(linkmap.CodeFormUnrecognized, nil, fmt.Errorf("failed to decode vpn:// profile: %w", err))
+		return nil, nil, 0, linkmap.NewReject(linkmap.CodeFormUnrecognized, nil, fmt.Errorf("failed to decode vpn:// profile: %w", err))
 	}
 	// Голый `.conf` (форма `bare_conf` реестра) даёт РОВНО один узел:
 	// контейнеров у него нет, и множественный путь отличается от одиночного
@@ -317,20 +335,20 @@ func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*con
 	if profile == nil && bareConf != "" {
 		node, parseErr, known := ParseWGConfByEngineHint(bareConf, "", skipFilters)
 		if !known {
-			return nil, 0, fmt.Errorf("vpn:// payload is not a WireGuard config")
+			return nil, nil, 0, fmt.Errorf("vpn:// payload is not a WireGuard config")
 		}
 		if parseErr != nil {
-			return nil, 0, fmt.Errorf("invalid WireGuard config in vpn:// payload: %w", parseErr)
+			return nil, nil, 0, fmt.Errorf("invalid WireGuard config in vpn:// payload: %w", parseErr)
 		}
 		if node == nil {
-			return nil, 0, nil
+			return nil, nil, 0, nil
 		}
-		return []*configtypes.ParsedNode{node}, 0, nil
+		return []*configtypes.ParsedNode{node}, []string{bareConf}, 0, nil
 	}
 
 	texts, contexts, names := amneziaAllWGConfTexts(profile)
 	if len(texts) == 0 {
-		return nil, 0, fmt.Errorf("vpn:// profile has no WireGuard/AmneziaWG config (containers: %s)",
+		return nil, nil, 0, fmt.Errorf("vpn:// profile has no WireGuard/AmneziaWG config (containers: %s)",
 			strings.Join(amneziaContainerNames(profile), ", "))
 	}
 
@@ -340,6 +358,7 @@ func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*con
 	}
 
 	nodes := make([]*configtypes.ParsedNode, 0, len(texts))
+	origins := make([]string, 0, len(texts))
 	skipped := 0
 	for i, confText := range texts {
 		// Метка узла: описание профиля, а при нескольких контейнерах — с
@@ -352,7 +371,8 @@ func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*con
 			label = label + " " + names[i]
 		}
 
-		node, parseErr, known := ParseWGConfByEngineContext(confText, label, contexts[i], skipFilters)
+		confText = MaterializeWGConfContext(confText, contexts[i])
+		node, parseErr, known := ParseWGConfByEngineHint(confText, label, skipFilters)
 		if !known {
 			debuglog.WarnLog("Parser: vpn:// container %q: not a WireGuard config", names[i])
 			skipped++
@@ -365,9 +385,10 @@ func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*con
 		}
 		if node != nil {
 			nodes = append(nodes, node)
+			origins = append(origins, confText)
 		}
 	}
-	return nodes, skipped, nil
+	return nodes, origins, skipped, nil
 }
 
 // findWGIniText recursively searches a decoded profile value for a WireGuard
@@ -432,11 +453,13 @@ func findWGIniText(v interface{}, depth int) (string, map[string]interface{}) {
 // Amnezia это last_config, где рядом с `config` лежит `mtu`), и корень
 // профиля (`dns1`/`dns2` для плейсхолдеров `$PRIMARY_DNS`/`$SECONDARY_DNS`).
 //
-// Распаковщик НЕ решает, что из этого поднять в узел: он лишь отдаёт
-// контекст секции реестра источником `context.<путь>` (контракт 1.1.63), а
-// правила — MTU из `context.container.mtu`, когда в [Interface] его нет, и
-// подстановка DNS — записи `mtu_container` и `dns` секции `conf` протокола
-// wireguard. Прежде обе правки делал код здесь, переписывая INI-текст.
+// Распаковщик НЕ решает, что из этого перенести: он лишь отдаёт контекст
+// источником `context.<путь>` (контракт 1.1.63), а правила — MTU из
+// `context.container.mtu`, когда в [Interface] его нет, и подстановка DNS —
+// записи `mtu_container` и `dns` секции `conf` протокола wireguard. С
+// контракта 1.1.72 они исполняются ОДИН раз при распаковке и пишут в ТЕКСТ
+// (MaterializeWGConfContext): текст становится origin.raw узла и обязан
+// пересобираться без контейнера.
 func amneziaConfContext(owner, profile map[string]interface{}) map[string]interface{} {
 	ctx := map[string]interface{}{}
 	if owner != nil {

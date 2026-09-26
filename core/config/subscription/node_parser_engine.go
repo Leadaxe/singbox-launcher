@@ -80,14 +80,6 @@ func ParseWGConfByEngine(confText string, skipFilters []map[string]string) (*con
 // wireguard объявлено `ini.$comment.Peer` → `hint` → хост Endpoint, то есть
 // имя из файла сильнее внешнего, а внешнее — сильнее адреса.
 func ParseWGConfByEngineHint(confText, hint string, skipFilters []map[string]string) (*configtypes.ParsedNode, error, bool) {
-	return ParseWGConfByEngineContext(confText, hint, nil, skipFilters)
-}
-
-// ParseWGConfByEngineContext — то же с КОНТЕКСТОМ от распаковщика
-// контейнера (источник `context.<путь>`, контракт 1.1.63): то, что лежит
-// рядом с текстом, но не в нём. Что из этого поднять в узел, решают записи
-// секции `conf` реестра; nil — контекста нет.
-func ParseWGConfByEngineContext(confText, hint string, context map[string]interface{}, skipFilters []map[string]string) (*configtypes.ParsedNode, error, bool) {
 	plans, err := linkmap.Planes()
 	if err != nil {
 		return nil, nil, false
@@ -102,15 +94,35 @@ func ParseWGConfByEngineContext(confText, hint string, context map[string]interf
 	}
 	bodyType := reg.SingboxType(scheme)
 
-	var ctx interface{}
-	if len(context) > 0 {
-		ctx = context
-	}
-	res, execErr := linkmap.ParseURIContext(plan, confText, bodyType, hint, ctx, nil)
+	res, execErr := linkmap.ParseURIHint(plan, confText, bodyType, hint, nil)
 	if execErr != nil {
 		return nil, fmt.Errorf("invalid %s config: %w", scheme, execErr), true
 	}
 	return nodeFromEngine(plan, res, scheme, plan.Mapper.BodySource, bodyType, skipFilters)
+}
+
+// MaterializeWGConfContext переносит КОНТЕКСТ от распаковщика контейнера
+// (источник `context.<путь>`, контракт 1.1.63) в сам текст `.conf` —
+// записями секции `conf` реестра, общим примитивом движка
+// (linkmap.MaterializeContext, контракт 1.1.72).
+//
+// Результат — самодостаточный текст: он становится origin.raw узла
+// (`wg_ini`), и пересборка из него контейнера уже не требует. Тело затем
+// строится из этого текста обычным путём, без контекста. Текст, который
+// ни одна секция не ведёт, возвращается как есть.
+func MaterializeWGConfContext(confText string, context map[string]interface{}) string {
+	if len(context) == 0 {
+		return confText
+	}
+	plans, err := linkmap.Planes()
+	if err != nil {
+		return confText
+	}
+	_, plan, ok := linkmap.SelectKind(plans, "conf", confText)
+	if !ok {
+		return confText
+	}
+	return linkmap.MaterializeContext(plan, confText, context)
 }
 
 // nodeFromEngine собирает ParsedNode из результата движка.
