@@ -678,9 +678,19 @@ func TestEmitE7_GuardCatchesDirectionVersusReplaceCollision(t *testing.T) {
 	res := runCanonicalBuild(t, []ProxySource{folder},
 		[]Direction{{Tag: "x", Type: "selector", Auto: &configtypes.DirectionAuto{Interval: "3m"}}})
 
-	joined := joinWarnings(res)
-	if !strings.Contains(joined, `"x"`) || !strings.Contains(joined, "claimed twice") {
-		t.Errorf("столкновение «Направление x + замена x» не названо: %v", res.EmissionWarnings)
+	// Контракт 1.1.80: столкновение ловится ДО гарда — свёртка не собирается,
+	// источник идёт несвёрнутым, в отчёте код replace_tag_conflict {tag, other}.
+	found := false
+	for _, w := range res.EmissionWarnings {
+		if w.Code == codeReplaceTagConflict && w.Params["tag"] == "x" && w.Params["other"] == replaceConflictDirection {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("столкновение «Направление x + замена x» не названо кодом %s: %v", codeReplaceTagConflict, res.EmissionWarnings)
+	}
+	if strings.Contains(joinWarnings(res), "claimed twice") {
+		t.Errorf("гард не должен видеть тег несобранной свёртки: %v", res.EmissionWarnings)
 	}
 }
 
