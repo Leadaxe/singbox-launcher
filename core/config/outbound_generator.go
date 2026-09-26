@@ -846,7 +846,19 @@ func GenerateOutboundsFromParserConfig(
 	// SPEC 118 W4, тот же проход 0 — разворачиваем свёртки папок (replace) в
 	// локальные группы. После Направлений и до подстановки переменных: у
 	// авто-группы замены те же `@urltest_*` в опциях.
-	PrepareFolderReplaces(parserConfig, directions.TwinOptions)
+	replaceWarnings, replaceTags := PrepareFolderReplaces(parserConfig, directions.TwinOptions, directions.SystemTags)
+	// Тег замены — объявленное корневое имя: он занимает место в счётчике
+	// финальных тегов РАНЬШЕ узлов, и узел-тёзка уникализируется суффиксом
+	// (X-2) той же машиной, что любая коллизия финальных тегов (контракт
+	// 1.1.80). Без этого узел и группа ушли бы в конфиг с одним тегом, и ядро
+	// отвергло бы его целиком.
+	if tagCounts != nil {
+		for _, tag := range replaceTags {
+			if tagCounts[tag] == 0 {
+				tagCounts[tag] = 1
+			}
+		}
+	}
 
 	// Hotfix v0.8.8.1 — substitute `@varname` placeholders in
 	// parser_config.outbounds[].options before generating selector JSONs. See
@@ -1042,6 +1054,7 @@ func GenerateOutboundsFromParserConfig(
 	// (SourceID/Направление), чтобы ⚠ встал у виновной строки Sources — так же,
 	// как у деградаций подписок.
 	emissionWarnings := ResolveCanonicalChainHops(parserConfig, linkTargets)
+	emissionWarnings = append(emissionWarnings, replaceWarnings...)
 
 	allNodes, brokenChains, chainNotes := ResolveChainSources(parserConfig, allNodes, nodesBySource, directionTagsForChains)
 	emissionWarnings = append(emissionWarnings, chainNotes...)
@@ -1209,9 +1222,10 @@ func GenerateOutboundsFromParserConfig(
 	exposeCandidates := collectExposeTagCandidates(parserConfig)
 	outboundsInfo, chainCycles, detourCycles := buildOutboundsInfo(parserConfig, nodesBySource, globalPool, progressCallback)
 	computeOutboundValidity(outboundsInfo, parserConfig, exposeCandidates, progressCallback)
-	selectorJSONs, localSelectorsCount, globalSelectorsCount, emptyDirections := generateSelectorJSONs(
+	selectorJSONs, localSelectorsCount, globalSelectorsCount, emptyDirections, emptyReplaceWarnings := generateSelectorJSONs(
 		parserConfig, nodesBySource, globalPool, outboundsInfo, exposeCandidates, progressCallback, directions)
 	selectorsJSON = append(selectorsJSON, selectorJSONs...)
+	emissionWarnings = append(emissionWarnings, emptyReplaceWarnings...)
 	emissionWarnings = append(emissionWarnings, chainCycleWarnings(chainCycles)...)
 
 	return &OutboundGenerationResult{

@@ -27,6 +27,7 @@ import (
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/configurator/autogroupform"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -37,7 +38,13 @@ type replaceTab struct {
 	autoForm   *autogroupform.Form
 	autoBlock  *fyne.Container
 	tagsLabel  *widget.Label
+	takenLabel *widget.Label
 	content    fyne.CanvasObject
+
+	// model / sourceIndex — чей тег свёртки правится: занятость тега
+	// считается по модели БЕЗ свёртки самого источника.
+	model       *wizardmodels.WizardModel
+	sourceIndex int
 
 	// modeLabels — подписи режимов в порядке manual / auto / both.
 	modeLabels []string
@@ -50,8 +57,10 @@ type replaceTab struct {
 
 // newReplaceTab собирает вкладку. onChange вызывается после любой правки
 // пользователем — вызывающий сохраняет модель.
-func newReplaceTab(model *wizardmodels.WizardModel, onChange func()) *replaceTab {
+func newReplaceTab(model *wizardmodels.WizardModel, sourceIndex int, onChange func()) *replaceTab {
 	t := &replaceTab{
+		model:       model,
+		sourceIndex: sourceIndex,
 		modeLabels: []string{
 			locale.T("Selector (manual pick)"),
 			locale.T("Auto-select group (urltest)"),
@@ -71,6 +80,14 @@ func newReplaceTab(model *wizardmodels.WizardModel, onChange func()) *replaceTab
 	t.tagsLabel.Wrapping = fyne.TextWrapWord
 	t.tagsLabel.Importance = widget.LowImportance
 
+	// Занятый тег — предупреждение, не запрет (контракт 1.1.80): решение
+	// принимает сборка, и пользователь вправе сперва переименовать того,
+	// кто носит тег сейчас.
+	t.takenLabel = widget.NewLabel("")
+	t.takenLabel.Wrapping = fyne.TextWrapWord
+	t.takenLabel.Importance = widget.WarningImportance
+	t.takenLabel.Hide()
+
 	autoModeLabel := widget.NewLabel(locale.T("Auto-select mode"))
 	t.autoBlock = container.NewVBox(
 		widget.NewSeparator(),
@@ -82,6 +99,7 @@ func newReplaceTab(model *wizardmodels.WizardModel, onChange func()) *replaceTab
 		autogroupform.TextRow(locale.T("Fold into"), t.modeSelect),
 		autogroupform.TextRow(locale.T("Tag"), t.tagEntry),
 		t.tagsLabel,
+		t.takenLabel,
 		t.autoBlock,
 	)
 
@@ -183,6 +201,7 @@ func (t *replaceTab) updateTagsHint() {
 	tag := strings.TrimSpace(t.tagEntry.Text)
 	if tag == "" {
 		t.tagsLabel.SetText("")
+		t.takenLabel.Hide()
 		return
 	}
 	var tags []string
@@ -195,6 +214,32 @@ func (t *replaceTab) updateTagsHint() {
 		tags = []string{tag}
 	}
 	t.tagsLabel.SetText(locale.Tf("Tags: %s", strings.Join(tags, ", ")))
+	t.updateTakenWarning(tags)
+}
+
+// updateTakenWarning — предупреждение о теге, который уже носит кто-то другой.
+func (t *replaceTab) updateTakenWarning(tags []string) {
+	for _, tag := range tags {
+		owner := wizardbusiness.ReplaceTagOwner(t.model, t.sourceIndex, tag)
+		if owner == "" {
+			continue
+		}
+		var msg string
+		switch owner {
+		case "node":
+			msg = locale.Tf("Tag %q is already used by a node: the node will get a numeric suffix in the config.", tag)
+		case "folder replacement":
+			msg = locale.Tf("Tag %q is already used by another source's swap: the swap lower in the list will not be built until the tag is free.", tag)
+		case "template system tag":
+			msg = locale.Tf("Tag %q is a template tag: the swap group will not be built until the tag is free.", tag)
+		default: // Направление и его автогруппа
+			msg = locale.Tf("Tag %q is already used by a Direction: the swap group will not be built until the tag is free.", tag)
+		}
+		t.takenLabel.SetText(msg)
+		t.takenLabel.Show()
+		return
+	}
+	t.takenLabel.Hide()
 }
 
 // defaultReplaceTag — тег замены по умолчанию для источника: его префикс

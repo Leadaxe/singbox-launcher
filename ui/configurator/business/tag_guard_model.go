@@ -147,3 +147,50 @@ func KnownRuleTargetTags(model *wizardmodels.WizardModel) map[string]bool {
 	}
 	return known
 }
+
+// ReplaceTagOwner — кто, КРОМЕ свёртки самого источника sourceIndex, уже
+// носит тег tag: вид владельца той же формулой, что у ModelTagOwners; ""
+// — тег свободен.
+//
+// Нужен редактору свёртки (контракт 1.1.80): занятый тег при вводе —
+// предупреждение, а не запрет. Сборка решает сама: Направление, свёртка
+// выше по списку или тег шаблона — свёртка не соберётся (replace_tag_conflict),
+// узел-тёзка получит суффикс.
+func ReplaceTagOwner(model *wizardmodels.WizardModel, sourceIndex int, tag string) string {
+	tag = strings.TrimSpace(tag)
+	if model == nil || tag == "" {
+		return ""
+	}
+	for i := range model.GlobalOutbounds {
+		d := &model.GlobalOutbounds[i]
+		if strings.TrimSpace(d.Tag) == tag {
+			return "Direction"
+		}
+		if d.Auto != nil && d.Tag != "" && d.AutoTag() == tag {
+			return "Direction auto group"
+		}
+	}
+	for i := range model.Sources {
+		if i == sourceIndex {
+			continue
+		}
+		r := model.Sources[i].Replace
+		if r == nil || strings.TrimSpace(r.Tag) == "" {
+			continue
+		}
+		if r.Tag == tag || (r.Mode == corestate.FolderReplaceBoth && r.Tag+"-auto" == tag) {
+			return "folder replacement"
+		}
+	}
+	for _, t := range ModelRootNodeTags(model) {
+		if t == tag {
+			return "node"
+		}
+	}
+	for _, t := range GetAvailableOutbounds(model) {
+		if t == tag {
+			return "template system tag"
+		}
+	}
+	return ""
+}

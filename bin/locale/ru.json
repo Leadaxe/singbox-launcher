@@ -4034,9 +4034,6 @@
   "%s — per-source Directions are gone, this one is not imported (create a global Direction with a filter instead)": {
     "value": "%s — локальных Направлений источника больше нет, это не импортировано (заведите глобальное Направление с фильтром)"
   },
-  "%s — the shared format has no field for the replacement tag: after import the group will carry the derived name, and rules aimed at the old one arrive turned off": {
-    "value": "%s — у формата обмена нет поля для тега замены: после импорта группа получит производное имя, а правила на прежнее приедут выключенными"
-  },
   "%s — these subscription settings are not part of the shared format and did not go into the file; the provider may return a different set of nodes on the other machine": {
     "value": "%s — эти настройки подписки формат обмена не переносит, в файл они не попали; провайдер на другой машине может отдать другой набор узлов"
   },
@@ -4795,5 +4792,17 @@
   },
   "WireGuard switch error: %s": {
     "value": "Ошибка переключения WireGuard: %s"
+  },
+  "Tag %q is already used by a node: the node will get a numeric suffix in the config.": {
+    "value": "Тег %q уже носит узел: в конфиге узел получит числовой суффикс."
+  },
+  "Tag %q is already used by another source's swap: the swap lower in the list will not be built until the tag is free.": {
+    "value": "Тег %q уже занят свёрткой другого источника: та свёртка, что ниже по списку, не соберётся, пока тег не освободится."
+  },
+  "Tag %q is a template tag: the swap group will not be built until the tag is free.": {
+    "value": "Тег %q — тег шаблона: группа свёртки не соберётся, пока тег не освободится."
+  },
+  "Tag %q is already used by a Direction: the swap group will not be built until the tag is free.": {
+    "value": "Тег %q уже носит Направление: группа свёртки не соберётся, пока тег не освободится."
   }
 }

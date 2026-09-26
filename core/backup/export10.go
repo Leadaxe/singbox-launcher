@@ -23,8 +23,7 @@ package backup
 // Предупреждений два. backup_source_kind_unsupported — на корневую
 // провайдерскую группу. backup_local_only_dropped — на опции Направления,
 // которые не теги Направлений: `include` несёт только их (NODE_LINK.md §8).
-// backup_replace_tag_derived писатель 1.0 не эмитит: имя группы свёртки едет
-// явно (`replace.tag`).
+// Имя группы свёртки едет явно (`replace.tag`), и потери имени у 1.0 нет.
 
 import (
 	"encoding/json"
@@ -99,9 +98,8 @@ func Export10(s *state.State, opts ExportOptions) (*Backup10, []Warning, error) 
 		}
 	}
 
-	// Тег свёртки формат 1.0 везёт ЯВНО (`replace.tag`, см. Source10), поэтому
-	// WarnBackupReplaceTagDerived здесь не нужен и не эмитится: он говорил о
-	// потере формата 0.12, которой в 1.0 нет.
+	// Тег свёртки формат 1.0 везёт ЯВНО (`replace.tag`, см. Source10): потери
+	// имени группы, о которой говорил выведенный код формата 0.12, здесь нет.
 	for _, src := range s.Sources {
 		out, ok := export10Source(src)
 		if !ok {

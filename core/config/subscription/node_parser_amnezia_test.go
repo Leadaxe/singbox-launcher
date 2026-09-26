@@ -416,3 +416,46 @@ func TestParseNode_AmneziaVPN_AWG3(t *testing.T) {
 		t.Errorf("regen from origin differs from import:\nimport=%s\nregen =%s", single, regenBody)
 	}
 }
+
+// Контракт 1.1.80: строка vpn:// ВНУТРИ списка ссылок — тот же контейнер,
+// что тело из одной этой ссылки: все контейнеры профиля, origin каждого узла
+// — текст .conf (wg_ini), теги и origin совпадают с разбором тела-ссылки.
+func TestParseSubscriptionBody_AmneziaVPNLineInList(t *testing.T) {
+	link := buildVPNLink(t, map[string]interface{}{
+		"description": "Home",
+		"containers": []interface{}{
+			amneziaContainer(t, "amnezia-wireguard", "wireguard", amneziaPlainWGIni),
+			amneziaContainer(t, "amnezia-awg", "awg", amneziaAWGIni),
+		},
+		"defaultContainer": "amnezia-awg",
+	})
+	whole, err := ParseSubscriptionBody([]byte(link), nil, 0)
+	if err != nil || len(whole.Entries) != 2 {
+		t.Fatalf("vpn:// body: err=%v entries=%d, want 2", err, len(whole.Entries))
+	}
+	list := "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=tcp&security=tls&sni=example-1.com#node-a\n" + link + "\n"
+	got, err := ParseSubscriptionBody([]byte(list), nil, 0)
+	if err != nil {
+		t.Fatalf("list body: %v", err)
+	}
+	if len(got.Entries) != 3 || len(got.Rejected) != 0 {
+		t.Fatalf("list body: entries=%d rejected=%d, want 3/0", len(got.Entries), len(got.Rejected))
+	}
+	if got.Entries[0].OriginKind != OriginKindURI {
+		t.Errorf("plain link origin kind = %q, want uri", got.Entries[0].OriginKind)
+	}
+	for i, w := range whole.Entries {
+		e := got.Entries[i+1]
+		if e.OriginKind != OriginKindWGIni || !strings.HasPrefix(e.OriginRaw, "[Interface]") {
+			t.Errorf("entry %d: origin %q / %.20q, want wg_ini .conf text", i+1, e.OriginKind, e.OriginRaw)
+		}
+		if e.OriginRaw != w.OriginRaw || e.RawTag != w.RawTag {
+			t.Errorf("entry %d differs from vpn:// body: tag %q vs %q", i+1, e.RawTag, w.RawTag)
+		}
+		for _, wr := range e.Node.Warnings {
+			if wr.Code == WarnAmneziaContainerChoice {
+				t.Errorf("entry %d: %s must not be set when every container is imported", i+1, wr.Code)
+			}
+		}
+	}
+}

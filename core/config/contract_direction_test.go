@@ -334,6 +334,13 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 		for range res.ChainCycles {
 			got.Warnings = append(got.Warnings, "chain_cycle_through_direction")
 		}
+		// Коды свёртки уровня сборки (контракт 1.1.80): конфликт объявленных
+		// имён и пустая группа свёртки едут записью отчёта с кодом.
+		for _, w := range res.EmissionWarnings {
+			if w.Code == codeReplaceTagConflict || w.Code == codeReplaceGroupEmpty {
+				got.Warnings = append(got.Warnings, w.Code)
+			}
+		}
 	}
 	sort.Strings(got.Warnings)
 

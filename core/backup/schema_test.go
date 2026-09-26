@@ -430,10 +430,10 @@ func TestBackupWarningCodesAreActuallySet(t *testing.T) {
 	//
 	// backup_local_only_dropped из списка вышел: с 1.6.0 (контракт 1.0.1)
 	// писатель 1.0 называет им опции Направления, которые в `include` не
-	// едут (NODE_LINK.md §8).
-	retired := map[string]bool{
-		"backup_replace_tag_derived": true,
-	}
+	// едут (NODE_LINK.md §8). backup_replace_tag_derived выведен из словаря
+	// целиком (контракт 1.1.80): его не ставит ни одна сторона. Список пуст,
+	// но остаётся местом для следующего такого кода.
+	retired := map[string]bool{}
 	consts := goBackupWarningConstants(t)
 	byCode := map[string]string{}
 	for name, code := range consts {

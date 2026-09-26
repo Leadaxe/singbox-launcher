@@ -589,6 +589,13 @@ func parseAddServerInput(input string) []*config.ParsedNode {
 		if line == "" || !subscription.IsDirectLink(line) {
 			continue
 		}
+		// `vpn://` — все контейнеры профиля, как у Add (контракт 1.1.80).
+		if subscription.IsAmneziaVPNLink(line) {
+			if all, _, err := subscription.ParseAmneziaVPNLinkAll(line, nil); err == nil {
+				nodes = append(nodes, all...)
+			}
+			continue
+		}
 		if n, err := subscription.ParseNode(line, nil); err == nil {
 			nodes = append(nodes, n)
 		}

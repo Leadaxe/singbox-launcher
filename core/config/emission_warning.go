@@ -64,6 +64,8 @@ const (
 	codeChainHopMissing            = "chain_hop_missing"
 	codeChainNestedPosition        = "chain_nested_position"
 	codeChainCycleThroughDirection = "chain_cycle_through_direction"
+	codeReplaceTagConflict         = "replace_tag_conflict"
+	codeReplaceGroupEmpty          = "replace_group_empty"
 )
 
 // EmissionWarning — одна деградация эмиссии.

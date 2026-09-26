@@ -308,6 +308,21 @@ func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*con
 	return nodes, skipped, err
 }
 
+// ParseAmneziaVPNLinkWithOrigins — ParseAmneziaVPNLinkAll вместе с
+// происхождением каждого узла (см. parseAmneziaVPNLinkWithOrigins). Его зовут
+// все входы, где строка `vpn://` встречается НЕ целым телом подписки: строка
+// URI-списка, вставка в форму источника, материализация одиночного узла
+// (контракт 1.1.80: строка `vpn://` в списке = тот же контейнер целиком).
+func ParseAmneziaVPNLinkWithOrigins(uri string, skipFilters []map[string]string) ([]*configtypes.ParsedNode, []string, int, error) {
+	return parseAmneziaVPNLinkWithOrigins(uri, skipFilters)
+}
+
+// IsAmneziaVPNLink — строка это контейнер Amnezia `vpn://` (detect вида
+// источника реестра с распаковщиком `amnezia_vpn`).
+func IsAmneziaVPNLink(s string) bool {
+	return isAmneziaVPNLink(s)
+}
+
 // parseAmneziaVPNLinkWithOrigins — ParseAmneziaVPNLinkAll вместе с
 // ПРОИСХОЖДЕНИЕМ каждого узла: текстом `.conf` (origin.kind = wg_ini), из
 // которого узел собран (контракт 1.1.72, решение владельца 26.09.2026).

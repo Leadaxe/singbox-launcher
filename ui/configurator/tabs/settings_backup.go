@@ -324,10 +324,6 @@ func warnText(w backup.Warning) string {
 		return fmt.Sprintf(locale.T("%s — the tag mask is gone, only prefix and postfix apply now"), w.Detail)
 	case backup.WarnBackupLocalDirectionDropped:
 		return fmt.Sprintf(locale.T("%s — per-source Directions are gone, this one is not imported (create a global Direction with a filter instead)"), w.Detail)
-	case backup.WarnBackupReplaceTagDerived:
-		// Detail несёт оба имени («тег → дериватив»): пользователь обязан
-		// увидеть, под каким именем группа окажется на приёмнике.
-		return fmt.Sprintf(locale.T("%s — the shared format has no field for the replacement tag: after import the group will carry the derived name, and rules aimed at the old one arrive turned off"), w.Detail)
 	case backup.WarnBackupSourceIdentityDropped:
 		return fmt.Sprintf(locale.T("%s — these subscription settings are not part of the shared format and did not go into the file; the provider may return a different set of nodes on the other machine"), w.Detail)
 	case backup.WarnBackupSourceFlagDropped:

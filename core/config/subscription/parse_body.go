@@ -516,6 +516,15 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			if st.capReached() {
 				continue
 			}
+			// Строка `vpn://` в списке — тот же контейнер, что и тело из одной
+			// этой ссылки (контракт 1.1.80): ВСЕ WG/AWG-контейнеры профиля,
+			// origin каждого узла — самодостаточный текст `.conf` (wg_ini), а
+			// не сама ссылка. Одиночный ParseNode отдал бы один контейнер из
+			// нескольких с origin uri, и остальные локации терялись бы.
+			if isAmneziaVPNLink(line) {
+				st.acceptVPNLinkLine(line, skip)
+				continue
+			}
 			node, err := ParseNode(line, skip)
 			if err != nil {
 				// Битая запись — деградация записи с warning, не подписки.
@@ -559,6 +568,25 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 
 	st.finish()
 	return res, nil
+}
+
+// acceptVPNLinkLine — строка `vpn://` URI-списка: все контейнеры профиля
+// принимаются по одному узлу с origin wg_ini, как у тела-ссылки. Профиль,
+// который не распаковался вовсе, — отбраковка ЗАПИСИ на её позиции с
+// исходником-строкой (SPEC 116 W11), как у любой битой строки списка.
+func (st *bodyParseState) acceptVPNLinkLine(line string, skip []map[string]string) {
+	nodes, origins, skipped, err := parseAmneziaVPNLinkWithOrigins(line, skip)
+	if err != nil {
+		st.warn(fmt.Sprintf("record rejected: %v", err))
+		st.rejectCoded(err.Error(), rejectCodeOf(err), OriginKindURI, line)
+		return
+	}
+	if skipped > 0 {
+		st.warn(fmt.Sprintf("vpn:// line: %d container(s) skipped", skipped))
+	}
+	for i, node := range nodes {
+		st.accept(node, OriginKindWGIni, origins[i])
+	}
 }
 
 // bodyParseState — счётчики одного разбора: кап, дедуп, уникализация.

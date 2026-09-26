@@ -846,8 +846,9 @@ func (st *execState) applyEntry(e *Entry) {
 	}
 
 	// on_invalid: default_from — присутствующее значение, на котором
-	// выполнено условие записи, уступает источнику default_from.
-	if st.onInvalidDefaultFrom(e, val) {
+	// выполнено условие записи, уступает сперва СЛЕДУЮЩЕМУ источнику цепочки
+	// с годным значением, и лишь потом источнику default_from.
+	if st.onInvalidDefaultFrom(e, src, val) {
 		return
 	}
 
@@ -1024,29 +1025,25 @@ func (st *execState) applyDefaultFrom(e *Entry, merge string) bool {
 }
 
 // onInvalidDefaultFrom — `on_invalid: {action: default_from, when: …}`:
-// ПРИСУТСТВУЮЩЕЕ значение, на котором выполнено условие, уступает источнику
-// `default_from` записи (правило выбирает ИСТОЧНИК поля, а не судит
-// значение: метка вместо имени хоста в sni= берётся с адреса сервера).
+// ПРИСУТСТВУЮЩЕЕ значение, на котором выполнено условие, уступает (правило
+// выбирает ИСТОЧНИК поля, а не судит значение: метка вместо имени хоста в
+// sni= берётся не из sni=):
+//
+//  1. СЛЕДУЮЩЕМУ источнику цепочки записи, чьё значение условию НЕ
+//     подпадает (контракт 1.1.80: `sni=метка&servername=хост` берёт хост из
+//     servername=, а не адрес сервера — автор ссылки имя назвал);
+//  2. источнику `default_from` записи, если годного звена дальше нет.
+//
 // Условие `value` судит декодированное значение записи операторами
 // matches / not_matches, прочие ключи — как обычное `when`. Код ставится,
 // только если on_invalid его объявил. true — значение заменено.
-func (st *execState) onInvalidDefaultFrom(e *Entry, val string) bool {
+func (st *execState) onInvalidDefaultFrom(e *Entry, src, val string) bool {
 	p := e.Param
 	if actionOf(p.OnInvalid) != "default_from" {
 		return false
 	}
-	when, _ := p.OnInvalid["when"].(map[string]interface{})
-	for key, want := range when {
-		if key == "value" {
-			cond, _ := want.(map[string]interface{})
-			if !itemMatches(cond, val) {
-				return false
-			}
-			continue
-		}
-		if !st.oneWhen(key, want) {
-			return false
-		}
+	if !st.onInvalidHolds(p, val) {
+		return false
 	}
 	// Негодное значение уже могла положить в тот же путь другая запись того
 	// же поля (общий блок tls#uri читает sni= раньше записи секции, и их
@@ -1059,7 +1056,7 @@ func (st *execState) onInvalidDefaultFrom(e *Entry, val string) bool {
 			merge = "overwrite"
 		}
 	}
-	if !st.applyDefaultFrom(e, merge) {
+	if !st.applyNextValidSource(e, src, merge) && !st.applyDefaultFrom(e, merge) {
 		return false
 	}
 	if code := codeOf(p.OnInvalid); code != "" {
@@ -1073,6 +1070,65 @@ func (st *execState) onInvalidDefaultFrom(e *Entry, val string) bool {
 		st.notePath(code, st.pathOf(p), params)
 	}
 	return true
+}
+
+// onInvalidHolds — выполнено ли условие `on_invalid.when` на значении val:
+// ключ `value` судит само значение операторами matches / not_matches,
+// прочие ключи — как обычное `when`.
+func (st *execState) onInvalidHolds(p *registry.Param, val string) bool {
+	when, _ := p.OnInvalid["when"].(map[string]interface{})
+	for key, want := range when {
+		if key == "value" {
+			cond, _ := want.(map[string]interface{})
+			if !itemMatches(cond, val) {
+				return false
+			}
+			continue
+		}
+		if !st.oneWhen(key, want) {
+			return false
+		}
+	}
+	return true
+}
+
+// applyNextValidSource — звенья цепочки источников записи ПОСЛЕ src, по
+// порядку: первое присутствующее непустое значение, на котором условие
+// on_invalid НЕ выполнено, пишется в путь записи тем же переводом
+// (decode → convert), что и обычное значение. false — годного звена нет
+// (src — последнее звено, либо дальше только пустые и негодные значения).
+func (st *execState) applyNextValidSource(e *Entry, src, merge string) bool {
+	p := e.Param
+	path := st.pathOf(p)
+	if path == "" || src == "" {
+		return false
+	}
+	names := p.Source.ForForm(st.form.ID)
+	after := false
+	for _, name := range names {
+		name = st.substituteBase(name)
+		if !after {
+			after = name == src
+			continue
+		}
+		raw, ok := st.space.Lookup(name)
+		if !ok || (strings.TrimSpace(raw) == "" && p.Empty != "significant") {
+			continue
+		}
+		val := st.decodeValue(p, raw)
+		if st.onInvalidHolds(p, val) {
+			continue
+		}
+		typed, drop := st.convert(p, val)
+		if drop {
+			continue
+		}
+		st.writeMerge(e.Name, name, raw, typed, path, p.Priority, e.Decl, "", merge)
+		st.applySets(e, val)
+		st.applyImplies(e)
+		return true
+	}
+	return false
 }
 
 // applyMissing — источник промолчал: materialize_default, default_from, sets по

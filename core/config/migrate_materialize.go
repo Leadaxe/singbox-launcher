@@ -15,6 +15,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
@@ -255,6 +256,29 @@ func materializeServerForMigration(req state.MigrationServerRequest) (*state.Mig
 	if line == "" {
 		return nil, fmt.Errorf("no URI and no config_json")
 	}
+	// Контейнер Amnezia `vpn://` — источник, а не происхождение узла
+	// (контракт 1.1.72/1.1.80): узел собирается из текста `.conf` контейнера,
+	// и этот текст становится origin (wg_ini). Одиночный вход отдаёт ОДИН
+	// узел — дефолтный контейнер; прочие называет код
+	// amnezia_container_choice. Все контейнеры сразу даёт
+	// MaterializeVPNLinkNodes — его зовёт вставка в форму источника.
+	if subscription.IsAmneziaVPNLink(line) {
+		mats, err := materializeVPNLink(line)
+		if err != nil {
+			return nil, err
+		}
+		first := mats[0]
+		if len(mats) > 1 {
+			first.warnings = append(first.warnings, state.NodeWarning{Code: subscription.WarnAmneziaContainerChoice})
+		}
+		return &state.MigrationServerResult{
+			Body:       first.body,
+			OriginKind: state.OriginKindWGIni,
+			OriginRaw:  first.originRaw,
+			LegacyHash: LegacyNodeIdentityHash(first.node),
+			Warnings:   first.warnings,
+		}, nil
+	}
 	node, err := subscription.ParseNode(line, nil)
 	if err != nil {
 		return nil, err
@@ -397,4 +421,69 @@ func MaterializeServerNode(uri string, configJSON json.RawMessage) (*ServerNodeM
 		OriginRaw:  res.OriginRaw,
 		Warnings:   res.Warnings,
 	}, nil
+}
+
+// VPNLinkNodeMaterial — один узел профиля `vpn://`: тег (метка, которую узлу
+// дал разбор — описание профиля и имя контейнера) и материал узла с origin
+// wg_ini.
+type VPNLinkNodeMaterial struct {
+	Tag string
+	ServerNodeMaterial
+}
+
+// MaterializeVPNLinkNodes — строка `vpn://` → ВСЕ WG/AWG-узлы профиля, тем
+// же разбором, что у тела подписки из одной этой ссылки (контракт 1.1.80):
+// тело каждого узла собрано из текста `.conf` контейнера с перенесёнными
+// значениями контейнера (MTU, DNS профиля), и этот текст — его origin
+// (wg_ini). Контейнер, из которого узел не собрался, пропускается (как в
+// теле подписки); профиль без единого узла — ошибка.
+func MaterializeVPNLinkNodes(link string) ([]VPNLinkNodeMaterial, error) {
+	mats, err := materializeVPNLink(link)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]VPNLinkNodeMaterial, 0, len(mats))
+	for _, m := range mats {
+		out = append(out, VPNLinkNodeMaterial{
+			Tag: m.node.Tag,
+			ServerNodeMaterial: ServerNodeMaterial{
+				Body:       m.body,
+				OriginKind: state.OriginKindWGIni,
+				OriginRaw:  m.originRaw,
+				Warnings:   m.warnings,
+			},
+		})
+	}
+	return out, nil
+}
+
+type vpnLinkMaterial struct {
+	node      *configtypes.ParsedNode
+	body      json.RawMessage
+	originRaw string
+	warnings  []state.NodeWarning
+}
+
+func materializeVPNLink(link string) ([]vpnLinkMaterial, error) {
+	nodes, origins, _, err := subscription.ParseAmneziaVPNLinkWithOrigins(strings.TrimSpace(link), nil)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]vpnLinkMaterial, 0, len(nodes))
+	var lastDrop string
+	for i, node := range nodes {
+		body, warns, drop := materializeParsedNodeBody(node)
+		if drop != nil {
+			lastDrop = dropReason(drop)
+			continue
+		}
+		out = append(out, vpnLinkMaterial{node: node, body: body, originRaw: origins[i], warnings: stateWarnings(warns)})
+	}
+	if len(out) == 0 {
+		if lastDrop != "" {
+			return nil, fmt.Errorf("vpn:// profile: %s", lastDrop)
+		}
+		return nil, fmt.Errorf("vpn:// profile yielded no nodes")
+	}
+	return out, nil
 }

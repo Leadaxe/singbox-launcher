@@ -167,7 +167,7 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 | `chain_generator.go` | Emission of the `type: chain` object (positions in packet order, `strip`, `rewrite`, `idle_timeout`). |
 | `chain_validate.go` | The invariants `sing-box check` misses (only `run` fails): a `strip` key a hop body requires (`ChainUnstripRequired` — registry `on_hop_required`, judged by `nodeflow.StripBlocked`; `tls.utls` on a REALITY hop is kept, the chain builds), a nested chain off position 0. Also `ChainLayerTag` — the `<chain>#<i>` service-tag scheme used by the layered probe. |
 | `chain_cycle.go` / `detour_group_cycle.go` | Direction↔chain and node↔group-it-dials-through cycles: the element drops out of the group's **members** rather than taking the config down. The detour itself is **never stripped** — the node stays in the config and keeps dialling through its hop (SPEC 113-B: removing the key is a silent direct dial, which is forbidden). This is not fail-open for the detour: an unreachable detour target is handled separately and drops the carrier. |
-| `source_folds.go` | **SPEC 108.** Expands a subscription's fold into groups at build time (they are not stored in state). |
+| `folder_replaces.go` | **SPEC 118.** Expands a folder's/subscription's swap (`replace {mode: manual\|auto\|both, tag, auto?}`) into local groups at build time — a selector, an auto group, or a selector plus its `<tag>-auto` twin (the same suffix as Direction twins); nothing is stored in state. A swap tag already declared by a Direction, a swap above or a template tag is not built (`replace_tag_conflict`); built swap tags are claimed in the final-tag counter before nodes, so a namesake node gets `-2`. |
 | `outbound_share.go` | Share-URI lookup from a written `config.json` (`GetOutboundMapByTag`, `ShareProxyURIForOutboundTag`). |
 | `config_loader.go` | Read `config.json` (JSONC-aware): selector groups, TUN interface name, `experimental.cache_file`. |
 | `varsubst.go` | `SubstituteParserConfigPlaceholders` — resolve `@name` placeholders in outbound options (template defaults + state override). |
@@ -230,7 +230,7 @@ semantics: `contract/docs/BACKUP.md`.
 | File | Purpose |
 |------|---------|
 | `types.go` | The file's shape: subscriptions, servers, chains, directions, rules, DNS, portable vars. There is no `extensions` mechanism (contract 0.11.0): the file is a serialisation of state and nothing else. |
-| `export.go` | `State` → backup, a **pure function of state**: per-source fields (skip filters, local outbounds, detour, id, node tag, fold) are plain optional keys of the entity record. Two indistinguishable states must produce byte-identical files, so nothing about where the state came from may leak in. |
+| `export.go` / `export10.go` | `State` → backup format 1.0 (the only writer since v1.6.0, D-110), a **pure function of state**: per-source fields (skip filters, detour, id, node tag, the swap `replace {mode, tag, auto?}`) are plain optional keys of the entity record. Two indistinguishable states must produce byte-identical files, so nothing about where the state came from may leak in. |
 | `import.go` | Backup → `State`. A rule whose target does not exist here is imported **switched off** rather than lost or silently enabled: an enabled rule with a dead target makes the core reject the whole config. Anything the importer does not understand is dropped with a warning — never carried through — so the imported state is indistinguishable from one configured by hand. |
 | `portable_vars.go` | Generated from `contract/registry/vars.json` (portable=true) and checked against it by a test — a drifted list would either lose a setting or carry a value that means something else on the other machine. |
 | `file.go` | Atomic write with 0600 permissions (the file stores secrets as plain text), size cap, and default-deny reporting of unknown top-level keys. |
@@ -457,7 +457,7 @@ semantics: `contract/docs/BACKUP.md`.
 | `source_tab.go` | Sources tab: URL input, source list, preview-all window launcher. |
 | `source_edit_window.go` + `source_edit_overview.go` / `_raw.go` / `_misc.go` | Per-source edit window (settings / preview / raw JSON; exclude/expose markers). |
 | `source_meta_format.go` / `source_support_link.go` | Source metadata formatting + support/web-page link. |
-| `source_fold_tab.go` | **SPEC 108.** Group tab of the source window: one fold checkbox replaces the old four flags; picks selector / auto-select / selector-with-auto-default. |
+| `source_replace_tab.go` | **SPEC 118.** Group tab of the source window: the swap (`replace`) — selector / auto group / selector with an auto default, plus the explicit swap tag (no positional tag any more). |
 | `source_chain_tab.go` / `source_chain_hops.go` / `source_chain_rewrite.go` | **SPEC 110.** Hop-chain form: positions in packet order (drag reorder), candidate picker (node / group / Direction / builtin), `rewrite` table (protocol · key · JSON value, `null` deletes). Refuses the combinations the core rejects only at `run` — the form is the only line of defence there. |
 | `target_tab.go` | Target tab for a remote machine (SPEC 097): gateway mode + LAN interfaces. |
 | `files_tab.go` | Files tab: build `config.json` into a file, view it read-only in a separate window. |
