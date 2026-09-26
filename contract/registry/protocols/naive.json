@@ -76,7 +76,7 @@
     ],
     "dart": [
       "lib/services/parser/uri_parsers.dart:59-60",
-      "lib/services/parser/uri_parsers/naive_parser.dart:13-95",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/models/node_spec_emit.dart:371-426",
       "lib/services/parser/json_parsers.dart:797"
     ]

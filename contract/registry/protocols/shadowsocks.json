@@ -88,8 +88,7 @@
   },
   "refs": {
     "dart": [
-      "lib/services/parser/uri_parsers/shadowsocks_parser.dart:8-89",
-      "lib/services/parser/uri_parsers/shadowsocks_parser.dart:91-104",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/services/parser/uri_utils.dart:280-293",
       "lib/services/parser/json_parsers.dart:615-636",
       "lib/services/parser/json_parsers.dart:874-885",

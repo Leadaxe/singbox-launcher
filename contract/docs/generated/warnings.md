@@ -72,7 +72,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`reality_short_id_invalid`](#reality_short_id_invalid) · `info` — REALITY: short_id cleaned up
 - [`reality_utls_enabled`](#reality_utls_enabled) · `info` — REALITY: uTLS switched on
 - [`scheme_unsupported`](#scheme_unsupported) · `error` — Link: scheme {scheme} is not supported
-- [`selector_as_auto`](#selector_as_auto) · `info` — Manual selector imported as auto-select
 - [`service_record_ignored`](#service_record_ignored) · `info` — Subscription: service record {scheme} skipped
 - [`source_detour_cycle`](#source_detour_cycle) · `error` — Node {tag} excluded: hops form a loop
 - [`source_detour_missing`](#source_detour_missing) · `error` — Source chain broken: {target} not found
@@ -1297,22 +1296,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Update the application: a newer version may know this scheme.
   - Ask the provider for a link to the same server in a supported protocol.
-
-**Where it comes from:**
-
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
-
-<a id="selector_as_auto"></a>
-### selector_as_auto
-
-**severity:** `info`
-
-**Manual selector imported as auto-select**
-
-- **What happened:** The config contained a group with manual server selection, and this application has no such group type. The group was imported as auto-select, so its members stay available.
-- **Why it happens:** The imported config contains a group with manual server selection. That group type exists in sing-box configs, but this application has no equivalent of it, so the group is taken in as an auto-select one.
-- **What you can do:**
-  - Nothing to do: all the servers of the group stayed available, only the way one of them is chosen changed.
 
 **Where it comes from:**
 

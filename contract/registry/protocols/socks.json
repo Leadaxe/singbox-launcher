@@ -47,7 +47,7 @@
   "refs": {
     "dart": [
       "lib/services/parser/uri_parsers.dart:67-69",
-      "lib/services/parser/uri_parsers/socks_parser.dart:8-35",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/models/node_spec_emit.dart:503-520",
       "lib/services/parser/json_parsers.dart:797"
     ]

@@ -301,9 +301,7 @@
   ],
   "refs": {
     "dart": [
-      "lib/services/parser/uri_parsers/vmess_parser.dart:13-37",
-      "lib/services/parser/uri_parsers/vmess_parser.dart:39-95",
-      "lib/services/parser/uri_parsers/vmess_parser.dart:97-126",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/services/parser/transport.dart:398-416",
       "lib/services/parser/uri_utils.dart:261-277",
       "lib/services/parser/json_parsers.dart:579-613",

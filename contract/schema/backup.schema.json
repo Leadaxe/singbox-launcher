@@ -324,14 +324,6 @@
         "replace": {
           "$ref": "#/$defs/replace"
         },
-        "fold": {
-          "$ref": "#/$defs/fold"
-        },
-        "fold_tag": {
-          "type": "string",
-          "deprecated": true,
-          "description": "LEGACY (1.0 — 1.1.77): ИМЯ группы свёртки рядом с fold. Писатели не пишут, читатель терпит: fold_tag → replace.tag. См. $defs/fold."
-        },
         "detour_policy": {
           "$ref": "#/$defs/detourPolicy",
           "description": "Поддержка: LxBox. Лаунчер поле игнорирует молча: в состояние не кладёт и предупреждения не даёт. Отсутствие ключа в файле значение у приёмника не сбрасывает (BACKUP.md §2, «Поля стороны LxBox»)."
@@ -426,14 +418,6 @@
         },
         "replace": {
           "$ref": "#/$defs/replace"
-        },
-        "fold": {
-          "$ref": "#/$defs/fold"
-        },
-        "fold_tag": {
-          "type": "string",
-          "deprecated": true,
-          "description": "LEGACY (1.0 — 1.1.77): ИМЯ группы свёртки рядом с fold. Писатели не пишут, читатель терпит: fold_tag → replace.tag. См. $defs/fold."
         },
         "detour_policy": {
           "$ref": "#/$defs/detourPolicy",
@@ -815,27 +799,6 @@
         "auto": {
           "$ref": "#/$defs/directionAuto",
           "description": "Параметры авто-половины — та же форма, что auto Направления (direction.schema.json#/$defs/auto). Применяется при mode = auto | both; при manual отсутствует."
-        }
-      }
-    },
-    "fold": {
-      "type": "object",
-      "additionalProperties": true,
-      "deprecated": true,
-      "description": "LEGACY-форма свёртки (SPEC 108; в файле 1.0 — с контракта 1.0 по 1.1.77, вместе с fold_tag рядом). Писатели её больше не пишут — текущая форма $defs/replace; читатель терпит: select → manual, select_auto → both, auto → auto, fold_tag → tag, а без fold_tag имя выводится прежним позиционным деривативом «префикс тегов, а при пустом — <номер подписки>:» плюс select (D-081). При replace в той же записи fold не читается. Чтение молчаливое: перевод взаимно однозначный (docs/BACKUP.md §2).",
-      "properties": {
-        "mode": {
-          "enum": [
-            "select",
-            "auto",
-            "select_auto"
-          ],
-          "default": "select",
-          "description": "Во что заменяются узлы. Неизвестное значение читается как select: свёрнутый источник обязан дать хоть какую-то группу, иначе его узлы исчезли бы молча."
-        },
-        "auto": {
-          "$ref": "#/$defs/directionAuto",
-          "description": "Параметры автогруппы; применяется при mode = auto | select_auto."
         }
       }
     },

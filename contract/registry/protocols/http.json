@@ -124,7 +124,7 @@
   "refs": {
     "dart": [
       "lib/services/parser/uri_parsers.dart:70-74",
-      "lib/services/parser/uri_parsers/http_parser.dart:17-69",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/services/parser/transport.dart:375-395",
       "lib/models/node_spec_emit.dart:526-578",
       "lib/services/parser/json_parsers.dart:797"

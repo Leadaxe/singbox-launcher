@@ -145,7 +145,7 @@
   ],
   "refs": {
     "dart": [
-      "lib/services/parser/uri_parsers/tuic_parser.dart:10-63",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/models/node_spec_emit.dart:432-459",
       "lib/services/parser/json_parsers.dart:797"
     ]

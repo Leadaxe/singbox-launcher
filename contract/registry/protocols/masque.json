@@ -179,7 +179,7 @@
       "core/state/masque_uri_migration.go:rewriteLegacyMasqueURIs"
     ],
     "dart": [
-      "app/lib/services/parser/uri_parsers/masque_parser.dart:21",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "app/lib/models/node_spec.dart:788",
       "app/lib/models/node_spec_emit.dart:649",
       "app/lib/models/node_spec_emit.dart:685",

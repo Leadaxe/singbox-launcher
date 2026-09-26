@@ -7956,7 +7956,9 @@ subscription`), ОДИНАКОВОЕ в состоянии лаунчера, в 
   `manual` отсутствует.
 - Нет объекта — источник не свёрнут.
 
-**Legacy-чтение.** Файлы 1.0, записанные до 1.1.78, несут `fold {mode:
+**Legacy-чтение — ОТМЕНЕНО контрактом 1.1.79 (§76):** `fold`/`fold_tag` не
+читаются ни в 1.0, ни в 0.x, миграции нет; абзац ниже оставлен как история.
+Файлы 1.0, записанные до 1.1.78, несут `fold {mode:
 select|auto|select_auto, auto?}` + `fold_tag`: `select` → `manual`,
 `select_auto` → `both`, `auto` → `auto`, `fold_tag` → `tag`; без `fold_tag` —
 прежний позиционный дериватив «префикс тегов, при пустом — `<номер
@@ -8025,8 +8027,8 @@ select|auto|select_auto, auto?}` + `fold_tag`: `select` → `manual`,
 
 **Что делать LxBox:** реализовать фазу B по этой форме — хранить свёртку
 папки и подписки как `replace {mode, tag, auto?}` в модели, читать и писать её
-в бэкапе 1.0 (писать только `replace`, читать legacy `fold`/`fold_tag` по
-правилу выше), разворачивать на сборке по пунктам 2–5. Кейсы корпуса:
+в бэкапе 1.0 (писать и читать только `replace`; legacy `fold`/`fold_tag` НЕ
+читать — §76), разворачивать на сборке по пунктам 2–5. Кейсы корпуса:
 `corpus/backup/replace_roundtrip` (текущая форма: папка `both` с `auto`,
 подписка `manual`; правила на `tag` и `<tag>-auto`, `route.final` на тег
 подписки; ожидание `replaces` сверяет объект в состоянии и в повторном
@@ -8057,3 +8059,59 @@ select|auto|select_auto, auto?}` + `fold_tag`: `select` → `manual`,
   умеет. Код `selector_as_auto` в `registry/warnings.json` пока не тронут —
   если у вас его больше никто не ставит, скажите, выведем из словаря
   отдельным бампом.
+
+## 76. Контракт 1.1.79 — fold/fold_tag без миграции; selector_as_auto выведен; dart-ссылки на uri_pipeline
+
+**1. Прежняя форма свёртки не читается** (решение владельца 26.09.2026).
+Отменяет legacy-чтение из §74. `fold` + `fold_tag` в файлах 1.0 и
+`subscriptions[].fold` в файлах 0.x/0.12 — непонятые ключи: импорт отбрасывает
+их с `backup_unknown_field`, как любое неизвестное поле (П3), свёртку из них
+не поднимает и не мигрирует; человек настраивает её заново. Единственная форма
+свёртки — `replace {mode, tag, auto?}` (1.1.78). Правила и `route.final` того
+же файла, метившие в группу прежней свёртки, приезжают по общей норме:
+`backup_unknown_outbound` / `backup_final_dropped`. У 0.x пара
+`<PFX>select`/`<PFX>auto` из `outbounds[]` теперь называется
+`backup_local_direction_dropped` (заменой она больше не приезжает).
+
+*За LxBox:* в фазе B legacy `fold`/`fold_tag` НЕ читать — ни в 1.0, ни в 0.x;
+`fold`, `fold_tag` — неизвестные ключи с `backup_unknown_field`. Если у вас
+`subscriptions[].fold` 0.x раньше молча игнорировался как объявленное поле —
+теперь это неизвестный ключ с предупреждением.
+
+Что изменилось в контракте:
+
+- `docs/BACKUP.md` §2 «`replace` — свёртка источника»: абзац legacy-входа
+  заменён нормой «не читается, отбрасывается с предупреждением, миграции нет»;
+  §1, §9, §10 (таблица «не применяются на импорте»), §11 согласованы;
+- `schema/backup.schema.json`: `fold`, `fold_tag` у записей папки и подписки и
+  `$defs/fold` сняты (схема открыта, ключи валидацию проходят — отбрасывает
+  импортёр); `schema/source_fold.schema.json` оставлена только ради ссылки из
+  замороженной `backup-0.12.schema.json`, помечена «не читается»;
+- корпус бэкапа: `legacy_fold_to_replace` → **`legacy_fold_dropped`**,
+  `replace_tag_index` → **`legacy_0x_fold_dropped`**: свёртки нет
+  (`replaces` — `null`, новое в ожидании: `null` = «свёртки нет»), правила
+  выключены, final отброшен, `backup_unknown_field`.
+  `replace_tag_index.expected.lxbox.json` снят — базовое ожидание теперь
+  ваше; если `backup_unknown_field` у вас на `fold` 0.x пока не ставится —
+  пришлите override;
+- корпус Направлений: вход `fold_*` переведён на `replace {mode, tag,
+  auto?}` с явным тегом (`select` → `manual`, `select_auto` → `both`,
+  `auto` → `auto`); `fold_select_auto` теперь ждёт двойник `AL:select-auto`
+  (`<tag>-auto`), а не `AL:auto`. Ключ входа `fold` в раннере заменить на
+  `replace`;
+- `registry/backup_warnings.json`: `desc` у `backup_local_direction_dropped`;
+  `docs/GLOSSARY.md`, `docs/NODE_LINK.md` (`{tag: replace.tag}`).
+
+**2. `selector_as_auto` выведен** из `registry/warnings.json` по вашему
+ответу к §75: с 1.1.78 род группы сохраняется обеими сторонами, код не ставит
+никто (у лаунчера его не было никогда). Упоминания в `group.json` помечены
+как история. Уберите `SelectorAsAutoWarning`, если класс ещё жив.
+
+**3. dart-ссылки.** 15 ссылок `refs.dart` у anytls, http, hysteria2, naive,
+shadowsocks, socks, ssh, trojan, tuic, vless, vmess, masque на снятые
+`lib/services/parser/uri_parsers/*_parser.dart` заменены одной ссылкой
+`app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline`
+(форма `путь:Имя`, без номеров строк). Не тронуты — их не было в вашем
+списке — `wireguard.json` (`uri_parsers/wireguard_parser.dart:8`) и
+`group.json` (`uri_parsers/auto_group_parser.dart:11`): если эти файлы тоже
+сняты, пришлите замену.

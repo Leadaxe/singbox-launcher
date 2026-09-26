@@ -579,25 +579,6 @@
       "dart": "DetourChainTooDeepWarning",
       "go": "core/config/subscription/detour_chain.go:singboxChainInfo.attachChain — код на узле импорта sing-box (глубина больше maxDetourChainDepth, цепочка усечена)"
     },
-    "selector_as_auto": {
-      "severity": "info",
-      "params": [],
-      "title_en": "Manual selector imported as auto-select",
-      "title_ru": "Ручная группа selector импортирована как автовыбор",
-      "text_en": "The config contained a group with manual server selection, and this application has no such group type. The group was imported as auto-select, so its members stay available.",
-      "text_ru": "В конфиге была группа с ручным выбором сервера, а такого типа групп в этом приложении нет. Группа импортирована как автовыбор, её состав сохранён.",
-      "cause_en": "The imported config contains a group with manual server selection. That group type exists in sing-box configs, but this application has no equivalent of it, so the group is taken in as an auto-select one.",
-      "cause_ru": "В импортированном конфиге есть группа с ручным выбором сервера. Такой тип группы в конфигах sing-box существует, но в этом приложении ему нет пары, поэтому группа принимается как автовыбор.",
-      "fix_en": [
-        "Nothing to do: all the servers of the group stayed available, only the way one of them is chosen changed."
-      ],
-      "fix_ru": [
-        "Делать ничего не нужно: все серверы группы остались доступны, изменился только способ выбора одного из них."
-      ],
-      "desc": "Mobile-only by design: LxBox не имеет ручного selector-типа и импортирует его как автовыбор. Go импортирует selector нативно как группу (SchemeGroup) — warning не нужен. После SPEC 104 семантику пересмотреть.",
-      "dart": "SelectorAsAutoWarning",
-      "go": null
-    },
     "group_member_missing": {
       "severity": "warning",
       "params": [

@@ -146,7 +146,7 @@
   },
   "refs": {
     "dart": [
-      "lib/services/parser/uri_parsers/trojan_parser.dart:11-45",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/services/parser/transport.dart:375-395",
       "lib/services/parser/json_parsers.dart:548-577",
       "lib/services/parser/json_parsers.dart:839-851",

@@ -1,7 +1,7 @@
 {
   "_": "Свёртка в автогруппу: эмитится только AL:auto (urltest), селектора нет — прежнее состояние «Local auto без select» перестало быть невыразимым",
   "tag_prefix": "AL:",
-  "fold": { "mode": "auto", "auto": { "interval": "3m", "tolerance": 50 } },
+  "replace": { "mode": "auto", "tag": "AL:auto", "auto": { "interval": "3m", "tolerance": 50 } },
   "directions": [
     { "tag": "vpn-1" }
   ],

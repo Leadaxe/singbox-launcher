@@ -197,7 +197,7 @@
   ],
   "refs": {
     "dart": [
-      "lib/services/parser/uri_parsers/hysteria2_parser.dart:12-82",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/services/parser/json_parsers.dart:979-990",
       "lib/models/node_spec_emit.dart:314-363",
       "lib/services/parser/json_parsers.dart:513-520",

@@ -8,6 +8,10 @@
   "route_final_applied": false,
   "warnings": [
     "backup_final_dropped",
+    "backup_unknown_field",
     "backup_unknown_outbound"
-  ]
+  ],
+  "replaces": {
+    "https://example-1.com/sub": null
+  }
 }

@@ -88,7 +88,7 @@
   },
   "refs": {
     "dart": [
-      "lib/services/parser/uri_parsers/ssh_parser.dart:8-54",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/models/node_spec_emit.dart:465-497",
       "lib/services/parser/json_parsers.dart:797"
     ]

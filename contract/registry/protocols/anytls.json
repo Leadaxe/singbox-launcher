@@ -140,7 +140,7 @@
   },
   "refs": {
     "dart": [
-      "lib/services/parser/uri_parsers/anytls_parser.dart:14-56",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/services/parser/transport.dart:314-345",
       "lib/models/node_spec_emit.dart:236-283",
       "lib/services/parser/json_parsers.dart:797"
