@@ -41,12 +41,12 @@ func decode10(b *Backup10, opts ImportOptions) (*decodedFile, error) {
 	}
 
 	// subIndex — номер ПОДПИСКИ среди источников-подписок файла. Нужен ровно
-	// для одного: запасного тега замены свёрнутой подписки. Имя группы 1.0
-	// везёт явно (`fold_tag`), но файл чужой стороны может нести только
-	// объект `fold` формы контракта 0.11, где тега нет (позиционный
-	// дериватив, D-081). Тогда импорт обязан воспроизвести ровно ту же
-	// формулу, что у входа 0.x, иначе правила ЭТОГО ЖЕ файла уехали бы в
-	// никуда (foldTag10).
+	// для одного: запасного тега замены свёрнутой подписки legacy-формы.
+	// Имя группы 1.0 везёт явно (`replace.tag`, прежде `fold_tag`), но файл
+	// чужой стороны может нести только объект `fold` формы контракта 0.11,
+	// где тега нет (позиционный дериватив, D-081). Тогда импорт обязан
+	// воспроизвести ровно ту же формулу, что у входа 0.x, иначе правила
+	// ЭТОГО ЖЕ файла уехали бы в никуда (foldTag10).
 	subIndex := 0
 	for i, src := range b.Sources {
 		item, warns, ok := decode10Source(src, subIndex, func(node int) bool {
@@ -138,9 +138,9 @@ func decode10Source(in Source10, subIndex int, ruleGroup func(node int) bool) (d
 		Skip:               cloneSkip(in.Skip),
 		MaxNodes:           in.MaxNodes,
 		Update:             cloneUpdateSpec(in.Update),
-		// Свёртка едет формой контракта (fold) — а в ней тега нет, и
-		// материализуется он тем же позиционным деривативом, что у 0.x.
-		Replace: importFold(in.Fold, foldTag10(in, subIndex)),
+		// Свёртка: `replace` формы состояния, а файл 1.0 до контракта
+		// 1.1.78 — прежняя пара `fold` + `fold_tag` (import10Replace).
+		Replace: import10Replace(in, subIndex),
 	}
 	// Секции узла: форма одна с состоянием, поэтому разбор — копия плюс
 	// отсев чужих видов записей (§6.2 W2.5) и — у узла, которому секции не
@@ -280,9 +280,38 @@ func source10Label(in Source10) string {
 	return strings.TrimSpace(in.Tag)
 }
 
-// foldTag10 — тег замены свёрнутого источника формата 1.0.
+// import10Replace — свёртка записи 1.0.
 //
-// Имя группы формат 1.0 везёт ЯВНО (`fold_tag`), и оно здесь главное: в
+// `replace` — текущая форма (контракт 1.1.78), та же, что в состоянии: едет
+// копией. Режим вне manual|auto|both читается как manual: свёрнутый
+// источник обязан дать хоть какую-то группу, иначе его узлы ушли бы из пула
+// Направлений, не оставив замены. Тег не выдумывается: пустой тег — такая
+// же свёртка без имени, как в состоянии, и сборка её не разворачивает
+// (buildReplaceGroups).
+//
+// Нет `replace` — legacy-вход: `fold` (+ `fold_tag`), который писали
+// писатели 1.0 до 1.1.78 (select → manual, select_auto → both, имя — из
+// fold_tag, без него — позиционным деривативом). Чтение МОЛЧАЛИВОЕ: перевод
+// взаимно однозначный, ничего не теряется (П6 не задет), а warning о форме,
+// которую писала эта же сторона, был бы шумом на каждом старом файле.
+// При обоих ключах в записи главнее `replace` — его пишет текущий писатель.
+func import10Replace(in Source10, subIndex int) *state.FolderReplace {
+	if in.Replace != nil {
+		out := cloneFolderReplace(in.Replace)
+		switch out.Mode {
+		case state.FolderReplaceManual, state.FolderReplaceAuto, state.FolderReplaceBoth:
+		default:
+			out.Mode = state.FolderReplaceManual
+		}
+		out.Tag = strings.TrimSpace(out.Tag)
+		return out
+	}
+	return importFold(in.Fold, foldTag10(in, subIndex))
+}
+
+// foldTag10 — тег замены свёрнутого источника legacy-формы 1.0 (`fold`).
+//
+// Имя группы формат 1.0 вёз ЯВНО (`fold_tag`), и оно здесь главное: в
 // модели v8 тег замены — пользовательская настройка, правится руками, и на
 // это имя метят правила ТОГО ЖЕ файла. Выводить его формулой значило бы
 // подменять «DE-group» на «1:select» молча.

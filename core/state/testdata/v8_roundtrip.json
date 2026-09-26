@@ -137,7 +137,7 @@
       "replace": {
         "mode": "both",
         "tag": "личные",
-        "strategy": {
+        "auto": {
           "mode": "least_test"
         }
       }

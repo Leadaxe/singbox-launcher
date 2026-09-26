@@ -7,15 +7,15 @@
 // экспорту и импорту.
 //
 // Экспорт (писатель 1.0 — единственный с v1.6.0, D-110) переводит здесь ровно
-// два поля тонкого слоя:
+// одно поле тонкого слоя:
 //
 //	node.enabled=false + PendingDisabled → sub.disabled{сырой тег: 0}
-//	FolderReplace                        → fold{mode, auto}
 //
-// Импорт переводит обратно свёртку (оба входа) и всё, что называла иначе
-// форма 0.x (legacy-вход):
+// Свёртка (`replace`) с контракта 1.1.78 едет формой состояния и конвертера
+// не имеет — только копию (cloneFolderReplace). Импорт переводит legacy-форму
+// свёртки (1.0 до 1.1.78 и 0.x) и всё, что называла иначе форма 0.x:
 //
-//	fold{mode, auto}                    → FolderReplace
+//	fold{mode, auto} (+ fold_tag)       → FolderReplace
 //	тройня detour_node_source_id + tag  → NodeLink (detour)
 //	[]string (теги хопов)               → []NodeLink (+ резолв по живому индексу)
 //	chain{…}                            → Node.Body
@@ -36,24 +36,16 @@ import (
 
 // ── экспорт: состояние → поля тонкого слоя 1.0 ───────────────────
 
-// exportFold — FolderReplace модели в свёртку контракта.
-func exportFold(r *state.FolderReplace) *Fold {
+// cloneFolderReplace — глубокая копия свёртки: файл не должен делить
+// указатель авто-половины с состоянием (правка в UI после экспорта меняла бы
+// собранный файл).
+func cloneFolderReplace(r *state.FolderReplace) *state.FolderReplace {
 	if r == nil {
 		return nil
 	}
-	out := &Fold{}
-	switch r.Mode {
-	case state.FolderReplaceAuto:
-		out.Mode = "auto"
-	case state.FolderReplaceBoth:
-		out.Mode = "select_auto"
-	default:
-		out.Mode = "select"
-	}
-	if r.Strategy != nil {
-		out.Auto = r.Strategy.Clone()
-	}
-	return out
+	out := *r
+	out.Strategy = r.Strategy.Clone()
+	return &out
 }
 
 // exportDisabledMap — отметки выключения по СЫРЫМ тегам узлов (identity в
@@ -90,10 +82,13 @@ func exportDisabledMap(src state.Source) map[string]int64 {
 
 // ── импорт: формы контракта → состояние ──────────────────────────
 
-// importFold — свёртка контракта в FolderReplace модели.
+// importFold — LEGACY-форма свёртки (`fold`, контракт 0.11 — 1.1.77) в
+// FolderReplace модели: select → manual, select_auto → both, прочее → как
+// есть (auto) или manual.
 //
-// tag замены контракт не несёт (в 0.11 он был позиционным деривативом), и
-// выдумывать его нельзя: тег даёт вызывающий из имени/индекса источника.
+// tag замены эта форма не несёт (в 0.11 он был позиционным деривативом), и
+// выдумывать его нельзя: тег даёт вызывающий — `fold_tag` записи 1.0 либо
+// дериватив из индекса источника.
 func importFold(f *Fold, replaceTag string) *state.FolderReplace {
 	if f == nil {
 		return nil
