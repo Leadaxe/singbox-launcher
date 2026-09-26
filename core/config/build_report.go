@@ -45,17 +45,11 @@ const (
 	// BuildReportChainFailed — источник-цепочка не стал узлом (SPEC 110).
 	BuildReportChainFailed BuildReportKind = "chain_failed"
 
-	// BuildReportNaiveDegraded — naive-узлы сняты, потому что ядро их не
-	// умеет (SPEC 044 feature-probe).
-	BuildReportNaiveDegraded BuildReportKind = "naive_degraded"
-
-	// BuildReportTailscaleDegraded — узлы tailscale сняты, потому что ядро
-	// собрано без with_tailscale (SPEC 122 feature-probe).
-	BuildReportTailscaleDegraded BuildReportKind = "tailscale_degraded"
-
-	// BuildReportAWG3Degraded — wireguard-узлы с полями AmneziaWG 3.x сняты,
-	// потому что ядро старше 1.14.0-lx.32 (SPEC 123 feature-probe).
-	BuildReportAWG3Degraded BuildReportKind = "awg3_degraded"
+	// BuildReportCoreUnsupported — узлы сняты узловым гейтом ядра: ядро не
+	// умеет их протокол или поле (SPEC 142 волна 5; прежде — три вида по
+	// протоколу: naive, tailscale, AmneziaWG 3.x). Одна запись на пару
+	// (код реестра, схема); Code — код из `on_core_unsupported` реестра.
+	BuildReportCoreUnsupported BuildReportKind = "core_unsupported"
 
 	// BuildReportSourceParseFailed — источник не дал конфигу НИ ОДНОГО узла:
 	// не фетчнулся, или фетчнулся и разобрался в ноль (SPEC 115).
@@ -94,6 +88,16 @@ const (
 	// Отдельный вид от fetch_degraded: тот про то, что провайдер прислал,
 	// этот — про то, что лаунчер не смог собрать из уже принятого.
 	BuildReportEmitDegraded BuildReportKind = "emit_degraded"
+
+	// BuildReportTemplateDegraded — деградация ПОДСТАНОВКИ ШАБЛОНА (SPEC 143):
+	// не число в числовой переменной, значение вне диапазона ядра,
+	// необъявленное имя, директива новее приложения. Конфиг собран, Save не
+	// блокируется. Subject — имя переменной или директивы, Code и Params — из
+	// канонического обходчика, текст берётся из реестра по коду.
+	//
+	// Отдельный вид, а не emit_degraded: причина не в источнике и не в узлах,
+	// а в шаблоне или настройках — и она объясняет всё, что ниже в «Итоге».
+	BuildReportTemplateDegraded BuildReportKind = "template_degraded"
 )
 
 // BuildReportEntry — одна запись отчёта.
@@ -112,9 +116,15 @@ type BuildReportEntry struct {
 	SourceID    string
 	SourceLabel string
 	Reason      string
-	// NodeCount — сколько узлов снято (только BuildReportNodesDropped).
-	// Ноль у остальных видов: там считать нечего.
+	// NodeCount — сколько узлов снято (BuildReportNodesDropped,
+	// BuildReportCoreUnsupported). Ноль у остальных видов: там считать нечего.
 	NodeCount int
+	// Code — код реестра записи (warnings.json): по нему UI берёт текст на
+	// своём языке (у BuildReportCoreUnsupported — заголовок). Пустой код —
+	// запись показывается по Reason.
+	Code string
+	// Params — подстановки текста кода ({target}, {count}, ...).
+	Params map[string]string
 }
 
 // BuildGeneration — номер попытки сборки.

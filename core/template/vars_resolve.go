@@ -33,17 +33,22 @@ type TemplateVar struct {
 	Type         string          `json:"type"`
 	DefaultValue VarDefaultValue `json:"default_value,omitempty"`
 	DefaultNode  string          `json:"default_node,omitempty"`
-	// Options — список допустимых значений (substitution uses these).
+	// Options — закрытый список допустимых значений (TEMPLATE_LANG §2.1).
 	// JSON form: ["5m", "30s"]  OR  [{"title":"5m (default)", "value":"5m"}].
 	// Raw strings are read into Options as-is; object form populates Options
-	// with value and OptionTitles in parallel with title.
+	// with value and OptionTitles in parallel with title. Ортогонален Type
+	// (SPEC 143 Т8): тип говорит, что уедет в JSON, список — что допустимо.
 	Options []string `json:"-"`
 	// OptionTitles — human-readable labels parallel to Options; nil (or
 	// shorter-than-Options) means "use value as title". Populated from the
 	// `{title,value}` object form. Not serialized back out.
 	OptionTitles []string `json:"-"`
-	WizardUI     string   `json:"wizard_ui,omitempty"`
-	Platforms    []string `json:"platforms,omitempty"`
+	// OptionsOpen — `options_open: true`: значение вне Options допустимо
+	// (свободный ввод рядом со списком, SPEC 143 Т9). Без Options валидатор
+	// загрузки флаг отвергает.
+	OptionsOpen bool     `json:"options_open,omitempty"`
+	WizardUI    string   `json:"wizard_ui,omitempty"`
+	Platforms   []string `json:"platforms,omitempty"`
 	// Title подпись строки на вкладке Settings; при пустом используется name.
 	Title string `json:"title,omitempty"`
 	// Tooltip всплывающая подсказка для строки (виджеты с поддержкой SetToolTip).
@@ -81,6 +86,7 @@ type templateVarAlias struct {
 	DefaultValue   VarDefaultValue            `json:"default_value,omitempty"`
 	DefaultNode    string                     `json:"default_node,omitempty"`
 	Options        json.RawMessage            `json:"options,omitempty"`
+	OptionsOpen    bool                       `json:"options_open,omitempty"`
 	WizardUI       string                     `json:"wizard_ui,omitempty"`
 	Platforms      []string                   `json:"platforms,omitempty"`
 	Title          string                     `json:"title,omitempty"`
@@ -106,6 +112,15 @@ func (v *TemplateVar) UnmarshalJSON(data []byte) error {
 	// переменные шаблона и переменные пресета читаются разными путями, и
 	// нормализация в одном из них оставила бы второй с чужим написанием.
 	v.Type = canonicalVarType(a.Type)
+	// `enum` — синоним `text` с закрытыми `options` (TEMPLATE_LANG §2.2,
+	// SPEC 143 Т10): читается бессрочно, но дальше загрузки не проходит —
+	// рендер и подстановка смотрят на Options/OptionsOpen, а не на имя типа.
+	// Только здесь, не в canonicalVarType: у переменной пресета `enum` пока
+	// самостоятельный тип (PresetVar.DecodeOptions ветвится по нему).
+	if v.Type == "enum" {
+		v.Type = "text"
+	}
+	v.OptionsOpen = a.OptionsOpen
 	v.DefaultValue = a.DefaultValue
 	v.DefaultNode = a.DefaultNode
 	v.WizardUI = a.WizardUI
@@ -138,7 +153,7 @@ func (v *TemplateVar) UnmarshalJSON(data []byte) error {
 	}
 	values := make([]string, 0, len(raws))
 	titles := make([]string, 0, len(raws))
-	var anyTitle, anyObjectForm bool
+	var anyTitle bool
 	for _, r := range raws {
 		var s string
 		if err := json.Unmarshal(r, &s); err == nil {
@@ -153,7 +168,6 @@ func (v *TemplateVar) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(r, &obj); err != nil {
 			return err
 		}
-		anyObjectForm = true
 		values = append(values, obj.Value)
 		if strings.TrimSpace(obj.Title) == "" {
 			titles = append(titles, obj.Value)
@@ -165,17 +179,6 @@ func (v *TemplateVar) UnmarshalJSON(data []byte) error {
 	v.Options = values
 	if anyTitle {
 		v.OptionTitles = titles
-	}
-	// Object-form options (`[{title, value}]`) imply a closed-set semantic by
-	// definition — titles are display-only labels, the substituted value is
-	// the `value` field. Combining this with `type:"text"` (free-text combo)
-	// is unsafe: free-typed text bypasses the title→value mapping and lands
-	// in the config as the literal display string. Same risk for any other
-	// type. Normalize to `enum` regardless of the declared type so all code
-	// paths (renderer, validator, preview, substitute) see one consistent
-	// invariant.
-	if anyObjectForm {
-		v.Type = "enum"
 	}
 	return nil
 }

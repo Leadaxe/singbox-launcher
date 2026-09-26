@@ -1,6 +1,6 @@
 package config
 
-// Канонизатор для конформанс-корпуса контракта (SPEC 103, contract/docs/CANON.md).
+// Канонизатор для конформанс-корпуса контракта (SPEC 103, contract/docs/PARSING_PRINCIPLES.md).
 //
 // Живёт в пакете config (а не subscription): эмиссия GenerateNodeJSON здесь,
 // а config уже импортирует subscription — обратный импорт дал бы цикл.
@@ -44,7 +44,7 @@ type contractNode struct {
 	// Отсутствует у узла без секций (обычное тело, узел не один в конфиге).
 	Sections json.RawMessage `json:"sections,omitempty"`
 	Chain    []contractNode  `json:"chain,omitempty"`
-	// Warnings — записи деградаций конверта (CANON §6, контракт 1.1.0):
+	// Warnings — записи деградаций результата разбора (PARSING_PRINCIPLES §6, контракт 1.1.0):
 	// {code, path?, value?}. `params` раннер пока не пишет — их ставит
 	// санитайзер реестра (W2a), до него параметров ни у одного кода нет.
 	//
@@ -55,18 +55,18 @@ type contractNode struct {
 	Warnings []contractWarning `json:"warnings,omitempty"`
 }
 
-// contractWarning — запись warnings[] конверта.
+// contractWarning — запись warnings[] результата разбора.
 type contractWarning struct {
 	Code  string `json:"code"`
 	Path  string `json:"path,omitempty"`
 	Value string `json:"value,omitempty"`
 }
 
-// contractWarningValue — value для конверта из Warning (CANON §6).
+// contractWarningValue — value для результата разбора из Warning (PARSING_PRINCIPLES §6).
 //
 // Санитайзер пишет Value напрямую; маппер кладёт подстановки в Params
 // (`on_present` → value, `on_len_gt` → count). Раннер сводит их в одно поле
-// конверта, не дублируя params.
+// результата разбора, не дублируя params.
 func contractWarningValue(w configtypes.Warning) string {
 	if w.Value != "" {
 		return w.Value
@@ -80,7 +80,7 @@ func contractWarningValue(w configtypes.Warning) string {
 	return ""
 }
 
-// contractDrop — запись отбраковки в конверте (D-088).
+// contractDrop — запись отбраковки в результате разбора (D-088).
 //
 // Нормативны `ref` (что именно отвергнуто) и `code` (машинная причина из
 // registry/warnings.json). `reason` — человеческий текст СТОРОНЫ: у нас это
@@ -101,7 +101,7 @@ type contractDrop struct {
 	Reason string `json:"reason"`
 
 	// node — узел, отвергнутый санитайзером (у отказа разбора узла нет).
-	// В конверт не едет: нужен раннеру, чтобы найти элемент входа там, где
+	// В результат разбора не едет: нужен раннеру, чтобы найти элемент входа там, где
 	// тег узла ВЫВЕДЕН, а не взят из элемента (Xray строит его из remarks).
 	node *configtypes.ParsedNode
 }
@@ -112,7 +112,7 @@ func dropIndex(i int) *int { return &i }
 // requireDropCodes — на нашей стороне у КАЖДОЙ отбраковки есть код и индекс
 // (контракт 1.1.49). Ожидания без них сравниваются снисходительно (старые
 // файлы, чужая сторона), а вот раннер сам обязан их выдавать: отбраковка без
-// кода — ровно тот конверт, по которому нельзя понять, почему узел выброшен.
+// кода — ровно тот результат разбора, по которому нельзя понять, почему узел выброшен.
 func requireDropCodes(t *testing.T, env contractEnvelope) {
 	t.Helper()
 	for _, d := range env.Dropped {
@@ -129,9 +129,9 @@ func requireDropCodes(t *testing.T, env contractEnvelope) {
 //
 // `code` в записи отбраковки нормативен (D-088, corpus/README §«Отбраковки»),
 // а `reason` — нет: он человеческий текст стороны. Пока раннеры знали только
-// текст ошибки Go, любая отбраковка приезжала в конверт без кода, и вторая
+// текст ошибки Go, любая отбраковка приезжала в результат разбора без кода, и вторая
 // сторона сверяла у неё ровно одно поле — `ref`. Отличить «узел выброшен за
-// негодный ключ» от «узел выброшен за пересечение заголовков» такой конверт
+// негодный ключ» от «узел выброшен за пересечение заголовков» такой результат разбора
 // не позволял, то есть перенос правил в реестр проверить было нечем.
 //
 // Код берётся у отказа санитайзера. Пустая строка = отказ пришёл не от него
@@ -147,7 +147,7 @@ func canonNodeDrop(node *configtypes.ParsedNode) (contractNode, string, error) {
 	return cn, "", err
 }
 
-// canonNode превращает разобранный узел в канонический вид конверта.
+// canonNode превращает разобранный узел в канонический вид результата разбора.
 func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 	if node == nil {
 		return contractNode{}, fmt.Errorf("nil node")
@@ -159,7 +159,7 @@ func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 	// вопрос «что узлу отняли при разборе», и расхождение кодов между
 	// приложениями означает, что одно из них молча портит узел.
 	//
-	// Порядок — как проставлен разбором (CANON §6, Л14), без сортировки:
+	// Порядок — как проставлен разбором (PARSING_PRINCIPLES §6, Л14), без сортировки:
 	// последовательность слоёв нормативна, и сортировка кодов скрыла бы
 	// расхождение в том, ЧТО именно сработало первым.
 	nodeWarnings := node.Warnings
@@ -177,14 +177,14 @@ func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 			return contractNode{}, fmt.Errorf("decode emitted %s: %w", node.Scheme, err)
 		}
 	} else {
-		// SPEC 131 W2c: конверт корпуса показывает ровно то тело, которое
+		// SPEC 131 W2c: результат разбора в корпусе показывает ровно то тело, которое
 		// лаунчер СОХРАНИТ, — то есть выход конвейера. Пока здесь стоял
 		// GenerateNodeJSON, ожидание описывало per-scheme эмиттер, а в
 		// state.Node.Body уезжало другое: контракт сверял не тот артефакт,
 		// который живёт.
 		//
-		// Предикат схемы-endpoint'а нужен только для поля kind конверта:
-		// тело обе ветки получают одним конвейером (CANON §2.3).
+		// Предикат схемы-endpoint'а нужен только для поля kind результата разбора:
+		// тело обе ветки получают одним конвейером (PARSING_PRINCIPLES §2.3).
 		if IsEndpointScheme(node.Scheme) {
 			kind = "endpoint"
 		}
@@ -198,7 +198,7 @@ func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 		}
 	}
 
-	// CANON §2.1-2.2: tag и detour в канон не входят.
+	// PARSING_PRINCIPLES §2.1-2.2: tag и detour в канон не входят.
 	delete(entry, "tag")
 	delete(entry, "detour")
 
@@ -231,7 +231,7 @@ func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 	return out, nil
 }
 
-// canonNodeSections — секции узла в форме конверта (NODE_SECTIONS.md §8,
+// canonNodeSections — секции узла в форме результата разбора (NODE_SECTIONS.md §8,
 // договорённость с LxBox от 14.09.2026).
 //
 // Из записей снимаются `id` и `num`. Оба — МЕТАДАННЫЕ ОСИ принимающей
@@ -302,7 +302,7 @@ func decodeEmittedEntry(raw string) (map[string]any, error) {
 }
 
 // canonValue рекурсивно приводит значение к каноническому виду:
-// целые float64 → int64 (CANON §2.5 «числа — числами»), порядок списков
+// целые float64 → int64 (PARSING_PRINCIPLES §2.5 «числа — числами»), порядок списков
 // сохраняется, ключи map сортируются при маршалинге (canonMarshal).
 func canonValue(v any) any {
 	switch t := v.(type) {
@@ -328,7 +328,7 @@ func canonValue(v any) any {
 	}
 }
 
-// canonMarshal сериализует значение по правилам CANON §2:
+// canonMarshal сериализует значение по правилам PARSING_PRINCIPLES §2:
 // сортировка ключей, компактно, без HTML-escaping (D-007).
 func canonMarshal(v any) ([]byte, error) {
 	var sb strings.Builder
@@ -378,7 +378,7 @@ func writeCanonJSON(sb *strings.Builder, v any) error {
 	}
 }
 
-// writeCanonScalar пишет скаляр без HTML-escaping (CANON §2.7 / D-007).
+// writeCanonScalar пишет скаляр без HTML-escaping (PARSING_PRINCIPLES §2.7 / D-007).
 func writeCanonScalar(sb *strings.Builder, v any) error {
 	var buf strings.Builder
 	enc := json.NewEncoder(&buf)

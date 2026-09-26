@@ -23,8 +23,8 @@ package dialogs
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -37,9 +37,13 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/linkmap"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	"singbox-launcher/ui/components"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
@@ -325,8 +329,8 @@ func (f *addServerForm) buildWGFields() {
 	f.wgPublic = mk(locale.T("base64 peer public key"))
 	f.wgPreshared = mk(locale.T("optional"))
 	f.wgAddress = mk("10.0.0.2/32")
-	f.wgAllowed = mk("0.0.0.0/0")
-	f.wgMTU = mk("1280")
+	f.wgAllowed = mk(wgFieldHint("peers.allowed_ips", "0.0.0.0/0, ::/0"))
+	f.wgMTU = mk(wgFieldHint("mtu", ""))
 	f.wgKeepalive = mk(locale.T("optional"))
 	f.wgDNS = mk(locale.T("optional"))
 
@@ -585,6 +589,13 @@ func parseAddServerInput(input string) []*config.ParsedNode {
 		if line == "" || !subscription.IsDirectLink(line) {
 			continue
 		}
+		// `vpn://` — все контейнеры профиля, как у Add (контракт 1.1.80).
+		if subscription.IsAmneziaVPNLink(line) {
+			if all, _, err := subscription.ParseAmneziaVPNLinkAll(line, nil); err == nil {
+				nodes = append(nodes, all...)
+			}
+			continue
+		}
 		if n, err := subscription.ParseNode(line, nil); err == nil {
 			nodes = append(nodes, n)
 		}
@@ -734,22 +745,62 @@ func (f *addServerForm) buildURI() (string, error) {
 	})
 }
 
-// validateWGKey проверяет, что ключ — base64 ровно 32 байт.
-//
-// Без этой проверки форма молча отдаёт негодный ключ парсеру, тот бракует
-// узел с warning в лог — и узел просто не появляется, без единого слова в
-// интерфейсе. Ошибка в форме — единственный рубеж, который человек увидит.
-func validateWGKey(key string) error {
-	raw, err := base64.StdEncoding.DecodeString(key)
+// wgRegistryScheme — схема реестра, по которой форма берёт подсказки полей.
+const wgRegistryScheme = "wireguard"
+
+// wgFieldHint — подсказка поля формы из реестра: дефолт ядра (`default`) или
+// значение, которое реестр подставит сам (`default_when`). Своих чисел и
+// списков у формы нет (SPEC 142 B6).
+func wgFieldHint(path, fallback string) string {
+	reg, err := registry.Get()
 	if err != nil {
-		// Ключи WireGuard иногда носят url-safe алфавит.
-		raw, err = base64.URLEncoding.DecodeString(key)
-		if err != nil {
-			return fmt.Errorf("%s", locale.T("not valid base64"))
-		}
+		return fallback
 	}
-	if len(raw) != 32 {
-		return fmt.Errorf("%s", locale.Tf("decodes to %d bytes, want 32", len(raw)))
+	f, ok := reg.Field(wgRegistryScheme, path)
+	if !ok {
+		return fallback
+	}
+	v := f.Default
+	if f.DefaultWhen != nil && f.DefaultWhen.Absent && f.DefaultWhen.When == nil && f.DefaultWhen.Value != nil {
+		v = f.DefaultWhen.Value
+	}
+	switch t := v.(type) {
+	case nil:
+		return fallback
+	case []interface{}:
+		parts := make([]string, 0, len(t))
+		for _, it := range t {
+			parts = append(parts, fmt.Sprint(it))
+		}
+		return strings.Join(parts, ", ")
+	case float64:
+		return strconv.FormatFloat(t, 'f', -1, 64)
+	default:
+		return fmt.Sprint(t)
+	}
+}
+
+// engineVerdict прогоняет собранную ссылку через движок и санитайзер — тот же
+// путь, что у вставленной руками. Узел, который движок отверг, или поле,
+// которое санитайзер снял с кодом уровня warning/error, — отказ формы с
+// текстом кода реестра: иначе человек нажал бы Add и получил узел без
+// набранного значения (или не получил бы узла вовсе) без единого слова.
+func engineVerdict(uri string) error {
+	node, err := subscription.ParseNode(uri, nil)
+	if err != nil {
+		var rej *linkmap.RejectError
+		if errors.As(err, &rej) && rej.Code != "" {
+			if msg := nodewarn.Summary(nodewarn.FromParsed([]configtypes.Warning{{Code: rej.Code, Params: rej.Params}})); msg != "" {
+				return fmt.Errorf("%s", msg)
+			}
+		}
+		return err
+	}
+	if node == nil {
+		return nil
+	}
+	if msg := nodewarn.Summary(nodewarn.FromParsed(node.Warnings)); msg != "" {
+		return fmt.Errorf("%s", msg)
 	}
 	return nil
 }
@@ -788,46 +839,31 @@ func buildWireGuardURI(in wgURIInput) (string, error) {
 	if priv == "" {
 		return "", fmt.Errorf("%s", locale.T("Private key required"))
 	}
-	if err := validateWGKey(priv); err != nil {
-		return "", fmt.Errorf("%s: %w", locale.T("Private key"), err)
-	}
 	pub := strings.TrimSpace(in.Public)
 	if pub == "" {
 		return "", fmt.Errorf("%s", locale.T("Peer public key required"))
-	}
-	if err := validateWGKey(pub); err != nil {
-		return "", fmt.Errorf("%s: %w", locale.T("Peer public key"), err)
 	}
 	addr := strings.TrimSpace(in.Address)
 	if addr == "" {
 		return "", fmt.Errorf("%s", locale.T("Address required"))
 	}
 
-	allowed := strings.TrimSpace(in.Allowed)
-	if allowed == "" {
-		allowed = "0.0.0.0/0"
-	}
-
+	// Пустой allowed не подставляется: дефолт (0.0.0.0/0 и ::/0) ставит
+	// реестр (peers.allowed_ips.default_when). Формат ключей, границы MTU и
+	// keepalive судит тоже реестр — через engineVerdict ниже.
 	q := url.Values{}
 	q.Set("publickey", pub)
 	q.Set("address", addr)
-	q.Set("allowedips", allowed)
+	if v := strings.TrimSpace(in.Allowed); v != "" {
+		q.Set("allowedips", v)
+	}
 	if v := strings.TrimSpace(in.Preshared); v != "" {
-		if err := validateWGKey(v); err != nil {
-			return "", fmt.Errorf("%s: %w", locale.T("Pre-shared key"), err)
-		}
 		q.Set("presharedkey", v)
 	}
 	if v := strings.TrimSpace(in.MTU); v != "" {
-		if n, err := strconv.Atoi(v); err != nil || n < 576 || n > 9000 {
-			return "", fmt.Errorf("%s", locale.T("MTU 576..9000"))
-		}
 		q.Set("mtu", v)
 	}
 	if v := strings.TrimSpace(in.Keepalive); v != "" {
-		if n, err := strconv.Atoi(v); err != nil || n < 0 || n > 65535 {
-			return "", fmt.Errorf("%s", locale.T("Keepalive 0..65535"))
-		}
 		q.Set("keepalive", v)
 	}
 	if v := strings.TrimSpace(in.DNS); v != "" {
@@ -841,7 +877,11 @@ func buildWireGuardURI(in wgURIInput) (string, error) {
 		RawQuery: q.Encode(),
 		Fragment: strings.TrimSpace(in.Tag),
 	}
-	return u.String(), nil
+	uri := u.String()
+	if err := engineVerdict(uri); err != nil {
+		return "", err
+	}
+	return uri, nil
 }
 
 // proxyURIInput — вход сборки URI, отвязанный от виджетов: логика схемы и

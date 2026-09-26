@@ -16,6 +16,8 @@
 | `aliases` | `wg`, `awg`, `amneziawg` |
 | `sources` | `uri`, `singbox`, `wgconf`, `amnezia`, `xray` |
 | Core the schema was checked against | `1.14.1-lx.4` |
+| Protocol levels (node label, ascending) | `awg`, `awg1.5`, `awg2`, `awg3`, `awg3.1` |
+| Field order | must not decrease: `jmin`, `jmax`; otherwise all of them are removed: `fields_order_invalid` |
 | URI fragment | `label` |
 
 ## How to read this page
@@ -187,7 +189,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Set by link parameter: [`address`](#link-proto-address)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="body-private-key"></a>**`private_key`** — Local private key.
-  - Type: string, secret, format `base64_32`, normalized: `base64_std`
+  - Type: string, secret, role `private_key`, format `base64_32`, normalized: `base64_std`
   - Required: the node is dropped without it
   - Set by link parameter: [`userinfo`](#link-common-userinfo), [`privatekey`](#link-proto-privatekey)
   - If invalid: node dropped → [`wg_key_invalid`](../warnings.md#wg_key_invalid)
@@ -221,6 +223,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - If absent: filled in with `0.0.0.0/0`, `::/0`
 - <a id="body-peers-persistent-keepalive-interval"></a>**`peers.persistent_keepalive_interval`** — Keepalive interval in seconds, number or range.
   - Type: awg_range
+  - Range form `N-M` needs core ≥ `1.14.0-lx.32`, build tag `with_awg`; means level `awg3`; on a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`; removing the extension collapses the range to its lower bound
 - <a id="body-peers-reserved"></a>**`peers.reserved`** — Three reserved bytes prepended to packets.
   - Type: int_array, `0–255`, len `3`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -241,57 +244,72 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Set by link parameter: [`jc`](#link-proto-jc)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg`
 - <a id="body-jmin"></a>**`jmin`** — Minimum size of a junk packet.
   - Type: int, `0–…`
   - Set by link parameter: [`jmin`](#link-proto-jmin)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Meaningless without: `jmax`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg`
 - <a id="body-jmax"></a>**`jmax`** — Maximum size of a junk packet.
   - Type: int, `0–…`
   - Set by link parameter: [`jmax`](#link-proto-jmax)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg`
 - <a id="body-s1"></a>**`s1`** — Junk prepended to the handshake initiation packet.
   - Type: int, `0–…`
   - Set by link parameter: [`s1`](#link-proto-s1)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg`
 - <a id="body-s2"></a>**`s2`** — Junk prepended to the handshake response packet.
   - Type: int, `0–…`
   - Set by link parameter: [`s2`](#link-proto-s2)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg`
 - <a id="body-s3"></a>**`s3`** — Junk prepended to the cookie reply packet.
   - Type: int, `0–…`
   - Set by link parameter: [`s3`](#link-proto-s3)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg2`
 - <a id="body-s4"></a>**`s4`** — Junk prepended to every transport packet.
   - Type: int, `0–…`
   - Set by link parameter: [`s4`](#link-proto-s4)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg2`
 - <a id="body-h1"></a>**`h1`** — Magic header of the handshake initiation packet.
   - Type: awg_range, normalized: `range_order`
   - Set by link parameter: [`h1`](#link-proto-h1)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Range form `N-M`; means level `awg2`
+  - Means protocol level `awg`
 - <a id="body-h2"></a>**`h2`** — Magic header of the handshake response packet.
   - Type: awg_range, normalized: `range_order`
   - Set by link parameter: [`h2`](#link-proto-h2)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Range form `N-M`; means level `awg2`
+  - Means protocol level `awg`
 - <a id="body-h3"></a>**`h3`** — Magic header of the cookie reply packet.
   - Type: awg_range, normalized: `range_order`
   - Set by link parameter: [`h3`](#link-proto-h3)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Range form `N-M`; means level `awg2`
+  - Means protocol level `awg`
 - <a id="body-h4"></a>**`h4`** — Magic header of the transport packet.
   - Type: awg_range, normalized: `range_order`
   - Set by link parameter: [`h4`](#link-proto-h4)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Range form `N-M`; means level `awg2`
+  - Means protocol level `awg`
 - <a id="body-i1"></a>**`i1`** — First custom junk packet.
   - Type: string
   - Set by link parameter: [`i1`](#link-proto-i1)
@@ -299,83 +317,110 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Conflicts with: `ip`
   - Conflicts with: `ib`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg1.5`
 - <a id="body-i2"></a>**`i2`** — Second custom junk packet.
   - Type: string
   - Set by link parameter: [`i2`](#link-proto-i2)
   - Conflicts with: `ip`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg1.5`
 - <a id="body-i3"></a>**`i3`** — Third custom junk packet.
   - Type: string
   - Set by link parameter: [`i3`](#link-proto-i3)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg1.5`
 - <a id="body-i4"></a>**`i4`** — Fourth custom junk packet.
   - Type: string
   - Set by link parameter: [`i4`](#link-proto-i4)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg1.5`
 - <a id="body-i5"></a>**`i5`** — Fifth custom junk packet.
   - Type: string
   - Set by link parameter: [`i5`](#link-proto-i5)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg1.5`
 - <a id="body-id"></a>**`id`** — Masquerade domain name.
-  - Type: string, format `host`, `…–253`
+  - Type: string, format `host`, must match `^[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?(?:\.[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)*\.?$`, `…–253`
   - Set by link parameter: [`id`](#link-proto-id)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Meaningless without: `ip`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg1.5`, adds `+` to the level label
 - <a id="body-ip"></a>**`ip`** — Protocol the traffic is masqueraded as.
   - Type: enum, `""`, `quic`, `dns`, `stun`, `sip`, normalized: `trim_lower`
   - Set by link parameter: [`ip`](#link-proto-ip)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+  - Meaningless without: `id` when `ip` is `quic`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg1.5`, adds `+` to the level label
 - <a id="body-ib"></a>**`ib`** — Client profile imitated inside the masquerade.
   - Type: enum, `""`, `chrome`, `firefox`, `curl`, normalized: `trim_lower`
   - Set by link parameter: [`ib`](#link-proto-ib)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Meaningless without: `ip`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
+  - Means protocol level `awg1.5`, adds `+` to the level label
 - <a id="body-header-protection-key"></a>**`header_protection_key`** — Key protecting packet headers.
   - Type: string, secret, format `base64_32`, must match `^$|^[A-Za-z0-9+/_-]*[B-Za-z0-9+/_-][A-Za-z0-9+/_-]*={0,2}$`, normalized: `base64_std`
   - If invalid: node dropped → [`awg3_header_key_invalid`](../warnings.md#awg3_header_key_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+  - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
+  - Means protocol level `awg3`
 - <a id="body-content-padding-addition"></a>**`content_padding_addition`** — Extra content padding, number or range.
   - Type: awg_range
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+  - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
+  - Means protocol level `awg3`
 - <a id="body-rekey-after-time"></a>**`rekey_after_time`** — Rekey after this many seconds.
   - Type: awg_range
   - Default: `120`
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+  - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
+  - Means protocol level `awg3`
 - <a id="body-rekey-timeout"></a>**`rekey_timeout`** — Rekey attempt timeout in seconds.
   - Type: awg_range
   - Default: `5`
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+  - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
+  - Means protocol level `awg3`
 - <a id="body-reject-after-time"></a>**`reject_after_time`** — Reject the session after this many seconds.
   - Type: awg_range
   - Default: `180`
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+  - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
+  - Means protocol level `awg3`
 - <a id="body-keepalive-timeout"></a>**`keepalive_timeout`** — Keepalive timeout in seconds.
   - Type: awg_range
   - Default: `10`
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+  - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
+  - Means protocol level `awg3`
 - <a id="body-max-handshake-attempts"></a>**`max_handshake_attempts`** — Maximum handshake attempts, count not seconds.
   - Type: awg_range
   - Default: `18`
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+  - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
+  - Means protocol level `awg3`
 - <a id="body-random-trailers"></a>**`random_trailers`** — Append random trailing bytes to packets.
   - Type: bool
   - Default: `false`
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+  - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
+  - Means protocol level `awg3.1`
 - <a id="body-disable-cookies"></a>**`disable_cookies`** — Disable the cookie mechanism.
   - Type: bool
   - Default: `false`
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+  - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
+  - Means protocol level `awg3.1`
 - <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
   - Type: string, set by config build
 - <a id="body-bind-interface"></a>**`bind_interface`** — Network interface the connection is bound to.
@@ -445,8 +490,9 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`mtu`](#body-mtu) — the value is above `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) → replaced with `1280`
 - [`awg_mtu_high`](../warnings.md#awg_mtu_high)
   - [`mtu`](#body-mtu) — the value is above `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more), but the body came from `singbox` → kept with a notice
-- [`field_conflict`](../warnings.md#field_conflict)
+- [`detour_with_listen_port`](../warnings.md#detour_with_listen_port)
   - [`listen_port`](#body-listen-port) — conflicts with `detour` → removed
+- [`field_conflict`](../warnings.md#field_conflict)
   - [`i1`](#body-i1) — conflicts with `id` → removed
   - [`i1`](#body-i1) — conflicts with `ip` → removed
   - [`i1`](#body-i1) — conflicts with `ib` → removed
@@ -456,6 +502,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`peers.address`](#body-peers-address) — the value does not fit the field → node dropped
 - [`field_requires`](../warnings.md#field_requires)
   - [`id`](#body-id) — set without `ip` → removed
+  - [`ip`](#body-ip) — set without `id` when `ip` is `quic` → removed
   - [`ib`](#body-ib) — set without `ip` → removed
 - [`port_invalid`](../warnings.md#port_invalid)
   - [`peers.port`](#body-peers-port) — the value does not fit the field → node dropped
@@ -538,6 +585,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `id` — conflicts with another field of the same node
 - `id` — invalid value
 - `inet4_bind_address` — invalid value
+- `ip` — conflicts with another field of the same node
 - `ip` — invalid value
 - `jc` — invalid value
 - `jmax` — invalid value
@@ -574,12 +622,15 @@ Every code that can be raised on a node of this scheme, including the ones comin
 **Left out when the running core is too old**
 
 - `content_padding_addition` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `content_padding_addition` — on a core that lacks it the whole node is dropped (`awg3_core_unsupported`)
 - `disable_cookies` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `disable_cookies` — on a core that lacks it the whole node is dropped (`awg3_core_unsupported`)
 - `h1` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - `h2` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - `h3` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - `h4` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - `header_protection_key` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `header_protection_key` — on a core that lacks it the whole node is dropped (`awg3_core_unsupported`)
 - `i1` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - `i2` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - `i3` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
@@ -592,11 +643,18 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `jmax` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - `jmin` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - `keepalive_timeout` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `keepalive_timeout` — on a core that lacks it the whole node is dropped (`awg3_core_unsupported`)
 - `max_handshake_attempts` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `max_handshake_attempts` — on a core that lacks it the whole node is dropped (`awg3_core_unsupported`)
+- `peers.persistent_keepalive_interval` as a range `N-M` — on a core that lacks it the whole node is dropped (`awg3_core_unsupported`)
 - `random_trailers` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `random_trailers` — on a core that lacks it the whole node is dropped (`awg3_core_unsupported`)
 - `reject_after_time` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `reject_after_time` — on a core that lacks it the whole node is dropped (`awg3_core_unsupported`)
 - `rekey_after_time` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `rekey_after_time` — on a core that lacks it the whole node is dropped (`awg3_core_unsupported`)
 - `rekey_timeout` — needs core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
+- `rekey_timeout` — on a core that lacks it the whole node is dropped (`awg3_core_unsupported`)
 - `s1` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - `s2` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
 - `s3` — needs core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`

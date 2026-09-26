@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"singbox-launcher/core/config/registry"
 )
@@ -53,11 +54,20 @@ func ParseURI(plan *Plan, text, bodyType string, trace *Trace) (*Result, error) 
 // профиля `vpn://`, имя контейнера, имя файла. Куда его поставить в
 // цепочке метки, решает секция своим `label.source`, а не вызывающий.
 func ParseURIHint(plan *Plan, text, bodyType, hint string, trace *Trace) (*Result, error) {
+	return ParseURIContext(plan, text, bodyType, hint, nil, trace)
+}
+
+// ParseURIContext — то же со ЗНАЧЕНИЕМ ОТ ВЫЗЫВАЮЩЕГО (источник
+// `context.<путь>`, контракт 1.1.63): распаковщик контейнера кладёт сюда то,
+// что лежит рядом с текстом, но не в нём (MTU и адреса DNS профиля Amnezia).
+// Что из этого поднять в узел, решают записи секции; nil — источника нет.
+func ParseURIContext(plan *Plan, text, bodyType, hint string, context interface{}, trace *Trace) (*Result, error) {
 	space, form, err := UnwrapURI(plan, text)
 	if err != nil {
 		return nil, err
 	}
 	space.Hint = hint
+	space.SetContext(context)
 	return Exec(plan, space, form, bodyType, trace)
 }
 
@@ -649,16 +659,37 @@ func decodeNamed(name, body string) (string, error) {
 }
 
 // decodeBase64Any пробует четыре варианта base64 (std/url × с padding и без).
+//
+// Невалидный UTF-8 в результате раскрытие НЕ роняет (контракт 1.1.74,
+// MAPPER_ENGINE §1): битые последовательности заменяются U+FFFD, и разбор
+// идёт дальше. Агрегаторы шлют cp1251 и мусор в метках узлов, и один битый
+// байт в имени не стоит узлу разбора целиком. Мусор вместо пейлоада
+// отсеивает не декодер, а форма: пейлоад, который ни одна форма секции не
+// прочитала (JSON не разобрался, предикат формы не сошёлся), даёт
+// form_unrecognized (PARSING_PRINCIPLES §4.1).
+//
+// Из вариантов, раскрывшихся без ошибки, берётся первый, давший корректный
+// UTF-8; если таких нет — первый раскрывшийся, с заменой.
 func decodeBase64Any(s string) (string, error) {
 	s = strings.TrimSpace(s)
 	encs := []*base64.Encoding{
 		base64.StdEncoding, base64.RawStdEncoding,
 		base64.URLEncoding, base64.RawURLEncoding,
 	}
+	var lenient []byte
+	decoded := false
 	for _, enc := range encs {
 		if b, err := enc.DecodeString(s); err == nil {
-			return string(b), nil
+			if utf8.Valid(b) {
+				return string(b), nil
+			}
+			if !decoded {
+				lenient, decoded = b, true
+			}
 		}
+	}
+	if decoded {
+		return strings.ToValidUTF8(string(lenient), "\uFFFD"), nil
 	}
 	return "", fmt.Errorf("не base64")
 }

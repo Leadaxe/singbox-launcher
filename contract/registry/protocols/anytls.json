@@ -15,7 +15,7 @@
       "meaning": "password",
       "desc_en": "Account password.",
       "desc_ru": "Пароль учётной записи.",
-      "impl": "Единственный кредентил — пароль в username-части, как у trojan. Dart схлопывает user:pass обратно в цельный пароль с ':'; Go берёт только Username() — пароль с ':' в Go теряет хвост (минорный разрыв)."
+      "impl": "Единственный кредентил — пароль в username-части, как у trojan. Dart схлопывает user:pass обратно в цельный пароль с ':'. Go прежде (удалённый рукописный парсер) брал только Username(), и пароль с ':' терял хвост; движок берёт ВЕСЬ userinfo (mappers.uri.params.password, source userinfo) — разрыв закрыт."
     },
     "query": {
       "sni": {
@@ -27,7 +27,7 @@
         "maps_to": "tls.server_name",
         "desc_en": "Server name sent in SNI.",
         "desc_ru": "Имя сервера, отправляемое в SNI.",
-        "impl": "server_name; peer — алиас в обоих. Эвристика мусора (без точки/двоеточия, эмодзи '🔒' → fallback на server) есть только у Go (node_parser_anytls.go:58); Dart через parseVlessTls фолбэчит только ПУСТОЙ sni (transport.dart:330-331), мусор уходит в server_name как есть — расхождение."
+        "impl": "server_name; peer — алиас в обоих. Эвристика мусора (без точки/двоеточия, эмодзи '🔒' → fallback на server) в Go — правило реестра mappers.uri.params.sni.on_invalid (прежде — рукописный парсер anytls); Dart через parseVlessTls фолбэчит только ПУСТОЙ sni (transport.dart:330-331), мусор уходит в server_name как есть — расхождение."
       },
       "fp": {
         "type": "alias_enum",
@@ -39,7 +39,7 @@
         "maps_to": "tls.utls.fingerprint",
         "desc_en": "Browser fingerprint mimicked in the ClientHello.",
         "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
-        "impl": "D-009: без fp= дефолт utls random (vless-конвенция). Сейчас дефолт есть только в Dart (transport.dart:333 через parseVlessTls); Go добавляет — §9.A3."
+        "impl": "D-009: без fp= дефолт utls random (vless-конвенция). В Dart — transport.dart:333 через parseVlessTls; в Go — правило реестра mappers.uri.params.fp (materialize_default, sets[\"\"] → random), §9.A3."
       },
       "alpn": {
         "type": "string",
@@ -66,7 +66,7 @@
         "maps_to": "tls.insecure",
         "desc_en": "Skip server certificate verification.",
         "desc_ru": "Не проверять сертификат сервера.",
-        "impl": "tls.insecure; 1/true/yes. skipCertVerify — только Go; allow_insecure читают ОБА (Go явно: tuicQueryFlagTrue(q, \"allow_insecure\"), node_parser_anytls.go:64-65; Dart — isTlsInsecure); целевой набор — объединение. ЦЕЛЕВОЙ НАБОР ИМЁН — объединение обоих проектов (DRIFT §2(a), общая запись — tls.json /tls/params/insecure): insecure, allowinsecure, allow_insecure, allow-insecure, skipcertverify, skip_cert_verify, skip-cert-verify, noverify; сверка по strings.ToLower со снятием '-'/'_'; истина 1|true|yes единообразно."
+        "impl": "tls.insecure; 1/true/yes. skipCertVerify — только Go; allow_insecure читают ОБА (Go — общая запись блока tls#uri, прежде tuicQueryFlagTrue удалённого парсера anytls; Dart — isTlsInsecure); целевой набор — объединение. ЦЕЛЕВОЙ НАБОР ИМЁН — объединение обоих проектов (DRIFT §2(a), общая запись — tls.json /tls/params/insecure): insecure, allowinsecure, allow_insecure, allow-insecure, skipcertverify, skip_cert_verify, skip-cert-verify, noverify; сверка по strings.ToLower со снятием '-'/'_'; истина 1|true|yes единообразно."
       },
       "security": {
         "type": "string",
@@ -75,7 +75,7 @@
         "maps_to": "tls.enabled",
         "desc_en": "Whether the link asks for TLS, and in which flavour.",
         "desc_ru": "Просит ли ссылка TLS и в каком виде.",
-        "impl": "Dart парсит TLS через vless-конвенцию: security=reality активирует REALITY; security=none игнорируется (AnyTLS всегда поверх TLS — ключ снимается перед парсом). Go security не читает."
+        "impl": "Dart парсит TLS через vless-конвенцию: security=reality активирует REALITY; security=none игнорируется (AnyTLS всегда поверх TLS — ключ снимается перед парсом). Go читает его записью mappers.uri.params.security и во всех ветках, включая none, оставляет tls.enabled; reality включает общий блок tls#uri_reality."
       },
       "pbk": {
         "type": "string",
@@ -84,7 +84,7 @@
         "maps_to": "tls.reality.public_key",
         "desc_en": "Server REALITY public key.",
         "desc_ru": "Публичный ключ REALITY сервера.",
-        "impl": "РАЗРЫВ (новое, вне §9): REALITY на anytls есть только в Dart (parseVlessTls: pbk/sid, валидация X25519 32 байта; toUriAnyTls пишет security=reality&pbk=&sid=). Go REALITY на anytls не поддерживает — узел с pbk теряет REALITY-блок на десктопе."
+        "impl": "REALITY на anytls: Dart — parseVlessTls (pbk/sid, валидация X25519 32 байта; toUriAnyTls пишет security=reality&pbk=&sid=). Go прежде REALITY на anytls не читал (узел с pbk терял REALITY-блок на десктопе); сейчас его ведёт общий блок tls#uri_reality из include маппера — корпус uri/anytls/reality_pbk_sid."
       },
       "sid": {
         "type": "string",
@@ -93,7 +93,7 @@
         "maps_to": "tls.reality.short_id",
         "desc_en": "REALITY short ID.",
         "desc_ru": "Короткий идентификатор REALITY.",
-        "impl": "REALITY short_id (hex, чётная длина, ≤16) — только Dart, в паре с pbk."
+        "impl": "REALITY short_id (hex, чётная длина, ≤16), в паре с pbk. Dart — parseVlessTls; Go — общий блок tls#uri_reality."
       },
       "idle_session_check_interval": {
         "type": "string",
@@ -139,14 +139,8 @@
     "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart toUriAnyTls → _buildUri → buildQuery sort, uri_utils.dart:306-312). insecure: Dart эмитит allowInsecure=1, Go — insecure=1. security/pbk/sid эмитит только Dart (REALITY-разрыв)."
   },
   "refs": {
-    "go": [
-      "core/config/subscription/node_parser_core.go:244-247",
-      "core/config/subscription/node_parser_anytls.go:21-91",
-      "core/config/subscription/shareuri_anytls.go:15-54",
-      "core/config/outbound_generator.go:299"
-    ],
     "dart": [
-      "lib/services/parser/uri_parsers/anytls_parser.dart:14-56",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/services/parser/transport.dart:314-345",
       "lib/models/node_spec_emit.dart:236-283",
       "lib/services/parser/json_parsers.dart:797"
@@ -182,6 +176,7 @@
       },
       "password": {
         "type": "string",
+        "role": "credential",
         "secret": true,
         "desc_en": "Account password.",
         "desc_ru": "Пароль учётной записи.",
@@ -264,7 +259,7 @@
           "password"
         ],
         "single_into": "password",
-        "impl": "Пароль = ВЕСЬ userinfo, без split: двоеточие — законная часть пароля (кейс корпуса percent_encoded_password нормирует 'p@ss:word'). Go берёт только Username() — расхождение зафиксировано реестром и сохранено как было. Одиночный userinfo — ПАРОЛЬ: у anytls в userinfo он один и есть (into из одного имени). Атрибут объявлен явно, хотя совпадает с into[0]: умолчания «первое имя into» быть не должно — договорённость TASKS_LXBOX §24.29 п. 3, её держит линтер."
+        "impl": "Пароль = ВЕСЬ userinfo, без split: двоеточие — законная часть пароля (кейс корпуса percent_encoded_password нормирует 'p@ss:word'). Прежний рукописный Go-парсер брал только Username() и терял хвост — движок это расхождение закрыл. Одиночный userinfo — ПАРОЛЬ: у anytls в userinfo он один и есть (into из одного имени). Атрибут объявлен явно, хотя совпадает с into[0]: умолчания «первое имя into» быть не должно — договорённость TASKS_LXBOX §24.29 п. 3, её держит линтер."
       },
       "label": {
         "source": "fragment",
@@ -301,7 +296,8 @@
         "sni": {
           "source": [
             "query.sni",
-            "query.peer"
+            "query.peer",
+            "query.servername"
           ],
           "maps_to": "tls.server_name",
           "default_from": "host",
@@ -313,7 +309,7 @@
               }
             }
           },
-          "impl": "ПЕРЕОПРЕДЕЛЯЕТ запись общего блока tls#uri, добавляя вторую половину правила sni_heuristic_falls_back_to_server (контракт 1.1.53, ревизия зеркала §3 п.18). Реестр ПРОТИВОРЕЧИЛ САМ СЕБЕ: правило в tls.json перечисляет anytls в applies_to, а секция схемы его не несла — общий блок даёт только цепочку источников и фолбэк на ПУСТОМ значении, а половину «имя без точки и двоеточия уступает адресу сервера» каждая схема объявляет сама (так у hysteria2). Прав LxBox. Имя без '.' и ':' именем хоста быть не может, а '🔒' — витринный значок подписки: и то и другое уступает адресу сервера. Записи трети схем (trojan, vless, tuic) эвристики НЕ несут намеренно — там она сдвинула бы тела и identity РАБОЧИХ узлов (QUIRKS Q133-08, SPEC §15.9); у anytls таких узлов нет: схема родная для sing-box и вся её корпусная база несёт нормальные имена. Кейс корпуса sni_label_falls_back_to_server."
+          "impl": "ПЕРЕОПРЕДЕЛЯЕТ запись общего блока tls#uri, добавляя вторую половину правила sni_heuristic_falls_back_to_server (контракт 1.1.53, ревизия зеркала §3 п.18). Реестр ПРОТИВОРЕЧИЛ САМ СЕБЕ: правило в tls.json перечисляет anytls в applies_to, а секция схемы его не несла — общий блок даёт только цепочку источников и фолбэк на ПУСТОМ значении, а половину «имя без точки и двоеточия уступает адресу сервера» каждая схема объявляет сама (так у hysteria2). Прав LxBox. Имя без '.' и ':' именем хоста быть не может, а '🔒' — витринный значок подписки: и то и другое уступает адресу сервера. Записи трети схем (trojan, vless, tuic) эвристики НЕ несут намеренно — там она сдвинула бы тела и identity РАБОЧИХ узлов (QUIRKS Q133-08, SPEC §15.9); у anytls таких узлов нет: схема родная для sing-box и вся её корпусная база несёт нормальные имена. Кейс корпуса sni_label_falls_back_to_server. КОНТРАКТ 1.1.80: цепочка источников дополнена третьим звеном `query.servername` — как у общего блока tls#uri (переопределение его теряло), и негодное значение уступает сперва СЛЕДУЮЩЕМУ звену цепочки с годным значением, а адресу сервера — только если такого звена нет (`sni=Germany&servername=real.host` → server_name = real.host). Движок: core/config/linkmap/exec.go:execState.applyNextValidSource. Кейс корпуса uri/anytls/sni_label_servername_host."
         },
         "password": {
           "source": "userinfo",
@@ -344,7 +340,7 @@
           "when": {
             "tls.enabled": true
           },
-          "impl": "D-009, та же конвенция, что у vless: ПУСТОЙ fp означает `random`, и это НЕ дефолт ядра (у него пустой = chrome), а договорённость обеих сторон — отсюда materialize_default, маппер обязан записать значение в тело (node_parser_transport.go:920-929 через utlsFingerprintOrDefault). У trojan/http дефолта нет, и общая запись блока tls#uri там остаётся как есть. Запись перекрывает одноимённую из include, потому что объявлена ПОЗЖЕ него."
+          "impl": "D-009, та же конвенция, что у vless: ПУСТОЙ fp означает `random`, и это НЕ дефолт ядра (у него пустой = chrome), а договорённость обеих сторон — отсюда materialize_default, маппер обязан записать значение в тело (ветка sets[\"\"] этой записи; прежде — utlsFingerprintOrDefault удалённого рукописного пути). У trojan/http дефолта нет, и общая запись блока tls#uri там остаётся как есть. Запись перекрывает одноимённую из include, потому что объявлена ПОЗЖЕ него."
         },
         "security": {
           "source": "query.security",
@@ -393,7 +389,7 @@
           "when": {
             "tls.reality.enabled": true
           },
-          "impl": "Дыра с ОБЕИХ сторон: параметр читает node_parser_anytls.go:66-68 и на нём стоит корпус (uri/anytls/reality_key_share_hybrid), но в черновике LxBox его нет, и в нашем описательном anytls.json тоже нет. SPEC 089, ядро lx.4."
+          "impl": "Дыра с ОБЕИХ сторон: параметр читал прежний рукописный парсер anytls (теперь — эта запись движка) и на нём стоит корпус (uri/anytls/reality_key_share_hybrid), но в черновике LxBox его нет, и в нашем описательном anytls.json тоже нет. SPEC 089, ядро lx.4."
         }
       },
       "include": [

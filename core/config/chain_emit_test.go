@@ -46,7 +46,7 @@ func resolveOne(t *testing.T, src ProxySource, poolTags []string, directionTags 
 		dirs[d] = true
 	}
 	bySource := map[int][]*ParsedNode{}
-	out, broken := ResolveChainSources(pc, pool, bySource, dirs)
+	out, broken, _ := ResolveChainSources(pc, pool, bySource, dirs)
 	if len(broken) > 0 {
 		return nil, broken[0].Reason
 	}
@@ -95,8 +95,8 @@ func TestChainNode_OptionsRoundtrip(t *testing.T) {
 	c.IdleTimeout = "10m"
 	c.StripEvasion = &no
 	c.Strip = map[string]bool{
-		configtypes.ChainStripTLSUTLS:     true,
-		configtypes.ChainStripTLSFragment: false,
+		configtypes.ChainStripTLSUTLS: true,
+		"tls.fragment":                false,
 	}
 	c.Rewrite = map[string]interface{}{"vless": map[string]interface{}{"flow": ""}}
 
@@ -112,7 +112,7 @@ func TestChainNode_OptionsRoundtrip(t *testing.T) {
 		t.Errorf("strip_evasion = %v, ожидали false", ob["strip_evasion"])
 	}
 	strip, ok := ob["strip"].(map[string]interface{})
-	if !ok || strip[configtypes.ChainStripTLSUTLS] != true || strip[configtypes.ChainStripTLSFragment] != false {
+	if !ok || strip[configtypes.ChainStripTLSUTLS] != true || strip["tls.fragment"] != false {
 		t.Errorf("strip = %v", ob["strip"])
 	}
 	if _, ok := ob["rewrite"].(map[string]interface{}); !ok {
@@ -224,7 +224,7 @@ func TestChainNode_NestedChainResolvesInOrder(t *testing.T) {
 	pool := []*ParsedNode{
 		{Tag: "hop-a", Scheme: "socks"}, {Tag: "hop-b", Scheme: "socks"}, {Tag: "hop-c", Scheme: "socks"},
 	}
-	out, broken := ResolveChainSources(pc, pool, map[int][]*ParsedNode{}, nil)
+	out, broken, _ := ResolveChainSources(pc, pool, map[int][]*ParsedNode{}, nil)
 	if len(broken) > 0 {
 		t.Fatalf("деградация: %+v", broken)
 	}
@@ -250,7 +250,7 @@ func TestChainNode_ForwardReferenceRejected(t *testing.T) {
 	pool := []*ParsedNode{
 		{Tag: "hop-a", Scheme: "socks"}, {Tag: "hop-b", Scheme: "socks"}, {Tag: "hop-c", Scheme: "socks"},
 	}
-	_, broken := ResolveChainSources(pc, pool, map[int][]*ParsedNode{}, nil)
+	_, broken, _ := ResolveChainSources(pc, pool, map[int][]*ParsedNode{}, nil)
 	if len(broken) != 1 || !strings.Contains(broken[0].Reason, "inner") {
 		t.Fatalf("ссылка вперёд принята: %+v", broken)
 	}

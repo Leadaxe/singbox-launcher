@@ -18,7 +18,7 @@
       "meaning": "uuid:password",
       "desc_en": "uuid:password of the account.",
       "desc_ru": "uuid:password учётной записи.",
-      "impl": "TUIC v5: uuid — username-часть, password — password-часть. Обязателен только uuid у Go: валидация userinfo проверяет лишь Username (node_parser_core.go:308-316), tuic://uuid@host проходит — buildTuicOutbound при пустом password пишет warning и нода живёт (node_parser_tuic.go:62-66). Dart строже: требует оба непустыми (tuic_parser.dart:14-18, null-skip) — расхождение строгости."
+      "impl": "TUIC v5: uuid — username-часть, password — password-часть. Обязателен только uuid у Go (required записи mappers.uri.params.uuid): tuic://uuid@host проходит — при пустом password запись ставит предупреждение password_empty (on_empty) и нода живёт (так же, но своим кодом, делал прежний рукописный buildTuicOutbound). Dart строже: требует оба непустыми (tuic_parser.dart:14-18, null-skip) — расхождение строгости."
     },
     "query": {
       "congestion_control": {
@@ -28,7 +28,7 @@
         "maps_to": "congestion_control",
         "desc_en": "QUIC congestion control algorithm.",
         "desc_ru": "Алгоритм контроля перегрузки QUIC.",
-        "impl": "РАЗРЫВ ДЕФОЛТА В ЭМИТЕ (новое, вне §9): Dart всегда пишет congestion_control (дефолт cubic) в outbound-JSON, Go — только при наличии в URI. Ломает identity-паритет tuic-нод и противоречит CANON «дефолты не пишутся». Невалидное значение: Go дропает ключ с warning, Dart заменяет на cubic — итог для ядра одинаков."
+        "impl": "РАЗРЫВ ДЕФОЛТА В ЭМИТЕ (новое, вне §9): Dart всегда пишет congestion_control (дефолт cubic) в outbound-JSON, Go — только при наличии в URI. Ломает identity-паритет tuic-нод и противоречит PARSING_PRINCIPLES «дефолты не пишутся». Невалидное значение: Go дропает ключ с warning, Dart заменяет на cubic — итог для ядра одинаков."
       },
       "udp_relay_mode": {
         "type": "enum",
@@ -49,7 +49,7 @@
         "maps_to": "zero_rtt_handshake",
         "desc_en": "Use a 0-RTT handshake.",
         "desc_ru": "Использовать рукопожатие 0-RTT.",
-        "impl": "→ zero_rtt_handshake:true. Алиасы разъехались: Go принимает zero_rtt_handshake+reduce_rtt (node_parser_tuic.go:87-89), Dart — reduce_rtt+zero_rtt (tuic_parser.dart:28-29). Пересечение — reduce_rtt; целевое — все три в обоих."
+        "impl": "→ zero_rtt_handshake:true. Алиасы разъехались: прежний рукописный Go-путь принимал zero_rtt_handshake+reduce_rtt, Dart — reduce_rtt+zero_rtt (tuic_parser.dart:28-29). Пересечение — reduce_rtt; целевое — все три в обоих; Go читает все три (mappers.uri.params.reduce_rtt)."
       },
       "heartbeat": {
         "type": "string",
@@ -66,7 +66,7 @@
         "maps_to": "tls.server_name",
         "desc_en": "Server name sent in SNI.",
         "desc_ru": "Имя сервера, отправляемое в SNI.",
-        "impl": "server_name; пустой/мусорный (Go: эвристика точки/двоеточия) → fallback на server."
+        "impl": "server_name; пустой → fallback на server. Эвристики мусора (точка/двоеточие) у Go нет — см. mappers.uri.params.sni.impl."
       },
       "disable_sni": {
         "type": "bool",
@@ -75,7 +75,7 @@
         "maps_to": "tls.disable_sni",
         "desc_en": "Do not send the SNI extension.",
         "desc_ru": "Не отправлять расширение SNI.",
-        "impl": "1 → server_name не эмитится. Только Dart."
+        "impl": "1 → server_name не эмитится. Прежде только Dart; в Go — запись mappers.uri.params.disable_sni (G2 / DELTAS D133-3)."
       },
       "alpn": {
         "type": "string",
@@ -140,18 +140,12 @@
       "kind": "spelling",
       "desc_en": "A bare number in the link means seconds; the core field is a duration string.",
       "desc_ru": "Голое число в ссылке означает секунды; поле ядра — duration-строка.",
-      "impl": "core/config/subscription/node_parser_tuic.go:10 normalizeTuicHeartbeat."
+      "impl": "Правило реестра: normalize duration_bare_seconds у body.fields.heartbeat (исполняет core/config/nodeflow/coerce.go:normalize) — на всех входах, а не только на ссылке; прежде — рукописный normalizeTuicHeartbeat удалённого парсера tuic."
     }
   ],
   "refs": {
-    "go": [
-      "core/config/subscription/node_parser_core.go:240-242",
-      "core/config/subscription/node_parser_tuic.go:14-146",
-      "core/config/subscription/shareuri_tuic.go:14-57",
-      "core/config/outbound_generator.go:255"
-    ],
     "dart": [
-      "lib/services/parser/uri_parsers/tuic_parser.dart:10-63",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/models/node_spec_emit.dart:432-459",
       "lib/services/parser/json_parsers.dart:797"
     ]
@@ -196,6 +190,7 @@
       },
       "uuid": {
         "type": "string",
+        "role": "credential",
         "format": "uuid",
         "on_invalid": {
           "action": "drop",

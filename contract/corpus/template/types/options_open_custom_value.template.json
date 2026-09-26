@@ -1,0 +1,5 @@
+{
+  "_comment": "§2.1 (SPEC 143, D-125): options_open разрешает значение вне списка, оно проходит приведение по type (int: trim, парс, clamp)",
+  "vars": [{"name": "mtu_num", "type": "int", "default_value": "1492", "options": ["1280", "1400", "1492"], "options_open": true}],
+  "config": {"mtu": "@mtu_num"}
+}

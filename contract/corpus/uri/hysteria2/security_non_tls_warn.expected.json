@@ -1,0 +1,26 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "secret",
+        "server": "example.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example.com"
+        },
+        "type": "hysteria2"
+      },
+      "kind": "outbound",
+      "label": "hy2-security-none",
+      "scheme": "hysteria2",
+      "warnings": [
+        {
+          "code": "uri_param_unknown",
+          "path": "security"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

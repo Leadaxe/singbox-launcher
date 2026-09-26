@@ -62,7 +62,7 @@ func TestSaveButtonGate(t *testing.T) {
 // перехода не получают — переходить к удалённому источнику некуда.
 func TestFinalReportLinesOrderAndSourceLinks(t *testing.T) {
 	entries := []config.BuildReportEntry{
-		{Kind: config.BuildReportNaiveDegraded, Subject: "naive", Reason: "ядро без with_naive_outbound", NodeCount: 3},
+		{Kind: config.BuildReportCoreUnsupported, Subject: "naive", Reason: "ядро без with_naive_outbound", NodeCount: 3, Code: "naive_unavailable"},
 		{Kind: config.BuildReportNodesDropped, Subject: "Big Sub", SourceID: "01BIG", SourceLabel: "Big Sub", Reason: "цель detour исчезла", NodeCount: 500},
 		{Kind: config.BuildReportSourceExcluded, Subject: "Proton NL", SourceID: "01SUB", SourceLabel: "Proton NL", Reason: "хоп не найден"},
 		{Kind: config.BuildReportChainFailed, Subject: "двойной прыжок", Reason: "позиция не найдена"},

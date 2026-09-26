@@ -1,0 +1,2 @@
+# sing-box JSON: xhttp uplink_data_placement=header при ЯВНОМ mode=stream-one -> placement снят (requires equals packet-up), режим не тронут, код xhttp_param_reset; без правила ядро роняло весь конфиг (LxBox §546, контракт 1.1.56).
+{"type": "vless", "tag": "sb-xhttp-header-streamone", "server": "example-6.com", "server_port": 443, "uuid": "11111111-1111-1111-1111-111111111111", "tls": {"enabled": true, "server_name": "example-6.com"}, "transport": {"type": "xhttp", "path": "/x", "mode": "stream-one", "uplink_data_placement": "header"}}

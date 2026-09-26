@@ -11,20 +11,6 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
-// isIntCastVar: legacy-список вар, которые кастуются в число ПО ИМЕНИ.
-//
-// Канон (TEMPLATE_LANG §2.2, разрыв C5) — каст по объявленному `type: "int"`,
-// а не по имени: иначе новая числовая переменная с любым другим именем уезжает
-// в конфиг строкой, и ядро отвергает весь конфиг на decode. Список остаётся
-// временным fallback для шаблонов, где у этих вар тип не проставлен.
-func isIntCastVar(name string) bool {
-	switch name {
-	case "tun_mtu", "mixed_listen_port", "proxy_in_listen_port", "urltest_tolerance":
-		return true
-	}
-	return false
-}
-
 // intCastBounds — backstop диапазона для int-подстановки (TEMPLATE_LANG §2.2).
 // Порт/tolerance/MTU вне uint16 роняют ядро на decode, поэтому значение
 // клампится, а не уезжает как есть.
@@ -33,14 +19,49 @@ const (
 	intCastMax = 65535
 )
 
-// wantsIntCast: переменная подставляется числом, если так объявлен её тип
-// (канон) либо если её имя в legacy-списке (fallback для непроставленных типов).
-func wantsIntCast(name, declaredType string) bool {
+// IsIntVarType: переменная подставляется числом только по объявленному типу
+// (TEMPLATE_LANG §2.2, C5 закрыт, SPEC 143 Т14). Списков имён нет: новая
+// числовая переменная обязана объявить `type: "int"`.
+func IsIntVarType(declaredType string) bool {
 	switch strings.ToLower(strings.TrimSpace(declaredType)) {
 	case "int", "number": // "number" — алиас чтения (TEMPLATE_LANG §2.2)
 		return true
 	}
-	return isIntCastVar(name)
+	return false
+}
+
+// IntCastOutcome — исход приведения строки к числу по §2.2.
+type IntCastOutcome int
+
+const (
+	// IntCastOK — число в диапазоне (или пустое значение → 0).
+	IntCastOK IntCastOutcome = iota
+	// IntCastClamped — число вне [0, 65535], приведено к границе.
+	IntCastClamped
+	// IntCastInvalid — не число; значение уезжает строкой как есть.
+	IntCastInvalid
+)
+
+// CastIntValue — единое приведение int-переменной (TEMPLATE_LANG §2.2):
+// TrimSpace, пусто → 0, число клампится в [0, 65535], не-число остаётся
+// строкой (опечатка видна, а не маскируется нулём). Им пользуются и канон
+// (intCastCanon), и подстановка в parser_config (core/config/varsubst.go).
+func CastIntValue(raw string) (interface{}, IntCastOutcome) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return 0, IntCastOK
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return s, IntCastInvalid
+	}
+	if n < intCastMin {
+		return intCastMin, IntCastClamped
+	}
+	if n > intCastMax {
+		return intCastMax, IntCastClamped
+	}
+	return n, IntCastOK
 }
 
 // runtimeGlobalPrefix — пространство имён runtime-globals в #if predicates (SPEC 067).
@@ -73,22 +94,6 @@ func isKnownRuntimeGlobal(name string) bool {
 	return ok
 }
 
-// SubstituteVarsInJSON заменяет литералы "@name" в дереве JSON на разрешённые значения.
-// TargetSpec питает runtime-globals (@runtime.platform / @runtime.arch /
-// @runtime.target) в predicates #if construct'а (см. SPEC 067, SPEC 097).
-func SubstituteVarsInJSON(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) ([]byte, error) {
-	out, _, err := substituteVarsInJSONInternal(data, vars, resolved, target, false)
-	return out, err
-}
-
-// SubstituteVarsInJSONStrict — то же что SubstituteVarsInJSON, но возвращает
-// ошибку (UnresolvedVarError) если в дереве встречена ссылка на @var, отсутствующий
-// в `resolved`. Используется preset-substitute path'ом (см. SPEC 067 Phase 8),
-// где unresolved @var означает «пропустить preset целиком», а не подставить пустую строку.
-func SubstituteVarsInJSONStrict(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) ([]byte, []string, error) {
-	return substituteVarsInJSONInternal(data, vars, resolved, target, true)
-}
-
 // SubstituteVarsInJSONCanon — подстановка по канону TEMPLATE_LANG §5 (D-011,
 // разрыв C4). Отличается от обоих прежних режимов тем, что РАЗЛИЧАЕТ два
 // случая, которые они путали:
@@ -99,9 +104,33 @@ func SubstituteVarsInJSONStrict(data []byte, vars []TemplateVar, resolved map[st
 //   - имя объявлено, но значения нет (optional-var) — Dropped-каскад §5.1:
 //     ключ удаляется из объекта, элемент — из массива, сборка продолжается.
 //
-// Возвращает дерево, список кодов warning'ов и ошибку только на невалидном
-// JSON. Ни один unresolved не роняет сборку — деградация пофрагментная.
+// Возвращает дерево, отсортированный список кодов warning'ов без дублей и
+// ошибку только на невалидном JSON. Ни один unresolved не роняет сборку —
+// деградация пофрагментная. Параметры warning'ов — у
+// SubstituteVarsInJSONCanonWarnings.
 func SubstituteVarsInJSONCanon(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) ([]byte, []string, error) {
+	out, warnings, err := SubstituteVarsInJSONCanonWarnings(data, vars, resolved, target)
+	if err != nil {
+		return nil, nil, err
+	}
+	seen := make(map[string]bool, len(warnings))
+	codes := make([]string, 0, len(warnings))
+	for _, w := range warnings {
+		if seen[w.Code] {
+			continue
+		}
+		seen[w.Code] = true
+		codes = append(codes, w.Code)
+	}
+	sort.Strings(codes)
+	return out, codes, nil
+}
+
+// SubstituteVarsInJSONCanonWarnings — та же подстановка по канону, но warning'и
+// отдаются с параметрами по реестру (template_var_undeclared {name},
+// template_unknown_directive {key}, template_int_* {name, value}), без дублей
+// по паре (код, параметры). Порядок не нормирован: обход объекта идёт по map.
+func SubstituteVarsInJSONCanonWarnings(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) (json.RawMessage, []TemplateWarning, error) {
 	varTypes := make(map[string]string, len(vars))
 	declared := make(map[string]bool, len(vars))
 	for _, v := range vars {
@@ -131,66 +160,10 @@ func SubstituteVarsInJSONCanon(data []byte, vars []TemplateVar, resolved map[str
 	return out, ctx.warnings, err
 }
 
-// UnresolvedVarError возвращается SubstituteVarsInJSONStrict если в дереве
-// встречены неразрешённые @var ссылки.
-type UnresolvedVarError struct {
-	Names []string
-}
-
-func (e *UnresolvedVarError) Error() string {
-	return "unresolved @var(s): " + strings.Join(e.Names, ", ")
-}
-
-func substituteVarsInJSONInternal(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec, strict bool) ([]byte, []string, error) {
-	varTypes := make(map[string]string, len(vars))
-	for _, v := range vars {
-		if v.Separator {
-			continue
-		}
-		varTypes[v.Name] = v.Type
-	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.UseNumber()
-	var root interface{}
-	if err := dec.Decode(&root); err != nil {
-		return nil, nil, err
-	}
-	var unresolved []string
-	var unresolvedSink *[]string
-	if strict {
-		unresolvedSink = &unresolved
-	}
-	substituteWalkCtx(&root, varTypes, resolved, target, unresolvedSink)
-	// Вырожденный случай: #enable:false на корне дерева. Отдаём пустой объект,
-	// а не sentinel — он не сериализуем и не должен утечь в JSON.
-	if _, isDropped := root.(droppedValue); isDropped {
-		root = map[string]interface{}{}
-	}
-	if strict && len(unresolved) > 0 {
-		return nil, unresolved, &UnresolvedVarError{Names: unresolved}
-	}
-	out, err := json.Marshal(root)
-	return out, unresolved, err
-}
-
 // enableKey — ключ гейта существования узла (SPEC 107, D-065/D-066).
 // В отличие от #if суффиксы НЕ допускаются: один гейт на узел, композиция —
 // через and/or внутри условия.
 const enableKey = "#enable"
-
-// nodeEnabled вычисляет гейт #enable узла. Возвращает (гейт пройден,
-// ключ присутствовал). Отсутствие ключа → (true, false).
-//
-// Fail-closed (D-058): неразобранное/невалидное условие → false, узел
-// выпадает. Молчаливое true на опечатке втащило бы в конфиг узел, которого
-// автор не просил.
-func nodeEnabled(m map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec) (bool, bool) {
-	raw, has := m[enableKey]
-	if !has {
-		return true, false
-	}
-	return evaluateCond(raw, varTypes, resolved, target), true
-}
 
 // condKey читает ключевое слово движка в КАНОНИЧЕСКОЙ помеченной форме
 // ("#and", "#or", "#value", "#else") либо в легаси-форме без "#" (SPEC 107).
@@ -234,286 +207,13 @@ func ifKeysSorted(m map[string]interface{}) []string {
 	return keys
 }
 
-// substituteWalkCtx — internal walker с опциональным sink'ом для unresolved @var
-// (используется SubstituteVarsInJSONStrict, SPEC 067 Phase 8). nil sink ==
-// legacy lenient behavior (empty string + warn log).
-func substituteWalkCtx(v *interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec, unresolvedSink *[]string) {
-	switch x := (*v).(type) {
-	case map[string]interface{}:
-		// SPEC 107: #enable вычисляется ПЕРВЫМ, до #if и до обхода детей.
-		// При false узел исчезает целиком, и внутри него ничего не
-		// вычисляется — ни подстановок, ни warning'ов из вложенных веток.
-		// Обрабатывать обязательно ДО ветки «unknown control-construct», иначе
-		// ключ был бы выброшен, а узел остался бы в конфиге всегда.
-		if ok, has := nodeEnabled(x, varTypes, resolved, target); has {
-			delete(x, enableKey)
-			if !ok {
-				*v = droppedValue{}
-				return
-			}
-		}
-		// Pre-pass: control-constructs (keys starting with "#").
-		// Collect first to avoid mutating during iteration.
-		var ctrlKeys []string
-		for k := range x {
-			if strings.HasPrefix(k, "#") {
-				ctrlKeys = append(ctrlKeys, k)
-			}
-		}
-		sort.Strings(ctrlKeys) // детерминированный порядок нескольких #if…
-		for _, k := range ctrlKeys {
-			raw := x[k]
-			switch {
-			case isIfKey(k):
-				handleIfMapSpreadCtx(x, k, raw, varTypes, resolved, target, unresolvedSink)
-				// handleIfMapSpreadCtx удаляет сам ключ.
-			default:
-				debuglog.WarnLog("substitute: unknown control-construct %q — dropping", k)
-				delete(x, k)
-			}
-		}
-		// Normal field walk.
-		for k, val := range x {
-			substituteWalkCtx(&val, varTypes, resolved, target, unresolvedSink)
-			if _, dropped := val.(droppedValue); dropped {
-				// Значение-узел выпал по #enable → ключ исчезает (§6).
-				delete(x, k)
-				continue
-			}
-			x[k] = val
-		}
-	case []interface{}:
-		// Pre-pass for #if array-element wrappers. We need to filter/replace
-		// elements before falling into the legacy single-element collapse.
-		//
-		// SPEC 107: сюда же попадает элемент-объект с #enable — он может
-		// выпасть из массива, а значит массив нельзя обходить «на месте».
-		hasIfWrapper := false
-		for _, elem := range x {
-			m, ok := elem.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if _, hasEnable := m[enableKey]; hasEnable {
-				hasIfWrapper = true
-				break
-			}
-			if len(m) == 1 && len(ifKeysSorted(m)) == 1 {
-				hasIfWrapper = true
-				break
-			}
-		}
-		if hasIfWrapper {
-			out := make([]interface{}, 0, len(x))
-			for _, elem := range x {
-				if m, ok := elem.(map[string]interface{}); ok && len(m) == 1 {
-					if ks := ifKeysSorted(m); len(ks) == 1 {
-						if body, ok := m[ks[0]].(map[string]interface{}); ok {
-							branch, take := handleIfArrayElementCtx(body, varTypes, resolved, target, unresolvedSink)
-							if take {
-								// Ветка, развернувшаяся в СПИСОК, сплайсится —
-								// ровно как голый "@text_list_var" ниже. Иначе
-								// `{"#if": {"#value": "@tun_address6"}}` внутри
-								// "address" даёт [[a,b]] вместо [a,b], и ядро
-								// отвергает конфиг. Раньше splice работал только
-								// у голого элемента, и text_list за #if-обёрткой
-								// был невыразим: шаблон был обязан объявлять такую
-								// переменную как text.
-								if list, ok := branch.([]interface{}); ok {
-									out = append(out, list...)
-								} else {
-									out = append(out, branch)
-								}
-							}
-							continue
-						}
-					}
-				}
-				// SPEC 103 / issue #97 фикс: bare "@text_list_var" элемент рядом с
-				// #if-wrapper'ом (пример §4.4 TEMPLATE_LANG.md: "address":
-				// ["@tun_address", {"#if": ...}]) обязан СПЛАЙСИТЬСЯ так же, как в
-				// legacy single-element коллапсе ниже — иначе text_list-скаляр
-				// подставляется как один элемент массива, [[a,b]] вместо [a,b].
-				// Без этой ветки multi-element массив просто не попадал в
-				// single-element collapse и терял splice-семантику целиком.
-				if s, ok := elem.(string); ok && strings.HasPrefix(s, "@") {
-					name := s[1:]
-					if name != "" && !strings.Contains(name, "@") && varTypes[name] == "text_list" {
-						replaced := replacementForPlaceholderCtx(name, varTypes, resolved, unresolvedSink)
-						if list, ok := replaced.([]interface{}); ok {
-							out = append(out, list...)
-							continue
-						}
-					}
-				}
-				substituteWalkCtx(&elem, varTypes, resolved, target, unresolvedSink)
-				if _, dropped := elem.(droppedValue); dropped {
-					continue // элемент выпал по #enable — массив укорачивается
-				}
-				out = append(out, elem)
-			}
-			*v = out
-			return
-		}
-		// Legacy single-element ["@text_list_var"] collapse.
-		if len(x) == 1 {
-			if s, ok := x[0].(string); ok && strings.HasPrefix(s, "@") {
-				name := s[1:]
-				if name != "" && !strings.Contains(name, "@") {
-					// replacementForPlaceholderCtx never returns nil: unresolved
-					// vars resolve to "" (with a warning) by contract.
-					*v = replacementForPlaceholderCtx(name, varTypes, resolved, unresolvedSink)
-					return
-				}
-			}
-		}
-		// Обход «на месте» — сюда доходят только массивы без #if-обёрток и без
-		// #enable у элементов (иначе сработала бы фильтрующая ветка выше).
-		// Defensive: если Dropped всё же возник (вложенный #enable глубже),
-		// элемент убирается — sentinel не должен попасть в JSON.
-		filtered := make([]interface{}, 0, len(x))
-		for i := range x {
-			// Splice text_list и здесь: голый "@text_list_var" в
-			// мульти-элементном массиве БЕЗ #if-соседей раньше подставлялся
-			// одним элементом — [[a,b],"literal"] — и ядро отвергало конфиг.
-			// Семантика splice не должна зависеть от того, есть ли рядом
-			// #if-обёртка (канонический обходчик сплайсит безусловно).
-			if s, ok := x[i].(string); ok && strings.HasPrefix(s, "@") {
-				name := s[1:]
-				if name != "" && !strings.Contains(name, "@") && varTypes[name] == "text_list" {
-					replaced := replacementForPlaceholderCtx(name, varTypes, resolved, unresolvedSink)
-					if list, ok := replaced.([]interface{}); ok {
-						filtered = append(filtered, list...)
-						continue
-					}
-				}
-			}
-			substituteWalkCtx(&x[i], varTypes, resolved, target, unresolvedSink)
-			if _, dropped := x[i].(droppedValue); dropped {
-				continue
-			}
-			filtered = append(filtered, x[i])
-		}
-		*v = filtered
-	case string:
-		if strings.HasPrefix(x, "@") {
-			name := x[1:]
-			if name != "" && !strings.Contains(name, "@") {
-				*v = replacementForPlaceholderCtx(name, varTypes, resolved, unresolvedSink)
-			}
-		}
-	}
-}
-
-func replacementForPlaceholder(name string, varTypes map[string]string, resolved map[string]ResolvedVar) interface{} {
-	return replacementForPlaceholderCtx(name, varTypes, resolved, nil)
-}
-
-func replacementForPlaceholderCtx(name string, varTypes map[string]string, resolved map[string]ResolvedVar, unresolvedSink *[]string) interface{} {
-	r, ok := resolved[name]
-	if !ok {
-		if unresolvedSink != nil {
-			*unresolvedSink = append(*unresolvedSink, name)
-		}
-		debuglog.WarnLog("substitute: unresolved @%s", name)
-		return ""
-	}
-	typ := varTypes[name]
-	if typ == "text_list" {
-		if len(r.List) == 0 {
-			debuglog.WarnLog("substitute: empty text_list @%s", name)
-			return []interface{}{}
-		}
-		out := make([]interface{}, len(r.List))
-		for i, s := range r.List {
-			out[i] = s
-		}
-		return out
-	}
-	s := strings.TrimSpace(r.Scalar)
-	if typ == "bool" {
-		if s == "" {
-			return false
-		}
-		return strings.EqualFold(s, "true")
-	}
-	intCast := wantsIntCast(name, typ)
-	if s == "" {
-		debuglog.WarnLog("substitute: empty scalar @%s", name)
-		if intCast {
-			return 0
-		}
-		return ""
-	}
-	if intCast {
-		n, err := strconv.Atoi(s)
-		if err != nil {
-			// Канон §2.2: не-число уезжает СТРОКОЙ как есть — опечатка видна
-			// в конфиге и ловится валидатором ядра, вместо того чтобы молча
-			// маскироваться нулём (нуль — валидный порт/MTU, отладить нечего).
-			debuglog.WarnLog("substitute: invalid int @%s: %v", name, err)
-			return s
-		}
-		if n < intCastMin {
-			debuglog.WarnLog("substitute: int @%s=%d clamped to %d", name, n, intCastMin)
-			return intCastMin
-		}
-		if n > intCastMax {
-			debuglog.WarnLog("substitute: int @%s=%d clamped to %d", name, n, intCastMax)
-			return intCastMax
-		}
-		return n
-	}
-	return s
-}
-
-// ---------------------------------------------------------------------------
-// #if construct (SPEC 067)
-// ---------------------------------------------------------------------------
-
-// handleIfMapSpreadCtx evaluates the #if construct in map-spread mode and merges
-// the selected branch's fields into parent. Always deletes the "#if" key.
-func handleIfMapSpreadCtx(parent map[string]interface{}, key string, rawBody interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec, unresolvedSink *[]string) {
-	defer delete(parent, key)
-	body, ok := rawBody.(map[string]interface{})
-	if !ok {
-		debuglog.WarnLog("substitute: %s body is not an object — skipping", key)
-		return
-	}
-	branch, take := selectIfBranch(body, varTypes, resolved, target)
-	if !take {
-		return
-	}
-	// Substitute placeholders inside selected branch first.
-	substituteWalkCtx(&branch, varTypes, resolved, target, unresolvedSink)
-	branchMap, ok := branch.(map[string]interface{})
-	if !ok {
-		debuglog.WarnLog("substitute: #if branch in map-spread context is not an object — skipping merge")
-		return
-	}
-	for k, v := range branchMap {
-		parent[k] = v
-	}
-}
-
-// handleIfArrayElementCtx evaluates the #if construct in array-element mode.
-// take=false means drop element from array; take=true means include branch
-// (substituted) at this index.
-func handleIfArrayElementCtx(body map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec, unresolvedSink *[]string) (interface{}, bool) {
-	branch, take := selectIfBranch(body, varTypes, resolved, target)
-	if !take {
-		return nil, false
-	}
-	substituteWalkCtx(&branch, varTypes, resolved, target, unresolvedSink)
-	return branch, true
-}
-
 // EvalIfScalar вычисляет одиночную конструкцию `{"#if": {...}}` до строкового
 // скаляра ВНЕ дерева конфига (паритет с mobile evalIfScalar, if_engine.dart:
 // 224-229; SPEC 103, §4.5/§4.6 TEMPLATE_LANG.md). Используется исключительно
 // механизмом on_change.set (on_change.go) — переиспользует тот же движок
-// предикатов (selectIfBranch/evaluateIfCondition/evaluatePredicate), что и
-// substituteWalkCtx, чтобы не заводить второй парсер языка #if.
+// предикатов и тот же канонический обходчик (selectIfBranchCanon,
+// substituteWalkCanon), что и главный конфиг, чтобы не заводить второй парсер
+// языка #if.
 //
 // resolved строится из vars+stateVars через ResolveTemplateVarsFor: on_change
 // вызывается ПОСЛЕ того, как изменённая var уже записана в stateVars новым
@@ -547,24 +247,48 @@ func EvalIfScalar(node json.RawMessage, vars []TemplateVar, stateVars map[string
 	}
 
 	varTypes := make(map[string]string, len(vars))
+	declared := make(map[string]bool, len(vars))
 	for _, v := range vars {
 		if !v.Separator {
 			varTypes[v.Name] = v.Type
+			declared[v.Name] = true
 		}
 	}
 	resolved := ResolveTemplateVarsFor(vars, stateVars, nil, target)
 
-	branch, take := selectIfBranch(body, varTypes, resolved, target)
+	// Канонический обходчик (SPEC 143): та же грамматика #if и та же политика
+	// unresolved, что у главного конфига. Предупреждения здесь — только в лог:
+	// on_change срабатывает в UI при правке переменной, сборки и её отчёта в
+	// этот момент нет.
+	ctx := &canonCtx{varTypes: varTypes, declared: declared, resolved: resolved, target: target}
+	defer func() {
+		SortTemplateWarnings(ctx.warnings)
+		for _, w := range ctx.warnings {
+			debuglog.WarnLog("EvalIfScalar: %s %v", w.Code, w.Params)
+		}
+	}()
+	branch, take := selectIfBranchCanon(ifKeys[0], body, ctx)
 	if !take {
 		return "", false
 	}
 	// Ветка может сама содержать @var-плейсхолдеры (как в конфиг-дереве) —
 	// подставляем их тем же ходом, что и обычный #if в дереве конфига.
-	substituteWalkCtx(&branch, varTypes, resolved, target, nil)
+	substituteWalkCanon(&branch, ctx)
+	if _, dropped := branch.(droppedValue); dropped {
+		// Dropped (§5.1): значения нет — цель не трогаем, как у невыбранной ветки.
+		return "", false
+	}
 	s, ok := branch.(string)
 	if !ok {
 		debuglog.WarnLog("EvalIfScalar: the chosen branch is not a string scalar (%T)", branch)
 		return "", false
+	}
+	// Необъявленное имя в ветке канон оставляет плейсхолдером (§5.2) — в
+	// состояние переменной такой литерал не пишется, цель не трогаем.
+	for _, w := range ctx.warnings {
+		if w.Code == warnVarUndeclared {
+			return "", false
+		}
 	}
 	return s, true
 }
@@ -874,8 +598,14 @@ func checkMatches(scalar string, patternRaw interface{}, varTypes map[string]str
 
 // substituteSimpleString is used for controlled @var substitution inside
 // predicate args (literal equality, #matches pattern, individual #in elements).
-// If s == "@varname", resolves via replacementForPlaceholder and converts to
-// string. Otherwise returns s as-is.
+// If s == "@varname", resolves the value to its string form. Otherwise returns
+// s as-is.
+//
+// Правила приведения — те же, что у подстановки в дерево (bool → "true"/
+// "false", int — clamp по §2.2), но результат всегда строка: предикат
+// сравнивает строки. Имя без значения сравнивается с "" — предикат по нему
+// ложен, а не роняет вычисление; список (text_list) аргументом-скаляром не
+// бывает, и ссылка остаётся как есть.
 func substituteSimpleString(s string, varTypes map[string]string, resolved map[string]ResolvedVar) string {
 	if !strings.HasPrefix(s, "@") {
 		return s
@@ -884,19 +614,27 @@ func substituteSimpleString(s string, varTypes map[string]string, resolved map[s
 	if name == "" || strings.Contains(name, "@") {
 		return s
 	}
-	// replacementForPlaceholder never returns nil: unresolved vars resolve to
-	// "" (with a warning) by contract, so predicates compare against "".
-	rep := replacementForPlaceholder(name, varTypes, resolved)
-	switch v := rep.(type) {
-	case string:
-		return v
-	case bool:
-		if v {
+	r, ok := resolved[name]
+	if !ok {
+		return ""
+	}
+	typ := varTypes[name]
+	if typ == "text_list" {
+		return s
+	}
+	v := strings.TrimSpace(r.Scalar)
+	if typ == "bool" {
+		if v != "" && strings.EqualFold(v, "true") {
 			return "true"
 		}
 		return "false"
-	case int:
-		return strconv.Itoa(v)
 	}
-	return s
+	if !IsIntVarType(typ) {
+		return v
+	}
+	out, _ := CastIntValue(v)
+	if n, ok := out.(int); ok {
+		return strconv.Itoa(n)
+	}
+	return v
 }

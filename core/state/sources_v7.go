@@ -247,7 +247,7 @@ type Node struct {
 	// формулировки одной причины.
 	Reason string `json:"reason,omitempty"`
 	// Warnings — коды деградаций, применённых к узлу конвейером разбора
-	// (SPEC 131, контракт 1.1.0, CANON §6): что именно у узла сняли или
+	// (SPEC 131, контракт 1.1.0, PARSING_PRINCIPLES §6): что именно у узла сняли или
 	// привели, с путём поля в теле. Рисуются как ⚠ на строке узла и
 	// расшифровываются по contract/registry/warnings.json.
 	//
@@ -279,7 +279,7 @@ type Node struct {
 	Sections *NodeSections `json:"sections,omitempty"`
 }
 
-// NodeWarning — запись деградации узла в состоянии (CANON §6, контракт
+// NodeWarning — запись деградации узла в состоянии (PARSING_PRINCIPLES §6, контракт
 // 1.1.0): код из contract/registry/warnings.json, путь поля в теле sing-box
 // (`tls.reality.short_id`), исходное значение до деградации (≤64 символов; у
 // secret-полей реестра — "***") и подстановки шаблона текста кода.
@@ -314,14 +314,40 @@ func NewUnsupportedNode(tag, reason, originKind, originRaw string) Node {
 	}
 }
 
-// FolderReplace — свёртка папки: объект, не узел.
+// FolderReplace — свёртка папки или подписки: объект, не узел.
+//
+// Форма ОДНА в состоянии, в файле бэкапа 1.0 и у LxBox (контракт 1.1.78,
+// BACKUP.md §2 «`replace` — свёртка источника»): `{mode, tag, auto?}`.
+// Отсутствие объекта = источник не свёрнут.
 type FolderReplace struct {
 	// Mode: "manual" | "auto" | "both"; both → селектор + двойник "<tag>-auto".
 	Mode string `json:"mode"`
 	// Tag — явный тег замены (материализуется миграцией/пользователем).
 	Tag string `json:"tag"`
-	// Strategy — nil при manual.
-	Strategy *AutoStrategy `json:"strategy,omitempty"`
+	// Strategy — параметры авто-половины (форма direction.schema.json#/$defs/auto);
+	// nil при manual. JSON-ключ `auto`; до контракта 1.1.78 состояние писало
+	// его под именем `strategy` — такой ключ читается (UnmarshalJSON).
+	Strategy *AutoStrategy `json:"auto,omitempty"`
+}
+
+// UnmarshalJSON читает свёртку, терпя прежнее имя ключа авто-половины:
+// `strategy` (state.json до контракта 1.1.78). При обоих ключах главнее
+// `auto` — его пишет текущий писатель. Save пишет только `auto`, так что
+// старый ключ живёт до первого сохранения.
+func (r *FolderReplace) UnmarshalJSON(data []byte) error {
+	type folderReplaceAlias FolderReplace
+	var in struct {
+		folderReplaceAlias
+		LegacyStrategy *AutoStrategy `json:"strategy,omitempty"`
+	}
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	*r = FolderReplace(in.folderReplaceAlias)
+	if r.Strategy == nil && in.LegacyStrategy != nil {
+		r.Strategy = in.LegacyStrategy
+	}
+	return nil
 }
 
 const (
@@ -454,6 +480,12 @@ type FetchWarning struct {
 	Message string `json:"message,omitempty"`
 	// Count — счётчик для агрегируемых видов (skip).
 	Count int `json:"count,omitempty"`
+	// Code / Params — машинный код из contract/registry/warnings.json и его
+	// подстановки, если деградации код назначен. UI переводит по коду;
+	// Message остаётся запасным текстом. updateStatus — состояние машины,
+	// в бэкап не едет: поля аддитивны и контракта не касаются.
+	Code   string            `json:"code,omitempty"`
+	Params map[string]string `json:"params,omitempty"`
 }
 
 // SubUpdateStatus — диагностика fetch подписки (SPEC Т2). UI и отчёт сборки

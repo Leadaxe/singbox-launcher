@@ -19,8 +19,7 @@
 // формы; потолок 1280 держит РЕЕСТР (wireguard.body.fields.mtu.max_when,
 // контракт 1.1.5), и форма с ним не спорит — своего значения она не
 // подставляет и мимо конвейера не пишет. Значение выше потолка будет заменено
-// при сохранении, и узел получит ⚠ awg_mtu_clamped; ветка отката тела
-// (writeAWGBody) на это не срабатывает — замена не теряет ключ.
+// при сохранении, и узел получит ⚠ awg_mtu_clamped.
 //
 // Чего здесь нет намеренно. h1–h4 при значениях 1/2/3/4 — это и есть
 // дефолтные типы сообщений WireGuard: писать их незачем, результат тот же.
@@ -47,7 +46,7 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/nodeflow"
-	"singbox-launcher/core/config/subscription"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/nodewarn"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -60,19 +59,51 @@ const awgDetourConflictText = "This node carries AmneziaWG obfuscation fields, b
 
 const awgBlockNoteText = "Junk datagrams go out before the handshake, and the first one is disguised as traffic to the domain above. Packet padding (s1-s4) and magic headers (h1-h4) stay at the WireGuard defaults — any other value there and the server stops recognising the handshake. Not available with a detour: a node dialled through another outbound does not raise its own transport."
 
-// awgFixedIP — протокол первого decoy-пакета. Константа, а не настройка.
+// awgFixedIP — протокол первого decoy-пакета. Константа формы, а не
+// настройка: форма спрашивает домен, а он нужен именно этому режиму (правило
+// «ip=quic требует id» — в реестре, wireguard.body.ip.requires).
 const awgFixedIP = "quic"
 
-// Дефолты для узла, у которого обфускации ещё нет.
+// awgBuildTag — тег сборки ядра, которым реестр помечает поля AmneziaWG
+// (`build_tag` в wireguard.json). Набор полей обфускации форма берёт по нему,
+// своего списка ключей у неё нет (SPEC 142 B5).
+const awgBuildTag = "with_awg"
+
+// Стартовый профиль для узла, у которого обфускации ещё нет. Это подсказка
+// формы, а не правило: границы и допустимость значений судит реестр.
 const (
 	awgDefaultJC   = "4"
 	awgDefaultJMin = "40"
 	awgDefaultJMax = "70"
-	awgDefaultIB   = "chrome"
 )
 
-// awgBrowsers — значения ib, которые понимает ядро.
-var awgBrowsers = []string{"chrome", "firefox", "curl"}
+// awgEditedKeys — ключи тела, которые пишет форма. Снятие любого из них
+// санитайзером = ввод негоден, и тело не пишется.
+var awgEditedKeys = []string{"jc", "jmin", "jmax", "ip", "id", "ib"}
+
+// awgBrowsers — значения ib из реестра (enum поля, без пустого «не задано»).
+func awgBrowsers(scheme string) []string {
+	reg, err := registry.Get()
+	if err != nil {
+		return nil
+	}
+	return reg.FieldStrings(scheme, "ib")
+}
+
+// awgSchemeOfBody — схема реестра по типу тела, если у схемы есть поля
+// AmneziaWG. Пусто — форма обфускации узлу не показывается.
+func awgSchemeOfBody(ob map[string]interface{}) string {
+	t, _ := ob["type"].(string)
+	reg, err := registry.Get()
+	if err != nil {
+		return ""
+	}
+	scheme, ok := reg.NodeSchemeForSingboxType(t)
+	if !ok || len(reg.FieldsWithBuildTag(scheme, awgBuildTag)) == 0 {
+		return ""
+	}
+	return scheme
+}
 
 // awgSettings — состояние обфускации узла в виде, пригодном для формы.
 type awgSettings struct {
@@ -89,8 +120,12 @@ type awgSettings struct {
 // Домен пуст намеренно: подставить сюда какой-либо адрес значило бы выбрать
 // за пользователя, куда маскироваться, а выбор этот зависит от его трафика.
 func defaultAWGSettings() awgSettings {
+	browser := ""
+	if list := awgBrowsers(awgDefaultScheme); len(list) > 0 {
+		browser = list[0]
+	}
 	return awgSettings{
-		Browser: awgDefaultIB,
+		Browser: browser,
 		JC:      awgDefaultJC,
 		JMin:    awgDefaultJMin,
 		JMax:    awgDefaultJMax,
@@ -110,8 +145,7 @@ func awgEditableNode(node *wizardmodels.Node) bool {
 	if err := json.Unmarshal(node.Body, &ob); err != nil {
 		return false
 	}
-	t, _ := ob["type"].(string)
-	return t == "wireguard"
+	return awgSchemeOfBody(ob) != ""
 }
 
 // readAWGSettings достаёт настройки обфускации из тела узла.
@@ -160,87 +194,39 @@ func awgNumberToString(v interface{}) (string, bool) {
 	return "", false
 }
 
-// validateAWGSettings проверяет ввод формы до записи в узел.
+// validateAWGSettings — проверка ввода, которой реестр не выражает: поля
+// формы заполнены все — форма пишет профиль целиком.
 //
-// Проверять обязательно: ядро на негодном домене отвергает узел целиком, а
-// нечисловое значение парсер молча выбросил бы — узел ушёл бы в конфиг без
-// обфускации, о которой человек просил.
+// Допустимость значений (тип, границы, enum, формат домена, «ip=quic требует
+// id», jmin ≤ jmax — связь `ordered` реестра, SPEC 142 C8) судит реестр:
+// форма прогоняет тело через nodeflow.Sanitize и отказывает, если санитайзер
+// снял набранное поле (writeAWGBody).
 func validateAWGSettings(s awgSettings) error {
-	domain := strings.TrimSpace(s.Domain)
-	if domain == "" {
-		return fmt.Errorf("%s", locale.T("Masquerade domain required"))
-	}
-	if err := validateMasqueradeDomain(domain); err != nil {
-		return fmt.Errorf("%s: %w", locale.T("Masquerade domain"), err)
-	}
-	if _, err := awgNumberField(s.JC, "jc", 0, 128); err != nil {
-		return err
-	}
-	jmin, err := awgNumberField(s.JMin, "jmin", 0, 1280)
-	if err != nil {
-		return err
-	}
-	jmax, err := awgNumberField(s.JMax, "jmax", 0, 1280)
-	if err != nil {
-		return err
-	}
-	if jmin > jmax {
-		return fmt.Errorf("%s", locale.T("jmin must not exceed jmax"))
+	for _, f := range []struct{ raw, name string }{{s.JC, "jc"}, {s.JMin, "jmin"}, {s.JMax, "jmax"}} {
+		if strings.TrimSpace(f.raw) == "" {
+			return fmt.Errorf("%s", locale.Tf("%s is required", f.name))
+		}
 	}
 	return nil
 }
 
-// awgNumberField разбирает числовое поле обфускации и держит его в разумных
-// границах. Верхние границы взяты с запасом от рабочего профиля (4/40/70):
-// junk — отдельные датаграммы, сервер их игнорирует, но раздувать их незачем.
-func awgNumberField(raw, name string, minVal, maxVal int) (int, error) {
+// awgNumberValue — число поля формы для тела: целое, если набрано целое,
+// иначе строка как есть — её отвергнет санитайзер по типу поля реестра.
+func awgNumberValue(raw string) interface{} {
 	v := strings.TrimSpace(raw)
-	if v == "" {
-		return 0, fmt.Errorf("%s", locale.Tf("%s is required", name))
+	if n, err := strconv.Atoi(v); err == nil {
+		return n
 	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n < minVal || n > maxVal {
-		return 0, fmt.Errorf("%s", locale.Tf("%s must be %d..%d", name, minVal, maxVal))
-	}
-	return n, nil
-}
-
-// validateMasqueradeDomain проверяет домен по LDH-правилу, которым его
-// принимает ядро: метки из букв, цифр и дефиса, дефис не с краю, хотя бы одна
-// точка. Форма — единственное место, где человек увидит причину отказа.
-func validateMasqueradeDomain(domain string) error {
-	if len(domain) > 253 {
-		return fmt.Errorf("%s", locale.T("longer than 253 characters"))
-	}
-	labels := strings.Split(domain, ".")
-	if len(labels) < 2 {
-		return fmt.Errorf("%s", locale.T("must contain a dot, e.g. example.com"))
-	}
-	for _, label := range labels {
-		if label == "" || len(label) > 63 {
-			return fmt.Errorf("%s", locale.T("empty or too long label"))
-		}
-		if label[0] == '-' || label[len(label)-1] == '-' {
-			return fmt.Errorf("%s", locale.T("label starts or ends with a hyphen"))
-		}
-		for _, r := range label {
-			switch {
-			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-':
-			default:
-				return fmt.Errorf("%s", locale.T("only letters, digits and hyphens are allowed"))
-			}
-		}
-	}
-	return nil
+	return v
 }
 
 // applyAWGSettings записывает обфускацию в тело узла.
 //
 // Тело правится КЛЮЧАМИ, а не пересборкой: у узла могут быть поля, которых
-// наша форма не знает (reserved, s3/s4 из чужой ссылки), и пересборка молча
-// их бы потеряла. Порядок ключей внутри объекта json.Marshal раскладывает по
-// алфавиту — тело всё равно перезаписывается целиком, так что сравнивать его
-// побайтово с прежним смысла нет.
+// наша форма не знает (listen_port, s3/s4 из чужой ссылки), и пересборка
+// молча их бы потеряла. Порядок ключей задаёт эмиттер реестра — тело всё
+// равно перезаписывается целиком, так что сравнивать его побайтово с прежним
+// смысла нет.
 //
 // Ошибка = ОТКАТ: узел остаётся прежним, вызывающий показывает причину.
 func applyAWGSettings(node *wizardmodels.Node, s awgSettings) error {
@@ -255,127 +241,100 @@ func applyAWGSettings(node *wizardmodels.Node, s awgSettings) error {
 		return err
 	}
 
-	jc, _ := strconv.Atoi(strings.TrimSpace(s.JC))
-	jmin, _ := strconv.Atoi(strings.TrimSpace(s.JMin))
-	jmax, _ := strconv.Atoi(strings.TrimSpace(s.JMax))
-	ob["jc"] = jc
-	ob["jmin"] = jmin
-	ob["jmax"] = jmax
+	ob["jc"] = awgNumberValue(s.JC)
+	ob["jmin"] = awgNumberValue(s.JMin)
+	ob["jmax"] = awgNumberValue(s.JMax)
 	ob["ip"] = awgFixedIP
 	ob["id"] = strings.TrimSpace(s.Domain)
 	if browser := strings.TrimSpace(s.Browser); browser != "" {
 		ob["ib"] = browser
 	}
-	// Явные i1–i5 ядро отвергает рядом с сахаром id/ip/ib. Узел мог приехать
-	// с ними из чужой ссылки — тогда включение обфускации формой обязано их
-	// снять, иначе конфиг просто не соберётся.
-	for _, k := range []string{"i1", "i2", "i3", "i4", "i5"} {
-		delete(ob, k)
-	}
+	// Явные i1/i2, с которыми ядро не принимает сахар id/ip/ib, снимает
+	// санитайзер по `conflicts` реестра — с кодом field_conflict на узле.
 
-	return writeAWGBody(node, ob)
+	return writeAWGBody(node, ob, awgEditedKeys)
 }
 
-// awgPipelineScheme — схема реестра, по правилам которой проверяется тело.
-//
-// Строкой, а не через `configtypes`: общей константы на «wireguard» в
-// проекте нет, а заводить её в чужом пакете ради одной формы — цена выше
-// пользы. Имя нормативно: это ключ `contract/registry/protocols/wireguard.json`.
-const awgPipelineScheme = "wireguard"
+// awgDefaultScheme — схема, чьи enum форма показывает до того, как узел
+// прочитан (стартовый профиль). Тело же проверяется по схеме своего типа
+// (awgSchemeOfBody).
+const awgDefaultScheme = "wireguard"
 
 // writeAWGBody — единственная запись тела обеими кнопками формы (Л23).
 //
-// # Что было и почему поменялось
+// Тело проходит `nodeflow.Sanitize` → `nodeflow.Emit`, как на всех остальных
+// входах, и коды узла пересчитываются по тому же реестру. Записывается ТОЛЬКО
+// выход конвейера: прежняя ветка отката на сырое `json.Marshal` при «потере»
+// полей держалась на том, что h1–h4 в реестре были строками и санитайзер
+// снимал живые значения; теперь это `awg_range` с `range_order`, и обхода
+// больше нет (SPEC 142 A11).
 //
-// Форма правила ключи готового тела и писала его обратно `json.Marshal`,
-// минуя конвейер целиком: ни санитайзера, ни эмиттера. Значит и `warnings`
-// узла после правки оставались от ПРОШЛОГО его состояния — набор кодов на
-// узле расходился с его же телом, и ⚠ на строке говорил про поле, которого
-// там уже нет (или молчал про только что вписанное).
+// Вердикт уровня узла (`Drop`) — ОТКАТ, как у редактора JSON рядом
+// (MaterializeServerNode): тело, которое конвейер собрать не может, в узел не
+// пишется, узел остаётся прежним, причина уходит вызывающему ошибкой.
 //
-// Теперь тело проходит `nodeflow.Sanitize` → `nodeflow.Emit`, и коды
-// пересчитываются по тому же реестру, что и на всех остальных входах.
-//
-// # Почему санитайзер не владеет телом безоговорочно
-//
-// Реестр — живой документ волны W2, и его правила по AWG-полям ещё
-// доезжают (типы `h1`–`h4` объявлены строками, а ядро и все наши корпусные
-// тела несут там числа). Форма обфускации правит РАБОТАЮЩИЙ узел
-// пользователя: отдать его тело под перезапись правилу, которое сегодня
-// снимает живое поле, значит сломать соединение молча — ровно тот исход, от
-// которого волна и защищает.
-//
-// Поэтому правило такое: коды берём всегда, а ТЕЛО — только когда конвейер
-// ничего не потерял, то есть снял ровно то, что и должен был снять
-// (`type`/`tag` — их пишет сборка, см. buildManagedKeys). Потерял больше —
-// пишем пропатченное тело, а коды всё равно показываем: пользователь узнает
-// про деградацию, а узел продолжит работать. Когда реестр по AWG дозреет,
-// ветка отката перестанет срабатывать сама — без правки этого файла.
-//
-// То же и с вердиктом уровня узла (`Drop`): он становится КОДОМ на узле, а
-// не отказом формы. Отказ запер бы пользователя — тело без `address` или
-// `private_key` (неполный импорт) правится ровно этой формой и соседним
-// редактором JSON, и запрет на запись не оставил бы ему пути починки.
-func writeAWGBody(node *wizardmodels.Node, ob map[string]interface{}) error {
-	patched, err := json.Marshal(ob)
+// keep — ключи, которые форма набрала: если санитайзер снял какой-то из них
+// (значение не прошло правило реестра), это отказ с текстом кода, а не
+// запись узла без того, о чём человек просил.
+func writeAWGBody(node *wizardmodels.Node, ob map[string]interface{}, keep []string) error {
+	bodyBefore := node.Body
+	scheme := awgSchemeOfBody(ob)
+	if scheme == "" {
+		return fmt.Errorf("%s", locale.T("Node has no body to edit"))
+	}
+
+	res := nodeflow.Sanitize(scheme, ob)
+	if res.Drop != nil {
+		if msg := nodewarn.Summary(nodewarn.FromParsed([]nodeflow.Warning{*res.Drop})); msg != "" {
+			return fmt.Errorf("%s", msg)
+		}
+		return fmt.Errorf("%s", res.Drop.Code)
+	}
+	if err := awgRejectedInput(res, ob, keep); err != nil {
+		return err
+	}
+	emitted, err := nodeflow.Emit(scheme, res.Clean)
 	if err != nil {
 		return err
 	}
-	bodyBefore := node.Body
-
-	res := nodeflow.Sanitize(awgPipelineScheme, ob)
-
-	// Коды — всегда, включая вердикт уровня узла. `Drop` здесь НЕ отказ
-	// формы: правка обфускации не обязана чинить узел целиком, а её отказ
-	// из-за неполного тела (нет `address`, нет `private_key`) запер бы
-	// пользователя — починить тело он может только этой же формой и
-	// редактором JSON рядом с ней.
-	warns := res.Warnings
-	if res.Drop != nil {
-		warns = append([]nodeflow.Warning{*res.Drop}, warns...)
+	// Emit снимает managed-ключ "type" — вернуть его обязан пишущий тело.
+	stamped, err := config.StampBodyType(scheme, emitted, ob)
+	if err != nil {
+		return err
 	}
+	node.Body = stamped
 	// Замещаются ПРОИЗВОДНЫЕ коды: вердикт ядра поставил не пересчёт, и
 	// стирать его пересчётом нельзя (SPEC 132).
-	node.ReplaceDerivedWarnings(nodewarn.FromParsed(warns))
-
-	// Тело отдаём конвейеру только когда он ничего не потерял. Подробности
-	// правила — в шапке функции.
-	emitted, eerr := nodeflow.Emit(awgPipelineScheme, res.Clean)
-	if eerr == nil {
-		// Emit снимает managed-ключ "type" — вернуть его обязан пишущий тело.
-		var stamped json.RawMessage
-		if stamped, eerr = config.StampBodyType(awgPipelineScheme, emitted, ob); eerr == nil {
-			emitted = stamped
-		}
-	}
-	if res.Drop != nil || eerr != nil || awgPipelineLostFields(ob, res.Clean) {
-		node.Body = patched
-	} else {
-		node.Body = emitted
-	}
+	node.ReplaceDerivedWarnings(nodewarn.FromParsed(res.Warnings))
 	// Вердикт ядра привязан к ТЕЛУ: правка обфускации сменила тело — приговор
 	// о прежнем недействителен, узел включается обратно и проверится
-	// следующей сборкой (SPEC 132, CANON §9.4).
+	// следующей сборкой (SPEC 132, PARSING_PRINCIPLES §9.4).
 	node.RevalidateCoreVerdictAfterBodyChange(bodyBefore)
 	return nil
 }
 
-// awgPipelineLostFields — снял ли санитайзер что-то СВЕРХ ключей, которыми
-// владеет сборка.
-//
-// `tag`/`type` в теле узла не живут по построению (SPEC 112: тег — это
-// идентичность узла, тип — его схема), и их снятие деградацией не является.
-// Всё остальное, чего нет в чистой карте, — потеря.
-func awgPipelineLostFields(src, clean map[string]interface{}) bool {
-	for k := range src {
-		if k == "tag" || k == "type" {
+// awgRejectedInput — ошибка, если санитайзер снял набранный формой ключ.
+// Текст — заголовок кода реестра на этом пути (или сам код).
+func awgRejectedInput(res nodeflow.Result, ob map[string]interface{}, keep []string) error {
+	for _, k := range keep {
+		if _, sent := ob[k]; !sent {
 			continue
 		}
-		if _, ok := clean[k]; !ok {
-			return true
+		if _, kept := res.Clean[k]; kept {
+			continue
 		}
+		for _, w := range res.Warnings {
+			if w.Path != k {
+				continue
+			}
+			if msg := nodewarn.Summary(nodewarn.FromParsed([]nodeflow.Warning{w})); msg != "" {
+				return fmt.Errorf("%s", msg)
+			}
+			return fmt.Errorf("%s", w.Code)
+		}
+		return fmt.Errorf("%s", locale.Tf("%s is invalid", k))
 	}
-	return false
+	return nil
 }
 
 // clearAWGSettings снимает обфускацию с узла: снятая галочка обязана вернуть
@@ -398,39 +357,16 @@ func clearAWGSettings(node *wizardmodels.Node) error {
 	if err := json.Unmarshal(node.Body, &ob); err != nil {
 		return err
 	}
-	for _, k := range append([]string{
-		"jc", "jmin", "jmax", "ip", "id", "ib",
-		"s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4",
-		"i1", "i2", "i3", "i4", "i5",
-	}, subscription.AWG3RootKeys()...) {
-		delete(ob, k)
+	scheme := awgSchemeOfBody(ob)
+	reg, err := registry.Get()
+	if err != nil {
+		return err
 	}
-	clearRangedKeepalive(ob)
-	return writeAWGBody(node, ob)
-}
-
-// clearRangedKeepalive заменяет диапазонный persistent_keepalive_interval
-// ("25-35", форма AWG 3.x) нижней границей: после json.Unmarshal peers — это
-// []interface{} из map[string]interface{}, а не типизированный срез парсера.
-func clearRangedKeepalive(ob map[string]interface{}) {
-	peers, _ := ob["peers"].([]interface{})
-	for _, p := range peers {
-		peer, ok := p.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		s, ok := peer["persistent_keepalive_interval"].(string)
-		if !ok || !strings.Contains(s, "-") {
-			continue
-		}
-		lo, _, _ := strings.Cut(s, "-")
-		n, err := strconv.Atoi(strings.TrimSpace(lo))
-		if err != nil || n <= 0 {
-			delete(peer, "persistent_keepalive_interval")
-			continue
-		}
-		peer["persistent_keepalive_interval"] = n
-	}
+	// Набор AmneziaWG (1.x–3.x) — всё, чему реестр назначил build_tag
+	// with_awg: корневые поля снимаются, форма-диапазон keepalive
+	// (range_form) схлопывается в нижнюю границу.
+	reg.StripBuildTag(scheme, ob, awgBuildTag)
+	return writeAWGBody(node, ob, nil)
 }
 
 // awgBlock — блок обфускации в форме узла: виджеты плюс перечитывание из
@@ -470,7 +406,7 @@ func newAWGBlock(
 	// Плейсхолдер — форма записи, а не готовый адрес: подставлять сюда
 	// конкретный домен значило бы выбрать за пользователя, куда маскироваться.
 	b.domain.SetPlaceHolder(locale.T("domain to masquerade as, e.g. example.com"))
-	b.browser = widget.NewSelect(awgBrowsers, nil)
+	b.browser = widget.NewSelect(awgBrowsers(awgDefaultScheme), nil)
 	b.jc = awgNumEntry()
 	b.jmin = awgNumEntry()
 	b.jmax = awgNumEntry()

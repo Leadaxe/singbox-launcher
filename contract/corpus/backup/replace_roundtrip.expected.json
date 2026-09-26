@@ -1,0 +1,19 @@
+{
+  "rules": [
+    { "name": "Work via Proton", "enabled": true, "outbound": "Proton" },
+    { "name": "Media via Proton auto", "enabled": true, "outbound": "Proton-auto" }
+  ],
+  "warnings": [],
+  "route_final_applied": true,
+  "replaces": {
+    "Proton": {
+      "mode": "both",
+      "tag": "Proton",
+      "auto": { "mode": "least_test", "url": "https://example-9.com/generate_204", "interval": "15m", "tolerance": 50 }
+    },
+    "https://example-1.com/sub-replace": { "mode": "manual", "tag": "Sub-pick" }
+  },
+  "folders": {
+    "Proton": ["p-1", "p-2"]
+  }
+}

@@ -1027,14 +1027,26 @@
   "Chain %q did not build: %s": {
     "value": "Цепочка %q не собралась: %s"
   },
-  "%d naive node(s) skipped: %s": {
-    "value": "Узлов naive пропущено: %d — %s"
+  "%d node(s) dropped: detour target %q is gone": {
+    "value": "Снято узлов: %d — цели detour %q больше нет"
   },
-  "%d tailscale node(s) skipped: %s": {
-    "value": "Узлов tailscale пропущено: %d — %s"
+  "node %q: %s removed — it cannot be combined with detour %q": {
+    "value": "узел %q: %s снят — несовместим с detour %q"
   },
-  "%d AmneziaWG 3.x node(s) skipped: %s": {
-    "value": "Узлов AmneziaWG 3.x пропущено: %d — %s"
+  "group %q: member %q left the group (%s)": {
+    "value": "группа %q: член %q выбыл из состава (%s)"
+  },
+  "the node fell out of the config": {
+    "value": "узел выпал из конфига"
+  },
+  "group %q is not emitted: no members left (an empty group breaks core startup)": {
+    "value": "группа %q не выпущена: членов не осталось (пустая группа ломает запуск ядра)"
+  },
+  "group %q: default %q is not among the members — the key was dropped": {
+    "value": "группа %q: умолчание %q не входит в состав — ключ снят"
+  },
+  "%s — %d node(s) skipped: %s": {
+    "value": "%s — пропущено узлов: %d — %s"
   },
   "Detour target %q is missing from the build: %s": {
     "value": "Цели перехода %q нет в сборке: %s"
@@ -2077,8 +2089,8 @@
   "Nothing left to add: every available target is already in the chain.": {
     "value": "Больше нечего добавить: все доступные цели уже в цепочке."
   },
-  "ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the core will not start. Re-check tls.utls.": {
-    "value": "Отпечаток ClientHello снят, но на позициях %s стоят reality-узлы — им он нужен, и ядро не запустится. Верните галку tls.utls."
+  "ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the chain will keep tls.utls on every position. Clear tls.utls to match.": {
+    "value": "Отпечаток ClientHello снят, но на позициях %s стоят reality-узлы — им он нужен, и цепочка оставит tls.utls у всех позиций. Снимите галку tls.utls, чтобы форма совпадала."
   },
   "A nested chain (%s) is only allowed at the first position — move it to the top or remove it.": {
     "value": "Вложенная цепочка (%s) допустима только первой позицией — переставьте её наверх или уберите."
@@ -2205,6 +2217,9 @@
   },
   "Port must be a number between 1024 and 65535.": {
     "value": "Порт должен быть числом от 1024 до 65535."
+  },
+  "Must be a number.": {
+    "value": "Должно быть числом."
   },
   "Rebuild config only": {
     "value": "Только пересобрать config"
@@ -3425,18 +3440,6 @@
   "Address required": {
     "value": "Укажите адрес"
   },
-  "MTU 576..9000": {
-    "value": "MTU 576..9000"
-  },
-  "Keepalive 0..65535": {
-    "value": "Keepalive 0..65535"
-  },
-  "not valid base64": {
-    "value": "не является корректным base64"
-  },
-  "decodes to %d bytes, want 32": {
-    "value": "декодируется в %d байт, нужно 32"
-  },
   "Keys are base64, as in a wg-quick .conf. MTU above 1380 breaks AmneziaWG endpoints — for those the parser clamps it down. A whole .conf can be pasted on the Source tab instead.": {
     "value": "Ключи в base64, как в .conf для wg-quick. MTU выше 1380 ломает узлы AmneziaWG — для них парсер сам понижает значение. Целый .conf можно вставить на вкладке Source."
   },
@@ -4031,9 +4034,6 @@
   "%s — per-source Directions are gone, this one is not imported (create a global Direction with a filter instead)": {
     "value": "%s — локальных Направлений источника больше нет, это не импортировано (заведите глобальное Направление с фильтром)"
   },
-  "%s — the shared format has no field for the replacement tag: after import the group will carry the derived name, and rules aimed at the old one arrive turned off": {
-    "value": "%s — у формата обмена нет поля для тега замены: после импорта группа получит производное имя, а правила на прежнее приедут выключенными"
-  },
   "%s — these subscription settings are not part of the shared format and did not go into the file; the provider may return a different set of nodes on the other machine": {
     "value": "%s — эти настройки подписки формат обмена не переносит, в файл они не попали; провайдер на другой машине может отдать другой набор узлов"
   },
@@ -4076,38 +4076,14 @@
   "domain to masquerade as, e.g. example.com": {
     "value": "домен для маскировки, например example.com"
   },
-  "Masquerade domain required": {
-    "value": "Нужен домен маскировки"
-  },
-  "Masquerade domain": {
-    "value": "Домен маскировки"
-  },
   "Node has no body to edit": {
     "value": "У узла нет тела для правки"
-  },
-  "jmin must not exceed jmax": {
-    "value": "jmin не может превышать jmax"
   },
   "%s is required": {
     "value": "%s обязателен"
   },
-  "%s must be %d..%d": {
-    "value": "%s должен быть %d..%d"
-  },
-  "longer than 253 characters": {
-    "value": "длиннее 253 символов"
-  },
-  "must contain a dot, e.g. example.com": {
-    "value": "нужна точка, например example.com"
-  },
-  "empty or too long label": {
-    "value": "пустая или слишком длинная часть"
-  },
-  "label starts or ends with a hyphen": {
-    "value": "часть начинается или заканчивается дефисом"
-  },
-  "only letters, digits and hyphens are allowed": {
-    "value": "допустимы только буквы, цифры и дефис"
+  "%s is invalid": {
+    "value": "%s: недопустимое значение"
   },
   "Junk datagrams go out before the handshake, and the first one is disguised as traffic to the domain above. Packet padding (s1-s4) and magic headers (h1-h4) stay at the WireGuard defaults — any other value there and the server stops recognising the handshake. Not available with a detour: a node dialled through another outbound does not raise its own transport.": {
     "value": "Перед рукопожатием уходят мусорные датаграммы, а первая маскируется под трафик к домену выше. Набивка пакетов (s1–s4) и magic-заголовки (h1–h4) остаются дефолтными для WireGuard: любое другое значение — и сервер перестаёт узнавать рукопожатие. С detour недоступно: узел, ходящий через чужой outbound, своего транспорта не поднимает."
@@ -4150,12 +4126,6 @@
   },
   "Advertised routes and exit nodes stay pending until they are approved in the tailnet admin console.": {
     "value": "Анонсированные маршруты и выход в интернет не заработают, пока их не подтвердят в админке tailnet."
-  },
-  "Not a valid CIDR: %s": {
-    "value": "Не похоже на CIDR: %s"
-  },
-  "Use the exit node checkbox instead of a default route": {
-    "value": "Для маршрута по умолчанию используйте галку «анонсировать как выход»"
   },
   "This rule belongs to node %q — edit it in that source's JSON tab.": {
     "value": "Это правило принадлежит узлу %q — правится на вкладке JSON его источника."
@@ -4783,5 +4753,56 @@
   },
   "Imported %d remote servers": {
     "value": "Импортировано удалённых серверов: %d"
+  },
+  "up": {
+    "value": "поднят"
+  },
+  "asleep": {
+    "value": "усыплён"
+  },
+  "released": {
+    "value": "освобождён"
+  },
+  "not started yet": {
+    "value": "ещё не поднимался"
+  },
+  "disabled": {
+    "value": "выключен"
+  },
+  "idle %s": {
+    "value": "простой %s"
+  },
+  "Until the core restarts or the config is applied.": {
+    "value": "До перезапуска ядра или применения конфига."
+  },
+  "Disable": {
+    "value": "Выключить"
+  },
+  "sleep": {
+    "value": "сон"
+  },
+  "freed": {
+    "value": "освобождён"
+  },
+  "Enable WireGuard": {
+    "value": "Включить WireGuard"
+  },
+  "Disable WireGuard": {
+    "value": "Выключить WireGuard"
+  },
+  "WireGuard switch error: %s": {
+    "value": "Ошибка переключения WireGuard: %s"
+  },
+  "Tag %q is already used by a node: the node will get a numeric suffix in the config.": {
+    "value": "Тег %q уже носит узел: в конфиге узел получит числовой суффикс."
+  },
+  "Tag %q is already used by another source's swap: the swap lower in the list will not be built until the tag is free.": {
+    "value": "Тег %q уже занят свёрткой другого источника: та свёртка, что ниже по списку, не соберётся, пока тег не освободится."
+  },
+  "Tag %q is a template tag: the swap group will not be built until the tag is free.": {
+    "value": "Тег %q — тег шаблона: группа свёртки не соберётся, пока тег не освободится."
+  },
+  "Tag %q is already used by a Direction: the swap group will not be built until the tag is free.": {
+    "value": "Тег %q уже носит Направление: группа свёртки не соберётся, пока тег не освободится."
   }
 }

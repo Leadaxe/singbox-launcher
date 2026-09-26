@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/internal/constants"
 )
 
@@ -669,26 +670,24 @@ const SchemeGroup = "group"
 const GroupMembersKey = "outbounds"
 
 // ParsedJump is an optional first hop for Xray dialerProxy → sing-box detour (SOCKS, VLESS, …).
-// Scheme empty means "socks" (backward compatibility). UUID/Flow are set for vless/vmess hops when GenerateNodeJSON needs them.
+// Scheme empty means "socks" (backward compatibility). Flow is set for vless hops.
 type ParsedJump struct {
 	Tag      string
 	Scheme   string // socks, vless, …
 	Server   string
 	Port     int
-	UUID     string
 	Flow     string
 	Outbound map[string]interface{}
 }
 
 // ParsedNode represents a parsed proxy node with all extracted information.
-// It contains protocol-specific fields (UUID, Flow, etc.) and the generated
+// It contains protocol-specific fields (Flow, etc.) and the generated
 // outbound configuration ready for JSON serialization.
 type ParsedNode struct {
 	Tag      string
 	Scheme   string
 	Server   string
 	Port     int
-	UUID     string
 	Flow     string
 	Label    string
 	Comment  string
@@ -789,7 +788,7 @@ type ParsedNode struct {
 	//
 	// Пустой Tag = узел собран не из канона (служебная запись, WARP): такой
 	// тег узлу не сопоставляется, и страховка на него не действует
-	// (CANON §9.3).
+	// (PARSING_PRINCIPLES §9.3).
 	CanonicalLink NodeLink
 	// CanonicalGroupMembers / CanonicalGroupDefault — состав провайдерской
 	// Auto-группы канона и её умолчание по ссылкам NodeLink. Резолв на
@@ -805,7 +804,7 @@ type ParsedNode struct {
 	// отпечаток. Коды позволяют показать это в UI и сверять поведение
 	// обоих приложений по общему корпусу, а не по тексту лога.
 	//
-	// Порядок = порядок вызовов AddWarning/AddFieldWarning (CANON §6, Л14):
+	// Порядок = порядок вызовов AddWarning/AddFieldWarning (PARSING_PRINCIPLES §6, Л14):
 	// сортировать его при записи в state нельзя — сверка с корпусом идёт по
 	// последовательности слоёв разбора. Дубли по паре (Code, Path) не
 	// хранятся: запись отвечает на вопрос «что случилось с этим полем», а не
@@ -840,7 +839,7 @@ func (n *ParsedNode) AddSourceWarning(code, path string, params map[string]strin
 
 // AddFieldWarning помечает узел кодом деградации уровня поля: путь в теле
 // sing-box (`tls.reality.short_id`) и исходное значение до деградации,
-// обрезанное до WarningValueMax (CANON §6).
+// обрезанное до WarningValueMax (PARSING_PRINCIPLES §6).
 //
 // Маскировать секреты здесь нечем: реестр протоколов (какие поля объявлены
 // `secret: true`) читает санитайзер — он и подменяет значение на "***".
@@ -880,7 +879,7 @@ func (n *ParsedNode) HasWarning(code string) bool {
 	return false
 }
 
-// Warning — запись деградации узла (CANON §6, контракт 1.1.0, SPEC 131):
+// Warning — запись деградации узла (PARSING_PRINCIPLES §6, контракт 1.1.0, SPEC 131):
 // код из contract/registry/warnings.json плюс путь поля в теле sing-box
 // (`tls.reality.short_id`), исходное значение (≤64 символов; у secret-полей
 // реестра — "***") и подстановки шаблона text_* кода. Path пуст у кодов
@@ -894,7 +893,7 @@ type Warning struct {
 	Params map[string]string `json:"params,omitempty"`
 }
 
-// WarningValueMax — предел длины Warning.Value (CANON §6).
+// WarningValueMax — предел длины Warning.Value (PARSING_PRINCIPLES §6).
 const WarningValueMax = 64
 
 // TruncateWarningValue обрезает исходное значение до WarningValueMax рун.
@@ -909,24 +908,23 @@ func TruncateWarningValue(v string) string {
 // SchemeTailscale — схема узла tailnet (contract/registry/protocols/tailscale.json).
 //
 // Объявлена здесь, а не рядом с config.IsEndpointScheme: configtypes —
-// leaf-пакет, импортировать config он не может, а предикат IsExitCapable
-// живёт на модели (его зовут обе точки пула). config.SchemeTailscale
+// leaf-пакет, импортировать config он не может. config.SchemeTailscale
 // ссылается на ту же строку — расхождение поймал бы любой из тестов SPEC 122.
 const SchemeTailscale = "tailscale"
 
 // IsExitCapable — годится ли узел ВЫХОДОМ В ИНТЕРНЕТ, то есть кандидатом в
 // состав Направления (SPEC 122 §2.3).
 //
-// Всё, что не tailscale, годится: обычный прокси-узел на то и заведён.
-// Узел tailnet — нет: без `exit_node` он открывает доступ в САМУ tailnet
-// (адреса 100.64.0.0/10 и MagicDNS), а не выход наружу, и Направление,
-// выбравшее такой узел, отправило бы трафик в никуда. С непустым `exit_node`
-// он выходом становится и в пул возвращается.
+// Решает реестр атрибутом тела `exit_capable_when` (контракт 1.1.63, SPEC 142
+// C7): схема без атрибута годится всегда — обычный прокси-узел на то и
+// заведён; у tailscale условие — непустой `exit_node`. Без него узел tailnet
+// открывает доступ в САМУ tailnet (100.64.0.0/10 и MagicDNS), а не выход
+// наружу, и Направление, выбравшее такой узел, отправило бы трафик в никуда.
+// `advertise_exit_node` в условие не входит: это противоположная роль (узел
+// служит выходом ДЛЯ ДРУГИХ участников tailnet).
 //
-// `advertise_exit_node` сюда НЕ добавляется, хотя слова похожи: это
-// противоположная роль — узел служит выходом ДЛЯ ДРУГИХ участников tailnet,
-// сам наружу через него трафик не идёт. Ядро эти две роли вместе и не
-// принимает (отказ на старте), так что условие остаётся одним полем.
+// Реестр не прочитался — узел годится: отказ сборки реестра не повод
+// выкидывать узлы из пулов.
 //
 // Detour на такой узел предикат не запрещает: гнать чужой трафик через
 // tailnet — законный осознанный выбор, и запретов на цели detour здесь нет.
@@ -934,12 +932,11 @@ func (n *ParsedNode) IsExitCapable() bool {
 	if n == nil {
 		return false
 	}
-	if n.Scheme != SchemeTailscale {
+	reg, err := registry.Get()
+	if err != nil {
 		return true
 	}
-	// Тело приходит и из JSON (map), и из канона: строкой читается любое.
-	exit, _ := n.Outbound["exit_node"].(string)
-	return strings.TrimSpace(exit) != ""
+	return reg.ExitCapable(n.Scheme, n.Outbound)
 }
 
 // SyncJumpFromChain refreshes the deprecated Jump field from Chain[0].
@@ -964,7 +961,6 @@ func (n *ParsedNode) SyncJumpFromChain() {
 		Scheme:   hop.Scheme,
 		Server:   hop.Server,
 		Port:     hop.Port,
-		UUID:     hop.UUID,
 		Flow:     hop.Flow,
 		Outbound: hop.Outbound,
 	}
@@ -984,7 +980,6 @@ func (n *ParsedNode) AdoptLegacyJump() {
 		Scheme:      n.Jump.Scheme,
 		Server:      n.Jump.Server,
 		Port:        n.Jump.Port,
-		UUID:        n.Jump.UUID,
 		Flow:        n.Jump.Flow,
 		Outbound:    n.Jump.Outbound,
 		SourceIndex: UnsetSourceIndex,
@@ -1084,35 +1079,65 @@ type BuiltChain struct {
 // ChainOutboundType — значение поля `type` в конфиге ядра.
 const ChainOutboundType = "chain"
 
-// Ключи каталога `strip` ядра (`protocol/chain/transform.go:24-27`).
-//
-// Список закрыт: ядро отвергает конфиг на неизвестном ключе, поэтому
-// «на всякий случай» сюда добавлять нечего — новый ключ появляется только
-// вместе с новой версией ядра.
-const (
-	ChainStripTLSFragment      = "tls.fragment"
-	ChainStripMultiplexPadding = "multiplex.padding"
-	ChainStripXHTTPPadding     = "xhttp.padding"
-	ChainStripTLSUTLS          = "tls.utls"
-)
+// ChainStripTLSUTLS — ключ каталога `strip`, снятие которого ломает
+// reality-хопы (проверка конфликта — chain_validate.go, волна C4 SPEC 142).
+const ChainStripTLSUTLS = "tls.utls"
 
-// ChainStripKeys — каталог в порядке показа в форме. Снимаемые по умолчанию
-// идут первыми, tls.utls последним: он единственный не снимается по
-// умолчанию и единственный, снятие которого ломает reality-узлы (T4).
-var ChainStripKeys = []string{
-	ChainStripTLSFragment,
-	ChainStripMultiplexPadding,
-	ChainStripXHTTPPadding,
-	ChainStripTLSUTLS,
+// chainScheme — схема цепочки в реестре контракта.
+const chainScheme = "chain"
+
+// ChainStripKeys — каталог `strip` ядра в порядке показа в форме. Источник —
+// реестр (`chain.json` body.strip.order/fields): каталог закрыт, ядро
+// отвергает конфиг на неизвестном ключе, поэтому своего списка в Go нет.
+func ChainStripKeys() []string {
+	f := chainStripField()
+	if f == nil {
+		return nil
+	}
+	out := make([]string, len(f.Order))
+	copy(out, f.Order)
+	return out
 }
 
-// ChainStripDefault — снимается ли ключ при включённом strip_evasion.
-// Копия каталога ядра; форма показывает по нему исходное состояние галок.
-var ChainStripDefault = map[string]bool{
-	ChainStripTLSFragment:      true,
-	ChainStripMultiplexPadding: true,
-	ChainStripXHTTPPadding:     true,
-	ChainStripTLSUTLS:          false,
+// ChainStripDefault — снимается ли ключ при включённом strip_evasion
+// (`default` поля каталога в реестре); known=false — ключа в каталоге нет.
+func ChainStripDefault(key string) (def, known bool) {
+	f := chainStripField()
+	if f == nil {
+		return false, false
+	}
+	kf, ok := f.Fields[key]
+	if !ok || kf == nil {
+		return false, false
+	}
+	b, _ := kf.Default.(bool)
+	return b, true
+}
+
+// ChainStripOnHopRequired — `on_hop_required` ключа каталога `strip`
+// (контракт 1.1.61): что делать, когда звено цепочки этот путь требует.
+// nil — правила у ключа нет.
+func ChainStripOnHopRequired(key string) *registry.OnHopRequired {
+	f := chainStripField()
+	if f == nil {
+		return nil
+	}
+	if kf, ok := f.Fields[key]; ok && kf != nil {
+		return kf.OnHopRequired
+	}
+	return nil
+}
+
+func chainStripField() *registry.Field {
+	reg, err := registry.Get()
+	if err != nil {
+		return nil
+	}
+	f, ok := reg.Field(chainScheme, "strip")
+	if !ok {
+		return nil
+	}
+	return f
 }
 
 // HopsOrNil — позиции цепочки, безопасно для nil-приёмника.

@@ -4,7 +4,7 @@
 // # Что изменилось
 //
 // До W4 конвейер сборки на каждом билде заново разбирал тела подписок
-// (LoadNodesFromSourceEx: скачать/взять из raw-кэша → классифицировать →
+// (скачать/взять из raw-кэша → классифицировать →
 // распарсить каждую запись → тег-политика → уникализация). С W4 тела
 // разобраны ОДИН раз — при fetch (W3) или миграции (W2), — и лежат в
 // `Subscription.nodes[].body`. Сборке остаётся эмиссия.
@@ -36,6 +36,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
@@ -196,7 +197,6 @@ func buildCanonicalServer(cs *configtypes.CanonicalSource, cn *configtypes.Canon
 		Service:     cn.Service,
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}
-	node.UUID = canonicalCredential(outbound, scheme)
 	node.Flow = canonicalString(outbound["flow"])
 	// SPEC 132: обратный путь «финальный тег → узел состояния». Ставится
 	// ВСЕГДА, в отличие от SectionsLink (тот едет только с секциями).
@@ -485,25 +485,10 @@ func normalizeCanonicalLinks(links []configtypes.NodeLink, ownerFolderID string)
 // Неизвестный тип остаётся собой: тело эмитится как есть, а схему читают
 // только фильтры.
 func canonicalSchemeFromType(t string) string {
-	if s, ok := subscription.SchemeFromSingboxType(t); ok {
+	if s, ok := registry.MustGet().NodeSchemeForSingboxType(t); ok {
 		return s
 	}
 	return t
-}
-
-// canonicalCredential — «главный секрет» узла в поле UUID (его читают
-// фильтры и превью, эмиссия — нет).
-func canonicalCredential(ob map[string]interface{}, scheme string) string {
-	switch scheme {
-	case "vless", "vmess", "tuic":
-		return canonicalString(ob["uuid"])
-	case "trojan", "hysteria2", "anytls", "ss":
-		return canonicalString(ob["password"])
-	case "hysteria":
-		// v1 держит секрет в auth_str — см. singboxCredentialFromMap.
-		return canonicalString(ob["auth_str"])
-	}
-	return ""
 }
 
 func canonicalString(v interface{}) string {

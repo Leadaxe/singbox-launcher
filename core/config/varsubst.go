@@ -29,7 +29,6 @@ package config
 import (
 	"encoding/json"
 	"os"
-	"strconv"
 	"strings"
 
 	"singbox-launcher/core/template"
@@ -117,17 +116,17 @@ func knownPlaceholderFallback(name string) (interface{}, bool) {
 //  2. `wizard_template.json` `vars[].default_value` matching `name`.
 //  3. ok=false → caller falls back to `knownPlaceholderFallback`.
 //
-// Type coercion: a few well-known integer-valued vars (e.g. `urltest_tolerance`,
-// `tun_mtu`, `*_listen_port`) are converted from string to int so JSON
-// marshalling produces a number. Booleans (declared `type:"bool"`) are
-// likewise coerced. Everything else stays string.
+// Type coercion — строго по объявленному в шаблоне типу (SPEC 143 Т14):
+// `type:"int"` приводится тем же template.CastIntValue, что и канон (clamp в
+// [0, 65535], не-число остаётся строкой), `type:"bool"` — в true/false.
+// Всё прочее остаётся строкой. Списков имён нет.
 //
 // Failure to read either file is non-fatal — substituter then knows nothing
 // and the caller falls through to the hard-coded URLTest fallback.
 func BuildVarSubstituterFromDisk(l paths.Layout) VarSubstituter {
 	defaults := loadTemplateVarDefaults(l)
 	overrides := loadStateSettingsVars(l.Data)
-	intVars := intCastVarNames()
+	intVars := defaults.intNames
 	boolVars := defaults.boolNames
 
 	return func(name string) (interface{}, bool) {
@@ -146,12 +145,13 @@ func BuildVarSubstituterFromDisk(l paths.Layout) VarSubstituter {
 type templateVarDefaults struct {
 	values    map[string]string // name → default_value (string form)
 	boolNames map[string]struct{}
+	intNames  map[string]struct{}
 }
 
 // loadTemplateVarDefaults reads only what we need from wizard_template.json:
 // the `vars` array. Each var contributes its `default_value` (in string
 // form — for object form per-platform default we pick `"default"` first,
-// else current GOOS, else any). Type "bool" tracked for coercion.
+// else current GOOS, else any). Types "bool" and "int" tracked for coercion.
 //
 // Robust to missing file / parse errors — returns empty maps and lets the
 // caller fall through to defaults.
@@ -159,6 +159,7 @@ func loadTemplateVarDefaults(l paths.Layout) templateVarDefaults {
 	out := templateVarDefaults{
 		values:    map[string]string{},
 		boolNames: map[string]struct{}{},
+		intNames:  map[string]struct{}{},
 	}
 	path := template.ResolveTemplate(l).Path
 	raw, err := os.ReadFile(path)
@@ -188,6 +189,9 @@ func loadTemplateVarDefaults(l paths.Layout) templateVarDefaults {
 		}
 		if v.Type == "bool" {
 			out.boolNames[v.Name] = struct{}{}
+		}
+		if template.IsIntVarType(v.Type) {
+			out.intNames[v.Name] = struct{}{}
 		}
 		if defStr, ok := readVarDefaultValue(v.DefaultValue); ok {
 			out.values[v.Name] = defStr
@@ -282,31 +286,23 @@ type settingVarEntry struct {
 	Value string `json:"value"`
 }
 
-// intCastVarNames is the canonical set of vars that ship as JSON numbers in
-// the final config. Mirrors `ui/wizard/template/substitute.go isIntCastVar`
-// — kept in sync manually to avoid an import cycle.
-func intCastVarNames() map[string]struct{} {
-	return map[string]struct{}{
-		"tun_mtu":              {},
-		"mixed_listen_port":    {},
-		"proxy_in_listen_port": {},
-		"urltest_tolerance":    {},
-	}
-}
-
 // coerceVarValue decides the runtime type of a substituted var based on its
-// name. Strings stay strings; ints declared in intVars are parsed as numbers;
+// declared template type. Strings stay strings; ints (declared in intVars)
+// go through template.CastIntValue — the same clamp as the main config;
 // bools declared in boolVars become true/false.
 func coerceVarValue(name, value string, intVars, boolVars map[string]struct{}) interface{} {
 	if _, isBool := boolVars[name]; isBool {
 		return strings.EqualFold(strings.TrimSpace(value), "true")
 	}
 	if _, isInt := intVars[name]; isInt {
-		if n, err := strconv.Atoi(strings.TrimSpace(value)); err == nil {
-			return n
+		out, outcome := template.CastIntValue(value)
+		switch outcome {
+		case template.IntCastInvalid:
+			debuglog.WarnLog("varsubst: var %q expected int, got %q — passing through as string", name, value)
+		case template.IntCastClamped:
+			debuglog.WarnLog("varsubst: var %q = %q is out of [0, 65535] — clamped to %v", name, value, out)
 		}
-		debuglog.WarnLog("varsubst: var %q expected int, got %q — passing through as string", name, value)
-		return value
+		return out
 	}
 	return value
 }

@@ -14,34 +14,47 @@ import (
 	"singbox-launcher/core/config/registry"
 )
 
-// IsDirectLink checks if the input string is a direct proxy link (vless://, vmess://, wireguard://, etc.)
+// IsDirectLink — строка является ссылкой узла, а не URL подписки.
+//
+// Ссылку узнаёт РЕЕСТР: секция `uri` протокола своим detect (схема и все её
+// написания — `hy2`, `socks5`, `naive+quic`, `amneziawg`…), тем же выбором,
+// что ведёт разбор в ParseNode. Списка префиксов здесь нет (SPEC 142 A8):
+// новая схема реестра опознаётся ссылкой без правки кода. `http://` и
+// `https://` не ведёт ни одна секция — они остаются URL подписки.
+//
+// Контейнер Amnezia `vpn://` секцией протокола не описан: его опознаёт detect
+// вида источника с распаковщиком `amnezia_vpn` (source_kinds.json), тем же
+// признаком, что в ParseNode.
 func IsDirectLink(input string) bool {
 	trimmed := strings.TrimSpace(input)
-	return strings.HasPrefix(trimmed, "vless://") ||
-		strings.HasPrefix(trimmed, "vmess://") ||
-		strings.HasPrefix(trimmed, "trojan://") ||
-		strings.HasPrefix(trimmed, "ss://") ||
-		strings.HasPrefix(trimmed, "hysteria2://") ||
-		strings.HasPrefix(trimmed, "hy2://") ||
-		strings.HasPrefix(trimmed, "hysteria://") ||
-		strings.HasPrefix(trimmed, "hy://") ||
-		strings.HasPrefix(trimmed, "tuic://") ||
-		strings.HasPrefix(trimmed, "anytls://") ||
-		strings.HasPrefix(trimmed, "ssh://") ||
-		strings.HasPrefix(trimmed, "wireguard://") ||
-		strings.HasPrefix(trimmed, "awg://") ||
-		strings.HasPrefix(trimmed, "masque://") ||
-		strings.HasPrefix(trimmed, "vpn://") ||
-		strings.HasPrefix(trimmed, "socks5://") ||
-		strings.HasPrefix(trimmed, "socks4a://") ||
-		strings.HasPrefix(trimmed, "socks4://") ||
-		strings.HasPrefix(trimmed, "socks://") ||
-		strings.HasPrefix(trimmed, "naive+https://") ||
-		strings.HasPrefix(trimmed, "naive+quic://") ||
-		strings.HasPrefix(trimmed, "proxy-http://") ||
-		strings.HasPrefix(trimmed, "proxy-https://") ||
-		strings.HasPrefix(trimmed, "proxy+http://") ||
-		strings.HasPrefix(trimmed, "proxy+https://")
+	if isAmneziaVPNLink(trimmed) {
+		return true
+	}
+	plans, err := linkmap.Planes()
+	if err != nil {
+		return false
+	}
+	_, _, ok := linkmap.SelectURI(plans, trimmed)
+	return ok
+}
+
+// amneziaUnwrap — имя распаковщика контейнера Amnezia в реестре (атрибут
+// `unwrap` вида источника, source_kinds.json). Распаковщик — код по
+// построению (qCompress предикатами не выражается), и его имя — единственное,
+// что этот файл знает о контейнере; признак входа живёт в detect вида.
+const amneziaUnwrap = "amnezia_vpn"
+
+// isAmneziaVPNLink — строка это контейнер Amnezia: её опознаёт detect вида
+// источника с распаковщиком `amnezia_vpn` (SPEC 142, хвост волны 1: прежде
+// здесь стоял литерал префикса, и регистр в нём судился строже, чем в
+// реестре — `prefix_fold`). Её ведёт parseAmneziaVPNLink, а не секция
+// протокола.
+func isAmneziaVPNLink(s string) bool {
+	plans, err := linkmap.Planes()
+	if err != nil {
+		return false
+	}
+	return linkmap.MatchesUnwrap(plans.Mappers(), amneziaUnwrap, strings.TrimSpace(s))
 }
 
 // MaxURILength — предел длины share-URI, из реестра контракта
@@ -89,49 +102,12 @@ func maxURILengthFromRegistry() int {
 	return maxURILengthDefault
 }
 
-// percentEncodeUserinfoSpaces percent-encodes raw spaces inside the userinfo
-// segment of a proxy URI (between "://" and the authority's '@').
-//
-// Some public lists paste a promo login with a stray space —
-// `vless://Telegramjoin:TurboConfigs @1.2.3.4:80?...` — and net/url refuses the
-// whole URI with "invalid userinfo", dropping an otherwise usable node. A space
-// is never meaningful there, so encoding it is lossless: callers unescape the
-// userinfo anyway.
-//
-// Mirrors percentEncodeWGUserinfoSlashes (node_parser_wireguard.go), which
-// solves the same class of problem for raw '/' in base64 keys.
-func percentEncodeUserinfoSpaces(uri string) string {
-	const sep = "://"
-	si := strings.Index(uri, sep)
-	if si < 0 {
-		return uri
-	}
-	start := si + len(sep)
-	rest := uri[start:]
-
-	// Only the authority's '@' counts; a '@' inside the query or fragment
-	// (a Telegram handle in the node name, say) is not a userinfo separator.
-	at := strings.IndexByte(rest, '@')
-	if at < 0 {
-		return uri
-	}
-	if strings.ContainsAny(rest[:at], "?#") {
-		return uri
-	}
-
-	userinfo := rest[:at]
-	if !strings.Contains(userinfo, " ") {
-		return uri
-	}
-	return uri[:start] + strings.ReplaceAll(userinfo, " ", "%20") + uri[start+at:]
-}
-
 // ParseNode parses a single node URI and applies skip filters
 func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.ParsedNode, error) {
 	// Amnezia vpn:// (compressed profile JSON, SPEC 075) is dispatched before the
 	// generic length guard: such links wrap a whole profile and routinely exceed
 	// MaxURILength; parseAmneziaVPNLink enforces its own size caps.
-	if strings.HasPrefix(uri, "vpn://") {
+	if isAmneziaVPNLink(uri) {
 		return parseAmneziaVPNLink(uri, skipFilters)
 	}
 
@@ -140,10 +116,9 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		return nil, err
 	}
 
-	// SPEC 133: сначала спрашиваем ДВИЖОК реестра. Ведёт ли он эту ссылку,
-	// решает секция схемы (`live: true` + её собственный detect), а не список
-	// имён здесь. Не ведёт — идём прежним путём ниже; развилка временная и
-	// исчезнет вместе с атрибутом, когда переведены будут все схемы.
+	// SPEC 133: ссылку ведёт ДВИЖОК реестра. Ведёт ли он её, решает секция
+	// схемы своим detect, а не список имён здесь. Не ведёт — ниже только
+	// отказ с кодом.
 	if node, engErr, handled := parseURIByEngine(uri, skipFilters); handled {
 		return node, engErr
 	}
@@ -155,7 +130,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	// Сюда попадает только текст, который не опознала ни одна секция.
 	// Строка формы `xxx://` — схему не ведёт никто (`scheme_unsupported`);
 	// у прочего текста схемы нет вовсе, и он просто не прочитан
-	// (`form_unrecognized`) — граница по CANON §4.1.
+	// (`form_unrecognized`) — граница по PARSING_PRINCIPLES §4.1.
 	if scheme := linkmap.SchemeOfText(uri); scheme != "" {
 		return nil, linkmap.NewReject(WarnSchemeUnsupported, map[string]string{"scheme": scheme}, ErrUnsupportedScheme)
 	}
@@ -173,7 +148,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 // ParseNode отдаёт её обёрнутой в linkmap.RejectError с кодом
 // `scheme_unsupported` и параметром `scheme`: код едет тем же путём, что у
 // отказов движка (rejectCodeOf, linkmap.RejectCode), а признак для
-// errors.Is не теряется. Граница с `form_unrecognized` (CANON §4.1): схему
+// errors.Is не теряется. Граница с `form_unrecognized` (PARSING_PRINCIPLES §4.1): схему
 // строки `xxx://` не ведёт ни одна секция — `scheme_unsupported`; текст не
 // прочитан (схемы у строки нет, у тела не опознан ни один вид источника,
 // либо секция схему опознала, но ни одна её форма пейлоад не прочитала) —

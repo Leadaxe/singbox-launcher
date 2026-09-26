@@ -27,7 +27,7 @@
    лаунчер их не применяет и не пишет. *За LxBox:* реализация после sync;
    неприменённые ключи — одним `backup_source_identity_dropped` на подписку.
 5. **`sockopt.dialerProxy`** — канон кейса: **вложенный `chain[]` внутри
-   узла-владельца** (CANON §2.1-2.2), порядок хопов нормативен; материализация
+   узла-владельца** (PARSING_PRINCIPLES §2.1-2.2), порядок хопов нормативен; материализация
    в отдельные служебные узлы с `detour` — модель состояния лаунчера, вне
    контракта разбора (D-085). Side-specific ожидание НЕ нужно — форма общая.
    Кейсы `dialer_proxy` и `dialer_proxy_missing` добавлены (один хоп, socks).
@@ -705,7 +705,7 @@ D-101, ставит «обе» в BACKUP.md §2 и поднимает `contract/
   входы;
 - **подмена на `chrome` — на СБОРКЕ конфига**
   (`core/build/tls_transforms.go` `HealRealityFingerprints`, вызов в
-  `build.go`), а НЕ в парсере: `entry` нормативен (CANON §2), и подмена в
+  `build.go`), а НЕ в парсере: `entry` нормативен (PARSING_PRINCIPLES §2), и подмена в
   парсере увела бы ~20 кейсов корпуса в расхождение с вашим `entry`. Это
   ровно ваше размещение;
 - предупреждение `reality_fp_not_chrome` — в парсере, где узел под рукой:
@@ -1725,7 +1725,7 @@ URI-путь), а расхождение путей записано в `desc` �
 
 ### 24.1 Норма
 
-1. **Конвейер один для всех входов** (CANON §8): маппер (перевод диалекта по
+1. **Конвейер один для всех входов** (PARSING_PRINCIPLES §8): маппер (перевод диалекта по
    `uri.*.maps_to` и `body.*.aliases`, ничего не решает) → санитайзер (по
    `body`-секциям реестра) → эмиттер (по `body.order`). Ни одного схемного
    ветвления в санитайзере/эмиттере: naive, QUIC-семейство, AWG — те же
@@ -1741,7 +1741,7 @@ URI-путь), а расхождение путей записано в `desc` �
    `impl` (разработчики) — содержимое перенесено без потерь.
 3. **Неизвестный реестру ключ снимается** с `unknown_key`; реестр пополняется
    при пине ядра, не при встрече с мусором.
-4. **`warnings[]` = `{code, path?, value?, params?}`** (CANON §6,
+4. **`warnings[]` = `{code, path?, value?, params?}`** (PARSING_PRINCIPLES §6,
    `schema/node.schema.json`, `schema/backup.schema.json`): `path` обязателен у
    кодов уровня поля; `value` ≤64 символов, у `secret`-полей `"***"`; порядок
    полевых кодов = `body.order`; строки-коды прежнего формата читаются.
@@ -1772,7 +1772,7 @@ URI-путь), а расхождение путей записано в `desc` �
 | 7.3 | naive одиночный userinfo | password (как Dart) | требует одновременной правки обеих сторон, иначе round-trip хуже, чем сейчас — согласуем дату |
 | 7.4 | `-udp443` → порт 443 | **не переписывать нигде** | баг у обоих: порт — свойство узла, узел `…:8443` становился недозваниваемым |
 | 7.5 | anytls мусорный SNI (`🔒`, без точки) | fallback на `server` (как Go) | Dart пропускает `server_name:"🔒"`: check проходит, handshake мёртв |
-| 7.7 | TUIC дефолты в теле (`cubic`, `["h3"]`) | не писать | CANON §2.4 «дефолты не пишутся»; ломает identity-паритет |
+| 7.7 | TUIC дефолты в теле (`cubic`, `["h3"]`) | не писать | PARSING_PRINCIPLES §2.4 «дефолты не пишутся»; ломает identity-паритет |
 | 7.8 | TUIC `udp_relay_mode` мусор | снять + код (как Go) | ядро мусор принимает (C) — подстановка `native` скрывает потерю намерения подписки |
 | 7.9 | пустой пароль anytls/tuic | дроп `field_missing` (как Dart) | подтверждено; ядро такой узел принимает, решение — UX |
 | 7.10 | ss legacy-шифры | **принимать**: enum = 18 методов ядра, девять stream-шифров (`aes-*-ctr`, `aes-*-cfb`, `rc4-md5`, `chacha20-ietf`, `xchacha20`) → info `ss_method_legacy`, узел живёт | оба клиента дропали рабочие узлы без объяснения |
@@ -1882,7 +1882,7 @@ URI-путь), а расхождение путей записано в `desc` �
 | `uri/tuic/*` (4 кейса) | uuid-заглушка `"u"` | валидные uuid в фикстурах | `"u"` даёт фатал «invalid uuid» — фикстуры были невалидны |
 | `reality.short_id: ""` (3 кейса) | пустой ключ в теле | ключ опущен | ядру эквивалентно |
 | `flow_deprecated` / `field_conflict` (4 кейса) | кодов не было | коды добавлены, тела те же | Л10: коды реестра теперь ставятся |
-| явные `insecure:false`, `disable_sni:false` в sing-box-JSON | опускались старым эмиттером | **сохраняются как пришли** | санитайзер не канонизирует дефолты (CANON §2.4 — про материализацию своих дефолтов, не про снятие явных значений входа); если LxBox их снимает — скажите, выровняем |
+| явные `insecure:false`, `disable_sni:false` в sing-box-JSON | опускались старым эмиттером | **сохраняются как пришли** | санитайзер не канонизирует дефолты (PARSING_PRINCIPLES §2.4 — про материализацию своих дефолтов, не про снятие явных значений входа); если LxBox их снимает — скажите, выровняем |
 
 Новые типы реестра: `awg_range` (h1–h4 и диапазоны AWG), `int_array` (`peers.reserved`), формат `url_path`; `registry.Load` теперь индексирует схемы по `scheme`+`aliases`+`singbox_type` (ss/socks5/wg/awg). Пара ссылка↔JSON одного мусорного vless (`uri/vless/junk_pair_with_body` ↔ `body/singbox/vless_junk_pair`) даёт одинаковые тела; коды пока различаются путями — правила значений выносятся из URI-парсеров в W2d.
 
@@ -1910,7 +1910,7 @@ REALITY `pbk` — 32 байта после декода, `normalize: hex_only` +
 6. Порядок `warnings[]` = `body.order` (не порядок разбора) — коды сравнимы поэлементно; у 15 кейсов коды получили `path`/`value` (таблица W2D_CHANGES §3), у 9 — код появился по смыслу (`reality_pbk_invalid` ×4, `utls_fp_unknown` у vmess-JSON, `ech_ignored` ×3, `field_requires` у gecko-полей на salamander).
 7. `-udp443` порт не переписывается (7.4).
 
-Зеркало LxBox (§459/460/463, 18.09): реестр 1.1.0 бандлится в assets, `RegistrySanitizer` по `body`, гард на сборке, `RegistryWarning` один класс на 12 кодов; два отступления совместимы — порядок ключей результата входящий (CANON §7 сравнивает по значению), число под `type:string` (снято типами `awg_range`/`int_array`); пин ядра lx.5 → lx.7 в работе.
+Зеркало LxBox (§459/460/463, 18.09): реестр 1.1.0 бандлится в assets, `RegistrySanitizer` по `body`, гард на сборке, `RegistryWarning` один класс на 12 кодов; два отступления совместимы — порядок ключей результата входящий (PARSING_PRINCIPLES §7 сравнивает по значению), число под `type:string` (снято типами `awg_range`/`int_array`); пин ядра lx.5 → lx.7 в работе.
 
 ### 24.8 Дата 24.09.2026 для 7.3 снята (решение владельца 18.09.2026)
 
@@ -2495,7 +2495,7 @@ string/number). Линтер требует вхождения advisory-знач
    - пусто/`null`/`undefined` → `auto` — «не задано», подписка ничего не
      просила, предупреждать не о чем. **Ключ при этом обязан появиться**:
      у ядра поле без `omitempty`, а `default` реестра тело не наполняет
-     (CANON §2.4 материализует только `default_when`), и опущенный ключ у
+     (PARSING_PRINCIPLES §2.4 материализует только `default_when`), и опущенный ключ у
      `required`-поля уронил бы узел кодом `field_missing`. На этом мы
      споткнулись в первом заходе — предупреждаем, если пойдёте тем же путём.
 
@@ -2571,7 +2571,7 @@ URI-парсер писал `version: "5"` жёсткой константой. 
    это проверяет. Две таблицы здесь разъехались бы на первой же правке.
 
 3. **`version: "5"` мы пишем в тело ЯВНО и оставили как есть.** Ядру
-   хватило бы отсутствия ключа (пусто = 5), и по CANON §2.4 дефолты ядра мы
+   хватило бы отсутствия ключа (пусто = 5), и по PARSING_PRINCIPLES §2.4 дефолты ядра мы
    не материализуем. Но здесь значение уже стоит в ожиданиях корпуса
    (`corpus/uri/socks/*`) и в телах всех живых socks-узлов **обеих сторон**,
    и снятие переписало бы их все ради нуля разницы для ядра. Правило §2.4
@@ -2750,9 +2750,9 @@ percent-кодированное значение; «нет слоя» — `none
 
 Ваша фича 478, наш SPEC 132. Договорённость: **сначала контрактная норма,
 потом код обеих сторон.** В реестре кодов заранее объявлен `core_rejected`,
-в `CANON.md` — новый параграф §9.
+в `PARSING_PRINCIPLES.md` — новый параграф §9.
 
-**`contract/docs/CANON.md` §9 «Core-rejected node»** — нормативно:
+**`contract/docs/PARSING_PRINCIPLES.md` §9 «Core-rejected node»** — нормативно:
 
 - **§9.1 формат строки ошибки ядра**
   `initialize <outbound|endpoint>[<i>] <type>[<tag>]: <text>` (ядро
@@ -3140,7 +3140,7 @@ Amnezia) и на входе sing-box не работал вовсе: тело б
 вложенные `utls` / `reality` / `ech` со своим `enabled: false`; у секции-суб-схемы
 `tls` он объявлен ОДИН раз и при разрешении `ref` переезжает в каждый протокол.
 
-**Норма порядка — нормативна, `docs/CANON.md` §6.1:** `absent_when` судится ДО
+**Норма порядка — нормативна, `docs/PARSING_PRINCIPLES.md` §6.1:** `absent_when` судится ДО
 правил полей самого объекта и ДО связей соседей (`conflicts` / `requires` /
 `forbidden_for`, условия `when.any_set`). Снятый объект «не задан» для любой
 проверки наличия, и вместе с ним исчезает всё, что внутри (`tls.reality.enabled`
@@ -5551,7 +5551,7 @@ public_key: illegal base64 data» отказом ВСЕГО конфига).
 
 ### 38.2. Порядок `warnings[]`
 
-CANON §6 уточнён: коды записей маппера с `maps_to:null` (`path` = имя
+PARSING_PRINCIPLES §6 уточнён: коды записей маппера с `maps_to:null` (`path` = имя
 записи) идут **впереди** кодов тела (санитайзера); внутри группы — порядок
 объявления правил. У нас `mergeWarnings` уже склеивает слои в этом порядке.
 
@@ -5915,8 +5915,8 @@ cookie с кастомным ключом. `seqPlacement`/`seqKey` доезжа�
   сам (`selector` остаётся `selector`), Xray-балансировщик рода не объявляет
   и становится `urltest`; синтетический autogroup — `urltest`.
 
-Конверт у нас не менялся: `scheme` группы — `group` (CANON §1: имя схемы, не
-тип), `entry.type` — `urltest` в `body/xray/balancer_group`. CANON §5
+Конверт у нас не менялся: `scheme` группы — `group` (PARSING_PRINCIPLES §1: имя схемы, не
+тип), `entry.type` — `urltest` в `body/xray/balancer_group`. PARSING_PRINCIPLES §5
 дополнен. Страж `TestContractGroupGenus` сверяет род каждого узла-группы
 корпуса тел с таблицей; если у вас `xray/balancer_group` был красным только
 из-за `scheme` — после приведения по `values` он обязан позеленеть.
@@ -6070,7 +6070,7 @@ early data пишется только хвостом пути (`compose` у `ws
 
 **Граница кодов непрочитанного** (§45.4) — тоже решение 24.09.2026:
 `scheme_unsupported` — строке формы `xxx://` с неизвестной схемой,
-`form_unrecognized` — непрочитанному тексту (CANON §4.1).
+`form_unrecognized` — непрочитанному тексту (PARSING_PRINCIPLES §4.1).
 
 ## 46. Контракт 1.1.50 — диалект Xray: три протокола, mux, транспорт без пары, `alpn` с общего блока
 
@@ -6739,3 +6739,1485 @@ D133-E12; D133-E1 и D133-24 переписаны, D133-C8 обзавёлся к
   кейсу нужен per-app override; если нет — примитив чиним обе стороны.
 - **§A.9**: исполняет ли ваш движок предикат `has_key`? В грамматике его
   нет, у нас читается только `required_keys`.
+
+## 50. Контракт 1.1.54 — hysteria2: ссылки 3x-ui с gecko читаются без потерь
+
+Ссылка hysteria2 из 3x-ui (`internal/sub/service.go`, `genHysteriaLink`) с
+gecko-обфускацией давала три `uri_param_unknown`: `minPacketSize`,
+`maxPacketSize`, `security`. Узел поднимался с `obfs.type=gecko` и паролем,
+но диапазон размеров пакетов, заданный в панели, терялся МОЛЧА — ядро брало
+свой дефолт (sing-quic `geckoDefaultMinPacketSize = 512`).
+
+- **`minPacketSize` / `maxPacketSize`** — алиасы `obfs-min-packet-size` /
+  `obfs-max-packet-size` (написание v2rayN, 3x-ui повторяет его парой, только
+  при `obfs=gecko`). Второй источник записей `mappers.uri.params`; канон эмита
+  не меняется (`obfs-*-packet-size`), тело и identity тоже. Правило
+  `requires … equals: gecko` на `obfs.{min,max}_packet_size` срабатывает на
+  обоих написаниях — кейс `salamander_camelcase_sizes_dropped`. Прежняя проза
+  «у hysteria2 нет де-факто URI-ключа» снята.
+- **`security`** — заведён ТОЛЬКО у hysteria2 (в 1.1.53 п.(7) он осознанно не
+  заведён «для всех схем» из-за ss-мусора). Запись `maps_to: null`: `tls` и
+  пустое значение молчат, иное (`none`, `reality`) узел не ломает и называется
+  `uri_param_unknown` с `query_name=security` через `on_present` под `when`
+  по источнику (`not_in: ["tls", ""]`). Блок `tls#uri_security` НЕ подключён:
+  его ветка `none` сняла бы tls-блок, без которого hysteria2 не поднимается.
+- **`ech`** у hysteria2 читается уже сейчас (блок `tls#uri`, код
+  `ech_ignored`); **`vcn`** не читается нигде — в этой волне не заводится.
+
+Кейсы корпуса (3): `uri/hysteria2/3xui_gecko_camelcase`,
+`uri/hysteria2/security_non_tls_warn`,
+`uri/hysteria2/salamander_camelcase_sizes_dropped`.
+
+От вас: синк 1.1.54; Dart-движок исполняет алиасы и запись `security` по
+реестру, правок кода ожидать не должно.
+
+## 51. Контракт 1.1.55 — VLESS: Vision с VLESS Encryption не снимается из-за транспорта
+
+Ваш §544. Подписка Assassin VPN отдаёт VLESS + REALITY + xhttp +
+`flow=xtls-rprx-vision` + `encryption=mlkem768x25519plus…`. Связь
+`flow.conflicts[transport]` снимала flow у любого узла с транспортом, и сервер
+с Vision рвал соединение. С VLESS Encryption Vision работает поверх слоя
+шифрования (CommonConn), нижний TLS не трогает — транспорт ему не важен
+(Xray; ядро починено в sing-box-lx#29, SPEC 105 ядра).
+
+- **`relation.unless_set`** (schema/registry_body.schema.json,
+  `definitions/relation`) — общее условие-исключение: связь (`conflicts` и
+  `requires`) не действует, если задан ЛЮБОЙ из путей от корня тела.
+  «Задан» — ТОТ ЖЕ предикат, что у соседа самой связи (у вас
+  `_presentInSource`, у нас `pathPresent`): непустое значение по исходному
+  телу, не снятое запретом схемы и не литерал-выключатель. Наличие ключа
+  НЕ считается: `encryption: ""` исключения не даёт.
+- **Литерал-выключатель невидим связям.** Поле с `absent_values`, значение
+  которого после `normalize` совпало с литералом (точно, с учётом регистра),
+  помечается незаданным предварительным проходом — как объект по
+  `absent_when`. Иначе `encryption: "none"` из исходного тела отменял бы
+  конфликт, хотя слоя нет. Исполняется до обхода, поэтому `body.order`
+  (encryption идёт после flow) на исход не влияет.
+- **`vless.flow`**: `conflicts: [{with: transport, code: vision_with_transport,
+  unless_set: [encryption]}]`; impl и тексты `vision_with_transport`
+  (warnings.json) уточнены — код только у узла без encryption, severity info.
+- `encryption=None` (регистр) отдельного кейса не получает: это настоящее
+  значение, но оно не проходит pattern и хоронит весь узел
+  (`vless_encryption_invalid`, кейс `body/singbox/vless_encryption_none_wrong_case_rejected`).
+- `min_core` у пары не заводится: без flow узел мёртв на любом ядре.
+- Identity не меняется (flow в IDENTITY не участвует), меняется только тело.
+
+Кейсы корпуса (4): `uri/vless/flow_vision_xhttp_encryption_kept`,
+`uri/vless/flow_vision_xhttp_encryption_none_suppressed` (регрессия `none`),
+`body/xray/vless_vision_xhttp_encryption` (форма Assassin),
+`body/singbox/vless_vision_transport_encryption_kept`. Существующие
+`flow_vision_xhttp_suppressed`, `flow_vision_ws_suppressed`,
+`body/xray/vless_vision_with_transport` не меняются.
+
+От вас: синк 1.1.55; Dart-движок связей поддерживает `relation.unless_set`
+(одна проверка перед снятием декларанта) и невидимость литерала-выключателя
+для связей.
+
+## 52. Контракт 1.1.56 — xhttp `uplink_data_placement` ↔ `mode` только для header/cookie на всех входах; ss `plugin_opts` ↔ `plugin` (ваши §546/§547)
+
+Ваш запрос от 25.09.2026 (§546) принят, поправка сессии «новый релиз» по
+§547 тоже: ядро (transport/v2rayxhttp/meta.go:115-117) отвергает вне
+packet-up ТОЛЬКО `header`/`cookie`, `body`/`auto` законны в любом режиме.
+Прежняя запись маппера uri/xray судила любое placement: дописывала
+packet-up узлам с body/auto и снимала их при stream-one с ложным
+`xhttp_param_reset`. Исправлено одной волной — тело и оба маппера.
+
+- **Тело, `transports.json` body.variants.xhttp:**
+  - `mode.default_when: {absent: true, value: "packet-up", code:
+    xhttp_mode_forced_packet_up, when: {"transport.uplink_data_placement":
+    {"in": ["header", "cookie"]}}}` — режим не назван, placement header/cookie
+    → дописать packet-up с кодом.
+  - `uplink_data_placement.requires: [{path: transport.mode, equals:
+    "packet-up", when: {"transport.uplink_data_placement": {"in": ["header",
+    "cookie"]}}, code: xhttp_param_reset}]` — header/cookie при явном другом
+    режиме → placement снят, режим не тронут. body/auto — как есть в любом
+    режиме, без кодов.
+  - Пустая строка = «не задано» на уровне движка, не данных (тест структуры
+    реестра отвергает `absent_values: [""]` как дубль `omitAsUnset`):
+    `uplink_data_placement: ""` предикат не выполняет; `mode: ""` + header
+    ведёт себя как отсутствующий mode (packet-up дописан, placement
+    остаётся). Параметров у кодов нет — как у `note` маппера.
+- **Мапперы uri и xray, `transports.json`:** запись `uplinkDataPlacement`
+  получает селектор `"$value": {"in": ["header", "cookie"]}` (остальное в
+  ней без изменений: `when not_in` по mode, `implies`, `on_implies_written`,
+  `on_when_false`, priority 50). Новая запись `uplinkDataPlacementOther` с
+  теми же `source`/`maps_to`, `when: {"$value": {"not_in": ["header",
+  "cookie"]}, "transport.type": "xhttp"}`, `round_trip_only: "parse"` —
+  пишет body/auto и любое иное значение как есть; мусор снимает enum тела.
+  Обратный ход ведёт основная запись (её `when` эмит не судит).
+- **shadowsocks, `shadowsocks.json` body:** `plugin_opts.requires:
+  [{path: plugin, code: field_requires}]`. Отдельный код не заводился:
+  `field_requires` несёт `{path}`/`{requires}` и описывает случай точно.
+
+**Три новых примитива** (схемы `registry_body` и `registry_mapper`):
+
+1. `condition` тела (`default_when.when`, `max_when.when`, `min_when.when`,
+   `advisory.when` и т. д.) принимает, кроме `any_set`/`source_kind`,
+   предикаты по ЗНАЧЕНИЮ путей: ключ — путь от корня тела, значение —
+   скаляр (равенство по печатной форме) либо ровно один оператор
+   `{"in": […]}` / `{"not_in": […]}`. Грамматика — та же, что у `when`
+   маппера (PRIMITIVES §0.13: второго имени для одной операции не
+   заводится). Предикаты — И между собой и И с ветками any_set/source_kind.
+   Значение берётся из чистой карты (включая объект, обход которого ещё
+   идёт), иначе из исходной; снятое поле и пустая строка — «не задано»
+   (`in` ложен, `not_in` истинен, равенство ложно). Незнакомый оператор —
+   ложь (реестр вправе уехать вперёд кода).
+2. `relation.when` — та же `condition` у `requires`/`conflicts`: ложно —
+   связь не судится вовсе. Нужно там, где связь зависит от собственного
+   значения поля; к моменту проверки оно в чистой карте ещё не лежит и
+   читается из исходного тела.
+3. `$value` в `when` маппера — собственное значение записи (первый
+   найденный из её `source`, пустое = отсутствует). Это СЕЛЕКТОР, не
+   условие: делит одно значение источника между записями с одним
+   `maps_to`; промах — молчаливый пропуск БЕЗ `on_when_false` (значение не
+   подавлено, его пишет другая запись). Источник прочитанным не
+   отмечается (§10.2). Проверяется до остальных ключей `when`.
+
+**Три нормы движка санитайзера** (без них правило (1) не работает; у нас
+`core/config/nodeflow/sanitize.go`, у вас `body_sanitizer.dart`):
+
+1. Связи и условия (`requires`/`conflicts`/`any_set`/предикаты) видят поля
+   объекта, обход которого ЕЩЁ ИДЁТ. Вложенный объект (`transport`)
+   попадает в чистую карту только по завершении обхода, а `requires …
+   equals` у placement судится посреди него — материализованный
+   `default_when` у `mode` для соседа не существовал бы (в чистой карте его
+   ещё нет, в исходной не было никогда), и placement снимался бы у узла,
+   которому мы сами только что дописали packet-up. У нас: карта строящегося
+   объекта по префиксу пути (`building`), поиск в ней после чистой карты и
+   до исходной. Порядок `order` обязателен: `mode` раньше
+   `uplink_data_placement`.
+2. Пустая строка у обычного (не required, не tristate) поля и скаляр с
+   литералом-выключателем (`absent_values`) для `default_when` равны
+   отсутствию ключа (раньше только снимались молча); материализация снимает
+   пометку «выключатель», иначе связи соседей не увидели бы дописанное
+   значение.
+3. Пустая строка не выполняет `any_set` и предикаты путей: для ядра это
+   отсутствие ключа. Число 0 — по-прежнему значение (`jc: 0` у AmneziaWG).
+
+Identity не меняется. Существующие expected корпуса не изменились
+(`uri/vless/xhttp_uplink_*` зелёные как были).
+
+Кейсы корпуса (9): `body/singbox/vless_xhttp_uplink_header_no_mode_adds_packet_up`,
+`…_header_stream_one_reset`, `…_header_packet_up_kept`,
+`…_body_stream_one_kept`, `…_auto_no_mode_kept`,
+`body/singbox/shadowsocks_plugin_opts_without_plugin_dropped`,
+`…_with_plugin_kept`, `uri/vless/xhttp_uplink_body_stream_one_kept`,
+`body/xray/vless_xhttp_uplink_body_stream_one_kept`.
+
+От вас: синк 1.1.56; Dart исполняет три примитива и три нормы выше
+(`body_sanitizer.dart` по нашему грепу `default_when` сейчас не читает —
+`registry.dart` только парсит; `$value` — в интерпретаторе маппера); после
+зелёного корпуса — снять ветку `uplink_data_placement` ↔ `mode` из
+`XhttpTransport.toSingbox` и `plugin_opts`-гейт из `emitShadowsocks`
+(§546 «Нерешённое», §547 фаза B). sha коммита — в сообщении сессии.
+
+## 53. Контракт 1.1.57 — новый примитив `on_invalid: unwrap`; hysteria v1 `obfs`-объект и плоские ключи masque — правилами реестра на всех входах
+
+Курс владельца (SPEC 142): любое правило о полях узла живёт только в
+реестре, в коде — общий движок. Волна 2 сняла у нас последний рукописный
+санитайзер импорта sing-box (`SanitizeSingboxOutboundMap`,
+`core/config/subscription/singbox_sanitize.go` удалён целиком). Два его
+правила работали ТОЛЬКО на импорте sing-box и МОЛЧА (лог); теперь оба —
+данные реестра, исполняются санитайзером тела на всех входах (импорт
+sing-box, ручной JSON, тело из бэкапа/state) и ставят код на узел.
+
+**Новый примитив движка санитайзера — `on_invalid.action = "unwrap"`**
+(схема `registry_body.schema.json`, `definitions.onInvalid`):
+
+```json
+"on_invalid": {"action": "unwrap", "key": "<член>", "code": "<код>", "else_code": "<код>"}
+```
+
+Смысл: значение приехало ОБЁРТКОЙ соседнего диалекта — объектом там, где
+поле ждёт скаляр. Срабатывает там же, где любой `on_invalid`: значение не
+привелось к типу поля или не прошло его ограничения. Три исхода, все с
+кодом:
+
+1. Значение — объект, его член `key` приводится к типу поля, не пуст
+   (строка из одних пробелов = пуста) и проходит ограничения поля
+   (`values`/`format`/`pattern`/`min`/`max`/…; `absent_values` тоже
+   значит «не годен») → поле получает ЭТОТ член, код `code` на пути поля.
+2. Значение — объект без годного члена `key` → поле снято, код
+   `else_code` (нет его — `type_invalid`). Параметры кода — СКАЛЯРНЫЕ
+   члены объекта (строка/число/bool), кроме самого `key` (у секретного
+   поля это секрет), плюс `path`; лишнее отсекается по `params` кода в
+   `warnings.json`. Так `{type}` у `obfs_password_missing` берётся из
+   `type` объекта.
+3. Значение не объект → поле снято с `type_invalid`, как у поля без
+   `on_invalid`.
+
+`value` у кода секретного поля — маска `***`, как везде. Имён схем и
+полей в движке нет: какой член брать, говорит реестр. У нас —
+`core/config/nodeflow/sanitize.go` (`unwrap`), у вас —
+`body_sanitizer.dart` рядом с `coerce`/`drop_node`. Линтер реестра:
+`unwrap` без `key` — ошибка; `key`/`else_code` при другом action —
+ошибка; `else_code` обязан быть объявлен в `warnings.json`.
+
+**Правила, перенесённые в реестр:**
+
+- **hysteria (v1), `hysteria.json` `body.fields.obfs`:**
+  `{action: unwrap, key: password, code: obfs_object_flattened,
+  else_code: obfs_password_missing}`. У v1 `obfs` — плоская строка-секрет,
+  а провайдеры-конвертеры кладут в него объект `{type, password}` от
+  hysteria2; ядро на объекте отвергает ВЕСЬ конфиг. Объект с паролем →
+  строка-пароль + `obfs_object_flattened`; объект без пароля → `obfs`
+  снят + `obfs_password_missing`; иная форма → `type_invalid`. Запись
+  `mapper` `obfs_object_to_string` теперь описывает правило тела.
+  (У вас парсера hysteria v1 нет — кейсы помечены `extension: desktop`;
+  примитив всё равно нужен движку, он общий.)
+- **masque, `masque.json` `body`:** плоские `network`/`sni`/
+  `skip_cert_verify` УБРАНЫ из `body.fields`/`order` и перечислены в
+  `body.skipped` с причиной. Снимает их общий `unknown_key` (по ключу,
+  значения НЕ переносятся — решение 0.8.0 / D-078 без изменений). Раньше
+  они были объявлены полями с `deprecated: true`; этот атрибут санитайзер
+  не исполняет, и на ручном JSON/бэкапе ключи доезжали до тела — а
+  плоский `sni` рядом с `tls.server_name` роняет ядро fail-fast на весь
+  конфиг. Запись `mapper` `singbox_flat_fields_stripped` получила
+  `code: unknown_key`. Описательные `uri.query.sni/insecure.maps_to`
+  поправлены на `tls.server_name`/`tls.insecure` (прежние цели — снятые
+  поля тела).
+
+**Коды:** новый `obfs_object_flattened` (severity `info`, `params:
+[path]`, title/text/cause/fix en+ru в `warnings.json`). Остальные —
+существующие (`obfs_password_missing`, `type_invalid`, `unknown_key`).
+
+**Кейсы корпуса (3):** `body/singbox/hysteria_obfs_object_flattened`
+(`extension: desktop`), `body/singbox/hysteria_obfs_object_no_password`
+(`extension: desktop`), `body/singbox/masque_legacy_flat_keys` (три
+`unknown_key` в порядке ключей по алфавиту — `network`,
+`skip_cert_verify`, `sni`; канонические `vhttp` и `tls.server_name` не
+тронуты). Существующие ожидания не менялись. Identity не меняется.
+
+От вас: синк 1.1.57; `unwrap` в `body_sanitizer.dart` по семантике выше;
+masque-кейс зелёный без правок данных, если ваш санитайзер снимает ключи
+вне `body.fields` общим `unknown_key` (у masque он больше не встретит
+`network`/`sni`/`skip_cert_verify` в fields). Если у вас есть своя
+рукописная вычистка плоских ключей masque в JSON-парсере
+(`json_parsers.dart`, ветка masque) — после зелёного корпуса её можно
+снять. sha коммита — в сообщении сессии.
+
+## 54. Контракт 1.1.58 — каталог `strip` цепочки, связи AmneziaWG и Tailscale данными реестра
+
+Курс владельца (SPEC 142, волна 3): рукописные копии правил о полях узла
+вне реестра снимаются. Новых примитивов движка нет — только данные
+реестра; всё ниже исполняется существующими `fields`/`order`, `requires`
+с `when` по значению (1.1.56) и `pattern`.
+
+**Изменения реестра:**
+
+- **`chain.json` `body.fields.strip`** — теперь объект с `order` и
+  `fields`: закрытый каталог ядра (`protocol/chain/transform.go`
+  `stripCatalog`) — `tls.fragment`, `multiplex.padding`, `xhttp.padding`
+  (`bool`, `default: true`) и `tls.utls` (`bool`, `default: false`).
+  `default` поля каталога = «снимается ли ключ при включённом
+  `strip_evasion`»; при `strip_evasion: false` каталог пуст и действует
+  только патч. Санитайзер `default` не материализует. Имена полей
+  СОДЕРЖАТ ТОЧКУ — это ключи ядра, а не вложенность: `strip.tls.utls` —
+  поле `tls.utls` объекта `strip`. Неизвестный ключ `strip` снимается
+  общим `unknown_key` (ядро на нём отвергает весь конфиг). Форма
+  цепочки и валидатор берут список ключей, порядок показа и дефолты
+  галок из `order`/`default`, своего каталога в коде нет.
+- **`wireguard.json` `body.fields.ip`** — `requires: [{path: id, when:
+  {ip: quic}, code: field_requires}]`: ядро отвергает `ip=quic` без
+  домена (он становится SNI ClientHello). `dns`/`sip` при пустом `id`
+  генерируют псевдоимя, `stun` его не читает — им `id` не нужен (impl
+  `id` поправлен, прежде говорил «обязателен при quic|dns|sip»).
+- **`wireguard.json` `body.fields.id`** — `pattern` строгого LDH ядра
+  (`validateMasqueDomain`): метки `[A-Za-z0-9_-]` длиной 1..63, дефис не
+  первым и не последним символом, одна завершающая точка допустима.
+  Прежний `format: host` пропускал `@`, `;`, пробел-подобное и не-ASCII,
+  на которых ядро роняет весь конфиг. Негодный `id` снимается с
+  `awg3_field_invalid` (существующий `on_invalid`).
+- **`tailscale.json` `body.fields.exit_node_allow_lan_access`** —
+  `requires: [{path: exit_node, code: field_requires}]`: ядро применяет
+  поле только при заданном `exit_node`.
+
+**Что у нас поменялось в коде (для паритета поведения):**
+
+- Глобальные анти-DPI трансформы TLS (фрагментация ClientHello/записей,
+  смешанный регистр SNI) решают «к какой схеме применять» по
+  `tls.fragment` `allowed_for`/`forbidden_for` реестра, а не списком
+  типов. Следствие: **masque теперь получает фрагментацию** наравне с
+  прочими (ядро исполняет её на h2-ноге `auto`/`h2` и только
+  предупреждает на `h3`); naive по-прежнему исключён (`forbidden_for`).
+  Если ваш post-step `tls_transforms.dart` держит свой список
+  исключений — сведите его к тому же вопросу реестру.
+- Подпись транспорта узла: «есть транспорт» = у схемы есть поле
+  `transport` в `body` (без блока — `tcp`), у схемы с полем `vhttp` —
+  его значение, пустое = `default` поля (`auto`), иначе подписи нет.
+  Следствие: anytls/ss/socks/http/naive/ssh больше не подписываются
+  `tcp`; legacy-ключ `network` у masque не читается. Правило раньше было
+  «один в один с `config_node.dart` `_deriveTransport`» — повторите.
+- Формы (AWG-обфускация, «добавить WireGuard», Tailscale, WARP) берут
+  enum/дефолты из реестра и проверяют ввод пробным санитайзером: MTU
+  формы WireGuard — по `min/max` реестра (576..1500, прежде 576..9000),
+  `allowed_ips` не подставляется формой — его ставит `default_when`
+  (`0.0.0.0/0` и `::/0`, прежде форма писала только IPv4).
+- Отказ селектора транспорта: параметр, в который едет отвергнутое
+  значение, — первый из `params` кода в `warnings.json` (у
+  `transport_header_unsupported` это теперь `value`, как объявлено, а не
+  `transport`). `dropped[].reason` ненормативен и изменился.
+
+**Коды:** новых нет; используются `field_requires`, `awg3_field_invalid`,
+`unknown_key`.
+
+**Корпус:** кейсов не добавлено, существующие ожидания не менялись,
+identity не меняется.
+
+**Отложено (не в 1.1.58):** `jmin ≤ jmax` у AmneziaWG (ядро отвергает
+конфиг; нужна связь-упорядочение полей — SPEC 142 C8), запрет
+`0.0.0.0/0`/`::/0` в элементе `tailscale.advertise_routes` (нужен
+`item_forbidden_values` — C9) и маскирование битов хоста префикса;
+конфликт «цепочка снимает `tls.utls` на REALITY-хопе» переедет в
+правило реестра вместе с C4 (REALITY ↔ uTLS).
+
+От вас: синк 1.1.58; убедиться, что санитайзер обходит поля объекта с
+точкой в имени как плоские ключи (без разбора пути); форма цепочки — из
+`strip.order`/`default`; паритет подписи транспорта и трансформов TLS
+по пунктам выше. sha коммита — в сообщении сессии.
+
+## 55. Контракт 1.1.59 — роль поля `role`: учётные данные узла и приватный ключ share-ссылки данными реестра
+
+Курс владельца (SPEC 142, волна 4, находки C2 и C6): рукописные таблицы
+«какое поле у схемы X» снимаются, поле находится по роли, объявленной в
+реестре.
+
+**Новый атрибут поля тела — `role`** (схема `registry_body`,
+`field.role`, enum `credential` | `private_key`):
+
+- ставится только у поля ВЕРХНЕГО уровня `body.fields` файла протокола
+  (не в `tls.json`/`transports.json`/`dialer.json`, не во вложенных
+  объектах);
+- каждая роль — не больше одного поля на схему (линтер реестра);
+- поле с ролью — `string` либо `listable_string`.
+
+**`role: "credential"` — учётные данные узла.** Поле учётной записи в
+слоте userinfo ссылки: `uuid` у vless/vmess/tuic, `password` у
+trojan/hysteria2/anytls/ss, `auth_str` у hysteria, `user` у ssh,
+`username` у naive/socks/http. У wireguard, masque, tailscale роли нет.
+Шифр ss (`method`) и vmess (`security`) учётными данными не считается,
+хотя в userinfo стоит первым. Значение читается из ГОТОВОГО тела одним
+правилом на всех входах (ссылка, sing-box JSON, Xray JSON, тело
+состояния/бэкапа): строка по пути поля как есть, нет поля или не строка
+— пусто. Позиция в userinfo значения не имеет: одиночный userinfo naive
+(`secret@host`) уезжает в `password`, и учётные данные пусты.
+
+У нас эту величину выбирали три рукописные копии по имени схемы, и итог
+расходился по входам: ссылка ssh/naive/socks/http давала имя
+пользователя, sing-box JSON — пусто; ссылка ss — шифр, JSON — пароль;
+ссылка wireguard/masque — приватный ключ, JSON — пусто. Теперь итог
+один. Если у вас есть такая же выемка (подпись узла, поиск/фильтр,
+дедуп по «секрету») — сведите её к роли.
+
+**`role: "private_key"` — приватный ключ, который уезжает в
+share-ссылку.** Непустое значение (строка или список непустых строк у
+`listable_string`) = ссылку узла отдаём только после явного
+подтверждения (решение владельца 18.09.2026, «как в LxBox»). Отмечены
+`private_key` у ssh, wireguard, masque — тот же состав, что был
+таблицей в коде. `private_key_path` и `private_key_passphrase` ролью не
+отмечены: в ссылку уезжает путь к файлу, фраза без ключа бесполезна.
+Если ваш список «ссылка с приватным ключом» живёт в Dart — замените его
+вопросом к роли.
+
+**Коды:** новых нет. **Корпус:** кейсов не добавлено, ожидания не
+менялись, identity не меняется (роль не участвует ни в теле, ни в
+хеше).
+
+От вас: синк 1.1.59; принять `role` в своём разборе схемы реестра (иначе
+строгий загрузчик споткнётся о неизвестный атрибут); выемку учётных
+данных и признак «ссылка несёт приватный ключ» — по роли. sha коммита —
+в сообщении сессии.
+
+## 56. Контракт 1.1.60 — узловой гейт ядра и уровень протокола данными реестра
+
+Курс владельца (SPEC 142, волна 5, находка C3): узел, который текущему
+ядру не по силам, снимается по данным реестра, а не пробой по имени
+протокола; подпись уровня AmneziaWG — тоже из реестра.
+
+**Новые атрибуты** (схема `registry_body`):
+
+- `on_core_unsupported: {action: "drop_node", code}` — у тела протокола
+  (`body`), у поля и внутри `range_form`. Требование рядом
+  (`build_tag`/`min_core` того же уровня) не выполнено ядром → УЗЕЛ
+  снимается на сборке с кодом, конфиг собирается без него. Без атрибута
+  `build_tag`/`min_core` тела остаются описательными, а у поля работает
+  прежний полевой гейт (снимается ключ, узел живёт).
+- `range_form: {min_core?, build_tag?, level?, on_core_unsupported?}` —
+  только у типа `awg_range`: требования и уровень ФОРМЫ-ДИАПАЗОНА `N-M`
+  (строка с дефисом), когда они отличаются от числовой формы.
+- `levels` (тело протокола, по возрастанию), `level` и `level_mark`
+  (поле), `range_form.level` — подпись уровня узла: старший уровень
+  заданных полей и их форм-диапазонов плюс суффиксы `level_mark`.
+
+**Данные:**
+
+- `naive` body: `on_core_unsupported {drop_node, naive_unavailable}` при
+  `build_tag: with_naive_outbound`. У нас purego-сборка ядра без
+  libcronet рядом с бинарём считается «тега нет» (свойство бинаря, в
+  реестре его нет).
+- `tailscale` body: `on_core_unsupported {drop_node,
+  tailscale_core_unsupported}` при `build_tag: with_tailscale`.
+- `wireguard`: поля AmneziaWG 3.x (`header_protection_key`,
+  `content_padding_addition`, `rekey_after_time`, `rekey_timeout`,
+  `reject_after_time`, `keepalive_timeout`, `max_handshake_attempts`,
+  `random_trailers`, `disable_cookies`) — `on_core_unsupported {drop_node,
+  awg3_core_unsupported}` (требование — их `build_tag: with_awg` +
+  `min_core: 1.14.0-lx.32`); `peers[].persistent_keepalive_interval` —
+  `range_form {min_core: 1.14.0-lx.32, build_tag: with_awg, level: awg3,
+  on_core_unsupported {drop_node, awg3_core_unsupported}}`: число годится
+  любому ядру, диапазон — только новому.
+- `wireguard` `levels: [awg, awg1.5, awg2, awg3, awg3.1]`; `level`: jc,
+  jmin, jmax, s1, s2, h1–h4 — `awg`; i1–i5 — `awg1.5`; s3, s4 — `awg2`;
+  поля 3.x — `awg3`; random_trailers, disable_cookies — `awg3.1`;
+  `range_form.level: awg2` у h1–h4; ip/id/ib — `awg1.5` + `level_mark:
+  "+"`. Итог совпадает с прежней подписью (AWG1.5+ при одной маскировке,
+  awg2+ при диапазоне h1 и маскировке и т.д.).
+
+**Правила исполнения:** теги сборки неизвестны (нет строки `Tags:`) — гейт
+по тегу не применяется; версия неизвестна — гейт по версии не применяется
+(деградируем только по положительному свидетельству, последним рубежом
+остаётся `sing-box check`). Снятие расширения по тегу (кнопка «убрать
+AmneziaWG» в форме) удаляет корневые поля с этим `build_tag` и схлопывает
+диапазон с `range_form.build_tag` того же тега в нижнюю границу (граница
+не число > 0 — поле снимается).
+
+Остальные схемы с `build_tag`/`min_core` тела (wireguard `with_wireguard`,
+tuic/hysteria/hysteria2 `with_quic`, masque, chain) гейтом не охвачены —
+атрибут у них не объявлен; включать их — отдельное решение, со сверкой
+строки `Tags:` реальных сборок ядра.
+
+**Коды:** новых нет (`naive_unavailable`, `tailscale_core_unsupported`,
+`awg3_core_unsupported`). **Корпус:** не менялся — гейт живёт на сборке,
+тело и identity не меняются.
+
+От вас: синк 1.1.60; принять новые атрибуты в своём разборе схемы
+реестра (иначе строгий загрузчик споткнётся); если у вас есть свой гейт
+по версии ядра для Tailscale/AWG 3.x или своя функция уровня AmneziaWG
+для подписи — сведите их к `on_core_unsupported` / `levels`. sha коммита
+— в сообщении сессии.
+
+## 57. Контракт 1.1.61 — REALITY ↔ uTLS: одно правило реестра вместо сборочной починки
+
+Курс владельца (SPEC 142, волна 6, находки C4 и B4): у пары REALITY ↔ uTLS
+было два противоречащих ответа — реестр снимал `tls.reality.enabled` без
+uTLS (`field_requires`), а сборка тот же узел чинила: дописывала uTLS и
+молча меняла пустой/`random` отпечаток на `chrome` (у нас
+`HealRealityFingerprints`, у вас `post_steps/heal_unknown_utls_fingerprints.dart`).
+Теперь правило одно, в реестре, исполняет санитайзер на всех входах, с кодом
+на узле. Факты ядра (sing-box-lx 1.14.2-lx.3): без uTLS REALITY не
+поднимается — `common/tls/reality_client.go:61` «uTLS is required by reality
+client», отказ всего конфига; `random` ядро разворачивает ОДИН раз при
+старте процесса в один из chrome/firefox/edge/safari/ios
+(`common/tls/utls_client.go:363-370`), а edge = Edge 85 и ios = iOS 14
+(`submodules/utls u_common.go:649,657`) не несут X25519MLKEM768 — против
+Xray ≥ v26.9.8 узел не соединяется в двух запусках из пяти, при
+`key_share: hybrid` ядро отказывает на рукопожатии
+(`reality_client.go:225-227`); пустой отпечаток ядро читает как chrome
+(`utls_client.go:384`).
+
+**Новые примитивы** (схема `registry_body`):
+
+- `requires[].set` — связь `requires` со значением `set`: требуемого пути
+  нет → поле НЕ снимается, путь материализуется значением `set` (недостающие
+  объекты заводятся) с кодом связи. Путь, запрещённый схеме, не
+  материализуется — связь работает обычным снятием. Несовместимо с `equals`.
+- `coerce_when {values, value, when, code}` — атрибут поля: ГОДНОЕ значение
+  из `values` при условии `when` (грамматика `condition`) заменяется на
+  `value` с кодом (`value` — со значением исходного).
+- Оба судятся по **готовому телу, после обхода**: поле, не пережившее своих
+  правил, ничего не дописывает; условие читает только чистое тело (сосед,
+  снятый своим правилом, условия не выполняет); у отбракованного узла не
+  исполняются. Код встаёт в `warnings[]` туда, где встал бы при обходе
+  (порядок по `body.order`, PARSING_PRINCIPLES §6).
+- `on_hop_required {action: "unstrip", code}` — атрибут ключа каталога
+  `strip` цепочки (`chain.json`).
+
+**Данные:**
+
+- `tls.reality.enabled` requires `tls.utls.enabled` с `set: true`, код
+  `reality_utls_enabled` (info, новый; params `path`, `requires`): REALITY
+  без uTLS или с `utls.enabled: false` остаётся REALITY, uTLS дописывается
+  `{enabled: true}` без отпечатка (ядро = chrome). REALITY, снятый за
+  негодный `public_key`, uTLS не получает.
+- `tls.utls.fingerprint.coerce_when`: `random` при `tls.reality.enabled:
+  true` → `chrome`, код `reality_fp_random_pinned` (info, новый; params
+  `path`, `value`). Наш неявный дефолт D-009 (пустой fp у vless/anytls →
+  `random`) в теле от явного неотличим — код получают оба; маппер не
+  менялся. Узел, чей REALITY снят (pbk=enabled на TLS-узле), остаётся с
+  `random`. Advisory `reality_fp_not_chrome` не менялся.
+- `chain.json` strip `tls.utls`: `on_hop_required {unstrip,
+  chain_strip_utls_on_reality}`. Когда цепочка снимает `tls.utls`
+  (патч или strip_evasion по каталогу), а тело узла на позиции ≥ 1 этот путь
+  требует — прогон тела без пути через санитайзер вернул бы его связью с
+  `set`, — ключ снимается с патча цепочки (`strip: {"tls.utls": false}`),
+  цепочка собирается. Ядро применяет каталог ко всем звеньям разом, поэтому
+  uTLS остаётся у всех. Код `chain_strip_utls_on_reality` стал severity
+  `warning` с новыми текстами (было `error` и исключение цепочки целиком).
+
+**Тела вне санитайзера.** Замороженное тело состояния (эмитится как есть) и
+ручной `config_json` получают на сборке ТОЛЬКО правила-починки (`set`,
+`coerce_when`): тело прогоняется через санитайзер на копии, переносятся
+лишь записанные ими пути, код — в лог (у нас `nodeflow.Repairs`). Иначе
+сохранённый до 1.1.61 REALITY-узел с `random` дождался бы правки только с
+обновлением подписки.
+
+**Корпус:** 17 кейсов `uri/vless/*` с REALITY без `fp=` — `random` →
+`chrome` + `reality_fp_random_pinned` (`value: random`) перед кодами
+`tls.reality.*` (у `flow_vision_xhttp_suppressed` правлен и ваш override
+`.expected.lxbox.json`); `uri/vless/alpn_multiply_encoded` (явный
+`fp=random`) — то же. Новые `body/singbox/reality_without_utls` (второй узел
+— негодный pbk: uTLS не дописывается) и `body/singbox/reality_fp_random`
+(второй узел — random без REALITY: не трогается). Кейсы `reality_pbk_junk_*`
+не менялись.
+
+От вас: синк 1.1.61; принять `requires[].set`, `coerce_when`,
+`on_hop_required` в разборе схемы реестра и исполнить их в санитайзере по
+готовому телу; снять `heal_unknown_utls_fingerprints.dart` (или свести его к
+тем же двум правилам для тел, которые ваш санитайзер не ведёт); в форме
+цепочки находку `ChainIssueCode.stripUtlsOnReality` перевести из «цепочка
+не соберётся» в «uTLS останется у всех звеньев». sha коммита — в сообщении
+сессии.
+
+## 58. Контракт 1.1.62 — ссылки реестра на код приведены к правде
+
+Курс владельца (SPEC 142, волна 8, находки D1–D4 аудита): реестр говорит,
+где правило исполняется, и эти указатели протухли — после SPEC 133 и волн
+1–6 SPEC 142 большинство `refs.go`, `impl` и `go` вело в удалённые
+рукописные парсеры, эмиттеры и санитайзер или на номера строк за концом
+файла. Волна правит только заметки разработчикам; **правила, значения,
+коды, тексты кодов, корпус и identity не менялись.**
+
+**Что изменилось в файлах реестра** (только строки-заметки):
+
+- `refs.go`: 141 запись → 53. У протоколов, которые целиком исполняет общий
+  движок (anytls, http, hysteria, hysteria2, shadowsocks, socks, ssh,
+  trojan, tuic, vless, vmess), ключ `go` в `refs` снят — правило этих схем
+  есть данные файла; `refs.dart` не тронут. У wireguard, masque, tailscale,
+  naive, group, `tls.json`, `transports.json`, `containers.json` остался код,
+  специфичный для схемы или места, в форме `путь.go[:Имя]`.
+- `impl` (в т. ч. `mapper[].impl`), `go` у кодов `warnings.json`, `note` и
+  указатели в описаниях: ~335 строк переведены на место, где правило
+  исполняется сейчас (движок `core/config/linkmap`/`core/config/nodeflow`
+  или атрибут реестра). Где проза утверждала неправду о поведении Go
+  («Go — молча в sanitize», «переносится в tls.server_name», «дефолт
+  подставляет hysteriaBandwidthOrDefault» и т. п.), она поправлена по
+  факту. Там, где код объявлен, но в Go не ставится, `go` так и говорит.
+  Утверждения о Dart не трогались.
+
+**Формат ссылки на код** (норма, `contract/README.md`): путь от корня
+репозитория и при нужде имя через двоеточие
+(`core/config/nodeflow/sanitize.go:Sanitize`, `Тип.Метод`, `Тип.Поле`);
+номеров строк нет; голого имени файла нет. Файл апстрима — путём от корня
+своего репозитория (`common/tls/utls_client.go`), а если путь начинается с
+каталога лаунчера — с префиксом репозитория (`3x-ui:internal/sub/service.go`).
+У нас это проверяет линтер `TestRegistryCodeRefsResolve` во всех строках
+реестра, кроме поддеревьев `dart`.
+
+От вас: синк 1.1.62. Если ваш загрузчик реестра читает `refs.go` (мы
+думаем, что нет), учтите, что у 11 протоколов ключа больше нет. Если
+хотите такую же проверку своих `dart`-ссылок — формат тот же, путь от
+корня `app/`. sha коммита — в сообщении сессии.
+
+## 59. Контракт 1.1.63 — C5–C10 и пробел движка данными реестра
+
+Курс владельца (SPEC 142, волна 7, находки C5, C7–C10 и пробел движка из
+волны 3): последние рукописные правила об узлах у нас ушли в реестр. Каждое
+правило — данными на всех входах, с кодом там, где узел меняется.
+
+**Новые примитивы тела** (схема `registry_body`):
+
+- `relations[].kind: "ordered"` — значения `paths` идут по неубыванию
+  (paths[i] ≤ paths[i+1]; у диапазона `N-M` — верхняя граница левого не
+  выше нижней правого). Читается чистое тело; участник без значения пары не
+  образует. Новое действие `action: "drop"` (только у `ordered`) — снимаются
+  ВСЕ участвующие поля, узел живёт; код на первом пути, params `a`, `b`,
+  `value`, `with`.
+- `item_forbidden {values, code}` у поля-списка (`string_array`,
+  `listable_string`): элемент, равный одному из `values` ПОСЛЕ normalize,
+  снимается элементом со своим кодом (путь `поле[i]`), годные остаются.
+- normalize `cidr_masked` — голый адрес получает префикс хоста (/32, /128),
+  биты адреса за длиной префикса обнуляются (`192.168.10.5/24` →
+  `192.168.10.0/24`); мусор уезжает как есть, его судит `format: cidr`.
+- `exit_capable_when` у тела протокола (грамматика `condition`, без
+  `source_kind`): при каком теле узел годится ВЫХОДОМ — кандидатом в пул
+  Направления. Без атрибута — всегда. Судится по готовому телу: `any_set` =
+  поле задано и не пустая строка.
+
+**Новые примитивы маппера** (схема `registry_mapper`):
+
+- источник `context.<путь>` — значение JSON от ВЫЗЫВАЮЩЕГО (распаковщика
+  контейнера): то, что лежит рядом с текстом, но не в нём;
+- `deref {key, as}` у записи — её значение есть ссылка на соседа по
+  документу: элемент, у которого значение по пути `key` дословно равно
+  значению записи, кладётся слоем `ref.<as>` ДО `when` записи и читается
+  источниками `ref.<as>.<путь>` в этой и последующих записях. Документа нет
+  или сосед не нашёлся — условия по слою ложны;
+- `substitute {sep, join, tokens}` у записи — значение режется по `sep`,
+  элемент, дословно равный плейсхолдеру из `tokens`, заменяется значением
+  своего источника, неразрешённый снимается, остаток склеивается `join`;
+  пустой итог = значения нет (on_present не срабатывает); значение без
+  плейсхолдеров не трогается;
+- оператор `when` `{"type_of": "object|array|string|number|bool"}` — тип
+  значения источника (как одноимённый предикат detect): `present` читает
+  только скаляр.
+
+**Норма санитайзера** (PARSING_PRINCIPLES §6.2, новая): поле, снятое ПО ХОДУ обхода
+правилом значения или связью, для ПОСЛЕДУЮЩИХ связей и условий отсутствует
+— как снятое запретом схемы и объект по `absent_when`; снятый объект
+забирает всё внутри. Уточнения: `requires` к ОБЯЗАТЕЛЬНОМУ полю своего
+объекта, снятому своим правилом, снимает зависимое поле без второго кода
+(объект уходит целиком — `short_id`/`key_share` при негодном `public_key`
+REALITY, коды не меняются); `requires … set` к снятому соседу его
+материализует. У нас прежде `ip=quic` снимался за пустой `id`, а `ib`
+(requires `ip`) оставался — узел уезжал с `ib` без `ip`.
+
+**Данные:**
+
+- C8 `wireguard` `body.relations`: `ordered` `[jmin, jmax]`, `drop`, код
+  `fields_order_invalid` (новый, warning). Ядро (sing-box-lx
+  transport/wireguard/device_awg.go validateJunk) отвергает jmin > jmax
+  целиком; junk-пакеты без размеров оно пропускает как безвредные. У нас
+  проверку держала только форма обфускации — снята.
+- C9 `tailscale.advertise_routes`: normalize `cidr_masked`, `item_forbidden
+  {values: ["0.0.0.0/0", "::/0"], code: tailscale_default_route_advertised}`
+  (новый, warning; ядро: «`advertise_routes` cannot be default, use
+  `advertise_exit_node` instead», protocol/tailscale/endpoint.go). Голый
+  адрес прежде проходил `format: cidr` и ронял конфиг (`[]netip.Prefix`).
+- C7 `tailscale` body: `exit_capable_when: {any_set: [exit_node]}` (у вас —
+  гейт в `server_list_build.dart`, «узел без exit_node не идёт в пул»).
+- C5 `dialer.json` блок `xray`, запись `fragment_via_dialer`: source
+  `json.streamSettings.sockopt.dialerProxy`, `deref {key: tag, as: dialer}`,
+  `maps_to: null`, `when {tls.enabled: true, ref.dialer.protocol: freedom,
+  ref.dialer.settings.fragment: {type_of: object}}`, `implies
+  {tls.fragment: true}`. Документ элемента — массив `outbounds` того же
+  Xray-конфига. Поведение: фрагментацию получает ТОТ элемент, чей
+  dialerProxy — freedom с fragment; у звена цепочки это само звено (раньше
+  у нас tls.fragment ставился владельцу цепочки — фрагментация шла бы
+  внутри туннеля релея, то есть впустую).
+- C10 `wireguard` `mappers.conf`: запись `mtu_container` (source
+  `context.container.mtu`, `when {context.container.mtu: {gt: 0}}`, type
+  int, тот же `maps_to: mtu`; явный MTU из [Interface] объявлен раньше и
+  выигрывает) и `dns.substitute {sep: ",", join: ", ", tokens:
+  {$PRIMARY_DNS: context.profile.dns1, $SECONDARY_DNS:
+  context.profile.dns2}}`. Контекст отдаёт распаковщик `amnezia_vpn`:
+  `container` — объект, непосредственно содержавший `.conf` (у AWG3-экспорта
+  last_config), `profile` — корень профиля. Результат совпадает с прежним
+  (корпус `uri/wireguard/amnezia_vpn_awg3` не менялся); у вас подстановка
+  DNS — своим кодом, её можно свести к этим двум записям.
+- Хвост волны 1: признак контейнера Amnezia у нас теперь — detect вида
+  `amnezia_link` (`prefix_fold: "vpn://"`), спрашиваемый по имени
+  распаковщика; строковый префикс в Go снят (регистр судится как в реестре).
+
+**Коды:** новые `fields_order_invalid` (params `a`, `b`, `value`, `with`),
+`tailscale_default_route_advertised` (params `path`, `value`); уточнён desc
+`wgconf_dns_ignored`. **Корпус +4:** `body/singbox/endpoints_awg_junk_size_order`,
+`body/singbox/endpoints_awg_masquerade_removed_cascade` (норма §6.2),
+`body/singbox/tailscale_advertise_routes`,
+`body/xray/dialer_chain_hop_freedom_fragment` (звено с freedom-fragment).
+Прежние ожидания не менялись.
+
+От вас: синк 1.1.63; принять новые атрибуты в разборе схемы реестра
+(`ordered`/`drop`, `item_forbidden`, `cidr_masked`, `exit_capable_when`,
+`deref`, `substitute`, источники `context.*`/`ref.*`, оператор `type_of`) и
+исполнить их; норму PARSING_PRINCIPLES §6.2 — в своём санитайзере; если у вас свой
+запрет дефолтного маршрута, маскирование префикса или jmin ≤ jmax в формах —
+свести к правилам реестра. sha коммита — в сообщении сессии.
+
+## 60. Контракт 1.1.64 — TLS у masque по решению владельца; `encryption: None` у Xray-входа vless
+
+Хвосты кампании SPEC 142 (волна 9): два правила об узлах, у которых входы или
+сборка отвечали по-разному, сведены к данным реестра.
+
+**TLS masque (решение владельца).** Ядро (sing-box-lx
+`protocol/masque/legacy_options_lx.go` warnUnsupportedTLSOptions) часть
+общего TLS-блока у masque не исполняет и только пишет предупреждение: ALPN
+следует из `vhttp`, ECH/REALITY/kTLS не поддержаны, а фрагментация на `h3`
+бессмысленна — TLS едет внутри QUIC, записей поверх TCP нет. Теперь:
+
+- `tls.alpn`, `tls.ech`, `tls.reality`, `tls.kernel_tx`, `tls.kernel_rx` —
+  снимаются у masque на ЛЮБОМ `vhttp` кодом `masque_tls_field_ignored`
+  (новый, info, params `path`). Данные: `forbidden_for` + `forbidden_codes`
+  (у `ech` — `forbidden_for: [masque]`, `code`). У `tls.reality` код для
+  masque сменён с `tls_not_applicable_quic` (его текст про QUIC неверен для
+  `vhttp: h2`); `tls.utls` у masque — по-прежнему `tls_not_applicable_quic`.
+- `tls.fragment`, `tls.record_fragment` и устаревшие плоские синонимы masque
+  `fragment`, `record_fragment` — связь `conflicts: [{with: "vhttp", when:
+  {"vhttp": "h3"}, code: "masque_tls_fragment_h3"}]` (новый код, info, params
+  `path`, `with`). Снимаются только при `vhttp: h3`; на `h2` и `auto` (у auto
+  есть h2-плечо) остаются. `vhttp` есть только у masque — у прочих схем связь
+  не срабатывает, отдельного списка схем нет.
+- Пустой `vhttp`: у ядра это `auto` (`protocol/masque/outbound.go`
+  resolveVHTTP) — тело без `vhttp` фрагментацию сохраняет. Вход ссылки без
+  `vhttp=` материализует `h3` (конвенция `vhttp_empty_defaults_to_h3`) —
+  там правило сработает на `h3`.
+- `server_name`, `disable_sni`, `insecure` — не тронуты. `utls`,
+  `certificate`, `min_version`, `cipher_suites` — вне решения, не менялись.
+- Сборка: глобальные анти-DPI трансформы (у нас `core/build/tls_transforms.go`,
+  у вас `post_steps/tls_transforms.dart`) обязаны спрашивать то же правило ПО
+  ТЕЛУ узла, а не по схеме: поле разрешено схеме И ни одна его связь
+  `conflicts` при этом теле не действует (`when` верно, `with` задан,
+  `unless_set` не задан). У нас это `registry.Registry.FieldAllowedOn`;
+  masque на `h3` не получает `fragment`/`record_fragment` от сборки.
+
+**vless, Xray-вход, `encryption`.** Запись `mappers.xray.params.encryption`
+получила `normalize: trim` и `value_map_case: sensitive` — как у записи
+ссылки. Ядро сличает литерал `none` точно (`protocol/vless/outbound.go`:
+`Encryption != "none"` включает слой), поэтому `None` с заглавной —
+настоящее значение, не прошедшее `pattern`: узел отбраковывается кодом
+`vless_encryption_invalid` на всех трёх входах. Прежде Xray-вход сравнивал
+без учёта регистра и молча снимал `None` как «слоя нет» (тихое понижение
+защиты), а ссылка и тело sing-box тот же случай отбраковывали.
+
+**gendocs:** у связей `conflicts`/`requires` в сгенерированных документах
+теперь печатается и условие `when` (прежде терялось).
+
+**Корпус +2:** `body/singbox/masque_tls_owner_rules` (h3 со всем набором —
+семь кодов; h2 — снимается только `alpn`; без `vhttp` — ничего),
+`body/xray/vless_encryption_none_wrong_case_rejected`. Прежние ожидания не
+менялись.
+
+От вас: синк 1.1.64; принять новые коды и данные `tls.json`/`masque.json`
+(если ваш санитайзер уже исполняет `conflicts` с `when` и `forbidden_codes`,
+новых примитивов нет); свести проверку сборки перед анти-DPI трансформами к
+вопросу «оставил бы санитайзер поле при этом теле»; у Xray-входа vless
+сравнивать `none` с учётом регистра. sha коммита — в сообщении сессии.
+
+## 61. Контракт 1.1.65 — коды на своих местах; `listen_port` WireGuard уступает detour; ssh без user
+
+Волна 10b кампании SPEC 142: хвосты по кодам `warnings.json`, которые Go не
+ставил. Волна 10a довела коды до пользователя без правки реестра; здесь —
+то, что требовало реестра.
+
+**Поле `go` у 13 кодов** теперь указывает фактическое место постановки
+(прежде — «в Go кодом не ставится»): `detour_cycle_broken`,
+`detour_target_missing`, `detour_to_group`, `detour_chain_too_deep` — на
+узле импорта sing-box (как ваши `Detour*Warning`); `group_empty` — код
+отбраковки (`dropped[].code`), у синтезированной Xray-группы — код уровня
+тела, у Auto канона — отчёт сборки; `max_nodes_exceeded` — код уровня тела
+подписки; `source_detour_missing` — отчёт сборки, одна запись на пару
+источник→цель с числом узлов; `chain_unsupported_by_core`,
+`chain_hop_missing`, `chain_invalid`, `chain_nested_position` — код
+деградации цепочки (у вас `ChainDegradation`), `chain_strip_utls_on_reality`,
+`chain_cycle_through_direction` — предупреждения сборки. Данных правил это
+не меняет — только заметки.
+
+**`ssh_user_default` — данными.** `protocols/ssh.json`
+`body.fields.user.default_when: {absent: true, value: "root", code:
+"ssh_user_default"}`. Тело sing-box без `user` (или с `""`) получает `root`
+явно с info-кодом. Ядро и так подключается как root при пустом user
+(sing-box `protocol/ssh/outbound.go` NewOutbound), соединение не меняется —
+подстановка становится видимой. У вас singbox-импорт уже дефолтит root
+(`json_parsers.dart`), но без кода — примитив `default_when` вы исполняете,
+достаточно синка. Вход ссылки не меняется: без userinfo `field_missing`
+отбивает ссылку раньше (у вас null-skip). Идентичность узла — тег
+(`IDENTITY.md` §1), содержимое в неё не входит; у ssh-узлов из тел sing-box
+тело после первого обновления получит `"user": "root"`. Тексты кода
+переписаны: говорили о «ссылке» и об отказе ядра, которого нет. Корпус:
+`body/singbox/ssh_user_default`.
+
+**`body_dialect_unrecognized` снят.** Код заводился вместе с исправлением
+классификации (1.1.48, §44) под промах «конфиг Xray уехал в разбор sing-box».
+Классификация спрашивает диалект до ветки sing-box (`source_kinds.json`
+`xray_config`, prio 35), и промаха больше не бывает — события нет, ставить
+код некому; у нас константа была мёртвой. Если у вас код ставится
+(в §44 он объявлен вместе с `scheme_unsupported` и `service_record_ignored`) —
+напишите: значит, у вас есть событие, которого нет у нас, и его надо
+разобрать, а не держать код «про запас». Иначе — снимите у себя.
+
+**`direction_filter_matched_nothing` зарегистрирован** (warning, params
+`direction`, `filter`, `count`). Корпус `direction/empty_direction_blocks`
+ставил код, которого не было в реестре (README корпуса требует коды из
+`warnings.json`); ваш `direction_corpus_test.dart` его уже знает. Смысл
+прежний: фильтр узлов Направления не выбрал ни одного узла при непустом пуле,
+Направление уходит с блокирующим членом по умолчанию; пустой пул — вина
+подписки, код не ставится.
+
+**`detour_with_listen_port` — живой дефект, исправлен общим правилом.** Ядро
+отказывает WireGuard с `listen_port` вместе с `detour` («`listen_port` is
+conflict with `detour`», sing-box-lx `protocol/wireguard/endpoint.go`
+NewEndpoint) — весь конфиг не стартует. Связь в реестре была
+(`wireguard.json` `listen_port.conflicts: [{with: detour}]`), но не
+срабатывала никогда: `detour` — managed-поле (`dialer.json`), санитайзер его
+снимает, а пишет сборка уже после санитайзера. Теперь:
+
+- код связи `field_conflict` → `detour_with_listen_port` (warning, params
+  `tag`, `target`), тексты переписаны: уступает `listen_port`, хоп
+  сохраняется. Снять detour значило бы тихий прямой дозвон (единая
+  строгость detour, fail-closed), поэтому решение владельца — так;
+- норма сборки: сразу после проставления detour сборка перепроверяет связи
+  `conflicts {with: detour}` реестра по ГОТОВОМУ телу (та же трактовка,
+  что у `FieldAllowedOn` из §60: `when` верно, сосед задан, `unless_set` не
+  задан) и снимает уступающие поля с кодом связи. У нас это
+  `registry.Registry.YieldsTo` + `nodelink_resolve.go:yieldToBuildDetour`;
+  имён схем в коде нет. Если у вас detour, назначенный пользователем, есть
+  (у нас это desktop-механика) — нужна та же проверка в месте, где detour
+  дописывается; если нет — код остаётся desktop-only;
+- форк в своей цепочке снимает `listen_port` так же
+  (`protocol/chain/transform.go`), так что поведение совпадает с цепочкой.
+
+**Два новых кода сборки** (desktop-механика, `dart: null`):
+`source_detour_self` и `source_detour_cycle` (error, params `tag`) — detour,
+назначенный пользователем, разрешился в сам узел / рёбра detour замкнулись
+кольцом. Узел выпадает fail-closed, как у `source_detour_missing`; прежде
+эти два случая ехали в отчёт только текстом. Не путать с
+`detour_cycle_broken` — там кольцо пришло из импортированного конфига,
+ребро снимается и узел живёт.
+
+**Не менялось:** `group_member_missing` на узле-группе и `warnings` у
+`kind=auto` — ждёт решения владельца; `template_*` — отдельная задача.
+
+**Корпус +1:** `body/singbox/ssh_user_default`. Прежние ожидания не менялись.
+
+От вас: синк 1.1.65; удалить `body_dialect_unrecognized` (или написать, где
+у вас событие); принять новые коды и тексты; для ssh-тела без `user` ставить
+`ssh_user_default` (данные `default_when`). sha коммита — в сообщении сессии.
+
+## 62. Контракт 1.1.66 — `warnings[]` у узла-группы; `group_member_missing` на самой группе
+
+Волна 11a кампании SPEC 142. Решение владельца (25.09): предупреждения
+разрешены у узла-группы — в состоянии, в бэкапе и в контракте. В §61 это
+значилось «ждёт решения владельца».
+
+**Бэкап.** `backup.schema.json`: `warnings` у `kind: auto` (член папки,
+`$defs/node`) законны, описание поля — «server и auto». Правило переноса
+для группы другое, чем для сервера: у сервера коды производные — читатель
+их не берёт и пересчитывает по телу (PARSING_PRINCIPLES §6), у группы тела нет и
+пересчитать нечем, поэтому её записи читатель кладёт в состояние КАК ЕСТЬ.
+Иначе ⚠ группы терялся бы на каждом round-trip бэкапа. `core_rejected`
+не затронут. BACKUP.md §2 получил строку `warnings[]`, PARSING_PRINCIPLES §6 — абзац про
+узел-группу.
+
+**`group_member_missing` — код узла-группы.** Warning, params `count`
+(сколько членов не разрешилось в узел), без `path`. Одна запись на группу:
+если состав теряется на нескольких шагах разбора (у нас — импорт sing-box
+или резолв балансировщика Xray, затем дорезолв состава тела), число
+складывается в той же записи. Группа, потерявшая ВСЕХ членов, по-прежнему
+уходит отбраковкой `group_empty`, этот код ей не ставится. Раньше (1.1.65)
+у нас код был уровня тела подписки — теперь он оттуда снят, в сводке
+источника остался только текст с именами потерянных, без кода. В конверте
+корпуса код лежит в `warnings[]` узла `kind: group`; `params` в конверт не
+входят, как и у остальных кодов.
+
+**Корпус +1:** `body/singbox/group_member_missing` — selector с членами
+`grp-a` (есть), `gone` (не объявлен) и `direct` (служебный тип, узлом не
+становится): группа с одним членом и `warnings: [{code:
+"group_member_missing"}]` (count = 2). Прежние ожидания не менялись.
+
+От вас: синк 1.1.66; ваш `GroupMemberMissingWarning` ставить на узел-группу
+(если сейчас он живёт на уровне источника — перенести); при импорте бэкапа
+брать `warnings` у `kind: auto` из файла, у `server` — как прежде. Если у
+вас группа, потерявшая часть членов, ведёт себя иначе (например, член
+`direct` у вас узлом становится) — напишите: тогда кейс корпуса надо
+разбирать, а не подгонять. sha коммита — в сообщении сессии.
+
+## 63. Контракт 1.1.67 — `core_rejected` при переносе бэкапом снимается; `group_member_dropped`
+
+Волна 12 кампании SPEC 142. Решение владельца (25.09.2026).
+
+**`core_rejected` в бэкапе.** Запись `{code: "core_rejected"}` в `warnings[]`
+(PARSING_PRINCIPLES §9.4, у вас фича 478) — кэш вердикта конкретного ядра на конкретной
+машине, а не свойство узла. Норма переноса:
+
+- экспорт пишет запись как есть, вместе с `enabled: false`;
+- импорт запись **снимает**, `enabled` берёт из файла как есть — узел
+  остаётся выключенным, импорт его НЕ включает. Вердикт заново вынесет ядро
+  приёмника, когда человек включит узел. На приёмнике такой узел выглядит
+  выключенным рукой — это осознанно: ваше ядро о теле ещё не судило;
+- авторитетность записи действует внутри ОДНОГО состояния: пересчёт
+  санитайзера по телу её по-прежнему не стирает (§24.19, одно место-правило
+  замещения производных кодов остаётся), снимают её только смена тела и
+  включение узла человеком;
+- исключение «записи как есть» — только узел-группа `kind=auto` (§62), её
+  `group_member_missing`; к `core_rejected` не относится;
+- узлы подписки едут картой `disabled{}` без причины — формат не
+  расширяется.
+
+При импорте НАШЕГО файла у вас то же самое: `core_rejected` снять,
+`enabled` сохранить, узел не включать. Прежний текст схемы («читатель
+стирать не вправе», с 1.1.10) относился к пересчёту внутри состояния, а
+читался как «перенести при импорте» — поправлены описание `warnings` в
+обоих `$defs` `backup.schema.json`, `BACKUP.md` §2, `PARSING_PRINCIPLES.md` §9.4. Если у
+вас импорт запись сохраняет — это расхождение, его надо снять.
+
+**Новый код `group_member_dropped`** (warning, params `tag`, `member`, без
+`path`). Член Auto-группы не разрешился в узел на СБОРКЕ конфига — ссылки
+нет, цель выключена (человеком или страховкой) или сама отброшена сборкой;
+группа живёт без него (prune). Это запись отчёта сборки, одна на каждого
+выбывшего члена, на узел не персистится. От `group_member_missing` отличается
+этапом и адресатом: тот — потеря при РАЗБОРЕ источника, одна запись с
+`count` на самой группе. Опустевшая целиком группа — по-прежнему
+`group_empty`. Если сборка у вас сообщает о выбывшем члене — берите этот
+код; если молчит — это решение UX вашей стороны, контракт не обязывает.
+Корпус не менялся.
+
+## 64. Контракт 1.1.68 — язык шаблонов: сплайс, без коллапса, `options` ортогональны `type`, `@runtime.*` в значениях
+
+SPEC 143 (единый канонический обходчик шаблона), волна 0. Решения владельца
+(25.09.2026) — D-123…D-127. Ваш ответ на черновик учтён: у вас это задача
+555 (`docs/spec/tasks/555-template-lang-spec143-parity.md`).
+
+Один шаблон обязан давать одинаковый конфиг на обеих сторонах. После
+SPEC 143 desktop ведёт себя так:
+
+1. **Сплайс на один уровень** (TEMPLATE_LANG §4.4). Ветка условного элемента
+   массива, если она массив, вливается в родительский массив. Вложение
+   пишется двойными скобками. Литерал и ссылка на `text_list` не
+   различаются.
+2. **Никакого коллапса** `["@name"]` в скаляр. Скобки автора сохраняются,
+   тип значения задаёт только `type`.
+3. **`options` при любом типе, кроме `bool`,** не меняет `type`; это
+   закрытый список допустимых значений; `options_open: true` разрешает своё
+   значение с приведением по `type`. `enum` = `text` + закрытые `options`.
+   `text_list` + `options` = множественный выбор.
+4. **`@runtime.*` в позиции значения** на desktop подставляет строку. На
+   mobile имена `runtime.platform`, `runtime.arch`, `runtime.target`
+   считаются **объявленными со значением null**, и ключ или элемент выпадает
+   (Dropped, §5.1), а не остаётся плейсхолдером как необъявленное имя.
+   Неизвестное поле после `@runtime.` на обеих сторонах даёт
+   `template_var_undeclared {name}` и плейсхолдер. В предикатах, как раньше,
+   `false`.
+5. **Предупреждения с параметрами:** `template_var_undeclared {name}`,
+   `template_unknown_directive {key}`, `template_int_clamped {name, value}`,
+   `template_int_invalid {name, value}`; дедуп по паре (код, параметры). Они
+   показываются пользователю в итоге сборки, не блокируют сохранение.
+6. **Пресеты:** телу пресета видны все переменные шаблона; пустое значение
+   даёт Dropped ключа; после каскада фрагмент без обязательных полей
+   (правило без `outbound`/`action`, DNS-правило без `server`/`action`)
+   выпадает с предупреждением.
+7. Каст в число только по объявленному `type`; никаких списков имён.
+
+**Отдельно про п.4, по вашей просьбе:** на mobile `runtime.*` в позиции
+значения = «объявлено, `null`» → Dropped, а НЕ «не объявлено» →
+плейсхолдер. Норма записана в TEMPLATE_LANG §7.2 и строкой N15 §9. В корпусе
+этот пункт не закреплён: значение платформенно, у desktop его держит Go-тест.
+
+**Нормы в `contract/docs/TEMPLATE_LANG.md`:** §2.1 (`options`,
+`options_open`, `bool` без `options`), §2.2 (`enum` как синоним, каст только
+по `type`), §3 (коллапса нет), §4.4 (сплайс, двойные скобки, примеры),
+§7.2 (`@runtime.*` в значениях), §9 (C5 и N5 закрыты; новые строки N13
+сплайс, N14 `options_open` и `text_list` + `options`, N15 `@runtime.*` в
+значении — ход Dart). `registry/vars.json`: у `urltest_tolerance`,
+`tun_mtu`, `proxy_in_listen_port` сняты пометки «desktop text/enum + каст
+по имени» — тип `int` на обеих сторонах.
+
+**Корпус шаблонов +8** (прежние ожидания не менялись):
+
+- `subst/single_element_array_keeps_array` — `["@text"]` → `["v"]`;
+- `subst/text_list_in_value_position` — `"k": "@list"` → массив;
+- `array_element/literal_array_branch_splices` — литерал `["a","b"]` вливается;
+- `array_element/double_brackets_nest` — `[["a","b"]]` даёт один элемент-массив;
+- `array_element/text_list_branch_splices` — ссылка на `text_list` вливается;
+- `types/int_with_options_stays_int` — объектные `options` не меняют `int`, в JSON число;
+- `types/options_open_custom_value` — своё значение вне списка проходит приведение по `int`;
+- `unresolved/preset_body_declares_all_template_vars` — объявленная переменная
+  без значения в теле правила даёт Dropped ключа, не литерал `"@name"` и не
+  выпадение правила (`load: either`, как весь класс `unresolved/*`).
+
+По вашему разбору (задача 555) у вас расходятся пункты 1 (`_walkList`
+кладёт ветку одним элементом → `addAll` при List; красными будут
+`literal_array_branch_splices` и `double_brackets_nest`), 3 (грамматика
+`options_open` и `text_list` + `options`), 4 (неймспейс `runtime.*`) и 5
+(коды с параметрами, дедуп). У desktop на момент публикации 1.1.68 красны
+те же два кейса сплайса и `int_with_options_stays_int` — их чинят следующие
+волны SPEC 143. Реализацию на mobile начинайте после синка 1.1.68. sha
+коммита — в сообщении сессии.
+
+## 65. Контракт 1.1.69 — коды `template_*` на desktop доходят до отчёта сборки
+
+SPEC 143, волна 2. Главный конфиг и `on_change.set` на desktop собираются
+каноническим обходчиком. Коды `template_var_undeclared {name}`,
+`template_unknown_directive {key}`, `template_int_clamped {name, value}`,
+`template_int_invalid {name, value}` теперь доходят до «Итога» сборки
+записью вида `template_degraded` (первой в списке, Save не блокируют).
+Формат кодов и параметров, тексты и корпус не менялись; в
+`registry/warnings.json` у четырёх кодов переписано только служебное поле
+`go`. У вас это задача 555 п.5 (коды с параметрами и дедупом, показ в итоге
+сборки) — действий сверх неё не требуется.
+
+## 66. Контракт 1.1.70 — код `template_fragment_dropped` на выпавший фрагмент
+
+SPEC 143, волна 3. Тела пресетов и шаблонных DNS-серверов на desktop
+собираются каноническим обходчиком; телу видны все переменные шаблона, пустое
+значение даёт Dropped ключа. Если после каскада фрагмент остался без
+обязательного поля, он выпадает с новым кодом `template_fragment_dropped`,
+params `owner` (id пресета или тег шаблонного DNS-сервера), `kind` (секция:
+`route.rules`, `route.rule_set`, `dns.rules`, `dns.servers`), `reason`
+(недостающее поле: `outbound/action`, `server/action`, `url`, `path`,
+`rules`, `url/path`, `server`, `rule_set`). Гейты: правило без
+`outbound`/`action`, DNS-правило без `server`/`action`, набор правил без
+источника по `type`, DNS-сервер адресного типа (udp/tcp/tls/https/quic/h3)
+без `server`, правило без условий после чистки ссылок. Фрагмент, целиком
+снятый `#if`/`#enable` автора, кода не даёт. Код показывается в итоге сборки,
+Save не блокирует. У вас это задача 555 п.6 (гейты rule/dns_rule/rule_set уже
+есть, DNS-сервер без адреса и сам код — добавить).
+
+## 67. Контракт 1.1.71 — SPEC 143 закрыта на desktop
+
+SPEC 143 (единый канонический обходчик шаблона) закрыта; папка задачи
+переименована в `SPECS/143-F-C-TEMPLATE_CANON_WALKER`. Итог контракта —
+версии 1.1.68–1.1.70 (§64–§66): язык шаблонов (сплайс ветки-массива на один
+уровень, без коллапса `["@name"]`, `options` ортогональны `type` +
+`options_open`, `enum` = `text` + закрытые `options`, каст в число только по
+`type`, `@runtime.*` в значениях), коды `template_*` в «Итоге» сборки видом
+`template_degraded`, код `template_fragment_dropped`. В 1.1.71 правлена
+только проза `TEMPLATE_LANG.md` (разрыв C4 описан закрытым); нормативное
+поведение, реестр и корпус не менялись — действий сверх задачи 555 у вас нет.
+
+## 68. Контракт 1.1.72 — origin узла из `vpn://` = самодостаточный `.conf`
+
+Подтверждение поведения, работы у вас нет (задача 559 снята). Решение
+владельца 26.09.2026: ссылка `vpn://` Amnezia — источник-контейнер с группой
+серверов (аналог подписки), а не происхождение узла. Origin каждого узла —
+`{kind: wg_ini, raw: <текст .conf из контейнера>}`, в который при распаковке
+уже перенесены значения контейнера:
+
+- `MTU = <last_config.mtu>` строкой сразу за `[Interface]`, если явного `MTU`
+  в секции нет;
+- в `DNS` плейсхолдеры `$PRIMARY_DNS`/`$SECONDARY_DNS` заменены адресами
+  `dns1`/`dns2` корня профиля; неразрешённый снимается, пустой итог удаляет
+  строку `DNS`.
+
+Правила реестра `mtu_container` и `dns` (`substitute`) секции `conf`
+wireguard исполняются этим один раз, над текстом, а не над телом; тело
+строится из готового текста обычным путём `wg_ini`, Regen контейнера не
+требует. Вида origin `amnezia_link` и поля-указателя на контейнер нет, тег
+узла не меняется. Старые узлы с плейсхолдерами в `raw` не мигрируются и
+читаются как обычный `wg_ini` (вопрос о миграции у владельца открыт).
+
+Ваш `_withLastConfigMtu` делает то же самое, форма строки `MTU = N` сразу за
+заголовком совпадает. Одно отличие, которое прошу сверить: `_substituteDns`
+оставляет в тексте плейсхолдер, если `dns1`/`dns2` в профиле нет, а норма
+(`substitute`) такой элемент снимает и при пустом итоге удаляет строку.
+Корпус: `corpus/body/vpn/container_mtu_dns` (формат ожиданий корпуса тела
+origin не фиксирует — проверяются тело и коды).
+
+## 69. Контракт 1.1.73 — корпус приведён к норме (задача LxBox 560)
+
+Все шесть расхождений из вашей задачи 560 подтверждены: права норма, реестр и
+CANON не менялись, поправлены ожидания корпуса и движок лаунчера. Работы у вас
+нет — перечитать кейсы.
+
+1. `uri/anytls/sni_label_falls_back_to_server` — ожидание `tls.server_name:
+   "any.example-1.com"`. Движок Go теперь исполняет `on_invalid.action:
+   default_from`: присутствующее значение, на котором выполнено `when`,
+   заменяется источником `default_from` записи (код — только если on_invalid
+   его объявил). Шапка кейса переписана под норму. У hysteria2 то же правило;
+   ожидания его корпуса не сдвинулись (метки в `sni=` там нет).
+2. `uri/socks/socks5_base64_userinfo` и `…_colon_password` — добавлены
+   `.expected.lxbox.json` (класс C, IDENTITY §4a: `scheme: socks`). Раннер
+   лаунчера чужой override не читает.
+3. `uri/vmess/not_base64_rejected` — код `form_unrecognized`, index 0. Декодер
+   `base64` у формы раскрывает только текст (корректный UTF-8): `not-base64`
+   лежит в алфавите base64url и «декодировался» в байты, пустая форма
+   давала `field_missing`. Норма записана в `MAPPER_ENGINE.md` §1.
+4. `uri/wireguard/amneziawg_scheme_full_name` — `value` кода
+   `wgconf_dns_ignored` = `"1.1.1.1, 1.0.0.1"`: значение кода `on_present`
+   проходит ту же декодировку, что значение записи (`+` = пробел в query).
+   Других сдвигов `value` в корпусе нет.
+5. `body/xray/hysteria_v1_skipped` — в `meta` добавлено `"extension":
+   "desktop"`; раннер лаунчера кейс сверяет.
+6. `body/xray/vless_encryption_junk` и `vless_encryption_none_wrong_case_rejected`
+   — `ref: "proxy"` (тег outbound'а). Отказ `vless_encryption_invalid` у
+   лаунчера по-прежнему приходит с санитайзера на эмите, но `ref` у JSON-тела
+   берётся с элемента, из которого собран узел, а не с выведенного тега узла.
+
+## 70. Контракт 1.1.74 — невалидный UTF-8 после base64 не роняет раскрытие
+
+Ваше возражение к п. 3 §69 принято владельцем (26.09.2026), норма 1.1.73
+«декодер `base64` раскрывает только текст» снята.
+
+**Норма** (`MAPPER_ENGINE.md` §1): невалидный UTF-8 в результате `base64` (и
+percent-декода) сам по себе раскрытие не роняет — битые последовательности
+заменяются U+FFFD, разбор продолжается. «Нераскрывшийся» (`form_unrecognized`,
+PARSING_PRINCIPLES §4.1) — пейлоад, который не прочитала ни одна форма секции.
+
+**Что поправлено у лаунчера:**
+
+1. Движок: `decodeBase64Any` снова терпим (первый вариант с корректным UTF-8,
+   иначе первый раскрывшийся с заменой на U+FFFD); нормализация
+   `strip_control` заменяет битые байты на U+FFFD, а не выбрасывает (метка
+   `Node-%CC%EE…-1` не склеивается в `Node--1`).
+2. Реестр `vmess.json`: форма `legacy` перестала быть откатной веткой
+   `default` — её `detect` теперь `{"regex": "^[^#]*@"}` (в раскрытом тексте
+   до метки есть userinfo `method:uuid@`). Без этого мусор из
+   `vmess://not-base64` читала legacy-форма как ссылку с пустым userinfo и
+   отказ приходил `field_missing`. Корпус legacy (`legacy_cleartext_userinfo`)
+   не сдвинулся.
+
+**Корпус:**
+
+- `uri/vless/label_invalid_utf8_byte` — cp1251 «Москва» percent-кодом во
+  фрагменте; узел доезжает, `label: "Node-�-1"` (серия битых байтов → один
+  U+FFFD, как `strings.ToValidUTF8`).
+- `uri/vmess/ps_invalid_utf8_byte` — base64 от JSON v2rayN, в `ps` сырые байты
+  cp1251; узел доезжает, `label: "Node-�-1"`.
+- `uri/vmess/not_base64_rejected` — ожидание прежнее (`form_unrecognized`),
+  шапка переписана: причина — ни одна форма не прочитала пейлоад, а не UTF-8.
+
+Работы у вас нет: ваше поведение таким и было. Если ваша замена даёт U+FFFD
+на КАЖДЫЙ битый байт, а не на серию, — метки новых кейсов разойдутся;
+скажите, и норму серии запишем явно (или положите `.expected.lxbox.json`).
+
+## 71. Контракт 1.1.75 — серия невалидных байтов UTF-8 даёт один U+FFFD
+
+Ответ на ваше подтверждение по 1.1.74: Dart ставил U+FFFD на каждый битый
+байт (`Node-������-1`), Go — один на серию (`Node-�-1`). Метка входит в тег
+узла, поэтому это расхождение identity, а не косметика, и норма записана явно
+(`MAPPER_ENGINE.md` §1): подряд идущие невалидные байты заменяются ОДНИМ
+U+FFFD, как `strings.ToValidUTF8`. Кейсы `uri/vless/label_invalid_utf8_byte` и
+`uri/vmess/ps_invalid_utf8_byte` остаются эталоном, override не нужен.
+
+Правка формы `legacy` у `vmess` (1.1.74) остаётся: ваш диагноз — предикаты
+формы `space: url` после `decode` судятся по РАСКРЫТОМУ тексту, а не по сырому
+пейлоаду — совпадает с нормой, чините движок (ваша задача 563). Формулировка
+§70 «работы нет» снята: работа — обе правки в 563.
+
+
+## 72. Контракт 1.1.76 — CANON → PARSING_PRINCIPLES.md, «конверт» → «результат разбора»
+
+Решение владельца 26.09.2026: документ с правилами канонического узла — это
+принципы разбора источников (что парсер обязан гарантировать на выходе
+независимо от реализации) и точка входа в контракт для нового читателя. Прежнее
+имя и термин «конверт» этого не говорили.
+
+**Что сделано:**
+
+- `docs/CANON` переименован в `docs/PARSING_PRINCIPLES.md`, заголовок —
+  «Принципы разбора источников». Номера разделов прежние (§1–§9 те же), новый
+  вводный раздел 0 объясняет термины: источник, результат разбора
+  (`nodes[]`/`dropped[]`/`meta`), узел и его поля, канонизация, деградация.
+- Термин «конверт» заменён на «результат разбора» в документах, реестре
+  (`impl`/`note`/`desc`), схемах и README корпуса; `title` у
+  `schema/node.schema.json` — `LX Parse Result`. В исторических параграфах
+  этого файла слово оставлено как было.
+- Ссылки на документ и его разделы по всему репозиторию (реестр, схемы, шапки
+  кейсов, `docs/*.md`, диаграммы, этот файл) ведут на новое имя.
+- `README.md`: строка «с чего начинать читать» — `PARSING_PRINCIPLES.md`,
+  затем `MAPPER_ENGINE.md`, затем «Структура файлов реестра».
+
+**Нормативное поведение, коды, реестр и корпус не менялись.** Ожидания корпуса
+те же байты.
+
+**У вас:** обновить ссылки на документ в коде и доках (старое имя файла →
+`PARSING_PRINCIPLES.md`, ссылки на разделы — `PARSING_PRINCIPLES §N`). Внутренние
+имена вроде `_canonScheme` трогать не обязательно — они про канонизацию, а не
+про имя файла.
+
+## 73. Контракт 1.1.77 — документы контракта получили вход для человека
+
+Только к сведению, работы нет. Решение владельца 26.09.2026: документы
+контракта написаны как нормы без предисловий, и человеку со стороны не
+понять, откуда берутся объекты и что значат слова. Добавлено:
+
+- `docs/ARCHITECTURE.md` — одна страница о том, как устроен контракт: реестр,
+  движок, четыре шага разбора на примере vless, схема; точка входа;
+- `docs/GLOSSARY.md` — словарь терминов: одна строка на термин и ссылка,
+  где он раскрыт. Если в ваших документах или коде встречается термин,
+  которого там нет, — скажите, дописываем;
+- вводный блок «О чём этот документ / кому читать / что знать заранее» под
+  заголовком у `MAPPER_ENGINE`, `IDENTITY`, `BACKUP`, `BACKUP_PRINCIPLES`,
+  `TEMPLATE_LANG`, `NODE_SECTIONS`, `NODE_LINK`, `ONE_NAMESPACE` и
+  `corpus/README.md`;
+- `README.md` — раздел «Как читать контракт»: порядок чтения по задачам и
+  расшифровка обозначений.
+
+Нормы, коды, реестр и корпус не менялись; синк контракта ничего у вас не
+сдвинет. Если у LxBox есть свои термины для тех же вещей (например,
+`_canonScheme`, nodeIdentityKey) — можно прислать пары «ваше слово — слово
+контракта», добавим колонкой в словарь.
+
+
+## 74. Контракт 1.1.78 — свёртка = поле replace внутри записи папки/подписки
+
+Решение владельца 26.09.2026: свёртка источника в группу — настройка папки или
+подписки, поле `replace` ВНУТРИ записи `sources[]` (`kind: folder |
+subscription`), ОДИНАКОВОЕ в состоянии лаунчера, в файле бэкапа и у LxBox.
+
+**Форма** (`schema/backup.schema.json#/$defs/replace`, `docs/BACKUP.md` §2
+«`replace` — свёртка источника»):
+
+```json
+"replace": {
+  "mode": "both",
+  "tag": "Proton",
+  "auto": { "mode": "least_test", "url": "https://…/generate_204", "interval": "15m", "tolerance": 50 }
+}
+```
+
+- `mode`: `manual` — selector `tag`; `auto` — urltest `tag`; `both` — selector
+  `tag` с авто-двойником `<tag>-auto`. Неизвестное значение читается как
+  `manual`.
+- `tag`: явное имя группы, КОРНЕВОЕ имя (ссылка `{tag}` без `folder_id`).
+  При `both` занято и второе имя `<tag>-auto`; оба — известные цели правил,
+  `route.final` и опций Направлений.
+- `auto`: форма `direction.schema.json#/$defs/auto` (mode `least_test` |
+  `round_robin`, url, interval, tolerance, idle_timeout,
+  interrupt_exist_connections, pool, pool_tolerance, sticky_hash); при
+  `manual` отсутствует.
+- Нет объекта — источник не свёрнут.
+
+**Legacy-чтение — ОТМЕНЕНО контрактом 1.1.79 (§76):** `fold`/`fold_tag` не
+читаются ни в 1.0, ни в 0.x, миграции нет; абзац ниже оставлен как история.
+Файлы 1.0, записанные до 1.1.78, несут `fold {mode:
+select|auto|select_auto, auto?}` + `fold_tag`: `select` → `manual`,
+`select_auto` → `both`, `auto` → `auto`, `fold_tag` → `tag`; без `fold_tag` —
+прежний позиционный дериватив «префикс тегов, при пустом — `<номер
+подписки>:`» + `select` (D-081). При `replace` в записи `fold`/`fold_tag` не
+читаются. Предупреждения нет: перевод взаимно однозначный, потерь нет (П6), а
+форму писал сам лаунчер. Писатели `fold`/`fold_tag` больше не пишут;
+`schema/source_fold.schema.json` оставлена для чтения 0.x и старых 1.0.
+Формат 0.x (`subscriptions[].fold`) читается как прежде. У лаунчера state.json
+хранил ту же форму с ключом `strategy` вместо `auto` — ключ переименован,
+старый читается.
+
+**Как лаунчер разворачивает свёртку на сборке** (справка, факты кода):
+
+1. Где. `core/config/folder_replaces.go:PrepareFolderReplaces` —
+   для каждого включённого источника с `Canonical.Replace` добавляет группы
+   `buildReplaceGroups` в `LocalGroups` источника; вызов — в
+   `core/config/outbound_generator.go` после `PrepareDirections`. Путь один для
+   папки и подписки: `core/state/adapter_source.go:canonicalProjection` ставит
+   `IsContainer` и `Replace` обоим видам (`canonicalReplace`). Пустой `tag` —
+   групп нет (`buildReplaceGroups`, warning в лог).
+2. Группы по режиму (`buildReplaceGroups`):
+   - `manual` → selector `tag`, опция `interrupt_exist_connections: true`;
+   - `auto` → urltest `tag` (`buildTwin` — опции шаблона
+     `group_templates.auto.options` слиты с `replace.auto`, `round_robin`
+     раскрыт в mode+balancer), `NoGroupMembers`: провайдерские группы
+     (`kind: auto`) источника в состав НЕ входят;
+   - `both` → сначала urltest `<tag>-auto` (как `auto`), затем selector `tag` с
+     `AddOutbounds = [<tag>-auto]` и `default = <tag>-auto`.
+   Суффикс двойника — `core/config/direction_twins.go:twinSuffix` = `"-auto"`,
+   та же формула, что у двойников Направлений.
+3. Порядок опций. `core/config/outbound_generator.go:GenerateSelectorWithFilteredAddOutbounds`
+   кладёт сначала `AddOutbounds` (только непустые динамические группы и
+   константы), затем узлы пула без дублей. Пул локальной группы — узлы
+   источника в порядке модели. Итог `both`: у selector `tag` первая опция
+   `<tag>-auto`, дальше узлы источника (включая его провайдерские группы —
+   у selector пул не урезается); у urltest — узлы источника без групп
+   (`dropGroupNodes`). `default` выводится, только если тег есть в составе.
+   В outbounds узлы идут раньше локальных групп, внутри источника — urltest
+   раньше selector, глобальные Направления — после.
+4. Ноль узлов или все выключены. Выключенный узел в сборку не попадает
+   (`core/config/canonical_emit.go`). Группы в `LocalGroups` создаются
+   всё равно, но `core/config/outbound_validity.go:computeOutboundValidity`
+   считает их пустыми (у selector двойник засчитывается, только если сам
+   непуст), и `generateSelectorJSONs` пропускает пустую локальную группу
+   («Skipping empty local selector») — в конфиг не пишется ни одна; запасного
+   состава `[block, direct]`, как у пустого Направления, у замены нет.
+   Ссылки на выпавший тег: кандидатом Направления он не засчитывается
+   (Направление без иных опций получает `[block, direct]`, default `block`);
+   член группы и `default` на него вычищаются
+   (`core/build/outbound_graph_sanitize.go:sanitizeEntryRefs`, группа без
+   членов удаляется); detour на него снимает узел-носитель, позиция цепочки —
+   всю цепочку (fail-closed); `outbound` правила подменяется на `route.final`,
+   если тот жив, иначе правило снимается
+   (`core/build/preset_outbounds.go:cleanDanglingOutboundRefInRule`). Отдельной
+   проверки самого `route.final` на выпавший тег у лаунчера нет. Пустой
+   urltest ядро не принимает — поэтому группа снимается, а не пишется пустой.
+5. Пул Направлений. `core/config/outbound_filter.go:FilterDirectionCandidatePool`
+   убирает из пула узлы свёрнутого контейнера; `core/config/outbound_validity.go:collectExposeTagCandidates`
+   добавляет кандидатом `FolderReplacePoolTag` = `tag` (при `both` — только
+   selector, двойник вторым кандидатом не идёт). Узлы свёрнутого источника
+   по-прежнему эмитятся в outbounds и остаются законными целями detour,
+   позиций цепочек и членами провайдерских групп. Оба тега замены
+   (`FolderReplaceTags`) заняты для имён Направлений
+   (`core/config/tag_guard.go:BuildTagGuard`) и объявлены корневыми целями
+   ссылок (`core/config/nodelink_resolve.go`).
+
+**Что делать LxBox:** реализовать фазу B по этой форме — хранить свёртку
+папки и подписки как `replace {mode, tag, auto?}` в модели, читать и писать её
+в бэкапе 1.0 (писать и читать только `replace`; legacy `fold`/`fold_tag` НЕ
+читать — §76), разворачивать на сборке по пунктам 2–5. Кейсы корпуса:
+`corpus/backup/replace_roundtrip` (текущая форма: папка `both` с `auto`,
+подписка `manual`; правила на `tag` и `<tag>-auto`, `route.final` на тег
+подписки; ожидание `replaces` сверяет объект в состоянии и в повторном
+экспорте) и `corpus/backup/legacy_fold_to_replace` (старый 1.0: `fold` +
+`fold_tag` и дериватив без `fold_tag`). `v10_direction_include` и
+`v10_sources_union` переведены на `replace`; `replace_tag_index` (0.x)
+остался legacy-кейсом. До фазы B у вас остаются side-specific ожидания
+`replace_tag_index.expected.lxbox.json`, `v10_sources_union.expected.lxbox.json`
+и `v10_direction_include.expected.lxbox.json` (свёртка не применяется); с
+фазой B их стоит сверить и снять лишнее. Для новых кейсов override нет —
+если до фазы B они у вас красные, пришлите `.expected.lxbox.json`, добавим.
+
+## 75. Контракт 1.1.78 — род группы сохраняется обеими сторонами
+
+По вашему отчёту о фазе A задачи 565: selector остаётся selector вместе с
+`default`, приведения к urltest и кода `selector→urltest` больше нет. В том же
+бампе:
+
+- удалены override `corpus/backup/v10_dev_forms.expected.lxbox.json` и
+  `v10_group_links.expected.lxbox.json` — без деградации они совпадают с
+  базовым ожиданием (включая `default` в `groups`);
+- `v10_group_degraded.expected.lxbox.json`: `pick` — selector с умолчанием,
+  предупреждений нет; отличие от базового осталось одно — `by-rule` вы
+  ввозите группой по правилу;
+- `registry/protocols/group.json`: `note` и `genus.round_trip.impl`
+  описывают сохранение рода обеими сторонами; норма `preserve_unexecuted`
+  оставлена на случай будущего поля рода, которое одна из сторон исполнять не
+  умеет. Код `selector_as_auto` в `registry/warnings.json` пока не тронут —
+  если у вас его больше никто не ставит, скажите, выведем из словаря
+  отдельным бампом.
+
+## 76. Контракт 1.1.79 — fold/fold_tag без миграции; selector_as_auto выведен; dart-ссылки на uri_pipeline
+
+**1. Прежняя форма свёртки не читается** (решение владельца 26.09.2026).
+Отменяет legacy-чтение из §74. `fold` + `fold_tag` в файлах 1.0 и
+`subscriptions[].fold` в файлах 0.x/0.12 — непонятые ключи: импорт отбрасывает
+их с `backup_unknown_field`, как любое неизвестное поле (П3), свёртку из них
+не поднимает и не мигрирует; человек настраивает её заново. Единственная форма
+свёртки — `replace {mode, tag, auto?}` (1.1.78). Правила и `route.final` того
+же файла, метившие в группу прежней свёртки, приезжают по общей норме:
+`backup_unknown_outbound` / `backup_final_dropped`. У 0.x пара
+`<PFX>select`/`<PFX>auto` из `outbounds[]` теперь называется
+`backup_local_direction_dropped` (заменой она больше не приезжает).
+
+*За LxBox:* в фазе B legacy `fold`/`fold_tag` НЕ читать — ни в 1.0, ни в 0.x;
+`fold`, `fold_tag` — неизвестные ключи с `backup_unknown_field`. Если у вас
+`subscriptions[].fold` 0.x раньше молча игнорировался как объявленное поле —
+теперь это неизвестный ключ с предупреждением.
+
+Что изменилось в контракте:
+
+- `docs/BACKUP.md` §2 «`replace` — свёртка источника»: абзац legacy-входа
+  заменён нормой «не читается, отбрасывается с предупреждением, миграции нет»;
+  §1, §9, §10 (таблица «не применяются на импорте»), §11 согласованы;
+- `schema/backup.schema.json`: `fold`, `fold_tag` у записей папки и подписки и
+  `$defs/fold` сняты (схема открыта, ключи валидацию проходят — отбрасывает
+  импортёр); `schema/source_fold.schema.json` оставлена только ради ссылки из
+  замороженной `backup-0.12.schema.json`, помечена «не читается»;
+- корпус бэкапа: `legacy_fold_to_replace` → **`legacy_fold_dropped`**,
+  `replace_tag_index` → **`legacy_0x_fold_dropped`**: свёртки нет
+  (`replaces` — `null`, новое в ожидании: `null` = «свёртки нет»), правила
+  выключены, final отброшен, `backup_unknown_field`.
+  `replace_tag_index.expected.lxbox.json` снят — базовое ожидание теперь
+  ваше; если `backup_unknown_field` у вас на `fold` 0.x пока не ставится —
+  пришлите override;
+- корпус Направлений: вход `fold_*` переведён на `replace {mode, tag,
+  auto?}` с явным тегом (`select` → `manual`, `select_auto` → `both`,
+  `auto` → `auto`); `fold_select_auto` теперь ждёт двойник `AL:select-auto`
+  (`<tag>-auto`), а не `AL:auto`. Ключ входа `fold` в раннере заменить на
+  `replace`;
+- `registry/backup_warnings.json`: `desc` у `backup_local_direction_dropped`;
+  `docs/GLOSSARY.md`, `docs/NODE_LINK.md` (`{tag: replace.tag}`).
+
+**2. `selector_as_auto` выведен** из `registry/warnings.json` по вашему
+ответу к §75: с 1.1.78 род группы сохраняется обеими сторонами, код не ставит
+никто (у лаунчера его не было никогда). Упоминания в `group.json` помечены
+как история. Уберите `SelectorAsAutoWarning`, если класс ещё жив.
+
+**3. dart-ссылки.** 15 ссылок `refs.dart` у anytls, http, hysteria2, naive,
+shadowsocks, socks, ssh, trojan, tuic, vless, vmess, masque на снятые
+`lib/services/parser/uri_parsers/*_parser.dart` заменены одной ссылкой
+`app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline`
+(форма `путь:Имя`, без номеров строк). Не тронуты — их не было в вашем
+списке — `wireguard.json` (`uri_parsers/wireguard_parser.dart:8`) и
+`group.json` (`uri_parsers/auto_group_parser.dart:11`): если эти файлы тоже
+сняты, пришлите замену.
+
+## 77. Контракт 1.1.80 — хвосты: vpn:// строкой списка = контейнер целиком; sni уступает следующему источнику; backup_replace_tag_derived выведен; dart-ссылки
+
+**1. Строка `vpn://` в списке ссылок — тот же контейнер.** Строка `vpn://`
+внутри URI-списка подписки (ветка `uri_lines`), вставка `vpn://` в форму
+источника/ручного узла и файл `.vpn` дают ТЕ ЖЕ узлы, что тело подписки из
+одной этой ссылки (1.1.72): все WG/AWG-контейнеры профиля, `origin` каждого —
+`{kind: wg_ini, raw: <.conf с перенесёнными значениями контейнера>}`, а не
+`uri` со ссылкой и не один контейнер. Ссылка, не распаковавшаяся вовсе, —
+отбракованная запись на своей позиции (исходник — строка, `kind: uri`). Где
+вход принимает ровно один узел (Regen одного узла по `origin.raw`),
+берётся контейнер по умолчанию с `origin` `wg_ini` и `amnezia_container_choice`.
+Норма — `docs/BACKUP.md` §2 «Происхождение из контейнера», `impl` ветки
+`amnezia_link` в `registry/source_kinds.json`. Новый кейс корпуса
+`corpus/body/uri_list/vpn_link_line` (обычная ссылка + профиль с двумя
+контейнерами, как `body/vpn/multi_container`): три узла, тела vpn-узлов —
+байт в байт как в `multi_container`.
+
+Там же одной строкой: `origin` узлов подписки — кеш источника; обновление
+подписки переписывает его из свежего разбора при совпадении тега
+(пользовательские `enabled`/`detour` живут), поэтому старые записи с
+плейсхолдерами или с `origin` `uri` пересобираются сами при следующей
+загрузке. Миграции нет.
+
+*За LxBox:* проверьте у себя строку `vpn://` в списке ссылок и вставку
+`vpn://` в форму ручного узла — ждём все контейнеры с `origin` `wg_ini`;
+прогоните `body/uri_list/vpn_link_line`.
+
+Первая строка списка — тоже строка. detect вида `amnezia_link` в
+`registry/source_kinds.json` сужен:
+
+```json
+"detect": { "all": [
+  { "text": { "prefix_fold": "vpn://" } },
+  { "not": { "regex": "\\n\\s*[A-Za-z][A-Za-z0-9+.\\-]*://" } }
+] }
+```
+
+Текст (после trim), у которого хоть одна следующая строка начинается со
+схемы `xxx://`, — список: он уходит в `uri_lines`, и строка `vpn://`
+разворачивается там контейнером целиком. Прежде такой список опознавался
+телом-ссылкой, распаковщик склеивал все строки в один base64 и терял всё.
+Условие намеренно НЕ «одна строка»: ссылку из чата переносят с переводами
+строк внутри base64 (распаковщик их выбрасывает), и строки-продолжения схемы
+не несут — перенос остаётся телом-ссылкой. Новый кейс
+`corpus/body/uri_list/vpn_link_first_line` (первая строка — профиль
+`multi_container`, вторая — обычная ссылка) → три узла, vpn-узлы первыми;
+все `body/vpn/*` по-прежнему идут веткой `amnezia_link`. *За LxBox:*
+исполните detect как объявлен (`all`/`not`/`regex` — общие предикаты) и
+прогоните кейс.
+
+**2. `sni` уступает следующему источнику цепочки.** Действие
+`on_invalid: {action: default_from}` уточнено (`docs/MAPPER_ENGINE.md` §10.5):
+присутствующее значение, на котором выполнено условие, уступает сперва
+СЛЕДУЮЩЕМУ звену цепочки `source` с непустым значением, на котором условие НЕ
+выполнено, и только при отсутствии такого звена — `default_from`. Записи `sni`
+у anytls и hysteria2 получили третье звено `query.servername` (как у общего
+блока `tls#uri` — переопределение его теряло): `sni=Germany&servername=real.host`
+→ `server_name = real.host`, а не адрес сервера. Кейс
+`corpus/uri/anytls/sni_label_servername_host`. Go —
+`core/config/linkmap/exec.go:execState.applyNextValidSource`.
+
+*За LxBox:* если Dart уже так делает — подтвердите; если нет — примитив общий
+(без имён схем), кейс корпуса покажет.
+
+**3. `backup_replace_tag_derived` выведен** из `registry/backup_warnings.json`
+по вашему подтверждению: его не ставит ни одна сторона (он говорил о потере
+формата 0.12, который с D-110 никто не пишет). У лаунчера снята константа,
+фраза UI и перевод. *За LxBox:* уберите код из списка launcher-only/retired,
+если он у вас там числится.
+
+**4. dart-ссылки** по вашей замене: `registry/protocols/wireguard.json` —
+`app/lib/services/parser/uri_parsers/wireguard_parser.dart:parseWireguardUri`
+(файл жив), `registry/protocols/group.json` —
+`app/lib/services/storage_migration/legacy_autogroup.dart:kLegacyAutogroupScheme`.
+Других ссылок на `uri_parsers/` в реестре нет. *За LxBox:* сверьте, что
+символы существуют.
+
+**5. Коллизия `replace.tag`** (ваш вопрос; решено по факту кода лаунчера).
+Норма — `docs/BACKUP.md` §2 «`replace` — свёртка источника», «Коллизия `tag`»:
+`replace.tag` (и `<tag>-auto` при `both`) — объявленное корневое имя.
+
+- Узел-тёзка — не конфликт: имя замены занимает место в пространстве
+  финальных тегов РАНЬШЕ узлов, узел уникализируется суффиксом `X-2` (у
+  лаунчера — тот же счётчик финальных тегов, `MakeTagUnique`; прежде узел и
+  группа уходили в конфиг с одним тегом, и ядро отвергало его целиком).
+- Направление (или его твин), свёртка другого источника (владеет та, что
+  выше по списку), тег шаблона — конфликт объявленных имён: свёртка не
+  собирается, источник собирается несвёрнутым, конфиг — без этой группы.
+  Новый код `replace_tag_conflict {tag, other}` (severity error, `other` —
+  `direction` | `replace` | `system`) в отчёте сборки; прежде лаунчер писал
+  лишь фразу гарда без кода.
+- Редактор при вводе занятого тега — предупреждение, не запрет.
+
+Кейс корпуса Направлений `fold_tag_conflict_direction`: `replace {manual,
+vpn-1}` при Направлении `vpn-1` → Направление собирается из узлов источника,
+`warnings: [replace_tag_conflict]`. Раннер Направлений лаунчера теперь
+собирает коды `replace_*` из записей отчёта сборки — добавьте то же в свой.
+
+**6. Код на пустую группу свёртки.** `replace_group_empty {tag, mode}`
+(severity warning) в `registry/warnings.json`: свёрнутый источник без единого
+включённого узла группу не даёт (пустой selector/urltest ядро отвергло бы), и
+правила/Направления на неё не сработают. Один код на свёртку. Лаунчер ставит
+его в отчёт сборки вместо строки лога «Skipping empty local selector»
+(`core/config/outbound_validity.go:replaceGroupEmptyWarning`). *За LxBox:*
+ставьте тот же код в своём отчёте сборки.

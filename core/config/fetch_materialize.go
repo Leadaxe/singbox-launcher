@@ -39,6 +39,9 @@ type SubscriptionFetchMaterial struct {
 	// Warnings — per-record деградации разбора (битые записи, потерянные
 	// группы-члены, обрезка капом); персистятся в updateStatus.
 	Warnings []string
+	// WarningCodes — машинные коды части Warnings по индексу строки
+	// (subscription.ParsedBody.WarningCodes).
+	WarningCodes []subscription.BodyWarningCode
 }
 
 // MaterializeSubscriptionBody разбирает ДЕКОДИРОВАННОЕ тело подписки в
@@ -56,6 +59,9 @@ func MaterializeSubscriptionBody(subID string, decodedBody []byte, skip []map[st
 	out := &SubscriptionFetchMaterial{
 		Truncated: pb.Truncated,
 		Warnings:  append([]string(nil), pb.Warnings...),
+		// Строки материала дописываются ПОСЛЕ строк разбора — индексы
+		// кодов остаются верны.
+		WarningCodes: append([]subscription.BodyWarningCode(nil), pb.WarningCodes...),
 	}
 	if parseErr != nil {
 		return out, parseErr

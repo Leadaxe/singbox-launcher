@@ -7,7 +7,7 @@ package config
 // ветки. Вход именно через слой декодирования, а не через кэш-хук: корпус
 // обязан ловить регрессии классификатора, а не только парсеров.
 //
-// Результат — тот же конверт contractEnvelope, что у корпуса URI, поэтому
+// Результат — та же форма contractEnvelope (результат разбора), что у корпуса URI, поэтому
 // ожидания читаются глазами и диффятся между приложениями.
 //
 // Регенерация:
@@ -57,8 +57,8 @@ func readCorpusBody(t *testing.T, path string) string {
 //
 // Отбраковки — часть контракта тела, а не деталь реализации: тело, где запись
 // объявлена, но непригодна (dialerProxy на несуществующий outbound), обязано
-// дать НОЛЬ узлов и одну отбраковку. Без них конверт «пустой nodes[]» был бы
-// неотличим от конверта «тело не распознано» — а разница ровно в том, узнала
+// дать НОЛЬ узлов и одну отбраковку. Без них результат разбора «пустой nodes[]» был бы
+// неотличим от результата разбора «тело не распознано» — а разница ровно в том, узнала
 // ли сторона запись и осознанно её отвергла.
 func parseCorpusBody(t *testing.T, body string) ([]*configtypes.ParsedNode, []contractDrop, subscription.BodyKind) {
 	t.Helper()
@@ -170,7 +170,7 @@ func corpusXrayDrops(body string) []contractDrop {
 }
 
 // corpusDropIndexes проставляет отбраковкам тела `index` — позицию элемента
-// в нарезке `elements` вида источника (source_kinds.json, CANON §4).
+// в нарезке `elements` вида источника (source_kinds.json, PARSING_PRINCIPLES §4).
 //
 // Нарезку делает движок (`linkmap.ClassifySource`) по той же таблице, что
 // читают обе стороны, — раннер свою не выдумывает. Отбраковка находит свой
@@ -221,6 +221,17 @@ func corpusDropIndexes(t *testing.T, body string, drops []contractDrop) {
 		}
 		claimed[found] = true
 		drops[i].Index = dropIndex(found)
+		// `ref` у JSON-тела — тег OUTBOUND'а, а не тег узла, и от стадии
+		// отказа он не зависит (README корпуса, D-088). Отказ санитайзера
+		// приходит на эмите, где у узла уже выведенный тег (Xray берёт его из
+		// remarks конфига), — поэтому ref берётся с найденного элемента.
+		if drops[i].node != nil {
+			if tag := corpusElementRef(res.Elements[found]); tag != "" {
+				if _, isJSON := res.Elements[found].Value.(map[string]interface{}); isJSON {
+					drops[i].Ref = tag
+				}
+			}
+		}
 	}
 }
 
@@ -373,7 +384,7 @@ func TestContractCorpusBody(t *testing.T) {
 
 			got, err := marshalEnvelopePretty(env)
 			if err != nil {
-				t.Fatalf("сериализация конверта: %v", err)
+				t.Fatalf("сериализация результата разбора: %v", err)
 			}
 
 			expPath := expectedPathFor(base)

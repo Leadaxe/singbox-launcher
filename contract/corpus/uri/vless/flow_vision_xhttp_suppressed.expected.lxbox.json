@@ -14,7 +14,7 @@
           "server_name": "w.example.com",
           "utls": {
             "enabled": true,
-            "fingerprint": "random"
+            "fingerprint": "chrome"
           }
         },
         "transport": {
@@ -28,7 +28,12 @@
       "label": "flow-xhttp",
       "scheme": "vless",
       "warnings": [
-        "vision_with_transport"
+        "vision_with_transport",
+        {
+          "code": "reality_fp_random_pinned",
+          "path": "tls.utls.fingerprint",
+          "value": "random"
+        }
       ]
     }
   ],

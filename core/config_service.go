@@ -129,18 +129,10 @@ func parserSuccessToastMessage(result *config.OutboundGenerationResult) string {
 		msg = fmt.Sprintf("Subscriptions partially refreshed: %d/%d sources OK (%d failed). Press Rebuild or Restart to apply.",
 			result.SucceededSources, result.TotalSources, result.FailedSources)
 	}
-	// SPEC 044 feature-probe: the user must learn WHY their naive nodes are
-	// missing from the list — silence here reads as a parser bug.
-	if result.SkippedNaiveNodes > 0 {
-		msg += fmt.Sprintf(" %d naive node(s) skipped: %s.", result.SkippedNaiveNodes, result.SkippedNaiveReason)
-	}
-	// SPEC 122: то же правило для tailscale.
-	if result.SkippedTailscaleNodes > 0 {
-		msg += fmt.Sprintf(" %d tailscale node(s) skipped: %s.", result.SkippedTailscaleNodes, result.SkippedTailscaleReason)
-	}
-	// SPEC 123: то же правило для узлов с полями AmneziaWG 3.x.
-	if result.SkippedAWG3Nodes > 0 {
-		msg += fmt.Sprintf(" %d AmneziaWG 3.x node(s) skipped: %s.", result.SkippedAWG3Nodes, result.SkippedAWG3Reason)
+	// Узловой гейт ядра: пользователь должен узнать, ПОЧЕМУ узлы пропали из
+	// списка — молчание читается как баг парсера.
+	for _, skip := range result.CoreSkips {
+		msg += " " + skip.Summary() + "."
 	}
 	// SPEC 110: то же правило для цепочек. Настроенный маршрут, молча
 	// выпавший из конфига, читается как потерянная настройка — пользователь
@@ -161,11 +153,6 @@ func updateParserProgress(ac *AppController, progress float64, status string) {
 	if ac.UIService != nil && ac.UIService.UpdateParserProgressFunc != nil {
 		ac.UIService.UpdateParserProgressFunc(progress, status)
 	}
-}
-
-// ProcessProxySource delegates to subscription.LoadNodesFromSource
-func (svc *ConfigService) ProcessProxySource(proxySource config.ProxySource, tagCounts map[string]int, progressCallback func(float64, string), subscriptionIndex, totalSubscriptions int) ([]*config.ParsedNode, error) {
-	return subscription.LoadNodesFromSource(proxySource, tagCounts, progressCallback, subscriptionIndex, totalSubscriptions)
 }
 
 // GenerateNodeJSON delegates to config.GenerateNodeJSON

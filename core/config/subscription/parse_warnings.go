@@ -8,7 +8,7 @@ package subscription
 // лога бессмысленно.
 //
 // Имена констант зеркалят contract/registry/warnings.json. Значение и есть
-// код: он попадает в конверт корпуса и (в дальнейшем) в UI.
+// код: он попадает в результат разбора в корпусе и (в дальнейшем) в UI.
 //
 // ЗДЕСЬ ОСТАЛИСЬ ТОЛЬКО КОДЫ, КОТОРЫЕ СТАВИТ САМ ПАРСЕР (SPEC 131 W2d) —
 // то есть те, где сведения есть у него одного: форма ссылки (`?ed=N` в пути,
@@ -36,8 +36,7 @@ package subscription
 // buildOutbound: у ссылочного входа рукописного пути больше НЕТ.
 //
 // С vmess ушёл и ws_early_data_converted: хвост ?ed=N раскладывает запись
-// transports#uri.ws.path своим `extract`…`code`, а Xray-вход кода не ставил
-// никогда (applyWSEarlyData там зовут, отбрасывая его признак).
+// transports#uri.ws.path своим `extract`…`code`; Xray-вход этот код не ставит.
 //
 // Страж TestRegistryWarningCodesAreActuallySet ищет ИМЯ КОНСТАНТЫ, поэтому
 // осиротевшая константа его и роняет — это правильный сигнал: код без
@@ -62,10 +61,6 @@ const (
 	// WarnAmneziaContainerChoice — в vpn://-профиле несколько контейнеров,
 	// одиночный путь взял дефолтный.
 	WarnAmneziaContainerChoice = "amnezia_container_choice"
-	// WarnTailscaleCoreUnsupported — узел tailscale снят: ядро собрано без
-	// with_tailscale (SPEC 122). Не пометка на живом узле, а его выброс —
-	// оставленный, он завалил бы `sing-box check` для всего конфига.
-	WarnTailscaleCoreUnsupported = "tailscale_core_unsupported"
 	// WarnTailscaleFromSubscription — узел tailnet приехал ПОДПИСКОЙ.
 	// Узел живёт, поэтому info: но связки (MagicDNS + маршрут) подписка не
 	// приносит, а идентичность машины в tailnet — местная (NODE_SECTIONS.md §6).
@@ -86,9 +81,10 @@ const (
 	// ставит код САНИТАЙЗЕР — то есть на всех входах, а не только на
 	// ссылке. Рукописный awg3RandomTrailersWithWideHeaders снят
 	// (SPEC 133, секция wireguard).
-	// WarnAWG3CoreUnsupported — узел с AWG3-полями снят на сборке: ядро
-	// старше 1.14.0-lx.32 или без with_awg. Выброс, а не пометка.
-	WarnAWG3CoreUnsupported = "awg3_core_unsupported"
+	// СНЯТЫ (контракт 1.1.60): tailscale_core_unsupported,
+	// awg3_core_unsupported. Их называет реестр (`on_core_unsupported.code`
+	// тела tailscale и полей AWG 3.x), а ставит общий узловой гейт ядра
+	// nodeflow.NodeCoreRefusal на сборке.
 	// WarnDialerProxyUnusable — цель streamSettings.sockopt.dialerProxy
 	// непригодна: узел-владелец отбраковывается ЦЕЛИКОМ. Кода на узле не
 	// бывает (узла не будет) — он едет в отбраковке, поэтому severity=error.
@@ -118,10 +114,28 @@ const (
 	// прежде причина ехала только текстом Go, и сверить её по коду вторая
 	// сторона не могла (D-088).
 	WarnSchemeUnsupported = "scheme_unsupported"
-	// WarnBodyDialectUnrecognized — тело опознано целым конфигом, но диалект
-	// (Xray против sing-box) спрошен не был, и записи читал чужой разбор.
-	// Код ступени КЛАССИФИКАЦИИ и уровня ПОДПИСКИ, а не узла; severity=error.
-	WarnBodyDialectUnrecognized = "body_dialect_unrecognized"
+	// СНЯТ (контракт 1.1.65): body_dialect_unrecognized. Промах, который он
+	// называл (конфиг Xray уходил в разбор sing-box), предотвращает
+	// классификация — body_classify.go:classifyJSONObjectBody спрашивает
+	// диалект до ветки sing-box. События нет, ставить код было некому.
+
+	// Коды detour-цепочки импортируемого sing-box-конфига: их видно только
+	// по ВСЕМУ телу (граф detour), одной записи для них мало. Узел живёт,
+	// цепочка укорочена — код едет на узле (singboxChainInfo.attachChain).
+	WarnDetourCycleBroken   = "detour_cycle_broken"
+	WarnDetourTargetMissing = "detour_target_missing"
+	WarnDetourToGroup       = "detour_to_group"
+	WarnDetourChainTooDeep  = "detour_chain_too_deep"
+
+	// WarnGroupEmpty — ни один член группы тела не разрешился в узел:
+	// группа уходит в отбраковку с этим кодом (dropped[].code).
+	WarnGroupEmpty = "group_empty"
+	// WarnGroupMemberMissing — часть членов группы не разрешилась; группа
+	// живёт без них, код на узле-группе с числом потерянных.
+	WarnGroupMemberMissing = "group_member_missing"
+	// WarnMaxNodesExceeded — тело длиннее капа узлов: хвост отброшен. Код
+	// уровня ПОДПИСКИ (FetchWarning), а не узла.
+	WarnMaxNodesExceeded = "max_nodes_exceeded"
 )
 
 // Предикаты «значение будет испорчено» (realityShortIDWouldDegrade,

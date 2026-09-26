@@ -92,6 +92,13 @@ func previewRowSubtitle(r previewRow) string {
 		if r.GroupAlive == 0 {
 			return previewUnsupportedMark + " " + sub + " — " + locale.T("no working members")
 		}
+		// Коды самой группы (group_member_missing — часть членов не доехала
+		// при импорте, контракт 1.1.66): размер пула остаётся, ⚠ с
+		// заголовком кода идёт следом — иначе строка красилась бы цветом
+		// предупреждения (previewRowWarn), не говоря, о чём оно.
+		if warn := nodewarn.Subtitle(r.Warnings); warn != "" {
+			return sub + " — " + warn
+		}
 		return sub
 	}
 	// SPEC 131 §6: у здорового узла подстрока отвечает «что это такое», а у

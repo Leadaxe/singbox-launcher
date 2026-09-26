@@ -240,9 +240,8 @@ func (e *FetchAnnounceError) Error() string {
 	return b.String()
 }
 
-// FetchSubscriptionWithMeta — расширенная версия FetchSubscription,
-// возвращающая raw body, decoded body и распарсенные header-derived
-// поля subscription metadata.
+// FetchSubscriptionWithMeta — загрузка подписки, возвращающая raw body,
+// decoded body и распарсенные header-derived поля subscription metadata.
 //
 // Производит:
 //
@@ -370,35 +369,4 @@ func IsAnnounceError(err error) (*FetchAnnounceError, bool) {
 		return ae, true
 	}
 	return nil, false
-}
-
-// FetchSubscription fetches subscription content from URL and decodes it.
-//
-// Deprecated: use FetchSubscriptionWithMeta — оно возвращает meta и
-// raw body, нужные для SPEC 052 (cache + per-source metadata).
-// Старый wrapper сохранён для backward-compat callsite'ов; будет удалён
-// после Phase 7 cleanup.
-//
-// Реализован как тонкая обёртка над FetchSubscriptionWithMeta: тот же
-// pipeline (HTTP GET, MaxSubscriptionResponseSize == 10MB лимит,
-// DecodeSubscriptionContent), из *FetchResult извлекается только Body
-// (decoded) — ровно то, что callsite (source_loader.go) и ждёт. Meta/raw
-// body отбрасываются. Ошибки прокидываются как есть; callsite трактует их
-// непрозрачно (только логирует).
-func FetchSubscription(url string) ([]byte, error) {
-	result, err := FetchSubscriptionWithMeta(url)
-	if err != nil {
-		return nil, err
-	}
-
-	// Log preview of decoded content for debugging (preserves the old
-	// observable side-effect of this wrapper).
-	const previewLen = 200
-	preview := string(result.Body)
-	if len(preview) > previewLen {
-		preview = preview[:previewLen] + "..."
-	}
-	debuglog.DebugLog("[DEBUG] FetchSubscription: Raw content preview (first %d bytes): %q", len(result.Body), preview)
-
-	return result.Body, nil
 }

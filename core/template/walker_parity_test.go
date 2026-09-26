@@ -1,8 +1,6 @@
 package template
 
 import (
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,90 +9,62 @@ import (
 	"testing"
 )
 
-// Паритет двух обходчиков (SPEC 107 §11).
+// Страж боевого пути (SPEC 143, Т4).
 //
-// В Go их два: боевой legacy (SubstituteVarsInJSON, им собирается config.json)
-// и канонический (SubstituteVarsInJSONCanon), по которому проверяется корпус
-// контракта — общий с LxBox. Пока они не унифицированы (это отдельная задача),
-// контракт зелёный, а продакшен идёт другим кодом: расхождение существует и
-// обязано быть ИЗМЕРЕННЫМ, а не подразумеваемым.
+// Корпус контракта (общий с LxBox) гоняется не через отдельную точку входа
+// канона, а через тот же путь, которым собирается главный конфиг:
+// params → подстановка → предупреждения (applyTemplateResolved под
+// ApplyTemplateWithVarsForWarnings). Расхождений между прод-путём и
+// expected.json быть не должно — списка исключений у стража нет.
 //
-// Тест фиксирует известный список расхождений. Он падает в обе стороны:
-// появилось новое — движки разъехались дальше молча; исчезло старое — кто-то
-// починил, и список пора сократить (а не оставлять протухшим).
+// Загрузочный валидатор здесь не участвует: боевой путь его не зовёт (он
+// стоит на загрузке шаблона), а рантайм-ожидания reject/either-кейсов обязаны
+// выполняться и при толерантном прогоне — как в TestContractCorpusTemplate.
+
+// runCorpusCaseProdPath прогоняет кейс корпуса через боевой путь главного
+// конфига и возвращает конфиг и коды предупреждений.
 //
-// Список — только про ЗНАЧЕНИЕ в конфиге. Разница в warning-кодах сюда не
-// входит: legacy их не собирает по построению (у него нет канала), и это не
-// расхождение поведения, а отсутствие диагностики.
-var knownWalkerDivergences = map[string]string{
-	"unresolved/null_value_drops_key": "legacy подставляет \"\" вместо удаления ключа (Dropped-каскад §5.1)",
-
-	"unresolved/null_value_drops_array_element": "legacy оставляет \"\" элементом массива вместо его удаления",
-
-	"unresolved/dropped_cascades_bottom_up": "legacy не поднимает Dropped вверх по дереву",
-
-	"unresolved/undeclared_name_stays_placeholder": "legacy подставляет \"\" вместо сохранения '@name'; " +
-		"в проде недостижимо — ValidateWizardTemplate отвергает необъявленную @-ссылку в config на загрузке",
-
-	"grammar/if_without_and_or_is_false": "legacy трактует #if без and/or как TRUE (канон и контракт — FALSE); " +
-		"в проде недостижимо — ValidateWizardTemplate обходит секцию config тем же " +
-		"walkValidateIf и отвергает такой шаблон на загрузке (аудит 2026-08-24)",
-}
-
-// walkerParityCase — одна фикстура корпуса, прогнанная через боевой обходчик.
-func loadParityCase(t *testing.T, base string) (cfg json.RawMessage, want json.RawMessage, ok bool) {
+// Кейсы без null идут через ApplyTemplateWithVarsForWarnings целиком: резолв
+// значений тоже боевой. Состояние desktop — строки, и optional-var без
+// значения (null в vars.json) через него не выразить, поэтому такие кейсы
+// входят после резолва — в applyTemplateResolved, тело того же пути.
+func runCorpusCaseProdPath(t *testing.T, c corpusCase) corpusExpected {
 	t.Helper()
-	tplRaw, err := os.ReadFile(base + ".template.json")
-	if err != nil {
-		return nil, nil, false
-	}
-	var tpl struct {
-		Vars    []TemplateVar   `json:"vars"`
-		Config  json.RawMessage `json:"config"`
-		Changed string          `json:"_changed"`
-	}
-	if json.Unmarshal(tplRaw, &tpl) != nil {
-		return nil, nil, false
-	}
-	expRaw, err := os.ReadFile(base + ".expected.json")
-	if err != nil {
-		return nil, nil, false
-	}
-	var exp struct {
-		Config json.RawMessage `json:"config"`
-	}
-	if json.Unmarshal(expRaw, &exp) != nil || len(exp.Config) == 0 {
-		return nil, nil, false
-	}
-
-	varsRaw, _ := os.ReadFile(base + ".vars.json")
-	vmap := map[string]interface{}{}
-	_ = json.Unmarshal(varsRaw, &vmap)
-	state := map[string]string{}
-	nulls := map[string]bool{}
-	for k, v := range vmap {
-		if v == nil {
-			nulls[k] = true
-			continue
-		}
-		state[k] = fmt.Sprint(v)
-	}
-
 	target := LocalTarget()
-	if tpl.Changed != "" {
-		ApplyOnChange(tpl.Changed, tpl.Vars, state, target)
-	}
-	resolved := ResolveTemplateVarsFor(tpl.Vars, state, nil, target)
-	for n := range nulls {
-		delete(resolved, n)
+	state := c.stateVars()
+	if c.template.Changed != "" {
+		ApplyOnChange(c.template.Changed, c.template.Vars, state, target)
 	}
 
-	got, _, err := substituteVarsInJSONInternal(tpl.Config, tpl.Vars, resolved, target, false)
-	if err != nil {
-		// Ошибка боевого обходчика — тоже расхождение (канон не роняет сборку).
-		return json.RawMessage(`"__legacy_error__"`), exp.Config, true
+	var (
+		out      []byte
+		warnings []TemplateWarning
+		err      error
+	)
+	nulls := c.nullVars()
+	if len(nulls) == 0 {
+		out, warnings, err = ApplyTemplateWithVarsForWarnings(c.template.Config, nil, c.template.Vars, state, nil, target)
+	} else {
+		resolved := ResolveTemplateVarsFor(c.template.Vars, state, nil, target)
+		MaybeGenerateSecrets(c.template.Vars, resolved)
+		for name := range nulls {
+			delete(resolved, name)
+		}
+		out, warnings, err = applyTemplateResolved(c.template.Config, nil, c.template.Vars, resolved, target)
 	}
-	return got, exp.Config, true
+	if err != nil {
+		t.Fatalf("боевой путь: %v", err)
+	}
+
+	codes := make([]string, 0, len(warnings))
+	for _, w := range warnings {
+		codes = append(codes, w.Code)
+	}
+	got := corpusExpected{Config: out, Warnings: normalizeWarnings(codes)}
+	if c.template.Changed != "" {
+		got.VarsAfter = state
+	}
+	return got
 }
 
 func TestWalkerParityAgainstCorpus(t *testing.T) {
@@ -103,62 +73,44 @@ func TestWalkerParityAgainstCorpus(t *testing.T) {
 		t.Skipf("корпус не найден (%s)", root)
 	}
 
-	diverged := map[string]bool{}
+	var bases []string
 	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(p, ".template.json") {
 			return nil
 		}
-		base := strings.TrimSuffix(p, ".template.json")
-		// Имя кейса — ключ в knownWalkerDivergences, и оно обязано совпадать на
-		// всех ОС. filepath.Walk отдаёт путь с разделителями платформы, поэтому
-		// в слеши приводится ВЕСЬ путь, а не только префикс: иначе на Windows
-		// TrimPrefix не срабатывал (префикс уже со слешами, путь ещё с `\`),
-		// имена выходили вида `unresolved\null_value_drops_key`, ни один ключ
-		// не совпадал — и страж рапортовал, что все расхождения «исчезли».
-		name := strings.TrimPrefix(filepath.ToSlash(base), filepath.ToSlash(root)+"/")
-
-		got, want, ok := loadParityCase(t, base)
-		if !ok {
-			return nil
-		}
-		var a, b interface{}
-		if json.Unmarshal(got, &a) != nil || json.Unmarshal(want, &b) != nil {
-			return nil
-		}
-		if !reflect.DeepEqual(a, b) {
-			diverged[name] = true
-		}
+		bases = append(bases, strings.TrimSuffix(p, ".template.json"))
 		return nil
 	})
 	if err != nil {
 		t.Fatalf("обход корпуса: %v", err)
 	}
+	if len(bases) == 0 {
+		t.Fatal("корпус шаблонов пуст")
+	}
+	sort.Strings(bases)
 
-	// Новое расхождение — движки разъехались дальше, и это надо заметить
-	// сразу, а не при следующем аудите.
-	var unexpected []string
-	for name := range diverged {
-		if _, known := knownWalkerDivergences[name]; !known {
-			unexpected = append(unexpected, name)
-		}
-	}
-	sort.Strings(unexpected)
-	for _, name := range unexpected {
-		t.Errorf("НОВОЕ расхождение боевого и канонического обходчиков: %s\n"+
-			"    боевой путь собирает конфиг иначе, чем требует контракт (общий с LxBox).\n"+
-			"    Либо почините legacy-обходчик, либо осознанно внесите кейс в knownWalkerDivergences.", name)
-	}
+	for _, base := range bases {
+		// Имя — в слешах на всех ОС: filepath.Walk отдаёт разделители
+		// платформы, а сообщение стража должно называть кейс одинаково.
+		name := strings.TrimPrefix(filepath.ToSlash(base), filepath.ToSlash(root)+"/")
+		t.Run(name, func(t *testing.T) {
+			c := loadCorpusCase(t, base)
+			got := runCorpusCaseProdPath(t, c)
 
-	// Исчезнувшее расхождение — список протух и вводит в заблуждение.
-	var fixed []string
-	for name := range knownWalkerDivergences {
-		if !diverged[name] {
-			fixed = append(fixed, name)
-		}
-	}
-	sort.Strings(fixed)
-	for _, name := range fixed {
-		t.Errorf("расхождение %s БОЛЬШЕ НЕ ВОСПРОИЗВОДИТСЯ — уберите его из "+
-			"knownWalkerDivergences, иначе список перестаёт означать что-либо", name)
+			ok := jsonEqual(got.Config, c.expected.Config) &&
+				reflect.DeepEqual(got.Warnings, normalizeWarnings(c.expected.Warnings))
+			if ok && c.template.Changed != "" {
+				ok = reflect.DeepEqual(got.VarsAfter, c.expected.VarsAfter)
+			}
+			if !ok {
+				t.Errorf("боевой путь главного конфига расходится с контрактом (общим с LxBox)\n"+
+					"  config   получено: %s\n  config   ожидалось: %s\n"+
+					"  warnings получено: %v\n  warnings ожидалось: %v\n"+
+					"  vars_after получено: %v\n  vars_after ожидалось: %v",
+					got.Config, c.expected.Config,
+					got.Warnings, normalizeWarnings(c.expected.Warnings),
+					got.VarsAfter, c.expected.VarsAfter)
+			}
+		})
 	}
 }

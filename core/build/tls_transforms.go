@@ -21,7 +21,7 @@ import (
 	"hash/fnv"
 	"strings"
 
-	"singbox-launcher/core/config/subscription"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -96,17 +96,22 @@ func ApplyTLSTransforms(outbounds []json.RawMessage, opts TLSTransformOptions) [
 
 // isFirstHopTLSOutbound reports whether ob is a first-hop TLS outbound eligible
 // for transforms: has an enabled tls block, no detour (it dials the network
-// itself), and is not a utility/relay type where fragment is meaningless or
-// harmful (direct/block/dns/selector/urltest/naive — naive manages its own
-// TLS/HTTP2 stack; masque carries TLS inside QUIC or its own h2 client, so
-// there is no TCP TLS record stream to cut — the core warns about it, see core
-// SPEC 062 §1.3).
+// itself), and its scheme accepts the transformed field per the registry
+// (contract/registry: tls.fragment allowed_for/forbidden_for). Types the
+// registry does not know as a node (direct/block/dns/selector/urltest) and
+// schemes whose tls.fragment is forbidden (naive — fatal at core start) are
+// skipped; there is no local list of schemes here (SPEC 142 B2).
 func isFirstHopTLSOutbound(ob map[string]interface{}) (map[string]interface{}, bool) {
 	if det, _ := ob["detour"].(string); det != "" {
 		return nil, false
 	}
-	switch t, _ := ob["type"].(string); t {
-	case "direct", "block", "dns", "selector", "urltest", "naive", "masque", "":
+	t, _ := ob["type"].(string)
+	reg, err := registry.Get()
+	if err != nil {
+		return nil, false
+	}
+	scheme, ok := reg.NodeSchemeForSingboxType(t)
+	if !ok || !reg.FieldAllowed(scheme, "tls.fragment") {
 		return nil, false
 	}
 	tls, ok := ob["tls"].(map[string]interface{})
@@ -119,6 +124,18 @@ func isFirstHopTLSOutbound(ob map[string]interface{}) (map[string]interface{}, b
 	return tls, true
 }
 
+// fieldAllowedOn — оставил бы санитайзер поле path в теле outbound'а ob
+// (registry.Registry.FieldAllowedOn по схеме типа ядра).
+func fieldAllowedOn(ob map[string]interface{}, path string) bool {
+	reg, err := registry.Get()
+	if err != nil {
+		return false
+	}
+	t, _ := ob["type"].(string)
+	scheme, ok := reg.NodeSchemeForSingboxType(t)
+	return ok && reg.FieldAllowedOn(scheme, path, ob)
+}
+
 // applyTLSTransformToOutbound applies the enabled transforms to one outbound.
 // Returns true if the outbound was modified.
 func applyTLSTransformToOutbound(ob map[string]interface{}, opts TLSTransformOptions) bool {
@@ -127,14 +144,18 @@ func applyTLSTransformToOutbound(ob map[string]interface{}, opts TLSTransformOpt
 		return false
 	}
 	changed := false
-	if opts.Fragment {
+	// Каждое поле — тем же вопросом реестру, что задал бы санитайзер, но по
+	// ТЕЛУ узла: схема поле допускает, а связь при этом теле может его снять
+	// (masque на vhttp h3 — TLS внутри QUIC, фрагментировать нечего; контракт
+	// 1.1.64). Дописать то, что санитайзер снял бы, значило бы обойти правило.
+	if opts.Fragment && fieldAllowedOn(ob, "tls.fragment") {
 		tls["fragment"] = true
 		if opts.FragmentFallbackDelay != "" {
 			tls["fragment_fallback_delay"] = opts.FragmentFallbackDelay
 		}
 		changed = true
 	}
-	if opts.RecordFragment {
+	if opts.RecordFragment && fieldAllowedOn(ob, "tls.record_fragment") {
 		tls["record_fragment"] = true
 		changed = true
 	}
@@ -192,58 +213,4 @@ func mixedCaseSNI(host string) string {
 		labels[li] = string(b)
 	}
 	return strings.Join(labels, ".")
-}
-
-// HealRealityFingerprints доводит uTLS у КАЖДОГО outbound'а с живым reality
-// — финальный рубеж перед эмиссией (D-119, заменяет D-104): включает uTLS-блок,
-// которого reality требует, и ставит chrome там, где отпечаток не выбирал
-// никто (пусто или наш неявный `random`). Явный отпечаток узла не трогается:
-// отпечаток — выбор подписки, и сборка делает так, как она велит.
-//
-// Живёт здесь, а не в парсере: значение в узле — нормативный `entry`
-// контракта (CANON §2); LxBox правит на том же шаге
-// (post_steps/heal_unknown_utls_fingerprints.dart).
-//
-// В отличие от ApplyTLSTransforms правка НЕ опциональна и НЕ ограничена
-// первым хопом: reality без uTLS не стартует на любой позиции цепочки.
-//
-// Возвращает новый слайс; вход не мутируется.
-func HealRealityFingerprints(outbounds []json.RawMessage) []json.RawMessage {
-	if len(outbounds) == 0 {
-		return outbounds
-	}
-	out := make([]json.RawMessage, len(outbounds))
-	healed := 0
-	for i, raw := range outbounds {
-		var ob map[string]interface{}
-		if err := json.Unmarshal(raw, &ob); err != nil {
-			out[i] = raw // не объект — оставляем как есть
-			continue
-		}
-		tls, ok := ob["tls"].(map[string]interface{})
-		if !ok {
-			out[i] = raw
-			continue
-		}
-		original, changed := subscription.EnforceRealityFingerprint(tls)
-		if !changed && original != "" {
-			out[i] = raw
-			continue
-		}
-		reencoded, err := json.Marshal(ob)
-		if err != nil {
-			out[i] = raw
-			continue
-		}
-		out[i] = reencoded
-		if changed {
-			healed++
-			tag, _ := ob["tag"].(string)
-			debuglog.InfoLog("Build: outbound %q: REALITY with the implicit uTLS fingerprint %q — chrome written instead (D-119)", tag, original)
-		}
-	}
-	if healed > 0 {
-		debuglog.InfoLog("Build: REALITY implicit fingerprint set to chrome on %d outbound(s)", healed)
-	}
-	return out
 }

@@ -1,0 +1,2 @@
+# sing-box JSON: xhttp uplink_data_placement=auto БЕЗ mode -> режим НЕ дописывается (packet-up нужен только header/cookie), placement остаётся, кодов нет (контракт 1.1.56).
+{"type": "vless", "tag": "sb-xhttp-auto-nomode", "server": "example-6.com", "server_port": 443, "uuid": "11111111-1111-1111-1111-111111111111", "tls": {"enabled": true, "server_name": "example-6.com"}, "transport": {"type": "xhttp", "path": "/x", "uplink_data_placement": "auto"}}

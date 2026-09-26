@@ -13,7 +13,7 @@
           "server_name": "w.example.com",
           "utls": {
             "enabled": true,
-            "fingerprint": "random"
+            "fingerprint": "chrome"
           }
         },
         "type": "vless",
@@ -23,6 +23,11 @@
       "label": "sid-long",
       "scheme": "vless",
       "warnings": [
+        {
+          "code": "reality_fp_random_pinned",
+          "path": "tls.utls.fingerprint",
+          "value": "random"
+        },
         {
           "code": "reality_short_id_invalid",
           "path": "tls.reality.short_id",

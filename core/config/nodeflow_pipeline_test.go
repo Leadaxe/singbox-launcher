@@ -49,7 +49,7 @@ func pipelineFromOutbound(t *testing.T, scheme, source string, outbound map[stri
 	return pipelineNode{Body: string(body), Warnings: warns}
 }
 
-// codes — коды с путями, в порядке постановки (порядок нормативен, CANON §6).
+// codes — коды с путями, в порядке постановки (порядок нормативен, PARSING_PRINCIPLES §6).
 func (p pipelineNode) codes() []string {
 	out := make([]string, 0, len(p.Warnings))
 	for _, w := range p.Warnings {

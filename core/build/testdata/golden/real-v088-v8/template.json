@@ -84,7 +84,7 @@
     },
     {
       "name": "tun_mtu",
-      "type": "text",
+      "type": "int",
       "default_value": "1492",
       "wizard_ui": "edit",
       "if": ["tun"],
@@ -130,7 +130,7 @@
     },
     {
       "name": "proxy_in_listen_port",
-      "type": "text",
+      "type": "int",
       "default_value": "7890",
       "wizard_ui": "edit",
       "if": ["enable_proxy_in"],
@@ -196,7 +196,7 @@
     },
     {
       "name": "urltest_tolerance",
-      "type": "enum",
+      "type": "int",
       "default_value": "100",
       "options": [
         {"title": "50 ms (twitchy)",     "value": "50"},

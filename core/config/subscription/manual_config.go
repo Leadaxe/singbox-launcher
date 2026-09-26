@@ -19,12 +19,13 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/registry"
 )
 
 // NodeFromManualConfigJSON строит ParsedNode из ручного sing-box объекта.
 //
 // Требования к вводу минимальны: валидный JSON-объект с непустым "type".
-// Server/Port/UUID заполняются best-effort — они нужны только UI-спискам и
+// Server/Port заполняются best-effort — они нужны только UI-спискам и
 // skip-фильтрам, сборка их не пересобирает.
 //
 // Scheme: для известных sing-box типов — каноническая схема лаунчера (та же,
@@ -49,7 +50,7 @@ func NodeFromManualConfigJSON(raw []byte) (*configtypes.ParsedNode, error) {
 	}
 
 	scheme := entryType
-	if s, ok := singboxTypeToScheme(entryType); ok {
+	if s, ok := registry.MustGet().NodeSchemeForSingboxType(entryType); ok {
 		scheme = s
 	}
 
@@ -70,7 +71,6 @@ func NodeFromManualConfigJSON(raw []byte) (*configtypes.ParsedNode, error) {
 		SourceIndex: configtypes.UnsetSourceIndex,
 		EmitRaw:     true,
 	}
-	node.UUID = singboxCredentialFromMap(ob, scheme)
 	node.Flow = mapString(ob, "flow")
 	return node, nil
 }

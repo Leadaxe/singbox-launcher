@@ -41,7 +41,10 @@ const xrayElementKind = "xray"
 //   - (nil, nil, false) — реестр не собрался, разбор этого элемента движком
 //     невозможен. Отдельным значением, а не ошибкой: это отказ СБОРКИ, а не
 //     свойство элемента, и объявлять подписку протухшей из-за него нельзя.
-func parseXrayElementByEngine(ob map[string]interface{}, label string) (*configtypes.ParsedNode, error, bool) {
+//
+// doc — элементы документа (массив outbounds), среди которых записи с
+// `deref` ищут соседа по ссылке; nil — соседей нет.
+func parseXrayElementByEngine(ob map[string]interface{}, doc []interface{}, label string) (*configtypes.ParsedNode, error, bool) {
 	plans, err := linkmap.Planes()
 	if err != nil {
 		return nil, nil, false
@@ -72,7 +75,7 @@ func parseXrayElementByEngine(ob map[string]interface{}, label string) (*configt
 	}
 
 	bodyType := reg.SingboxType(scheme)
-	res, execErr := linkmap.ParseElement(plan, ob, bodyType, nil)
+	res, execErr := linkmap.ParseElementInDoc(plan, ob, doc, bodyType, nil)
 	if execErr != nil {
 		return nil, execErr, true
 	}
@@ -83,10 +86,6 @@ func parseXrayElementByEngine(ob map[string]interface{}, label string) (*configt
 	// приезжают с путём и значением. Позови его ещё и здесь, узел получил
 	// бы КАЖДУЮ деградацию дважды: первый раз голым кодом, второй — с
 	// параметрами (корпус xray/vless_fp_junk ловит это сразу).
-	//
-	// Прежний конвертер звал у hysteria собственный ранний проход
-	// (SanitizeSingboxOutboundMap), но правил значений в нём давно нет —
-	// они ушли в реестр волной W2d, и функция возвращает пустой список.
 	body := res.Body
 
 	node := &configtypes.ParsedNode{
@@ -96,13 +95,6 @@ func parseXrayElementByEngine(ob map[string]interface{}, label string) (*configt
 		Outbound: body,
 	}
 	applyEngineBody(node, plan, body)
-	// «Главный секрет» узла — общая выемка входа sing-box
-	// (singboxCredentialFromMap), а не своя копия: поле у обоих входов одно
-	// и то же, и второй список полей разъехался бы с первым на первой же
-	// схеме. Сама выемка — рукописный switch по схеме, и снимется она
-	// вместе с переводом входа `singbox` на движок; заводить здесь ВТОРУЮ
-	// такую же ради того, чтобы не трогать чужую, значит удвоить работу.
-	node.UUID = singboxCredentialFromMap(body, scheme)
 	if flow, _ := body["flow"].(string); flow != "" {
 		node.Flow = flow
 	}
@@ -112,7 +104,7 @@ func parseXrayElementByEngine(ob map[string]interface{}, label string) (*configt
 
 	// Коды движка становятся деградациями узла. Коды санитайзера к ним
 	// припишет конвейер (mergeWarnings) — порядок «сперва разбор, затем
-	// судья значений» нормативен (CANON §6, Л14).
+	// судья значений» нормативен (PARSING_PRINCIPLES §6, Л14).
 	for _, n := range res.Notes {
 		if n.Path != "" {
 			node.AddSourceWarning(n.Code, n.Path, n.Params)

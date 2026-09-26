@@ -1,0 +1,3 @@
+# 3x-ui genHysteriaLink (internal/sub/service.go): security=tls в каждой ссылке, gecko-размеры парой minPacketSize/maxPacketSize (написание v2rayN)
+# контракт 1.1.54: алиасы читаются, security=tls молчит — предупреждений нет
+hysteria2://secret@example.com:443?security=tls&alpn=h3&sni=example.com&obfs=gecko&obfs-password=op&minPacketSize=512&maxPacketSize=1200#3x-ui

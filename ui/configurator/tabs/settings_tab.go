@@ -592,13 +592,10 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 func buildVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, td *wizardtemplate.TemplateData, vd wizardtemplate.TemplateVar, title, toolTip string, rowEnabled bool, gs *wizardpresentation.GUIState, store varRowStore) fyne.CanvasObject {
 	name := vd.Name
 	typ := vd.Type
-	// Options carry actual values for substitution. Object-form options
-	// (`[{title, value}]`) are normalized to `type:"enum"` at unmarshal
-	// time (see TemplateVar.UnmarshalJSON), so:
-	//   - enum branch may have title != value and uses titleForValue /
-	//     valueForTitle to map dropdown picks back to values;
-	//   - text branch only ever sees plain-string options (title==value),
-	//     so no title↔value mapping is needed there.
+	// Options carry actual values for substitution; object-form options
+	// (`[{title, value}]`) add display titles (title != value), so every
+	// options row maps picks back to values (titleForValue / valueForTitle).
+	// Тип при этом не меняется (SPEC 143 Т8): `enum` на загрузке стал `text`.
 	options := vd.Options
 	viewMode := strings.EqualFold(strings.TrimSpace(vd.WizardUI), "view")
 	// SPEC 097: значения полей резолвятся для ТАРГЕТА модели — иначе строка
@@ -642,6 +639,14 @@ func buildVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmod
 		return row
 	}
 
+	// SPEC 143 Т12: список рисуется по наличию options, а не по имени типа.
+	// bool с options отвергает загрузка шаблона; text_list + options пока
+	// многострочное поле — множественный выбор вынесен в подзадачу 143.1.
+	if len(options) > 0 && typ != "bool" && typ != "text_list" {
+		return buildOptionsVarRow(presenter, vd, title, toolTip, rowEnabled, gs, store,
+			wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget), resetBtn)
+	}
+
 	switch typ {
 	case "bool":
 		var prog bool
@@ -681,64 +686,6 @@ func buildVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmod
 		setVarFieldToolTip(toolTip, titleLbl, chk)
 		applySettingsRowDisabled(rowEnabled, resetBtn, chk)
 		bindRowGate(gs, vd, rowEnabled, titleLbl, resetBtn, chk)
-		return row
-
-	case "enum":
-		titleLab := newSettingsTitleLabelFor(title, rowEnabled)
-		// Object-form options surface display titles distinct from values;
-		// legacy string-list form sets title == value. Map both directions
-		// for the dropdown.
-		optionTitles := make([]string, len(options))
-		for i := range options {
-			optionTitles[i] = vd.OptionTitle(i)
-		}
-		valueForTitle := func(t string) string {
-			for i, ot := range optionTitles {
-				if ot == t {
-					return options[i]
-				}
-			}
-			return t
-		}
-		titleForValue := func(val string) string {
-			for i, v := range options {
-				if v == val {
-					return optionTitles[i]
-				}
-			}
-			return val
-		}
-		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
-		if v, ok := store.stored(name); ok {
-			disp = v
-		}
-		if len(options) > 0 && !enumListContains(options, disp) {
-			if store.keepForeignEnum && disp != "" {
-				// Значение из чужого шаблона не подменяется молча: оно
-				// показывается как есть, пока пользователь не выберет другое.
-				options = append([]string{disp}, options...)
-				optionTitles = append([]string{disp}, optionTitles...)
-			} else {
-				disp = options[0]
-				if cur, _ := store.stored(name); cur != disp {
-					if store.set(name, disp) {
-						presenter.MarkAsChanged()
-					}
-				}
-			}
-		}
-		sel := widget.NewSelect(optionTitles, func(pickedTitle string) {
-			changed := store.set(name, valueForTitle(pickedTitle))
-			if changed {
-				presenter.MarkAsChanged()
-			}
-			store.afterChange(name, changed, true)
-		})
-		sel.SetSelected(titleForValue(disp))
-		row := container.NewBorder(nil, nil, titleLab, resetBtn, sel)
-		setVarFieldToolTip(toolTip, titleLab, sel)
-		applySettingsRowDisabled(rowEnabled, resetBtn, sel)
-		bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, sel)
 		return row
 
 	case "interface":
@@ -851,6 +798,8 @@ func buildVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmod
 		return row
 
 	case "text_list":
+		// TODO(SPEC 143 §8, подзадача 143.1): text_list + options —
+		// множественный выбор; до него options у списка не рисуются.
 		titleLab := newSettingsTitleLabelFor(title, rowEnabled)
 		e := widget.NewMultiLineEntry()
 		e.SetMinRowsVisible(3)
@@ -896,30 +845,111 @@ func buildVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmod
 			}
 			store.afterChange(name, changed, false)
 		}
-		// `type:"text"` + options always means plain-string options
-		// (title==value): object-form options force the var to enum at
-		// unmarshal time. So the SelectEntry combo can use options
-		// directly without any title↔value mapping — what the user sees
-		// in the dropdown is what gets substituted.
-		if len(options) > 0 {
-			se := widget.NewSelectEntry(options)
-			se.SetText(disp)
-			se.OnChanged = onChanged
-			row := container.NewBorder(nil, nil, titleLab, resetBtn, se)
-			setVarFieldToolTip(toolTip, titleLab, se)
-			applySettingsRowDisabled(rowEnabled, resetBtn, se)
-			bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, se)
-			return row
-		}
 		e := widget.NewEntry()
 		e.SetText(disp)
 		e.OnChanged = onChanged
+		// int без options (MTU, порт) — то же поле, но с проверкой числа:
+		// мусор всё равно уедет строкой и даст запись в «Итоге», а здесь
+		// пользователь видит ошибку сразу.
+		if wizardtemplate.IsIntVarType(typ) {
+			e.Validator = numberEntryValidator
+		}
 		row := container.NewBorder(nil, nil, titleLab, resetBtn, e)
 		setVarFieldToolTip(toolTip, titleLab, e)
 		applySettingsRowDisabled(rowEnabled, resetBtn, e)
 		bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, e)
 		return row
 	}
+}
+
+// buildOptionsVarRow — строка переменной с options (SPEC 143 Т9/Т12):
+// закрытый список — выпадающий список, `options_open` — комбобокс со
+// свободным вводом. Подписи объектной формы показываются, в хранилище
+// уезжает value. У int со свободным вводом поле проверяется как число.
+func buildOptionsVarRow(presenter *wizardpresentation.WizardPresenter, vd wizardtemplate.TemplateVar, title, toolTip string, rowEnabled bool, gs *wizardpresentation.GUIState, store varRowStore, disp string, resetBtn *ttwidget.Button) fyne.CanvasObject {
+	name := vd.Name
+	options := vd.Options
+	titleLab := newSettingsTitleLabelFor(title, rowEnabled)
+	// Object-form options surface display titles distinct from values;
+	// legacy string-list form sets title == value. Map both directions
+	// for the dropdown.
+	optionTitles := make([]string, len(options))
+	for i := range options {
+		optionTitles[i] = vd.OptionTitle(i)
+	}
+	valueForTitle := func(t string) string {
+		for i, ot := range optionTitles {
+			if ot == t {
+				return options[i]
+			}
+		}
+		return t
+	}
+	titleForValue := func(val string) string {
+		for i, v := range options {
+			if v == val {
+				return optionTitles[i]
+			}
+		}
+		return val
+	}
+	if v, ok := store.stored(name); ok {
+		disp = v
+	}
+
+	if vd.OptionsOpen {
+		// Своё значение допустимо: список — подсказка, поле — источник
+		// правды. Выбранный пункт SelectEntry кладёт в поле подпись, поэтому
+		// на записи подпись переводится обратно в value.
+		se := widget.NewSelectEntry(optionTitles)
+		se.SetText(titleForValue(disp))
+		if wizardtemplate.IsIntVarType(vd.Type) {
+			se.Validator = func(s string) error {
+				return numberEntryValidator(valueForTitle(s))
+			}
+		}
+		se.OnChanged = func(s string) {
+			changed := store.set(name, valueForTitle(s))
+			if changed {
+				presenter.MarkAsChanged()
+			}
+			store.afterChange(name, changed, false)
+		}
+		row := container.NewBorder(nil, nil, titleLab, resetBtn, se)
+		setVarFieldToolTip(toolTip, titleLab, se)
+		applySettingsRowDisabled(rowEnabled, resetBtn, se)
+		bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, se)
+		return row
+	}
+
+	if !enumListContains(options, disp) {
+		if store.keepForeignEnum && disp != "" {
+			// Значение из чужого шаблона не подменяется молча: оно
+			// показывается как есть, пока пользователь не выберет другое.
+			options = append([]string{disp}, options...)
+			optionTitles = append([]string{disp}, optionTitles...)
+		} else {
+			disp = options[0]
+			if cur, _ := store.stored(name); cur != disp {
+				if store.set(name, disp) {
+					presenter.MarkAsChanged()
+				}
+			}
+		}
+	}
+	sel := widget.NewSelect(optionTitles, func(pickedTitle string) {
+		changed := store.set(name, valueForTitle(pickedTitle))
+		if changed {
+			presenter.MarkAsChanged()
+		}
+		store.afterChange(name, changed, true)
+	})
+	sel.SetSelected(titleForValue(disp))
+	row := container.NewBorder(nil, nil, titleLab, resetBtn, sel)
+	setVarFieldToolTip(toolTip, titleLab, sel)
+	applySettingsRowDisabled(rowEnabled, resetBtn, sel)
+	bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, sel)
+	return row
 }
 
 // buildSettingsSecretRow renders any type:"secret" var uniformly: a masked

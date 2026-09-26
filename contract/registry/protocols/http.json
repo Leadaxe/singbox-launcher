@@ -24,7 +24,7 @@
       "meaning": "username:password",
       "desc_en": "username:password of the account.",
       "desc_ru": "username:password учётной записи.",
-      "impl": "HTTP(S) CONNECT proxy. Кастомные схемы вместо голых http(s):// — те перехватываются как URL подписки. Суффикс схемы — TLS-дискриминатор: *-https/+https → TLS on (порт по умолчанию 443), *-http/+http → plain (порт 80). §9.B6 закрыт: схемы разбираются и в Go (node_parser_core.go:288 → parseHTTPProxyURI), и в Dart. GenerateNodeJSON имеет http-ветку (outbound_generator.go:290): username/password/path/headers; transport и tls эмитятся общими секциями ниже. Sing-box-импорт принимает type http (singbox_import.go:315) и проходит через ту же ветку."
+      "impl": "HTTP(S) CONNECT proxy. Кастомные схемы вместо голых http(s):// — те перехватываются как URL подписки. Суффикс схемы — TLS-дискриминатор: *-https/+https → TLS on (порт по умолчанию 443), *-http/+http → plain (порт 80). §9.B6 закрыт: схемы разбираются и в Go (общий движок по mappers.uri этого файла; прежде — рукописный parseHTTPProxyURI), и в Dart. Тело для ядра строит общий эмиттер по body.fields: username/password/path/headers, tls — общей секцией. Sing-box-импорт принимает type http общей веткой разбора тела (mappers.singbox)."
     },
     "query": {
       "path": {
@@ -119,19 +119,12 @@
       "alpn",
       "insecure"
     ],
-    "note": "Dart toUriHttp и Go shareURIFromHTTP (shareuri_http.go:16): схема по tls.enabled (proxy-https/proxy-http), insecure эмитится как allowInsecure=1."
+    "note": "Dart toUriHttp и Go — секция mappers.uri.emit, общий эмиттер core/config/linkmap/emit.go:Emit (прежний рукописный shareURIFromHTTP удалён): схема по tls.enabled (proxy-https/proxy-http), insecure эмитится как allowInsecure=1."
   },
   "refs": {
-    "go": [
-      "core/config/subscription/node_parser_core.go:288",
-      "core/config/subscription/node_parser_http.go:42",
-      "core/config/subscription/shareuri_http.go:16",
-      "core/config/outbound_generator.go:290",
-      "core/config/subscription/singbox_import.go:315"
-    ],
     "dart": [
       "lib/services/parser/uri_parsers.dart:70-74",
-      "lib/services/parser/uri_parsers/http_parser.dart:17-69",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/services/parser/transport.dart:375-395",
       "lib/models/node_spec_emit.dart:526-578",
       "lib/services/parser/json_parsers.dart:797"
@@ -166,6 +159,7 @@
       },
       "username": {
         "type": "string",
+        "role": "credential",
         "desc_en": "Account user name.",
         "desc_ru": "Имя пользователя учётной записи.",
         "impl": "option/http.go Username."
@@ -340,7 +334,7 @@
           },
           "emit_as": "pairs",
           "emit_pair_sep": ": ",
-          "impl": "Та же сериализация И ТА ЖЕ регулярка, что extra-headers у naive: 'H1: V1\\r\\nH2: V2' → карта тела. sort_keys — порядок ключей входит в тело, то есть в identity. Битая пара пропускается МОЛЧА: код naive_extra_headers_invalid объявлен у naive, и под контракт эти заголовки не попадают (так было и на прежнем пути). ДЕФЕКТ, ВОСПРОИЗВЕДЁН НАМЕРЕННО: имя параметра тут 'headers', а не 'extra-headers', как у naive и как пишут реальные ссылки — обе фикстуры b480 (extra_headers_https и extra_headers_unsorted) шлют 'extra-headers' и теряют заголовки ЦЕЛИКОМ, на ОБОИХ суффиксах схемы. В DELTAS.md этого случая нет, поэтому поведение оставлено как есть; починка — отдельное решение владельца. DELTAS D133-18: extra-headers — АЛИАС headers. Сегодня http читает только 'headers' (node_parser_http.go:115), а naive — только 'extra-headers' (node_parser_naive.go:137), при ОБЩЕМ разборе parseNaiveExtraHeaders; ссылка с extra-headers на http-прокси теряла заголовки молча. Каноническое имя для эмита остаётся headers — тела рабочих узлов не меняются. QUIRKS Q133-39.",
+          "impl": "Та же сериализация И ТА ЖЕ регулярка, что extra-headers у naive: 'H1: V1\\r\\nH2: V2' → карта тела. sort_keys — порядок ключей входит в тело, то есть в identity. Битая пара пропускается МОЛЧА: код naive_extra_headers_invalid объявлен у naive, и под контракт эти заголовки не попадают (так было и на прежнем пути). Прежде здесь жил ДЕФЕКТ, воспроизведённый намеренно: запись читала только 'headers', а не 'extra-headers', как у naive и как пишут реальные ссылки — обе фикстуры b480 (extra_headers_https и extra_headers_unsorted) шлют 'extra-headers' и теряли заголовки ЦЕЛИКОМ, на ОБОИХ суффиксах схемы. Так же вёл себя и прежний рукописный путь: http читал только 'headers', naive — только 'extra-headers', при ОБЩЕМ разборе parseNaiveExtraHeaders; ссылка с extra-headers на http-прокси теряла заголовки молча. Закрыто DELTAS D133-18: extra-headers — АЛИАС headers (aliases этой записи). Каноническое имя для эмита остаётся headers — тела рабочих узлов не меняются. QUIRKS Q133-39.",
           "aliases": [
             "extra-headers"
           ]

@@ -23,6 +23,9 @@
 package config
 
 import (
+	"fmt"
+	"strings"
+
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/debuglog"
 )
@@ -35,24 +38,93 @@ import (
 // tmplAutoOptions — те же `group_templates.auto.options` шаблона, что у
 // твинов Направлений: авто-группа замены и авто-группа Направления — одна и
 // та же настройка на двух уровнях.
-func PrepareFolderReplaces(parserConfig *ParserConfig, tmplAutoOptions map[string]interface{}) {
+//
+// Конфликт объявленных имён (контракт 1.1.80): тег замены (или её двойник
+// `-auto`), уже объявленный Направлением, его твином, системным тегом
+// шаблона или свёрткой источника ВЫШЕ по списку, — не собирается вовсе.
+// Источник собирается несвёрнутым (Replace снимается с КОПИИ канона), и
+// конфиг собирается без этой группы: два outbound'а с одним тегом ядро
+// отвергло бы целиком. Каждый такой случай — код replace_tag_conflict в
+// отчёте сборки. systemTags — объявления шаблона и пресетов.
+//
+// Возвращает предупреждения конфликтов и теги ПОСТРОЕННЫХ замен: их
+// вызывающий занимает в счётчике финальных тегов до эмиссии узлов, так что
+// узел-тёзка уникализируется суффиксом (X-2), как при любой коллизии
+// финальных тегов.
+func PrepareFolderReplaces(parserConfig *ParserConfig, tmplAutoOptions map[string]interface{}, systemTags []string) ([]EmissionWarning, []string) {
 	if parserConfig == nil {
-		return
+		return nil, nil
 	}
+	declared := make(map[string]string, len(parserConfig.ParserConfig.Outbounds)*2+len(systemTags))
+	for _, tag := range systemTags {
+		if t := strings.TrimSpace(tag); t != "" {
+			declared[t] = replaceConflictSystem
+		}
+	}
+	for _, d := range parserConfig.ParserConfig.Outbounds {
+		if t := strings.TrimSpace(d.Tag); t != "" {
+			declared[t] = replaceConflictDirection
+		}
+		if t := strings.TrimSpace(d.TwinTag); t != "" {
+			declared[t] = replaceConflictDirection
+		}
+	}
+	var warns []EmissionWarning
+	var built []string
 	for i := range parserConfig.ParserConfig.Proxies {
 		ps := &parserConfig.ParserConfig.Proxies[i]
 		if ps.Disabled || ps.Canonical == nil || ps.Canonical.Replace == nil {
+			continue
+		}
+		tags := FolderReplaceTags(ps.Canonical.Replace)
+		conflictTag, other := "", ""
+		for _, tag := range tags {
+			if owner, taken := declared[tag]; taken {
+				conflictTag, other = tag, owner
+				break
+			}
+		}
+		if conflictTag != "" {
+			params := map[string]string{"tag": conflictTag, "other": other}
+			text := registryWarningText(codeReplaceTagConflict, params,
+				fmt.Sprintf("swap group %q is not built: the tag is already declared (%s)", conflictTag, other))
+			warns = append(warns, EmissionWarning{
+				Text:        text,
+				SourceID:    strings.TrimSpace(ps.ID),
+				SourceLabel: sourceDisplayName(*ps, i),
+				Code:        codeReplaceTagConflict,
+				Params:      params,
+			})
+			debuglog.WarnLog("replace: source %d: %s", i+1, text)
+			// Снимается с КОПИИ: канон разделён с моделью, а сборка идёт по
+			// копии ParserConfig.
+			c := *ps.Canonical
+			c.Replace = nil
+			ps.Canonical = &c
 			continue
 		}
 		groups := buildReplaceGroups(*ps.Canonical.Replace, tmplAutoOptions)
 		if len(groups) == 0 {
 			continue
 		}
+		for _, tag := range tags {
+			declared[tag] = replaceConflictReplace
+			built = append(built, tag)
+		}
 		ps.LocalGroups = append(ps.LocalGroups, groups...)
 		debuglog.DebugLog("SPEC 118: folder %d folded into %d group(s), mode %s",
 			i+1, len(groups), ps.Canonical.Replace.Mode)
 	}
+	return warns, built
 }
+
+// Кем объявлено имя, с которым столкнулась свёртка (`other` у кода
+// replace_tag_conflict): машинные слова, одинаковые у обеих сторон.
+const (
+	replaceConflictDirection = "direction"
+	replaceConflictReplace   = "replace"
+	replaceConflictSystem    = "system"
+)
 
 // buildReplaceGroups собирает записи групп одной свёртки.
 //

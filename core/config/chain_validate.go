@@ -12,63 +12,103 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/nodeflow"
+	"singbox-launcher/core/config/registry"
 )
 
-// NodeUsesReality — узел поднимает reality.
+// NodeRequiresPath — тело узла ТРЕБУЕТ путь path: без него санитайзер реестра
+// дописал бы его обратно (связь `requires` с `set`, контракт 1.1.61).
 //
-// Ядро отказывается снимать `tls.utls` у reality-узла и падает при старте
-// (`protocol/chain/transform.go:212`): reality без utls не работает в
-// принципе, отпечаток ClientHello там несущий элемент протокола, а не
-// маскировка.
-func NodeUsesReality(node *ParsedNode) bool {
+// Это вопрос каталога `strip` цепочки к звену: снимать ключ `tls.utls` у
+// REALITY-узла нельзя — ядро отвергает такую цепочку отказом старта
+// (`protocol/chain/transform.go:228-232`). Кто что требует, знает реестр
+// (tls.reality.enabled → tls.utls.enabled), здесь имён полей и схем нет.
+func NodeRequiresPath(node *ParsedNode, path string) bool {
 	if node == nil || node.Outbound == nil {
 		return false
 	}
-	tls, ok := node.Outbound["tls"].(map[string]interface{})
-	if !ok {
-		return false
-	}
-	reality, ok := tls["reality"].(map[string]interface{})
-	if !ok {
-		return false
-	}
-	enabled, ok := reality["enabled"].(bool)
-	return ok && enabled
+	return nodeflow.StripBlocked(node.Scheme, node.Outbound, path)
 }
 
-// ChainStripsUTLS — цепочка снимает отпечаток ClientHello.
+// ChainStripsKey — снимает ли цепочка ключ каталога `strip`.
 //
 // Учитывается и общий переключатель, и точечный патч: `strip` перекрывает
 // strip_evasion в обе стороны, и смотреть только на один из них значило бы
 // пропустить половину случаев.
-func ChainStripsUTLS(c *configtypes.SourceChain) bool {
+func ChainStripsKey(c *configtypes.SourceChain, key string) bool {
 	if c == nil {
 		return false
 	}
-	if v, ok := c.Strip[configtypes.ChainStripTLSUTLS]; ok {
+	if v, ok := c.Strip[key]; ok {
 		return v
 	}
-	return c.StripEvasionEnabled() && configtypes.ChainStripDefault[configtypes.ChainStripTLSUTLS]
+	def, _ := configtypes.ChainStripDefault(key)
+	return c.StripEvasionEnabled() && def
 }
 
-// ChainRealityConflict — теги reality-узлов на позициях цепочки, у которых
-// снятие utls сломает старт. Пусто = конфликта нет.
+// ChainHopsRequiring — теги позиций цепочки, чьи узлы требуют путь path.
 //
 // Проверяются позиции с индексом ≥ 1: strip применяется к звеньям, а
 // позиция 0 идёт в сеть как есть и её опции не трогаются
 // (`protocol/chain/chain.go` — звено создаётся начиная со второй позиции).
-func ChainRealityConflict(c *configtypes.SourceChain, nodesByTag map[string]*ParsedNode) []string {
-	if !ChainStripsUTLS(c) || len(nodesByTag) == 0 {
+func ChainHopsRequiring(c *configtypes.SourceChain, nodesByTag map[string]*ParsedNode, path string) []string {
+	if c == nil || len(nodesByTag) == 0 {
 		return nil
 	}
 	var out []string
 	hops := c.HopsOrNil()
 	for i := 1; i < len(hops); i++ {
-		if NodeUsesReality(nodesByTag[hops[i]]) {
+		if NodeRequiresPath(nodesByTag[hops[i]], path) {
 			out = append(out, hops[i])
 		}
 	}
 	return out
+}
+
+// ChainUnstripNote — ключ каталога `strip`, снятый с патча цепочки по
+// `on_hop_required` реестра, и позиции, которые его требуют.
+type ChainUnstripNote struct {
+	Key  string
+	Code string
+	Hops []string
+}
+
+// ChainUnstripRequired — ключи каталога `strip`, которые цепочка сняла бы у
+// звена, чьё тело их требует, и копия цепочки, где они не снимаются.
+//
+// Какие ключи так судятся и что делать, объявляет реестр (`chain.json`
+// strip.fields.<ключ>.on_hop_required, контракт 1.1.61). Каталог ядро
+// применяет ко всем звеньям разом, поэтому «не снимать у одного» выражается
+// только патчем `ключ: false` на всю цепочку: отпечаток остаётся у всех
+// звеньев, а цепочка собирается — прежде она выпадала целиком.
+//
+// Без находок возвращается исходная цепочка.
+func ChainUnstripRequired(c *configtypes.SourceChain, nodesByTag map[string]*ParsedNode) (*configtypes.SourceChain, []ChainUnstripNote) {
+	if c == nil || len(nodesByTag) == 0 {
+		return c, nil
+	}
+	var notes []ChainUnstripNote
+	for _, key := range configtypes.ChainStripKeys() {
+		rule := configtypes.ChainStripOnHopRequired(key)
+		if rule == nil || rule.Action != registry.HopRequiredUnstrip || !ChainStripsKey(c, key) {
+			continue
+		}
+		if hops := ChainHopsRequiring(c, nodesByTag, key); len(hops) > 0 {
+			notes = append(notes, ChainUnstripNote{Key: key, Code: rule.Code, Hops: hops})
+		}
+	}
+	if len(notes) == 0 {
+		return c, nil
+	}
+	out := *c
+	out.Strip = make(map[string]bool, len(c.Strip)+len(notes))
+	for k, v := range c.Strip {
+		out.Strip[k] = v
+	}
+	for _, n := range notes {
+		out.Strip[n.Key] = false
+	}
+	return &out, notes
 }
 
 // ChainNestedConflict — теги вложенных цепочек, стоящих не на позиции 0.

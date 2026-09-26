@@ -28,6 +28,7 @@ package state
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -302,5 +303,33 @@ func TestCanonical_IDStability(t *testing.T) {
 		if x.Kind == SourceKindSubscription && x.Name != "renamed" {
 			t.Errorf("subscription mutation lost after cycles: %+v", x)
 		}
+	}
+}
+
+// TestFolderReplaceReadsLegacyStrategyKey — state.json до контракта 1.1.78
+// писал авто-половину свёртки ключом `strategy`; текущая форма — `auto`
+// (одна с бэкапом 1.0 и LxBox). Старый ключ обязан читаться, Save — писать
+// только `auto`, а при обоих ключах главнее `auto`.
+func TestFolderReplaceReadsLegacyStrategyKey(t *testing.T) {
+	var old FolderReplace
+	if err := json.Unmarshal([]byte(`{"mode":"both","tag":"P","strategy":{"mode":"least_test","interval":"15m"}}`), &old); err != nil {
+		t.Fatal(err)
+	}
+	if old.Strategy == nil || old.Strategy.Mode != "least_test" || old.Strategy.Interval != "15m" {
+		t.Fatalf("ключ strategy не прочитан: %+v", old.Strategy)
+	}
+	out, err := json.Marshal(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"mode":"both","tag":"P","auto":{"mode":"least_test","interval":"15m"}}`; string(out) != want {
+		t.Fatalf("запись %s, ожидалась %s", out, want)
+	}
+	var both FolderReplace
+	if err := json.Unmarshal([]byte(`{"mode":"auto","tag":"P","auto":{"interval":"1m"},"strategy":{"interval":"9m"}}`), &both); err != nil {
+		t.Fatal(err)
+	}
+	if both.Strategy == nil || both.Strategy.Interval != "1m" {
+		t.Fatalf("при обоих ключах главнее auto: %+v", both.Strategy)
 	}
 }

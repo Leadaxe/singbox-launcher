@@ -33,7 +33,7 @@ import (
 //
 // Возвращает тело, коды санитайзера и, если узел собрать нельзя, отказ. При
 // отказе body пуст: тело, которое ядро отвергнет фаталом, в state попасть не
-// может (CANON §8, инвариант конвейера).
+// может (PARSING_PRINCIPLES §8, инвариант конвейера).
 //
 // `tag` и `detour` в тело не попадают — их владелец модель узла, а не тело
 // (SPEC Т2); `type` наоборот ДОПИСЫВАЕТСЯ первым ключом: тело в state несёт
@@ -151,7 +151,7 @@ func StampBodyType(scheme string, body []byte, outbound map[string]interface{}) 
 // кодов: сначала парсерные (что маппер уже снял на входе), затем
 // санитайзерные (что сняли правила реестра).
 //
-// Порядок слоёв нормирован (CANON §6, ловушка Л14) и не сортируется: сверка
+// Порядок слоёв нормирован (PARSING_PRINCIPLES §6, ловушка Л14) и не сортируется: сверка
 // с корпусом идёт по последовательности разбора. Дубли по паре (code, path)
 // снимаются — один и тот же код на одном поле от двух слоёв означает, что
 // правило просто сработало дважды, а не что случились два разных события.
@@ -274,9 +274,9 @@ func sanitizeStoredNodeBody(req state.SanitizeBodyRequest) (*state.SanitizeBodyR
 	if obType == "" {
 		return nil, fmt.Errorf("в теле узла нет %q", "type")
 	}
-	scheme, ok := subscription.SchemeFromSingboxType(obType)
+	scheme, ok := registry.MustGet().NodeSchemeForSingboxType(obType)
 	if !ok {
-		// Тип вне таблицы схем — тело passthrough, правил для него нет.
+		// Тип, которого реестр узлом не знает, — тело passthrough, правил нет.
 		// Узел «посчитан и чист»: сказать про его поля нечего.
 		return &state.SanitizeBodyResult{Warnings: []state.NodeWarning{}}, nil
 	}

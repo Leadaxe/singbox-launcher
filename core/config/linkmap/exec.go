@@ -47,9 +47,6 @@ type Result struct {
 	// свойство узла зависит от ФОРМЫ, а не от тела: у vmess userinfo есть
 	// только у cleartext-формы, а у контейнера v2rayN его нет вовсе.
 	FormID string
-	// HadUserInfo — нёс ли вход userinfo. Отличает «userinfo пуст» от
-	// «userinfo в этой форме не предусмотрен».
-	HadUserInfo bool
 	// Query — параметры РАСПАКОВАННОГО входа, как справка вызывающему
 	// (skip-фильтры, UI). Не вход разбора: его движок читает из
 	// пространства сам.
@@ -161,7 +158,7 @@ type Note struct {
 	Params map[string]string
 }
 
-// Коды ОТКАЗА разбора (CANON §4, D-088, контракт 1.1.49).
+// Коды ОТКАЗА разбора (PARSING_PRINCIPLES §4, D-088, контракт 1.1.49).
 //
 // Общие для всех схем: что именно обязательно и какие формы у секции есть,
 // объявляет реестр, а движок называет только ВИД отказа. Тот же приём, что у
@@ -173,7 +170,7 @@ const (
 	// CodeFormUnrecognized — текст не прочитан ни одной формой секции:
 	// оболочка не распаковалась, пейлоад не JSON/ini, схемы у строки нет.
 	// Строке `xxx://` со схемой, которую не ведёт ни одна секция, ставится
-	// не он, а `scheme_unsupported` слоя подписки (CANON §4.1).
+	// не он, а `scheme_unsupported` слоя подписки (PARSING_PRINCIPLES §4.1).
 	CodeFormUnrecognized = "form_unrecognized"
 )
 
@@ -182,7 +179,7 @@ const (
 // Текст остаётся человеческим — он едет в диагностику и в ненормативный
 // `reason` отбраковки. Нормативен код: по нему две стороны сверяют, ПОЧЕМУ
 // узел отброшен (`dropped[].code`). Пока отказ был голой строкой, отбраковка
-// разбора приезжала в конверт без кода вовсе (TASKS_LXBOX §32.5).
+// приезжала в результат разбора без кода вовсе (TASKS_LXBOX §32.5).
 type RejectError struct {
 	Code   string
 	Params map[string]string
@@ -197,6 +194,37 @@ func (e *RejectError) Unwrap() error { return e.Err }
 // NewReject оборачивает ошибку кодом отказа.
 func NewReject(code string, params map[string]string, err error) error {
 	return &RejectError{Code: code, Params: params, Err: err}
+}
+
+// rejectValueParam — имя параметра кода, в который движок кладёт
+// отвергнутое значение: первый параметр, объявленный кодом в warnings.json
+// (`params`); у кода без объявленных — неявный `value`.
+func rejectValueParam(code string) string {
+	if reg, err := registry.Get(); err == nil {
+		if w, ok := reg.Warning(code); ok && len(w.Params) > 0 {
+			return w.Params[0]
+		}
+	}
+	return "value"
+}
+
+// rejectText — диагностический текст отказа селектором. Нормативен код
+// (`dropped[].code`), текст — только для лога и ненормативного `reason`, и
+// строится одинаково для любого кода: ветка по имени кода в движке знала бы
+// частный блок реестра (SPEC 142 B10). Заголовок кода из warnings.json сюда
+// не берётся: у transport_unsupported он описывает замену транспорта
+// (ветка Dart с fallback), а не отбраковку узла.
+func rejectText(code string, params map[string]string) error {
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%q", k, params[k]))
+	}
+	return fmt.Errorf("linkmap: узел отброшен селектором: %s (%s)", code, strings.Join(parts, ", "))
 }
 
 // RejectCode — код отказа из цепочки ошибок; "" — код не назначен.
@@ -244,6 +272,9 @@ type execState struct {
 	form  registry.Form
 	res   *Result
 	trace *Trace
+	// curParam — запись, которую исполняет applyEntry в данный момент: нужна
+	// ключу `$value` условия `when` (собственное значение записи).
+	curParam *registry.Param
 
 	// writtenBy — какая запись заняла путь тела: нужно разрешению конфликта
 	// (priority, затем порядок объявления) и трассе.
@@ -294,12 +325,11 @@ func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *
 		schemeVals: map[string]interface{}{},
 		bodyType:   bodyType,
 		res: &Result{
-			Body:        map[string]interface{}{},
-			BodySource:  plan.Mapper.BodySource,
-			FormID:      form.ID,
-			HadUserInfo: space != nil && space.UserInfo != "",
-			Query:       space.QueryValues(),
-			Trace:       trace,
+			Body:       map[string]interface{}{},
+			BodySource: plan.Mapper.BodySource,
+			FormID:     form.ID,
+			Query:      space.QueryValues(),
+			Trace:      trace,
 		},
 	}
 	st.mapperName = plan.Mapper.Scheme() + "." + plan.Mapper.Kind()
@@ -344,16 +374,11 @@ func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *
 		// ожиданиях корпуса именно он (`dropped[].code`), а `reason` — текст
 		// стороны, который раннеры не сравнивают.
 		//
-		// Текст всё же разный по КОДУ: «транспорт http ядром не поддержан»
-		// было бы прямой неправдой про обфускацию заголовком — транспорт
-		// `http` у ядра как раз есть (это HTTP/2), не поддержана ИМЕННО
-		// подделка заголовка поверх TCP, и назвать её транспортом значит
-		// увести читателя лога чинить не то.
-		msg := fmt.Errorf("linkmap: транспорт %q ядром не поддержан", st.dropValue)
-		if st.dropCode == "transport_header_unsupported" {
-			msg = fmt.Errorf("linkmap: обфускация заголовком %q поверх TCP ядром не поддержана", st.dropValue)
-		}
-		return nil, NewReject(st.dropCode, map[string]string{"transport": st.dropValue}, msg)
+		// Причину называет КОД, а не ветка по его имени в движке; параметр,
+		// в который едет отвергнутое значение, объявляет код (`params` в
+		// warnings.json), а не движок (SPEC 142 B10).
+		params := map[string]string{rejectValueParam(st.dropCode): st.dropValue}
+		return nil, NewReject(st.dropCode, params, rejectText(st.dropCode, params))
 	}
 
 	// required — ПОСЛЕ обоих проходов и defaults: запись объявлена
@@ -687,6 +712,31 @@ func (st *execState) applyEntry(e *Entry) {
 	if p.RoundTripOnly == roundTripEmitOnly {
 		return
 	}
+	st.curParam = p
+	defer func() { st.curParam = nil }()
+
+	// `deref` — значение записи есть ссылка на соседа по документу: сосед
+	// кладётся в пространство ДО условия, потому что условие записи о нём и
+	// спрашивает (`ref.<as>.protocol`). Не нашёлся — слоя нет, условия по
+	// нему ложны, запись молчит.
+	if p.Deref != nil {
+		if ref, _, found := st.lookupSource(p); found {
+			st.space.bindRef(p.Deref.As, p.Deref.Key, strings.TrimSpace(ref))
+		}
+	}
+
+	// `$value` — СЕЛЕКТОР записи, а не условие: он выбирает, какая из
+	// записей с одним `maps_to` обслуживает это значение источника
+	// (`uplink_data_placement`: header/cookie — запись с implies packet-up,
+	// прочее — запись «как есть»). Промах селектора — молчаливый пропуск без
+	// on_when_false: значение не подавлено, его пишет другая запись.
+	if pred, ok := p.When["$value"]; ok && !st.oneWhen("$value", pred) {
+		st.trace.Add(Event{
+			Stage: StageField, Mapper: st.mapperName, Entry: e.Name,
+			Src: "-", Raw: nil, Val: nil, Path: nil, Act: ActSkip, Why: WhyWhenFalse,
+		})
+		return
+	}
 
 	// when по телу / по источнику / по $type / по $form.
 	if !st.whenHolds(p.When) {
@@ -748,6 +798,12 @@ func (st *execState) applyEntry(e *Entry) {
 	}
 
 	rawVal, src, found := st.lookupSource(p)
+	if found && p.Substitute != nil {
+		// Плейсхолдеры в значении разрешаются ДО всего остального: и код
+		// on_present, и запись в тело видят уже подставленное значение.
+		// Ничего не осталось — значения нет, как если бы источник молчал.
+		rawVal, found = st.substitute(p.Substitute, rawVal)
+	}
 	if !found {
 		// Запись, объявленная только ради on_len_gt / on_present, не несёт
 		// скалярного источника — lookupSource на массиве молчит, и без
@@ -758,6 +814,12 @@ func (st *execState) applyEntry(e *Entry) {
 		st.applyMissing(e)
 		return
 	}
+
+	// Декодирование поверх декодера формы, потом форм-семантика `+`. ДО
+	// on_present: `value` кода — то же значение, что увидела бы запись в
+	// теле, а не сырой query-текст с `+` вместо пробела (MAPPER_ENGINE.md,
+	// политика декодирования `+`).
+	val := st.decodeValue(p, rawVal)
 
 	// on_present — код за САМО наличие значения, независимо от того, едет оно
 	// куда-нибудь или нет. Нужен записям с `maps_to: null`: значение осознанно
@@ -773,7 +835,7 @@ func (st *execState) applyEntry(e *Entry) {
 			if params == nil {
 				params = map[string]string{}
 			}
-			params["value"] = rawVal
+			params["value"] = val
 		}
 		// Путь — ИМЯ ЗАПИСИ, а не путь в теле: у записи с `maps_to: null`
 		// тела нет по построению, и назвать место потери больше нечем.
@@ -783,8 +845,12 @@ func (st *execState) applyEntry(e *Entry) {
 		st.notePath(code, e.Name, params)
 	}
 
-	// Декодирование поверх декодера формы, потом форм-семантика `+`.
-	val := st.decodeValue(p, rawVal)
+	// on_invalid: default_from — присутствующее значение, на котором
+	// выполнено условие записи, уступает сперва СЛЕДУЮЩЕМУ источнику цепочки
+	// с годным значением, и лишь потом источнику default_from.
+	if st.onInvalidDefaultFrom(e, src, val) {
+		return
+	}
 
 	// list + extract = СПИСОК ПАР в объект тела (PRIMITIVES §0.10).
 	// Перехватывается до convert: иначе list резал значение в срез, а extract
@@ -910,6 +976,161 @@ func sameJSON(a, b interface{}) bool {
 	return err1 == nil && err2 == nil && string(ab) == string(bb)
 }
 
+// defaultFromValue — значение, которое объявил `default_from` записи.
+//
+// Имя может называть не ИСТОЧНИК, а ПУТЬ ТЕЛА: SNI по умолчанию равен адресу
+// сервера, а адрес у разных форм приезжает из разных источников (`host` у
+// ссылки, `json.add` у контейнера v2rayN). Написать «host» значило бы назвать
+// источник ОДНОЙ формы, и у другой дефолт молча не срабатывал — так терялся
+// tls.server_name у vmess. Путь тела свободен от этого: к моменту чтения его
+// уже заполнила запись `server`, чей источник объявлен по формам.
+func (st *execState) defaultFromValue(p *registry.Param) (string, string, bool) {
+	if len(p.DefaultFrom) == 0 {
+		return "", "", false
+	}
+	name := rawString(p.DefaultFrom)
+	if name == "" {
+		return "", "", false
+	}
+	v, ok := st.space.Lookup(name)
+	if !ok || v == "" {
+		if bv, hit := getPath(st.res.Body, name); hit {
+			if s := toString(bv); s != "" {
+				v, ok = s, true
+			}
+		}
+	}
+	if !ok || v == "" {
+		return "", "", false
+	}
+	return name, v, true
+}
+
+// applyDefaultFrom пишет значение `default_from` в путь записи. false —
+// дефолта нет (источник и путь тела пусты) либо записи некуда писать.
+// merge — как у обычной записи: "" (путь за владельцем) либо "overwrite".
+func (st *execState) applyDefaultFrom(e *Entry, merge string) bool {
+	p := e.Param
+	name, v, ok := st.defaultFromValue(p)
+	if !ok {
+		return false
+	}
+	path := st.pathOf(p)
+	if path == "" {
+		return false
+	}
+	st.writeMerge(e.Name, name, v, v, path, p.Priority, e.Decl, WhyDefault, merge)
+	st.applyImplies(e)
+	return true
+}
+
+// onInvalidDefaultFrom — `on_invalid: {action: default_from, when: …}`:
+// ПРИСУТСТВУЮЩЕЕ значение, на котором выполнено условие, уступает (правило
+// выбирает ИСТОЧНИК поля, а не судит значение: метка вместо имени хоста в
+// sni= берётся не из sni=):
+//
+//  1. СЛЕДУЮЩЕМУ источнику цепочки записи, чьё значение условию НЕ
+//     подпадает (контракт 1.1.80: `sni=метка&servername=хост` берёт хост из
+//     servername=, а не адрес сервера — автор ссылки имя назвал);
+//  2. источнику `default_from` записи, если годного звена дальше нет.
+//
+// Условие `value` судит декодированное значение записи операторами
+// matches / not_matches, прочие ключи — как обычное `when`. Код ставится,
+// только если on_invalid его объявил. true — значение заменено.
+func (st *execState) onInvalidDefaultFrom(e *Entry, src, val string) bool {
+	p := e.Param
+	if actionOf(p.OnInvalid) != "default_from" {
+		return false
+	}
+	if !st.onInvalidHolds(p, val) {
+		return false
+	}
+	// Негодное значение уже могла положить в тот же путь другая запись того
+	// же поля (общий блок tls#uri читает sni= раньше записи секции, и их
+	// цепочки источников различны, так что изъятия блочной нет). Отвергнутое
+	// значение уходит из тела, где бы оно ни легло: путь, занятый РОВНО им,
+	// переписывается. Путь с другим значением остаётся за владельцем.
+	merge := ""
+	if path := st.pathOf(p); path != "" {
+		if cur, has := getPath(st.res.Body, path); has && toString(cur) == val {
+			merge = "overwrite"
+		}
+	}
+	if !st.applyNextValidSource(e, src, merge) && !st.applyDefaultFrom(e, merge) {
+		return false
+	}
+	if code := codeOf(p.OnInvalid); code != "" {
+		params := paramsOf(p.OnInvalid)
+		if _, has := params["value"]; !has {
+			if params == nil {
+				params = map[string]string{}
+			}
+			params["value"] = val
+		}
+		st.notePath(code, st.pathOf(p), params)
+	}
+	return true
+}
+
+// onInvalidHolds — выполнено ли условие `on_invalid.when` на значении val:
+// ключ `value` судит само значение операторами matches / not_matches,
+// прочие ключи — как обычное `when`.
+func (st *execState) onInvalidHolds(p *registry.Param, val string) bool {
+	when, _ := p.OnInvalid["when"].(map[string]interface{})
+	for key, want := range when {
+		if key == "value" {
+			cond, _ := want.(map[string]interface{})
+			if !itemMatches(cond, val) {
+				return false
+			}
+			continue
+		}
+		if !st.oneWhen(key, want) {
+			return false
+		}
+	}
+	return true
+}
+
+// applyNextValidSource — звенья цепочки источников записи ПОСЛЕ src, по
+// порядку: первое присутствующее непустое значение, на котором условие
+// on_invalid НЕ выполнено, пишется в путь записи тем же переводом
+// (decode → convert), что и обычное значение. false — годного звена нет
+// (src — последнее звено, либо дальше только пустые и негодные значения).
+func (st *execState) applyNextValidSource(e *Entry, src, merge string) bool {
+	p := e.Param
+	path := st.pathOf(p)
+	if path == "" || src == "" {
+		return false
+	}
+	names := p.Source.ForForm(st.form.ID)
+	after := false
+	for _, name := range names {
+		name = st.substituteBase(name)
+		if !after {
+			after = name == src
+			continue
+		}
+		raw, ok := st.space.Lookup(name)
+		if !ok || (strings.TrimSpace(raw) == "" && p.Empty != "significant") {
+			continue
+		}
+		val := st.decodeValue(p, raw)
+		if st.onInvalidHolds(p, val) {
+			continue
+		}
+		typed, drop := st.convert(p, val)
+		if drop {
+			continue
+		}
+		st.writeMerge(e.Name, name, raw, typed, path, p.Priority, e.Decl, "", merge)
+		st.applySets(e, val)
+		st.applyImplies(e)
+		return true
+	}
+	return false
+}
+
 // applyMissing — источник промолчал: materialize_default, default_from, sets по
 // пустому значению.
 func (st *execState) applyMissing(e *Entry) {
@@ -930,32 +1151,8 @@ func (st *execState) applyMissing(e *Entry) {
 
 	// default_from — источник значения по умолчанию (эвристика SNI у trojan
 	// выражается именно им, а не веткой кода).
-	if len(p.DefaultFrom) > 0 {
-		if name := rawString(p.DefaultFrom); name != "" {
-			v, ok := st.space.Lookup(name)
-			if !ok || v == "" {
-				// Имя может называть не ИСТОЧНИК, а ПУТЬ ТЕЛА: SNI по
-				// умолчанию равен адресу сервера, а адрес у разных форм
-				// приезжает из разных источников (`host` у ссылки,
-				// `json.add` у контейнера v2rayN). Написать «host» значило
-				// бы назвать источник ОДНОЙ формы, и у другой дефолт молча
-				// не срабатывал — так терялся tls.server_name у vmess.
-				// Путь тела свободен от этого: к моменту чтения его уже
-				// заполнила запись `server`, чей источник объявлен по формам.
-				if bv, hit := getPath(st.res.Body, name); hit {
-					if s := toString(bv); s != "" {
-						v, ok = s, true
-					}
-				}
-			}
-			if ok && v != "" {
-				if path := st.pathOf(p); path != "" {
-					st.write(e.Name, name, v, v, path, p.Priority, e.Decl, WhyDefault)
-					st.applyImplies(e)
-					return
-				}
-			}
-		}
+	if st.applyDefaultFrom(e, "") {
+		return
 	}
 
 	// default_when — дефолт с УСЛОВИЕМ. Сегодня условие одно: `absent:
@@ -1773,8 +1970,8 @@ func (st *execState) convert(p *registry.Param, val string) (interface{}, bool) 
 				if params == nil {
 					params = map[string]string{}
 				}
-				if _, has := params["transport"]; !has {
-					params["transport"] = val
+				if name := rejectValueParam(code); params[name] == "" {
+					params[name] = val
 				}
 				st.notePath(code, val, params)
 			}
@@ -2103,12 +2300,35 @@ func (st *execState) oneWhen(key string, want interface{}) bool {
 		got, present = st.bodyType, st.bodyType != ""
 	case key == "$form":
 		got, present = st.form.ID, st.form.ID != ""
+	case key == "$value":
+		// Собственное значение записи — то, что она прочтёт из своих
+		// `source` (первый найденный, пустое = отсутствует). Источник при
+		// этом прочитанным не отмечается (§10.2).
+		if st.curParam != nil {
+			v, _, ok := st.lookupSource(st.curParam)
+			got, present = v, ok
+		}
 	case isSourceName(key):
 		key = st.substituteBase(key)
 		v, ok := st.space.Lookup(key)
 		got, present = v, ok
 	default:
 		got, present = getPath(st.res.Body, key)
+	}
+
+	// type_of — ТИП значения источника (object/array/string/number/bool),
+	// как у одноимённого предиката detect (контракт 1.1.63). Нужен условию
+	// о контейнере: `present` судит скаляр, а объект (`settings.fragment`
+	// у Xray-freedom) скаляром не читается.
+	if op, ok := want.(map[string]interface{}); ok {
+		if typ, ok := op["type_of"].(string); ok {
+			if !isSourceName(key) {
+				v, has := getPath(st.res.Body, key)
+				return has && jsonTypeOf(v) == typ
+			}
+			v, has := st.space.LookupRaw(key)
+			return has && jsonTypeOf(v) == typ
+		}
 	}
 
 	switch w := want.(type) {
@@ -2137,6 +2357,57 @@ func (st *execState) oneWhen(key string, want interface{}) bool {
 		return st.whenOperator(got, present, w)
 	}
 	return false
+}
+
+// substitute разрешает плейсхолдеры значения записи (Param.Substitute).
+//
+// Значение режется по sep, каждый элемент обрезается; элемент, равный
+// плейсхолдеру, заменяется значением своего источника, а при пустом или
+// отсутствующем источнике снимается. Значение без единого плейсхолдера
+// возвращается как есть — написание автора не переписывается. Второй
+// результат false — не осталось ни одного элемента.
+func (st *execState) substitute(spec *registry.Substitute, raw string) (string, bool) {
+	if len(spec.Tokens) == 0 {
+		return raw, true
+	}
+	sep := spec.Sep
+	if sep == "" {
+		sep = ","
+	}
+	parts := strings.Split(raw, sep)
+	hit := false
+	for _, part := range parts {
+		if _, ok := spec.Tokens[strings.TrimSpace(part)]; ok {
+			hit = true
+			break
+		}
+	}
+	if !hit {
+		return raw, true
+	}
+	join := spec.Join
+	if join == "" {
+		join = sep
+	}
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if source, ok := spec.Tokens[item]; ok {
+			v, has := st.space.Lookup(st.substituteBase(source))
+			item = strings.TrimSpace(v)
+			if !has || item == "" {
+				continue
+			}
+		}
+		if item == "" {
+			continue
+		}
+		out = append(out, item)
+	}
+	if len(out) == 0 {
+		return "", false
+	}
+	return strings.Join(out, join), true
 }
 
 // whenOperator — операторы условия: in / not_in / present / absent / lt / gt.
@@ -2222,7 +2493,7 @@ func valueInList(got interface{}, list []interface{}) bool {
 
 // isSourceName — ключ адресует ВХОД, а не тело.
 func isSourceName(key string) bool {
-	for _, p := range []string{"query.", "json.", "ini.", "userinfo"} {
+	for _, p := range []string{"query.", "json.", "ini.", "userinfo", "context.", "ref."} {
 		if strings.HasPrefix(key, p) {
 			return true
 		}
@@ -2862,11 +3133,16 @@ func normalizeBandwidthMbps(v string) string {
 }
 
 // stripControl снимает C0-управляющие и DEL, оставляя tab/CR/LF.
+//
+// Невалидный UTF-8 не выбрасывается, а заменяется U+FFFD (контракт 1.1.74,
+// MAPPER_ENGINE §1): битый байт в метке — след мусора (cp1251 от
+// агрегатора), и молча склеивать соседние куски имени нельзя — место
+// повреждения должно остаться видно.
 func stripControl(s string) string {
 	if s == "" {
 		return s
 	}
-	s = strings.ToValidUTF8(s, "")
+	s = strings.ToValidUTF8(s, "\uFFFD")
 	var b strings.Builder
 	for _, r := range s {
 		if r == '\t' || r == '\n' || r == '\r' {

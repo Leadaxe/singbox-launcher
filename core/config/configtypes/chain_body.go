@@ -46,7 +46,7 @@ func ChainBody(c *SourceChain) json.RawMessage {
 	}
 	if len(c.Strip) > 0 {
 		first := true
-		for _, key := range ChainStripKeys {
+		for _, key := range ChainStripKeys() {
 			val, ok := c.Strip[key]
 			if !ok {
 				continue

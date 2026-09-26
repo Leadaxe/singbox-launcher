@@ -418,7 +418,9 @@ func TestExport10FileShape(t *testing.T) {
 	}
 	for _, item := range sources {
 		rec, _ := item.(map[string]any)
-		for _, forbidden := range []string{"meta", "update_status", "pending_disabled", "replace", "label"} {
+		// `fold`/`fold_tag` — прежняя форма свёртки: с контракта 1.1.78 она
+		// едет полем состояния `replace`, и писатель старую не пишет.
+		for _, forbidden := range []string{"meta", "update_status", "pending_disabled", "fold", "fold_tag", "label"} {
 			if _, ok := rec[forbidden]; ok {
 				t.Errorf("в записи источника ключ %q, которого в файле быть не должно: %v", forbidden, rec)
 			}

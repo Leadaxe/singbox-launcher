@@ -117,3 +117,24 @@ func dropChainsThroughDirection(nodes []*ParsedNode, directionTag string, hopsBy
 	}
 	return out, dropped
 }
+
+// chainCycleWarnings — цепочки, не взятые в состав Направления (T9), в форме
+// предупреждения эмиссии с кодом chain_cycle_through_direction: адресат —
+// Направление, в отчёт сборки они едут вместе с прочими деградациями.
+func chainCycleWarnings(cycles []ChainCycle) []EmissionWarning {
+	if len(cycles) == 0 {
+		return nil
+	}
+	out := make([]EmissionWarning, 0, len(cycles))
+	for _, c := range cycles {
+		params := map[string]string{"chain": c.Chain, "direction": c.Direction}
+		out = append(out, EmissionWarning{
+			Text: registryWarningText(codeChainCycleThroughDirection, params,
+				codeChainCycleThroughDirection+": "+c.Chain+" → "+c.Direction),
+			DirectionTag: c.Direction,
+			Code:         codeChainCycleThroughDirection,
+			Params:       params,
+		})
+	}
+	return out
+}

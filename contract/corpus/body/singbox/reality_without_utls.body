@@ -1,0 +1,13 @@
+# sing-box: REALITY без блока uTLS (контракт 1.1.61, SPEC 142 C4).
+#
+# Ядро без uTLS REALITY не поднимает — «uTLS is required by reality client»
+# (common/tls/reality_client.go:61), отказ ВСЕГО конфига. Правило реестра
+# одно: tls.reality.enabled requires tls.utls.enabled с set: true — uTLS
+# ДОПИСЫВАЕТСЯ ({enabled: true}, пустой отпечаток = chrome у ядра) с кодом
+# reality_utls_enabled, REALITY остаётся. Прежде реестр снимал reality.enabled
+# (field_requires), а сборка тот же блок чинила молча.
+#
+# Второй узел — та же форма с негодным public_key: REALITY снимается своим
+# правилом (reality_pbk_invalid), и uTLS ему не дописывается — связь судится
+# по готовому телу.
+[{"type":"vless","tag":"reality-no-utls","server":"example-1.com","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111","tls":{"enabled":true,"server_name":"example-2.com","reality":{"enabled":true,"public_key":"AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw","short_id":"6c3a75b342477f24"}}},{"type":"vless","tag":"reality-junk-pbk-no-utls","server":"example-3.com","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111","tls":{"enabled":true,"server_name":"example-4.com","reality":{"enabled":true,"public_key":"true"}}}]

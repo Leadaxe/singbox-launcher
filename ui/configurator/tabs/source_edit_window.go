@@ -101,7 +101,7 @@ func setNodeEnabled(src *wizardmodels.Source, rawTag string, enabled bool) {
 		return
 	}
 	// Через corestate.Node.SetNodeEnabled, а не присваиванием: включение
-	// рукой стирает вердикт ядра (SPEC 132, CANON §9.4) — человек сказал
+	// рукой стирает вердикт ядра (SPEC 132, PARSING_PRINCIPLES §9.4) — человек сказал
 	// «пробуй снова», и следующая сборка проверит узел заново.
 	for i := range src.Nodes {
 		if src.Nodes[i].Tag == rawTag {
@@ -826,7 +826,7 @@ func showSourceEditWindowAt(
 	// Пересборка набора вкладок: вкладка «Группа» появляется и исчезает
 	// вместе с галкой. Объявлена заранее — сами вкладки строятся ниже.
 	var syncFoldTabVisible func()
-	foldTabBody := newReplaceTab(presenter.Model(), func() { applyFoldFromForm() })
+	foldTabBody := newReplaceTab(presenter.Model(), sourceIndex, func() { applyFoldFromForm() })
 
 	// SPEC 110: форма цепочки. Существует только у источника-цепочки, где
 	// заменяет собой всё остальное: ни URL, ни URI, ни свёртки у неё нет.
@@ -2240,7 +2240,7 @@ func showSourceEditWindowAt(
 
 	// SPEC 052 phase 8: Overview-tab включает raw body section (раньше был
 	// отдельный Raw tab — слили чтобы не дублировать read-only inspection).
-	overviewContent, refreshOverviewTab := buildOverviewTab(presenter, sourceIndex)
+	overviewContent, refreshOverviewTab := buildOverviewTab(presenter, sourceIndex, nodeLink)
 
 	settingsTab := container.NewTabItem(locale.T("Settings"), settingsWithGutter)
 	previewTab := container.NewTabItem(locale.TN(1, "Preview"), previewBox)

@@ -7,15 +7,15 @@
 // экспорту и импорту.
 //
 // Экспорт (писатель 1.0 — единственный с v1.6.0, D-110) переводит здесь ровно
-// два поля тонкого слоя:
+// одно поле тонкого слоя:
 //
 //	node.enabled=false + PendingDisabled → sub.disabled{сырой тег: 0}
-//	FolderReplace                        → fold{mode, auto}
 //
-// Импорт переводит обратно свёртку (оба входа) и всё, что называла иначе
-// форма 0.x (legacy-вход):
+// Свёртка (`replace`) с контракта 1.1.78 едет формой состояния и конвертера
+// не имеет — только копию (cloneFolderReplace). Прежняя форма свёртки
+// (`fold` + `fold_tag`) с контракта 1.1.79 не читается ни в 1.0, ни в 0.x —
+// это неизвестные ключи. Импорт переводит всё, что называла иначе форма 0.x:
 //
-//	fold{mode, auto}                    → FolderReplace
 //	тройня detour_node_source_id + tag  → NodeLink (detour)
 //	[]string (теги хопов)               → []NodeLink (+ резолв по живому индексу)
 //	chain{…}                            → Node.Body
@@ -27,7 +27,6 @@ package backup
 
 import (
 	"encoding/json"
-	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
@@ -36,24 +35,16 @@ import (
 
 // ── экспорт: состояние → поля тонкого слоя 1.0 ───────────────────
 
-// exportFold — FolderReplace модели в свёртку контракта.
-func exportFold(r *state.FolderReplace) *Fold {
+// cloneFolderReplace — глубокая копия свёртки: файл не должен делить
+// указатель авто-половины с состоянием (правка в UI после экспорта меняла бы
+// собранный файл).
+func cloneFolderReplace(r *state.FolderReplace) *state.FolderReplace {
 	if r == nil {
 		return nil
 	}
-	out := &Fold{}
-	switch r.Mode {
-	case state.FolderReplaceAuto:
-		out.Mode = "auto"
-	case state.FolderReplaceBoth:
-		out.Mode = "select_auto"
-	default:
-		out.Mode = "select"
-	}
-	if r.Strategy != nil {
-		out.Auto = r.Strategy.Clone()
-	}
-	return out
+	out := *r
+	out.Strategy = r.Strategy.Clone()
+	return &out
 }
 
 // exportDisabledMap — отметки выключения по СЫРЫМ тегам узлов (identity в
@@ -89,29 +80,6 @@ func exportDisabledMap(src state.Source) map[string]int64 {
 }
 
 // ── импорт: формы контракта → состояние ──────────────────────────
-
-// importFold — свёртка контракта в FolderReplace модели.
-//
-// tag замены контракт не несёт (в 0.11 он был позиционным деривативом), и
-// выдумывать его нельзя: тег даёт вызывающий из имени/индекса источника.
-func importFold(f *Fold, replaceTag string) *state.FolderReplace {
-	if f == nil {
-		return nil
-	}
-	out := &state.FolderReplace{Tag: replaceTag}
-	switch f.Mode {
-	case "auto":
-		out.Mode = state.FolderReplaceAuto
-	case "select_auto":
-		out.Mode = state.FolderReplaceBoth
-	default:
-		out.Mode = state.FolderReplaceManual
-	}
-	if f.Auto != nil {
-		out.Strategy = f.Auto.Clone()
-	}
-	return out
-}
 
 // importNodeLinkRef — detour-тройня контракта в NodeLink модели.
 //
@@ -187,42 +155,6 @@ func importMaskTag(tp *TagPolicy) string {
 		return ""
 	}
 	return strings.TrimSpace(tp.Mask)
-}
-
-// legacyFoldPrefix — префикс групп прежней свёртки: тег-префикс подписки с
-// позиционным умолчанием «<номер>:» (D-081; номер — индекс записи в секции
-// subscriptions[], а не позиция среди всех источников). Формула воспроизведена
-// байт-в-байт (в т. ч. TrimSpace: старый движок обрезал префикс, и `"[P] "`
-// давал `[P]select`) — по этим тегам ссылались правила живых состояний, а файл
-// 0.x и файл 1.0 без `fold_tag` имени группы иначе не несут.
-func legacyFoldPrefix(tagPrefix string, index int) string {
-	if p := strings.TrimSpace(tagPrefix); p != "" {
-		return p
-	}
-	return strconv.Itoa(index+1) + ":"
-}
-
-// foldDerivedDirectionTags — теги локальных Направлений, которые породила
-// свёртка, а не пользователь.
-//
-// Старая свёртка эмитила пару `<PFX>select` / `<PFX>auto` и клала её в
-// `outbounds[]` источника. В v7 эта пара — не Направления, а FolderReplace, и
-// импортировать её вторым способом значило бы получить два владельца одного
-// тега. Всё, что в эту пару не попало, — настоящее локальное Направление
-// пользователя, и оно упразднено классом (warning вызывающего).
-func foldDerivedDirectionTags(sub Subscription, index int) map[string]bool {
-	if sub.Fold == nil {
-		return nil
-	}
-	prefix := ""
-	if sub.Tag != nil {
-		prefix = sub.Tag.Prefix
-	}
-	prefix = legacyFoldPrefix(prefix, index)
-	return map[string]bool{
-		prefix + "select": true,
-		prefix + "auto":   true,
-	}
 }
 
 // resolveImportedHops — второй проход по цепочкам: строковый хоп получает

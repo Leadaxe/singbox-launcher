@@ -1,5 +1,5 @@
 // File parse.go — разбор строки отказа ядра (SPEC 132 волна 1, норма
-// contract/docs/CANON.md §9.1-9.2).
+// contract/docs/PARSING_PRINCIPLES.md §9.1-9.2).
 //
 // # Зачем отдельный пакет
 //
@@ -9,12 +9,12 @@
 // из трёх мест сразу: pre-start `check` classic-движка, `ApplyError.Message`
 // демона и (будущей волной) текст отказа реального старта.
 //
-// # Нормативная форма (CANON §9.1)
+// # Нормативная форма (PARSING_PRINCIPLES §9.1)
 //
 //	initialize <outbound|endpoint>[<i>] <type>[<tag>]: <text>
 //
 // Индекс `<i>` ДИАГНОСТИЧЕСКИЙ: он нумерует позицию в собранном конфиге, а не
-// узел состояния, и сопоставлять по нему запрещено (CANON §9.1).
+// узел состояния, и сопоставлять по нему запрещено (PARSING_PRINCIPLES §9.1).
 //
 // Ядра старше 1.14.1-lx.7 пишут ту же строку БЕЗ ` <type>[<tag>]`
 // (`initialize outbound[26]: unknown uTLS fingerprint`) — это форма «без
@@ -52,7 +52,7 @@ type Rejection struct {
 	// Kind — outbound или endpoint.
 	Kind Kind
 	// Index — `<i>` из строки. ТОЛЬКО диагностика: сопоставлять по нему
-	// запрещено (CANON §9.1). -1 = не прочитан.
+	// запрещено (PARSING_PRINCIPLES §9.1). -1 = не прочитан.
 	Index int
 	// Type — тип sing-box (`vless`, `wireguard`, …).
 	Type string
@@ -60,7 +60,7 @@ type Rejection struct {
 	// переданным множеством тегов.
 	Tag string
 	// Text — дословный текст ядра без префикса с тегом. Он же едет в
-	// `disabled_reason` узла (CANON §9.4).
+	// `disabled_reason` узла (PARSING_PRINCIPLES §9.4).
 	Text string
 }
 
@@ -107,7 +107,7 @@ func TagsOf(tags map[string]bool) TagSet {
 //
 // ok=false означает ровно одно: «узел не назван» — ошибка не про узел, форма
 // без тега, или ни один кандидат не сопоставился. Во всех трёх случаях
-// страховка не действует (CANON §9.3), и вызывающий обязан вести себя как
+// страховка не действует (PARSING_PRINCIPLES §9.3), и вызывающий обязан вести себя как
 // сегодня.
 func Parse(out string, tags TagSet) (Rejection, bool) {
 	if strings.TrimSpace(out) == "" || tags == nil {
@@ -193,7 +193,7 @@ func parseLine(line string, tags TagSet) (Rejection, bool) {
 			Text:  rest[cut+len("]: "):],
 		}, true
 	}
-	// Ни один кандидат не сопоставился — узел не назван (CANON §9.3).
+	// Ни один кандидат не сопоставился — узел не назван (PARSING_PRINCIPLES §9.3).
 	return Rejection{}, false
 }
 

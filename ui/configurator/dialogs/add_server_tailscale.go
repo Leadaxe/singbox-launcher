@@ -17,15 +17,16 @@ package dialogs
 import (
 	"encoding/json"
 	"fmt"
-	"net/netip"
 	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/config/nodeflow"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 )
 
 // addServerTailscaleNoteText — подсказка под полем ключа. Текст нормативный
@@ -185,20 +186,31 @@ func tailscaleDocument(tag string, t *tailscaleFields) ([]byte, error) {
 		endpoint["advertise_exit_node"] = true
 	} else {
 		putIfNotEmpty(endpoint, "exit_node", t.exitNode.Text)
-		if strings.TrimSpace(t.exitNode.Text) != "" && t.exitNodeLAN.Checked {
+		// Связь с exit_node судит реестр (requires у
+		// exit_node_allow_lan_access) — через tailscaleVerdict ниже.
+		if t.exitNodeLAN.Checked {
 			endpoint["exit_node_allow_lan_access"] = true
 		}
 	}
 
-	routes, rerr := parseTailscalePrefixList(t.advRoutes.Text)
-	if rerr != nil {
-		return nil, rerr
-	}
-	if len(routes) > 0 {
+	// Маршруты судит и приводит реестр (контракт 1.1.63, SPEC 142 C9):
+	// формат CIDR, голый адрес → префикс хоста, биты хоста за префиксом
+	// обнуляются (normalize cidr_masked), дефолтный маршрут запрещён
+	// (item_forbidden — для выхода наружу есть галка advertise_exit_node).
+	if routes := splitTailscaleList(t.advRoutes.Text); len(routes) > 0 {
 		endpoint["advertise_routes"] = routes
 	}
 	if tags := splitTailscaleList(t.advTags.Text); len(tags) > 0 {
 		endpoint["advertise_tags"] = tags
+	}
+	clean, err := tailscaleVerdict(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	// В документ уходит ПРИВЕДЁННОЕ значение: `192.168.10.5/24` ядро
+	// отвергло бы, `192.168.10.0/24` — ровно то, что человек имел в виду.
+	if routes, ok := clean["advertise_routes"]; ok {
+		endpoint["advertise_routes"] = routes
 	}
 
 	// Связка — не литерал формы: её собирает config.TailscaleBundleFragments,
@@ -219,6 +231,27 @@ func tailscaleDocument(tag string, t *tailscaleFields) ([]byte, error) {
 	return json.MarshalIndent(doc, "", "  ")
 }
 
+// tailscaleVerdict прогоняет тело узла через санитайзер реестра: поле, которое
+// он снял с кодом уровня warning/error (связи полей, формат), — отказ формы с
+// текстом кода, а не узел без набранного значения (SPEC 142 B7).
+//
+// Первое значение — чистое тело санитайзера: из него форма берёт
+// приведённые реестром значения.
+func tailscaleVerdict(endpoint map[string]interface{}) (map[string]interface{}, error) {
+	res := nodeflow.Sanitize(tailscaleScheme, endpoint)
+	ws := res.Warnings
+	if res.Drop != nil {
+		ws = append([]nodeflow.Warning{*res.Drop}, ws...)
+	}
+	if msg := nodewarn.Summary(nodewarn.FromParsed(ws)); msg != "" {
+		return nil, fmt.Errorf("%s", msg)
+	}
+	return res.Clean, nil
+}
+
+// tailscaleScheme — схема реестра узла Tailscale.
+const tailscaleScheme = "tailscale"
+
 // splitTailscaleList режет список, набранный через запятую или пробелы.
 func splitTailscaleList(text string) []string {
 	fields := strings.FieldsFunc(text, func(r rune) bool {
@@ -231,32 +264,6 @@ func splitTailscaleList(text string) []string {
 		}
 	}
 	return out
-}
-
-// parseTailscalePrefixList проверяет анонсируемые маршруты под формат ядра.
-//
-// `advertise_routes` — это []netip.Prefix, а не строки: мусор из поля свалил бы
-// разбор всего конфига (ловушка broken-list-pbk-junk). Отдельной проверкой
-// отбивается дефолтный маршрут — ядро на нём отказывается стартовать и само
-// советует галку «быть выходом», но советует уже в рантайме, мимо check.
-//
-// Нормализация — обязательная: netip требует, чтобы биты хоста за префиксом
-// были нулями, поэтому «192.168.10.5/24» ядро отвергнет. Masked() приводит его
-// к «192.168.10.0/24» — ровно то, что пользователь имел в виду.
-func parseTailscalePrefixList(text string) ([]string, error) {
-	items := splitTailscaleList(text)
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		prefix, err := netip.ParsePrefix(item)
-		if err != nil {
-			return nil, fmt.Errorf("%s", locale.Tf("Not a valid CIDR: %s", item))
-		}
-		if prefix.Addr().IsUnspecified() && prefix.Bits() == 0 {
-			return nil, fmt.Errorf("%s", locale.T("Use the exit node checkbox instead of a default route"))
-		}
-		out = append(out, prefix.Masked().String())
-	}
-	return out, nil
 }
 
 // putIfNotEmpty пишет строковое поле, только когда оно заполнено: пустая

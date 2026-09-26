@@ -108,10 +108,9 @@ func ClassifySubscriptionBody(body string) BodyKind {
 		return BodyKindURIList
 	}
 
-	// vpn:// — раньше всех: ссылка целиком и есть тело (SPEC 103 §9.B12).
-	// EqualFold по префиксу, а не ToLower всего тела: тело бывает
-	// многомегабайтным, и копия ради шести символов — лишняя.
-	if len(trimmed) >= 6 && strings.EqualFold(trimmed[:6], "vpn://") {
+	// Контейнер Amnezia — раньше всех: ссылка целиком и есть тело (SPEC 103
+	// §9.B12). Признак — detect вида источника реестра (isAmneziaVPNLink).
+	if isAmneziaVPNLink(trimmed) {
 		return BodyKindVPNLink
 	}
 
@@ -209,7 +208,8 @@ func classifyJSONObjectBody(trimmed string) BodyKind {
 	// различаются они только тем, как называется сама запись. Без этой
 	// проверки конфиг Xray уезжал в sing-box-разбор, который не находил в
 	// нём ни одного `type`, и узлов выходило ноль (код
-	// body_dialect_unrecognized описывает ровно тот промах).
+	// body_dialect_unrecognized, заведённый под этот промах, снят контрактом
+	// 1.1.65: после этой проверки события нет).
 	if xrayElementHasProtocolOutbounds(obj) {
 		return BodyKindXrayConfig
 	}

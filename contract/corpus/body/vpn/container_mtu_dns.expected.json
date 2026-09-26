@@ -1,0 +1,66 @@
+{
+  "meta": {
+    "body_kind": "vpn-link"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.8.1.7/32"
+        ],
+        "content_padding_addition": "10-100",
+        "disable_cookies": true,
+        "h1": 1,
+        "h2": 2,
+        "h3": 3,
+        "h4": 4,
+        "header_protection_key": "Bw4VHCMqMTg/Rk1UW2JpcHd+hYyTmqGor7a9xMvS2eA=",
+        "jc": 4,
+        "jmax": 50,
+        "jmin": 10,
+        "keepalive_timeout": "5-15",
+        "max_handshake_attempts": "15-20",
+        "mtu": 1280,
+        "peers": [
+          {
+            "address": "203.0.113.9",
+            "allowed_ips": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "persistent_keepalive_interval": "25-35",
+            "port": 30565,
+            "pre_shared_key": "UFNLMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
+            "public_key": "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU="
+          }
+        ],
+        "private_key": "UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
+        "random_trailers": true,
+        "reject_after_time": "150-180",
+        "rekey_after_time": "100-120",
+        "rekey_timeout": "3-7",
+        "s1": 55,
+        "s2": 42,
+        "s3": 40,
+        "s4": 12,
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "AWG3 Node",
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wgconf_dns_ignored",
+          "path": "dns",
+          "value": "172.29.172.254, 1.0.0.1"
+        },
+        {
+          "code": "awg_mtu_clamped",
+          "path": "mtu",
+          "value": "1376"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

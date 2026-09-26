@@ -67,11 +67,13 @@ Everything a link of this scheme can carry, including the TLS and transport para
   - Maps to: [`obfs.password`](#body-obfs-password)
 - <a id="link-proto-obfs-min-packet-size"></a>**`obfs-min-packet-size`** — Minimum obfuscated packet size.
   - Supported by LxBox only
+  - Also spelled: `minPacketSize`
   - Type: int
   - Maps to: [`obfs.min_packet_size`](#body-obfs-min-packet-size)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="link-proto-obfs-max-packet-size"></a>**`obfs-max-packet-size`** — Maximum obfuscated packet size.
   - Supported by LxBox only
+  - Also spelled: `maxPacketSize`
   - Type: int
   - Maps to: [`obfs.max_packet_size`](#body-obfs-max-packet-size)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -107,14 +109,13 @@ Everything a link of this scheme can carry, including the TLS and transport para
   - Type: bool
   - Maps to: [`tls.insecure`](#body-tls-insecure)
   - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
+- <a id="link-proto-security"></a>**`security`** — TLS marker written by 3x-ui; hysteria2 always runs over TLS, so the value changes nothing.
+  - Type: enum: `tls`
 
 ### TLS / REALITY
 
 Shared across every scheme that carries a TLS block; the reference page is [`_tls.md`](_tls.md).
 
-- <a id="link-tls-security"></a>**`security`** — Whether the link asks for TLS, and in which flavour.
-  - Type: enum: `""`, `none`, `tls`, `reality` · Default: `""`
-  - Maps to: [`tls.enabled`](#body-tls-enabled)
 - <a id="link-tls-ech"></a>**`ech`** — Encrypted Client Hello parameters in the Xray form.
   - Also spelled: `echfq`
   - Type: string · Default: `""`
@@ -172,7 +173,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
   - Meaningless without: `obfs.type` = `gecko`
 - <a id="body-password"></a>**`password`** — Account password.
-  - Type: string, secret
+  - Type: string, secret, role `credential`
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
 - <a id="body-network"></a>**`network`** — Networks this outbound handles.
   - Type: listable_string, `tcp`, `udp`, normalized: `trim_lower`
@@ -182,7 +183,6 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-enabled"></a>**`tls.enabled`** — Enable TLS for this outbound.
   - Type: bool
   - Default: `false`
-  - Set by link parameter: [`security`](#link-tls-security)
 - <a id="body-tls-engine"></a>**`tls.engine`** — TLS implementation used for the handshake.
   - Type: enum, `""`, `go`, `apple`, `windows`, normalized: `trim_lower`
   - Default: `go`
@@ -237,11 +237,13 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-fragment"></a>**`tls.fragment`** — Split the ClientHello across TCP segments.
   - Type: bool
   - Default: `false`
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-tls-fragment-fallback-delay"></a>**`tls.fragment_fallback_delay`** — Delay before falling back when fragmenting.
   - Type: duration
 - <a id="body-tls-record-fragment"></a>**`tls.record_fragment`** — Split the ClientHello across TLS records.
   - Type: bool
   - Default: `false`
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-tls-spoof"></a>**`tls.spoof`** — Domain used for the spoofed ClientHello.
   - Type: string, format `host`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -297,7 +299,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Conflicts with: `tls.ech.enabled`
   - Conflicts with: `tls.disable_sni`
   - Conflicts with: `tls.spoof`
-  - Meaningless without: `tls.utls.enabled`
+  - Requires: `tls.utls.enabled` — if missing, filled in with `true`
 - <a id="body-tls-reality-public-key"></a>**`tls.reality.public_key`** — Server REALITY public key (x25519).
   - Type: string, format `base64_32`, normalized: `base64_rawurl`
   - Required: the node is dropped without it
@@ -402,6 +404,9 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.client_certificate`](#body-tls-client-certificate) — set without `tls.client_key` → removed
   - [`tls.client_key`](#body-tls-client-key) — set without `tls.client_certificate` → removed
   - [`tls.spoof_method`](#body-tls-spoof-method) — set without `tls.spoof` → removed
+- [`masque_tls_fragment_h3`](../warnings.md#masque_tls_fragment_h3)
+  - [`tls.fragment`](#body-tls-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
+  - [`tls.record_fragment`](#body-tls-record-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
 - [`obfs_password_missing`](../warnings.md#obfs_password_missing)
   - [`obfs.password`](#body-obfs-password) — the field is present
 - [`obfs_unknown`](../warnings.md#obfs_unknown)
@@ -439,6 +444,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 **Link parameter names.** The same parameter is spelled differently by different clients; the left spelling is read as the right one.
 
 - `ports` → `mport`
+- `minPacketSize` → `obfs-min-packet-size`
+- `maxPacketSize` → `obfs-max-packet-size`
 - `up_mbps`, `up` → `upmbps`
 - `down_mbps`, `down` → `downmbps`
 - `fingerprint` → `fp`
@@ -453,6 +460,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `tls.spoof_method` — normalized: `trim_lower`
 - `tls.utls.fingerprint` — normalized: `trim_lower`
 - `tls.utls.fingerprint` — an invalid value is replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
+- `tls.utls.fingerprint` — `random` is replaced with `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
+- `tls.reality.enabled` — without `tls.utls.enabled`, it is filled in with `true` → [`reality_utls_enabled`](../warnings.md#reality_utls_enabled)
 - `tls.reality.public_key` — normalized: `base64_rawurl`
 - `tls.reality.short_id` — normalized: `hex_only` → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
 - `tls.reality.key_share` — normalized: `trim_lower`
@@ -505,9 +514,11 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `tls.disable_sni` — conflicts with another field of the same node
 - `tls.ech.enabled` — conflicts with another field of the same node
 - `tls.engine` — invalid value
+- `tls.fragment` — conflicts with another field of the same node
 - `tls.max_version` — invalid value
 - `tls.min_version` — invalid value
 - `tls.reality` — not supported by this protocol
+- `tls.record_fragment` — conflicts with another field of the same node
 - `tls.server_name` — invalid value
 - `tls.spoof_method` — conflicts with another field of the same node
 - `tls.spoof_method` — invalid value

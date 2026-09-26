@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "note": "Общая TLS-суб-схема share-URI для vless/vmess/trojan (и переиспользуется anytls/hysteria2/tuic с их особенностями). Код: Go vlessTLSFromNode/trojanTLSFromNode/applyTLSQueryExtras + singbox_sanitize.go; Dart parseVlessTls/parseTrojanTls/parseVmessTls + TlsSpec/normalizeTlsFingerprint.",
+  "note": "Общая TLS-суб-схема share-URI для vless/vmess/trojan (и переиспользуется anytls/hysteria2/tuic с их особенностями). Код: Go — общий движок (core/config/linkmap/exec.go:Exec по блокам tls#uri этого файла, core/config/nodeflow/sanitize.go:Sanitize по body); Dart parseVlessTls/parseTrojanTls/parseVmessTls + TlsSpec/normalizeTlsFingerprint.",
   "tls": {
     "params": {
       "security": {
@@ -28,7 +28,7 @@
         "maps_to": "tls.server_name",
         "desc_en": "Server name sent in SNI.",
         "desc_ru": "Имя сервера, отправляемое в SNI.",
-        "impl": "Fallback: vless sni→peer→server; trojan sni→peer→host→server; vmess-JSON sni→host→server. Эмитится как server_name. Написания общего параметра — sni, peer; третья ступень host объявлена ТОЛЬКО у trojan (protocols/trojan.json), потому что у vless host — это Host транспорта, а не SNI. Список читает queryParam лаунчера (SPEC 131 W2d), поэтому пояснения в скобках сюда класть нельзя — только имена ключей."
+        "impl": "Fallback: vless sni→peer→server; trojan sni→peer→host→server; vmess-JSON sni→host→server. Эмитится как server_name. Написания общего параметра — sni, peer; третья ступень host объявлена ТОЛЬКО у trojan (protocols/trojan.json), потому что у vless host — это Host транспорта, а не SNI. Список aliases собирает core/config/registry/registry.go:Registry.QueryAliases (в рабочем пути разбора сейчас не вызывается: ссылку читают source записей blocks.uri.sni), поэтому пояснения в скобках сюда класть нельзя — только имена ключей."
       },
       "alpn": {
         "type": "string",
@@ -38,7 +38,7 @@
         "maps_to": "tls.alpn",
         "desc_en": "Comma-separated list of ALPN protocols.",
         "desc_ru": "Список протоколов ALPN через запятую.",
-        "impl": "Comma-list → массив строк. Оба снимают остаточное (двойное) percent-кодирование: Go normalizePercentDecodeLoop над всей строкой (vless/trojan; во vmess-ветке — нет), Dart — per-элемент до 2 проходов. РАСХОЖДЕНИЕ (новое, вне §9): Dart дополнительно ВЫБРАСЫВАЕТ элементы, не похожие на валидный protocol-id (%/пробел/управляющие символы, §151 F2); Go пропускает как есть."
+        "impl": "Comma-list → массив строк. Оба снимают остаточное (двойное) percent-кодирование: Go — общий движок по decode_extra записи blocks.uri.alpn (until_stable, до 16 проходов) над всей строкой, у всех схем, подключающих tls#uri, включая vmess (прежде — удалённый normalizePercentDecodeLoop, во vmess-ветке его не было), Dart — per-элемент до 2 проходов. Прежнее РАСХОЖДЕНИЕ (вне §9): Dart дополнительно ВЫБРАСЫВАЕТ элементы, не похожие на валидный protocol-id (%/пробел/управляющие символы, §151 F2), а Go пропускал их как есть; теперь Go выбрасывает их тоже — правило body.fields.alpn item_pattern (drop_item, код tls_alpn_item_invalid), исполнение — core/config/nodeflow/sanitize.go:Sanitize."
       },
       "insecure": {
         "type": "bool",
@@ -58,7 +58,7 @@
         "maps_to": "tls.insecure",
         "desc_en": "Skip server certificate verification.",
         "desc_ru": "Не проверять сертификат сервера.",
-        "impl": "Истина = 1|true|yes. РАСХОЖДЕНИЕ (новое, вне §9): Go матчит все ключи case-insensitively (queryGetFold — примет и Insecure=1), но знает только 3 имени; Dart матчит case-sensitively, но знает 5 имён (+allow_insecure, skip-cert-verify). Dart вешает InsecureTlsWarning (info). Эмит: Go 'insecure=1', Dart 'allowInsecure=1'. ЦЕЛЕВОЙ НАБОР ИМЁН (DRIFT §2(a)) — объединение обоих проектов: insecure, allowinsecure, allow_insecure, allow-insecure, skipcertverify, skip_cert_verify, skip-cert-verify, noverify; сверка по strings.ToLower со снятием '-'/'_'. Было: Go 3 имени базово / 6 у tuic+anytls / 4 у hysteria / 3 у masque (единственный знал skip_cert_verify); Dart 5 имён единым хелпером (единственный знал allow_insecure и skip-cert-verify), skipCertVerify не знал никто, кроме Go. Истина — 1|true|yes единообразно (вариант Dart; skip-ветки hysteria и masque были недосмотром)."
+        "impl": "Истина = 1|true|yes. РАСХОЖДЕНИЕ (новое, вне §9): Go матчил все ключи case-insensitively (удалённый queryGetFold — принимал и Insecure=1), но знал только 3 имени (сейчас общий движок читает все написания из source записи blocks.uri.insecure, регистронезависимо); Dart матчит case-sensitively, но знает 5 имён (+allow_insecure, skip-cert-verify). Dart вешает InsecureTlsWarning (info). Эмит: Go 'insecure=1', Dart 'allowInsecure=1'. ЦЕЛЕВОЙ НАБОР ИМЁН (DRIFT §2(a)) — объединение обоих проектов: insecure, allowinsecure, allow_insecure, allow-insecure, skipcertverify, skip_cert_verify, skip-cert-verify, noverify; сверка по strings.ToLower со снятием '-'/'_'. Было: Go 3 имени базово / 6 у tuic+anytls / 4 у hysteria / 3 у masque (единственный знал skip_cert_verify); Dart 5 имён единым хелпером (единственный знал allow_insecure и skip-cert-verify), skipCertVerify не знал никто, кроме Go. Истина — 1|true|yes единообразно (вариант Dart; skip-ветки hysteria и masque были недосмотром)."
       },
       "fp": {
         "type": "alias_enum",
@@ -87,7 +87,7 @@
         "maps_to": "tls.utls.fingerprint",
         "desc_en": "Browser fingerprint mimicked in the ClientHello.",
         "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
-        "impl": "Канонический словарь = uTLSClientHelloID ядра (память utls-fp-allowlist), lowercase. Xray-алиасы по префиксу: hellochrome*→chrome, hellofirefox*→firefox, helloedge*, hellosafari*, helloios*, helloandroid*, hello360*, helloqq*, hellorandomized*→randomized, hellorandom*→random (ВЫРАЖЕНО ДАННЫМИ, контракт 1.1.35: вся таблица — tls.fp_dialect.prefix, длинный префикс матчится раньше короткого, поэтому hellorandomized не проигрывает hellorandom; прежняя пометка «есть только в Go» устарела — правило исполняет общий движок от этой таблицы, рукописного списка префиксов нет). ПОЛИТИКА МУСОРА РАСХОДИТСЯ (новое, вне §9, ломает identity-хеш): Go — junk → '' → utls-блок не эмитится (для vless затем дефолт 'random'); Dart — junk → 'chrome' + UnknownFingerprintWarning §281. Дефолт пустого fp: vless — 'random' (оба, D-009 распространяет конвенцию на anytls); vmess/trojan — без дефолта. REALITY — ЕДИНОЕ ПРАВИЛО ОБЕИХ СТОРОН (D-119, заменяет D-104): там, где реально эмитится блок reality, uTLS обязательно включён; ЯВНЫЙ отпечаток узла уходит в конфиг как есть, пустой fp и наш неявный дефолт 'random' пишутся как 'chrome' явно — на сборке конфига, а не в парсере (Go core/build/tls_transforms.go HealRealityFingerprints, Dart post_steps/heal_unknown_utls_fingerprints.dart). Явный отпечаток вне chrome-семейства даёт на узле код reality_fp_not_chrome: серверы Xray >= v26.9.8 требуют key_share X25519MLKEM768 и такой ClientHello отвергают, но отпечаток — выбор подписки, и сторона делает так, как подписка велит. Исключение с 16.09.2026: firefox и safari кода не получают — у ядра sing-box-lx >= 1.14.1-lx.3 их спеки (Firefox 148, Safari 26.3) несут гибридный шар (см. warnings.json reality_fp_not_chrome). РАЗРЫВ ЗАКРЫТ (DRIFT §2(c), целевое = вариант Dart): мусор вне словаря → coerce 'chrome' + код utls_fp_unknown на всех путях. Снять блок нельзя: под REALITY ядро требует uTLS («uTLS is required by reality client», B), а вне REALITY «снять» означает молча сменить ClientHello на голый Go-TLS — отличимо на DPI. Мусор сам по себе даёт B («unknown uTLS fingerprint»), то есть весь конфиг мёртв. Префикс hellorandom→random (без 'ized') остаётся: целевое здесь = вариант Go (DRIFT §7.1) — HelloRandom реальная Xray-запись, и подмена случайного отпечатка хромовым молча неверна. Живёт данными в tls.fp_dialect.prefix — стороне достаточно исполнять таблицу, своего списка заводить не надо. Правило значения живёт в body: tls.utls.fingerprint."
+        "impl": "Канонический словарь = uTLSClientHelloID ядра (память utls-fp-allowlist), lowercase. Xray-алиасы по префиксу: hellochrome*→chrome, hellofirefox*→firefox, helloedge*, hellosafari*, helloios*, helloandroid*, hello360*, helloqq*, hellorandomized*→randomized, hellorandom*→random (ВЫРАЖЕНО ДАННЫМИ, контракт 1.1.35: вся таблица — tls.fp_dialect.prefix, длинный префикс матчится раньше короткого, поэтому hellorandomized не проигрывает hellorandom; прежняя пометка «есть только в Go» устарела — правило исполняет общий движок от этой таблицы, рукописного списка префиксов нет). ПОЛИТИКА МУСОРА РАСХОДИТСЯ (новое, вне §9, ломает identity-хеш): Go — junk → '' → utls-блок не эмитится (для vless затем дефолт 'random'); Dart — junk → 'chrome' + UnknownFingerprintWarning §281. Дефолт пустого fp: vless — 'random' (оба, D-009 распространяет конвенцию на anytls); vmess/trojan — без дефолта. REALITY — ЕДИНОЕ ПРАВИЛО ОБЕИХ СТОРОН (D-119; с контракта 1.1.61 — правилами реестра, а не сборкой): там, где реально эмитится блок reality, uTLS обязательно включён — body tls.reality.enabled requires tls.utls.enabled с `set: true` (код reality_utls_enabled); ЯВНЫЙ отпечаток узла уходит в конфиг как есть, кроме `random` (и явного, и нашего неявного D-009 — в теле они неотличимы) — его body tls.utls.fingerprint.coerce_when заменяет на chrome (код reality_fp_random_pinned); пустой fp остаётся пустым (ядро = chrome). Сборочная копия (Go HealRealityFingerprints, Dart heal_unknown_utls_fingerprints.dart) снимается. Явный отпечаток вне chrome-семейства даёт на узле код reality_fp_not_chrome: серверы Xray >= v26.9.8 требуют key_share X25519MLKEM768 и такой ClientHello отвергают, но отпечаток — выбор подписки, и сторона делает так, как подписка велит. Исключение с 16.09.2026: firefox и safari кода не получают — у ядра sing-box-lx >= 1.14.1-lx.3 их спеки (Firefox 148, Safari 26.3) несут гибридный шар (см. warnings.json reality_fp_not_chrome). РАЗРЫВ ЗАКРЫТ (DRIFT §2(c), целевое = вариант Dart): мусор вне словаря → coerce 'chrome' + код utls_fp_unknown на всех путях. Снять блок нельзя: под REALITY ядро требует uTLS («uTLS is required by reality client», B), а вне REALITY «снять» означает молча сменить ClientHello на голый Go-TLS — отличимо на DPI. Мусор сам по себе даёт B («unknown uTLS fingerprint»), то есть весь конфиг мёртв. Префикс hellorandom→random (без 'ized') остаётся: целевое здесь = вариант Go (DRIFT §7.1) — HelloRandom реальная Xray-запись, и подмена случайного отпечатка хромовым молча неверна. Живёт данными в tls.fp_dialect.prefix — стороне достаточно исполнять таблицу, своего списка заводить не надо. Правило значения живёт в body: tls.utls.fingerprint."
       },
       "ech": {
         "type": "string",
@@ -99,7 +99,7 @@
         "maps_to": "tls.ech",
         "desc_en": "Encrypted Client Hello parameters in the Xray form.",
         "desc_ru": "Параметры Encrypted Client Hello в форме Xray.",
-        "impl": "ПОСЫЛКА ПРО with_ech ЛОЖНА (DRIFT §4/§7.2, поправка первой величины). Прежняя запись D-006 и комментарий Go (outbound_tls_emit.go:11-13) утверждали, что ядро собрано без with_ech и пропущенный ech уронил бы конфиг. Это неверно целиком: ECH компилируется ВСЕГДА (common/tls/ech.go под //go:build go1.24), а тег with_ech намеренно ОТРАВЛЕН (ech_tag_stub.go — сборка с ним не компилируется, потому что ECH переехал в stdlib). Прогон на пине: tls.ech{enabled:true} ПРОХОДИТ check — вердикт D, не A/B/C. naive ECH тоже читает (protocol/naive/outbound.go:141-155). Настоящее и единственное обоснование снятия узкое: Xray-форма 'ech=<public_name>+<resolver>' несёт ЧУЖОЙ ключ (public_name ≠ SNI узла) и убивает handshake (§320 LxBox, device-verified) — это довод против конкретной URI-формы, а не против поля tls.ech. РЕШЕНИЕ ВЛАДЕЛЬЦА ОТЛОЖЕНО (SPEC 131 §7.2): пока правило как сегодня — URI-параметр снимается с кодом ech_ignored; вариант Б разделяет случаи (снимать Xray-форму, нативный tls.ech из sing-box-JSON пропускать). ТЕКУЩИЙ РАЗРЫВ (§9.B7): Dart реализовал вычистку (warnEchIgnored, §320); Go — URI-параметр молча теряется на allowlist-эмиттере, а tls.ech из sing-box-импорта проходит НАСКВОЗЬ (кода удаления в singbox_sanitize.go нет, коммент :47-48 врёт). РЕШЕНИЕ D-122 (18.09.2026): URI-параметр ech= снимается ВСЕГДА (drop_always) с кодом ech_ignored — ключ в Xray-форме принадлежит чужому клиенту, handshake не состоится; при этом блок tls.ech{} из sing-box-JSON проходит без изменений (см. body.fields.ech).",
+        "impl": "ПОСЫЛКА ПРО with_ech ЛОЖНА (DRIFT §4/§7.2, поправка первой величины). Прежняя запись D-006 и комментарий удалённого Go-эмиттера TLS утверждали, что ядро собрано без with_ech и пропущенный ech уронил бы конфиг. Это неверно целиком: ECH компилируется ВСЕГДА (common/tls/ech.go под //go:build go1.24), а тег with_ech намеренно ОТРАВЛЕН (common/tls/ech_tag_stub.go — сборка с ним не компилируется, потому что ECH переехал в stdlib). Прогон на пине: tls.ech{enabled:true} ПРОХОДИТ check — вердикт D, не A/B/C. naive ECH тоже читает (protocol/naive/outbound.go, NewOutbound). Настоящее и единственное обоснование снятия узкое: Xray-форма 'ech=<public_name>+<resolver>' несёт ЧУЖОЙ ключ (public_name ≠ SNI узла) и убивает handshake (§320 LxBox, device-verified) — это довод против конкретной URI-формы, а не против поля tls.ech. РЕШЕНИЕ ВЛАДЕЛЬЦА ОТЛОЖЕНО (SPEC 131 §7.2): пока правило как сегодня — URI-параметр снимается с кодом ech_ignored; вариант Б разделяет случаи (снимать Xray-форму, нативный tls.ech из sing-box-JSON пропускать). ПРЕЖНИЙ РАЗРЫВ (§9.B7, закрыт D-122): Dart реализовал вычистку (warnEchIgnored, §320); Go терял URI-параметр молча на удалённом allowlist-эмиттере, а tls.ech из sing-box-импорта пропускал насквозь (в удалённом санитайзере импорта кода удаления не было, хотя комментарий обещал обратное). РЕШЕНИЕ D-122 (18.09.2026): URI-параметр ech= снимается ВСЕГДА (drop_always) с кодом ech_ignored — ключ в Xray-форме принадлежит чужому клиенту, handshake не состоится; при этом блок tls.ech{} из sing-box-JSON проходит без изменений (см. body.fields.ech). Исполнение в Go — запись blocks.uri.ech (on_present → ech_ignored), core/config/linkmap/exec.go:execState.applyEntry.",
         "on_invalid": {
           "action": "drop",
           "code": "ech_ignored"
@@ -114,7 +114,7 @@
         "validation": "X25519 public key: base64url or base64std, padded or not, decoding to exactly 32 bytes; anything else is not a valid key",
         "desc_en": "Server REALITY public key.",
         "desc_ru": "Публичный ключ REALITY сервера.",
-        "impl": "Гейт REALITY-блока (оба проекта, §169 / broken-list-pbk-junk): мусор pbk=enabled/true/пустота на security=tls нодах → REALITY НЕ строится, нода деградирует до plain TLS (невалидный public_key отвергает ВЕСЬ конфиг). Нюанс реализации: Go требует длину 43 после среза '=' и пробует RawURL/RawStd; Dart decodeBase64Safe (4 варианта, whitespace срезан) → len==32 — практический паритет на реальных ключах."
+        "impl": "Гейт REALITY-блока (оба проекта, §169 / broken-list-pbk-junk): мусор pbk=enabled/true/пустота на security=tls нодах → REALITY НЕ строится, нода деградирует до plain TLS (невалидный public_key отвергает ВЕСЬ конфиг). Нюанс реализации: Go — правило body.fields.reality.public_key (normalize base64_rawurl, format base64_32: 32 байта после декода), исполнение — core/config/nodeflow/sanitize.go:Sanitize (прежде — рукописно: длина 43 после среза '=', RawURL/RawStd); Dart decodeBase64Safe (4 варианта, whitespace срезан) → len==32 — практический паритет на реальных ключах."
       },
       "sid": {
         "type": "string",
@@ -122,7 +122,7 @@
         "validation": "hex only, lowercase, even length and at most 16 characters; an empty short_id is legal (a zero [8]byte)",
         "desc_en": "REALITY short ID.",
         "desc_ru": "Короткий идентификатор REALITY.",
-        "impl": "Нормализация: не-hex руны (мojibake U+00C2, пробелы, пунктуация) вычищаются, A-F → a-f. ЗАПИСЬ ИСПРАВЛЕНА (DRIFT §4, прежняя формулировка протухла): расхождения НЕТ — обе стороны СБРАСЫВАЮТ значение в '' и при нечётной длине, и при >16 hex-символов. Go делает это в node_parser_transport.go:798-800 (maxRealityShortIDHexLen = 16 — граница проверки, а НЕ обрезки), Dart — в uri_utils.dart:423. Обрезка запрещена: она даёт валидную форму с ЧУЖИМ идентификатором, сервер такой узел не узнает. Пустой short_id легален (нулевой [8]byte). Вердикты ядра: нечётная длина — B (encoding/hex: odd length hex string), 18 hex-символов — ПАНИКА процесса (common/tls/reality_client.go:79-86, hex.Decode индексирует shortID[8]; проверка длины на строке 84 — мёртвый код). Гард на клиенте — единственная защита от краша ядра; отдельный пункт DRIFT — завести issue в форк ядра на перестановку проверки длины перед hex.Decode. Правило значения живёт в body: tls.reality.short_id."
+        "impl": "Нормализация: не-hex руны (мojibake U+00C2, пробелы, пунктуация) вычищаются, A-F → a-f. ЗАПИСЬ ИСПРАВЛЕНА (DRIFT §4, прежняя формулировка протухла): расхождения НЕТ — обе стороны СБРАСЫВАЮТ значение в '' и при нечётной длине, и при >16 hex-символов. Go делает это правилом body.fields.reality.short_id (normalize hex_only, len_parity even, max 16 — граница проверки, а НЕ обрезки; on_invalid drop с кодом reality_short_id_invalid), исполнение — core/config/nodeflow/sanitize.go:Sanitize (прежде — рукописно в парсере, константа maxRealityShortIDHexLen), Dart — в uri_utils.dart:423. Обрезка запрещена: она даёт валидную форму с ЧУЖИМ идентификатором, сервер такой узел не узнает. Пустой short_id легален (нулевой [8]byte). Вердикты ядра: нечётная длина — B (encoding/hex: odd length hex string), 18 hex-символов — ПАНИКА процесса (common/tls/reality_client.go: hex.Decode индексирует shortID[8]; проверка длины стоит после декода — мёртвый код). Гард на клиенте — единственная защита от краша ядра; отдельный пункт DRIFT — завести issue в форк ядра на перестановку проверки длины перед hex.Decode. Правило значения живёт в body: tls.reality.short_id."
       },
       "key_share": {
         "type": "enum",
@@ -139,17 +139,17 @@
         "support": "обе",
         "desc_en": "Key exchange used in the REALITY ClientHello.",
         "desc_ru": "Способ обмена ключами в ClientHello REALITY.",
-        "impl": "SPEC 089 ядра (sing-box-lx >= 1.14.1-lx.4, option/tls.go OutboundRealityOptions.KeyShare): выбор обмена ключами в REALITY ClientHello. \"\" = как несёт uTLS-отпечаток (ключ не эмитится), \"hybrid\" = X25519MLKEM768 обязателен (ядро падает в начале хендшейка, если у отпечатка его нет), \"classical\" = X25519MLKEM768 срезан из key_share и supported_groups (нужно серверам Xray старше v26.9.8). Enum ядра ЗАКРЫТЫЙ: любое другое значение = ошибка загрузки ВСЕГО конфига, поэтому мусор → ключ удаляется (policy drop), узел живёт — деградирует ПОЛЕ, а не узел, как у pbk (§169). Нормализация обоих путей — trim + lower-case (Go NormalizeRealityKeyShare). SHARE-URI (D-121, решение владельца 17.09.2026 — вариант Б к вопросу TASKS_LXBOX §23): параметр называется `key_share`, имя ключа sing-box как есть (прецедент именования §453/§269). Чужого диалекта у поля нет — в Xray/v2rayN оно не родилось, — поэтому имя вводят обе стороны согласованно. Читается ТОЛЬКО при валидном pbk, то есть там, где узел реально REALITY: на security=tls-узле поле смысла не имеет. Схемы: vless://, anytls:// (в trojan:// reality не парсится ни одним проектом — читать негде). Мусор в URI даёт тот же код, что и в JSON. Xray-JSON аналога нет — конвертер поле не читает. ГЕЙТ ВЕРСИИ ЯДРА: поле эмитится только при ядре >= 1.14.1-lx.4; на старом ядре ключ НЕИЗВЕСТЕН, а неизвестный ключ ядро тоже отвергает ВСЕМ конфигом, поэтому эмиттер поле снимает — узел остаётся REALITY, warning-кода нет, причина уходит в WARN лога. Проба — Go core/core_capabilities.go CoreSupportsRealityKeyShare, хук config.RealityKeyShareSupportProbe (по образцу AWG3SupportProbe, но ПОЛЕВОЙ: узел не выбрасывается). Код деградации мусора — reality_key_share_invalid (registry/warnings.json). Go: URI — node_parser_transport.go vlessTLSFromNode, node_parser_anytls.go buildAnyTLSTLS; санитайз импорта — singbox_sanitize.go sanitizeSingboxReality (код возвращается наружу, вешает singbox_import.go); эмиттер — outbound_tls_emit.go (порядок в блоке = структура ядра: enabled, public_key, short_id, key_share). Корпус: uri/vless/reality_key_share_*, uri/anytls/reality_key_share_hybrid, body/singbox/outbound_array_tls_fields. Мотив — LxBox #142, TASKS_LXBOX §23. ЦЕЛЕВОЕ (DRIFT §7.12, против правила «целевое = LxBox») = вариант Go: normalize trim_lower ДО проверки enum, затем закрытый enum, мусор → снять + reality_key_share_invalid. Обоснование: enum ядра лоуэркейсный, 'Hybrid' из подписки — валидное намерение в неверном регистре, и Dart теряет его молча. Прогон на пине (DRIFT §9.1): 'hybrid'/'classical'/'' — D; 'Hybrid' и 'garbage' — одинаковое B «unknown reality key_share … (expected \"hybrid\" or \"classical\")». Пустая строка эквивалентна отсутствию ключа, поэтому отдельного кейса не нужно — достаточно сбрасывать поле. Правило значения живёт в body: tls.reality.key_share."
+        "impl": "SPEC 089 ядра (sing-box-lx >= 1.14.1-lx.4, option/tls.go OutboundRealityOptions.KeyShare): выбор обмена ключами в REALITY ClientHello. \"\" = как несёт uTLS-отпечаток (ключ не эмитится), \"hybrid\" = X25519MLKEM768 обязателен (ядро падает в начале хендшейка, если у отпечатка его нет), \"classical\" = X25519MLKEM768 срезан из key_share и supported_groups (нужно серверам Xray старше v26.9.8). Enum ядра ЗАКРЫТЫЙ: любое другое значение = ошибка загрузки ВСЕГО конфига, поэтому мусор → ключ удаляется (policy drop), узел живёт — деградирует ПОЛЕ, а не узел, как у pbk (§169). Нормализация обоих путей — trim + lower-case (Go — normalize trim_lower поля body.fields.reality.key_share, core/config/nodeflow/sanitize.go:Sanitize). SHARE-URI (D-121, решение владельца 17.09.2026 — вариант Б к вопросу TASKS_LXBOX §23): параметр называется `key_share`, имя ключа sing-box как есть (прецедент именования §453/§269). Чужого диалекта у поля нет — в Xray/v2rayN оно не родилось, — поэтому имя вводят обе стороны согласованно. Читается ТОЛЬКО при валидном pbk, то есть там, где узел реально REALITY: на security=tls-узле поле смысла не имеет. Схемы: vless://, anytls:// (в trojan:// reality не парсится ни одним проектом — читать негде). Мусор в URI даёт тот же код, что и в JSON. Xray-JSON аналога нет — конвертер поле не читает. ГЕЙТ ВЕРСИИ ЯДРА: поле эмитится только при ядре >= 1.14.1-lx.4; на старом ядре ключ НЕИЗВЕСТЕН, а неизвестный ключ ядро тоже отвергает ВСЕМ конфигом, поэтому сборка поле снимает — узел остаётся REALITY, warning-кода нет, причина уходит в WARN лога. Граница — атрибут min_core поля body.fields.reality.key_share; исполнение — ПОЛЕВОЙ гейт сборки (узел не выбрасывается) core/config/node_build_gate.go:gateBodyForCore → core/config/nodeflow/gate.go:GateForCore по версии ядра из хука config.CoreVersionProbe (прежняя частная проба CoreSupportsRealityKeyShare с хуком RealityKeyShareSupportProbe снята в SPEC 131 W2c). Код деградации мусора — reality_key_share_invalid (registry/warnings.json). Go: URI — запись key_share блока tls#uri_reality (vless, anytls), core/config/linkmap/exec.go:Exec; правило значения на всех входах — core/config/nodeflow/sanitize.go:Sanitize (прежние рукописные vlessTLSFromNode/buildAnyTLSTLS/sanitizeSingboxReality удалены); тело — core/config/nodeflow/emit.go:Emit (порядок в блоке = order секции reality = структура ядра: enabled, public_key, short_id, key_share). Корпус: uri/vless/reality_key_share_*, uri/anytls/reality_key_share_hybrid, body/singbox/outbound_array_tls_fields. Мотив — LxBox #142, TASKS_LXBOX §23. ЦЕЛЕВОЕ (DRIFT §7.12, против правила «целевое = LxBox») = вариант Go: normalize trim_lower ДО проверки enum, затем закрытый enum, мусор → снять + reality_key_share_invalid. Обоснование: enum ядра лоуэркейсный, 'Hybrid' из подписки — валидное намерение в неверном регистре, и Dart теряет его молча. Прогон на пине (DRIFT §9.1): 'hybrid'/'classical'/'' — D; 'Hybrid' и 'garbage' — одинаковое B «unknown reality key_share … (expected \"hybrid\" or \"classical\")». Пустая строка эквивалентна отсутствию ключа, поэтому отдельного кейса не нужно — достаточно сбрасывать поле. Правило значения живёт в body: tls.reality.key_share."
       },
       "impl": "REALITY взаимоисключим с QUIC-типами (см. policy) и всегда носит uTLS-блок. В trojan-URI reality не парсится ни одним проектом (только vless/anytls URI + sing-box/Xray-импорт)."
     },
     "policy": {
-      "quic_strip": "ПРАВИЛО РЕЕСТРА, не проза (SPEC 131, контракт 1.1.4): у body.fields.utls и body.fields.reality стоит forbidden_for с четырьмя QUIC-схемами (hysteria, hysteria2, tuic, masque) и forbidden_codes → tls_not_applicable_quic. Блок снимается целиком, узел живёт, код уровня info: ядро строит TLS QUIC-протоколов через aTLS.Config.STDConfig() (sing-quic qtls.Dial/DialEarly/CreateTransport, у masque — protocol/masque/outbound.go:406), а у UTLSClientConfig и RealityClientConfig этот метод возвращает ошибку — с таким блоком outbound не поднимается вовсе. hysteria v1 в списке наравне с остальными: она ходит тем же qtls.Dial (sing-quic hysteria/client.go:264), прежняя проза её не называла, хотя частная ветка quicOutboundTypes включала. Исполняет правило санитайзер по реестру (core/config/nodeflow/sanitize.go forbiddenCode) — одинаково для ссылки, JSON-тела и Xray-объекта; частная ветка quicOutboundTypes в singbox_sanitize.go снята, у Dart на очереди TlsSpec.toSingboxForQuic (§282 → §24.13). server_name/alpn/insecure остаются.",
+      "quic_strip": "ПРАВИЛО РЕЕСТРА, не проза (SPEC 131, контракт 1.1.4): у body.fields.utls и body.fields.reality стоит forbidden_for с четырьмя QUIC-схемами (hysteria, hysteria2, tuic, masque) и forbidden_codes → tls_not_applicable_quic. Блок снимается целиком, узел живёт, код уровня info: ядро строит TLS QUIC-протоколов через aTLS.Config.STDConfig() (sing-quic qtls.Dial/DialEarly/CreateTransport, у masque — protocol/masque/outbound.go), а у UTLSClientConfig и RealityClientConfig этот метод возвращает ошибку — с таким блоком outbound не поднимается вовсе. hysteria v1 в списке наравне с остальными: она ходит тем же qtls.Dial (sing-quic hysteria/client.go), прежняя проза её не называла, хотя частная ветка quicOutboundTypes включала. Исполняет правило санитайзер по реестру (core/config/nodeflow/sanitize.go forbiddenCode) — одинаково для ссылки, JSON-тела и Xray-объекта; частная ветка quicOutboundTypes прежнего санитайзера импорта снята, у Dart на очереди TlsSpec.toSingboxForQuic (§282 → §24.13). server_name/alpn/insecure остаются.",
       "disabled_block": "tls.enabled:false НЕ эмитится — ключ опускается целиком (SPEC 045: явный disabled-блок ронял ядра 1.14.0-lx.5..lx.18 SIGSEGV на первом dial). Go-санитайз вычищает такой блок и на импорте. НАРУШЕНИЕ (новое, вне §9): Dart emitTrojan при выключенном TLS пишет tls:{enabled:false} (node_spec_emit.dart:211) — конфликтует с SPEC 045 и даёт A-класс расхождение identity-хеша trojan-без-TLS нод; целевое поведение — омит ключа (как Go и как Dart же в emitVless).",
       "plaintext_ports": "Только vless: security='' на портах {80, 8080, 8880, 2052, 2082, 2086, 2095} → TLS не эмитится (эвристика CF-HTTP, посимвольно одинакова в обоих).",
       "utls_junk": "Битые значения TLS-полей деградируют ПОЛЕ, не ноду: fp вне allowlist → drop/замена блока (см. fp), битый pbk → plain TLS, битый sid → '' ; нода живёт (философия «деградируй ноду, не конфиг» — обратное валит весь config.json через sing-box check).",
-      "singbox_import": "sing-box JSON-импорт не пересобирает tls, а санитайзит на месте: не-объект tls → drop поля; utls c junk-fp → drop utls-блока; reality не-объект/enabled:false/битый pbk → drop reality; short_id мусор → нормализация/удаление (Go singbox_sanitize.go; Dart _tlsFromSingbox — те же гейты §169/§281).",
-      "emit_allowlist": "Эмиссия tls в тело узла — allowlist по OutboundTLSOptions ядра (sing-box option/tls.go), порядок полей = порядок структуры: enabled, disable_sni, server_name, insecure, alpn, min_version, max_version, cipher_suites, curve_preferences, certificate, certificate_path, certificate_public_key_sha256, client_certificate, client_certificate_path, client_key, client_key_path, fragment, fragment_fallback_delay, record_fragment, kernel_tx, kernel_rx, utls{enabled,fingerprint}, reality{enabled,public_key,short_id,key_share}. Listable-поля (alpn, cipher_suites, curve_preferences, certificate, certificate_public_key_sha256, client_certificate, client_key) принимаются строкой или массивом и эмитятся в той форме, в какой приехали; булевы кроме enabled — только при true (omitempty ядра). НЕ эмитятся: ech (D-006, ядро без with_ech) и неизвестные ключи (ядро отвергает unknown field на всём конфиге). kernel_tx/kernel_rx — только когда ядро крутится на Linux («kTLS is only supported on Linux» = отказ ВСЕГО конфига). Норма с LxBox #140 (17.09.2026): до неё Go-эмиттер знал семь полей и sing-box-импорт терял certificate у naive, а alpn/пины — из-за ассерта []string на []interface{} из JSON (память json-map-type-assert-trap). Код: Go core/config/outbound_tls_emit.go; корпус body/singbox/outbound_array_tls_fields. naive: ядро читает только enabled/server_name/certificate/certificate_path (protocol/naive/outbound.go NewOutbound), остальное — фатал на весь конфиг, certificate_public_key_sha256 молча не применяет — эмиттер режет tls у naive до этих четырёх (§22 TASKS_LXBOX, паритет с LxBox TlsSpec naive-фильтром). Ручной одиночный объект (config_json, EmitRaw) allowlist не проходит — уходит как есть."
+      "singbox_import": "sing-box JSON-импорт не пересобирает tls, а санитайзит на месте: не-объект tls → drop поля; utls c junk-fp → drop utls-блока; reality не-объект/enabled:false/битый pbk → drop reality; short_id мусор → нормализация/удаление (Go — общий санитайзер по body этого файла, core/config/nodeflow/sanitize.go:Sanitize, рукописный санитайзер импорта снят в SPEC 142; Dart _tlsFromSingbox — те же гейты §169/§281).",
+      "emit_allowlist": "Эмиссия tls в тело узла — allowlist по OutboundTLSOptions ядра (sing-box option/tls.go), порядок полей = порядок структуры: enabled, disable_sni, server_name, insecure, alpn, min_version, max_version, cipher_suites, curve_preferences, certificate, certificate_path, certificate_public_key_sha256, client_certificate, client_certificate_path, client_key, client_key_path, fragment, fragment_fallback_delay, record_fragment, kernel_tx, kernel_rx, utls{enabled,fingerprint}, reality{enabled,public_key,short_id,key_share}. Listable-поля (alpn, cipher_suites, curve_preferences, certificate, certificate_public_key_sha256, client_certificate, client_key) принимаются строкой или массивом и эмитятся в той форме, в какой приехали; булевы кроме enabled — только при true (omitempty ядра). НЕ эмитятся неизвестные ключи (ядро отвергает unknown field на всём конфиге). kernel_tx/kernel_rx — только когда ядро крутится на Linux («kTLS is only supported on Linux» = отказ ВСЕГО конфига). Норма с LxBox #140 (17.09.2026): до неё Go-эмиттер знал семь полей и sing-box-импорт терял certificate у naive, а alpn/пины — из-за ассерта []string на []interface{} из JSON (память json-map-type-assert-trap). Код: Go — порядок и состав задаёт body этого файла, эмитит core/config/nodeflow/emit.go:Emit (прежний рукописный outbound_tls_emit удалён); блок tls.ech проходит по D-122 (см. body.fields.ech); корпус body/singbox/outbound_array_tls_fields. naive: ядро читает только enabled/server_name/certificate/certificate_path (protocol/naive/outbound.go NewOutbound), остальное — фатал на весь конфиг, certificate_public_key_sha256 молча не применяет — эмиттер режет tls у naive до этих четырёх (§22 TASKS_LXBOX, паритет с LxBox TlsSpec naive-фильтром). Ручной одиночный объект (config_json, EmitRaw) allowlist не проходит — уходит как есть."
     }
   },
   "mapper": [
@@ -166,7 +166,7 @@
       "kind": "structure",
       "desc_en": "A link that asks for no TLS produces a body with no `tls` key, not `tls.enabled=false`.",
       "desc_ru": "Ссылка без TLS даёт тело вовсе без ключа `tls`, а не `tls.enabled=false`.",
-      "impl": "core/config/subscription/node_parser_transport.go:vlessTLSFromNode / trojanTLSFromNode. Отсутствие ключа санитайзеру неотличимо от «не задано», поэтому решение принимает маппер; явный `enabled:false` роняет ядра lx.5–lx.18 в SIGSEGV (SPEC 045). anytls в области правила НЕ состоит (контракт 1.1.8): у него TLS обязателен — ядро отвергает такой outbound с C.ErrTLSRequired (protocol/anytls/outbound.go:45), — и `security=none` у него лишь ИГНОРИРУЕТСЯ, блок TLS остаётся на месте (node_parser_anytls.go:buildAnyTLSTLS, кейс uri/anytls/security_none_params_kept). Правило стояло на нём мёртвым: исполнись оно — узел ронял бы конфиг."
+      "impl": "Исполняет общий движок (core/config/linkmap/exec.go:execState.applySets) по данным: запись security блока tls#uri_security — ветка none → `tls: null` (sets со значением null СНИМАЕТ путь, QUIRKS Q133-34); у vmess истину TLS несут свои записи tls/tls_legacy (protocols/vmess.json), где none — пустой набор и блок не заводится; у http — ещё и запись security схемы (protocols/http.json). Прежде — рукописные vlessTLSFromNode / trojanTLSFromNode. Отсутствие ключа санитайзеру неотличимо от «не задано», поэтому решение принимает маппер; явный `enabled:false` роняет ядра lx.5–lx.18 в SIGSEGV (SPEC 045). anytls в области правила НЕ состоит (контракт 1.1.8): у него TLS обязателен — ядро отвергает такой outbound с C.ErrTLSRequired (protocol/anytls/outbound.go), — и `security=none` у него лишь ИГНОРИРУЕТСЯ: запись security секции anytls (priority 10, merge overwrite) переводит none в tls.enabled=true, блок TLS остаётся на месте (кейс uri/anytls/security_none_params_kept). Правило стояло на нём мёртвым: исполнись оно — узел ронял бы конфиг."
     },
     {
       "id": "plaintext_port_no_tls",
@@ -178,7 +178,7 @@
       "kind": "structure",
       "desc_en": "On a well-known plaintext HTTP port a vless link with no `security` is read as plain TCP, not as TLS.",
       "desc_ru": "На известном открытом HTTP-порту vless-ссылка без `security` читается как открытый TCP, а не как TLS.",
-      "impl": "core/config/subscription/node_parser_transport.go:shouldVLESSSkipTLSForPort, список портов — policy.plaintext_ports в registry/tls.json. Тот же вопрос «есть ли блок», что и у security=none."
+      "impl": "Данные: запись $plaintext_port секции vless (protocols/vless.json) — selector с priority 5, when по query.security='' и порту из списка, sets \"\" → `tls: null` снимает блок, заведённый дефолтом security ''; исполнение — core/config/linkmap/exec.go:execState.applySets (прежде — рукописный shouldVLESSSkipTLSForPort). Тот же список портов — policy.plaintext_ports в registry/tls.json. Тот же вопрос «есть ли блок», что и у security=none."
     },
     {
       "id": "pbk_makes_reality_block",
@@ -191,7 +191,7 @@
       "kind": "structure",
       "desc_en": "The presence of `pbk=` is what creates the REALITY block; whether the key itself is usable is decided later by the registry rule on `tls.reality.public_key`.",
       "desc_ru": "Наличие `pbk=` создаёт блок REALITY; годность самого ключа судит правило реестра на `tls.reality.public_key`.",
-      "impl": "core/config/subscription/node_parser_transport.go:944 (vlessTLSFromNode), node_parser_anytls.go:58. Маппер решает только о НАЛИЧИИ блока."
+      "impl": "Данные: запись pbk блока tls#uri_reality (selector, implies tls.enabled + tls.reality.enabled); блок подключают vless и anytls (и hysteria2, где REALITY затем снимает санитайзер, policy.quic_strip). Исполнение — core/config/linkmap/exec.go:execState.applyImplies (прежде — ветка pbk рукописного vlessTLSFromNode и парсера anytls). Маппер решает только о НАЛИЧИИ блока."
     },
     {
       "id": "utls_xray_hello_names",
@@ -208,7 +208,7 @@
       "kind": "spelling",
       "desc_en": "Xray and v2ray lists spell fingerprints with uTLS Go identifiers; the same family is written plainly for sing-box.",
       "desc_ru": "Списки Xray и v2ray пишут отпечатки идентификаторами библиотеки uTLS; для sing-box то же семейство записывается простым именем.",
-      "impl": "core/config/subscription/node_parser_transport.go:98 normalizeUTLSFingerprintEx (таблица utlsAliasPrefixes). Написание значения в чужом диалекте, а не суждение о значении."
+      "impl": "Данные: таблица tls.fp_dialect (prefix + strip), на неё ссылаются value_map записей fp (blocks.uri.fp и одноимённые записи секций vless/anytls); исполнение — core/config/linkmap/exec.go:applyValueMapCase (длинный префикс раньше короткого). Прежде — рукописные normalizeUTLSFingerprintEx и таблица utlsAliasPrefixes в парсере. Написание значения в чужом диалекте, а не суждение о значении."
     },
     {
       "id": "alpn_comma_list",
@@ -226,7 +226,7 @@
       "kind": "split",
       "desc_en": "A link carries ALPN as one string; the body needs a list.",
       "desc_ru": "Ссылка несёт ALPN одной строкой; телу нужен список.",
-      "impl": "core/config/subscription/node_parser_transport.go:879 applyTLSQueryExtras. Форма записи, не значение."
+      "impl": "Данные: запись alpn блока tls#uri — list sep \",\" (+ decode_extra until_stable), emit_as join на выходе; исполнение — core/config/linkmap/exec.go:execState.buildList (элементы обрезаются), обратный ход — core/config/linkmap/emit.go:Emit. Прежде — рукописный applyTLSQueryExtras. Форма записи, не значение."
     },
     {
       "id": "sni_heuristic_falls_back_to_server",
@@ -245,7 +245,7 @@
       "kind": "structure",
       "desc_en": "Such a value is not a hostname at all, so the server address is used as the SNI; this picks the SOURCE of the field rather than judging its value.",
       "desc_ru": "Такое значение — не имя хоста, поэтому SNI берётся с адреса сервера; это выбор ИСТОЧНИКА поля, а не суждение о значении.",
-      "impl": "core/config/subscription/node_parser_transport.go:1014 tlsServerNameFromQuery — одна функция вместо четырёх копий (DRIFT §7.5, вариант А)."
+      "impl": "Данные: записи sni секций anytls и hysteria2 — on_invalid {action: default_from, when: value not_matches \"[.:]\"}; общий блок tls#uri.sni даёт только цепочку sni→peer→servername и default_from host на ПУСТОМ значении, записи trojan/vless/tuic эвристики не несут намеренно (QUIRKS Q133-08). Действие `default_from` у on_invalid исполняет движок Go (контракт 1.1.73, core/config/linkmap/exec.go:execState.onInvalidDefaultFrom): присутствующее значение, на котором выполнено условие, заменяется значением default_from, в том числе поверх того же значения, уже положенного в путь записью общего блока; кейс uri/anytls/sni_label_falls_back_to_server. Прежде правило жило одной рукописной функцией tlsServerNameFromQuery вместо четырёх копий (DRIFT §7.5, вариант А)."
     },
     {
       "id": "ech_param_dropped_with_code",
@@ -261,7 +261,7 @@
       "code": "ech_ignored",
       "desc_en": "The link form of ECH has no address in the sing-box body; only the mapper knows the value came from a link rather than from a valid `tls.ech{}` object in JSON.",
       "desc_ru": "Ссылочная форма ECH не имеет адреса в теле sing-box; отличить её от валидного `tls.ech{}` из JSON может только тот, кто знает ИСТОЧНИК.",
-      "impl": "core/config/subscription/node_parser_transport.go:908 noteECHIgnored. `ech=none` кодом не сопровождается — ничего не снято (DRIFT §7.2)."
+      "impl": "Данные: запись ech блока tls#uri — maps_to null, when not_in [\"\", \"none\"], on_present → note ech_ignored; исполнение — core/config/linkmap/exec.go:execState.applyEntry (прежде — рукописный noteECHIgnored). `ech=none` кодом не сопровождается — ничего не снято (DRIFT §7.2)."
     },
     {
       "id": "fp_empty_defaults_to_random",
@@ -272,24 +272,23 @@
       "from": "no `fp=` in the link",
       "to": "`tls.utls.fingerprint = random`",
       "kind": "default",
-      "desc_en": "A convention shared by both apps, not a core default (an empty fingerprint means `chrome` to the core). The value is part of the identity hash of live nodes.",
-      "desc_ru": "Конвенция обеих сторон (D-009), а не дефолт ядра — у ядра пустой `fp` означает `chrome`. Значение входит в identity-хеш живых узлов.",
-      "impl": "core/config/subscription/node_parser_transport.go:994 utlsFingerprintOrDefault(q, scheme, \"random\"); node_parser_anytls.go:56. В реестре не заводился `default_when`: тот означает «ядро без поля не работает», а здесь основание другое (W2D_CHANGES §6)."
+      "desc_en": "A convention shared by both apps, not a core default (an empty fingerprint means `chrome` to the core). Under REALITY the sanitizer then pins `random` to `chrome` (code `reality_fp_random_pinned`).",
+      "desc_ru": "Конвенция обеих сторон (D-009), а не дефолт ядра — у ядра пустой `fp` означает `chrome`. Под REALITY санитайзер затем заменяет `random` на `chrome` (код `reality_fp_random_pinned`, контракт 1.1.61).",
+      "impl": "Исполняют записи mappers.uri vless/anytls `fp` (sets[\"\"] → random, materialize_default). В реестре не заводился `default_when`: тот означает «ядро без поля не работает», а здесь основание другое (W2D_CHANGES §6). Неявный random от явного в теле неотличим, поэтому под REALITY оба судит одно правило значения tls.utls.fingerprint.coerce_when по готовому телу: узел с негодным pbk (REALITY снят) остаётся с random."
     }
   ],
   "refs": {
     "go": [
-      "core/config/outbound_tls_emit.go",
-      "core/config/subscription/node_parser_transport.go:36-44",
-      "core/config/subscription/node_parser_transport.go:49-100",
-      "core/config/subscription/node_parser_transport.go:103-110",
-      "core/config/subscription/node_parser_transport.go:562-608",
-      "core/config/subscription/node_parser_transport.go:610-622",
-      "core/config/subscription/node_parser_transport.go:625-744",
-      "core/config/subscription/singbox_sanitize.go:44-51",
-      "core/config/subscription/singbox_sanitize.go:121-218",
-      "core/config/subscription/xray_element_engine.go",
-      "core/config/subscription/shareuri_helpers.go:198-216"
+      "core/config/linkmap/exec.go:Exec",
+      "core/config/linkmap/exec.go:applyValueMapCase",
+      "core/config/linkmap/element.go:ParseElement",
+      "core/config/linkmap/emit.go:Emit",
+      "core/config/nodeflow/sanitize.go:Sanitize",
+      "core/config/nodeflow/emit.go:Emit",
+      "core/config/nodeflow/gate.go:GateForCore",
+      "core/config/node_build_gate.go:gateBodyForCore",
+      "core/build/tls_transforms.go:ApplyTLSTransforms",
+      "core/config/node_build_gate.go:repairBodyForBuild"
     ],
     "dart": [
       "lib/services/parser/transport.dart:290-314",
@@ -383,7 +382,7 @@
         ],
         "desc_en": "Do not send the SNI extension.",
         "desc_ru": "Не отправлять расширение SNI.",
-        "impl": "Включает InsecureSkipVerify. Несовместим с reality (utls_client.go:218) и со spoof (client.go:33). У naive — фатал старта."
+        "impl": "Включает InsecureSkipVerify. Несовместим с reality (common/tls/utls_client.go) и со spoof (common/tls/client.go). У naive — фатал старта."
       },
       "server_name": {
         "type": "string",
@@ -394,7 +393,7 @@
         },
         "desc_en": "Server name sent in SNI and verified in the certificate.",
         "desc_ru": "Имя сервера в SNI и при проверке сертификата.",
-        "impl": "Пусто → берётся адрес сервера; пусто при пустом адресе и insecure=false = ошибка «missing server_name or insecure=true» (common/tls/client.go:22). Для masque profile=cloudflare дефолт www.cloudflare.com."
+        "impl": "Пусто → берётся адрес сервера; пусто при пустом адресе и insecure=false = ошибка «missing server_name or insecure=true» (common/tls/client.go). Для masque profile=cloudflare дефолт www.cloudflare.com."
       },
       "insecure": {
         "type": "bool",
@@ -424,12 +423,16 @@
           "code": "tls_alpn_item_invalid"
         },
         "forbidden_for": [
-          "naive"
+          "naive",
+          "masque"
         ],
         "code": "tls_field_unsupported_naive",
+        "forbidden_codes": {
+          "masque": "masque_tls_field_ignored"
+        },
         "desc_en": "ALPN protocols offered in the handshake.",
         "desc_ru": "Список протоколов ALPN, предлагаемых в рукопожатии.",
-        "impl": "Фиксированного enum в ядре нет; практические значения http/1.1, h2, h3. Listable: пишется в той форме, в какой пришло. У naive — фатал старта. item_pattern — формат ЭЛЕМЕНТА (второй случай запроса LxBox 19.09.2026): идентификатор ALPN — это токен из букв, цифр и `._/+-`, и элемент с запятой или пробелом внутри означает, что список не разрезали. Такой элемент уезжает в ClientHello как отдельный протокол, которого не существует, и сервер обрывает рукопожатие; годные соседи при этом остаются. normalize trim стоит рядом НАМЕРЕННО: `alpn=h2, h3` даёт элемент с ведущим пробелом, и без обрезки формат выбросил бы живое значение вместо того, чтобы его починить."
+        "impl": "Фиксированного enum в ядре нет; практические значения http/1.1, h2, h3. Listable: пишется в той форме, в какой пришло. У naive — фатал старта. item_pattern — формат ЭЛЕМЕНТА (второй случай запроса LxBox 19.09.2026): идентификатор ALPN — это токен из букв, цифр и `._/+-`, и элемент с запятой или пробелом внутри означает, что список не разрезали. Такой элемент уезжает в ClientHello как отдельный протокол, которого не существует, и сервер обрывает рукопожатие; годные соседи при этом остаются. normalize trim стоит рядом НАМЕРЕННО: `alpn=h2, h3` даёт элемент с ведущим пробелом, и без обрезки формат выбросил бы живое значение вместо того, чтобы его починить. У masque (контракт 1.1.64, решение владельца) снимается ВСЕГДА кодом masque_tls_field_ignored (info): ALPN у masque следует из vhttp (h3 → \"h3\", h2 → \"h2\"), и ядро поле игнорирует с предупреждением (sing-box-lx protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions)."
       },
       "min_version": {
         "type": "enum",
@@ -506,13 +509,13 @@
         "type": "listable_string",
         "desc_en": "Trusted server certificate in PEM form.",
         "desc_ru": "Доверенный сертификат сервера в форме PEM.",
-        "impl": "PEM построчно (массив строк или одна строка). Конфликт с certificate_public_key_sha256 (std_client.go:139, utls_client.go:223). LxBox #140: эмиттер терял это поле до 1.6.3."
+        "impl": "PEM построчно (массив строк или одна строка). Конфликт с certificate_public_key_sha256 (common/tls/std_client.go, common/tls/utls_client.go). LxBox #140: эмиттер терял это поле до 1.6.3."
       },
       "certificate_path": {
         "type": "string",
         "desc_en": "Path to a file with the trusted certificate.",
         "desc_ru": "Путь к файлу с доверенным сертификатом.",
-        "impl": "Конфликт с certificate_public_key_sha256 (std_client.go:139)."
+        "impl": "Конфликт с certificate_public_key_sha256 (common/tls/std_client.go)."
       },
       "certificate_public_key_sha256": {
         "type": "string_array",
@@ -553,7 +556,7 @@
         ],
         "desc_en": "Client certificate for mTLS, PEM form.",
         "desc_ru": "Клиентский сертификат для mTLS в форме PEM.",
-        "impl": "Только в паре с client_key — «client certificate and client key must be provided together» (std_client.go:222). У naive — фатал старта."
+        "impl": "Только в паре с client_key — «client certificate and client key must be provided together» (common/tls/std_client.go). У naive — фатал старта."
       },
       "client_certificate_path": {
         "type": "string",
@@ -563,7 +566,7 @@
         "code": "tls_field_unsupported_naive",
         "desc_en": "Path to the client certificate file.",
         "desc_ru": "Путь к файлу клиентского сертификата.",
-        "impl": "Парное с client_key_path (std_client.go:222). У naive — фатал старта."
+        "impl": "Парное с client_key_path (common/tls/std_client.go). У naive — фатал старта."
       },
       "client_key": {
         "type": "listable_string",
@@ -580,7 +583,7 @@
         ],
         "desc_en": "Client private key for mTLS, PEM form.",
         "desc_ru": "Закрытый клиентский ключ для mTLS в форме PEM.",
-        "impl": "Секрет: в warnings и логах маскируется. Только в паре с client_certificate (std_client.go:222). У naive — фатал старта."
+        "impl": "Секрет: в warnings и логах маскируется. Только в паре с client_certificate (common/tls/std_client.go). У naive — фатал старта."
       },
       "client_key_path": {
         "type": "string",
@@ -600,9 +603,18 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "conflicts": [
+          {
+            "with": "vhttp",
+            "when": {
+              "vhttp": "h3"
+            },
+            "code": "masque_tls_fragment_h3"
+          }
+        ],
         "desc_en": "Split the ClientHello across TCP segments.",
         "desc_ru": "Разбивать ClientHello по TCP-сегментам.",
-        "impl": "У naive — фатал старта."
+        "impl": "У naive — фатал старта. Связь conflicts с vhttp при vhttp = h3 (контракт 1.1.64, решение владельца по masque): на h3 TLS едет внутри QUIC, TLS-записей поверх TCP нет, и ядро фрагментацию игнорирует с предупреждением (sing-box-lx protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions). На h2 и auto (у auto есть h2-плечо) поле остаётся. Пустой vhttp у тела = auto ядра (protocol/masque/outbound.go resolveVHTTP) — поле остаётся; вход ссылки без vhttp материализует h3 (конвенция vhttp_empty_defaults_to_h3), и там поле снимается. vhttp есть только у masque, поэтому у прочих схем связь не срабатывает. Сборка (core/build/tls_transforms.go) спрашивает то же правило по телу узла (registry.Registry.FieldAllowedOn) и на h3 фрагментацию не дописывает."
       },
       "fragment_fallback_delay": {
         "type": "duration",
@@ -621,9 +633,18 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "conflicts": [
+          {
+            "with": "vhttp",
+            "when": {
+              "vhttp": "h3"
+            },
+            "code": "masque_tls_fragment_h3"
+          }
+        ],
         "desc_en": "Split the ClientHello across TLS records.",
         "desc_ru": "Разбивать ClientHello по TLS-записям.",
-        "impl": "SPEC 060: при непустом detour ядро само ставит true, если не заданы ни fragment, ни record_fragment. У naive — фатал старта."
+        "impl": "SPEC 060: при непустом detour ядро само ставит true, если не заданы ни fragment, ни record_fragment. У naive — фатал старта. Связь conflicts с vhttp при vhttp = h3 (контракт 1.1.64, решение владельца по masque): на h3 TLS едет внутри QUIC, TLS-записей поверх TCP нет, и ядро фрагментацию игнорирует с предупреждением (sing-box-lx protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions). На h2 и auto (у auto есть h2-плечо) поле остаётся. Пустой vhttp у тела = auto ядра (protocol/masque/outbound.go resolveVHTTP) — поле остаётся; вход ссылки без vhttp материализует h3 (конвенция vhttp_empty_defaults_to_h3), и там поле снимается. vhttp есть только у masque, поэтому у прочих схем связь не срабатывает. Сборка (core/build/tls_transforms.go) спрашивает то же правило по телу узла (registry.Registry.FieldAllowedOn) и на h3 фрагментацию не дописывает."
       },
       "spoof": {
         "type": "string",
@@ -648,7 +669,7 @@
         ],
         "desc_en": "Domain used for the spoofed ClientHello.",
         "desc_ru": "Домен для подставного ClientHello.",
-        "impl": "Требует SNI-домен (не IP, не пусто) и обязан отличаться от server_name (common/tls/client.go:33,36). Несовместим с reality (reality_client.go:64). Платформенный: PlatformSupported. У naive молча игнорируется."
+        "impl": "Требует SNI-домен (не IP, не пусто) и обязан отличаться от server_name (common/tls/client.go). Несовместим с reality (common/tls/reality_client.go). Платформенный: PlatformSupported. У naive молча игнорируется."
       },
       "spoof_method": {
         "type": "enum",
@@ -678,31 +699,39 @@
         ],
         "desc_en": "How the spoofed packet is made invalid.",
         "desc_ru": "Чем портится подставной пакет.",
-        "impl": "Без tls.spoof = ошибка «spoof_method requires spoof» (tlsspoof/spoof.go:29). У naive молча игнорируется."
+        "impl": "Без tls.spoof = ошибка «spoof_method requires spoof» (common/tlsspoof/spoof.go). У naive молча игнорируется."
       },
       "kernel_tx": {
         "type": "bool",
         "default": false,
         "platform": "linux",
         "forbidden_for": [
-          "naive"
+          "naive",
+          "masque"
         ],
         "code": "tls_field_unsupported_naive",
+        "forbidden_codes": {
+          "masque": "masque_tls_field_ignored"
+        },
         "desc_en": "Offload TLS transmission to the kernel (kTLS).",
         "desc_ru": "Передавать шифрование исходящего трафика ядру ОС (kTLS).",
-        "impl": "Вне Linux = «kTLS is only supported on Linux» на весь конфиг (std_client.go:257, utls_client.go:345) — гейт platform снимает ключ на сборке. У naive — фатал старта."
+        "impl": "Вне Linux = «kTLS is only supported on Linux» на весь конфиг (common/tls/std_client.go, common/tls/utls_client.go) — гейт platform снимает ключ на сборке. У naive — фатал старта. У masque (контракт 1.1.64) снимается всегда кодом masque_tls_field_ignored: ядро kTLS для masque игнорирует с предупреждением (protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions)."
       },
       "kernel_rx": {
         "type": "bool",
         "default": false,
         "platform": "linux",
         "forbidden_for": [
-          "naive"
+          "naive",
+          "masque"
         ],
         "code": "tls_field_unsupported_naive",
+        "forbidden_codes": {
+          "masque": "masque_tls_field_ignored"
+        },
         "desc_en": "Offload TLS reception to the kernel (kTLS).",
         "desc_ru": "Передавать расшифровку входящего трафика ядру ОС (kTLS).",
-        "impl": "Вне Linux = «kTLS is only supported on Linux» (utls_client.go:345). У naive — фатал старта."
+        "impl": "Вне Linux = «kTLS is only supported on Linux» (common/tls/utls_client.go). У naive — фатал старта. У masque (контракт 1.1.64) снимается всегда кодом masque_tls_field_ignored: ядро kTLS для masque игнорирует с предупреждением (protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions)."
       },
       "handshake_timeout": {
         "type": "duration",
@@ -716,6 +745,10 @@
       },
       "ech": {
         "type": "object",
+        "forbidden_for": [
+          "masque"
+        ],
+        "code": "masque_tls_field_ignored",
         "absent_when": {
           "enabled": false
         },
@@ -739,7 +772,7 @@
             ],
             "desc_en": "Enable Encrypted Client Hello.",
             "desc_ru": "Включить Encrypted Client Hello.",
-            "impl": "Конфликт с reality.enabled (utls_client.go:336). Решение владельца 18.09.2026 (D-122, пересмотр D-006): блок tls.ech из sing-box-JSON/ручного тела ПРОПУСКАЕТСЯ — ECH в ядре компилируется всегда (common/tls/ech.go, //go:build go1.24; тег with_ech отравлен ech_tag_stub.go), tls.ech{enabled:true} проходит check (вердикт D, DRIFT §9). Снимается только URI-параметр ech= Xray-формы (см. tls.params.ech, код ech_ignored) — он несёт чужой ключ."
+            "impl": "Конфликт с reality.enabled (common/tls/utls_client.go). Решение владельца 18.09.2026 (D-122, пересмотр D-006): блок tls.ech из sing-box-JSON/ручного тела ПРОПУСКАЕТСЯ — ECH в ядре компилируется всегда (common/tls/ech.go, //go:build go1.24; тег with_ech отравлен common/tls/ech_tag_stub.go), tls.ech{enabled:true} проходит check (вердикт D, DRIFT §9). Снимается только URI-параметр ech= Xray-формы (см. tls.params.ech, код ech_ignored) — он несёт чужой ключ."
           },
           "config": {
             "type": "listable_string",
@@ -776,7 +809,7 @@
         },
         "desc_en": "Encrypted Client Hello settings.",
         "desc_ru": "Настройки Encrypted Client Hello.",
-        "impl": "OutboundECHOptions, option/tls.go. Ядро собрано без with_ech — блок вычищается с кодом ech_ignored (D-006). У naive ядро читает enabled/config/config_path/query_server_name — блок разрешён целиком.",
+        "impl": "OutboundECHOptions, option/tls.go. Блок из sing-box-JSON/ручного тела ПРОПУСКАЕТСЯ (D-122, пересмотр D-006: ECH в ядре компилируется всегда); блок с enabled:false снимает absent_when. Код ech_ignored ставит только URI-параметр ech= (blocks.uri.ech). У naive ядро читает enabled/config/config_path/query_server_name — блок разрешён целиком. У masque (контракт 1.1.64) снимается всегда кодом masque_tls_field_ignored: ядро ECH для masque не поддерживает и игнорирует с предупреждением (protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions).",
         "impl_decision": "D-122: тело пропускает, URI-параметр снимается (ech_ignored)."
       },
       "utls": {
@@ -812,7 +845,7 @@
             "code": "tls_field_unsupported_naive",
             "desc_en": "Enable uTLS ClientHello mimicry.",
             "desc_ru": "Включить подмену ClientHello через uTLS.",
-            "impl": "Обязателен при tls.reality.enabled (common/tls/reality_client.go:61 «uTLS is required by reality client»). У naive — фатал старта (protocol/naive/outbound.go:44-83)."
+            "impl": "Обязателен при tls.reality.enabled (common/tls/reality_client.go «uTLS is required by reality client»). У naive — фатал старта (protocol/naive/outbound.go)."
           },
           "fingerprint": {
             "type": "enum",
@@ -863,7 +896,17 @@
             ],
             "desc_en": "Browser fingerprint used for the ClientHello.",
             "desc_ru": "Отпечаток браузера для ClientHello.",
-            "impl": "Канонический список — uTLSClientHelloID в common/tls/utls_client.go:380; неизвестное значение = ошибка старта. Гибридный шар X25519MLKEM768 на lx.4 есть только у chrome/firefox/safari — см. tls.reality.key_share=hybrid. ПРАВИЛО D-119 ПЕРЕЕХАЛО В РЕЕСТР (SPEC 131 W2d): код reality_fp_not_chrome ставится advisory-правилом «любой отпечаток, кроме гибридных, при наличии tls.reality.enabled», а не четырьмя копиями в парсерах Go (vless/anytls/xray/singbox-import). `random` в исключениях — это наш неявный дефолт пустого fp (D-009), от явного он неотличим, и на сборке становится chrome; пустое значение под advisory не попадает по определению («не задано» — не выбор автора ссылки)."
+            "impl": "Канонический список — uTLSClientHelloID в common/tls/utls_client.go; неизвестное значение = ошибка старта. Гибридный шар X25519MLKEM768 есть у chrome/firefox/safari (lx.3+), см. tls.reality.key_share=hybrid. Код reality_fp_not_chrome ставит advisory «любой отпечаток, кроме гибридных, при заданном tls.reality.enabled». `random` ПОД REALITY (контракт 1.1.61, SPEC 142 C4): ядро выбирает его ОДИН раз при старте процесса из chrome/firefox/edge/safari/ios (common/tls/utls_client.go); edge = Edge 85, ios = iOS 14 (utls: u_common и спеки u_parrots — без X25519MLKEM768) гибридного шара не несут — узел в двух запусках из пяти не проходит серверы Xray >= v26.9.8, а при key_share=hybrid ядро отказывает на рукопожатии (common/tls/reality_client.go). Поэтому coerce_when: random при tls.reality.enabled → chrome с кодом reality_fp_random_pinned — chrome входит в набор, из которого random выбирает. Неявный дефолт D-009 (маппер vless/anytls пишет random вместо пустого fp) от явного в теле неотличим, и правило одно для обоих. Суд по ГОТОВОМУ телу: REALITY, снятый своим правилом (pbk=enabled на TLS-узле), замены не вызывает — такой узел остаётся с random. Прежде замену делала сборка (HealRealityFingerprints) молча, без кода на узле; снята. Тела, которые сборка не прогоняет через санитайзер (замороженное тело состояния канона v7, ручной config_json), получают те же правки на сборке по тому же правилу (nodeflow.Repairs: из результата санитайзера берутся только пути, записанные починками), код — в лог. `random` в исключениях advisory — его заменяет coerce_when.",
+            "coerce_when": {
+              "values": [
+                "random"
+              ],
+              "value": "chrome",
+              "when": {
+                "tls.reality.enabled": true
+              },
+              "code": "reality_fp_random_pinned"
+            }
           }
         },
         "desc_en": "uTLS fingerprint settings.",
@@ -884,7 +927,7 @@
           "hysteria": "tls_not_applicable_quic",
           "hysteria2": "tls_not_applicable_quic",
           "tuic": "tls_not_applicable_quic",
-          "masque": "tls_not_applicable_quic"
+          "masque": "masque_tls_field_ignored"
         },
         "absent_when": {
           "enabled": false
@@ -920,12 +963,13 @@
             "requires": [
               {
                 "path": "tls.utls.enabled",
-                "code": "field_requires"
+                "set": true,
+                "code": "reality_utls_enabled"
               }
             ],
             "desc_en": "Enable REALITY handshake camouflage.",
             "desc_ru": "Включить маскировку рукопожатия REALITY.",
-            "impl": "Требует tls.utls.enabled=true (reality_client.go:61). Конфликты: с ech.enabled «Reality is conflict with ECH» (utls_client.go:336), с disable_sni (utls_client.go:218), со spoof (reality_client.go:64). У naive — фатал старта."
+            "impl": "Требует tls.utls.enabled=true (common/tls/reality_client.go «uTLS is required by reality client» — отказ ВСЕГО конфига). ЕДИНОЕ ПРАВИЛО REALITY ↔ uTLS (контракт 1.1.61, SPEC 142 C4): связь requires с `set: true` — uTLS не задан или выключен, значит он ДОПИСЫВАЕТСЯ ({enabled: true}, отпечаток пустой = chrome у ядра, common/tls/utls_client.go) с кодом reality_utls_enabled, а REALITY остаётся. Прежде реестр здесь снимал reality.enabled (field_requires), а сборка (HealRealityFingerprints) тот же блок чинила — два ответа на один вопрос; сборочная копия снята. Тела, которые сборка не прогоняет через санитайзер (замороженное тело состояния канона v7, ручной config_json), получают те же правки на сборке по тому же правилу (nodeflow.Repairs: из результата санитайзера берутся только пути, записанные починками), код — в лог. Суд по готовому телу: REALITY, снятый своим правилом (негодный public_key), uTLS не получает. Каталог strip цепочки не снимает tls.utls у тела с этой связью (chain.json strip.tls.utls.on_hop_required). Конфликты: с ech.enabled «Reality is conflict with ECH» (common/tls/utls_client.go), с disable_sni (common/tls/utls_client.go), со spoof (common/tls/reality_client.go). У naive — фатал старта."
           },
           "public_key": {
             "type": "string",
@@ -984,7 +1028,7 @@
             ],
             "desc_en": "Key exchange used in the REALITY ClientHello.",
             "desc_ru": "Способ обмена ключами в ClientHello REALITY.",
-            "impl": "SPEC 089, option/tls.go OutboundRealityOptions.KeyShare. Закрытый enum: иное значение = отказ всего конфига, код деградации reality_key_share_invalid. hybrid требует отпечатка с X25519MLKEM768 (reality_client.go:226) — на lx.4 это chrome/firefox/safari. Полевой гейт ядра: на ядре < lx.4 ключ снимается при сборке."
+            "impl": "SPEC 089, option/tls.go OutboundRealityOptions.KeyShare. Закрытый enum: иное значение = отказ всего конфига, код деградации reality_key_share_invalid. hybrid требует отпечатка с X25519MLKEM768 (common/tls/reality_client.go) — на lx.4 это chrome/firefox/safari. Полевой гейт ядра: на ядре < lx.4 ключ снимается при сборке."
           }
         },
         "desc_en": "REALITY settings.",
@@ -1133,7 +1177,7 @@
       }
     },
     "uri_reality": {
-      "note": "Записи REALITY, вынесенные ИЗ tls#uri отдельным блоком (19.09.2026). Причина: REALITY по ссылке разбирают не все схемы, подключающие tls#uri. Прежний путь строил блок reality ТОЛЬКО в vlessTLSFromNode (node_parser_transport.go:932-945); trojan и http идут через trojanTLSFromNode (:1036), где ветки pbk нет вовсе, и trojan.json прямо пишет: «REALITY у trojan-URI не разбирается ни одним проектом (pbk игнорируется; reality приезжает только через sing-box/Xray-импорт)». Лежав в общем блоке, записи отдавали REALITY и trojan, и http — корпус этого не ловил, потому что ни одна их фикстура pbk не несёт. Находка LxBox на сверке 1.1.15, пункт 1. Подключают vless и anytls (у последнего REALITY по ссылке есть: корпус uri/anytls/reality_pbk_sid).",
+      "note": "Записи REALITY, вынесенные ИЗ tls#uri отдельным блоком (19.09.2026). Причина: REALITY по ссылке разбирают не все схемы, подключающие tls#uri. Прежний рукописный путь строил блок reality ТОЛЬКО в vlessTLSFromNode; trojan и http шли через trojanTLSFromNode, где ветки pbk не было вовсе, и trojan.json прямо пишет: «REALITY у trojan-URI не разбирается ни одним проектом (pbk игнорируется; reality приезжает только через sing-box/Xray-импорт)». Лежав в общем блоке, записи отдавали REALITY и trojan, и http — корпус этого не ловил, потому что ни одна их фикстура pbk не несёт. Находка LxBox на сверке 1.1.15, пункт 1. Подключают vless и anytls (у последнего REALITY по ссылке есть: корпус uri/anytls/reality_pbk_sid).",
       "pbk": {
         "source": "query.pbk",
         "selector": true,
@@ -1163,7 +1207,7 @@
       }
     },
     "uri_with_host": {
-      "note": "Вариант диалекта uri для схем, у которых `host` адресует TLS, а НЕ транспорт (сегодня — http). Отличается от uri ровно одной записью — цепочкой sni. Заведён вариантом блока, а не третьим источником в общей записи: у vmess и anytls `host` несёт имя транспорта (node_parser_core.go:866-873), и общая цепочка увела бы transport-host в tls.server_name. Подключается ПОСЛЕ \"tls#uri\", вместе с ним: блок несёт ровно одну запись и перекрывает одноимённую ПОЗИЦИЕЙ объявления — тот же приём, на котором стоят vless.fp и anytls.fp. Подключённый вместо общего блока, он давал узлу tls.server_name и терял alpn/insecure/utls, которые прежний путь брал целиком через trojanTLSFromNode(node, \"http\") — node_parser_http.go:140-146 (QUIRKS Q133-45, корпус proxy_https_full_tls). DELTAS D133-19.",
+      "note": "Вариант диалекта uri для схем, у которых `host` адресует TLS, а НЕ транспорт (сегодня — http). Отличается от uri ровно одной записью — цепочкой sni. Заведён вариантом блока, а не третьим источником в общей записи: у vmess и anytls `host` несёт имя транспорта , и общая цепочка увела бы transport-host в tls.server_name. Подключается ПОСЛЕ \"tls#uri\", вместе с ним: блок несёт ровно одну запись и перекрывает одноимённую ПОЗИЦИЕЙ объявления — тот же приём, на котором стоят vless.fp и anytls.fp. Подключённый вместо общего блока, он давал узлу tls.server_name и терял alpn/insecure/utls, которые прежний путь брал целиком через trojanTLSFromNode(node, \"http\") (QUIRKS Q133-45, корпус proxy_https_full_tls). DELTAS D133-19.",
       "sni": {
         "source": [
           "query.sni",
@@ -1172,7 +1216,7 @@
         ],
         "maps_to": "tls.server_name",
         "default_from": "host",
-        "impl": "Цепочка sni→peer→host — наше сегодняшнее поведение у http: trojanTLSFromNode(node, \"http\") читает те же три написания (node_parser_http.go:131-138, node_parser_transport.go:1014-1020). Фолбэк на server — тот же Q133-08, что у trojan: корпус uri/http/proxy_https_default_port_443 ждёт server_name из адреса. when по ТЕЛУ: блок tls у http заводит только написание схемы (scheme_sets у proxy-https/proxy+https), и без гейта запись сочиняла бы tls.server_name простому HTTP-прокси, где блока быть не должно.",
+        "impl": "Цепочка sni→peer→host — наше поведение у http и до движка: прежний рукописный trojanTLSFromNode(node, \"http\") (удалён вместе с парсерами схем) читал те же три написания. Фолбэк на server — тот же Q133-08, что у trojan: корпус uri/http/proxy_https_default_port_443 ждёт server_name из адреса. when по ТЕЛУ: блок tls у http заводит только написание схемы (scheme_sets у proxy-https/proxy+https), и без гейта запись сочиняла бы tls.server_name простому HTTP-прокси, где блока быть не должно.",
         "when": {
           "tls.enabled": true
         }
@@ -1192,7 +1236,7 @@
           "none": {},
           "": {}
         },
-        "impl": "У Xray security=xtls сегодня теряется МОЛЧА (xray_outbound_convert.go:223-225): значение вне набора не даёт tls-блока и не даёт кода."
+        "impl": "У Xray security=xtls сегодня теряется МОЛЧА (у sets записи нет ветки xtls, а core/config/linkmap/exec.go:execState.applySets на промахе ничего не пишет и кода не ставит): значение вне набора не даёт tls-блока и не даёт кода."
       },
       "sni": {
         "source": [
@@ -1202,7 +1246,7 @@
           "json.streamSettings.tlsSettings.server_name"
         ],
         "maps_to": "tls.server_name",
-        "impl": "Два написания каждого ключа — диалект Xray. xray_hysteria.go:227 читает ТОЛЬКО server_name, расходясь с :270 того же файла; одна запись снимает расхождение."
+        "impl": "Два написания каждого ключа — диалект Xray. Удалённый рукописный конвертер Xray-hysteria в одной ветке читал ТОЛЬКО server_name, расходясь с другой веткой того же файла; одна запись снимает расхождение."
       },
       "alpn": {
         "source": "json.streamSettings.tlsSettings.alpn",
@@ -1346,7 +1390,7 @@
         "when": {
           "tls.enabled": true
         },
-        "impl": "НЕ МАППИТСЯ В certificate_public_key_sha256, и это не недосмотр: ПРООБРАЗ ХЕША РАЗНЫЙ. Ядро хеширует SPKI ЛИСТОВОГО сертификата (x509.MarshalPKIXPublicKey от leaf, затем sha256 — common/tls/std_client.go:278 VerifyPublicKeySHA256), Xray — сырой DER сертификатов ЦЕПОЧКИ. Значение, годное в Xray, в sing-box не совпадёт никогда, и перенос сломал бы рукопожатие у КАЖДОГО узла, который пин задал, — то есть дал бы ровно тот отказ, от которого пин защищает. Потеря объявлена кодом: MITM-защита ослаблена, и человек обязан это знать."
+        "impl": "НЕ МАППИТСЯ В certificate_public_key_sha256, и это не недосмотр: ПРООБРАЗ ХЕША РАЗНЫЙ. Ядро хеширует SPKI ЛИСТОВОГО сертификата (x509.MarshalPKIXPublicKey от leaf, затем sha256 — common/tls/std_client.go, VerifyPublicKeySHA256), Xray — сырой DER сертификатов ЦЕПОЧКИ. Значение, годное в Xray, в sing-box не совпадёт никогда, и перенос сломал бы рукопожатие у КАЖДОГО узла, который пин задал, — то есть дал бы ровно тот отказ, от которого пин защищает. Потеря объявлена кодом: MITM-защита ослаблена, и человек обязан это знать."
       },
       "verifyPeerCertInNames": {
         "source": "json.streamSettings.tlsSettings.verifyPeerCertInNames",

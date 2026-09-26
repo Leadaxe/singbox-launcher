@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"singbox-launcher/core/config/registry"
 )
 
 // MasqueAccount is a registered WARP MASQUE account plus everything needed to
@@ -114,55 +116,6 @@ func (a *MasqueAccount) ToMasqueURI() (string, error) {
 	return u.String(), nil
 }
 
-// ToMasqueOutbound builds the sing-box masque outbound map from the account,
-// following the core SPEC 021/062 contract (profile cloudflare, vhttp HTTP
-// version, nested tls block, ip/ipv6 tunnel addresses, base64-DER keys).
-// Requires core >= lx.26.
-func (a *MasqueAccount) ToMasqueOutbound() (map[string]interface{}, error) {
-	if a.PrivateKeyDER == "" || a.ServerPubDER == "" {
-		return nil, fmt.Errorf("warp masque: missing key material")
-	}
-	if a.ClientV4 == "" && a.ClientV6 == "" {
-		return nil, fmt.Errorf("warp masque: missing interface address")
-	}
-	vhttp := a.VHTTP
-	if vhttp == "" {
-		vhttp = "h3"
-	}
-	port := a.Port
-	if port == 0 {
-		port = 443
-	}
-	ob := map[string]interface{}{
-		"type":        "masque",
-		"tag":         a.DisplayTag(),
-		"server":      a.Server,
-		"server_port": port,
-		"profile":     "cloudflare",
-		"vhttp":       vhttp,
-		"private_key": a.PrivateKeyDER,
-		"public_key":  a.ServerPubDER,
-		"mtu":         warpMTU,
-	}
-	if a.ClientV4 != "" {
-		ob["ip"] = ensureCIDR(a.ClientV4, false)
-	}
-	if a.ClientV6 != "" {
-		ob["ipv6"] = ensureCIDR(a.ClientV6, true)
-	}
-	if a.SNI != "" {
-		// Nested `tls` block, not the flat `sni` the core deprecated (SPEC 062).
-		ob["tls"] = map[string]interface{}{"server_name": a.SNI}
-	}
-	if a.IdleTimeout != "" {
-		ob["idle_timeout"] = a.IdleTimeout
-	}
-	if a.KeepAlive != "" {
-		ob["keep_alive_period"] = a.KeepAlive
-	}
-	return ob, nil
-}
-
 // RegisterMasque registers a WARP MASQUE account in two steps (mirrors LxBox):
 //  1. POST /reg with a throwaway WireGuard key to create the device.
 //  2. PATCH /reg/{id} with the ECDSA public key, key_type=secp256r1,
@@ -231,13 +184,11 @@ func (c *Client) RegisterMasque(ctx context.Context, now time.Time, vhttp, sni s
 // Пустой SNI оставлять нельзя: ядро подставит consumer-masque.cloudflareclient.com,
 // туннель встанет, но данные не пойдут — DPI пропускает MASQUE только под
 // нейтральным именем. Вызов без SNI → берём случайное из пула.
+//
+// vhttp судит реестр (masque.body.vhttp): значение из enum — как есть,
+// иное — значение его on_invalid (coerce), пустое — не задано (ToMasqueURI).
 func (a *MasqueAccount) ApplyNodeOptions(vhttp, sni string) {
-	switch vhttp {
-	case "h2", "auto":
-		a.VHTTP = vhttp
-	default:
-		a.VHTTP = "h3"
-	}
+	a.VHTTP = registryVHTTP(vhttp)
 	a.SNI = strings.TrimSpace(sni)
 	if a.SNI == "" {
 		a.SNI = RandomMasqueSNI(nil)
@@ -245,6 +196,38 @@ func (a *MasqueAccount) ApplyNodeOptions(vhttp, sni string) {
 	a.IdleTimeout = "5m"
 	a.KeepAlive = "30s"
 }
+
+// registryVHTTP приводит vhttp по полю реестра masque.body.vhttp: enum,
+// normalize trim_lower и on_invalid coerce. Своего списка значений у WARP нет
+// (SPEC 142 B9).
+func registryVHTTP(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	if v == "" {
+		return ""
+	}
+	reg, err := registry.Get()
+	if err != nil {
+		return v
+	}
+	f, ok := reg.Field(masqueScheme, "vhttp")
+	if !ok {
+		return v
+	}
+	for _, allowed := range f.Values {
+		if s, _ := allowed.(string); s != "" && s == v {
+			return v
+		}
+	}
+	if f.OnInvalid != nil && f.OnInvalid.Action == "coerce" {
+		if s, ok := f.OnInvalid.Value.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// masqueScheme — схема реестра узла MASQUE.
+const masqueScheme = "masque"
 
 // parseMasqueEnroll extracts the MASQUE account from the PATCH-enroll response.
 // The server public key may arrive under config.peers[0].public_key (DER) and

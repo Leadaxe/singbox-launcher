@@ -211,7 +211,7 @@ Win7-сборка. Полный прогон — в CI после законче
 - [ ] Греп-страж (вопрос 4 = **Б**, принято): тест по пакету маппера
 - [ ] `gendocs`: страницы протоколов + **таблица «как распознаётся источник»**
       из `detect` обоих уровней (`SPEC.md` §3A.6) — сегодня её нет нигде
-- [ ] `contract/docs/CANON.md` — норма `SPEC.md` §11; `VERSION` bump
+- [ ] `contract/docs/PARSING_PRINCIPLES.md` — норма `SPEC.md` §11; `VERSION` bump
 - [ ] `TASKS_LXBOX.md` — норма, шесть принятых дельт, сверка с их фичой 480
 - [ ] `docs/release_notes/upcoming.md`, `docs/ARCHITECTURE.md`
 

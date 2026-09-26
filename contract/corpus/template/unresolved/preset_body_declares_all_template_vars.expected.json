@@ -1,0 +1,1 @@
+{"load": "either", "config": {"rules": [{"rule_set": "ads", "action": "route", "outbound": "direct-out"}]}, "warnings": []}

@@ -51,7 +51,6 @@ func realityKeyShareNode() *ParsedNode {
 		Scheme:      "vless",
 		Server:      "example-1.com",
 		Port:        443,
-		UUID:        "11111111-1111-1111-1111-111111111111",
 		EmitBody:    []byte(realityKeyShareBody),
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}

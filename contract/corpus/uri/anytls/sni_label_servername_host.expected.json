@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "any.example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "sni.example-2.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "anytls"
+      },
+      "kind": "outbound",
+      "label": "at-sni-label-servername",
+      "scheme": "anytls"
+    }
+  ],
+  "v": 1
+}

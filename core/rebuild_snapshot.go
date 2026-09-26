@@ -101,19 +101,9 @@ func buildSnapshotFromState(s *state.State, l paths.Layout, subst config.VarSubs
 	}
 
 	warnings := partialWarnings
-	if result.SkippedNaiveNodes > 0 {
-		warnings = append(warnings, fmt.Sprintf("%d naive node(s) skipped: %s",
-			result.SkippedNaiveNodes, result.SkippedNaiveReason))
-	}
-	// SPEC 122: то же для tailscale.
-	if result.SkippedTailscaleNodes > 0 {
-		warnings = append(warnings, fmt.Sprintf("%d tailscale node(s) skipped: %s",
-			result.SkippedTailscaleNodes, result.SkippedTailscaleReason))
-	}
-	// SPEC 123: то же для узлов с полями AmneziaWG 3.x.
-	if result.SkippedAWG3Nodes > 0 {
-		warnings = append(warnings, fmt.Sprintf("%d AmneziaWG 3.x node(s) skipped: %s",
-			result.SkippedAWG3Nodes, result.SkippedAWG3Reason))
+	// Узлы, снятые узловым гейтом ядра (реестр, on_core_unsupported).
+	for _, skip := range result.CoreSkips {
+		warnings = append(warnings, skip.Summary())
 	}
 
 	return &build.ParsedCache{

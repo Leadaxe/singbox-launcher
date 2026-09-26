@@ -1,0 +1,15 @@
+{
+  "groups": [
+    {
+      "outbounds": [
+        "AL:tokyo",
+        "AL:osaka"
+      ],
+      "tag": "vpn-1",
+      "type": "selector"
+    }
+  ],
+  "warnings": [
+    "replace_tag_conflict"
+  ]
+}

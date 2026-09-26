@@ -16,7 +16,7 @@
       "meaning": "password",
       "desc_en": "Account password.",
       "desc_ru": "Пароль учётной записи.",
-      "impl": "Percent-decoded. РАСХОЖДЕНИЕ (новое, вне §9): при ':' в userinfo Go берёт паролем часть ДО ':' (Username(); хвост уходит в Query['password'] и не эмитится), Dart — ВЕСЬ userinfo включая ':' (userParts.join(':')). Пустой пароль = drop ноды. Дефолтный порт 443."
+      "impl": "Percent-decoded. РАСХОЖДЕНИЕ ЗАКРЫТО (DELTAS D133-8): прежде при ':' в userinfo Go брал паролем часть ДО ':' (Username(); хвост уходил в Query['password'] и не эмитился), Dart — ВЕСЬ userinfo включая ':' (userParts.join(':')); теперь и Go берёт ВЕСЬ userinfo (mappers.uri.userinfo). Пустой пароль = drop ноды. Дефолтный порт 443."
     },
     "query": {
       "type": {
@@ -38,7 +38,7 @@
         "maps_to": "transport.type",
         "desc_en": "Transport selector.",
         "desc_ru": "Селектор транспорта.",
-        "impl": "Транспорт — суб-схема registry/transports.json (общая с vless: тот же uriTransportFromQuery/parseTransport). 'h2' в URI читает только Dart — см. transports.json."
+        "impl": "Транспорт — суб-схема registry/transports.json (общая с vless: в Go — блок transports#uri, в Dart — parseTransport). 'h2' в URI читает только Dart — см. transports.json."
       },
       "headerType": {
         "type": "enum",
@@ -92,7 +92,7 @@
         "maps_to": "tls.utls.fingerprint",
         "desc_en": "Browser fingerprint mimicked in the ClientHello.",
         "desc_ru": "Отпечаток браузера, который подделывается в ClientHello.",
-        "impl": "БЕЗ дефолта (в отличие от vless 'random'): пустой fp → utls-блок не эмитится (оба). Алиас 'fingerprint' у trojan НЕ читается (только vless). См. tls.json."
+        "impl": "БЕЗ дефолта (в отличие от vless 'random'): пустой fp → utls-блок не эмитится (оба). Алиас 'fingerprint' прежде у trojan не читался (только vless); в Go его теперь читает общая запись блока tls#uri у всех схем. См. tls.json."
       },
       "alpn": {
         "type": "string",
@@ -124,7 +124,7 @@
         "maps_to": "tls.insecure",
         "desc_en": "Skip server certificate verification.",
         "desc_ru": "Не проверять сертификат сервера.",
-        "impl": "Семейство ключей — см. tls.json (у Dart шире: + allow_insecure, skip-cert-verify). ЦЕЛЕВОЙ НАБОР ИМЁН — объединение обоих проектов (DRIFT §2(a), общая запись — tls.json /tls/params/insecure): insecure, allowinsecure, allow_insecure, allow-insecure, skipcertverify, skip_cert_verify, skip-cert-verify, noverify; сверка по strings.ToLower со снятием '-'/'_'; истина 1|true|yes единообразно."
+        "impl": "Семейство ключей — см. tls.json (прежде у Dart было шире: + allow_insecure, skip-cert-verify; Go теперь читает весь набор ниже общей записью tls#uri). ЦЕЛЕВОЙ НАБОР ИМЁН — объединение обоих проектов (DRIFT §2(a), общая запись — tls.json /tls/params/insecure): insecure, allowinsecure, allow_insecure, allow-insecure, skipcertverify, skip_cert_verify, skip-cert-verify, noverify; сверка по strings.ToLower со снятием '-'/'_'; истина 1|true|yes единообразно."
       }
     },
     "fragment": "label"
@@ -145,17 +145,8 @@
     "note": "Порядок лексикографический (url.Values.Encode / buildQuery). Расхождение формы: Go при включённом TLS НЕ пишет security=tls (дефолт схемы), Dart пишет явно; insecure: Go 'insecure=1', Dart 'allowInsecure=1'. Оба парсера принимают обе формы."
   },
   "refs": {
-    "go": [
-      "core/config/subscription/node_parser_core.go:140-141",
-      "core/config/subscription/node_parser_core.go:308-316",
-      "core/config/subscription/node_parser_core.go:366-374",
-      "core/config/subscription/node_parser_core.go:759-766",
-      "core/config/subscription/node_parser_transport.go:714-744",
-      "core/config/subscription/xray_element_engine.go",
-      "core/config/subscription/shareuri_trojan.go:10-59"
-    ],
     "dart": [
-      "lib/services/parser/uri_parsers/trojan_parser.dart:11-45",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/services/parser/transport.dart:375-395",
       "lib/services/parser/json_parsers.dart:548-577",
       "lib/services/parser/json_parsers.dart:839-851",
@@ -191,6 +182,7 @@
       },
       "password": {
         "type": "string",
+        "role": "credential",
         "required": true,
         "secret": true,
         "desc_en": "Account password.",
@@ -260,7 +252,7 @@
           "password"
         ],
         "single_into": "password",
-        "impl": "DELTAS D133-8 / QUIRKS Q133-07: пароль = ВЕСЬ userinfo, без резки по ':'. Сегодня node_parser_core.go:455-466 берёт часть ДО ':', а хвост уходит в Query['password'] и в тело не попадает — пароль с двоеточием терялся молча. Одиночный userinfo — ПАРОЛЬ: у trojan в userinfo он один и есть. Объявлено явно, хотя совпадает с into[0]."
+        "impl": "DELTAS D133-8 / QUIRKS Q133-07: пароль = ВЕСЬ userinfo, без резки по ':'. Прежде рукописный разбор брал часть ДО ':', а хвост уходил в Query['password'] и в тело не попадал — пароль с двоеточием терялся молча. Одиночный userinfo — ПАРОЛЬ: у trojan в userinfo он один и есть. Объявлено явно, хотя совпадает с into[0]."
       },
       "label": {
         "source": [
@@ -310,7 +302,7 @@
           "when": {
             "tls.enabled": true
           },
-          "impl": "when по ТЕЛУ, построенному селектором security (QUIRKS Q133-34): при security=none блока tls нет вовсе, и запись в несуществующий блок не идёт. QUIRKS Q133-08: фолбэк на server — НАШЕ сегодняшнее поведение (node_parser_transport.go:1042-1045), и корпус на нём стоит (uri/trojan/basic_password без sni ждёт server_name=example-1.com). LxBox просит эвристику снять; снятие изменило бы тела РАБОЧИХ узлов → открытый вопрос SPEC.md §15.9. До ответа поведение сохраняется."
+          "impl": "when по ТЕЛУ, построенному селектором security (QUIRKS Q133-34): при security=none блока tls нет вовсе, и запись в несуществующий блок не идёт. QUIRKS Q133-08: фолбэк на server — НАШЕ поведение (default_from этой записи; так делал и прежний рукописный путь), и корпус на нём стоит (uri/trojan/basic_password без sni ждёт server_name=example-1.com). LxBox просит эвристику снять; снятие изменило бы тела РАБОЧИХ узлов → открытый вопрос SPEC.md §15.9. До ответа поведение сохраняется."
         }
       },
       "unknown_key": {
@@ -320,7 +312,7 @@
       "emit": {
         "form": "url",
         "param_order": "alphabetical",
-        "impl": "param_order — ПРАВИЛО, а не перечень: q.Encode() во всех эмиттерах уже даёт алфавит. omit_default пуст, security объявлен always: у чужих клиентов умолчание security ≠ tls, и trojan без явного security прочёлся бы иначе. names.insecure = allowInsecure (оверлей LxBox).",
+        "impl": "param_order — ПРАВИЛО, а не перечень: q.Encode() прежних рукописных эмиттеров уже давал алфавит. omit_default пуст, security объявлен always: у чужих клиентов умолчание security ≠ tls, и trojan без явного security прочёлся бы иначе. names.insecure = allowInsecure (оверлей LxBox).",
         "emit_when": {
           "security": "always"
         },
@@ -409,7 +401,7 @@
             "action": "note",
             "code": "xray_extra_entries_dropped"
           },
-          "impl": "QUIRKS Q133-18: servers[1..] отбрасываются молча (xray_protocols.go:159). Поведение то же, но появляется код."
+          "impl": "QUIRKS Q133-18: servers[1..] отбрасываются молча (так было в прежнем рукописном конвертере). Поведение то же, но появляется код."
         }
       },
       "unknown_key": {

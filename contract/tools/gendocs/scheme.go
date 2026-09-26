@@ -119,6 +119,38 @@ func renderSchemeHeader(b *strings.Builder, p *rawProtocol, body *registry.BodyS
 	if body != nil && body.Core != "" {
 		t.add("Core the schema was checked against", code(body.Core))
 	}
+	if body != nil && body.OnCoreUnsupported != nil {
+		var need []string
+		if body.MinCore != "" {
+			need = append(need, "core ≥ "+code(body.MinCore))
+		}
+		if body.BuildTag != "" {
+			need = append(need, "build tag "+code(body.BuildTag))
+		}
+		t.add("Core requirement", strings.Join(need, ", ")+
+			"; on a core that lacks it the node is dropped at build: "+code(body.OnCoreUnsupported.Code))
+	}
+	if body != nil && len(body.Levels) > 0 {
+		t.add("Protocol levels (node label, ascending)", codeList(body.Levels))
+	}
+	if body != nil && body.ExitCapableWhen != nil {
+		t.add("Exit to the internet (Direction pools)", "only"+conditionPhrase(body.ExitCapableWhen))
+	}
+	if body != nil {
+		for _, rel := range body.Relations {
+			if rel.Kind != "ordered" {
+				continue
+			}
+			line := "must not decrease: " + codeList(rel.Paths)
+			switch rel.Action {
+			case "drop":
+				line += "; otherwise all of them are removed"
+			case "drop_node":
+				line += "; otherwise the node is dropped"
+			}
+			t.add("Field order", line+": "+code(rel.Code))
+		}
+	}
 	if p.URI != nil && p.URI.Fragment != "" {
 		t.add("URI fragment", code(p.URI.Fragment))
 	}
@@ -416,6 +448,9 @@ func writeBodyItems(l *list, prefix, name string, f *registry.Field, linkPrefix 
 	if g := bodyGate(f); g != "" {
 		l.attr(g)
 	}
+	for _, g := range bodyCoreGate(f) {
+		l.attr(g)
+	}
 
 	// Потомки запрещённого блока печатаются без своих правил: флаг снимается
 	// после обхода, чтобы соседний разрешённый блок его не унаследовал.
@@ -507,6 +542,14 @@ func fieldOutcomes(f *registry.Field, scheme, linkPrefix string) []string {
 	if mw := f.MaxWhen; mw != nil {
 		out = append(out, maxWhenPhrase(mw, linkPrefix))
 	}
+	if cw := f.CoerceWhen; cw != nil {
+		out = append(out, "Replaced: "+scalarList(cw.Values)+" → "+scalar(cw.Value)+conditionPhrase(cw.When)+
+			" → "+warnLink(cw.Code, linkPrefix))
+	}
+	if fi := f.ItemForbidden; fi != nil {
+		out = append(out, "Items not accepted: "+scalarList(fi.Values)+" — removed, the rest stay → "+
+			warnLink(fi.Code, linkPrefix))
+	}
 	if f.NormalizeCode != "" {
 		out = append(out, "If the value had to be cleaned up: "+warnLink(f.NormalizeCode, linkPrefix))
 	}
@@ -527,16 +570,36 @@ func fieldRelations(f *registry.Field, withSchemes bool) []string {
 		out = append(out, "Only for: "+codeList(f.AllowedFor))
 	}
 	for _, c := range f.Conflicts {
-		out = append(out, "Conflicts with: "+code(c.With))
+		out = append(out, "Conflicts with: "+code(c.With)+unlessPhrase(c))
 	}
 	for _, rq := range f.Requires {
+		if rq.Set != nil {
+			out = append(out, "Requires: "+code(rq.Path)+unlessPhrase(rq)+" — if missing, filled in with "+scalar(rq.Set))
+			continue
+		}
 		req := "Meaningless without: " + code(rq.Path)
 		if rq.Equals != nil {
 			req += " = " + scalar(rq.Equals)
 		}
+		req += unlessPhrase(rq)
 		out = append(out, req)
 	}
+	if oh := f.OnHopRequired; oh != nil {
+		out = append(out, "Not stripped when a hop at position 2 or later requires this path ("+code(oh.Code)+")")
+	}
 	return out
+}
+
+// unlessPhrase — хвост «unless … is set» для связи с Relation.UnlessSet.
+func unlessPhrase(r registry.Relation) string {
+	// Условие действия связи (`when`, контракт 1.1.56) — часть правила:
+	// «conflicts with `vhttp`» без «when `vhttp` is h3» читалось бы как
+	// запрет поля при любом vhttp.
+	out := conditionPhrase(r.When)
+	if len(r.UnlessSet) == 0 {
+		return out
+	}
+	return out + " (unless " + codeList(r.UnlessSet) + " is set)"
 }
 
 func bodyType(f *registry.Field) string {
@@ -549,6 +612,9 @@ func bodyType(f *registry.Field) string {
 	}
 	if f.Secret {
 		typ += ", secret"
+	}
+	if f.Role != "" {
+		typ += ", role `" + f.Role + "`"
 	}
 	if f.Deprecated {
 		typ += ", deprecated"
@@ -586,7 +652,7 @@ func bodyConstraints(f *registry.Field) string {
 	}
 	if len(f.AbsentWhen) > 0 {
 		// Объект, объявленный незаданным, снимается ЦЕЛИКОМ и молча, до
-		// правил своих полей и до связей соседей (CANON §6.1). Сказать это
+		// правил своих полей и до связей соседей (PARSING_PRINCIPLES §6.1). Сказать это
 		// в документации важнее, чем перечислить ключи: человек читает
 		// страницу поля и должен понимать, почему блок исчезает без кода.
 		parts = append(parts, "dropped entirely and silently when "+
@@ -636,6 +702,46 @@ func bodyGate(f *registry.Field) string {
 		return ""
 	}
 	return "Only written when: " + strings.Join(parts, ", ")
+}
+
+// bodyCoreGate — узловой гейт ядра и уровень протокола у поля (контракт
+// 1.1.60): `on_core_unsupported`, `range_form`, `level`/`level_mark`.
+func bodyCoreGate(f *registry.Field) []string {
+	var out []string
+	if a := f.OnCoreUnsupported; a != nil {
+		out = append(out, "On a core that lacks it the whole node is dropped at build: "+code(a.Code))
+	}
+	if rf := f.RangeForm; rf != nil {
+		var parts []string
+		if rf.MinCore != "" {
+			parts = append(parts, "core ≥ "+code(rf.MinCore))
+		}
+		if rf.BuildTag != "" {
+			parts = append(parts, "build tag "+code(rf.BuildTag))
+		}
+		line := "Range form `N-M`"
+		if len(parts) > 0 {
+			line += " needs " + strings.Join(parts, ", ")
+		}
+		if rf.Level != "" {
+			line += "; means level " + code(rf.Level)
+		}
+		if a := rf.OnCoreUnsupported; a != nil {
+			line += "; on a core that lacks it the whole node is dropped at build: " + code(a.Code)
+		}
+		if len(parts) > 0 && rf.BuildTag != "" {
+			line += "; removing the extension collapses the range to its lower bound"
+		}
+		out = append(out, line)
+	}
+	if f.Level != "" {
+		line := "Means protocol level " + code(f.Level)
+		if f.LevelMark != "" {
+			line += ", adds " + code(f.LevelMark) + " to the level label"
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 // refPage говорит, есть ли у ссылочного поля собственная страница.

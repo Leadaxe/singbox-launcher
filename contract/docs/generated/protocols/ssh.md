@@ -43,6 +43,7 @@ Everything a link of this scheme can carry. **Maps to** points at the body field
 - <a id="link-common-userinfo"></a>**`userinfo`** — user:password of the account.
   - Type: `user:password`
   - Maps to: [`user`](#body-user), [`password`](#body-password)
+  - If absent: filled in with `root` → [`ssh_user_default`](../warnings.md#ssh_user_default)
 - <a id="link-common-host"></a>**`host`** — The authority of the link: everything before `:` in `scheme://…@host:port`.
   - Maps to: [`server`](#body-server)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
@@ -89,14 +90,15 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
 - <a id="body-user"></a>**`user`** — SSH user name.
-  - Type: string
+  - Type: string, role `credential`
   - Default: `root`
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
+  - If absent: filled in with `root` → [`ssh_user_default`](../warnings.md#ssh_user_default)
 - <a id="body-password"></a>**`password`** — SSH password.
   - Type: string, secret
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
 - <a id="body-private-key"></a>**`private_key`** — Private key contents, PEM form.
-  - Type: listable_string, secret
+  - Type: listable_string, secret, role `private_key`
   - Set by link parameter: [`private_key`](#link-proto-private-key)
 - <a id="body-private-key-path"></a>**`private_key_path`** — Path to the private key file.
   - Type: string, secret
@@ -161,6 +163,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`server`](#body-server) — the value does not fit the field → node dropped
 - [`port_invalid`](../warnings.md#port_invalid)
   - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
+- [`ssh_user_default`](../warnings.md#ssh_user_default)
+  - [`user`](#body-user) — the field is absent → filled in with `root`
 - [`type_invalid`](../warnings.md#type_invalid)
   - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
 
@@ -168,6 +172,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **Values.** What the sanitizer does to a value before it reaches the node body.
 
+- `user` — when absent, filled in with `root` → [`ssh_user_default`](../warnings.md#ssh_user_default)
 - `tcp_keep_alive` — normalized: `duration_bare_seconds`
 - `tcp_keep_alive_interval` — normalized: `duration_bare_seconds`
 
@@ -181,4 +186,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 **The field is removed, the node lives on**
 
 - `inet4_bind_address` — invalid value
+
+**The value is replaced, the node lives on**
+
+- `user` — absent value is filled in with `root`
 

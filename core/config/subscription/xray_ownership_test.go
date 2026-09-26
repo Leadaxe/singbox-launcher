@@ -191,13 +191,13 @@ func TestXrayOwnershipWorksWithoutIdentityHook(t *testing.T) {
 func TestXrayServerKeyIsIndependentOfTag(t *testing.T) {
 	withContentSignatureHook(t)
 
-	a := &configtypes.ParsedNode{Tag: "🇩🇪 Германия", Scheme: "vless", Server: "1.1.1.1", Port: 443, UUID: "u1"}
-	b := &configtypes.ParsedNode{Tag: "proxy-1-1-1-1-direct", Scheme: "vless", Server: "1.1.1.1", Port: 443, UUID: "u1"}
+	a := &configtypes.ParsedNode{Tag: "🇩🇪 Германия", Scheme: "vless", Server: "1.1.1.1", Port: 443}
+	b := &configtypes.ParsedNode{Tag: "proxy-1-1-1-1-direct", Scheme: "vless", Server: "1.1.1.1", Port: 443}
 	if xrayServerKey(a) != xrayServerKey(b) {
 		t.Fatalf("один узел под двумя именами дал разные ключи: %q и %q",
 			xrayServerKey(a), xrayServerKey(b))
 	}
-	other := &configtypes.ParsedNode{Tag: "🇩🇪 Германия", Scheme: "vless", Server: "2.2.2.2", Port: 443, UUID: "u1"}
+	other := &configtypes.ParsedNode{Tag: "🇩🇪 Германия", Scheme: "vless", Server: "2.2.2.2", Port: 443}
 	if xrayServerKey(a) == xrayServerKey(other) {
 		t.Fatal("разные адреса дали один ключ")
 	}
@@ -227,38 +227,6 @@ func indexOf(s, sub string) int {
 	return -1
 }
 
-// Регрессия: с tag_prefix состав узла-группы обязан ссылаться на ИТОГОВЫЕ
-// теги членов.
-//
-// Боевой баг: узлы и сама группа получали префикс «AL:», а состав оставался
-// на исходных тегах — группа указывала в пустоту. `sing-box check` этого не
-// ловит (существование членов он не проверяет), но в рантайме такая группа
-// мертва: ядру некуда балансировать.
-func TestXrayGroupMembersSurviveTagPrefix(t *testing.T) {
-	withContentSignatureHook(t)
-
-	res := loadFromInlineBody(t, realisticXraySubscription, configtypes.ProxySource{
-		TagPrefix: "AL:",
-	})
-
-	alive := make(map[string]bool, len(res.Nodes))
-	for _, n := range res.Nodes {
-		alive[n.Tag] = true
-	}
-
-	groups := groupNodesOf(res.Nodes)
-	if len(groups) != 1 {
-		t.Fatalf("ожидался 1 узел-группа, получено %d (%v)", len(groups), tagsOfNodes(res.Nodes))
-	}
-
-	members := groupMembersOf(groups[0])
-	if len(members) == 0 {
-		t.Fatal("группа осталась без членов после применения префикса")
-	}
-	for _, m := range members {
-		if !alive[m] {
-			t.Fatalf("группа %q ссылается на %q — такого узла нет (узлы: %v)",
-				groups[0].Tag, m, tagsOfNodes(res.Nodes))
-		}
-	}
-}
+// Регрессия «tag_prefix и состав Xray-группы» проверяется сквозь эмиссию —
+// префикс применяет она (config/canonical_emit_test.go,
+// TestBodyEmit_XrayGroupMembersSurviveTagPrefix).

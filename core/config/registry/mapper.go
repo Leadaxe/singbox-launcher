@@ -403,6 +403,21 @@ type Param struct {
 
 	When map[string]interface{} `json:"when"`
 
+	// Deref — значение записи есть ССЫЛКА на соседа по документу (контракт
+	// 1.1.63): элемент, чей ключ Key равен значению, кладётся в пространство
+	// под именем As и читается источниками `ref.<As>.<путь>` — в условиях
+	// `when` этой и последующих записей. Нужен правилам, где свойство узла
+	// задаёт сосед: у Xray `streamSettings.sockopt.dialerProxy` указывает на
+	// служебный freedom с `fragment`, и это фрагментация ClientHello самого
+	// узла (tls.fragment), а не звено цепочки.
+	Deref *Deref `json:"deref"`
+	// Substitute — плейсхолдеры в значении записи, разрешаемые из других
+	// источников (контракт 1.1.63): значение режется по Sep, элемент-
+	// плейсхолдер заменяется значением своего источника, неразрешённый
+	// снимается, остаток склеивается Join. Не осталось ничего — значения
+	// нет. Значение без плейсхолдеров не трогается.
+	Substitute *Substitute `json:"substitute"`
+
 	Extract   *Extract               `json:"extract"`
 	Compose   *Compose               `json:"compose"`
 	List      *ListSpec              `json:"list"`
@@ -1004,6 +1019,24 @@ func (m *Mapper) Kind() string { return m.kind }
 
 // Scheme — схема протокола, которой принадлежит секция.
 func (m *Mapper) Scheme() string { return m.scheme }
+
+// Deref — разыменование значения записи в соседа по документу (Param.Deref).
+type Deref struct {
+	// Key — путь ключа элемента документа, с которым сравнивается значение
+	// (`tag` у outbound Xray).
+	Key string `json:"key"`
+	// As — имя слоя: сосед читается источниками `ref.<As>.<путь>`.
+	As string `json:"as"`
+}
+
+// Substitute — плейсхолдеры значения записи (Param.Substitute).
+type Substitute struct {
+	// Sep — разделитель элементов значения; Join — склейка результата.
+	Sep  string `json:"sep"`
+	Join string `json:"join"`
+	// Tokens — плейсхолдер (элемент дословно) → имя источника значения.
+	Tokens map[string]string `json:"tokens"`
+}
 
 // SourceKind — ВИД ИСТОЧНИКА: чем оказался текст подписки целиком
 // (registry/source_kinds.json).

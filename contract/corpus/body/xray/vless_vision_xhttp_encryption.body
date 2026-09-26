@@ -1,0 +1,4 @@
+# Форма подписки Assassin VPN (LxBox §544), адреса и ключи синтетические:
+# VLESS + REALITY + xhttp + flow=xtls-rprx-vision + encryption в users[0].
+# flow остаётся, кода vision_with_transport нет.
+[{"remarks": "vision+xhttp+enc", "outbounds": [{"tag": "proxy", "protocol": "vless", "settings": {"vnext": [{"address": "example-1.com", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555", "flow": "xtls-rprx-vision", "encryption": "mlkem768x25519plus.native.0rtt.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}]}]}, "streamSettings": {"network": "xhttp", "security": "reality", "realitySettings": {"serverName": "w.example.com", "fingerprint": "chrome", "publicKey": "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw", "shortId": "abcd"}, "xhttpSettings": {"host": "cdn.example-1.com", "path": "/x", "mode": "auto"}}}]}]

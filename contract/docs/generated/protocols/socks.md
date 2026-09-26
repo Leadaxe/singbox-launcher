@@ -71,7 +71,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `5`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="body-username"></a>**`username`** — Account user name.
-  - Type: string
+  - Type: string, role `credential`
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
 - <a id="body-password"></a>**`password`** — Account password.
   - Type: string, secret

@@ -1,0 +1,2 @@
+# sing-box JSON: xhttp uplink_data_placement=header при mode=packet-up -> рабочая пара, ничего не тронуто, кодов нет (LxBox §546, контракт 1.1.56).
+{"type": "vless", "tag": "sb-xhttp-header-packetup", "server": "example-6.com", "server_port": 443, "uuid": "11111111-1111-1111-1111-111111111111", "tls": {"enabled": true, "server_name": "example-6.com"}, "transport": {"type": "xhttp", "path": "/x", "mode": "packet-up", "uplink_data_placement": "header"}}

@@ -1,0 +1,9 @@
+{
+  "_comment": "§4.4 (SPEC 143, D-123): ссылка на text_list в ветке условного элемента вливается так же, как литеральный массив",
+  "vars": [
+    {"name": "flag", "type": "bool", "default_value": "false"},
+    {"name": "addr4", "type": "text", "default_value": ""},
+    {"name": "addr6", "type": "text_list", "default_value": ""}
+  ],
+  "config": {"address": ["@addr4", {"#if": {"and": ["@flag"], "value": "@addr6"}}]}
+}

@@ -21,7 +21,7 @@ func TestTextListSplicesInsideIfWrapper(t *testing.T) {
 	node := []byte(`{"address":["@tun_address",{"#if":{"#and":["@ipv6_enabled"],"#value":"@tun_address6"}}]}`)
 
 	resolved := ResolveTemplateVarsFor(vars, map[string]string{}, nil, TargetSpec{})
-	out, err := SubstituteVarsInJSON(node, vars, resolved, TargetSpec{})
+	out, _, err := SubstituteVarsInJSONCanon(node, vars, resolved, TargetSpec{})
 	if err != nil {
 		t.Fatalf("подстановка: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestScalarInsideIfWrapperUnchanged(t *testing.T) {
 	}
 	node := []byte(`{"a":[{"#if":{"#and":["@on"],"#value":"@one"}}]}`)
 	resolved := ResolveTemplateVarsFor(vars, map[string]string{}, nil, TargetSpec{})
-	out, err := SubstituteVarsInJSON(node, vars, resolved, TargetSpec{})
+	out, _, err := SubstituteVarsInJSONCanon(node, vars, resolved, TargetSpec{})
 	if err != nil {
 		t.Fatalf("подстановка: %v", err)
 	}

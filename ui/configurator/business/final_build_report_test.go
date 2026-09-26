@@ -66,8 +66,9 @@ func TestFinalBuildContinuesParserAttempt(t *testing.T) {
 		BrokenChains: []config.ChainDegradation{
 			{Tag: "hop2", Name: "двойной прыжок", Reason: "позиция не найдена"},
 		},
-		SkippedNaiveNodes:  3,
-		SkippedNaiveReason: "ядро собрано без with_naive_outbound",
+		CoreSkips: []config.CoreSkip{
+			{Code: "naive_unavailable", Scheme: "naive", Reason: "ядро собрано без with_naive_outbound", Nodes: 3},
+		},
 	}}
 	if err := ParseAndPreview(stubStaleUIUpdater{model: model}, gen); err != nil {
 		t.Fatalf("ParseAndPreview: %v", err)
@@ -105,7 +106,7 @@ func TestFinalBuildContinuesParserAttempt(t *testing.T) {
 	for _, kind := range []config.BuildReportKind{
 		config.BuildReportSourceExcluded,
 		config.BuildReportChainFailed,
-		config.BuildReportNaiveDegraded,
+		config.BuildReportCoreUnsupported,
 	} {
 		if !seen[kind] {
 			t.Errorf("парсерный вид %q не доехал до отчёта — «Итог» показал бы половину причин и объявил её полной", kind)

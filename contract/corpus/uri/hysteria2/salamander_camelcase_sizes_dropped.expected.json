@@ -1,0 +1,34 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "obfs": {
+          "password": "op",
+          "type": "salamander"
+        },
+        "password": "secret",
+        "server": "example.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example.com"
+        },
+        "type": "hysteria2"
+      },
+      "kind": "outbound",
+      "label": "hy2-salamander-camel",
+      "scheme": "hysteria2",
+      "warnings": [
+        {
+          "code": "field_requires",
+          "path": "obfs.min_packet_size"
+        },
+        {
+          "code": "field_requires",
+          "path": "obfs.max_packet_size"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

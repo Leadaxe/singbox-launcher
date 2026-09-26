@@ -1,0 +1,12 @@
+# sing-box: AmneziaWG с jmin > jmax (контракт 1.1.63, SPEC 142 C8).
+#
+# Ядро отвергает такой endpoint целиком — «amneziawg: jmin (70) must be <=
+# jmax (40)» (sing-box-lx transport/wireguard/device_awg.go validateJunk), то
+# есть без проверки падает ВЕСЬ конфиг. Правило реестра — связь `ordered`
+# в body.relations wireguard с action drop: какое из двух чисел ошибочно, по
+# телу не понять, поэтому снимаются ОБА поля с кодом fields_order_invalid на
+# первом (jmin). jc остаётся: junk-пакеты без размеров ядро пропускает как
+# безвредные, узел работает. Потолок MTU AmneziaWG дописан по jc (как в
+# endpoints_awg_mtu_default). Прежде правило держала только форма
+# обфускации, и ни один вход разбора его не исполнял.
+{"endpoints":[{"type":"wireguard","tag":"awg-junk-order","address":["10.0.0.2/32"],"private_key":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=","jc":4,"jmin":70,"jmax":40,"peers":[{"address":"example-3.com","port":51820,"public_key":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=","allowed_ips":["0.0.0.0/0"]}]}]}

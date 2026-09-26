@@ -190,6 +190,18 @@ type corpusExpectation struct {
 	// Поле необязательное: отсутствие ключа значит «не проверяем».
 	ReplaceTags map[string]string `json:"replace_tags"`
 
+	// Replaces — свёртка источника ЦЕЛИКОМ (контракт 1.1.78): ключ — ИМЯ
+	// папки или URL подписки, значение — объект `replace` `{mode, tag,
+	// auto?}` deep-equal. Проверяется дважды: в состоянии после импорта и в
+	// записи повторного экспорта 1.0 — там `replace` обязан совпасть с
+	// состоянием байт в байт (прежних `fold`/`fold_tag` у записи 1.0 нет
+	// вовсе — их отсутствие в файле сторожит purity_test). `replace_tags`
+	// видит только имя; режим и авто-половина, потерянные писателем, видны
+	// здесь.
+	//
+	// Поле необязательное: отсутствие ключа значит «не проверяем».
+	Replaces map[string]json.RawMessage `json:"replaces"`
+
 	// Folders — папки, которые импорт обязан собрать: имя → теги членов В
 	// ПОРЯДКЕ файла (контракт 0.12). Папка не имеет секции в файле и
 	// собирается ПО ИМЕНИ из записей servers[] с полем folder, поэтому
@@ -456,6 +468,7 @@ func TestBackupCorpus(t *testing.T) {
 			checkDetours(t, dst, exp)
 			checkGroups(t, dst, exp)
 			checkReplaceTags(t, dst, exp)
+			checkReplaces(t, dst, exp)
 			checkFolders(t, dst, exp)
 			checkSubscriptions(t, dst, exp)
 			checkRootServers(t, dst, exp)
@@ -1023,6 +1036,64 @@ func checkReplaceTags(t *testing.T, dst *state.State, exp corpusExpectation) {
 		}
 		if src.Replace.Tag != want {
 			t.Errorf("%s: тег замены %q, ожидался %q", url, src.Replace.Tag, want)
+		}
+	}
+}
+
+// checkReplaces — свёртка источника целиком: в состоянии и в повторном
+// экспорте (corpusExpectation.Replaces).
+func checkReplaces(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if len(exp.Replaces) == 0 {
+		return
+	}
+	key := func(kind state.SourceKind, name, url string) string {
+		if kind == state.SourceKindSubscription {
+			return url
+		}
+		return name
+	}
+	got := map[string]*state.FolderReplace{}
+	for i := range dst.Sources {
+		src := &dst.Sources[i]
+		if src.Kind == state.SourceKindFolder || src.Kind == state.SourceKindSubscription {
+			got[key(src.Kind, src.Name, src.URL)] = src.Replace
+		}
+	}
+	back, _, err := Export10(dst, ExportOptions{AppVersion: "corpus"})
+	if err != nil {
+		t.Fatalf("Export10: %v", err)
+	}
+	exported := map[string]Source10{}
+	for _, rec := range back.Sources {
+		if rec.Kind == state.SourceKindFolder || rec.Kind == state.SourceKindSubscription {
+			exported[key(rec.Kind, rec.Name, rec.URL)] = rec
+		}
+	}
+	for k, want := range exp.Replaces {
+		rep, ok := got[k]
+		if !ok {
+			t.Errorf("%s: источник не приехал — свёртку проверять не на чем", k)
+			continue
+		}
+		stateJSON, err := json.Marshal(rep)
+		if err != nil {
+			t.Fatalf("%s: сериализация replace: %v", k, err)
+		}
+		if !jsonDeepEqual(stateJSON, want) {
+			t.Errorf("%s: replace в состоянии %s, ожидался %s", k, stateJSON, want)
+		}
+		rec, ok := exported[k]
+		if !ok {
+			t.Errorf("%s: источник не уехал в повторный экспорт", k)
+			continue
+		}
+		fileJSON, err := json.Marshal(rec.Replace)
+		if err != nil {
+			t.Fatalf("%s: сериализация replace файла: %v", k, err)
+		}
+		if string(fileJSON) != string(stateJSON) {
+			t.Errorf("%s: replace в экспорте %s, в состоянии %s — не байт в байт", k, fileJSON, stateJSON)
 		}
 	}
 }

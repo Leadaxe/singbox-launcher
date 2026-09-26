@@ -393,20 +393,42 @@ func ApplyTemplateWithVars(configJSON json.RawMessage, params []TemplateParam, g
 
 // ApplyTemplateWithVarsFor — то же для произвольного таргета (SPEC 097).
 // Таргет определяет и платформу фильтрации params, и значение @runtime.target
-// в #if-ветках конфига.
+// в #if-ветках конфига. Предупреждения подстановки отбрасываются — нужны они
+// только сборке (ApplyTemplateWithVarsForWarnings).
 func ApplyTemplateWithVarsFor(configJSON json.RawMessage, params []TemplateParam, vars []TemplateVar, stateVars map[string]string, rawFull json.RawMessage, target TargetSpec) (json.RawMessage, error) {
+	out, _, err := ApplyTemplateWithVarsForWarnings(configJSON, params, vars, stateVars, rawFull, target)
+	return out, err
+}
+
+// ApplyTemplateWithVarsForWarnings — боевой путь главного конфига: params,
+// затем подстановка каноническим обходчиком (TEMPLATE_LANG §5, SPEC 143).
+// Предупреждения шаблона (коды warnings.json с параметрами) отдаются
+// отсортированными — их сборка кладёт в отчёт как template_degraded.
+func ApplyTemplateWithVarsForWarnings(configJSON json.RawMessage, params []TemplateParam, vars []TemplateVar, stateVars map[string]string, rawFull json.RawMessage, target TargetSpec) (json.RawMessage, []TemplateWarning, error) {
 	target = target.Normalized()
 	resolved := ResolveTemplateVarsFor(vars, stateVars, rawFull, target)
 	MaybeGenerateSecrets(vars, resolved)
+	return applyTemplateResolved(configJSON, params, vars, resolved, target)
+}
+
+// applyTemplateResolved — тело боевого пути по уже разрешённым значениям.
+// Отдельной функцией ради стража корпуса: состояние desktop — строки, и
+// optional-var без значения (null корпуса) через stateVars не выразить, а
+// путь после резолва у сборки и у стража обязан быть один.
+func applyTemplateResolved(configJSON json.RawMessage, params []TemplateParam, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) (json.RawMessage, []TemplateWarning, error) {
 	vi := VarIndex(vars)
 	out, err := applyParamsFiltered(configJSON, params, target, vi, resolved)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if len(vars) == 0 {
-		return out, nil
+	// Канон и без объявленных vars: @runtime.* в значениях, #if и неизвестные
+	// директивы обязаны раскрываться одинаково при любом списке переменных.
+	subst, warnings, err := SubstituteVarsInJSONCanonWarnings(out, vars, resolved, target)
+	if err != nil {
+		return nil, nil, err
 	}
-	return SubstituteVarsInJSON(out, vars, resolved, target)
+	SortTemplateWarnings(warnings)
+	return subst, warnings, nil
 }
 
 func applyParamsFiltered(configJSON json.RawMessage, params []TemplateParam, target TargetSpec, vi map[string]TemplateVar, resolved map[string]ResolvedVar) (json.RawMessage, error) {
@@ -548,14 +570,25 @@ func GetEffectiveConfig(rawConfig json.RawMessage, params []TemplateParam, goos 
 
 // GetEffectiveConfigFor — то же для произвольного таргета (SPEC 097).
 func GetEffectiveConfigFor(rawConfig json.RawMessage, params []TemplateParam, vars []TemplateVar, stateVars map[string]string, rawFull json.RawMessage, target TargetSpec) (map[string]json.RawMessage, []string, error) {
+	sections, order, _, err := GetEffectiveConfigForWarnings(rawConfig, params, vars, stateVars, rawFull, target)
+	return sections, order, err
+}
+
+// GetEffectiveConfigForWarnings — то же, плюс предупреждения подстановки
+// шаблона (SPEC 143): сборка отдаёт их в отчёт, превью — нет.
+func GetEffectiveConfigForWarnings(rawConfig json.RawMessage, params []TemplateParam, vars []TemplateVar, stateVars map[string]string, rawFull json.RawMessage, target TargetSpec) (map[string]json.RawMessage, []string, []TemplateWarning, error) {
 	if len(rawConfig) == 0 {
-		return nil, nil, fmt.Errorf("raw config is empty")
+		return nil, nil, nil, fmt.Errorf("raw config is empty")
 	}
-	applied, err := ApplyTemplateWithVarsFor(rawConfig, params, vars, stateVars, rawFull, target)
+	applied, warnings, err := ApplyTemplateWithVarsForWarnings(rawConfig, params, vars, stateVars, rawFull, target)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return parseJSONWithOrder(applied)
+	sections, order, err := parseJSONWithOrder(applied)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return sections, order, warnings, nil
 }
 
 // filterPresetsByPlatform — отбирает presets совместимые с runtime ОС.

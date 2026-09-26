@@ -103,6 +103,14 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 		if _, reserved := reservedVarNames[nm]; reserved {
 			return fmt.Errorf("template: vars[].name %q is reserved (runtime global namespace); rename", nm)
 		}
+		// options ортогональны type (SPEC 143 Т8), кроме bool: у флага два
+		// значения, и список поверх них либо дублирует чекбокс, либо
+		// противоречит ему. options_open без options ничего не открывает и
+		// ничего не значит (TEMPLATE_LANG §2.1) — по правилу толерантности
+		// §1 поле просто игнорируется.
+		if strings.TrimSpace(v.Type) == "bool" && len(v.Options) > 0 {
+			return fmt.Errorf("vars[%d]: bool var %q must not set options", i, nm)
+		}
 		names[nm] = struct{}{}
 		varByName[nm] = v
 	}
@@ -141,6 +149,9 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 		}
 		for _, ref := range refs {
 			if isRuntimeGlobalRef(ref) {
+				if !isKnownRuntimeGlobal(ref) {
+					return fmt.Errorf("params[%d]: unknown runtime global @%s (known: @runtime.platform, @runtime.arch, @runtime.target)", i, ref)
+				}
 				continue
 			}
 			if _, ok := names[ref]; !ok {
@@ -154,6 +165,17 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 		return fmt.Errorf("config: %w", err)
 	}
 	for _, ref := range refs {
+		// @runtime.* в позиции значения — desktop-расширение §7.2 (SPEC 143
+		// Т15/Т16): подставляется строкой таргета. Неизвестное поле после
+		// «runtime.» — ошибка загрузки, как и необъявленное имя. Bare-форму
+		// в предикатах этот цикл не пропускает дальше: её отвергает
+		// validateIfConstruct ниже.
+		if isRuntimeGlobalRef(ref) {
+			if !isKnownRuntimeGlobal(ref) {
+				return fmt.Errorf("config: unknown runtime global @%s (known: @runtime.platform, @runtime.arch, @runtime.target)", ref)
+			}
+			continue
+		}
 		if _, ok := names[ref]; !ok {
 			return fmt.Errorf("config: @%q is not declared in vars", ref)
 		}
@@ -184,7 +206,7 @@ func validateVarsSeparator(i int, v TemplateVar) error {
 	if !v.DefaultValue.IsEmpty() || strings.TrimSpace(v.DefaultNode) != "" {
 		return fmt.Errorf("%s: separator must not set default_value or default_node", ctx)
 	}
-	if len(v.Options) > 0 {
+	if len(v.Options) > 0 || v.OptionsOpen {
 		return fmt.Errorf("%s: separator must not set options", ctx)
 	}
 	if strings.TrimSpace(v.Title) != "" || strings.TrimSpace(v.Tooltip) != "" {

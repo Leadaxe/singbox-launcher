@@ -11,6 +11,7 @@ package tabs
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -32,6 +33,23 @@ import (
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
+
+// numberEntryNotANumberText — подпись ошибки поля числа (ключ = английский
+// текст, перевод в bin/locale/ru.json).
+const numberEntryNotANumberText = "Must be a number."
+
+// numberEntryValidator — проверка поля с целым числом: пусто допустимо (движок
+// подставит 0 или умолчание), иначе целое. Общая для number у переменной
+// пресета и int у переменной шаблона на вкладке Settings (SPEC 143 Т12).
+func numberEntryValidator(s string) error {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	if _, err := strconv.Atoi(strings.TrimSpace(s)); err != nil {
+		return errors.New(locale.T(numberEntryNotANumberText))
+	}
+	return nil
+}
 
 // showEditPresetRefDialog — двух-табовый dialog (Form + JSON) для preset-ref правила.
 func showEditPresetRefDialog(
@@ -117,7 +135,7 @@ func showEditPresetRefDialog(
 	jsonRichText.Wrapping = fyne.TextWrapWord
 
 	refreshJSON := func() {
-		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(tplPreset, working, model.Target, wizardbusiness.PresetGlobalVars(model)) + "\n```")
+		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(tplPreset, working, model.Target, wizardbusiness.PresetGlobalVars(model), wizardbusiness.PresetGlobalDecls(model)) + "\n```")
 	}
 
 	refreshVisibility := func() {
@@ -221,15 +239,7 @@ func showEditPresetRefDialog(
 				working[v.Name] = s
 				refreshJSON()
 			}
-			entry.Validator = func(s string) error {
-				if s == "" {
-					return nil
-				}
-				if _, err := strconv.Atoi(s); err != nil {
-					return fmt.Errorf("must be a number")
-				}
-				return nil
-			}
+			entry.Validator = numberEntryValidator
 			wid = entry
 		default: // text
 			entry := widget.NewEntry()
@@ -408,7 +418,10 @@ func showEditPresetRefDialog(
 // ссылаться на них, не объявляя у себя. Без них превью не собирается для
 // пресетов вроде traffic-processing, чьи правила гейтятся по @tun — вкладка
 // JSON показывала «preset expansion failed» на исправном пресете.
-func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]string, target wizardtemplate.TargetSpec, globalVars map[string]string) string {
+//
+// globalDecls — объявления переменных шаблона (SPEC 143 Т2): пустая глобаль
+// даёт Dropped ключа, а не литерал "@name" в превью.
+func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]string, target wizardtemplate.TargetSpec, globalVars map[string]string, globalDecls []wizardtemplate.TemplateVar) string {
 	// Build effective varsMap (working + defaults).
 	vars := make(map[string]string, len(tpl.Vars))
 	for _, v := range tpl.Vars {
@@ -418,7 +431,7 @@ func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]strin
 			vars[v.Name] = v.Default
 		}
 	}
-	frags, warns, ok := build.ExpandPresetWithGlobals(tpl, vars, globalVars, target)
+	frags, warns, ok := build.ExpandPresetWithGlobals(tpl, vars, globalVars, globalDecls, target)
 	if !ok {
 		return "// preset expansion failed:\n// " + warningsAsText(warns)
 	}

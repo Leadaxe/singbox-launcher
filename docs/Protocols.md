@@ -68,7 +68,7 @@ If the subscription body (plain, or after Base64 decoding) is a **valid JSON arr
 | Decoder | After trimming, the string starts with **`[`**, **`json.Valid`** passes, and `json.Unmarshal` into an array succeeds — the body is not rejected as "not a subscription" (`DecodeSubscriptionContent`). |
 | Parser entry | **`IsXrayJSONArrayBody`**: the same — a `[` prefix, valid JSON, an array of objects. |
 | Array element | **`xrayElementHasProtocolOutbounds`**: **`outbounds`** contains at least one object with a **`protocol`** field (a string) — the marker of the **Xray dialect**. Elements carrying only the sing-box **`type`** without **`protocol`** are not considered Xray for this branch and are **skipped** with a `debuglog` line (follow-up **016** is expected). |
-| Node | The main outbound of the element is picked at document level and then translated by the registry engine (`parseXrayElementByEngine` → `core/config/linkmap`); which `mappers.xray` section leads it is decided by the section's own `detect`, not by a list of protocols in the code. With **`dialerProxy`** the hop is parsed as **`socks`** or **`vless`** (`xrayChainHopFromOutbound`; the socks hop via `xrayBuildJumpFromSocksOutbound`); any other hop `protocol` skips the element (`WarnLog`). |
+| Node | The main outbound of the element is picked at document level and then translated by the registry engine (`parseXrayElementByEngine` → `core/config/linkmap`); which `mappers.xray` section leads it is decided by the section's own `detect`, not by a list of protocols in the code. With **`dialerProxy`** the hop (`socks`, `vless`, …) is translated by the same engine section as a node (`xrayChainHopFromOutbound`); a hop no section recognises skips the element (`WarnLog`). |
 
 **`remarks` and sing-box tags**
 
@@ -82,7 +82,7 @@ With **`streamSettings.sockopt.dialerProxy`** (or **`dialer`**) pointing at an o
 
 **Example and code**
 
-A structure like the public Xray subscriptions (**`dns`**, **`inbounds`**, **`log`**, **`mux`**, **`tcpSettings`**, **`routing`**, **`freedom`/`blackhole`**), with made-up data: **`docs/examples/xray_subscription_array_sample.json`**. The same scenario in tests: **`core/config/subscription/testdata/xray_provider_anon.json`** (`go:embed` in **`xray_json_array_test.go`**). Implementation: **`xray_json_array.go`**, **`xray_outbound_convert.go`** and **`xray_protocols.go`** (the **document** level: which element becomes a node, which a chain hop, which a balancer group), **`xray_element_engine.go`** (the element itself, handed to the registry engine), **`decoder.go`** (`DecodeSubscriptionContent`), **`source_loader.go`** (`LoadNodesFromSource`, **`applyTagsToXrayNode`**), configurator: **`ui/configurator/tabs/source_tab.go`** (`refreshOneSourceFromUI`).
+A structure like the public Xray subscriptions (**`dns`**, **`inbounds`**, **`log`**, **`mux`**, **`tcpSettings`**, **`routing`**, **`freedom`/`blackhole`**), with made-up data: **`docs/examples/xray_subscription_array_sample.json`**. The same scenario in tests: **`core/config/subscription/testdata/xray_provider_anon.json`** (`go:embed` in **`xray_json_array_test.go`**). Implementation: **`xray_json_array.go`**, **`xray_outbound_convert.go`** and **`xray_protocols.go`** (the **document** level: which element becomes a node, which a chain hop, which a balancer group), **`xray_element_engine.go`** (the element itself, handed to the registry engine), **`decoder.go`** (`DecodeSubscriptionContent`), **`parse_body.go`** (`ParseSubscriptionBody`), configurator: **`ui/configurator/tabs/source_tab.go`** (`refreshOneSourceFromUI`).
 
 ## Degradation codes on a node
 
@@ -124,7 +124,7 @@ declared `severity: error`.
 |------------------|------------|
 | **This file** (`docs/ParserConfig.md`) | Direct-link formats in `connections`, share URIs, the ParserConfig structure, the update pipeline. |
 | **`contract/registry/protocols/<scheme>.json`** | **The normative field reference** shared with the LxBox mobile app (SPEC 103): per-scheme query parameters, aliases, allowlists, degradation rules, and which side implements what. When this file and the registry disagree, the registry wins. |
-| **`contract/docs/CANON.md`, `IDENTITY.md`** | How a parsed node is canonicalized (no defaults, no `tag`/`detour`, sorted keys) and how its identity hash is computed — both shared with LxBox. |
+| **`contract/docs/PARSING_PRINCIPLES.md`, `IDENTITY.md`** | How a parsed node is canonicalized (no defaults, no `tag`/`detour`, sorted keys) and how its identity hash is computed — both shared with LxBox. |
 | **`contract/corpus/uri/`** | Conformance fixtures both projects run (`core/config/contract_test.go` here, `test/contract/` there). A parser change that alters behaviour shows up as a corpus diff. |
 | **`SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN/SUBSCRIPTION_PARAMS_REPORT.md`** | Tables: VLESS/Trojan query → sing-box fields; examples from public subscriptions; query keys. |
 | **`SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY/SPEC.md`** | Compatibility extensions (029): `type=httpupgrade`, `peer`, `obfsParam`, VMess legacy / `httpupgrade` / `h2`, Hysteria2 TLS; cross-checked against the sing-box schema. |

@@ -16,14 +16,11 @@
   },
   "refs": {
     "go": [
-      "core/config/subscription/singbox_import.go:344-359",
-      "core/config/subscription/singbox_import.go:371-379",
-      "core/config/outbound_generator.go:1054-1056",
-      "core/config/outbound_generator.go:1086",
-      "core/config/endpoint_schemes.go:1",
-      "core/core_capabilities.go:39",
-      "ui/configurator/dialogs/add_server_tailscale.go:1",
-      "ui/configurator/tabs/dns_server_form.go:44"
+      "core/config/endpoint_schemes.go:applyTailscaleStateDirectory",
+      "ui/configurator/dialogs/add_server_tailscale.go:tailscaleDocument",
+      "ui/configurator/tabs/dns_server_form.go:dnsTypeTailscale",
+      "core/config/registry/registry.go:Registry.ExitCapable",
+      "core/config/configtypes/types.go:ParsedNode.IsExitCapable"
     ],
     "dart": [
       "lib/models/node_spec.dart (TailscaleSpec)",
@@ -88,32 +85,43 @@
         ],
         "desc_en": "Tailnet node used as the exit node.",
         "desc_ru": "Узел tailnet, используемый как выходной.",
-        "impl": "Конфликт с advertise_exit_node — «cannot advertise an exit node and use an exit node at the same time» (protocol/tailscale/endpoint.go:168)."
+        "impl": "Конфликт с advertise_exit_node — «cannot advertise an exit node and use an exit node at the same time» (protocol/tailscale/endpoint.go NewEndpoint)."
       },
       "exit_node_allow_lan_access": {
         "type": "bool",
         "default": false,
+        "requires": [
+          {
+            "path": "exit_node",
+            "code": "field_requires"
+          }
+        ],
         "desc_en": "Allow LAN access while an exit node is used.",
         "desc_ru": "Разрешать доступ в локальную сеть при использовании выходного узла.",
-        "impl": "option/tailscale.go ExitNodeAllowLANAccess."
+        "impl": "option/tailscale.go ExitNodeAllowLANAccess. Ядро применяет его только внутри ветки `if t.exitNode != \"\"` (protocol/tailscale/endpoint.go) — без exit_node поле бессмысленно: `requires` (контракт 1.1.58, SPEC 142 B7) снимает его с кодом field_requires; прежде ту же связь держала форма добавления узла."
       },
       "advertise_routes": {
         "type": "string_array",
         "format": "cidr",
+        "normalize": "cidr_masked",
+        "item_forbidden": {
+          "values": ["0.0.0.0/0", "::/0"],
+          "code": "tailscale_default_route_advertised"
+        },
         "on_invalid": {
           "action": "drop",
           "code": "type_invalid"
         },
         "desc_en": "Prefixes advertised to the tailnet.",
         "desc_ru": "Префиксы, объявляемые в tailnet.",
-        "impl": "0.0.0.0/0 = ошибка: для выхода наружу нужен advertise_exit_node."
+        "impl": "option/tailscale.go AdvertiseRoutes — []netip.Prefix: голый адрес без «/» ядро не разберёт вовсе (отказ ВСЕГО конфига), поэтому normalize cidr_masked достраивает префикс хоста и обнуляет биты адреса за префиксом (`192.168.10.5/24` → `192.168.10.0/24`: tailscale ждёт префикс сети, net/netutil/routes.go — «has non-address bits set»). Дефолтный маршрут ядро отвергает на старте («`advertise_routes` cannot be default, use `advertise_exit_node` instead», protocol/tailscale/endpoint.go NewEndpoint) — `item_forbidden` снимает такой элемент с кодом, остальные маршруты остаются (контракт 1.1.63, SPEC 142 C9; прежде все три правила держала только форма добавления узла)."
       },
       "advertise_exit_node": {
         "type": "bool",
         "default": false,
         "desc_en": "Offer this node as an exit node.",
         "desc_ru": "Предлагать этот узел как выходной.",
-        "impl": "Конфликт с exit_node (protocol/tailscale/endpoint.go:168)."
+        "impl": "Конфликт с exit_node (protocol/tailscale/endpoint.go NewEndpoint)."
       },
       "advertise_tags": {
         "type": "listable_string",
@@ -238,7 +246,9 @@
         "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
       }
     },
-    "build_tag": "with_tailscale"
+    "build_tag": "with_tailscale",
+    "on_core_unsupported": { "action": "drop_node", "code": "tailscale_core_unsupported" },
+    "exit_capable_when": { "any_set": ["exit_node"] }
   },
   "mappers": {
     "singbox": {

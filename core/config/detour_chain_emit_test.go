@@ -72,9 +72,10 @@ func TestChainOfNodePromotesLegacyJump(t *testing.T) {
 	if chain[0].Scheme != "socks" {
 		t.Fatalf("empty scheme must default to socks, got %q", chain[0].Scheme)
 	}
-	// SOCKS без явной версии ядро отвергает.
-	if chain[0].Outbound["version"] != "5" {
-		t.Fatalf("socks hop must default to version 5, got %v", chain[0].Outbound["version"])
+	// Версию хопа лаунчер не дописывает: пустой version ядро само трактует
+	// как SOCKS5 (protocol/socks/outbound.go), дефолт — дело реестра.
+	if v, has := chain[0].Outbound["version"]; has {
+		t.Fatalf("socks hop must not get a launcher-side version default, got %v", v)
 	}
 }
 
@@ -98,7 +99,6 @@ func TestChainHopsEmitValidJSON(t *testing.T) {
 	// конвейер по реестру, а он читает карту, не поля структуры. Trojan без
 	// пароля ядро отвергает фаталом на весь конфиг, и конвейер такой узел не
 	// выпускает (контракт 1.1.11).
-	hops[1].UUID = "secret"
 	hops[1].Outbound["password"] = "secret"
 
 	for _, hop := range hops {

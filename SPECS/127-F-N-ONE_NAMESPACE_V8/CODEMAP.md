@@ -653,7 +653,7 @@ DNS на `body`. Заменяются на обычные struct-теги (`tag`
 | `$defs/direction` | `:506` | `additionalProperties` намеренно открыт |
 | `contract/docs/BACKUP.md` | §9 слияние — норма, не меняется по смыслу | таблицы полей §2 |
 | `contract/docs/NODE_SECTIONS.md` | §1 → форма из ONE_NAMESPACE §2 | снять «черновик» |
-| `contract/docs/CANON.md` | термин `entry` | открытый вопрос SPEC §6 |
+| `contract/docs/PARSING_PRINCIPLES.md` | термин `entry` | открытый вопрос SPEC §6 |
 | `contract/schema/node.schema.json` | `entry` — тело узла разбора | переименование в `body` трогает весь корпус |
 | `contract/registry/backup_warnings.json` | коды предупреждений | + `backup_section_record_dropped` |
 | `contract/corpus/README.md` | правила раннера, `meta.extension`, `-update` | |
@@ -665,7 +665,7 @@ DNS на `body`. Заменяются на обычные struct-теги (`tag`
 | `contract/corpus/README.md` — `.pre.backup.json` | `:72-86` | раннер обязан отфильтровать из списка кейсов |
 | `contract/docs/BACKUP.md` — таблица `rules[]`+`dns` | `:192-207` | одна общая таблица; строки `rules.*` `:194-198`, `dns.*` `:199` |
 | `contract/docs/BACKUP.md` — §9 слияние | `:336`, норма `:349-474` | **по смыслу не меняется** |
-| `contract/docs/CANON.md` — `entry` | заголовок `:17`, правила `:19-33` | без `tag` `:19`, без `detour` `:21`, ключи сортируются `:22`, сравнение по значению `:64` |
+| `contract/docs/PARSING_PRINCIPLES.md` — `entry` | заголовок `:17`, правила `:19-33` | без `tag` `:19`, без `detour` `:21`, ключи сортируются `:22`, сравнение по значению `:64` |
 | `contract/schema/node.schema.json` — `entry` | `:43`, в `required` `:37` | `$defs.node` с `additionalProperties: false` `:38` |
 
 ---

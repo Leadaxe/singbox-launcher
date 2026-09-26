@@ -331,9 +331,6 @@ func TestParseNode_AmneziaVPN_AWG3(t *testing.T) {
 	if node.Scheme != "wireguard" || node.Server != "203.0.113.9" || node.Port != 30565 {
 		t.Fatalf("endpoint = %s %s:%d, want wireguard 203.0.113.9:30565", node.Scheme, node.Server, node.Port)
 	}
-	if !HasAWG3Fields(node.Outbound) {
-		t.Errorf("HasAWG3Fields = false for an AWG 3.1 import: %v", node.Outbound)
-	}
 	if got, _ := node.Outbound["header_protection_key"].(string); got != "Bw4VHCMqMTg/Rk1UW2JpcHd+hYyTmqGor7a9xMvS2eA=" {
 		t.Errorf("header_protection_key = %q, want the base64 from the .conf verbatim ('+'/'/' intact)", got)
 	}
@@ -395,5 +392,95 @@ func TestParseNode_AmneziaVPN_AWG3(t *testing.T) {
 	multi, _ := json.Marshal(all[0].Outbound)
 	if string(single) != string(multi) {
 		t.Errorf("ParseAmneziaVPNLinkAll gave a different endpoint:\nsingle=%s\nmulti =%s", single, multi)
+	}
+
+	// Контракт 1.1.72: origin узла — САМОДОСТАТОЧНЫЙ текст `.conf`. Значения
+	// контейнера перенесены в него при распаковке (MTU сразу за [Interface],
+	// адреса DNS вместо плейсхолдеров), и пересборка из одного этого текста,
+	// без контейнера, даёт то же тело — так работает Regen по origin.raw.
+	_, origins, _, err := parseAmneziaVPNLinkWithOrigins(link, nil)
+	if err != nil || len(origins) != 1 {
+		t.Fatalf("parseAmneziaVPNLinkWithOrigins: err=%v origins=%d, want 1", err, len(origins))
+	}
+	if !strings.HasPrefix(origins[0], "[Interface]\nMTU = 1376\nAddress = 10.8.1.7/32\nDNS = 172.29.172.254, 1.0.0.1\n") {
+		t.Errorf("origin must carry container MTU and resolved DNS:\n%s", origins[0])
+	}
+	// Имя профиля — не часть тела: тег узла хранится отдельно и пересборкой
+	// не меняется, поэтому оно подаётся тем же `hint`, что и при импорте.
+	regen, regenErr, known := ParseWGConfByEngineHint(origins[0], "AWG3 Node", nil)
+	if !known || regenErr != nil || regen == nil {
+		t.Fatalf("origin must re-parse on its own: known=%v err=%v", known, regenErr)
+	}
+	regenBody, _ := json.Marshal(regen.Outbound)
+	if string(regenBody) != string(single) {
+		t.Errorf("regen from origin differs from import:\nimport=%s\nregen =%s", single, regenBody)
+	}
+}
+
+// Контракт 1.1.80: строка vpn:// ВНУТРИ списка ссылок — тот же контейнер,
+// что тело из одной этой ссылки: все контейнеры профиля, origin каждого узла
+// — текст .conf (wg_ini), теги и origin совпадают с разбором тела-ссылки.
+func TestParseSubscriptionBody_AmneziaVPNLineInList(t *testing.T) {
+	link := buildVPNLink(t, map[string]interface{}{
+		"description": "Home",
+		"containers": []interface{}{
+			amneziaContainer(t, "amnezia-wireguard", "wireguard", amneziaPlainWGIni),
+			amneziaContainer(t, "amnezia-awg", "awg", amneziaAWGIni),
+		},
+		"defaultContainer": "amnezia-awg",
+	})
+	whole, err := ParseSubscriptionBody([]byte(link), nil, 0)
+	if err != nil || len(whole.Entries) != 2 {
+		t.Fatalf("vpn:// body: err=%v entries=%d, want 2", err, len(whole.Entries))
+	}
+	list := "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=tcp&security=tls&sni=example-1.com#node-a\n" + link + "\n"
+	got, err := ParseSubscriptionBody([]byte(list), nil, 0)
+	if err != nil {
+		t.Fatalf("list body: %v", err)
+	}
+	if len(got.Entries) != 3 || len(got.Rejected) != 0 {
+		t.Fatalf("list body: entries=%d rejected=%d, want 3/0", len(got.Entries), len(got.Rejected))
+	}
+	if got.Entries[0].OriginKind != OriginKindURI {
+		t.Errorf("plain link origin kind = %q, want uri", got.Entries[0].OriginKind)
+	}
+
+	// Контракт 1.1.80: vpn:// ПЕРВОЙ строкой списка — всё равно список
+	// (detect amnezia_link не матчит текст, где следующая строка начинается
+	// со схемы); завершающий перевод строки и перенос base64 ссылки по
+	// строкам остаются телом-ссылкой.
+	first, err := ParseSubscriptionBody([]byte(link+"\n"+strings.SplitN(list, "\n", 2)[0]+"\n"), nil, 0)
+	if err != nil || len(first.Entries) != 3 || first.Entries[2].OriginKind != OriginKindURI {
+		t.Fatalf("vpn:// first line of a list: err=%v entries=%d, want 3 with the plain link last", err, len(first.Entries))
+	}
+	if ClassifySubscriptionBody(strings.TrimSpace(link+"\n")) != BodyKindVPNLink {
+		t.Errorf("trailing newline: vpn:// body must stay a vpn-link body")
+	}
+	var wrapped strings.Builder
+	for i := 0; i < len(link); i += 40 {
+		end := i + 40
+		if end > len(link) {
+			end = len(link)
+		}
+		wrapped.WriteString(link[i:end])
+		wrapped.WriteString("\n")
+	}
+	wr, err := ParseSubscriptionBody([]byte(wrapped.String()), nil, 0)
+	if err != nil || len(wr.Entries) != 2 {
+		t.Errorf("vpn:// wrapped across lines: err=%v entries=%d, want 2 (one profile)", err, len(wr.Entries))
+	}
+	for i, w := range whole.Entries {
+		e := got.Entries[i+1]
+		if e.OriginKind != OriginKindWGIni || !strings.HasPrefix(e.OriginRaw, "[Interface]") {
+			t.Errorf("entry %d: origin %q / %.20q, want wg_ini .conf text", i+1, e.OriginKind, e.OriginRaw)
+		}
+		if e.OriginRaw != w.OriginRaw || e.RawTag != w.RawTag {
+			t.Errorf("entry %d differs from vpn:// body: tag %q vs %q", i+1, e.RawTag, w.RawTag)
+		}
+		for _, wr := range e.Node.Warnings {
+			if wr.Code == WarnAmneziaContainerChoice {
+				t.Errorf("entry %d: %s must not be set when every container is imported", i+1, wr.Code)
+			}
+		}
 	}
 }

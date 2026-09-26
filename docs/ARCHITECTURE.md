@@ -344,8 +344,55 @@ Two properties fall out of this, and both are load-bearing:
   core wrote it, so the version/platform gate (`nodeflow.GateForCore`, driven by
   `min_core`/`platform` in the registry) runs at *build* time and omits keys the
   target core does not know. The node stays; only the runtime is narrowed, so no
-  ⚠ is raised. Node-level gates (naive/chain/tailscale/AWG3) are a different
-  class: they drop the whole node and stay in the emitter.
+  ⚠ is raised. The node-level gate is a different class: it drops the whole
+  node before emission. It is table-driven too (`nodeflow.NodeCoreRefusal`):
+  a protocol body, a field or a range form (`range_form`) that declares
+  `on_core_unsupported: drop_node` names its requirement (`build_tag`/
+  `min_core`) and code; the app layer only supplies the core's build tags
+  (`config.CoreBuildTagsProbe`, from `sing-box version`) and version. Dropped
+  nodes travel as `OutboundGenerationResult.CoreSkips` into the build report
+  (`core_unsupported`). Chains keep their own gate (`ChainSupportProbe`).
+
+SPEC 142 removed the last hand-written per-scheme rules about node fields from
+Go; every such rule is now registry data, read by the same three-stage engine
+above, and `TestRegistryCodeRefsResolve` (`core/config/registry_refs_test.go`)
+keeps the registry's own pointers to code (`refs.go`, `impl`/`go`/`note`)
+truthful — it fails the Contract CI job on any `.go` change if a referenced
+file or identifier no longer exists. Two attributes and two post-walk
+primitives came out of that work:
+
+- **Field role** (`role: credential | private_key`, top-level body fields
+  only) — `registry.FieldWithRole` finds a node's account secret
+  (UUID/password/username slot) and its private-key field by role instead of
+  a per-scheme table, so link and JSON inputs agree on what goes in the
+  userinfo slot and which share links need a "contains a private key"
+  confirmation.
+- **Field allowed on a body** — `registry.Registry.FieldAllowedOn` answers
+  "would the sanitizer keep this field in this finished body" (scheme gate plus
+  every `conflicts` relation with its `when`/`unless_set`). Code that writes
+  fields after the sanitizer — the build's global anti-DPI TLS transforms
+  (`core/build/tls_transforms.go`) — asks it per node, so MASQUE on
+  `vhttp: h3` gets no TLS fragmentation (contract 1.1.64).
+- **Fields yielding to a build-written field** — `registry.Registry.YieldsTo`
+  is the other side of the same question: which fields of a finished body the
+  sanitizer would drop by a `conflicts {with}` relation if the managed
+  neighbour `with` had been present during the walk. `detour` is written by
+  the build after the sanitizer (`ApplyCanonicalNodeLinks` →
+  `resolveCanonicalDetour`), so right after it is set
+  `yieldToBuildDetour` drops the yielding fields with the relation's code into
+  the build report — WireGuard `listen_port` gives way to `detour`
+  (`detour_with_listen_port`); the detour itself stays (fail-closed). No
+  scheme names in code (contract 1.1.65).
+- **`requires[].set`** — a missing required neighbour is *materialised* (with
+  a warning code) instead of the field being dropped, and **`coerce_when`** —
+  a field's already-valid value is replaced under a condition (also coded).
+  Both are judged on the finished body after the sanitizer's normal walk
+  (`deferred`, mode `final`), which is how REALITY↔uTLS became one registry
+  rule instead of a build-time patch (`nodeflow.NodeCoreRefusal`'s sibling for
+  values). Bodies the build does not run through the sanitizer — frozen state
+  bodies, manual `config_json` — still get these two as repairs via
+  `nodeflow.Repairs`, with the code going to the log instead of a stored
+  warning.
 
 Warnings are derived data — recomputable from `origin.raw` — and are stored only
 so the UI can draw ⚠ without re-parsing. `nil` means "never counted" and an empty
@@ -355,11 +402,12 @@ latter for nodes saved before the pipeline existed.
 ### 6.1 Ingest → state → build → config.json → run
 
 1. **INGEST (subscription → nodes).** UI/auto-update triggers
-   `config_service.UpdateConfigFromSubscriptions` → `subscription.LoadNodesFromSource`
-   (thin wrapper over `LoadNodesFromSourceEx`, see below) →
-   `fetcher.FetchSubscriptionWithMeta` (HTTP GET with HWID/UA headers, max 10 MB,
+   `config_service.UpdateConfigFromSubscriptions` → `refreshOneSubscriptionSource` →
+   `fetcher.FetchSubscriptionWithMetaFor` (HTTP GET with HWID/UA headers, max 10 MB,
    announce-header decode) → `decoder.DecodeSubscriptionContent` (base64 strip) →
-   `subscription.ClassifySubscriptionBody` picks one of three branches:
+   `config.MaterializeSubscriptionBody` → `subscription.ParseSubscriptionBody`
+   (the only body parser); `subscription.ClassifySubscriptionBody` picks one of
+   three branches:
    - **URI list** — `subscription.ParseNode` per line, which hands the raw text to
      the registry engine (`core/config/linkmap`): the section is chosen by the
      registry's `detect`, its table builds the sing-box body. Two branches stand
@@ -373,7 +421,8 @@ latter for nodes saved before the pipeline existed.
      the source's local outbounds, and `route`/`dns`/`inbounds`/`experimental` are
      ignored by design (reported back for the UI).
 
-   Then tag prefix/postfix/mask + skip-filter + dedup → `[]ParsedNode`.
+   Then skip-filter + dedup + raw-tag uniquification → `Subscription.nodes[]`;
+   tag prefix/postfix is applied later, at emission (`EmitCanonicalSource`).
 
    An imported `selector`/`urltest` becomes a **node** with scheme `group`
    (`configtypes.SchemeGroup`), sitting in the same list as regular nodes. It has
@@ -383,8 +432,9 @@ latter for nodes saved before the pipeline existed.
    sing-box the node still emits as a real selector/urltest inside `outbounds`
    (`generateGroupNodeJSON`).
 
-   `LoadNodesFromSourceEx` returns a `SourceLoadResult` — nodes (groups included)
-   plus the config sections the parser deliberately ignores.
+   `ParseSubscriptionBody` returns a `ParsedBody` — entries (groups included, with
+   members resolved to raw tags) plus the config sections the parser deliberately
+   ignores.
 
    Within a single source, nodes are deduplicated by identity (SPEC 094 D3)
    **before** tags are assigned, otherwise `MakeTagUnique` would hand a duplicate
@@ -486,7 +536,7 @@ build.BuildConfig  (pure)
             │
             └─► MergeRouteSection → MergePresetsIntoRoute → ResolveRoute (pure)
                    walk state.Rules kind switch (preset / inline / srs),
-                   ExpandPreset per preset-ref (substitute @vars, eval if/if_or,
+                   ExpandPreset per preset-ref (canonical @var walker, eval if/if_or,
                    prefix tags, clean dangling rule_set refs)
             │
             ▼
@@ -505,6 +555,36 @@ Key properties:
 - **`ExpandPreset` is single-sourced.** Both `ResolveRoute` and `ResolveDNS` call it
   once and consume the result; `evalIf` / if-filtering live in one place
   (`preset_expand.go`, unified in SPEC 070 cleanup Stage 3b).
+- **One template walker (SPEC 143).** Every `@var` / `#if` substitution goes
+  through the canonical walker `template.SubstituteVarsInJSONCanonWarnings`
+  (`core/template/substitute_canon.go`, rules of `contract/docs/TEMPLATE_LANG.md`):
+  the main config (`ApplyTemplateWithVarsForWarnings` /
+  `GetEffectiveConfigForWarnings`), `on_change.set` (`EvalIfScalar`), preset
+  bodies (`substitutePresetBody`, which declares all template vars plus the
+  preset's own, so an empty global drops the key instead of leaking `"@name"`)
+  and template DNS servers (`substituteTemplateDNSServer`). The old lenient and
+  strict walkers and the hard-coded list of numeric var names are gone: a value
+  becomes a number only by its declared `type: int` (`template.CastIntValue`,
+  clamp [0, 65535], a non-number stays a string with a warning; the same cast
+  serves `@var` in `parser_config` via `core/config/varsubst.go`). After the
+  Dropped cascade validity gates run in one place, `preset_expand.go` (preset
+  fragments and template DNS servers alike): a route rule without `outbound`/`action`, a DNS rule without
+  `server`/`action`, a `rule_set` without a source, a DNS server without an
+  address or a rule without conditions is dropped with
+  `template_fragment_dropped`.
+- **Template warnings reach the build report.** The walker returns
+  `[]TemplateWarning{Code, Params}` (deduplicated by code + params):
+  `template_var_undeclared`, `template_unknown_directive`,
+  `template_int_clamped`, `template_int_invalid`, plus
+  `template_fragment_dropped` from the gates. The build collects those of the
+  main config, presets and DNS servers into `build.Result.TemplateWarnings`;
+  `core.FeedBuildReportFromTemplate` (called in `core/rebuild.go` and
+  `ui/configurator/business/create_config.go`, next to the sanitizer feed) turns
+  each into a `template_degraded` entry, which goes **first** in the Summary: a
+  broken setting explains everything below it. Text comes from
+  `contract/registry/warnings.json` by code; nothing blocks Save. Warnings of
+  `on_change.set` (UI edit, no build running) and of the `parser_config`
+  substitution go to the log only.
 - **Outbound JSON generation** was split out of the 1086-LOC monolith into
   `outbound_validity.go` (the three-pass algorithm), `outbound_jsonbuilder.go`
   (the `JSONBuilder` that appends fields in insertion order, replacing the fragile

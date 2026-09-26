@@ -244,7 +244,6 @@ func relayEntryWithHops(t *testing.T, hops ...*configtypes.ParsedNode) *subscrip
 			Scheme:   "trojan",
 			Server:   "owner.test",
 			Port:     443,
-			UUID:     "pw",
 			Outbound: map[string]interface{}{"type": "trojan"},
 			Chain:    chain,
 		},

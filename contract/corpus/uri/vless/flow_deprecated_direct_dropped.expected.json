@@ -14,7 +14,7 @@
           "server_name": "w.example.com",
           "utls": {
             "enabled": true,
-            "fingerprint": "random"
+            "fingerprint": "chrome"
           }
         },
         "type": "vless",
@@ -28,6 +28,11 @@
           "code": "flow_deprecated",
           "path": "flow",
           "value": "xtls-rprx-direct"
+        },
+        {
+          "code": "reality_fp_random_pinned",
+          "path": "tls.utls.fingerprint",
+          "value": "random"
         }
       ]
     }

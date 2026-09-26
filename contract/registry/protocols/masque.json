@@ -9,14 +9,14 @@
     "singbox"
   ],
   "extension": null,
-  "note": "MASQUE (CONNECT-IP / Cloudflare WARP), протокол ядра sing-box-lx (SPEC 021/062, ядро >= lx.26 для vhttp + вложенного tls). kind = OUTBOUND в обоих проектах: ядро регистрирует type:masque через outbound.Register, Go эмитит в GenerateNodeJSON, Dart — Outbound (не Endpoint); задание программы ошибочно относило masque к endpoint — реестр фиксирует фактическое состояние. Ключи — ECDSA P-256 base64(DER): private_key = SEC1, public_key = PKIX (pinning). Legacy-имена network/sni БОЛЬШЕ НЕ ПРИНИМАЮТСЯ (0.8.0, D-078): vhttp и sni — единственные имена; ?network=/?server_name= игнорируются как любой неизвестный query-параметр, плоские network/sni/skip_cert_verify sing-box-импорта стрипаются без переноса значений (защита от fail-fast ядра на смешении с tls.server_name). Наружу legacy не эмитится никогда. vhttp ∈ {h3, h2, auto} (0.11.1): auto = h3 с откатом на h2 при зависшем QUIC-рукопожатии (ядро >= lx.27, дефолт ядра с lx.28); parse-дефолт при отсутствии vhttp остаётся явным h3. Хранимые URI старого диалога WARP с `?network=` лаунчер разово переписывает в `?vhttp=` при загрузке состояния (core/state/masque_uri_migration.go) — это правка хранения, не приём алиаса.",
+  "note": "MASQUE (CONNECT-IP / Cloudflare WARP), протокол ядра sing-box-lx (SPEC 021/062, ядро >= lx.26 для vhttp + вложенного tls). kind = OUTBOUND в обоих проектах: ядро регистрирует type:masque через outbound.Register, Go эмитит в GenerateNodeJSON, Dart — Outbound (не Endpoint); задание программы ошибочно относило masque к endpoint — реестр фиксирует фактическое состояние. Ключи — ECDSA P-256 base64(DER): private_key = SEC1, public_key = PKIX (pinning). Legacy-имена network/sni БОЛЬШЕ НЕ ПРИНИМАЮТСЯ (0.8.0, D-078): vhttp и sni — единственные имена; ?network=/?server_name= игнорируются как любой неизвестный query-параметр, плоские network/sni/skip_cert_verify снимаются без переноса значений (защита от fail-fast ядра на смешении с tls.server_name) — с контракта 1.1.57 на всех входах тела общим unknown_key (body.skipped). Наружу legacy не эмитится никогда. vhttp ∈ {h3, h2, auto} (0.11.1): auto = h3 с откатом на h2 при зависшем QUIC-рукопожатии (ядро >= lx.27, дефолт ядра с lx.28); parse-дефолт при отсутствии vhttp остаётся явным h3. Хранимые URI старого диалога WARP с `?network=` лаунчер разово переписывает в `?vhttp=` при загрузке состояния (core/state/masque_uri_migration.go) — это правка хранения, не приём алиаса.",
   "uri": {
     "userinfo": {
       "maps_to": "private_key",
       "meaning": "private_key — base64(SEC1 DER) of the client ECDSA private key. SECRET",
       "desc_en": "Client private key.",
       "desc_ru": "Приватный ключ клиента.",
-      "impl": "Сырой '/' percent-энкодится до парса (общий с WG хелпер). Fallback из query ?private_key=/?privatekey= принимают оба проекта."
+      "impl": "Сырой '/': Go-движок режет authority по последнему '@' сам и слэш в ключе не теряет (core/config/linkmap/parse.go:lexURI; прежний общий с WG хелпер percent-кодирования снят), Dart percent-энкодит до разбора (общий с WG хелпер). Fallback из query ?private_key=/?privatekey= принимают оба проекта."
     },
     "query": {
       "publickey": {
@@ -28,7 +28,7 @@
         "maps_to": "public_key",
         "desc_en": "Server public key.",
         "desc_ru": "Публичный ключ сервера.",
-        "impl": "Обязателен. base64(PKIX DER) серверного ключа (pinning). Оба принимают оба написания; '+' в Go сохраняется через queryParamPreservePlus."
+        "impl": "Обязателен. base64(PKIX DER) серверного ключа (pinning). Оба принимают оба написания; '+' в Go сохраняется: движок разбирает query path-семантикой (core/config/linkmap/space.go:ParseQueryOrdered), а замену '+' на пробел запись с format base64* не получает (decode_extra.plus_literal)."
       },
       "private_key": {
         "type": "base64",
@@ -74,12 +74,12 @@
         "maps_to": "vhttp",
         "desc_en": "HTTP version carrying the tunnel.",
         "desc_ru": "Версия HTTP, несущая туннель.",
-        "impl": "Версия HTTP. Legacy-алиас network= снесён (0.8.0) — игнорируется, узел получает дефолт h3. Значение не h3/h2 → warn + force h3 — выровнено в обоих (фаза 1, фикстура masque/vhttp_invalid_forced_h3)."
+        "impl": "Версия HTTP. Legacy-алиас network= снесён (0.8.0) — игнорируется, узел получает дефолт h3. Значение вне enum (h3/h2/auto) → код masque_vhttp_invalid и подмена на h3 (body.fields.vhttp.on_invalid coerce) — выровнено в обоих (фаза 1, фикстура masque/vhttp_invalid_forced_h3)."
       },
       "sni": {
         "type": "string",
         "default": null,
-        "maps_to": "sni",
+        "maps_to": "tls.server_name",
         "desc_en": "Server name sent in SNI.",
         "desc_ru": "Имя сервера, отправляемое в SNI.",
         "impl": "→ tls.server_name (вложенный tls-блок, SPEC 062). Legacy-алиас server_name= снесён (0.8.0) — игнорируется. Пусто = дефолт профиля ядра (www.cloudflare.com с lx.25-rc.4)."
@@ -101,7 +101,7 @@
           "allowinsecure"
         ],
         "ext": "desktop",
-        "maps_to": "skip_cert_verify",
+        "maps_to": "tls.insecure",
         "desc_en": "Skip server certificate verification.",
         "desc_ru": "Не проверять сертификат сервера.",
         "impl": "→ tls.insecure ('1'/'true'). Только Go; Dart masque-парсер insecure не принимает (MasqueSpec поля не имеет) — разрыв."
@@ -158,9 +158,10 @@
       "from": "flat `network` / `sni` / `skip_cert_verify` keys in an imported sing-box masque body",
       "to": "the keys are removed, without carrying their values over",
       "kind": "drop",
+      "code": "unknown_key",
       "desc_en": "These are another client's dialect; a flat `sni` sitting next to `tls.server_name` makes the core fail fast on the whole config.",
       "desc_ru": "Это чужой диалект; плоский `sni` рядом с `tls.server_name` роняет ядро fail-fast'ом на весь конфиг.",
-      "impl": "core/config/subscription/singbox_sanitize.go:sanitizeSingboxMasqueLegacy (контракт 0.8.0). Удаление ключей обязательно."
+      "impl": "Исполняет тело (контракт 1.1.57, SPEC 142 B1): трёх ключей нет в body.fields — они перечислены в body.skipped, и санитайзер снимает их общим unknown_key на ВСЕХ входах (импорт sing-box, ручной JSON, бэкап/state). Значения не переносятся (0.8.0, D-078). Удаление ключей обязательно."
     },
     {
       "id": "vhttp_empty_defaults_to_h3",
@@ -169,20 +170,16 @@
       "kind": "default",
       "desc_en": "A convention shared by both apps, not a core default (the core defaults to `auto`). The value is part of the identity hash of live MASQUE nodes.",
       "desc_ru": "Конвенция обеих сторон, а не дефолт ядра (у ядра `auto`). Значение входит в identity-хеш живых MASQUE-узлов.",
-      "impl": "core/config/subscription/node_parser_masque.go:104-106. Снятие изменило бы identity всех MASQUE-узлов (W2D_CHANGES §6)."
+      "impl": "Данные реестра: mappers.uri.params.vhttp (default_when absent → h3, materialize_default); исполняет движок core/config/linkmap/exec.go:Exec. Снятие изменило бы identity всех MASQUE-узлов (W2D_CHANGES §6)."
     }
   ],
   "refs": {
     "go": [
-      "core/config/subscription/node_parser_core.go:91-93",
-      "core/config/subscription/node_parser_masque.go:28",
-      "core/config/subscription/shareuri_masque.go:15",
-      "core/config/subscription/singbox_sanitize.go:70-116",
-      "core/config/subscription/singbox_import.go:317-318",
-      "core/config/outbound_generator.go:281-287"
+      "core/warp/masque.go:MasqueAccount.ToMasqueURI",
+      "core/state/masque_uri_migration.go:rewriteLegacyMasqueURIs"
     ],
     "dart": [
-      "app/lib/services/parser/uri_parsers/masque_parser.dart:21",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "app/lib/models/node_spec.dart:788",
       "app/lib/models/node_spec_emit.dart:649",
       "app/lib/models/node_spec_emit.dart:685",
@@ -196,7 +193,6 @@
       "server_port",
       "profile",
       "vhttp",
-      "network",
       "private_key",
       "public_key",
       "ip",
@@ -207,8 +203,6 @@
       "keep_alive_period",
       "network_list",
       "tls",
-      "sni",
-      "skip_cert_verify",
       "fragment",
       "fragment_fallback_delay",
       "record_fragment",
@@ -263,17 +257,11 @@
         "default": "auto",
         "desc_en": "HTTP version carrying the MASQUE tunnel.",
         "desc_ru": "Версия HTTP, несущая туннель MASQUE.",
-        "impl": "SPEC 062/074. Для profile=standard h2 не реализован — «vhttp h2 is not implemented for the standard profile» (protocol/masque/outbound.go:158). Код masque_vhttp_invalid."
-      },
-      "network": {
-        "type": "string",
-        "deprecated": true,
-        "desc_en": "Deprecated former name of vhttp.",
-        "desc_ru": "Устаревшее прежнее имя поля vhttp.",
-        "impl": "ВНИМАНИЕ: здесь это НЕ tcp/udp, а старое имя vhttp (h3/h2). Удаляется в v1.14.0-lx.30. Список сетей у masque называется network_list."
+        "impl": "SPEC 062/074. Для profile=standard h2 не реализован — «vhttp h2 is not implemented for the standard profile» (protocol/masque/outbound.go resolveVHTTP). Код masque_vhttp_invalid."
       },
       "private_key": {
         "type": "string",
+        "role": "private_key",
         "format": "base64",
         "on_invalid": {
           "action": "drop_node",
@@ -288,7 +276,7 @@
         ],
         "desc_en": "Client private key, base64 DER EC.",
         "desc_ru": "Закрытый ключ клиента, base64 DER EC.",
-        "impl": "Обязателен при profile=cloudflare вместе с public_key — «private_key and public_key are required for the cloudflare profile» (protocol/masque/outbound.go:198). Секрет."
+        "impl": "Обязателен при profile=cloudflare вместе с public_key — «private_key and public_key are required for the cloudflare profile» (protocol/masque/outbound.go NewOutbound). Секрет."
       },
       "public_key": {
         "type": "string",
@@ -305,7 +293,7 @@
         ],
         "desc_en": "Client public key, base64 DER PKIX.",
         "desc_ru": "Публичный ключ клиента, base64 DER PKIX.",
-        "impl": "Обязателен при profile=cloudflare вместе с private_key (protocol/masque/outbound.go:198)."
+        "impl": "Обязателен при profile=cloudflare вместе с private_key (protocol/masque/outbound.go NewOutbound)."
       },
       "ip": {
         "type": "string",
@@ -316,7 +304,7 @@
         },
         "desc_en": "IPv4 address assigned inside the tunnel.",
         "desc_ru": "Адрес IPv4, назначенный внутри туннеля.",
-        "impl": "Без маски трактуется как /32. Минимум один из ip/ipv6 обязателен, иначе ошибка parsePrefixes (protocol/masque/outbound.go:189)."
+        "impl": "Без маски трактуется как /32. Минимум один из ip/ipv6 обязателен, иначе ошибка parsePrefixes (protocol/masque/outbound.go)."
       },
       "ipv6": {
         "type": "string",
@@ -374,42 +362,46 @@
         "ref": "tls",
         "desc_en": "TLS settings.",
         "desc_ru": "Настройки TLS.",
-        "impl": "Для profile=cloudflare server_name по умолчанию www.cloudflare.com. На QUIC-типе utls и reality вычищаются целиком."
-      },
-      "sni": {
-        "type": "string",
-        "deprecated": true,
-        "desc_en": "Deprecated alias of tls.server_name.",
-        "desc_ru": "Устаревший синоним tls.server_name.",
-        "impl": "Переносится в tls.server_name."
-      },
-      "skip_cert_verify": {
-        "type": "bool",
-        "deprecated": true,
-        "desc_en": "Deprecated alias of tls.insecure.",
-        "desc_ru": "Устаревший синоним tls.insecure.",
-        "impl": "Переносится в tls.insecure только явное true."
+        "impl": "Для profile=cloudflare server_name по умолчанию www.cloudflare.com. utls и reality снимаются целиком (tls.json forbidden_for). Контракт 1.1.64 (решение владельца): alpn, ech, reality, kernel_tx, kernel_rx снимаются на любом vhttp кодом masque_tls_field_ignored; fragment и record_fragment — только при vhttp = h3 (masque_tls_fragment_h3); server_name, disable_sni, insecure остаются. Факты ядра — sing-box-lx protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions."
       },
       "fragment": {
         "type": "bool",
         "deprecated": true,
+        "conflicts": [
+          {
+            "with": "vhttp",
+            "when": {
+              "vhttp": "h3"
+            },
+            "code": "masque_tls_fragment_h3"
+          }
+        ],
         "desc_en": "Deprecated alias of tls.fragment.",
         "desc_ru": "Устаревший синоним tls.fragment.",
-        "impl": "Переносится в tls.fragment."
+        "impl": "Ядро переносит в tls.fragment (sing-box-lx protocol/masque/legacy_options_lx.go resolveLegacyOptions); лаунчер значение не трогает. Как у tls.fragment (контракт 1.1.64): при vhttp = h3 снимается кодом masque_tls_fragment_h3 — ядро переносит синоним в tls.fragment и на h3 его игнорирует."
       },
       "fragment_fallback_delay": {
         "type": "duration",
         "deprecated": true,
         "desc_en": "Deprecated alias of tls.fragment_fallback_delay.",
         "desc_ru": "Устаревший синоним tls.fragment_fallback_delay.",
-        "impl": "Переносится в tls.fragment_fallback_delay."
+        "impl": "Ядро переносит в tls.fragment_fallback_delay (sing-box-lx protocol/masque/legacy_options_lx.go resolveLegacyOptions); лаунчер значение не трогает."
       },
       "record_fragment": {
         "type": "bool",
         "deprecated": true,
+        "conflicts": [
+          {
+            "with": "vhttp",
+            "when": {
+              "vhttp": "h3"
+            },
+            "code": "masque_tls_fragment_h3"
+          }
+        ],
         "desc_en": "Deprecated alias of tls.record_fragment.",
         "desc_ru": "Устаревший синоним tls.record_fragment.",
-        "impl": "Переносится в tls.record_fragment."
+        "impl": "Ядро переносит в tls.record_fragment (sing-box-lx protocol/masque/legacy_options_lx.go resolveLegacyOptions); лаунчер значение не трогает. Как у tls.record_fragment (контракт 1.1.64): при vhttp = h3 снимается кодом masque_tls_fragment_h3 — ядро переносит синоним в tls.record_fragment и на h3 его игнорирует."
       },
       "__dialer": {
         "type": "ref",
@@ -419,6 +411,11 @@
         "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
         "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
       }
+    },
+    "skipped": {
+      "network": "Legacy former name of vhttp (h3/h2, not tcp/udp; the tcp/udp list is network_list). Contract 0.8.0 (D-078): the value is not read and not carried over; the key is removed with unknown_key on every input — next to vhttp it would make the core fail fast on the whole config.",
+      "sni": "Legacy alias of tls.server_name. Contract 0.8.0 (D-078): the value is not carried over; the key is removed with unknown_key on every input — a flat sni next to tls.server_name gives the core two names and it fails fast on the whole config.",
+      "skip_cert_verify": "Legacy alias of tls.insecure. Contract 0.8.0 (D-078): the value is not carried over; the key is removed with unknown_key on every input."
     },
     "lx_only": true,
     "min_core": "1.14.0-lx.1",
@@ -449,7 +446,7 @@
           "private_key"
         ],
         "single_into": "private_key",
-        "impl": "Приватный ключ клиента, base64(SEC1 DER). Сырой '/' внутри ключа percent-энкодится ДО разбора authority (§106) — иначе платформа примет его за начало пути и ключ пропадёт. Одиночный userinfo — приватный ключ клиента: другого компонента у этой схемы нет. Объявлено явно, хотя совпадает с into[0]."
+        "impl": "Приватный ключ клиента, base64(SEC1 DER). Сырой '/' внутри ключа нельзя принять за начало пути (§106), иначе ключ пропадёт: Go-движок режет authority по последнему '@' сам (core/config/linkmap/parse.go:lexURI), платформенному URL-парсеру ключ надо percent-энкодить ДО разбора. Одиночный userinfo — приватный ключ клиента: другого компонента у этой схемы нет. Объявлено явно, хотя совпадает с into[0]."
       },
       "label": {
         "source": [
@@ -544,7 +541,7 @@
             "value": "cloudflare"
           },
           "materialize_default": true,
-          "impl": "Дефолт пишется в тело ЯВНО: default реестра по CANON §2.4 в тело не материализуется, а корпус присутствия ждёт и на нём стоит identity живых узлов."
+          "impl": "Дефолт пишется в тело ЯВНО: default реестра по PARSING_PRINCIPLES §2.4 в тело не материализуется, а корпус присутствия ждёт и на нём стоит identity живых узлов."
         },
         "vhttp": {
           "source": "query.vhttp",

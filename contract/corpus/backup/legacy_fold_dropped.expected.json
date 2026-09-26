@@ -1,0 +1,17 @@
+{
+  "rules": [
+    { "name": "Work via Proton", "enabled": false, "outbound": "Proton" },
+    { "name": "Media via derived", "enabled": false, "outbound": "2:select" }
+  ],
+  "warnings": [
+    "backup_final_dropped",
+    "backup_unknown_field",
+    "backup_unknown_outbound"
+  ],
+  "route_final_applied": false,
+  "replaces": {
+    "Proton": null,
+    "https://example-1.com/sub-legacy-tag": null,
+    "https://example-1.com/sub-legacy-derived": null
+  }
+}

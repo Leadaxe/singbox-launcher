@@ -7,8 +7,6 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
-	"singbox-launcher/core/services"
-	"singbox-launcher/internal/paths"
 )
 
 // TestIntegration_RealWorldSubscription tests parsing real-world subscription data
@@ -70,33 +68,20 @@ func TestIntegration_RealWorldSubscription(t *testing.T) {
 		t.Logf("Successfully parsed %d out of %d real-world links", len(parsedNodes), len(realWorldLinks))
 	})
 
-	t.Run("Process through ConfigService", func(t *testing.T) {
-		fileService, _ := services.NewFileService(paths.Layout{Data: paths.DataDir(t.TempDir()), Logs: paths.LogDir(t.TempDir())})
-		if fileService != nil {
-			fileService.ConfigPath = "/tmp/test-config.json"
-		}
-		ac := &AppController{
-			FileService: fileService,
-		}
-		svc := NewConfigService(ac)
-
-		proxySource := config.ProxySource{
-			Source:      "",
-			Connections: realWorldLinks,
-		}
-		tagCounts := make(map[string]int)
-		nodes, err := svc.ProcessProxySource(proxySource, tagCounts, nil, 0, 1)
+	t.Run("Materialize as subscription body", func(t *testing.T) {
+		// Тот же вызов, которым fetch разбирает тело подписки.
+		mat, err := config.MaterializeSubscriptionBody("SUB", []byte(strings.Join(realWorldLinks, "\n")), nil, 0)
 		if err != nil {
-			t.Fatalf("Failed to process real-world links: %v", err)
+			t.Fatalf("Failed to materialize real-world links: %v", err)
 		}
 
-		if len(nodes) != len(realWorldLinks) {
-			t.Errorf("Expected %d nodes, got %d", len(realWorldLinks), len(nodes))
+		if mat.Supported != len(realWorldLinks) {
+			t.Errorf("Expected %d nodes, got %d", len(realWorldLinks), mat.Supported)
 		}
 
-		// Verify tag uniqueness
+		// Verify tag uniqueness (сырой тег — идентичность и merge-ключ)
 		tags := make(map[string]bool)
-		for _, node := range nodes {
+		for _, node := range mat.Nodes {
 			if tags[node.Tag] {
 				t.Errorf("Duplicate tag found: %s", node.Tag)
 			}
@@ -252,21 +237,12 @@ func TestIntegration_ParserConfigFlow(t *testing.T) {
 			t.Errorf("Expected default reload '4h', got '%s'", parserConfig.ParserConfig.Parser.Reload)
 		}
 
-		// Process through ConfigService
-		fileService, _ := services.NewFileService(paths.Layout{Data: paths.DataDir(t.TempDir()), Logs: paths.LogDir(t.TempDir())})
-		if fileService != nil {
-			fileService.ConfigPath = "/tmp/test-config.json"
-		}
-		ac := &AppController{
-			FileService: fileService,
-		}
-		svc := NewConfigService(ac)
-
-		tagCounts := make(map[string]int)
-		nodes, err := svc.ProcessProxySource(parserConfig.ParserConfig.Proxies[0], tagCounts, nil, 0, 1)
+		// Materialize the source body the way fetch does
+		mat, err := config.MaterializeSubscriptionBody("SUB", []byte(strings.Join(realLinks, "\n")), nil, 0)
 		if err != nil {
-			t.Fatalf("Failed to process proxy source: %v", err)
+			t.Fatalf("Failed to materialize proxy source: %v", err)
 		}
+		nodes := mat.Nodes
 
 		if len(nodes) != len(realLinks) {
 			t.Errorf("Expected %d nodes, got %d", len(realLinks), len(nodes))
@@ -274,8 +250,8 @@ func TestIntegration_ParserConfigFlow(t *testing.T) {
 
 		// Verify all nodes have valid outbounds
 		for i, node := range nodes {
-			if node.Outbound == nil {
-				t.Errorf("Node %d: Expected outbound to be generated", i+1)
+			if len(node.Body) == 0 {
+				t.Errorf("Node %d: Expected outbound body to be generated", i+1)
 			}
 		}
 	})

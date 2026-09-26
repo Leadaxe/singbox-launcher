@@ -198,7 +198,7 @@ func matchesPattern(value, pattern string) bool {
 // preview that is consistent with the real selector generation logic.
 //
 // allNodes must be the same set of nodes that will be used for selector generation
-// (i.e. result of the same LoadNodesFromSource pipeline that GenerateOutboundsFromParserConfig uses).
+// (i.e. the nodes GenerateOutboundsFromParserConfig emits from the canonical sources).
 // PreviewGlobalSelectorNodes applies exclude_from_global, then the same filter logic as PreviewSelectorNodes.
 func PreviewGlobalSelectorNodes(allNodes []*ParsedNode, proxies []ProxySource, outboundConfig Direction) ([]*ParsedNode, string) {
 	pool := FilterDirectionCandidatePool(allNodes, proxies)

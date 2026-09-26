@@ -19,7 +19,7 @@
       "meaning": "auth",
       "desc_en": "Fallback slot for the auth secret.",
       "desc_ru": "Запасной слот для секрета авторизации.",
-      "impl": "Запасной слот. У Hysteria 1.x секрет канонически едет в query (auth=), а не перед '@' — этим v1 отличается от hysteria2. Userinfo принимается на входе, потому что часть панелей выписывает hysteria://auth@host:port; эмиссия его НЕ использует (shareuri_hysteria.go)."
+      "impl": "Запасной слот. У Hysteria 1.x секрет канонически едет в query (auth=), а не перед '@' — этим v1 отличается от hysteria2. Userinfo принимается на входе, потому что часть панелей выписывает hysteria://auth@host:port; эмиссия его НЕ использует (mappers.uri.userinfo, emit: false)."
     },
     "query": {
       "auth": {
@@ -45,7 +45,7 @@
         "maps_to": "up_mbps",
         "desc_en": "Uplink bandwidth, Mbps.",
         "desc_ru": "Полоса вверх, Мбит/с.",
-        "impl": "→ up_mbps. ОБЯЗАТЕЛЬНО для ядра: без него initialize outbound падает с «missing upload speed», и это fatal для ВСЕГО config.json, а не для узла. Ссылки его сплошь и рядом не несут, поэтому отсутствие добирается дефолтом 100 (hysteriaBandwidthOrDefault) на всех трёх путях — URI, singbox-импорт (sanitizeSingboxHysteriaBandwidth), xray. Значение с суффиксом единицы («100 mbps») режется до числа."
+        "impl": "→ up_mbps. ОБЯЗАТЕЛЬНО для ядра: без него initialize outbound падает с «missing upload speed», и это fatal для ВСЕГО config.json, а не для узла. Ссылки его сплошь и рядом не несут, поэтому отсутствие добирается дефолтом 100 — правилом реестра body.fields.up_mbps default_when, которое санитайзер исполняет на всех входах: URI, singbox-импорт, xray (прежде — три рукописные копии: hysteriaBandwidthOrDefault и sanitizeSingboxHysteriaBandwidth удалённого пути). Значение с суффиксом единицы («100 mbps») режется до числа (extract записи mappers.uri.params.upmbps)."
       },
       "downmbps": {
         "type": "int",
@@ -87,7 +87,7 @@
         "maps_to": "server_ports",
         "desc_en": "Port range for port hopping.",
         "desc_ru": "Диапазон портов для port hopping.",
-        "impl": "Port hopping, тот же синтаксис и то же восстановление из authority, что у hysteria2 (hysteria2RecoverMultiPortAuthority обобщён на оба префикса) → server_ports [\"low:high\"]."
+        "impl": "Port hopping, тот же синтаксис и то же восстановление из authority, что у hysteria2 (запись mappers.uri.params.$multiport: лексер движка читает port_raw; прежде — hysteria2RecoverMultiPortAuthority, обобщённый на оба префикса) → server_ports [\"low:high\"]."
       },
       "sni": {
         "type": "string",
@@ -98,7 +98,7 @@
         "maps_to": "tls.server_name",
         "desc_en": "Server name sent in SNI.",
         "desc_ru": "Имя сервера, отправляемое в SNI.",
-        "impl": "→ tls.server_name. peer= — историческое написание клиентов 1.x. Мусор (без точки/двоеточия, '🔒') → fallback на server, как у hysteria2."
+        "impl": "→ tls.server_name. peer= — историческое написание клиентов 1.x. Фолбэк на server — только для ПУСТОГО значения (default_from записи mappers.uri.params.sni); эвристики мусора (без точки/двоеточия, '🔒'), как у hysteria2, у v1 нет — см. impl той записи."
       },
       "alpn": {
         "type": "string",
@@ -180,7 +180,7 @@
       "kind": "spelling",
       "desc_en": "Panels write the bandwidth with a unit suffix; the core field is a bare number.",
       "desc_ru": "Панели пишут полосу с суффиксом единицы; поле ядра — голое число.",
-      "impl": "core/config/subscription/node_parser_hysteria.go:94 hysteriaMbps. Суффикс единицы — форма записи, не значение."
+      "impl": "Правило реестра: extract ^(?P<v>\\d+) записей mappers.uri.params.upmbps/downmbps берёт ведущие цифры (прежде — рукописный hysteriaMbps удалённого парсера hysteria). Суффикс единицы — форма записи, не значение."
     },
     {
       "id": "obfs_object_to_string",
@@ -189,7 +189,7 @@
       "kind": "structure",
       "desc_en": "Hysteria v1 takes the obfuscation secret as a bare string; the object form belongs to Hysteria2.",
       "desc_ru": "Hysteria v1 принимает секрет обфускации голой строкой; объектная форма — от Hysteria2.",
-      "impl": "core/config/subscription/singbox_sanitize.go. Строка-тип секретом не является."
+      "impl": "Исполняет тело: body.fields.obfs.on_invalid {action: unwrap, key: password} (контракт 1.1.57) — на всех входах, а не только на импорте sing-box. Строка-тип секретом не является."
     },
     {
       "id": "quic_has_no_utls_or_reality",
@@ -198,19 +198,10 @@
       "kind": "drop",
       "desc_en": "Hysteria runs over QUIC, which has no TLS handshake for uTLS or REALITY to shape.",
       "desc_ru": "Hysteria работает поверх QUIC, где нет TLS-рукопожатия, которое могли бы формировать uTLS или REALITY.",
-      "impl": "core/config/subscription/singbox_sanitize.go, набор quicOutboundTypes."
+      "impl": "Исполняет тело: tls.json body.fields.utls/reality forbidden_for + forbidden_codes → tls_not_applicable_quic (контракт 1.1.4)."
     }
   ],
   "refs": {
-    "go": [
-      "core/config/subscription/node_parser_core.go (ветка hysteria:// / hy://)",
-      "core/config/subscription/node_parser_hysteria.go",
-      "core/config/subscription/hysteria2_ports.go (общее восстановление authority)",
-      "core/config/subscription/shareuri_hysteria.go",
-      "core/config/subscription/xray_element_engine.go",
-      "core/config/subscription/singbox_sanitize.go (obfs-форма, обязательная полоса)",
-      "core/config/outbound_generator.go (ветка эмиссии hysteria)"
-    ],
     "dart": []
   },
   "body": {
@@ -318,9 +309,15 @@
       "obfs": {
         "type": "string",
         "secret": true,
+        "on_invalid": {
+          "action": "unwrap",
+          "key": "password",
+          "code": "obfs_object_flattened",
+          "else_code": "obfs_password_missing"
+        },
         "desc_en": "Obfuscation password.",
         "desc_ru": "Пароль обфускации.",
-        "impl": "У hysteria v1 это строка-пароль (в отличие от объекта у hysteria2). Секрет."
+        "impl": "У hysteria v1 это строка-пароль (в отличие от объекта у hysteria2). Секрет. Объект {type, password} от hysteria2 (провайдеры-конвертеры кладут его в v1; ядро на объекте отвергает ВЕСЬ конфиг) разворачивает on_invalid unwrap: годный password становится строкой (obfs_object_flattened), объект без пароля снимается (obfs_password_missing), иная форма — type_invalid. Одинаково на всех входах (контракт 1.1.57, SPEC 142 C1)."
       },
       "auth": {
         "type": "string",
@@ -336,6 +333,7 @@
       },
       "auth_str": {
         "type": "string",
+        "role": "credential",
         "secret": true,
         "desc_en": "Authentication payload as a plain string.",
         "desc_ru": "Данные аутентификации обычной строкой.",
@@ -563,7 +561,7 @@
           ],
           "maps_to": "auth_str",
           "normalize": "trim",
-          "impl": "Цепочка «первый непустой» повторяет hysteriaAuthFromNode: четыре написания query, и лишь затем userinfo. Порядок нормативен — панель, написавшая и то и другое, имела в виду query."
+          "impl": "Цепочка «первый непустой» повторяет hysteriaAuthFromNode удалённого рукописного пути: четыре написания query, и лишь затем userinfo. Порядок нормативен — панель, написавшая и то и другое, имела в виду query."
         },
         "obfs_param": {
           "source": [
@@ -763,7 +761,7 @@
           },
           "space": "json",
           "base": "settings",
-          "impl": "Единственная форма: апстрим Xray протокола v1 не знает вовсе, и адрес приходит только плоским написанием форка (xray_hysteria.go)."
+          "impl": "Единственная форма: апстрим Xray протокола v1 не знает вовсе, и адрес приходит только плоским написанием форка (так его читал и прежний рукописный конвертер форка)."
         }
       ],
       "defaults": {

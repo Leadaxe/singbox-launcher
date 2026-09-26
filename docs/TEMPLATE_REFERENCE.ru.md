@@ -378,7 +378,7 @@ Breaking template format changes (например SPEC 067 — `#if` + `@`-only
 
 Template expressions v1 — declarative conditional field inclusion прямо в
 шаблоне, без post-substitute Go-хуков. Реализован в
-`core/template/substitute.go::SubstituteVarsInJSON` (walker) и
+`core/template/substitute_canon.go` (единственный канонический обходчик, точка входа `SubstituteVarsInJSONCanonWarnings`, SPEC 143) и
 `core/template/template_validate.go::validateIfConstruct` (load-time
 validation). Покрывает кейсы вида «одно поле внутри уже эмиченного объекта
 зависит от bool var / runtime platform».

@@ -1,7 +1,7 @@
 {
   "_": "Свёртка в селектор: узлы подписки заменяются одной группой AL:select, в Направление приезжает она, а не пятьдесят узлов",
   "tag_prefix": "AL:",
-  "fold": { "mode": "select" },
+  "replace": { "mode": "manual", "tag": "AL:select" },
   "directions": [
     { "tag": "vpn-1" }
   ],

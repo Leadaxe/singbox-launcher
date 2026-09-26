@@ -101,6 +101,30 @@ func ParseWGConfByEngineHint(confText, hint string, skipFilters []map[string]str
 	return nodeFromEngine(plan, res, scheme, plan.Mapper.BodySource, bodyType, skipFilters)
 }
 
+// MaterializeWGConfContext переносит КОНТЕКСТ от распаковщика контейнера
+// (источник `context.<путь>`, контракт 1.1.63) в сам текст `.conf` —
+// записями секции `conf` реестра, общим примитивом движка
+// (linkmap.MaterializeContext, контракт 1.1.72).
+//
+// Результат — самодостаточный текст: он становится origin.raw узла
+// (`wg_ini`), и пересборка из него контейнера уже не требует. Тело затем
+// строится из этого текста обычным путём, без контекста. Текст, который
+// ни одна секция не ведёт, возвращается как есть.
+func MaterializeWGConfContext(confText string, context map[string]interface{}) string {
+	if len(context) == 0 {
+		return confText
+	}
+	plans, err := linkmap.Planes()
+	if err != nil {
+		return confText
+	}
+	_, plan, ok := linkmap.SelectKind(plans, "conf", confText)
+	if !ok {
+		return confText
+	}
+	return linkmap.MaterializeContext(plan, confText, context)
+}
+
 // nodeFromEngine собирает ParsedNode из результата движка.
 //
 // Общая часть обоих входов: что делать с телом, меткой, тегом и кодами, от
@@ -122,7 +146,6 @@ func nodeFromEngine(plan *linkmap.Plan, res *linkmap.Result, scheme, source, bod
 		Query: res.Query,
 	}
 	applyEngineBody(node, plan, res.Body)
-	node.UUID = credentialFromBody(plan, res)
 
 	node.Label = textnorm.NormalizeProxyDisplay(sanitizeForDisplay(res.Label))
 	node.Tag, node.Comment = extractTagAndComment(node.Label)
@@ -174,7 +197,7 @@ func nodeFromEngine(plan *linkmap.Plan, res *linkmap.Result, scheme, source, bod
 // тег входит в identity узла. У socks написание сохраняется намеренно:
 // канонизация socks5 → socks переименовала бы тег socks5-host-1080 у ВСЕХ
 // живых узлов и сбросила бы отметки disabled и ссылки цепочек
-// (node_parser_core.go:316-325, docs/IDENTITY.md §4a-C).
+// (contract/docs/IDENTITY.md §4a-C).
 //
 // Два источника истины здесь не заводятся: атрибут один, и Scheme с тегом
 // расходиться не могут по построению.
@@ -216,51 +239,4 @@ func applyEngineBody(node *configtypes.ParsedNode, plan *linkmap.Plan, body map[
 	if p, ok := linkmap.BodyInt(body, portPath); ok {
 		node.Port = p
 	}
-}
-
-// credentialFromBody — что кладётся в ParsedNode.UUID.
-//
-// Поле историческое и плохо названное: у vless/vmess/tuic там UUID, у
-// trojan/ss/anytls — пароль, у ssh и naive — имя пользователя. Общее у них
-// одно: это ПЕРВЫЙ компонент userinfo, и прежний путь так его и брал —
-// `node.UUID = parsedURL.User.Username()` (node_parser_core.go:465).
-//
-// Отсюда и правило: поле, куда секция направила userinfo.into[0]. Отметка
-// `secret` для этого не годится — у naive секрет это password (ВТОРОЙ
-// компонент), а в UUID прежний путь клал username, и корпус на этом стоит.
-//
-// Поле выводимое, а не самостоятельное: обратный путь восстанавливает его
-// из готового тела тем же способом (canonicalCredential, canonical_emit.go).
-func credentialFromBody(plan *linkmap.Plan, res *linkmap.Result) string {
-	ui := plan.Mapper.UserInfo
-	if ui == nil || len(ui.Into) == 0 {
-		return ""
-	}
-	body := res.Body
-	// `uuid` в теле — учётные данные САМ ПО СЕБЕ, где бы он ни лежал.
-	//
-	// Правило «первый компонент userinfo» описывает не все схемы: у vmess
-	// userinfo это `method:uuid` (как у ss — `method:password`), то есть
-	// первый компонент — ШИФР, а не идентификатор; у формы-контейнера
-	// v2rayN userinfo нет вовсе, и uuid приезжает ключом объекта. Прежний
-	// путь обе формы сводил к одному (`node.UUID = id`,
-	// node_parser_vmess.go:228 и :153), и то же делают оба обратных
-	// перевода — canonicalCredential и singboxCredentialFromMap, у которых
-	// vmess стоит в ветке `uuid`. Так что вопрос решает ТЕЛО, а не позиция
-	// в userinfo.
-	if s, ok := body["uuid"].(string); ok && s != "" {
-		return s
-	}
-	// Форма БЕЗ userinfo и без uuid — поля нет: позиция в `into` относится
-	// к userinfo, которого у этой формы не было.
-	if !res.HadUserInfo {
-		return ""
-	}
-	// Одиночный userinfo, уехавший по single_into, первым компонентом не
-	// является: у naive `secret@host` это ПАРОЛЬ, и в UUID он не попадает
-	// (корпус password_only_userinfo, QUIRKS Q133-43).
-	if s, ok := body[ui.Into[0]].(string); ok {
-		return s
-	}
-	return ""
 }

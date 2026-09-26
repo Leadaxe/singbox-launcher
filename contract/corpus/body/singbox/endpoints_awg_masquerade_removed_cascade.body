@@ -1,0 +1,12 @@
+# sing-box: сахар маскировки AmneziaWG, где снятое поле тянет соседа
+# (контракт 1.1.63, SPEC 142 — пробел движка из волны 3).
+#
+# ip=quic требует id (requires … when ip=quic), а id пустой — ip снимается
+# кодом field_requires. ib требует ip. Прежде снятое правилом поле для
+# соседей оставалось видно в ИСХОДНОЙ карте: ib видел там `ip: quic` и
+# оставался — узел уезжал с ib без ip, которого в теле уже не было. Теперь
+# поле, снятое правилом значения или связи, для последующих связей и условий
+# отсутствует, как и снятое запретом схемы: ib снимается своим field_requires.
+# Пустой id — «не задано», кода на нём нет. Потолок MTU AmneziaWG дописан
+# (условие судилось на mtu, раньше снятия ip).
+{"endpoints":[{"type":"wireguard","tag":"awg-masq-cascade","address":["10.0.0.2/32"],"private_key":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=","jc":4,"ip":"quic","id":"","ib":"chrome","peers":[{"address":"example-3.com","port":51820,"public_key":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=","allowed_ips":["0.0.0.0/0"]}]}]}

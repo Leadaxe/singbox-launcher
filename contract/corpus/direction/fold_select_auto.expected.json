@@ -5,13 +5,13 @@
         "AL:tokyo",
         "AL:osaka"
       ],
-      "tag": "AL:auto",
+      "tag": "AL:select-auto",
       "type": "urltest"
     },
     {
-      "default": "AL:auto",
+      "default": "AL:select-auto",
       "outbounds": [
-        "AL:auto",
+        "AL:select-auto",
         "AL:tokyo",
         "AL:osaka"
       ],

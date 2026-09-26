@@ -192,8 +192,7 @@ func TestMergeFolderSettingsComeFromFormat10File(t *testing.T) {
 			ID: "01FILEFLD", Name: "DE",
 			TagPolicy: &state.TagPolicy{Prefix: "[D] "},
 			Detour:    &state.NodeLink{Tag: "WARP"},
-			Fold:      &Fold{Mode: "auto"},
-			FoldTag:   "DE-group",
+			Replace:   &state.FolderReplace{Mode: state.FolderReplaceAuto, Tag: "DE-group"},
 			Nodes: []state.Node{{
 				Kind: state.SourceKindServer, Tag: "from-file", Enabled: true,
 				Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "ss://file#from-file"},

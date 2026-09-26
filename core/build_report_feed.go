@@ -19,6 +19,7 @@ import (
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/state"
+	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 )
@@ -81,6 +82,8 @@ func FeedBuildReportFromParser(gen config.BuildGeneration, res *config.OutboundG
 			Kind:    config.BuildReportChainFailed,
 			Subject: c.Name,
 			Reason:  c.Reason,
+			Code:    c.Code,
+			Params:  c.Params,
 		})
 	}
 
@@ -107,37 +110,20 @@ func FeedBuildReportFromParser(gen config.BuildGeneration, res *config.OutboundG
 			SourceID:    w.SourceID,
 			SourceLabel: w.SourceLabel,
 			Reason:      w.Text,
+			Code:        w.Code,
+			Params:      w.Params,
 		})
 	}
 
-	// naive без поддержки в ядре: узлы сняты, конфиг собран. Молчание тут
+	// Узлы, которые ядру не по силам: сняты, конфиг собран. Молчание тут
 	// читалось бы как баг парсера — «узлы были, узлов нет».
-	if res.SkippedNaiveNodes > 0 {
+	for _, skip := range res.CoreSkips {
 		entries = append(entries, config.BuildReportEntry{
-			Kind:      config.BuildReportNaiveDegraded,
-			Subject:   "naive",
-			Reason:    res.SkippedNaiveReason,
-			NodeCount: res.SkippedNaiveNodes,
-		})
-	}
-
-	// SPEC 122: то же для tailscale — узлы сняты, конфиг собран.
-	if res.SkippedTailscaleNodes > 0 {
-		entries = append(entries, config.BuildReportEntry{
-			Kind:      config.BuildReportTailscaleDegraded,
-			Subject:   "tailscale",
-			Reason:    res.SkippedTailscaleReason,
-			NodeCount: res.SkippedTailscaleNodes,
-		})
-	}
-
-	// SPEC 123: то же для узлов с полями AmneziaWG 3.x на старом ядре.
-	if res.SkippedAWG3Nodes > 0 {
-		entries = append(entries, config.BuildReportEntry{
-			Kind:      config.BuildReportAWG3Degraded,
-			Subject:   "amneziawg3",
-			Reason:    res.SkippedAWG3Reason,
-			NodeCount: res.SkippedAWG3Nodes,
+			Kind:      config.BuildReportCoreUnsupported,
+			Subject:   skip.Scheme,
+			Reason:    skip.Reason,
+			NodeCount: skip.Nodes,
+			Code:      skip.Code,
 		})
 	}
 
@@ -228,6 +214,8 @@ func FeedBuildReportFromFetchStatus(gen config.BuildGeneration, sources []state.
 				SourceLabel: label,
 				Reason:      reason,
 				NodeCount:   w.Count,
+				Code:        w.Code,
+				Params:      w.Params,
 			})
 		}
 	}
@@ -315,6 +303,42 @@ func FeedBuildReportFromSanitizer(gen config.BuildGeneration, list []build.Sourc
 				Reason:      e.Reason,
 			})
 		}
+	}
+	config.AddBuildReportEntries(gen, entries)
+}
+
+// FeedBuildReportFromTemplate кладёт в отчёт предупреждения подстановки
+// шаблона (SPEC 143, Т18): одна запись на предупреждение.
+//
+// Субъект — имя переменной (template_var_undeclared, template_int_*),
+// директивы (template_unknown_directive) или владельца выпавшего фрагмента
+// (template_fragment_dropped): по нему пользователь находит, что
+// чинить в настройках или в шаблоне. Текст — из реестра по коду на языке UI,
+// поэтому Code и Params уходят как есть, а Reason — сам код: запасная строка
+// на случай, когда реестр не прочитался.
+func FeedBuildReportFromTemplate(gen config.BuildGeneration, warnings []template.TemplateWarning) {
+	if len(warnings) == 0 {
+		return
+	}
+	entries := make([]config.BuildReportEntry, 0, len(warnings))
+	for _, w := range warnings {
+		subject := w.Params["name"]
+		if subject == "" {
+			subject = w.Params["key"]
+		}
+		if subject == "" {
+			// template_fragment_dropped: пресет или шаблонный DNS-сервер,
+			// чей фрагмент выпал.
+			subject = w.Params["owner"]
+		}
+		debuglog.WarnLog("build report: template %s %v", w.Code, w.Params)
+		entries = append(entries, config.BuildReportEntry{
+			Kind:    config.BuildReportTemplateDegraded,
+			Subject: subject,
+			Reason:  w.Code,
+			Code:    w.Code,
+			Params:  w.Params,
+		})
 	}
 	config.AddBuildReportEntries(gen, entries)
 }

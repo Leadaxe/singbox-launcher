@@ -3,14 +3,14 @@
   "containers": {
     "amnezia_vpn_link": {
       "desc": "Amnezia vpn://-ссылка: контейнер полного профиля (containers[] по протоколам), из которого извлекаются только WireGuard/AmneziaWG INI-тексты.",
-      "detect": "тело (после trim) начинается с 'vpn://' — ветка идёт ПЕРВОЙ, до base64-эвристики (':' вне base64-алфавита). Go принимает vpn:// и как ЦЕЛОЕ тело подписки (BodyKindVPNLink → ParseAmneziaVPNLinkAll), и строкой ВНУТРИ построчного URI-списка (ParseNode, в обход MaxURILength). Dart: ветка vpn:// в parseUri — §9.B12, целевое.",
+      "detect": "Признак — detect вида источника `amnezia_link` в source_kinds.json (`text.prefix_fold: \"vpn://\"` и НИ ОДНОЙ следующей строки со схемой `xxx://` — контракт 1.1.80, после trim: список, начатый строкой `vpn://`, идёт построчной веткой `uri_lines`, а перенос base64 ссылки по строкам остаётся телом-ссылкой), ветка идёт ПЕРВОЙ, до base64-эвристики (':' вне base64-алфавита). Go принимает контейнер и как ЦЕЛОЕ тело подписки (BodyKindVPNLink → ParseAmneziaVPNLinkAll), и строкой ВНУТРИ построчного URI-списка (ParseNode, в обход MaxURILength); оба места спрашивают тот же detect по имени распаковщика `amnezia_vpn` (core/config/linkmap/source.go:MatchesUnwrap, контракт 1.1.63) — литерала префикса в коде больше нет, и регистр судится как в реестре (prefix_fold; прежде ParseNode сравнивал с учётом регистра). Dart: ветка vpn:// в parseUri — §9.B12, целевое.",
       "decode": [
         "payload = ссылка без префикса vpn://; whitespace/переводы строк выбрасываются (ссылки из чатов переносятся), '=' -padding отрезается",
         "base64url без padding (Qt Base64UrlEncoding|OmitTrailingEquals); fallback — std-base64 без padding",
         "qCompress-фрейминг: 4 байта big-endian заявленной несжатой длины + zlib-поток → JSON профиля",
         "fallback несжатого payload (голый base64-JSON, паритет importController Amnezia): принимают ОБЕ стороны. Проверка идёт ДО qCompress-фрейминга — первые 4 байта такого payload суть начало JSON, а не длина. РАСХОЖДЕНИЕ ЗАКРЫТО (фаза 2).",
         "профиль: containers[] (по одному на протокол) → под-объект awg/wireguard → last_config (JSON-СТРОКА) → .config = классический [Interface]/[Peer] INI (с AWG Jc/Jmin/.../I1-I5)",
-        "INI → канонический wireguard:// URI → штатный WG-парсер (CIDR-нормализация, AWG-промоушен, MTU-кламп применяются как обычно)"
+        "INI + значения контейнера (context.*) → самодостаточный INI (контракт 1.1.72: MTU из last_config и адреса dns1/dns2 перенесены в текст записями секции `conf` wireguard) → origin узла (wg_ini) → штатная секция `conf` (CIDR-нормализация, AWG-промоушен, MTU-кламп применяются как обычно)"
       ],
       "limits": {
         "link_max_bytes": {
@@ -27,7 +27,7 @@
       "selection": {
         "go": "рекурсивный поиск [Interface]-текста по профилю (глубина <= 8, known-keys first: config/last_config/awg/wireguard), defaultContainer первым; ParseAmneziaVPNLinkAll импортирует ВСЕ WG/AWG-контейнеры, одиночный ParseNode — один (сигнатура отдаёт одну ноду)",
         "dart": "плоский проход по containers[] строго по пути <container>.awg|.wireguard.last_config.config; импортируются ВСЕ WG/AWG контейнеры",
-        "note": "РЕШЕНО (фаза 2): импортируются ВСЕ контейнеры — профиль с несколькими локациями штатен для Amnezia, и терять их незачем. Порядок детерминирован: дефолтный первым. Остаётся разница глубины поиска (Go рекурсивно, Dart по фиксированному пути) — не расхождение результата на валидных профилях, а запас Go на дрейф схемы; подстановка $PRIMARY_DNS/$SECONDARY_DNS из корневых dns1/dns2 в INI делают ОБЕ стороны (Go — SPEC 123; неразрешённый плейсхолдер выбрасывается из списка, пустой список не пишется вовсе). Go дополнительно берёт MTU из last_config.mtu рядом с config, когда в [Interface] его нет (AWG3-экспорт Amnezia кладёт 1376 именно туда) — явный MTU в [Interface] приоритетнее."
+        "note": "РЕШЕНО (фаза 2): импортируются ВСЕ контейнеры — профиль с несколькими локациями штатен для Amnezia, и терять их незачем. Порядок детерминирован: дефолтный первым. Остаётся разница глубины поиска (Go рекурсивно, Dart по фиксированному пути) — не расхождение результата на валидных профилях, а запас Go на дрейф схемы. Перенос данных профиля — ПРАВИЛА РЕЕСТРА, а не код распаковщика (контракт 1.1.63, SPEC 142 C10): распаковщик отдаёт секции `conf` протокола wireguard источник `context` — `context.container` (объект, непосредственно содержавший `.conf`; у AWG3-экспорта это last_config с `mtu`) и `context.profile` (корень профиля с `dns1`/`dns2`). Запись `mtu_container` дописывает MTU, когда в [Interface] его нет (явный MTU приоритетнее); `dns` с `substitute` разрешает $PRIMARY_DNS/$SECONDARY_DNS (неразрешённый плейсхолдер снимается, пустой итог удаляет строку DNS). Контракт 1.1.72 (решение владельца 26.09.2026): правила исполняются ОДИН раз при распаковке и пишут в ТЕКСТ — ссылка `vpn://` источник-контейнер, а не происхождение узла; origin каждого узла — `wg_ini` с этим самодостаточным текстом (BACKUP.md «Происхождение из контейнера»), Regen контейнера не требует. Вида origin `amnezia_link` и указателя на контейнер нет."
       },
       "label": {
         "go": "description → hostName → имя контейнера",
@@ -36,13 +36,19 @@
       },
       "refs": {
         "go": [
-          "core/config/subscription/node_parser_core.go:84-86",
-          "core/config/subscription/node_parser_amnezia.go:35-46",
-          "core/config/subscription/node_parser_amnezia.go:49",
-          "core/config/subscription/node_parser_amnezia.go:86",
-          "core/config/subscription/node_parser_amnezia.go:142",
-          "core/config/subscription/node_parser_amnezia.go:182",
-          "core/config/subscription/node_parser_amnezia.go:269"
+          "core/config/subscription/node_parser_core.go:ParseNode",
+          "core/config/subscription/body_classify.go:ClassifySubscriptionBody",
+          "core/config/subscription/node_parser_amnezia.go:maxAmneziaLinkLength",
+          "core/config/subscription/node_parser_amnezia.go:parseAmneziaVPNLink",
+          "core/config/subscription/node_parser_amnezia.go:decodeAmneziaPayload",
+          "core/config/subscription/node_parser_amnezia.go:amneziaWGConfText",
+          "core/config/subscription/node_parser_amnezia.go:findWGIniText",
+          "core/config/subscription/node_parser_amnezia.go:ParseAmneziaVPNLinkAll",
+          "core/config/subscription/node_parser_amnezia.go:amneziaConfContext",
+          "core/config/subscription/node_parser_amnezia.go:parseAmneziaVPNLinkWithOrigins",
+          "core/config/subscription/node_parser_engine.go:MaterializeWGConfContext",
+          "core/config/linkmap/materialize.go:MaterializeContext",
+          "core/config/linkmap/source.go:MatchesUnwrap"
         ],
         "dart": [
           "app/lib/services/parser/body_decoder.dart:86-88",
@@ -59,7 +65,7 @@
       "desc": "Классический WireGuard/AmneziaWG .conf ([Interface]/[Peer]) — как тело подписки/файла (Dart) и как вставка в поле Sources (Go). Разворачивается в канонический wireguard:// URI → штатный WG-парсер.",
       "detect": {
         "dart": "body-kind: первая не-comment строка == '[interface]' (case-insensitive) И тело содержит '[Peer]' (сравнение case-SENSITIVE — нюанс)",
-        "go": "ветки в ClassifySubscriptionBody НЕТ (§9.B11 — Go добавляет, иначе нормативная схема классификации невыполнима); сегодня только UI-paste: ExtractWGConfBlocks режет вставку по строкам '[Interface]' (case-insensitive), текст до первого блока уходит в обычную построчную классификацию"
+        "go": "тело подписки опознаёт ветка BodyKindWGConf в ClassifySubscriptionBody (§9.B11): looksLikeWGConf ищет строку '[Interface]' (case-insensitive), пропуская пустые строки и комментарии '#'; в UI-вставке ExtractWGConfBlocks режет вставку по строкам '[Interface]' (case-insensitive), текст до первого блока уходит в обычную построчную классификацию"
       },
       "expand": {
         "required": "privatekey ([Interface]), publickey + endpoint ([Peer]); Go дополнительно ТРЕБУЕТ address ([Interface]) — в Dart address опционален (разрыв)",
@@ -72,11 +78,12 @@
       "subscription_body": "как тело подписки INI работает только в LxBox (IniConfig — полноценный body-kind, в т.ч. файл-подписка *.conf); §9.B11: Go добавляет INI-ветку в ClassifySubscriptionBody",
       "refs": {
         "go": [
-          "core/config/subscription/wgconf_text.go:23",
-          "core/config/subscription/wgconf_text.go:52",
-          "core/config/subscription/node_parser_amnezia.go:228",
-          "core/config/subscription/node_parser_amnezia.go:269",
-          "core/config/subscription/body_classify.go:14-45"
+          "core/config/subscription/wgconf_text.go:ExtractWGConfBlocks",
+          "core/config/subscription/wgconf_text.go:WGConfBodyToConvertedBlocks",
+          "core/config/subscription/node_parser_engine.go:ParseWGConfByEngine",
+          "core/config/subscription/node_parser_amnezia.go:amneziaWGConfText",
+          "core/config/subscription/node_parser_amnezia.go:amneziaAllWGConfTexts",
+          "core/config/subscription/body_classify.go:looksLikeWGConf"
         ],
         "dart": [
           "app/lib/services/parser/body_decoder.dart:120-123",
@@ -93,15 +100,14 @@
         "go": "весь body как одна base64-строка (trim); декод обязан быть валидным UTF-8; лимит тела 10 MB (MaxSubscriptionResponseSize, на fetch)",
         "dart": "эвристика ДО декода: >= 16 символов, charset ^[A-Za-z0-9+/_=\\-]+$ (whitespace выброшен); после — UTF-8 c < 20% control-байтов и plausible-проверка ('://', '{', '[', '[Interface]'); лимитов тела/нод нет (§9.B9/D-013 — Dart добавляет 10 MB и 3000 нод)"
       },
-      "recursion": "декодированный текст классифицируется заново тем же алгоритмом (шаг 4 нормативной схемы §4 PLAN): URI-строки, JSON-флейворы, INI (Dart). Вторая base64-обёртка не разворачивается (одна итерация в обоих). Известная дыра Go §9.B4: fetch-путь DecodeSubscriptionContent режет одиночный JSON-объект (decoder.go:68-71), хотя классификатор его принимает — Go чинит decoder.",
+      "recursion": "декодированный текст классифицируется заново тем же алгоритмом (шаг 4 нормативной схемы §4 PLAN): URI-строки, JSON-флейворы, INI (Dart). Вторая base64-обёртка не разворачивается (одна итерация в обоих). Известная дыра Go §9.B4: fetch-путь DecodeSubscriptionContent режет одиночный JSON-объект (core/config/subscription/decoder.go:DecodeSubscriptionContent), хотя классификатор его принимает — Go чинит decoder.",
       "vmess_legacy_note": "b64-декод отдельного vmess://<base64> — не этот контейнер, а протокольный декод (registry/protocols/vmess.json); паритет legacy-cleartext подтверждён (§9.B8).",
       "refs": {
         "go": [
-          "core/config/subscription/encoding_utils.go:30",
-          "core/config/subscription/decoder.go:21",
-          "core/config/subscription/decoder.go:68-71",
-          "core/config/subscription/fetcher.go:116",
-          "core/config/subscription/body_classify.go:74"
+          "core/config/subscription/encoding_utils.go:DecodeBase64Multi",
+          "core/config/subscription/decoder.go:DecodeSubscriptionContent",
+          "core/config/subscription/fetcher.go:FetchSubscriptionWithMetaFor",
+          "core/config/subscription/fetcher.go:MaxSubscriptionResponseSize"
         ],
         "dart": [
           "app/lib/services/parser/uri_utils.dart:22",

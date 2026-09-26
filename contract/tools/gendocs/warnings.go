@@ -248,6 +248,9 @@ func walkField(out map[string][]usage, scheme, path string, f *registry.Field) {
 	}
 	if f.OnInvalid != nil {
 		add(f.OnInvalid.Code, "the value does not fit the field", onInvalidAction(f.OnInvalid))
+		if f.OnInvalid.ElseCode != "" {
+			add(f.OnInvalid.ElseCode, "an object arrived without a usable `"+f.OnInvalid.Key+"` member", actionRemoved)
+		}
 	}
 	for _, a := range f.Advisory {
 		if len(a.Except) > 0 {
@@ -271,10 +274,23 @@ func walkField(out map[string][]usage, scheme, path string, f *registry.Field) {
 		add(f.NormalizeCode, "the value had to be cleaned up ("+f.Normalize+")", "value cleaned up")
 	}
 	for _, c := range f.Conflicts {
-		add(c.Code, "conflicts with `"+c.With+"`", actionRemoved)
+		add(c.Code, "conflicts with `"+c.With+"`"+unlessPhrase(c), actionRemoved)
 	}
 	for _, rq := range f.Requires {
-		add(rq.Code, "set without `"+rq.Path+"`", actionRemoved)
+		if rq.Set != nil {
+			add(rq.Code, "set without `"+rq.Path+"`"+unlessPhrase(rq), "`"+rq.Path+"` filled in with "+scalar(rq.Set))
+			continue
+		}
+		add(rq.Code, "set without `"+rq.Path+"`"+unlessPhrase(rq), actionRemoved)
+	}
+	if cw := f.CoerceWhen; cw != nil {
+		add(cw.Code, "the value is "+scalarList(cw.Values)+conditionPhrase(cw.When), "replaced with "+scalar(cw.Value))
+	}
+	if oh := f.OnHopRequired; oh != nil {
+		add(oh.Code, "a hop at position 2 or later requires this path", "not stripped")
+	}
+	if fi := f.ItemForbidden; fi != nil {
+		add(fi.Code, "a list item is "+scalarList(fi.Values), "item removed")
 	}
 	if len(f.ForbiddenFor) > 0 {
 		add(f.Code, "not supported by "+codeList(f.ForbiddenFor), actionRemoved)
@@ -323,6 +339,8 @@ func onInvalidAction(oi *registry.OnInvalid) string {
 		return actionNodeDropped
 	case "coerce":
 		return "replaced with " + scalar(oi.Value)
+	case "unwrap":
+		return "an object is replaced with its `" + oi.Key + "` member"
 	}
 	return oi.Action
 }

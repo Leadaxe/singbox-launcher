@@ -128,22 +128,11 @@ const (
 	// (server/chain) маска — это имя самого узла, и она молча становится
 	// его тегом; предупреждение ставится только там, где ПОТЕРЯ реальна.
 	WarnBackupTagMaskDropped = "backup_tag_mask_dropped"
-	// WarnBackupLocalDirectionDropped — локальное Направление источника,
-	// которое не породила свёртка: класс упразднён (SPEC 118), переносить
-	// его некуда. Fold-производная пара (`<PFX>select`/`<PFX>auto`) сюда не
-	// попадает — она приезжает заменой (FolderReplace), а не потерей.
+	// WarnBackupLocalDirectionDropped — локальное Направление источника:
+	// класс упразднён (SPEC 118), переносить его некуда. С контракта 1.1.79
+	// сюда попадает и пара, которую порождала свёртка 0.x
+	// (`<PFX>select`/`<PFX>auto`): сама свёртка не читается.
 	WarnBackupLocalDirectionDropped = "backup_local_direction_dropped"
-	// WarnBackupReplaceTagDerived — ЯВНЫЙ тег замены папки/подписки не
-	// переживает формат 0.12: там свёртка несла только режим, а имя группы
-	// было позиционным деривативом префикса. На приёмнике группа получит
-	// деривативное имя, и правила, метившие в прежнее, приедут выключенными.
-	// Предупреждение ставит ЭКСПОРТ 0.12 — там, где ещё видно оба имени.
-	//
-	// Лаунчер с v1.6.0 его не ставит (D-110): писателя 0.12 у него нет, а
-	// формат 1.0 везёт имя группы явно (`fold_tag`). Код остаётся в словаре
-	// контракта (registry/backup_warnings.json), константа — его зеркало для
-	// сверки словаря (schema_test.go) и ключ фразы UI.
-	WarnBackupReplaceTagDerived = "backup_replace_tag_derived"
 	// WarnBackupChainExists — цепочка с таким тегом уже есть: приехавшая НЕ
 	// применяется, своя сильнее. Warning ставится ВСЕГДА, даже когда «своя
 	// победила» — молчание скрыло бы случайных тёзок: две несвязанные
@@ -617,8 +606,7 @@ func importRootNames(opts ImportOptions, dec *decodedFile, s *state.State) map[s
 // (checkImportedRuleTargets), route.final и корневые имена подъёма ссылок 1.0
 // (normalizeMemberLinks10).
 //
-// Состав: то, что знает принимающая сторона (opts.KnownOutbounds), теги,
-// которые породит сам файл (dec.KnownTagsFromFile), объявленные корневые имена
+// Состав: то, что знает принимающая сторона (opts.KnownOutbounds), объявленные корневые имена
 // результата (importRootNames — с системными тегами шаблона приёмника) и
 // корневые узлы. Считается ПОСЛЕ слияния, по живому состоянию: цепочка, чей
 // тег был занят, в состояние не попала, и final в неё — это final в никуда.
@@ -635,7 +623,6 @@ func importRootNames(opts ImportOptions, dec *decodedFile, s *state.State) map[s
 // список не открывают.
 func importKnownTags(opts ImportOptions, dec *decodedFile, s *state.State) []string {
 	out := append([]string(nil), opts.KnownOutbounds...)
-	out = append(out, dec.KnownTagsFromFile...)
 	for i := range s.Sources {
 		src := &s.Sources[i]
 		switch src.Kind {

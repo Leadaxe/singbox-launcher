@@ -20,9 +20,9 @@ func TestShareURIFromOutbound_RoundTripVLESS(t *testing.T) {
 	if err != nil || n2 == nil {
 		t.Fatalf("ParseNode second: %v uri=%q", err, got)
 	}
-	if n.Server != n2.Server || n.Port != n2.Port || n.UUID != n2.UUID || n.Tag != n2.Tag {
-		t.Fatalf("mismatch server=%q/%q port=%d/%d uuid=%q/%q tag=%q/%q",
-			n.Server, n2.Server, n.Port, n2.Port, n.UUID, n2.UUID, n.Tag, n2.Tag)
+	if n.Server != n2.Server || n.Port != n2.Port || n.Outbound["uuid"] != n2.Outbound["uuid"] || n.Tag != n2.Tag {
+		t.Fatalf("mismatch server=%q/%q port=%d/%d uuid=%v/%v tag=%q/%q",
+			n.Server, n2.Server, n.Port, n2.Port, n.Outbound["uuid"], n2.Outbound["uuid"], n.Tag, n2.Tag)
 	}
 }
 
@@ -90,7 +90,7 @@ func TestShareURIFromOutbound_RoundTripTrojan(t *testing.T) {
 	if err != nil || n2 == nil {
 		t.Fatalf("ParseNode second: %v uri=%q", err, got)
 	}
-	if n.Server != n2.Server || n.Port != n2.Port || n.UUID != n2.UUID {
+	if n.Server != n2.Server || n.Port != n2.Port || n.Outbound["password"] != n2.Outbound["password"] {
 		t.Fatalf("mismatch %+v vs %+v", n, n2)
 	}
 }

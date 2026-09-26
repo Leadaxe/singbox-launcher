@@ -25,9 +25,11 @@ package business
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 )
@@ -112,6 +114,37 @@ func parseSourceInput(input string, fallbackIndex int) (*parsedSourceInput, erro
 	}
 
 	for i, uri := range conns {
+		// Строка `vpn://` — контейнер Amnezia: ВСЕ его WG/AWG-узлы, тем же
+		// разбором, что у тела подписки из одной этой ссылки (контракт
+		// 1.1.80), с origin wg_ini — текстом `.conf` контейнера. Дедупа по
+		// URI у них нет (URIOf пуст): узлы одной ссылки иначе отбросили бы
+		// друг друга как дубли.
+		if subscription.IsAmneziaVPNLink(uri) {
+			mats, vErr := config.MaterializeVPNLinkNodes(uri)
+			if vErr != nil {
+				debuglog.WarnLog("AddSources: vpn:// link not parsed: %v — nodes not added", vErr)
+				continue
+			}
+			for _, m := range mats {
+				tag := strings.TrimSpace(m.Tag)
+				unnamed := tag == ""
+				if unnamed {
+					next++
+					tag = fmt.Sprintf("server-%d", next)
+				}
+				res.Nodes = append(res.Nodes, corestate.Node{
+					Kind:     corestate.SourceKindServer,
+					Enabled:  true,
+					Tag:      tag,
+					Body:     m.Body,
+					Origin:   &corestate.Origin{Kind: m.OriginKind, Raw: m.OriginRaw},
+					Warnings: m.Warnings,
+				})
+				res.URIOf = append(res.URIOf, "")
+				res.Unnamed = append(res.Unnamed, unnamed)
+			}
+			continue
+		}
 		// Фрагмент ссылки (#имя) — это тег outbound'а: именно под ним узел
 		// уедет в config.json и на него сошлются правила.
 		tag := extractURIFragment(uri)

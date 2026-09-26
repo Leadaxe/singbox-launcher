@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/internal/locale"
 )
 
@@ -83,22 +84,24 @@ type finalReportLine struct {
 // потери. Внутри вида сохраняется порядок записей (он детерминирован в
 // сборке), поэтому список не прыгает между заходами на вкладку.
 func finalReportLines(entries []config.BuildReportEntry) []finalReportLine {
-	// Источник, не давший ни одного узла, идёт ПЕРВЫМ: он объясняет остальные
-	// записи (у пропавшей подписки следом рвутся ссылки на её узлы), и читать
-	// список сверху вниз надо начиная с корня.
+	// Деградация шаблона идёт ПЕРВОЙ (SPEC 143): мусор в переменной или
+	// директива новее приложения — причина в шаблоне или настройках, и она
+	// объясняет всё, что ниже. Затем источник, не давший ни одного узла: он
+	// объясняет остальные записи (у пропавшей подписки следом рвутся ссылки
+	// на её узлы), и читать список сверху вниз надо начиная с корня.
+	// Текст template_degraded — общий рендер «субъект: текст кода реестра».
 	order := map[config.BuildReportKind]int{
-		config.BuildReportSourceParseFailed: 0,
-		config.BuildReportSourceExcluded:    1,
-		config.BuildReportTargetMissing:     2,
-		config.BuildReportNodesDropped:      3,
-		config.BuildReportChainFailed:       4,
+		config.BuildReportTemplateDegraded:  0,
+		config.BuildReportSourceParseFailed: 1,
+		config.BuildReportSourceExcluded:    2,
+		config.BuildReportTargetMissing:     3,
+		config.BuildReportNodesDropped:      4,
+		config.BuildReportChainFailed:       5,
 		// Деградации обновления и эмиссии — частичные потери у источника,
 		// который работает: после всего, что стоило источника целиком.
-		config.BuildReportFetchDegraded:     5,
-		config.BuildReportEmitDegraded:      6,
-		config.BuildReportNaiveDegraded:     7,
-		config.BuildReportTailscaleDegraded: 8,
-		config.BuildReportAWG3Degraded:      9,
+		config.BuildReportFetchDegraded:   6,
+		config.BuildReportEmitDegraded:    7,
+		config.BuildReportCoreUnsupported: 8,
 	}
 	idx := make([]int, len(entries))
 	for i := range idx {
@@ -129,6 +132,14 @@ func finalReportEntryText(e config.BuildReportEntry) string {
 	if subject == "" {
 		subject = strings.TrimSpace(e.SourceLabel)
 	}
+	// Запись с кодом реестра читается текстом кода на языке UI: причину
+	// сборка знает кодом, а Reason — её запасная английская формулировка.
+	// У core_unsupported код даёт заголовок (ниже), причину — Reason.
+	if e.Kind != config.BuildReportCoreUnsupported {
+		if text := registryCodeText(e.Code, e.Params); text != "" {
+			e.Reason = text
+		}
+	}
 	switch e.Kind {
 	case config.BuildReportSourceParseFailed:
 		return locale.Tf("Source %q produced no nodes: %s", subject, e.Reason)
@@ -138,14 +149,21 @@ func finalReportEntryText(e config.BuildReportEntry) string {
 		return locale.Tf("Source %q: %d node(s) dropped — %s", subject, e.NodeCount, e.Reason)
 	case config.BuildReportChainFailed:
 		return locale.Tf("Chain %q did not build: %s", subject, e.Reason)
-	case config.BuildReportNaiveDegraded:
-		return locale.Tf("%d naive node(s) skipped: %s", e.NodeCount, e.Reason)
-	case config.BuildReportTailscaleDegraded:
-		return locale.Tf("%d tailscale node(s) skipped: %s", e.NodeCount, e.Reason)
-	case config.BuildReportAWG3Degraded:
-		return locale.Tf("%d AmneziaWG 3.x node(s) skipped: %s", e.NodeCount, e.Reason)
+	case config.BuildReportCoreUnsupported:
+		// Заголовок — из реестра по коду, на языке UI: он называет, ЧТО
+		// ядру не по силам (протокол или его расширение), а схема этого не
+		// скажет (узел AmneziaWG 3.x — это wireguard).
+		if title := coreUnsupportedTitle(e.Code); title != "" {
+			subject = title
+		}
+		return locale.Tf("%s — %d node(s) skipped: %s", subject, e.NodeCount, e.Reason)
 	case config.BuildReportTargetMissing:
 		return locale.Tf("Detour target %q is missing from the build: %s", subject, e.Reason)
+	case config.BuildReportTemplateDegraded:
+		// Текст реестра у кодов template_* уже называет переменную или
+		// директиву через {name}/{key}; субъект перед ним дал бы «tun_mtu:
+		// переменная tun_mtu…» (SPEC 143 Т19).
+		return e.Reason
 	case config.BuildReportEmitDegraded, config.BuildReportFetchDegraded:
 		// Причина уже сформулирована целиком (она называет и узел, и что с
 		// ним) — субъект добавляется ТОЛЬКО как адрес, где чинить. Без
@@ -217,4 +235,38 @@ func sourceIndexByID(ids []string, sourceID string) int {
 		}
 	}
 	return -1
+}
+
+// coreUnsupportedTitle — заголовок кода реестра на языке UI; "" — кода нет
+// или реестр не прочитался (строка отчёта тогда держится на схеме).
+func coreUnsupportedTitle(code string) string {
+	if code == "" {
+		return ""
+	}
+	reg, err := registry.Get()
+	if err != nil {
+		return ""
+	}
+	title, _, ok := reg.WarningText(code, locale.GetLang(), nil)
+	if !ok {
+		return ""
+	}
+	return title
+}
+
+// registryCodeText — текст кода реестра с подстановками на языке UI; "" —
+// кода нет или реестр не прочитался (строка отчёта держится на Reason).
+func registryCodeText(code string, params map[string]string) string {
+	if code == "" {
+		return ""
+	}
+	reg, err := registry.Get()
+	if err != nil {
+		return ""
+	}
+	_, text, ok := reg.WarningText(code, locale.GetLang(), params)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(text)
 }

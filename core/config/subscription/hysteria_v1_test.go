@@ -66,22 +66,10 @@ func TestXrayHysteriaDialectVersionSplit(t *testing.T) {
 // Прежде тот же дефолт лежал ТРЕМЯ копиями (URI-парсер, санитайзер импорта,
 // Xray-конвертер), и тест проверял, что все три на месте.
 
-// TestSingboxHysteriaObfsObjectFlattened — провайдеры кладут в v1 obfs-объект
-// от v2; ядро ждёт строку и на объекте роняет разбор всего конфига.
-func TestSingboxHysteriaObfsObjectFlattened(t *testing.T) {
-	body := `{"outbounds":[{"type":"hysteria","tag":"n","server":"1.2.3.4","server_port":443,"auth_str":"pw","up_mbps":50,"down_mbps":50,"obfs":{"type":"salamander","password":"zzz"},"tls":{"enabled":true,"server_name":"a.b"}}]}`
-	res, err := ParseSubscriptionBody([]byte(body), nil, 100)
-	if err != nil {
-		t.Fatalf("разбор тела: %v", err)
-	}
-	if len(res.Entries) != 1 {
-		t.Fatalf("узлов %d, ожидался 1", len(res.Entries))
-	}
-	obfs, ok := res.Entries[0].Node.Outbound["obfs"].(string)
-	if !ok || obfs != "zzz" {
-		t.Fatalf("obfs = %#v, ожидалась плоская строка \"zzz\"", res.Entries[0].Node.Outbound["obfs"])
-	}
-}
+// СНЯТО (SPEC 142 волна 2, контракт 1.1.57): TestSingboxHysteriaObfsObjectFlattened.
+// obfs-объект hysteria2 в узле v1 разворачивает реестр (on_invalid unwrap у
+// hysteria.body.obfs) на всех входах; проверяют кейсы корпуса
+// body/singbox/hysteria_obfs_object_flattened и hysteria_obfs_object_no_password.
 
 // TestHysteriaShareURIRoundTrip — ссылка, выданная наружу, обязана вернуться
 // тем же узлом: секрет в auth=, обфускация парой obfs=xplus&obfsParam=.

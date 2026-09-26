@@ -24,9 +24,6 @@ func TestNodeFromManualConfigJSON_KnownType(t *testing.T) {
 	if node.Tag != "ss-hand" || node.Server != "1.2.3.4" || node.Port != 8388 {
 		t.Errorf("scalar fields: tag=%q server=%q port=%d", node.Tag, node.Server, node.Port)
 	}
-	if node.UUID != "secret" {
-		t.Errorf("credential: got %q, want password value", node.UUID)
-	}
 	if !node.EmitRaw {
 		t.Error("manual node must carry EmitRaw")
 	}

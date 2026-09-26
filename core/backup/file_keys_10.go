@@ -93,9 +93,8 @@ var (
 	policy10Keys = jsonKeys(reflect.TypeOf(state.TagPolicy{}))
 	update10Keys = jsonKeys(reflect.TypeOf(state.UpdateSpec{}))
 	group10Keys  = jsonKeys(reflect.TypeOf(state.AutoGroup{}))
-	// fold10Keys — свёртка формой контракта (Fold), а не state-ного replace:
-	// это одно из исключений тонкого слоя (§6.0).
-	fold10Keys = jsonKeys(reflect.TypeOf(Fold{}))
+	// replace10Keys — свёртка формой состояния (контракт 1.1.78).
+	replace10Keys = jsonKeys(reflect.TypeOf(state.FolderReplace{}))
 	// auto10Keys — параметры автогруппы: одна каноническая форма и у свёртки,
 	// и у Направления.
 	auto10Keys = jsonKeys(reflect.TypeOf(configtypes.DirectionAuto{}))
@@ -216,9 +215,9 @@ func (sc *unknownScan) scanSourceBody10(where string, item map[string]json.RawMe
 		// обходить нечего: её терпит чтение группы (state.AutoGroup).
 		sc.nested2(group, joinPath(where, "group"), "default", link10Keys)
 	}
-	if fold, ok := rawObject(item, "fold"); ok {
-		sc.object(joinPath(where, "fold"), fold, fold10Keys)
-		sc.nested2(fold, joinPath(where, "fold"), "auto", auto10Keys)
+	if replace, ok := rawObject(item, "replace"); ok {
+		sc.object(joinPath(where, "replace"), replace, replace10Keys)
+		sc.nested2(replace, joinPath(where, "replace"), "auto", auto10Keys)
 	}
 	if sections, ok := rawObject(item, "sections"); ok {
 		at := joinPath(where, "sections")

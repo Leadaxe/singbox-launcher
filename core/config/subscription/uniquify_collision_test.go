@@ -3,8 +3,6 @@ package subscription
 import (
 	"strings"
 	"testing"
-
-	"singbox-launcher/core/config/configtypes"
 )
 
 // SPEC 113-A §5 — уникализация не должна занимать чужое имя (находка аудита
@@ -83,12 +81,9 @@ func TestSubscriptionXX2XKeepsIdentitiesDistinct(t *testing.T) {
 		"vless://" + uuid + "@three.com:443?security=tls&sni=three.com#X",
 	}, "\n")
 
-	res := loadFromInlineBody(t, body, configtypes.ProxySource{})
+	res := parseInlineBody(t, body, nil)
 
-	ids := make([]string, 0, len(res.Nodes))
-	for _, n := range res.Nodes {
-		ids = append(ids, n.IdentityTag)
-	}
+	ids := rawTagsOf(res)
 	want := []string{"X", "X-2", "X-3"}
 	if len(ids) != len(want) {
 		t.Fatalf("получено %d узлов, ожидалось 3 (идентичности: %v)", len(ids), ids)

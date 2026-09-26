@@ -45,11 +45,16 @@ In `config`, `params[].value`, and preset bodies, a string of the form `"@name"`
 replaced with the value of variable `name` from `vars[]` (or a preset var in the preset's scope).
 
 - **Scalar:** `"mtu": "@tun_mtu"` → the value (for an int var — as a number, not a string).
-- **List (single-element array):** `["@dns_list"]` where `dns_list` is `text_list` →
-  the array expands into a list of strings.
-- **Result type** is determined by the var type: `bool` → `true/false`, `text_list` → array,
-  numeric vars (`tun_mtu`, `mixed_listen_port`, `proxy_in_listen_port`, `urltest_tolerance`)
-  → number, the rest → string.
+- **List element:** `["@dns_list", ...]` where `dns_list` is `text_list` → its strings are
+  spliced into the parent array. A single-element array `["@name"]` is **not** collapsed into a
+  scalar (SPEC 143): the author's brackets stay, only the declared `type` decides what replaces
+  the reference — `["@tun_address"]` with a `text` var gives `["172.16.0.1/30"]`.
+- **Result type** is determined only by the declared var `type`: `bool` → `true/false`,
+  `text_list` → array, `int` → number (clamped to [0, 65535]; a non-number stays a string and
+  the build report shows a warning), the rest → string. There is no hard-coded list of numeric
+  var names: a port or MTU declared as `text` is substituted as a string.
+- `"@runtime.platform"` / `"@runtime.arch"` / `"@runtime.target"` are allowed as values in
+  `config` (SPEC 143); an unknown `@runtime.*` field is a load error.
 - The name after `@` contains no spaces; an unknown `@var` in `config` → load error.
 
 `@var` as an object **key** is used only in `#if` predicates (§4); in ordinary JSON keys
@@ -64,10 +69,11 @@ Each element describes one variable (a row on the **Settings** tab).
 | Field | Type | Description |
 |---|---|---|
 | `name` | string | Identifier (`[A-Za-z_][A-Za-z0-9_]*`). The name `runtime` is reserved. |
-| `type` | string | `text` \| `bool` \| `enum` \| `text_list` \| `secret`. |
+| `type` | string | `text` \| `bool` \| `int` \| `enum` \| `text_list` \| `secret`. |
 | `default_value` | see §3.2 | Default value (when absent from state). |
 | `default_node` | string | Alternative: dot-path inside the template to take the default from. |
-| `options` | array | For `enum`: `["a","b"]` or `[{"title","value"}]`. |
+| `options` | array | Allowed values, `["a","b"]` or `[{"title","value"}]`; any type except `bool` (load error). The object form does not change the type. |
+| `options_open` | bool | `true` — a value outside `options` may be typed in (combo box). Without `options` it is ignored. |
 | `wizard_ui` | string | `edit` (default) \| `view` (read-only) \| `hidden` \| `fix` (edited elsewhere in the UI). |
 | `platforms` | array | OSes where the variable is active (empty = all). |
 | `title` | string | Row label (empty → `name`). |
@@ -78,13 +84,17 @@ Each element describes one variable (a row on the **Settings** tab).
 
 | Type | Widget | Substitution |
 |---|---|---|
-| `text` | input field (+ combo if `options` is set) | string |
+| `text` | input field | string |
+| `int` | input field checked as a number | number, clamped to [0, 65535]; a non-number stays a string |
 | `bool` | checkbox | `true` / `false` |
-| `enum` | dropdown | `value` of the selected option |
+| `enum` | = `text` with closed `options` (read forever; new templates should write `text` + `options`) | `value` of the selected option |
 | `text_list` | multiline field | array of strings (by line) |
 | `secret` | masked field (dots) + eye + regenerate button; always pre-filled with a random value | string |
 
-The object form of `options` (`[{title,value}]`) automatically makes the variable an `enum`.
+`options` are orthogonal to `type` (SPEC 143): `type` says what goes into JSON, `options` —
+which values are allowed. With `options` the row is a dropdown (the object form shows `title`,
+stores `value`); with `options_open: true` it is a combo box with free input. `int` is checked as
+a number in both the plain field and the combo box.
 
 ### 3.2 `default_value` — three forms
 

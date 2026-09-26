@@ -53,6 +53,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 )
@@ -224,7 +225,7 @@ func sectionCandidateTags(cfg map[string]interface{}) []string {
 
 // isSingboxTailscaleEntry — запись конфига это узел tailnet.
 func isSingboxTailscaleEntry(entry map[string]interface{}) bool {
-	scheme, ok := SchemeFromSingboxType(strings.ToLower(strings.TrimSpace(mapString(entry, "type"))))
+	scheme, ok := registry.MustGet().NodeSchemeForSingboxType(mapString(entry, "type"))
 	return ok && scheme == "tailscale"
 }
 

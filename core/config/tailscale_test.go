@@ -48,13 +48,6 @@ func testTailscaleNode(t *testing.T, tag string, body map[string]interface{}) *P
 	}
 }
 
-func withTailscaleProbe(t *testing.T, probe func() (bool, string)) {
-	t.Helper()
-	prev := TailscaleSupportProbe
-	TailscaleSupportProbe = probe
-	t.Cleanup(func() { TailscaleSupportProbe = prev })
-}
-
 func withTailscaleStateRoot(t *testing.T, root string) {
 	t.Helper()
 	prev := TailscaleStateDirRoot()
@@ -138,21 +131,19 @@ func TestTailscaleEmittedAsEndpoint(t *testing.T) {
 // TestTailscaleCoreGate — §4 п. 2 и §2.2: на ядре без with_tailscale узел
 // выбрасывается с причиной, а остальной конфиг собирается.
 func TestTailscaleCoreGate(t *testing.T) {
-	const reason = "sing-box core is built without with_tailscale (need 1.14.0-lx.31 or newer)"
-
 	cases := []struct {
 		name    string
-		probe   func() (bool, string)
+		tags    []string
 		wantOut bool // узел tailscale остаётся в конфиге
-		wantN   int  // SkippedTailscaleNodes
+		wantN   int  // снято узловым гейтом
 	}{
-		{"без поддержки — выброшен", func() (bool, string) { return false, reason }, false, 1},
-		{"с поддержкой — на месте", func() (bool, string) { return true, "" }, true, 0},
+		{"без поддержки — выброшен", []string{"with_quic"}, false, 1},
+		{"с поддержкой — на месте", []string{"with_quic", "with_tailscale"}, true, 0},
 		{"пробы нет — не догадываемся", nil, true, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			withTailscaleProbe(t, tc.probe)
+			withCoreTags(t, tc.tags)
 			withTailscaleStateRoot(t, "")
 
 			pc := naiveDegradeParserConfig()
@@ -164,8 +155,9 @@ func TestTailscaleCoreGate(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GenerateOutboundsFromParserConfig: %v", err)
 			}
-			if result.SkippedTailscaleNodes != tc.wantN {
-				t.Errorf("SkippedTailscaleNodes = %d, want %d", result.SkippedTailscaleNodes, tc.wantN)
+			gotN, gotReason := coreSkipOf(result, "tailscale")
+			if gotN != tc.wantN {
+				t.Errorf("tailscale skipped = %d, want %d", gotN, tc.wantN)
 			}
 			endpoints := strings.Join(result.EndpointsJSON, "\n")
 			if got := strings.Contains(endpoints, "ts-node"); got != tc.wantOut {
@@ -176,8 +168,8 @@ func TestTailscaleCoreGate(t *testing.T) {
 			if !strings.Contains(strings.Join(result.OutboundsJSON, "\n"), "socks-1") {
 				t.Errorf("соседний узел пропал из сборки:\n%v", result.OutboundsJSON)
 			}
-			if tc.wantN > 0 && !strings.Contains(result.SkippedTailscaleReason, "with_tailscale") {
-				t.Errorf("SkippedTailscaleReason = %q, want вердикт пробы", result.SkippedTailscaleReason)
+			if tc.wantN > 0 && !strings.Contains(gotReason, "with_tailscale") {
+				t.Errorf("причина = %q, want недостающий тег", gotReason)
 			}
 		})
 	}

@@ -54,7 +54,7 @@ func parseAmneziaVPNLink(uri string, skipFilters []map[string]string) (*configty
 			map[string]string{"length": strconv.Itoa(len(uri)), "limit": strconv.Itoa(maxAmneziaLinkLength)},
 			fmt.Errorf("vpn:// link length (%d) exceeds maximum (%d)", len(uri), maxAmneziaLinkLength))
 	}
-	payload := strings.TrimPrefix(strings.TrimSpace(uri), "vpn://")
+	payload := amneziaPayload(uri)
 	profile, bareConf, err := decodeAmneziaPayload(payload)
 	if err != nil {
 		return nil, linkmap.NewReject(linkmap.CodeFormUnrecognized, nil, fmt.Errorf("failed to decode vpn:// profile: %w", err))
@@ -74,7 +74,7 @@ func parseAmneziaVPNLink(uri string, skipFilters []map[string]string) (*configty
 		return node, nil
 	}
 
-	confText, containerName, containerCount := amneziaWGConfText(profile)
+	confText, confContext, containerName, containerCount := amneziaWGConfText(profile)
 	if confText == "" {
 		return nil, fmt.Errorf("vpn:// profile has no WireGuard/AmneziaWG config (containers: %s)",
 			strings.Join(amneziaContainerNames(profile), ", "))
@@ -89,9 +89,12 @@ func parseAmneziaVPNLink(uri string, skipFilters []map[string]string) (*configty
 		label = containerName
 	}
 
-	// Текст `.conf` ведёт СЕКЦИЯ реестра напрямую; имя профиля едет
+	// Значения контейнера (MTU рядом с `.conf`, адреса DNS профиля) сначала
+	// переносятся В ТЕКСТ записями секции `conf` реестра (контракт 1.1.72),
+	// и тело строится уже из самодостаточного текста. Имя профиля едет
 	// источником `hint`, и куда его поставить в цепочке метки, решает сама
 	// секция (SPEC 133).
+	confText = MaterializeWGConfContext(confText, confContext)
 	node, err, known := ParseWGConfByEngineHint(confText, label, skipFilters)
 	if !known {
 		return nil, fmt.Errorf("vpn:// container %q is not a WireGuard config", containerName)
@@ -219,7 +222,7 @@ func decodeAmneziaPayload(payload string) (map[string]interface{}, string, error
 // путь отдаёт ОДИН узел (сигнатура ParseNode), и пользователь обязан узнать,
 // что в профиле их было больше — иначе остальные локации теряются молча
 // (contract/registry/warnings.json: amnezia_container_choice, info).
-func amneziaWGConfText(profile map[string]interface{}) (string, string, int) {
+func amneziaWGConfText(profile map[string]interface{}) (string, map[string]interface{}, string, int) {
 	containers, _ := profile["containers"].([]interface{})
 	defaultName, _ := profile["defaultContainer"].(string)
 
@@ -238,11 +241,13 @@ func amneziaWGConfText(profile map[string]interface{}) (string, string, int) {
 
 	matched := 0
 	confText, containerName := "", ""
+	var confContext map[string]interface{}
 	for _, cm := range ordered {
 		if txt, owner := findWGIniText(cm, 0); txt != "" {
 			matched++
 			if confText == "" {
-				confText = amneziaPrepareConf(txt, owner, profile)
+				confText = txt
+				confContext = amneziaConfContext(owner, profile)
 				containerName, _ = cm["container"].(string)
 			}
 		}
@@ -250,7 +255,7 @@ func amneziaWGConfText(profile map[string]interface{}) (string, string, int) {
 	if matched > 1 {
 		debuglog.WarnLog("Parser: vpn:// profile has %d WireGuard/AWG containers, importing %q (default container preferred)", matched, containerName)
 	}
-	return confText, containerName, matched
+	return confText, confContext, containerName, matched
 }
 
 // amneziaAllWGConfTexts возвращает ВСЕ WG/AWG-контейнеры профиля в
@@ -261,7 +266,7 @@ func amneziaWGConfText(profile map[string]interface{}) (string, string, int) {
 // несколькими локациями — штатный случай Amnezia, и терять их при импорте
 // тела подписки незачем: LxBox импортирует все, и расхождение решено в его
 // пользу (не терять данные пользователя).
-func amneziaAllWGConfTexts(profile map[string]interface{}) (texts []string, names []string) {
+func amneziaAllWGConfTexts(profile map[string]interface{}) (texts []string, contexts []map[string]interface{}, names []string) {
 	containers, _ := profile["containers"].([]interface{})
 	defaultName, _ := profile["defaultContainer"].(string)
 
@@ -281,11 +286,12 @@ func amneziaAllWGConfTexts(profile map[string]interface{}) (texts []string, name
 	for _, cm := range ordered {
 		if txt, owner := findWGIniText(cm, 0); txt != "" {
 			name, _ := cm["container"].(string)
-			texts = append(texts, amneziaPrepareConf(txt, owner, profile))
+			texts = append(texts, txt)
+			contexts = append(contexts, amneziaConfContext(owner, profile))
 			names = append(names, name)
 		}
 	}
-	return texts, names
+	return texts, contexts, names
 }
 
 // ParseAmneziaVPNLinkAll разбирает vpn://-ссылку во ВСЕ её WG/AWG-узлы.
@@ -298,15 +304,45 @@ func amneziaAllWGConfTexts(profile map[string]interface{}) (texts []string, name
 // Битый контейнер пропускается со счётчиком: профиль с четырьмя локациями,
 // одна из которых без Endpoint, обязан дать три ноды, а не ошибку.
 func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*configtypes.ParsedNode, int, error) {
+	nodes, _, skipped, err := parseAmneziaVPNLinkWithOrigins(uri, skipFilters)
+	return nodes, skipped, err
+}
+
+// ParseAmneziaVPNLinkWithOrigins — ParseAmneziaVPNLinkAll вместе с
+// происхождением каждого узла (см. parseAmneziaVPNLinkWithOrigins). Его зовут
+// все входы, где строка `vpn://` встречается НЕ целым телом подписки: строка
+// URI-списка, вставка в форму источника, материализация одиночного узла
+// (контракт 1.1.80: строка `vpn://` в списке = тот же контейнер целиком).
+func ParseAmneziaVPNLinkWithOrigins(uri string, skipFilters []map[string]string) ([]*configtypes.ParsedNode, []string, int, error) {
+	return parseAmneziaVPNLinkWithOrigins(uri, skipFilters)
+}
+
+// IsAmneziaVPNLink — строка это контейнер Amnezia `vpn://` (detect вида
+// источника реестра с распаковщиком `amnezia_vpn`).
+func IsAmneziaVPNLink(s string) bool {
+	return isAmneziaVPNLink(s)
+}
+
+// parseAmneziaVPNLinkWithOrigins — ParseAmneziaVPNLinkAll вместе с
+// ПРОИСХОЖДЕНИЕМ каждого узла: текстом `.conf` (origin.kind = wg_ini), из
+// которого узел собран (контракт 1.1.72, решение владельца 26.09.2026).
+//
+// Ссылка `vpn://` — источник-контейнер с группой серверов, а не
+// происхождение узла: origin — текст INI из контейнера, в который при
+// распаковке уже перенесены значения контейнера (MTU из last_config, адреса
+// DNS профиля вместо плейсхолдеров). Такой текст самодостаточен: пересборка
+// узла из origin.raw контейнера не требует. origins[i] — происхождение
+// nodes[i].
+func parseAmneziaVPNLinkWithOrigins(uri string, skipFilters []map[string]string) ([]*configtypes.ParsedNode, []string, int, error) {
 	if len(uri) > maxAmneziaLinkLength {
-		return nil, 0, linkmap.NewReject(WarnURITooLong,
+		return nil, nil, 0, linkmap.NewReject(WarnURITooLong,
 			map[string]string{"length": strconv.Itoa(len(uri)), "limit": strconv.Itoa(maxAmneziaLinkLength)},
 			fmt.Errorf("vpn:// link length (%d) exceeds maximum (%d)", len(uri), maxAmneziaLinkLength))
 	}
-	payload := strings.TrimPrefix(strings.TrimSpace(uri), "vpn://")
+	payload := amneziaPayload(uri)
 	profile, bareConf, err := decodeAmneziaPayload(payload)
 	if err != nil {
-		return nil, 0, linkmap.NewReject(linkmap.CodeFormUnrecognized, nil, fmt.Errorf("failed to decode vpn:// profile: %w", err))
+		return nil, nil, 0, linkmap.NewReject(linkmap.CodeFormUnrecognized, nil, fmt.Errorf("failed to decode vpn:// profile: %w", err))
 	}
 	// Голый `.conf` (форма `bare_conf` реестра) даёт РОВНО один узел:
 	// контейнеров у него нет, и множественный путь отличается от одиночного
@@ -314,20 +350,20 @@ func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*con
 	if profile == nil && bareConf != "" {
 		node, parseErr, known := ParseWGConfByEngineHint(bareConf, "", skipFilters)
 		if !known {
-			return nil, 0, fmt.Errorf("vpn:// payload is not a WireGuard config")
+			return nil, nil, 0, fmt.Errorf("vpn:// payload is not a WireGuard config")
 		}
 		if parseErr != nil {
-			return nil, 0, fmt.Errorf("invalid WireGuard config in vpn:// payload: %w", parseErr)
+			return nil, nil, 0, fmt.Errorf("invalid WireGuard config in vpn:// payload: %w", parseErr)
 		}
 		if node == nil {
-			return nil, 0, nil
+			return nil, nil, 0, nil
 		}
-		return []*configtypes.ParsedNode{node}, 0, nil
+		return []*configtypes.ParsedNode{node}, []string{bareConf}, 0, nil
 	}
 
-	texts, names := amneziaAllWGConfTexts(profile)
+	texts, contexts, names := amneziaAllWGConfTexts(profile)
 	if len(texts) == 0 {
-		return nil, 0, fmt.Errorf("vpn:// profile has no WireGuard/AmneziaWG config (containers: %s)",
+		return nil, nil, 0, fmt.Errorf("vpn:// profile has no WireGuard/AmneziaWG config (containers: %s)",
 			strings.Join(amneziaContainerNames(profile), ", "))
 	}
 
@@ -337,6 +373,7 @@ func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*con
 	}
 
 	nodes := make([]*configtypes.ParsedNode, 0, len(texts))
+	origins := make([]string, 0, len(texts))
 	skipped := 0
 	for i, confText := range texts {
 		// Метка узла: описание профиля, а при нескольких контейнерах — с
@@ -349,6 +386,7 @@ func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*con
 			label = label + " " + names[i]
 		}
 
+		confText = MaterializeWGConfContext(confText, contexts[i])
 		node, parseErr, known := ParseWGConfByEngineHint(confText, label, skipFilters)
 		if !known {
 			debuglog.WarnLog("Parser: vpn:// container %q: not a WireGuard config", names[i])
@@ -362,9 +400,10 @@ func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*con
 		}
 		if node != nil {
 			nodes = append(nodes, node)
+			origins = append(origins, confText)
 		}
 	}
-	return nodes, skipped, nil
+	return nodes, origins, skipped, nil
 }
 
 // findWGIniText recursively searches a decoded profile value for a WireGuard
@@ -424,145 +463,39 @@ func findWGIniText(v interface{}, depth int) (string, map[string]interface{}) {
 	return "", nil
 }
 
-// amneziaPrepareConf доводит [Interface]-текст экспорта до вида, из которого
-// секция реестра соберёт полное тело. Две правки, обе — потеря данных без неё:
+// amneziaConfContext — то, что профиль Amnezia знает о `.conf`-тексте, но в
+// самом тексте нет: объект, непосредственно содержавший текст (у экспорта
+// Amnezia это last_config, где рядом с `config` лежит `mtu`), и корень
+// профиля (`dns1`/`dns2` для плейсхолдеров `$PRIMARY_DNS`/`$SECONDARY_DNS`).
 //
-//   - MTU у экспорта Amnezia лежит НЕ в [Interface], а рядом с `config` в
-//     last_config ("1376"). Явный MTU в [Interface] приоритетнее — он ближе к
-//     туннелю.
-//
-//     ОБОСНОВАНИЕ ЗДЕСЬ БЫЛО НЕВЕРНЫМ: комментарий утверждал, что подъём mtu
-//     из last_config спасает узел от клампа 1280, а кламп срабатывал ровно
-//     так же и возвращал 1280 — работа отменяла сама себя (находка №5
-//     LEGACY_AUDIT). Настоящая польза правки другая и к AWG отношения не
-//     имеет: у ОБЫЧНОГО WireGuard-профиля потолка нет вовсе, и без этой
-//     строки его узел терял прописанный сервером MTU целиком. У AWG-узла
-//     значение выше 1280 теперь заменяется правилом реестра (max_when) — и
-//     заменяется С КОДОМ, то есть человек об этом узнает, а не как раньше.
-//
-//   - DNS = $PRIMARY_DNS, $SECONDARY_DNS — плейсхолдеры Amnezia; адреса лежат в
-//     корне профиля (dns1/dns2). Неразрешённый плейсхолдер выбрасывается из
-//     списка, пустой список не пишется вовсе: строка `dns=%24PRIMARY_DNS`
-//     уезжала в конфиг как имя сервера.
-func amneziaPrepareConf(text string, lastConfig, profile map[string]interface{}) string {
-	iface, _ := parseWGConfSections(text)
-	if iface["mtu"] == "" {
-		if mtu := amneziaMTUValue(lastConfig); mtu != "" {
-			text = amneziaSetInterfaceLine(text, "MTU = "+mtu)
-		}
+// Распаковщик НЕ решает, что из этого перенести: он лишь отдаёт контекст
+// источником `context.<путь>` (контракт 1.1.63), а правила — MTU из
+// `context.container.mtu`, когда в [Interface] его нет, и подстановка DNS —
+// записи `mtu_container` и `dns` секции `conf` протокола wireguard. С
+// контракта 1.1.72 они исполняются ОДИН раз при распаковке и пишут в ТЕКСТ
+// (MaterializeWGConfContext): текст становится origin.raw узла и обязан
+// пересобираться без контейнера.
+func amneziaConfContext(owner, profile map[string]interface{}) map[string]interface{} {
+	ctx := map[string]interface{}{}
+	if owner != nil {
+		ctx["container"] = owner
 	}
-	if dns := iface["dns"]; strings.Contains(dns, "$") {
-		resolved := make([]string, 0, 2)
-		for _, part := range splitAndTrim(dns, ",") {
-			switch part {
-			case "$PRIMARY_DNS":
-				part = amneziaString(profile, "dns1")
-			case "$SECONDARY_DNS":
-				part = amneziaString(profile, "dns2")
-			}
-			if part != "" && !strings.Contains(part, "$") {
-				resolved = append(resolved, part)
-			}
-		}
-		text = amneziaReplaceDNSLine(text, resolved)
+	if profile != nil {
+		ctx["profile"] = profile
 	}
-	return text
+	return ctx
 }
 
-// amneziaMTUValue reads last_config.mtu ("1376" or 1376) as a positive int.
-func amneziaMTUValue(lastConfig map[string]interface{}) string {
-	if lastConfig == nil {
-		return ""
+// amneziaPayload — полезная нагрузка ссылки-контейнера: всё после «://».
+// Признак самого контейнера (префикс) судит реестр — detect вида источника
+// с распаковщиком `amnezia_vpn` (source_kinds.json); здесь схема ссылки лишь
+// отрезается, какой бы она ни была написана.
+func amneziaPayload(uri string) string {
+	t := strings.TrimSpace(uri)
+	if i := strings.Index(t, "://"); i >= 0 {
+		return t[i+3:]
 	}
-	var n int
-	switch v := lastConfig["mtu"].(type) {
-	case string:
-		parsed, err := strconv.Atoi(strings.TrimSpace(v))
-		if err != nil {
-			return ""
-		}
-		n = parsed
-	case float64:
-		n = int(v)
-	default:
-		return ""
-	}
-	if n <= 0 {
-		return ""
-	}
-	return strconv.Itoa(n)
-}
-
-// amneziaSetInterfaceLine appends a line to the [Interface] section.
-func amneziaSetInterfaceLine(text, line string) string {
-	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
-	for i, l := range lines {
-		if strings.EqualFold(strings.TrimSpace(l), "[Interface]") {
-			out := append([]string{}, lines[:i+1]...)
-			out = append(out, line)
-			return strings.Join(append(out, lines[i+1:]...), "\n")
-		}
-	}
-	return text
-}
-
-// amneziaReplaceDNSLine rewrites (or removes, when the list is empty) the DNS
-// line of the [Interface] section.
-func amneziaReplaceDNSLine(text string, values []string) string {
-	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
-	out := make([]string, 0, len(lines))
-	for _, l := range lines {
-		key, _, ok := strings.Cut(l, "=")
-		if ok && strings.EqualFold(strings.TrimSpace(key), "dns") {
-			if len(values) == 0 {
-				continue
-			}
-			out = append(out, "DNS = "+strings.Join(values, ", "))
-			continue
-		}
-		out = append(out, l)
-	}
-	return strings.Join(out, "\n")
-}
-
-// parseWGConfSections splits a [Interface]/[Peer] INI text into two maps with
-// lower-cased keys. Only the first [Peer] section is honored (multi-peer is not
-// supported by the WG share/parse path, see shareuri_wireguard.go).
-func parseWGConfSections(text string) (iface, peer map[string]string) {
-	iface, peer = map[string]string{}, map[string]string{}
-	section := ""
-	peerSections := 0
-	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
-			continue
-		}
-		if strings.HasPrefix(line, "[") {
-			section = strings.ToLower(strings.Trim(line, "[]"))
-			if section == "peer" {
-				peerSections++
-			}
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		key = strings.ToLower(strings.TrimSpace(key))
-		value = strings.TrimSpace(value)
-		if key == "" || value == "" {
-			continue
-		}
-		switch section {
-		case "interface":
-			iface[key] = value
-		case "peer":
-			if peerSections == 1 {
-				peer[key] = value
-			}
-		}
-	}
-	return iface, peer
+	return t
 }
 
 // amneziaContainerNames lists container names for error messages.

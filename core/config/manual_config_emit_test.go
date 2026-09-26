@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/core/config/subscription"
 )
 
 // Ручной config_json (Source.ConfigJSON) — passthrough-путь: объект уходит в
@@ -16,69 +15,65 @@ import (
 // урезание до {tag,type,server,server_port} (см. emitter-parser-pairing)
 // обесценило бы правку.
 
-// manualLoadNodes прогоняет ProxySource через тот же вход, что и сборка.
-func manualLoadNodes(t *testing.T, ps configtypes.ProxySource) []*ParsedNode {
+// manualBuild проводит ручной config_json тем же путём, что приложение:
+// MaterializeServerNode (единственная точка «URI или ручной JSON → тело узла»)
+// → корневой server-узел канона под тегом модели → сборка. Вторым корнем
+// стоит цель detour: ссылка у ручного узла — такая же, как у любого.
+func manualBuild(t *testing.T, uri string, raw json.RawMessage, tag string) *OutboundGenerationResult {
 	t.Helper()
-	res, err := subscription.LoadNodesFromSourceEx(ps, map[string]int{}, nil, 0, 1)
+	mat, err := MaterializeServerNode(uri, raw)
 	if err != nil {
-		t.Fatalf("LoadNodesFromSourceEx: %v", err)
+		t.Fatalf("MaterializeServerNode: %v", err)
 	}
-	if res == nil {
-		t.Fatal("LoadNodesFromSourceEx: nil result")
+	node := configtypes.CanonicalNode{
+		Kind:       "server",
+		Enabled:    true,
+		Body:       mat.Body,
+		OriginKind: mat.OriginKind,
+		OriginRaw:  mat.OriginRaw,
+		Detour:     &configtypes.NodeLink{Tag: "warp-out"},
 	}
-	return res.Nodes
+	return runCanonicalBuild(t, []ProxySource{
+		canonRoot("S1", tag, node),
+		canonRoot("S2", "warp-out", canonServerNode("warp-out", "warp-out", "warp.example", 443)),
+	}, nil)
 }
 
 func TestManualConfigJSON_UnknownTypeAndFieldsSurvive(t *testing.T) {
-	ps := configtypes.ProxySource{
-		// URI намеренно мусорный: при заданном config_json он игнорируется —
-		// протокол может вообще не иметь URI-схемы.
-		Connections: []string{"someproto://not-parseable"},
-		ConfigJSON: json.RawMessage(`{
+	// URI намеренно мусорный: при заданном config_json он игнорируется —
+	// протокол может вообще не иметь URI-схемы.
+	res := manualBuild(t, "someproto://not-parseable", json.RawMessage(`{
 			"type": "someproto",
 			"tag": "hand-written",
 			"server": "10.0.0.1",
 			"server_port": 8443,
 			"experimental_option": {"nested": true},
 			"multiplex": {"enabled": true, "max_streams": 8}
-		}`),
-	}
+		}`), "my-node")
 
-	nodes := manualLoadNodes(t, ps)
-	if len(nodes) != 1 {
-		t.Fatalf("expected exactly 1 node from config_json, got %d", len(nodes))
+	var got string
+	for _, line := range res.OutboundsJSON {
+		if strings.Contains(line, `"tag":"my-node"`) {
+			got = line
+		}
 	}
-	node := nodes[0]
-	if !node.EmitRaw {
-		t.Error("manual node must carry EmitRaw")
+	if got == "" {
+		t.Fatalf("manual node not emitted: %v (warnings %v)", emittedTags(res), res.EmissionWarnings)
 	}
-	// SPEC 118 W5: тег и detour узла — поля МОДЕЛИ, а не парсера; их
-	// штампует эмиссия канона. Здесь проверяется только сохранность тела.
-	node.Tag = "my-node"
-	if node.Outbound != nil {
-		node.Outbound["tag"] = "my-node"
-		node.Outbound["detour"] = "warp-out"
-	}
-
-	outJSONs, epJSON, err := EmitNodeJSONs(node)
-	if err != nil {
-		t.Fatalf("EmitNodeJSONs: %v", err)
-	}
-	if epJSON != "" || len(outJSONs) != 1 {
-		t.Fatalf("expected 1 outbound line, got outbounds=%d endpoint=%q", len(outJSONs), epJSON)
-	}
-	got := outJSONs[0]
 
 	for _, want := range []string{
-		`"tag":"my-node"`, // финальный тег, не "hand-written"
+		`"tag":"my-node"`, // тег модели, не "hand-written"
 		`"type":"someproto"`,
 		`"experimental_option":{"nested":true}`,
 		`"multiplex":{"enabled":true,"max_streams":8}`,
-		`"detour":"warp-out"`, // source-level detour стампится и на ручную ноду
+		`"detour":"warp-out"`, // detour-ссылка модели стампится и на ручную ноду
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("expected %s in emitted JSON:\n%s", want, got)
 		}
+	}
+	if strings.Contains(got, "hand-written") {
+		t.Errorf("tag из ручного JSON уехал в конфиг:\n%s", got)
 	}
 
 	// Эмитированная объектная строка (последняя; выше может быть коммент
@@ -89,40 +84,29 @@ func TestManualConfigJSON_UnknownTypeAndFieldsSurvive(t *testing.T) {
 	if err := json.Unmarshal([]byte(line), &obj); err != nil {
 		t.Fatalf("emitted line must be valid JSON: %v\n%s", err, line)
 	}
-
-	// SPEC 112: идентичность ручной ноды — её тег. Он обязан быть, иначе
-	// ни отметку выключения, ни ссылку detour к ней не привязать.
-	if NodeIdentity(node) == "" {
-		t.Error("у ручной ноды обязана быть идентичность (тег)")
-	}
 }
 
 func TestManualConfigJSON_WireguardGoesToEndpoints(t *testing.T) {
-	ps := configtypes.ProxySource{
-		ConfigJSON: json.RawMessage(`{
+	res := manualBuild(t, "", json.RawMessage(`{
 			"type": "wireguard",
 			"address": ["10.2.0.2/32"],
-			"private_key": "FAKEKEY",
-			"peers": [{"address": "185.107.80.114", "port": 51820, "public_key": "FAKEPUB"}]
-		}`),
-	}
+			"private_key": "yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=",
+			"peers": [{"address": "185.107.80.114", "port": 51820, "public_key": "xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg="}]
+		}`), "wg-manual")
 
-	nodes := manualLoadNodes(t, ps)
-	if len(nodes) != 1 {
-		t.Fatalf("expected 1 node, got %d", len(nodes))
+	if hasTag(emittedTags(res), "wg-manual") {
+		t.Fatalf("wireguard config_json must not emit an outbound: %v", emittedTags(res))
 	}
-	nodes[0].Tag = "wg-manual"
-	if nodes[0].Outbound != nil {
-		nodes[0].Outbound["tag"] = "wg-manual"
+	var epJSON string
+	for _, ep := range res.EndpointsJSON {
+		if strings.Contains(ep, `"wg-manual"`) {
+			epJSON = ep
+		}
 	}
-	outJSONs, epJSON, err := EmitNodeJSONs(nodes[0])
-	if err != nil {
-		t.Fatalf("EmitNodeJSONs: %v", err)
+	if epJSON == "" {
+		t.Fatalf("wireguard config_json must emit an endpoint, got endpoints=%v (warnings %v)", res.EndpointsJSON, res.EmissionWarnings)
 	}
-	if len(outJSONs) != 0 || epJSON == "" {
-		t.Fatalf("wireguard config_json must emit an endpoint, got outbounds=%d endpoint=%q", len(outJSONs), epJSON)
-	}
-	for _, want := range []string{`"tag": "wg-manual"`, `"private_key": "FAKEKEY"`} {
+	for _, want := range []string{`"wg-manual"`, `"yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk="`} {
 		if !strings.Contains(epJSON, want) {
 			t.Errorf("expected %s in endpoint JSON:\n%s", want, epJSON)
 		}
@@ -135,9 +119,8 @@ func TestManualConfigJSON_InvalidInputYieldsNoNodes(t *testing.T) {
 		"missing_type": `{"server": "10.0.0.1"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			ps := configtypes.ProxySource{ConfigJSON: json.RawMessage(raw)}
-			if nodes := manualLoadNodes(t, ps); len(nodes) != 0 {
-				t.Fatalf("expected 0 nodes for %s, got %d", name, len(nodes))
+			if mat, err := MaterializeServerNode("", json.RawMessage(raw)); err == nil {
+				t.Fatalf("expected an error for %s, got body %s", name, mat.Body)
 			}
 		})
 	}

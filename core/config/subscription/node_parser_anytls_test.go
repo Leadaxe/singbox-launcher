@@ -15,7 +15,6 @@ func TestParseNode_AnyTLS_Canonical(t *testing.T) {
 	assertEq(t, node.Scheme, "anytls")
 	assertEq(t, node.Server, "any.example.test")
 	assertEq(t, node.Port, 8443)
-	assertEq(t, node.UUID, "p@ssw0rd") // userinfo username = password, URL-decoded
 	assertEq(t, node.Label, "AnyTLS-smoke")
 }
 

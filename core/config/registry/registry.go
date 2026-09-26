@@ -13,6 +13,7 @@ package registry
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -66,6 +67,13 @@ type Field struct {
 	// Имя то же, что у одноимённого оператора маппера (`extract` по элементам
 	// списка): операция одна, словарей два.
 	OnItemInvalid *OnItemInvalid `json:"on_item_invalid"`
+	// ItemForbidden — ЗНАЧЕНИЯ элемента списка, которых ядро не примет, хотя
+	// форма у них годная (контракт 1.1.63). У tailscale дефолтный маршрут
+	// `0.0.0.0/0` / `::/0` в advertise_routes — это «быть выходом», и ядро
+	// требует для него advertise_exit_node. `item_pattern` запрет конкретных
+	// значений не выражает (общее подмножество RE2 и ECMAScript без
+	// lookaround). Сверка — после normalize, элемент снимается со своим кодом.
+	ItemForbidden *ItemForbidden `json:"item_forbidden"`
 	// AbsentValues — литералы, которые означают «этого нет»: значение
 	// признаётся эквивалентом отсутствия ключа, поле в тело не пишется, кода
 	// нет. Проверяется ПОСЛЕ normalize и ДО остальных ограничений.
@@ -92,7 +100,7 @@ type Field struct {
 	// особого случая ни у одного из них нет. `AbsentValues` это не выражает:
 	// он про значение САМОГО поля и только строковый.
 	//
-	// Порядок исполнения нормативен (CANON §6): объект снимается ДО правил
+	// Порядок исполнения нормативен (PARSING_PRINCIPLES §6): объект снимается ДО правил
 	// своих полей и ДО связей соседей (conflicts/requires/forbidden_for), для
 	// которых он после этого «не задан».
 	//
@@ -102,10 +110,10 @@ type Field struct {
 	// объект снимается, только когда совпали ВСЕ.
 	AbsentWhen map[string]interface{} `json:"absent_when"`
 	Min        *float64               `json:"min"`
-	Max          *float64      `json:"max"`
-	Len          *int          `json:"len"`
-	LenParity    string        `json:"len_parity"`
-	Normalize    string        `json:"normalize"`
+	Max        *float64               `json:"max"`
+	Len        *int                   `json:"len"`
+	LenParity  string                 `json:"len_parity"`
+	Normalize  string                 `json:"normalize"`
 	// NormalizeCode — код, который ставится, когда normalize РЕАЛЬНО изменил
 	// значение (не просто обрезал пробелы или регистр). Нужен чистке, которая
 	// теряет данные: hex_only выбрасывает не-hex руны, и `0x1a2` становится
@@ -126,6 +134,12 @@ type Field struct {
 	Advisory     []Advisory  `json:"advisory"`
 	DropAlways   bool        `json:"drop_always"`
 	Aliases      interface{} `json:"aliases"`
+
+	// Role — роль поля в узле (контракт 1.1.59): по ней общий код находит
+	// поле, не зная имени схемы. Только у поля верхнего уровня тела
+	// протокола, каждая роль — не больше одного поля на схему (линтер
+	// реестра). Словарь — RoleCredential, RolePrivateKey.
+	Role string `json:"role"`
 	// DefaultWhen — дефолт, который реестр велит МАТЕРИАЛИЗОВАТЬ явно
 	// (SPEC §3.2). Обычные `default` в тело не пишутся: дефолты ядра не
 	// материализуются. Исключение — поля, без которых ядро не собирает
@@ -154,6 +168,15 @@ type Field struct {
 	// человек» означало бы оставить пользователя без VPN (в отличие от
 	// потолка MTU, где узел собирается и работает хуже).
 	MinWhen *MinWhen `json:"min_when"`
+	// CoerceWhen — УСЛОВНАЯ замена годного значения (контракт 1.1.61):
+	// значение из `values` при выполненном `when` заменяется на `value` с
+	// кодом. Условие судится по ГОТОВОМУ телу, после обхода: сосед, снятый
+	// своим правилом (REALITY с негодным ключом), условия не выполняет.
+	CoerceWhen *CoerceWhen `json:"coerce_when"`
+	// OnHopRequired — у ключа каталога `strip` цепочки (контракт 1.1.61):
+	// что делать, когда ключ снял бы с тела хопа на позиции ≥ 1 путь, который
+	// тело само требует (связь `requires` с `set` вернула бы его обратно).
+	OnHopRequired *OnHopRequired `json:"on_hop_required"`
 	// СНЯТО (контракт 1.1.4): ForbiddenWhen. Атрибут `forbidden_when` был
 	// объявлен в SPEC 131 §3.2 и реализован в трёх местах (здесь, в
 	// санитайзере, в генераторе доков), но НИ ОДНО поле реестра его так и не
@@ -183,6 +206,20 @@ type Field struct {
 	Platform string `json:"platform"`
 	LxOnly   bool   `json:"lx_only"`
 	BuildTag string `json:"build_tag"`
+	// OnCoreUnsupported — что делать, когда заданное поле не по силам
+	// текущему ядру (его `build_tag`/`min_core` не выполнены), контракт
+	// 1.1.60. Без атрибута поле снимается полевым гейтом (min_core/platform),
+	// узел остаётся. С `drop_node` снимается УЗЕЛ с кодом: поле, без которого
+	// узел с сервером не договорится, а ядро конфиг с ним не примет.
+	OnCoreUnsupported *OnCoreUnsupported `json:"on_core_unsupported"`
+	// RangeForm — свои требования ФОРМЫ-ДИАПАЗОНА значения типа awg_range
+	// («N-M»), когда они отличаются от числовой формы (контракт 1.1.60).
+	RangeForm *RangeForm `json:"range_form"`
+	// Level — уровень расширения протокола, о котором говорит наличие поля
+	// (подпись узла); словарь и порядок — `levels` тела схемы. LevelMark —
+	// суффикс подписи, который поле добавляет к итоговому уровню.
+	Level     string `json:"level"`
+	LevelMark string `json:"level_mark"`
 
 	// Тексты.
 	DescEn string `json:"desc_en"`
@@ -195,11 +232,52 @@ type Field struct {
 	Discriminator string            `json:"-"`
 }
 
+// OnCoreUnsupported — действие, когда протокол, поле или форма значения не
+// по силам текущему ядру (контракт 1.1.60). Единственное действие —
+// `drop_node`: узел снимается на сборке с кодом Code, конфиг собирается без
+// него. Исполняет nodeflow.NodeCoreRefusal по возможностям ядра (теги
+// сборки + версия).
+type OnCoreUnsupported struct {
+	Action string `json:"action"`
+	Code   string `json:"code"`
+}
+
+// CoreUnsupportedDropNode — действие OnCoreUnsupported: снять узел.
+const CoreUnsupportedDropNode = "drop_node"
+
+// RangeForm — требования формы-диапазона («N-M») значения awg_range, у
+// которой своя граница ядра и свой уровень (контракт 1.1.60). Числовая форма
+// того же поля живёт по атрибутам самого поля.
+type RangeForm struct {
+	MinCore           string             `json:"min_core"`
+	BuildTag          string             `json:"build_tag"`
+	Level             string             `json:"level"`
+	OnCoreUnsupported *OnCoreUnsupported `json:"on_core_unsupported"`
+}
+
+// IsRangeValue — значение awg_range записано формой-диапазоном «N-M»
+// (строкой с дефисом); число и голое число строкой — числовая форма.
+func IsRangeValue(v interface{}) bool {
+	s, ok := v.(string)
+	return ok && strings.Contains(strings.TrimSpace(s), "-")
+}
+
 // OnInvalid — что делать со значением, не прошедшим ограничение поля.
+//
+// Action `unwrap` (контракт 1.1.57) — значение приехало ОБЁРТКОЙ соседнего
+// диалекта: объектом там, где поле ждёт скаляр (у hysteria v1 obfs —
+// строка-секрет, а у hysteria2 тот же ключ — объект {type, password}). Если
+// значение — объект и его член `key` приводится к типу поля и проходит его
+// ограничения, поле получает этот член и код `code`. Иначе поле снимается:
+// объект без годного члена — с кодом `else_code` (параметры кода берутся из
+// скалярных членов объекта, так `{type}` доезжает до текста), не объект — с
+// `type_invalid`, как у поля без on_invalid.
 type OnInvalid struct {
-	Action string      `json:"action"`
-	Value  interface{} `json:"value"`
-	Code   string      `json:"code"`
+	Action   string      `json:"action"`
+	Value    interface{} `json:"value"`
+	Code     string      `json:"code"`
+	Key      string      `json:"key"`
+	ElseCode string      `json:"else_code"`
 }
 
 // OnItemInvalid — что делать с ЭЛЕМЕНТОМ списка, не прошедшим `item_pattern`.
@@ -212,6 +290,12 @@ type OnInvalid struct {
 type OnItemInvalid struct {
 	Action string `json:"action"`
 	Code   string `json:"code"`
+}
+
+// ItemForbidden — запрещённые значения элемента списка (Field.ItemForbidden).
+type ItemForbidden struct {
+	Values []interface{} `json:"values"`
+	Code   string        `json:"code"`
 }
 
 // Advisory — значения, которые ядро принимает, но узел получает код.
@@ -279,6 +363,32 @@ type MinWhen struct {
 	When         *Condition `json:"when"`
 }
 
+// CoerceWhen — условная замена значения (см. Field.CoerceWhen).
+//
+// Отличие от `on_invalid: coerce`: значение ГОДНОЕ (ядро его принимает), но
+// при условии `when` ведёт себя не так, как обещает: `random` под REALITY
+// выбирает при старте ядра один из пяти отпечатков, и два из них без
+// гибридного шара. Отличие от `advisory`: значение меняется.
+type CoerceWhen struct {
+	Values []interface{} `json:"values"`
+	Value  interface{}   `json:"value"`
+	Code   string        `json:"code"`
+	When   *Condition    `json:"when"`
+}
+
+// OnHopRequired — действие у ключа каталога `strip` цепочки, когда тело хопа
+// этот путь требует (контракт 1.1.61). Единственное действие — `unstrip`:
+// ключ снимается с патча цепочки (ядро применяет каталог ко всем позициям
+// разом, выборочно «не снимать у одной» оно не умеет), цепочка собирается,
+// о снятом ключе сообщает Code.
+type OnHopRequired struct {
+	Action string `json:"action"`
+	Code   string `json:"code"`
+}
+
+// HopRequiredUnstrip — действие OnHopRequired: не снимать ключ.
+const HopRequiredUnstrip = "unstrip"
+
 // Condition — условие применимости правила значения.
 //
 // `any_set` — «задано ЛЮБОЕ из перечисленных полей». Одного `Relation.Path`
@@ -297,9 +407,56 @@ type MinWhen struct {
 // Перечислены оба ключа — условие верно, когда верен ЛЮБОЙ (ИЛИ, не И):
 // у входа `singbox` рода от входа нет вовсе, и судить там можно только по
 // телу, поэтому `any_set` из правила не уходит никогда.
+//
+// Остальные ключи — ПУТИ тела с предикатом по ЗНАЧЕНИЮ (контракт 1.1.56):
+// скаляр (равенство по печатной форме) либо оператор `{"in": […]}` /
+// `{"not_in": […]}` — та же грамматика, что у `when` маппера (PRIMITIVES
+// §0.13: второго имени для одной операции не заводится). Предикаты путей
+// связаны И между собой и И с ветками any_set/source_kind: правило «дописать
+// mode=packet-up» действует только при `uplink_data_placement ∈ {header,
+// cookie}` — ядро отвергает вне packet-up только эти два размещения, а
+// `body`/`auto` законны в любом режиме. Значение читается из чистой карты
+// (в том числе объекта, обход которого ещё идёт), иначе из исходной;
+// пустая строка и снятое поле — «не задано»: `in` ложен, `not_in` истинен.
 type Condition struct {
 	AnySet     []string `json:"any_set"`
 	SourceKind []string `json:"source_kind"`
+	// Values — предикаты по значению путей тела (см. выше). Ключи — пути от
+	// корня, значения — скаляр либо объект-оператор.
+	Values map[string]interface{} `json:"-"`
+}
+
+// UnmarshalJSON читает известные ключи в поля, остальные — как предикаты
+// путей (Values). Отдельного имени для словаря предикатов не заводится: путь
+// тела с точкой ни с `any_set`, ни с `source_kind` не столкнётся.
+func (c *Condition) UnmarshalJSON(data []byte) error {
+	raw := map[string]json.RawMessage{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*c = Condition{}
+	for key, val := range raw {
+		switch key {
+		case "any_set":
+			if err := json.Unmarshal(val, &c.AnySet); err != nil {
+				return fmt.Errorf("condition.any_set: %w", err)
+			}
+		case "source_kind":
+			if err := json.Unmarshal(val, &c.SourceKind); err != nil {
+				return fmt.Errorf("condition.source_kind: %w", err)
+			}
+		default:
+			var v interface{}
+			if err := json.Unmarshal(val, &v); err != nil {
+				return fmt.Errorf("condition.%s: %w", key, err)
+			}
+			if c.Values == nil {
+				c.Values = map[string]interface{}{}
+			}
+			c.Values[key] = v
+		}
+	}
+	return nil
 }
 
 // Relation — связь поля с другим полем (conflicts / requires / advisory.when).
@@ -312,7 +469,23 @@ type Relation struct {
 	// только у gecko). Без него такие пары описывались бы «наличием», а
 	// дискриминатор присутствует всегда.
 	Equals interface{} `json:"equals"`
-	Code   string      `json:"code"`
+	// UnlessSet — связь НЕ действует, если задан любой из этих путей (от
+	// корня тела). Нужна там, где несовместимость снимает третье поле: Vision
+	// поверх транспорта бессмыслен, но при слое VLESS Encryption он работает
+	// поверх шифрования и транспорт ему не важен.
+	UnlessSet []string `json:"unless_set"`
+	// When — условие действия связи (контракт 1.1.56): та же Condition, что
+	// у правил значения. Нужно там, где связь зависит от СОБСТВЕННОГО
+	// значения поля: `uplink_data_placement` требует mode=packet-up только
+	// при header/cookie, а body/auto ядро принимает в любом режиме.
+	When *Condition `json:"when"`
+	// Set — только у `requires` (контракт 1.1.61): требуемого пути нет —
+	// поле НЕ снимается, а путь материализуется этим значением с кодом Code.
+	// Исполняется по готовому телу: если поле само не пережило обход, дописывать
+	// нечего. Путь, запрещённый схеме, не материализуется — связь работает
+	// обычным снятием.
+	Set  interface{} `json:"set"`
+	Code string      `json:"code"`
 }
 
 // section — секция body/common одного файла реестра, как она лежит на диске.
@@ -320,6 +493,20 @@ type section struct {
 	Core   string            `json:"core"`
 	Order  []string          `json:"order"`
 	Fields map[string]*Field `json:"fields"`
+	// Требования протокола к ядру (у тела протокола): тег сборки и версия.
+	// Исполняются, только когда объявлено OnCoreUnsupported (контракт
+	// 1.1.60): у прочих схем атрибуты описательные.
+	MinCore           string             `json:"min_core"`
+	BuildTag          string             `json:"build_tag"`
+	OnCoreUnsupported *OnCoreUnsupported `json:"on_core_unsupported"`
+	// Levels — словарь уровней расширения протокола по возрастанию (подпись
+	// узла, контракт 1.1.60): поля и формы диапазона ссылаются на него
+	// атрибутом `level`.
+	Levels []string `json:"levels"`
+	// ExitCapableWhen — условие, при котором узел схемы годится ВЫХОДОМ В
+	// ИНТЕРНЕТ, то есть кандидатом в состав Направления (контракт 1.1.63).
+	// Без атрибута — годится всегда.
+	ExitCapableWhen *Condition `json:"exit_capable_when"`
 	// AbsentWhen — условие «этой секции нет» для суб-схемы, которую схемы
 	// подключают через `ref` (tls). Живёт у СЕКЦИИ, а не у ссылающегося поля:
 	// «tls:{enabled:false} = TLS не задан» — правило самой секции, и повторять
@@ -330,7 +517,7 @@ type section struct {
 	Skipped       map[string]string      `json:"skipped"`
 	Relations     []Relation2            `json:"relations"`
 	Discriminator string                 `json:"discriminator"`
-	Values        []string          `json:"values"`
+	Values        []string               `json:"values"`
 	Variants      map[string]*struct {
 		Order  []string          `json:"order"`
 		Fields map[string]*Field `json:"fields"`
@@ -407,6 +594,15 @@ type BodySchema struct {
 	Fields map[string]*Field
 	// Relations — связи между несколькими полями тела (см. Relation2).
 	Relations []Relation2
+	// Требования протокола к ядру и действие, когда они не выполнены
+	// (контракт 1.1.60), — см. section.
+	MinCore           string
+	BuildTag          string
+	OnCoreUnsupported *OnCoreUnsupported
+	// Levels — словарь уровней расширения по возрастанию (см. section).
+	Levels []string
+	// ExitCapableWhen — условие «узел годится выходом» (см. section).
+	ExitCapableWhen *Condition
 }
 
 // WarningEntry — запись кода из registry/warnings.json.
@@ -461,6 +657,13 @@ type Registry struct {
 	// schemeByType — обратная карта для входа «ручной JSON-объект»: у него
 	// схемы нет, есть только "type" тела.
 	schemeByType map[string]string
+	// kinds — схема → `kind` протокола (outbound | endpoint | group):
+	// в какую секцию config.json эмитится узел.
+	kinds map[string]string
+	// sources — схема → входы, которыми узел приходит (`sources` файла
+	// протокола). Схема без входа "singbox" узлом из чужого конфига не
+	// становится, даже если её тип ядру известен.
+	sources map[string][]string
 }
 
 // protocolFiles — схемы протоколов реестра. Список явный: embed.FS читается
@@ -520,6 +723,8 @@ func Load() (*Registry, error) {
 		aliases:      map[string]map[string][]string{},
 		singboxTypes: map[string]string{},
 		schemeByType: map[string]string{},
+		kinds:        map[string]string{},
+		sources:      map[string][]string{},
 	}
 
 	for _, name := range protocolFiles {
@@ -546,6 +751,8 @@ func Load() (*Registry, error) {
 		reg.schemes = append(reg.schemes, scheme)
 		reg.mapsTo[scheme] = collectMapsTo(f.Raw)
 		reg.aliases[scheme] = collectAliases(f.Raw)
+		reg.kinds[scheme] = strings.TrimSpace(rawString(f.Raw, "kind"))
+		reg.sources[scheme] = rawStringSlice(f.Raw, "sources")
 		sbType := strings.TrimSpace(rawString(f.Raw, "singbox_type"))
 		if sbType != "" && !strings.Contains(sbType, "|") {
 			reg.singboxTypes[scheme] = sbType
@@ -565,6 +772,8 @@ func Load() (*Registry, error) {
 			reg.bodies[alias] = body
 			reg.mapsTo[alias] = reg.mapsTo[scheme]
 			reg.aliases[alias] = reg.aliases[scheme]
+			reg.kinds[alias] = reg.kinds[scheme]
+			reg.sources[alias] = reg.sources[scheme]
 			if sbType != "" {
 				reg.singboxTypes[alias] = sbType
 			}
@@ -656,6 +865,12 @@ func resolveSection(scheme string, sec *section, subs map[string]*section) (*Bod
 		Order:     make([]string, 0, len(sec.Order)),
 		Fields:    make(map[string]*Field, len(sec.Fields)),
 		Relations: sec.Relations,
+
+		MinCore:           sec.MinCore,
+		BuildTag:          sec.BuildTag,
+		OnCoreUnsupported: sec.OnCoreUnsupported,
+		Levels:            sec.Levels,
+		ExitCapableWhen:   sec.ExitCapableWhen,
 	}
 	for _, name := range sec.Order {
 		src := sec.Fields[name]
@@ -987,6 +1202,41 @@ func (r *Registry) SchemeForSingboxType(t string) (string, bool) {
 	return s, ok
 }
 
+// SourceSingbox — имя входа «тело в форме ядра» в `sources` протокола
+// (импорт sing-box JSON, ручной JSON, тело из состояния или бэкапа).
+const SourceSingbox = "singbox"
+
+// NodeSchemeForSingboxType — схема УЗЛА по типу тела ядра: обратная карта
+// `singbox_type`, суженная до схем, которые принимают вход "singbox"
+// (`sources`). Тип, известный ядру, но не приходящий узлом (chain — тело
+// рождается в форме, `sources` у схемы нет), узлом не становится: false.
+func (r *Registry) NodeSchemeForSingboxType(t string) (string, bool) {
+	s, ok := r.SchemeForSingboxType(t)
+	if !ok || !r.AcceptsSource(s, SourceSingbox) {
+		return "", false
+	}
+	return s, true
+}
+
+// AcceptsSource — приходит ли узел схемы входом source (`sources`).
+func (r *Registry) AcceptsSource(scheme, source string) bool {
+	for _, v := range r.sources[scheme] {
+		if v == source {
+			return true
+		}
+	}
+	return false
+}
+
+// KindEndpoint — `kind` протокола, чьи узлы живут в endpoints[] config.json.
+const KindEndpoint = "endpoint"
+
+// ProtocolKind — `kind` протокола: "outbound", "endpoint" или "group";
+// пустая строка — схема реестру неизвестна.
+func (r *Registry) ProtocolKind(scheme string) string {
+	return r.kinds[scheme]
+}
+
 // Schemes — схемы реестра в порядке загрузки (алфавитном).
 func (r *Registry) Schemes() []string {
 	out := make([]string, len(r.schemes))
@@ -1035,6 +1285,421 @@ func (r *Registry) Field(scheme, path string) (*Field, bool) {
 		}
 	}
 	return cur, cur != nil
+}
+
+// AllowedForScheme — разрешено ли поле схеме по `allowed_for`/`forbidden_for`.
+// Единственная трактовка пары атрибутов: ею пользуются и санитайзер, и
+// сборка (глобальные трансформы), и формы, — своего списка схем нигде нет.
+func (f *Field) AllowedForScheme(scheme string) bool {
+	if f == nil {
+		return false
+	}
+	for _, sc := range f.ForbiddenFor {
+		if sc == scheme {
+			return false
+		}
+	}
+	if len(f.AllowedFor) == 0 {
+		return true
+	}
+	for _, sc := range f.AllowedFor {
+		if sc == scheme {
+			return true
+		}
+	}
+	return false
+}
+
+// FieldAllowed — есть ли у схемы поле по пути и разрешено ли оно ей.
+func (r *Registry) FieldAllowed(scheme, path string) bool {
+	f, ok := r.Field(scheme, path)
+	return ok && f.AllowedForScheme(scheme)
+}
+
+// FieldAllowedOn — оставил бы санитайзер поле path в ГОТОВОМ теле body схемы:
+// поле разрешено схеме (FieldAllowed) и ни одна его связь `conflicts` при
+// этом теле не действует — условие `when` связи верно, сосед `with` задан, и
+// не задан ни один путь `unless_set`. Вопрос того, кто дописывает поле в тело
+// после санитайзера (глобальные анти-DPI трансформы сборки): ответ реестра по
+// ТЕЛУ, а не по схеме — у masque tls.fragment разрешён, но при vhttp = h3
+// снимается связью (контракт 1.1.64). Пути связей — от корня тела.
+func (r *Registry) FieldAllowedOn(scheme, path string, body map[string]interface{}) bool {
+	f, ok := r.Field(scheme, path)
+	if !ok || !f.AllowedForScheme(scheme) {
+		return false
+	}
+	for _, c := range f.Conflicts {
+		if c.With == "" || !c.When.HoldsOn(body) {
+			continue
+		}
+		if _, present := bodyValue(body, c.With); !present {
+			continue
+		}
+		unless := false
+		for _, u := range c.UnlessSet {
+			if _, present := bodyValue(body, u); present {
+				unless = true
+				break
+			}
+		}
+		if !unless {
+			return false
+		}
+	}
+	return true
+}
+
+// BodyYield — поле готового тела, которое санитайзер снял бы связью
+// `conflicts` с соседом, дописанным в тело уже после санитайзера.
+type BodyYield struct {
+	// Path — путь уступающего поля от корня тела.
+	Path string
+	// With — сосед, которому поле уступает.
+	With string
+	// Code — код связи (пусто — связь кода не назвала).
+	Code string
+}
+
+// YieldsTo — поля готового тела body схемы, которые санитайзер снял бы
+// связью `conflicts {with}`, будь сосед with в теле уже при обходе. Вопрос
+// того, кто дописывает managed-поле после санитайзера: detour пишет сборка,
+// в теле состояния его нет, и связь при санитайзе не срабатывает никогда.
+// Трактовка связи — та же, что у FieldAllowedOn (`when` верно, сосед задан,
+// не задан ни один путь `unless_set`); пути — от корня тела. Порядок —
+// порядок обхода тела.
+func (r *Registry) YieldsTo(scheme, with string, body map[string]interface{}) []BodyYield {
+	if with == "" {
+		return nil
+	}
+	if _, present := bodyValue(body, with); !present {
+		return nil
+	}
+	var out []BodyYield
+	r.WalkPresent(scheme, body, func(path string, f *Field, _ interface{}) {
+		if !f.AllowedForScheme(scheme) {
+			return
+		}
+		for _, c := range f.Conflicts {
+			if c.With != with || !c.When.HoldsOn(body) {
+				continue
+			}
+			unless := false
+			for _, u := range c.UnlessSet {
+				if _, present := bodyValue(body, u); present {
+					unless = true
+					break
+				}
+			}
+			if unless {
+				continue
+			}
+			out = append(out, BodyYield{Path: path, With: with, Code: c.Code})
+			return
+		}
+	})
+	return out
+}
+
+// FieldsWithBuildTag — корневые поля тела схемы, которым нужна сборка ядра
+// с тегом tag (`build_tag`), в порядке тела. Так форма узнаёт набор полей
+// расширения (AmneziaWG: with_awg) из реестра, а не своим списком.
+func (r *Registry) FieldsWithBuildTag(scheme, tag string) []string {
+	b, ok := r.bodies[scheme]
+	if !ok || tag == "" {
+		return nil
+	}
+	var out []string
+	for _, name := range b.Order {
+		if f := b.Fields[name]; f != nil && f.BuildTag == tag {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// WalkPresent обходит поля тела схемы, ЗАДАННЫЕ в body (ключ есть и не
+// null), в порядке реестра: вложенные объекты, элементы массивов объектов
+// (peers[]) и вариант по дискриминатору. path — путь поля ("tls.utls",
+// "peers[].persistent_keepalive_interval"). Общий обход для вопросов «что
+// в теле говорит о нужных ядру возможностях и об уровне протокола».
+func (r *Registry) WalkPresent(scheme string, body map[string]interface{}, fn func(path string, f *Field, v interface{})) {
+	b, ok := r.bodies[scheme]
+	if !ok || body == nil {
+		return
+	}
+	walkPresent("", b.Order, b.Fields, body, fn)
+}
+
+func walkPresent(prefix string, order []string, fields map[string]*Field, m map[string]interface{}, fn func(string, *Field, interface{})) {
+	for _, name := range order {
+		f := fields[name]
+		if f == nil {
+			continue
+		}
+		v, ok := m[name]
+		if !ok || v == nil {
+			continue
+		}
+		path := name
+		if prefix != "" {
+			path = prefix + "." + name
+		}
+		fn(path, f, v)
+		switch inner := v.(type) {
+		case map[string]interface{}:
+			if len(f.Variants) > 0 {
+				disc, _ := inner[f.Discriminator].(string)
+				if vf := f.Variants[strings.TrimSpace(disc)]; vf != nil {
+					walkPresent(path, vf.Order, vf.Fields, inner, fn)
+				}
+				continue
+			}
+			if len(f.Fields) > 0 {
+				walkPresent(path, f.Order, f.Fields, inner, fn)
+			}
+		case []interface{}:
+			if f.Items == nil || len(f.Items.Fields) == 0 {
+				continue
+			}
+			for _, it := range inner {
+				if im, ok := it.(map[string]interface{}); ok {
+					walkPresent(path+"[]", f.Items.Order, f.Items.Fields, im, fn)
+				}
+			}
+		case []map[string]interface{}:
+			if f.Items == nil || len(f.Items.Fields) == 0 {
+				continue
+			}
+			for _, im := range inner {
+				walkPresent(path+"[]", f.Items.Order, f.Items.Fields, im, fn)
+			}
+		}
+	}
+}
+
+// Level — подпись уровня расширения протокола по полям тела (контракт
+// 1.1.60): старший из уровней заданных полей (`level`) и их форм-диапазонов
+// (`range_form.level`) по словарю `levels` схемы, плюс суффиксы
+// `level_mark` заданных полей. Схема без `levels` или тело без размеченных
+// полей — "".
+func (r *Registry) Level(scheme string, body map[string]interface{}) string {
+	b, ok := r.bodies[scheme]
+	if !ok || len(b.Levels) == 0 {
+		return ""
+	}
+	rank := make(map[string]int, len(b.Levels))
+	for i, l := range b.Levels {
+		rank[l] = i + 1
+	}
+	best := 0
+	var marks []string
+	raise := func(level string) {
+		if n := rank[level]; n > best {
+			best = n
+		}
+	}
+	r.WalkPresent(scheme, body, func(_ string, f *Field, v interface{}) {
+		raise(f.Level)
+		if f.RangeForm != nil && IsRangeValue(v) {
+			raise(f.RangeForm.Level)
+		}
+		if f.LevelMark != "" {
+			for _, m := range marks {
+				if m == f.LevelMark {
+					return
+				}
+			}
+			marks = append(marks, f.LevelMark)
+		}
+	})
+	if best == 0 {
+		return ""
+	}
+	return b.Levels[best-1] + strings.Join(marks, "")
+}
+
+// StripBuildTag снимает с тела всё, чему нужна сборка ядра с тегом tag
+// (контракт 1.1.60): корневые поля с этим `build_tag` удаляются, а
+// форма-диапазон awg_range, которой нужен этот тег (`range_form.build_tag`),
+// схлопывается в свою нижнюю границу — само поле остаётся настройкой
+// соединения, пропадает только расширение. Негодная граница — поле
+// снимается.
+func (r *Registry) StripBuildTag(scheme string, body map[string]interface{}, tag string) {
+	for _, k := range r.FieldsWithBuildTag(scheme, tag) {
+		delete(body, k)
+	}
+	b, ok := r.bodies[scheme]
+	if !ok || tag == "" {
+		return
+	}
+	collapseRangeForms(b.Order, b.Fields, body, tag)
+}
+
+func collapseRangeForms(order []string, fields map[string]*Field, m map[string]interface{}, tag string) {
+	for _, name := range order {
+		f := fields[name]
+		v, ok := m[name]
+		if f == nil || !ok {
+			continue
+		}
+		if f.RangeForm != nil && f.RangeForm.BuildTag == tag && IsRangeValue(v) {
+			lo, _, _ := strings.Cut(strings.TrimSpace(v.(string)), "-")
+			if n, err := strconv.Atoi(strings.TrimSpace(lo)); err == nil && n > 0 {
+				m[name] = n
+			} else {
+				delete(m, name)
+			}
+			continue
+		}
+		switch inner := v.(type) {
+		case map[string]interface{}:
+			if len(f.Fields) > 0 {
+				collapseRangeForms(f.Order, f.Fields, inner, tag)
+			}
+		case []interface{}:
+			if f.Items == nil || len(f.Items.Fields) == 0 {
+				continue
+			}
+			for _, it := range inner {
+				if im, ok := it.(map[string]interface{}); ok {
+					collapseRangeForms(f.Items.Order, f.Items.Fields, im, tag)
+				}
+			}
+		}
+	}
+}
+
+// Роли полей тела (атрибут `role`, контракт 1.1.59).
+const (
+	// RoleCredential — учётные данные узла: поле учётной записи в слоте
+	// userinfo ссылки (uuid, пароль, auth_str, имя пользователя). Шифр
+	// ss/vmess учётными данными не считается.
+	RoleCredential = "credential"
+	// RolePrivateKey — приватный ключ, который уезжает в share-ссылку.
+	RolePrivateKey = "private_key"
+)
+
+// FieldWithRole — путь поля схемы с ролью role; false — у схемы такого поля
+// нет. Схема адресуется и типом ядра ("shadowsocks"), как Body.
+func (r *Registry) FieldWithRole(scheme, role string) (string, bool) {
+	b, ok := r.bodies[scheme]
+	if !ok || role == "" {
+		return "", false
+	}
+	for _, name := range b.Order {
+		if f := b.Fields[name]; f != nil && f.Role == role {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// ExitCapable — годится ли узел схемы ВЫХОДОМ В ИНТЕРНЕТ, то есть кандидатом
+// в состав Направления (контракт 1.1.63, атрибут тела `exit_capable_when`).
+//
+// Схема без атрибута (и схема, которой реестр не знает) годится всегда:
+// обычный прокси-узел на то и заведён. С атрибутом решает условие по телу —
+// у tailscale узел без `exit_node` открывает доступ в саму tailnet, а не
+// выход наружу, и Направление, выбравшее его, отправило бы трафик в никуда.
+func (r *Registry) ExitCapable(scheme string, body map[string]interface{}) bool {
+	b, ok := r.bodies[scheme]
+	if !ok || b.ExitCapableWhen == nil {
+		return true
+	}
+	return b.ExitCapableWhen.HoldsOn(body)
+}
+
+// HoldsOn — выполнено ли условие на ГОТОВОМ теле (карта узла вне
+// санитайзера: модель, пул Направлений).
+//
+// `any_set` — задано ли любое из полей: ключ есть, значение не nil и не
+// пустая строка (для ядра пустая строка — отсутствие ключа, PARSING_PRINCIPLES §6.1).
+// Предикаты путей — скаляр (равенство по печатной форме) или `in`/`not_in`,
+// как у санитайзера. `source_kind` здесь не судится: рода входа у готового
+// тела нет, и ветка просто не проходит.
+func (c *Condition) HoldsOn(body map[string]interface{}) bool {
+	if c == nil {
+		return true
+	}
+	for path, want := range c.Values {
+		got, present := bodyValue(body, path)
+		if op, isOp := want.(map[string]interface{}); isOp {
+			if list, ok := op["in"].([]interface{}); ok {
+				if !present || !printedIn(list, got) {
+					return false
+				}
+				continue
+			}
+			if list, ok := op["not_in"].([]interface{}); ok {
+				if present && printedIn(list, got) {
+					return false
+				}
+				continue
+			}
+			return false
+		}
+		if !present || fmt.Sprintf("%v", got) != fmt.Sprintf("%v", want) {
+			return false
+		}
+	}
+	if len(c.AnySet) == 0 {
+		return len(c.Values) > 0 || len(c.SourceKind) == 0
+	}
+	for _, p := range c.AnySet {
+		if _, present := bodyValue(body, p); present {
+			return true
+		}
+	}
+	return false
+}
+
+// bodyValue — значение по пути от корня тела; пустая (из пробелов) строка и
+// nil — «не задано».
+func bodyValue(body map[string]interface{}, path string) (interface{}, bool) {
+	var cur interface{} = body
+	for _, part := range strings.Split(path, ".") {
+		m, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		cur, ok = m[part]
+		if !ok {
+			return nil, false
+		}
+	}
+	if cur == nil {
+		return nil, false
+	}
+	if s, ok := cur.(string); ok && strings.TrimSpace(s) == "" {
+		return nil, false
+	}
+	return cur, true
+}
+
+func printedIn(list []interface{}, v interface{}) bool {
+	got := fmt.Sprintf("%v", v)
+	for _, w := range list {
+		if fmt.Sprintf("%v", w) == got {
+			return true
+		}
+	}
+	return false
+}
+
+// FieldStrings — `values` поля строками (enum для выпадающих списков форм).
+// Пустое значение "" (у реестра оно значит «не задано») пропускается.
+func (r *Registry) FieldStrings(scheme, path string) []string {
+	f, ok := r.Field(scheme, path)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(f.Values))
+	for _, v := range f.Values {
+		if s, ok := v.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // Warning возвращает запись кода из warnings.json.

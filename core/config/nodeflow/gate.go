@@ -18,6 +18,97 @@ type CoreInfo struct {
 	Version string
 	// GOOS — целевая ОС сборки; пустая = runtime.GOOS текущего процесса.
 	GOOS string
+	// Tags — теги сборки ядра (строка `Tags:` вывода `sing-box version`);
+	// nil = теги неизвестны, гейт по тегу не применяется (та же политика:
+	// не деградируем по догадке).
+	Tags []string
+	// TagIssues — тег в сборке есть, но возможность им не даётся: причина
+	// по тегу (purego-сборка без библиотеки рядом с бинарём). Для гейта
+	// такой тег равен отсутствующему, с этой причиной.
+	TagIssues map[string]string
+}
+
+// CoreRefusal — почему узел этому ядру не по силам (контракт 1.1.60).
+type CoreRefusal struct {
+	// Code — код реестра из `on_core_unsupported.code`.
+	Code string
+	// Path — "" для протокола целиком, иначе путь поля тела
+	// ("peers[].persistent_keepalive_interval").
+	Path string
+	// Reason — причина словами (лог сборки, отчёт, статус обновления).
+	Reason string
+}
+
+// NodeCoreRefusal — годится ли узел схемы scheme с телом body ядру core.
+// Узел не годится, когда требование с `on_core_unsupported: drop_node` не
+// выполнено: у тела протокола (`build_tag`/`min_core` схемы), у заданного
+// поля (его `build_tag`/`min_core`) или у значения, записанного
+// формой-диапазоном (`range_form`). nil — годится.
+//
+// Это узловой гейт: он выбрасывает узел целиком, до эмиссии. Полевой гейт
+// (GateForCore) — другой класс: снимает ключ, узел остаётся.
+func NodeCoreRefusal(scheme string, body map[string]interface{}, core CoreInfo) *CoreRefusal {
+	reg, err := registry.Get()
+	if err != nil {
+		return nil
+	}
+	schema, ok := reg.Body(scheme)
+	if !ok {
+		return nil
+	}
+	if dropsNode(schema.OnCoreUnsupported) {
+		if reason := core.unmet(schema.BuildTag, schema.MinCore, scheme); reason != "" {
+			return &CoreRefusal{Code: schema.OnCoreUnsupported.Code, Reason: reason}
+		}
+	}
+	var refusal *CoreRefusal
+	reg.WalkPresent(scheme, body, func(path string, f *registry.Field, v interface{}) {
+		if refusal != nil {
+			return
+		}
+		what := scheme + "." + path
+		if dropsNode(f.OnCoreUnsupported) {
+			if reason := core.unmet(f.BuildTag, f.MinCore, what); reason != "" {
+				refusal = &CoreRefusal{Code: f.OnCoreUnsupported.Code, Path: path, Reason: reason}
+				return
+			}
+		}
+		if rf := f.RangeForm; rf != nil && dropsNode(rf.OnCoreUnsupported) && registry.IsRangeValue(v) {
+			if reason := core.unmet(rf.BuildTag, rf.MinCore, what+" as a range"); reason != "" {
+				refusal = &CoreRefusal{Code: rf.OnCoreUnsupported.Code, Path: path, Reason: reason}
+			}
+		}
+	})
+	return refusal
+}
+
+func dropsNode(a *registry.OnCoreUnsupported) bool {
+	return a != nil && a.Action == registry.CoreUnsupportedDropNode
+}
+
+// unmet — причина, по которой ядро не выполняет требование (тег сборки и
+// минимальная версия), или "" — выполняет либо судить не по чему.
+func (c CoreInfo) unmet(buildTag, minCore, what string) string {
+	if buildTag != "" && c.Tags != nil {
+		has := false
+		for _, t := range c.Tags {
+			if strings.TrimSpace(t) == buildTag {
+				has = true
+				break
+			}
+		}
+		if !has {
+			return "sing-box core is built without " + buildTag
+		}
+		if issue := c.TagIssues[buildTag]; issue != "" {
+			return issue
+		}
+	}
+	if minCore != "" && c.Version != "" && compareCoreVersions(c.Version, minCore) < 0 {
+		return "sing-box core " + c.Version + " does not support " + what +
+			" (need " + minCore + " or newer) — update the core in Core Dashboard"
+	}
+	return ""
 }
 
 // GateForCore снимает из готового тела ключи, которых это ядро не знает

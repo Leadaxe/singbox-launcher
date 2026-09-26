@@ -22,6 +22,9 @@ package config
 import (
 	"fmt"
 	"strings"
+
+	"singbox-launcher/core/config/registry"
+	"singbox-launcher/internal/locale"
 )
 
 // Фразы эмиссии: ключ локали = АНГЛИЙСКИЙ текст (общий механизм проекта,
@@ -43,15 +46,26 @@ const (
 	emitDetourSelfText          = "node %q dropped: its detour points at itself"
 	emitDetourCycleText         = "node %q dropped: detour loop — the chain of hops leads traffic back to itself"
 
-	emitGroupMemberLostText     = "group %q: member %q left the group (%s)"
-	emitMemberDroppedReasonText = "the node fell out of the config"
-	emitGroupEmptyText          = "group %q is not emitted: no members left (an empty group breaks core startup)"
-	emitGroupDefaultDroppedText = "group %q: default %q is not among the members — the key was dropped"
-
 	emitChainHopUnresolvedText = "chain %q: position %q did not resolve (%s)"
 	emitNodeNotEmittableText   = "node %q is not emittable — dropped: %v"
 
 	emitTagConflictText = "tag %q is claimed twice: %s and %s"
+)
+
+// Коды реестра (contract/registry/warnings.json), которые ставит сборка.
+const (
+	codeSourceDetourMissing        = "source_detour_missing"
+	codeSourceDetourSelf           = "source_detour_self"
+	codeSourceDetourCycle          = "source_detour_cycle"
+	codeGroupEmpty                 = "group_empty"
+	codeGroupMemberDropped         = "group_member_dropped"
+	codeChainUnsupportedByCore     = "chain_unsupported_by_core"
+	codeChainInvalid               = "chain_invalid"
+	codeChainHopMissing            = "chain_hop_missing"
+	codeChainNestedPosition        = "chain_nested_position"
+	codeChainCycleThroughDirection = "chain_cycle_through_direction"
+	codeReplaceTagConflict         = "replace_tag_conflict"
+	codeReplaceGroupEmpty          = "replace_group_empty"
 )
 
 // EmissionWarning — одна деградация эмиссии.
@@ -67,6 +81,25 @@ type EmissionWarning struct {
 	SourceLabel string
 	// DirectionTag — Направление-виновник, если источника нет.
 	DirectionTag string
+	// Code / Params — код реестра (warnings.json) и его подстановки, если
+	// деградации код назначен. UI отчёта переводит запись по коду; Text
+	// остаётся запасным текстом (лог, строка Sources).
+	Code   string
+	Params map[string]string
+}
+
+// registryWarningText — текст кода реестра на текущем языке UI с
+// подстановками; fallback — если кода в реестре нет или он не прочитался.
+func registryWarningText(code string, params map[string]string, fallback string) string {
+	reg, err := registry.Get()
+	if err != nil {
+		return fallback
+	}
+	_, text, ok := reg.WarningText(code, locale.GetLang(), params)
+	if !ok || strings.TrimSpace(text) == "" {
+		return fallback
+	}
+	return text
 }
 
 // String — фраза без адресата: для лога и для мест, которым нужен просто текст.

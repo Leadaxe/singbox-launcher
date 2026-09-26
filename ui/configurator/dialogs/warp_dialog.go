@@ -21,6 +21,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/config/registry"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/warp"
 	"singbox-launcher/internal/fynewidget"
@@ -166,12 +167,14 @@ func newWarpWGSection() *warpWGSection {
 	preset.SetSelectedIndex(0)
 
 	// Masquerade + junk fields (все поля обфускации).
-	ipSel := widget.NewSelect([]string{"quic", "dns", "stun", "sip"}, nil)
+	// Списки значений — enum полей реестра (wireguard.ip/ib, masque.vhttp),
+	// своих у диалога нет (SPEC 142 B9).
+	ipSel := widget.NewSelect(registryEnum("wireguard", "ip"), nil)
 	ipSel.SetSelected("quic")
 	idEntry := widget.NewSelectEntry(warp.SNIPool)
 	idEntry.SetText("www.google.com") // l10n-exempt: sample host
 	randIDBtn := widget.NewButton("🎲", func() { idEntry.SetText(warp.RandomSNI(nil)) })
-	ibSel := widget.NewSelect([]string{"chrome", "firefox", "curl"}, nil)
+	ibSel := widget.NewSelect(registryEnum("wireguard", "ib"), nil)
 	ibSel.SetSelected("chrome")
 
 	jc := numEntry("4")
@@ -276,8 +279,8 @@ type warpMasqueSection struct {
 func newWarpMasqueSection() *warpMasqueSection {
 	// auto — h3 с откатом на h2, когда QUIC-рукопожатие виснет (ядро с
 	// lx.27, дефолт ядра с lx.28); фиксированные h3/h2 — для ручного выбора.
-	vhttp := widget.NewSelect([]string{"auto", "h3", "h2"}, nil)
-	vhttp.SetSelected("auto")
+	vhttp := widget.NewSelect(registryEnum("masque", "vhttp"), nil)
+	vhttp.SetSelected(registryDefault("masque", "vhttp", "auto"))
 
 	// Пустой sni → ядро подставляет consumer-masque.cloudflareclient.com, туннель
 	// встаёт, но данные не идут (DPI глушит фирменный SNI). Дефолт обязателен —
@@ -492,4 +495,27 @@ func atoiDef(s string, def int) int {
 		return n
 	}
 	return def
+}
+
+// registryEnum — значения enum поля схемы из реестра (без пустого «не задано»).
+func registryEnum(scheme, path string) []string {
+	reg, err := registry.Get()
+	if err != nil {
+		return nil
+	}
+	return reg.FieldStrings(scheme, path)
+}
+
+// registryDefault — строковый дефолт поля схемы из реестра.
+func registryDefault(scheme, path, fallback string) string {
+	reg, err := registry.Get()
+	if err != nil {
+		return fallback
+	}
+	if f, ok := reg.Field(scheme, path); ok {
+		if s, ok := f.Default.(string); ok && s != "" {
+			return s
+		}
+	}
+	return fallback
 }

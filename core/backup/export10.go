@@ -17,14 +17,13 @@ package backup
 // Раскладывать записи по чужой форме не нужно — записи состояния
 // сериализуются своими типами, поэтому rules[] и dns — срезы состояния как
 // есть. Остаётся ровно две обязанности: снять то, что в файл не едет (кэш
-// подписки, рантайм), и перевести три поля в форму контракта (fold, disabled,
+// подписки, рантайм), и перевести два поля в форму контракта (disabled,
 // directions).
 //
 // Предупреждений два. backup_source_kind_unsupported — на корневую
 // провайдерскую группу. backup_local_only_dropped — на опции Направления,
 // которые не теги Направлений: `include` несёт только их (NODE_LINK.md §8).
-// backup_replace_tag_derived писатель 1.0 не эмитит: имя группы свёртки едет
-// явно (`fold_tag`).
+// Имя группы свёртки едет явно (`replace.tag`), и потери имени у 1.0 нет.
 
 import (
 	"encoding/json"
@@ -99,9 +98,8 @@ func Export10(s *state.State, opts ExportOptions) (*Backup10, []Warning, error) 
 		}
 	}
 
-	// Тег свёртки формат 1.0 везёт ЯВНО (`fold_tag`, см. Source10), поэтому
-	// WarnBackupReplaceTagDerived здесь не нужен и не эмитится: он говорил о
-	// потере формата 0.12, которой в 1.0 нет.
+	// Тег свёртки формат 1.0 везёт ЯВНО (`replace.tag`, см. Source10): потери
+	// имени группы, о которой говорил выведенный код формата 0.12, здесь нет.
 	for _, src := range s.Sources {
 		out, ok := export10Source(src)
 		if !ok {
@@ -202,12 +200,9 @@ func export10Source(src state.Source) (Source10, bool) {
 		MaxNodes:           src.MaxNodes,
 		Update:             cloneUpdateSpec(src.Update),
 
-		// Свёртка — формой контракта; в состоянии её имя `replace`, и оба
-		// имени в одном файле были бы двумя источниками правды. Имя группы
-		// в эту форму не влезает (там его нет вовсе) и едет рядом — иначе
-		// приёмник выводил бы его формулой и подменял явное имя молча.
-		Fold:    exportFold(src.Replace),
-		FoldTag: foldTagOf(src.Replace),
+		// Свёртка — той же формой, что в состоянии (контракт 1.1.78);
+		// прежние `fold` + `fold_tag` писатель не пишет.
+		Replace: cloneFolderReplace(src.Replace),
 	}
 
 	if src.Kind != state.SourceKindSubscription {
@@ -220,17 +215,6 @@ func export10Source(src state.Source) (Source10, bool) {
 	out.Nodes = nil
 	out.Disabled = exportDisabledMap(src)
 	return out, true
-}
-
-// foldTagOf — явное имя группы свёртки; пусто, если свёртки нет.
-//
-// Отдельная мелкая функция, чтобы у писателя и у сверочного теста был один
-// ответ на вопрос «какое имя уехало в файл».
-func foldTagOf(r *state.FolderReplace) string {
-	if r == nil {
-		return ""
-	}
-	return r.Tag
 }
 
 // export10Rules — копии записей правил.

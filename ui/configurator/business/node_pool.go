@@ -97,7 +97,7 @@ func RebuildNodePool(model *wizardmodels.WizardModel) (int, error) {
 	// сборке: без него хоп на узел папки не превратился бы в финальный тег.
 	linkTargets := config.BuildNodeLinkTargets(pc.ParserConfig.Proxies, nodesBySource, nodePoolRootTargets(model))
 	config.ResolveCanonicalChainHops(pc, linkTargets)
-	chainPool, broken := config.ResolveChainSources(
+	chainPool, broken, _ := config.ResolveChainSources(
 		pc, allNodes, nodesBySource, nodePoolDirectionTags(model))
 	for _, b := range broken {
 		debuglog.DebugLog("wizardNodePool: chain %q did not become a node: %s", b.Tag, b.Reason)

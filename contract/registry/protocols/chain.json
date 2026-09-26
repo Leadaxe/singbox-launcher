@@ -32,9 +32,49 @@
       },
       "strip": {
         "type": "object",
+        "order": [
+          "tls.fragment",
+          "multiplex.padding",
+          "xhttp.padding",
+          "tls.utls"
+        ],
+        "fields": {
+          "tls.fragment": {
+            "type": "bool",
+            "default": true,
+            "desc_en": "Strip TLS ClientHello fragmentation from inner hops.",
+            "desc_ru": "Снимать фрагментацию ClientHello у внутренних хопов.",
+            "impl": "Каталог ядра (sing-box-lx protocol/chain/transform.go stripCatalog): снимается по умолчанию при strip_evasion."
+          },
+          "multiplex.padding": {
+            "type": "bool",
+            "default": true,
+            "desc_en": "Strip multiplex padding from inner hops.",
+            "desc_ru": "Снимать padding мультиплексора у внутренних хопов.",
+            "impl": "Каталог ядра (sing-box-lx protocol/chain/transform.go stripCatalog): снимается по умолчанию при strip_evasion."
+          },
+          "xhttp.padding": {
+            "type": "bool",
+            "default": true,
+            "desc_en": "Strip XHTTP padding from inner hops.",
+            "desc_ru": "Снимать padding XHTTP у внутренних хопов.",
+            "impl": "Каталог ядра (sing-box-lx protocol/chain/transform.go stripCatalog): снимается по умолчанию при strip_evasion."
+          },
+          "tls.utls": {
+            "type": "bool",
+            "default": false,
+            "on_hop_required": {
+              "action": "unstrip",
+              "code": "chain_strip_utls_on_reality"
+            },
+            "desc_en": "Strip the uTLS fingerprint from inner hops.",
+            "desc_ru": "Снимать uTLS-отпечаток у внутренних хопов.",
+            "impl": "Каталог ядра stripCatalog: по умолчанию НЕ снимается. На REALITY-хопе ядро отвергает снятие отказом старта (sing-box-lx protocol/chain/transform.go «strip tls.utls: node uses reality, which requires utls»). on_hop_required (контракт 1.1.61, SPEC 142 B4): когда тело хопа на позиции >= 1 этот путь ТРЕБУЕТ — санитайзер дописал бы его обратно связью requires с set (tls.reality.enabled → tls.utls.enabled), — ключ снимается с патча цепочки (`unstrip`) с кодом chain_strip_utls_on_reality, цепочка собирается. Каталог ядро применяет ко всем позициям разом, поэтому uTLS остаётся у всех звеньев. Прежде — рукописная копия правила в Go (прежний ChainRealityConflict), и цепочка выпадала целиком."
+          }
+        },
         "desc_en": "Per-option patch to the strip catalogue.",
         "desc_ru": "Точечная правка каталога снимаемых опций.",
-        "impl": "map[string]bool поверх каталога ядра; НЕИЗВЕСТНЫЙ ключ = ошибка старта на весь конфиг. Код chain_strip_utls_on_reality: `sing-box check` такую ошибку не ловит, падает только run (память chain-check-misses-start-errors)."
+        "impl": "map[string]bool поверх каталога ядра (sing-box-lx protocol/chain/transform.go stripCatalog); `fields` — ЗАКРЫТЫЙ каталог ядра (контракт 1.1.58, SPEC 142 B3), `order` — порядок показа в форме. `default` ключа = снимается ли он при включённом strip_evasion (при strip_evasion=false каталог пуст, действует только патч). Санитайзер это значение не материализует. НЕИЗВЕСТНЫЙ ключ = ошибка старта на весь конфиг — теперь снимается общим unknown_key. Код chain_strip_utls_on_reality: `sing-box check` такую ошибку не ловит, падает только run (память chain-check-misses-start-errors)."
       },
       "rewrite": {
         "type": "object",
@@ -47,7 +87,7 @@
         "default": false,
         "desc_en": "Drop existing connections when the chain changes.",
         "desc_ru": "Рвать существующие соединения при смене цепочки.",
-        "impl": "SPEC 075 форка, option/chain_lx.go."
+        "impl": "SPEC 075 форка, sing-box-lx option/chain_lx.go."
       },
       "__dialer": {
         "type": "ref",

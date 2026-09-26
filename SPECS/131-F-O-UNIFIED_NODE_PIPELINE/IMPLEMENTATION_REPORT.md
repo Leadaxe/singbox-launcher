@@ -8,7 +8,7 @@
 | Волна | Коммит | Содержимое |
 |---|---|---|
 | hotfix | `5627be78` | vmess `security` по набору ядра (−`aes-128-ctr`, +`aes-128-cfb`), гард enum-полей xhttp на трёх входах; 3 кейса корпуса |
-| W0+W1 | `b56a93ad` | ТЗ (SPEC/TASKS/CODEMAP/DRIFT/CORE_SCHEMA), контракт 1.1.0: `body`-секции (384 поля), `on_invalid`/`maps_to`/`advisory`, тексты 69 кодов en+ru, CANON §6/§8, схемы, линтер реестра, D-122, TASKS_LXBOX §24 |
+| W0+W1 | `b56a93ad` | ТЗ (SPEC/TASKS/CODEMAP/DRIFT/CORE_SCHEMA), контракт 1.1.0: `body`-секции (384 поля), `on_invalid`/`maps_to`/`advisory`, тексты 69 кодов en+ru, PARSING_PRINCIPLES §6/§8, схемы, линтер реестра, D-122, TASKS_LXBOX §24 |
 | — | `7d4053ab` | §24.5 — ответы LxBox |
 | W2b | `946dd4ec` | `configtypes.Warning`, `state.Node.Warnings`, швы обеих воронок, релеи, бэкап, раннер корпуса с объектными warnings |
 | W2a | `e9f7e8eb` | `contract/embed.go`, `core/config/registry`, `core/config/nodeflow` (Sanitize/Emit/GateForCore) |

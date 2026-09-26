@@ -117,7 +117,7 @@
         "code": "field_conflict",
         "desc_en": "Use TCP Fast Open.",
         "desc_ru": "Использовать TCP Fast Open.",
-        "impl": "Запрещён у anytls: «tcp_fast_open is not supported with anytls outbound» (protocol/anytls/outbound.go:60) — одна такая нода не даёт ядру стартовать, поэтому поле снимается."
+        "impl": "Запрещён у anytls: «tcp_fast_open is not supported with anytls outbound» (protocol/anytls/outbound.go) — одна такая нода не даёт ядру стартовать, поэтому поле снимается."
       },
       "disable_tcp_keep_alive": {
         "type": "bool",
@@ -396,6 +396,25 @@
           "code": "xray_domain_strategy_ignored"
         },
         "impl": "То же, что у одноимённой записи секции wireguard: эквивалент у ядра ЕСТЬ (domain_resolver.strategy), но реестр объявляет domain_resolver КОРОТКОЙ формой — строкой с тегом DNS-сервера, — и стратегия без сервера ядром отбрасывается. Значения Xray здесь UseIPv4/UseIPv6/UseIP (у wireguard — ForceIPv4/…), словарь тот же по смыслу. Код общий: причина потери одна, и второй код на неё завёл бы второе имя одному правилу."
+      },
+      "fragment_via_dialer": {
+        "source": "json.streamSettings.sockopt.dialerProxy",
+        "deref": {
+          "key": "tag",
+          "as": "dialer"
+        },
+        "maps_to": null,
+        "when": {
+          "tls.enabled": true,
+          "ref.dialer.protocol": "freedom",
+          "ref.dialer.settings.fragment": {
+            "type_of": "object"
+          }
+        },
+        "implies": {
+          "tls.fragment": true
+        },
+        "impl": "Контракт 1.1.63, SPEC 142 C5. У Xray фрагментация ClientHello живёт не в узле, а в СОСЕДЕ по документу: `streamSettings.sockopt.dialerProxy` указывает на служебный freedom с `settings.fragment` (DPI-трюк). Это не звено цепочки — элемент ходит наружу напрямую, — а свойство его собственного TLS, и у ядра оно называется tls.fragment. `deref` кладёт соседа с тем же `tag` в слой `ref.dialer`, условие проверяет его протокол и что fragment — объект; `implies` ставит tls.fragment только узлу с TLS. Параметры Xray (packets/length/interval) не переносятся и кода не получают (решение владельца): Xray режет ClientHello вслепую по length и ждёт фиксированный interval, ядро парсит ClientHello и режет по меткам SNI, с TCP_NODELAY и ожиданием ACK — механика строго лучше. Звено цепочки, чей dialerProxy указывает на такой freedom, получает фрагментацию СВОЕГО TLS (оно и делает прямое соединение). Прежде правило жило рукописно на уровне документа (applyXrayFreedomFragment, снят) и ставило tls.fragment ВЛАДЕЛЬЦУ цепочки даже тогда, когда наружу ходило звено. Уровень документа (core/config/subscription/xray_json_array.go:attachXrayDialerChain) по-прежнему только не заводит freedom звеном."
       }
     }
   }

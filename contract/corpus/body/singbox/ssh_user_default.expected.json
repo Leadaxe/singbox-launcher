@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "body_kind": "singbox-outbound-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "password": "secret",
+        "server": "example-1.com",
+        "server_port": 22,
+        "type": "ssh",
+        "user": "root"
+      },
+      "kind": "outbound",
+      "label": "ssh-no-user",
+      "scheme": "ssh",
+      "warnings": [
+        {
+          "code": "ssh_user_default",
+          "path": "user"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "password": "secret",
+        "server": "example-2.com",
+        "server_port": 2222,
+        "type": "ssh",
+        "user": "admin"
+      },
+      "kind": "outbound",
+      "label": "ssh-with-user",
+      "scheme": "ssh"
+    }
+  ],
+  "v": 1
+}

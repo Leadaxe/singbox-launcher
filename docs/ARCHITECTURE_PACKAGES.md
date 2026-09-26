@@ -165,9 +165,9 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 | `direction_twins.go` | Pass 0 of the generator (SPEC 104): drops disabled Directions, expands each `auto` into a paired `<tag>-auto` urltest, and holds the empty-Direction fallback (`[block, direct]`, default=block) plus the "filter matched nothing" warning. Twins are build-only — keeping them in state would mean two objects to hand-sync. |
 | `chain_nodes.go` | **SPEC 110.** Chain sources become nodes here, once the whole pool is loaded: positions reference tags that are only final after every source is parsed. A chain may only reference a chain declared **above** it, so cycles are impossible by construction. A chain failing validation does not become a node at all. |
 | `chain_generator.go` | Emission of the `type: chain` object (positions in packet order, `strip`, `rewrite`, `idle_timeout`). |
-| `chain_validate.go` | The invariants `sing-box check` misses (only `run` fails): reality plus a stripped `tls.utls`, a nested chain off position 0. Also `ChainLayerTag` — the `<chain>#<i>` service-tag scheme used by the layered probe. |
+| `chain_validate.go` | The invariants `sing-box check` misses (only `run` fails): a `strip` key a hop body requires (`ChainUnstripRequired` — registry `on_hop_required`, judged by `nodeflow.StripBlocked`; `tls.utls` on a REALITY hop is kept, the chain builds), a nested chain off position 0. Also `ChainLayerTag` — the `<chain>#<i>` service-tag scheme used by the layered probe. |
 | `chain_cycle.go` / `detour_group_cycle.go` | Direction↔chain and node↔group-it-dials-through cycles: the element drops out of the group's **members** rather than taking the config down. The detour itself is **never stripped** — the node stays in the config and keeps dialling through its hop (SPEC 113-B: removing the key is a silent direct dial, which is forbidden). This is not fail-open for the detour: an unreachable detour target is handled separately and drops the carrier. |
-| `source_folds.go` | **SPEC 108.** Expands a subscription's fold into groups at build time (they are not stored in state). |
+| `folder_replaces.go` | **SPEC 118.** Expands a folder's/subscription's swap (`replace {mode: manual\|auto\|both, tag, auto?}`) into local groups at build time — a selector, an auto group, or a selector plus its `<tag>-auto` twin (the same suffix as Direction twins); nothing is stored in state. A swap tag already declared by a Direction, a swap above or a template tag is not built (`replace_tag_conflict`); built swap tags are claimed in the final-tag counter before nodes, so a namesake node gets `-2`. |
 | `outbound_share.go` | Share-URI lookup from a written `config.json` (`GetOutboundMapByTag`, `ShareProxyURIForOutboundTag`). |
 | `config_loader.go` | Read `config.json` (JSONC-aware): selector groups, TUN interface name, `experimental.cache_file`. |
 | `varsubst.go` | `SubstituteParserConfigPlaceholders` — resolve `@name` placeholders in outbound options (template defaults + state override). |
@@ -206,17 +206,16 @@ The architecture — pipeline stages, the source space, execution order, the rev
 
 | File | Purpose |
 |------|---------|
-| `source_loader.go` | `LoadNodesFromSource` entry point: fetch → format-detect → parse → tag prefix/postfix/mask + skip-filter + dedup; `LookupCachedBody` offline hook. |
-| `fetcher.go` | `FetchSubscriptionWithMeta` HTTP fetch (HWID/UA headers, 10 MB cap) + announce-header decode; deprecated `FetchSubscription` wrapper. |
+| `source_loader.go` | Identity stamping (`StampNodeIdentity`, `MakeIdentityUnique`), `MakeTagUnique`, the legacy tag machine helpers used by migration. Body parsing itself lives in `parse_body.go` (`ParseSubscriptionBody`). |
+| `fetcher.go` | `FetchSubscriptionWithMeta` HTTP fetch (HWID/UA headers, 10 MB cap) + announce-header decode. |
 | `meta.go` | Header + inline-`#comment` metadata parsing (Profile-Title, Subscription-Userinfo, update interval), provider-announce on empty body. |
 | `decoder.go` | `DecodeSubscriptionContent` (base64 / Xray JSON array detection). |
-| `node_parser_core.go` | `ParseNode` — three branches: the Amnezia `vpn://` profile, the registry engine, and "scheme not supported" for text no section recognises. Plus the common helpers (`extractTagAndComment`, `generateDefaultTag`, `normalizeFlagTag`, `IsDirectLink`, skip filters). |
+| `node_parser_core.go` | `ParseNode` — three branches: the Amnezia `vpn://` profile, the registry engine, and "scheme not supported" for text no section recognises. Plus the common helpers (`extractTagAndComment`, `generateDefaultTag`, `normalizeFlagTag`, `IsDirectLink` — a node link is whatever a registry `uri` section's `detect` recognises, plus the Amnezia `vpn://` container — skip filters). |
 | `node_parser_engine.go` | The single path into the engine: `parseURIByEngine` hands the **raw text** to `core/config/linkmap`; which section leads the link is decided by the registry's `detect`, not by a list of names here. `ParseWGConfByEngine` / `…Hint` are the pair for input that arrives as a wg-quick `.conf` (section `mappers.conf`, the caller may pass a label the text itself does not carry). |
-| `node_parser_transport.go` | What the tables do not express as data: XHTTP v2 / XMUX assembly, uTLS fingerprint normalisation (`NormalizeUTLSFingerprint`, `EnforceRealityFingerprint`), WS early-data splitting. |
 | `hysteria2_ports.go` | Hysteria2 multi-port ranges — the tables the share-URI direction and Hysteria v1 both need. |
 | `node_parser_amnezia.go` | Amnezia `vpn://` profile import: base64url + qCompress decode → WG/AWG container (`last_config`) → wg-quick text, which is then led by the `mappers.conf` section (SPEC 075). |
 | `wgconf_text.go` | Pasted `[Interface]/[Peer]` conf text: block extraction and a node per block (`ExtractWGConfBlocks`, `WGConfBodyToConvertedBlocks`, `WGConfBodyToURIs`). No intermediate `wireguard://` URI is built any more — the block carries its own node, because the round-trip through a URI dropped what a URI has no room for: the `wgconf_dns_ignored` code and the label from the `[Peer]` comment (SPEC 076, 133). |
-| `xray_json_array.go` / `xray_element_engine.go` / `xray_outbound_convert.go` / `xray_protocols.go` / `xray_balancer.go` | The Xray JSON array at **document** level: which element becomes a node, which becomes a chain hop (`xrayChainHopFromOutbound`, socks hop via `xrayBuildJumpFromSocksOutbound`), which becomes a balancer group; `remarks`→Label, slug tags, server ownership. The element itself is translated by the engine (`parseXrayElementByEngine`). |
+| `xray_json_array.go` / `xray_element_engine.go` / `xray_outbound_convert.go` / `xray_protocols.go` / `xray_balancer.go` | The Xray JSON array at **document** level: which element becomes a node, which becomes a chain hop (`xrayChainHopFromOutbound`; the hop is translated by the same engine section as a node), which becomes a balancer group; `remarks`→Label, slug tags, server ownership. The element itself is translated by the engine (`parseXrayElementByEngine`). |
 | `share_uri.go` | `ShareURIFromOutbound` / `ShareURIFromWireGuardEndpoint` — the reverse direction: a node body in `config.json` form → a share URI (`contract/docs/MAPPER_ENGINE.md` §9). |
 | `share_uri_secret.go` | `ShareURICarriesPrivateKey` — one predicate for every place a link is handed out: a link carrying a **private key** is only produced after an explicit confirmation. Judged by the node body and its scheme, not by grepping the finished link. |
 | `utf8_utils.go` | Consolidated UTF-8 validate/repair (`FixUTF8*`, `HasControlChars`) — SPEC 070 dedup. |
@@ -231,7 +230,7 @@ semantics: `contract/docs/BACKUP.md`.
 | File | Purpose |
 |------|---------|
 | `types.go` | The file's shape: subscriptions, servers, chains, directions, rules, DNS, portable vars. There is no `extensions` mechanism (contract 0.11.0): the file is a serialisation of state and nothing else. |
-| `export.go` | `State` → backup, a **pure function of state**: per-source fields (skip filters, local outbounds, detour, id, node tag, fold) are plain optional keys of the entity record. Two indistinguishable states must produce byte-identical files, so nothing about where the state came from may leak in. |
+| `export.go` / `export10.go` | `State` → backup format 1.0 (the only writer since v1.6.0, D-110), a **pure function of state**: per-source fields (skip filters, detour, id, node tag, the swap `replace {mode, tag, auto?}`) are plain optional keys of the entity record. Two indistinguishable states must produce byte-identical files, so nothing about where the state came from may leak in. |
 | `import.go` | Backup → `State`. A rule whose target does not exist here is imported **switched off** rather than lost or silently enabled: an enabled rule with a dead target makes the core reject the whole config. Anything the importer does not understand is dropped with a warning — never carried through — so the imported state is indistinguishable from one configured by hand. |
 | `portable_vars.go` | Generated from `contract/registry/vars.json` (portable=true) and checked against it by a test — a drifted list would either lose a setting or carry a value that means something else on the other machine. |
 | `file.go` | Atomic write with 0600 permissions (the file stores secrets as plain text), size cap, and default-deny reporting of unknown top-level keys. |
@@ -246,7 +245,7 @@ semantics: `contract/docs/BACKUP.md`.
 |------|---------|
 | `loader.go` | `LoadTemplateData`: read + validate template, apply params by GOOS, extract presets, return `TemplateData`. |
 | `template_validate.go` | `ValidateWizardTemplate` (uniqueness, refs, `#if` body, outer `@`-only). |
-| `substitute.go` | `SubstituteVarsInJSON`: recursive `@var` substitution + `#if` walker (map-spread / array-element), runtime globals `@runtime.platform`/`@runtime.arch`. |
+| `substitute.go` | `SubstituteVarsInJSONCanonWarnings` (walker in `substitute_canon.go`): the single `@var` substitution + `#if` walker (map-spread / array-element) for the main config, `on_change.set`, preset bodies and template DNS servers; runtime globals `@runtime.platform`/`@runtime.arch`/`@runtime.target`; `CastIntValue` (int by declared `type`, clamp [0, 65535]). Warnings come back as `[]TemplateWarning{Code, Params}` (SPEC 143). |
 | `ifexpr.go` | `#if` predicate evaluation forms (equality, `#in`/`#matches`/`#not`, AND/OR short-circuit). |
 | `vars_resolve.go` / `vars_default.go` | Var resolution (`VarAppliesOnGOOS`, `ParamBoolVarTrue`) + object `default_value` selection (GOOS/win7/default). |
 | `preset_loader.go` / `preset_types.go` / `preset_outbounds.go` | Preset parsing + types (rules / dns / outbounds / vars). |
@@ -458,7 +457,7 @@ semantics: `contract/docs/BACKUP.md`.
 | `source_tab.go` | Sources tab: URL input, source list, preview-all window launcher. |
 | `source_edit_window.go` + `source_edit_overview.go` / `_raw.go` / `_misc.go` | Per-source edit window (settings / preview / raw JSON; exclude/expose markers). |
 | `source_meta_format.go` / `source_support_link.go` | Source metadata formatting + support/web-page link. |
-| `source_fold_tab.go` | **SPEC 108.** Group tab of the source window: one fold checkbox replaces the old four flags; picks selector / auto-select / selector-with-auto-default. |
+| `source_replace_tab.go` | **SPEC 118.** Group tab of the source window: the swap (`replace`) — selector / auto group / selector with an auto default, plus the explicit swap tag (no positional tag any more). |
 | `source_chain_tab.go` / `source_chain_hops.go` / `source_chain_rewrite.go` | **SPEC 110.** Hop-chain form: positions in packet order (drag reorder), candidate picker (node / group / Direction / builtin), `rewrite` table (protocol · key · JSON value, `null` deletes). Refuses the combinations the core rejects only at `run` — the form is the only line of defence there. |
 | `target_tab.go` | Target tab for a remote machine (SPEC 097): gateway mode + LAN interfaces. |
 | `files_tab.go` | Files tab: build `config.json` into a file, view it read-only in a separate window. |

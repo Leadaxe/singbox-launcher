@@ -14,7 +14,7 @@
 - [x] `registry/limits.json` — 9 лимитов (включая найденные расхождения amnezia-cap 8/4 MiB, fetch 30/9 s)
 - [x] `registry/vars.json` (47 имён, 15 portable) + `registry/presets.json` (21 id, 4 общих)
 - [x] `diagrams/body_classify.mmd`, `parse_pipeline.mmd`, `emit_pipeline.mmd`
-- [x] `docs/CANON.md`, `docs/IDENTITY.md`, `docs/TEMPLATE_LANG.md` (нормативно, разрывы C1–C9 + N1–N12), `docs/BACKUP.md`
+- [x] `docs/PARSING_PRINCIPLES.md`, `docs/IDENTITY.md`, `docs/TEMPLATE_LANG.md` (нормативно, разрывы C1–C9 + N1–N12), `docs/BACKUP.md`
 - [x] Ревью пользователем: план утверждён целиком (D-004); по-фикстурные решения §9.E — в фазах 1–2 по принципам D-016
 - [x] Живые баги из §9.E закрыты в фазе 1 (hysteria2 obfs без пароля, gecko, reserved из wgconf, httpupgrade `?ed`-хвост, reality sid, http-нода из импорта, WG-ключи на JSON-пути в LxBox). Реализация SPEC 102 при этом не тронута — только её обвязка (фикстуры, release notes, отчёт)
 
@@ -51,7 +51,7 @@
 - [x] Sync-тесты реестра (Go): `registry_sync_test.go` — allowlist'ы кода против `registry/allowlists.json`; сразу поймал незакрытый gecko
 - [x] Dart: ветка `vpn://` в `parseUri` (B12) + отдельный лимит `maxAmneziaLinkLength` 512 KiB (общий с Go и реестром)
 - [x] Dart: раннер `corpus/body/` (13/13) + sync-тесты реестра (`kUtlsFingerprints`, `kHysteria2ObfsTypes`)
-- [x] Расхождение имени схемы в конверте (`ss` vs `shadowsocks`) — приведение в раннере, правило в CANON §1
+- [x] Расхождение имени схемы в конверте (`ss` vs `shadowsocks`) — приведение в раннере, правило в PARSING_PRINCIPLES §1
 
 ## Фаза 3 — Шаблоны (движок ✅, пресеты → SPEC 106)
 

@@ -18,7 +18,7 @@
       "meaning": "user:password",
       "desc_en": "user:password of the account.",
       "desc_ru": "user:password учётной записи.",
-      "impl": "user обязателен по-разному. URI-путь: Go при пустом userinfo валит ноду (валидация hostname+userinfo, node_parser_core.go:308-316); root-ветка node_parser_ssh.go:20-23 вызывается только с URI-пути (node_parser_core.go:781), где пустой userinfo уже отсечён — мёртвый код; Dart при пустом user — null-skip (ssh_parser.dart:17). Singbox-импорт: root при пустом user дефолтит ДАРТ (json_parsers.dart:967); Go кладёт map как есть без дефолта (singbox_import.go:248-298), GenerateNodeJSON пустой user просто не эмитит (outbound_generator.go:310-316) — РАЗРЫВ (новое, вне §9). Go share-URI эмиттер дефолтит root без warning (shareuri_ssh.go:12-15). password опционален. Дефолтный порт 22."
+      "impl": "user обязателен по-разному. URI-путь: Go при пустом user валит ноду (required записи mappers.uri.params.user → parse_error + field_missing, корпус uri/ssh/missing_user_rejected); Dart при пустом user — null-skip (ssh_parser.dart:17). Singbox-импорт: тело без user получает root явно с кодом ssh_user_default (body.fields.user.default_when, контракт 1.1.65); Dart подставляет root без кода (json_parsers.dart). Общий эмиттер share-URI Go root не подставляет. password опционален. Дефолтный порт 22."
     },
     "query": {
       "private_key": {
@@ -27,7 +27,7 @@
         "maps_to": "private_key",
         "desc_en": "Inline private key.",
         "desc_ru": "Приватный ключ строкой.",
-        "impl": "Inline приватный ключ (PEM; значения уже percent-decoded — '+' в base64 не портится). Эмит сведён 18.09.2026 (решение владельца, TASKS_LXBOX §24.10): обе стороны пишут ключ в query `private_key=` и отдают такую ссылку только после предупреждения и подтверждения пользователя; Go эмитит private_key_path лишь при пустом private_key; список из нескольких ключей Go не кодирует (ErrShareURINotSupported) — склейка обратно не разберётся."
+        "impl": "Inline приватный ключ (PEM; значения уже percent-decoded — '+' в base64 не портится). Эмит сведён 18.09.2026 (решение владельца, TASKS_LXBOX §24.10): обе стороны пишут ключ в query `private_key=` и отдают такую ссылку только после предупреждения и подтверждения пользователя (Go — core/config/subscription/share_uri_secret.go:ShareURICarriesPrivateKey, поле с ролью private_key). Общий эмиттер Go пишет то, что лежит в теле: условие «private_key_path лишь при пустом private_key» (when записи) действует только на входе; список из нескольких ключей эмиттер склеивает через ',', и склейка обратно не разберётся (прежний рукописный эмиттер такой список отказывал кодировать, ErrShareURINotSupported)."
       },
       "private_key_path": {
         "type": "string",
@@ -87,15 +87,8 @@
     "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart toUriSsh → buildQuery sort, node_spec_emit.dart:494 + uri_utils.dart:306-312); private_key_path/client_version — desktop-хвост Go. Inline private_key эмитят обе стороны (после подтверждения пользователя)."
   },
   "refs": {
-    "go": [
-      "core/config/subscription/node_parser_core.go:249-251",
-      "core/config/subscription/node_parser_core.go:308-316",
-      "core/config/subscription/node_parser_ssh.go:16-74",
-      "core/config/subscription/shareuri_ssh.go:11-71",
-      "core/config/outbound_generator.go:310"
-    ],
     "dart": [
-      "lib/services/parser/uri_parsers/ssh_parser.dart:8-54",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/models/node_spec_emit.dart:465-497",
       "lib/services/parser/json_parsers.dart:797"
     ]
@@ -135,10 +128,16 @@
       },
       "user": {
         "type": "string",
+        "role": "credential",
         "default": "root",
+        "default_when": {
+          "absent": true,
+          "value": "root",
+          "code": "ssh_user_default"
+        },
         "desc_en": "SSH user name.",
         "desc_ru": "Имя пользователя SSH.",
-        "impl": "Пусто → root (код ssh_user_default). server_port по умолчанию 22 — подставляет реализация, не option/."
+        "impl": "Пусто → root. Ядро и так берёт root при пустом user (sing-box protocol/ssh/outbound.go NewOutbound); default_when (контракт 1.1.65) пишет его в тело явно с кодом ssh_user_default — подстановка видна пользователю, соединение не меняется. На входе ссылки user обязателен раньше (field_missing). server_port по умолчанию 22 — подставляет реализация, не option/."
       },
       "password": {
         "type": "string",
@@ -149,6 +148,7 @@
       },
       "private_key": {
         "type": "listable_string",
+        "role": "private_key",
         "secret": true,
         "desc_en": "Private key contents, PEM form.",
         "desc_ru": "Содержимое закрытого ключа в форме PEM.",
@@ -278,7 +278,7 @@
           "source": "userinfo.user",
           "maps_to": "user",
           "required": true,
-          "impl": "Обязателен. У нас отбраковка РАНЬШЕ секции — node_parser_core.go:394-400 (ssh в списке схем с обязательным userinfo), корпус uri/ssh/missing_user_rejected ждёт parse_error. Дефолт 'root' реестра не материализуется: ветка node_parser_ssh.go:20-23 с WarnSSHUserDefault МЁРТВАЯ, до неё исполнение не доходит (QUIRKS-кандидат на чистку)."
+          "impl": "Обязателен: required этой записи роняет ссылку без user (parse_error + field_missing, корпус uri/ssh/missing_user_rejected); прежде ту же отбраковку делала рукописная валидация ДО секции. Дефолт 'root' реестра не материализуется; мёртвая ветка прежнего рукописного парсера ssh с WarnSSHUserDefault удалена вместе с ним."
         },
         "password": {
           "source": "userinfo.pass",
@@ -292,7 +292,7 @@
             "mode": "query",
             "passes": 1
           },
-          "impl": "Многострочный PEM: %0A раскрывается ОДИН раз, раскрутки до стабильной точки нет — она сломала бы ключ, где '%' законен. format: pem вместо plus_literal (PRIMITIVES §0.4a, DELTAS D133-15): '+' в PEM несёт ДВА смысла — пробел в заголовочных строках -----BEGIN…----- и литерал в base64-теле, — поэтому булев флаг негоден в обоих положениях. Открытое место, помеченное LxBox, закрыто форматом. У нас сегодня заплаты нет вовсе: значение идёт из parsedURL.Query() (node_parser_ssh.go:32), и '+' становится пробелом И в заголовке, И в теле — тело ключа портится молча. QUIRKS Q133-40."
+          "impl": "Многострочный PEM: %0A раскрывается ОДИН раз, раскрутки до стабильной точки нет — она сломала бы ключ, где '%' законен. format: pem вместо plus_literal (PRIMITIVES §0.4a, DELTAS D133-15): '+' в PEM несёт ДВА смысла — пробел в заголовочных строках -----BEGIN…----- и литерал в base64-теле, — поэтому булев флаг негоден в обоих положениях. Открытое место, помеченное LxBox, закрыто форматом. Прежде у нас заплаты не было вовсе: рукописный парсер ssh брал значение из parsedURL.Query(), и '+' становился пробелом И в заголовке, И в теле — тело ключа портилось молча. QUIRKS Q133-40."
         },
         "private_key_path": {
           "source": "query.private_key_path",
@@ -302,7 +302,7 @@
               "present": false
             }
           },
-          "impl": "Учитывается только при пустом private_key — node_parser_ssh.go:32-36. Поле launcher-only, у LxBox его нет: per-app override uri/ssh/private_key_path.expected.lxbox.json."
+          "impl": "Учитывается только при пустом private_key — when этой записи. Поле launcher-only, у LxBox его нет: per-app override uri/ssh/private_key_path.expected.lxbox.json."
         },
         "private_key_passphrase": {
           "source": "query.private_key_passphrase",
@@ -332,7 +332,7 @@
         "client_version": {
           "source": "query.client_version",
           "maps_to": "client_version",
-          "impl": "ext: desktop. Наш парсер его ЧИТАЕТ — node_parser_ssh.go:72-74, и корпус это фиксирует per-app override'ом: uri/ssh/full_config.expected.launcher.json несёт client_version, .expected.lxbox.json — нет. Прежняя оговорка «если корпус покажет расхождение, снимается» снята приёмкой."
+          "impl": "ext: desktop. Наш маппер его ЧИТАЕТ (эта запись; прежде — рукописный парсер ssh), и корпус это фиксирует per-app override'ом: uri/ssh/full_config.expected.launcher.json несёт client_version, .expected.lxbox.json — нет. Прежняя оговорка «если корпус покажет расхождение, снимается» снята приёмкой."
         }
       },
       "include": [

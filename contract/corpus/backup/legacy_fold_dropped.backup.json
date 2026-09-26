@@ -1,0 +1,65 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "launcher", "version": "2.2.0", "platform": "test" },
+  "exported_at": "2026-09-20T00:00:00Z",
+  "sources": [
+    {
+      "kind": "folder",
+      "id": "01FLDLEGACYFOLD00000000000A",
+      "name": "Proton",
+      "enabled": true,
+      "fold": {
+        "mode": "select_auto",
+        "auto": { "mode": "least_test", "url": "https://example-9.com/generate_204", "interval": "15m", "tolerance": 50 }
+      },
+      "fold_tag": "Proton",
+      "nodes": [
+        {
+          "kind": "server",
+          "tag": "p-1",
+          "enabled": true,
+          "body": {
+            "type": "trojan",
+            "server": "example-5.com",
+            "server_port": 443,
+            "password": "testpass505"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "subscription",
+      "id": "01SUBLEGACYFOLD00000000000A",
+      "url": "https://example-1.com/sub-legacy-tag",
+      "name": "Named",
+      "enabled": true,
+      "fold": { "mode": "select" },
+      "fold_tag": "Named-pick"
+    },
+    {
+      "kind": "subscription",
+      "id": "01SUBLEGACYFOLD00000000000B",
+      "url": "https://example-1.com/sub-legacy-derived",
+      "name": "Derived",
+      "enabled": true,
+      "fold": { "mode": "select" }
+    }
+  ],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "Work via Proton",
+      "enabled": true,
+      "num": 1000,
+      "body": { "domain_suffix": [".work.example-1.com"], "outbound": "Proton" }
+    },
+    {
+      "kind": "inline",
+      "name": "Media via derived",
+      "enabled": true,
+      "num": 1010,
+      "body": { "domain_suffix": [".media.example-2.com"], "outbound": "2:select" }
+    }
+  ],
+  "route": { "final": "Named-pick" }
+}

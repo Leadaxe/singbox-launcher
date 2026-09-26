@@ -49,19 +49,13 @@ var errSkipRule = errors.New("rule skipped")
 func decodeLegacy(b *Backup, opts ImportOptions) (*decodedFile, error) {
 	out := &decodedFile{Format: FileFormatLegacy}
 
-	// Подписки. Индекс нужен ДЛЯ ТЕГА ЗАМЕНЫ: контракт 0.x его не несёт, и
-	// обе стороны обязаны вывести один и тот же позиционный дериватив.
-	for i, sub := range b.Subscriptions {
-		src, warns := importSubscription(sub, i)
+	// Подписки. Свёртка 0.x (`fold`) не читается (контракт 1.1.79): группа
+	// `<N>:select` не создаётся, и правила ТОГО ЖЕ файла, метившие в неё,
+	// приезжают выключенными с backup_unknown_outbound.
+	for _, sub := range b.Subscriptions {
+		src, warns := importSubscription(sub)
 		out.Warnings = append(out.Warnings, warns...)
 		out.Sources = append(out.Sources, decodedSource{Kind: decodedSubscription, Src: src})
-		// Группы, которые породит свёртка приехавшей подписки (D-081):
-		// правила и route.final ТОГО ЖЕ файла ссылаются на дериватив
-		// `<N>:select` / `<N>:auto`, а список известных целей принимающей
-		// стороны снят ДО импорта и о нём знать не может.
-		for tag := range foldDerivedDirectionTags(sub, i) {
-			out.KnownTagsFromFile = append(out.KnownTagsFromFile, tag)
-		}
 	}
 
 	// Серверы: запись с пометкой folder уходит не в корень, а в папку с этим
@@ -203,15 +197,14 @@ func ensureSourceID(id string) string {
 
 // importSubscription — подписка контракта 0.11 в источник v7.
 //
-// index — позиция записи в файле: тег ЗАМЕНЫ (fold → replace) контракт не
-// несёт, а в v7 он явный. Материализуем его прежним позиционным деривативом
-// (`<N>:select`), тем же, что писала старая свёртка: правила и route.final
-// приезжают из того же файла и ссылаются именно на него.
+// Свёртка подписки (`fold`) не читается и не мигрирует (решение владельца
+// 26.09.2026, контракт 1.1.79): ключа нет в таблице subscriptionKeys, и
+// общий обход называет его backup_unknown_field.
 //
 // Второй возврат — потери конвертации, которые контракт выразить умеет, а
 // модель v7 больше нет: маска тегов и локальные Направления источника. Обе
 // приезжают в бэкапах v1.5.x, и обе обязаны быть названы вслух.
-func importSubscription(sub Subscription, index int) (state.Source, []Warning) {
+func importSubscription(sub Subscription) (state.Source, []Warning) {
 	var warns []Warning
 	src := state.Source{
 		Node:     state.Node{Kind: state.SourceKindSubscription, Enabled: sub.Enabled == nil || *sub.Enabled},
@@ -238,21 +231,18 @@ func importSubscription(sub Subscription, index int) (state.Source, []Warning) {
 	if mask := importMaskTag(sub.Tag); mask != "" {
 		warns = append(warns, Warning{Code: WarnBackupTagMaskDropped, Detail: subscriptionLabel(sub) + ": " + mask})
 	}
-	src.Replace = importFold(sub.Fold, backupReplaceTag(sub, index))
 	if sub.Update != nil {
 		src.Update = &state.UpdateSpec{IntervalHours: sub.Update.IntervalHours, AutoRefresh: sub.Update.Auto}
 	}
-	// Локальные Направления источника: пара, порождённая свёрткой, уже
-	// приехала заменой (Replace выше) — второй раз её импортировать нельзя,
-	// это дало бы двух владельцев одного тега. Остальные упразднены классом.
-	if derived := foldDerivedDirectionTags(sub, index); len(sub.Outbounds) > 0 {
-		for _, ob := range sub.Outbounds {
-			tag := strings.TrimSpace(ob.Tag)
-			if tag == "" || derived[tag] {
-				continue
-			}
-			warns = append(warns, Warning{Code: WarnBackupLocalDirectionDropped, Detail: subscriptionLabel(sub) + " → " + tag})
+	// Локальные Направления источника упразднены классом. Пара, которую
+	// порождала свёртка (`<PFX>select`/`<PFX>auto`), тоже: свёртка 0.x не
+	// читается, заменой эта пара не приезжает — значит, это потеря.
+	for _, ob := range sub.Outbounds {
+		tag := strings.TrimSpace(ob.Tag)
+		if tag == "" {
+			continue
 		}
+		warns = append(warns, Warning{Code: WarnBackupLocalDirectionDropped, Detail: subscriptionLabel(sub) + " → " + tag})
 	}
 	// Флаги «убрать из общего списка» / «показывать теги группы»: класс
 	// упразднён (SPEC 118), узлы источника остаются в пуле кандидатов.
@@ -319,18 +309,6 @@ func importSourceIdentity(src *state.Source, sub Subscription) (Warning, bool) {
 		Code:   WarnBackupSourceIdentityDropped,
 		Detail: subscriptionLabel(sub) + ": " + strings.Join(dropped, ", "),
 	}, true
-}
-
-// backupReplaceTag — тег замены свёрнутой подписки, приехавшей из бэкапа:
-// префикс тегов подписки с позиционным умолчанием «<номер>:» плюс `select`.
-// Формула та же, что у старой свёртки, — по этим тегам ссылаются правила
-// того же файла.
-func backupReplaceTag(sub Subscription, index int) string {
-	prefix := ""
-	if sub.Tag != nil {
-		prefix = sub.Tag.Prefix
-	}
-	return legacyFoldPrefix(prefix, index) + "select"
 }
 
 // importServer — одиночный узел контракта в источник v7.

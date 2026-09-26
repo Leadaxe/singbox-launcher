@@ -33,9 +33,11 @@ package config
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 )
@@ -301,15 +303,31 @@ func ApplyCanonicalNodeLinks(
 	// Итерация до фикспойнта: каждое выпадение может открыть следующее.
 	// Верхняя граница защитная — каждый содержательный проход что-то
 	// удаляет, их конечное число.
+	//
+	// Потерянная цель detour (source_detour_missing) пишется ОДНОЙ записью на
+	// пару «источник → цель» с числом узлов: у папки на полсотни узлов с
+	// общим detour иначе было бы полсотни одинаковых строк отчёта. Каждый
+	// узел по-прежнему называется в логе.
+	var missing []detourMissingGroup
 	for iter := 0; iter <= len(allNodes)+1; iter++ {
 		changed := false
 		for _, n := range allNodes {
 			if n == nil || dropped[n] {
 				continue
 			}
-			if reason := resolveCanonicalDetour(n, targets, dropped); reason != "" {
+			if reason, lostTarget := resolveCanonicalDetour(n, targets, dropped); reason != "" {
 				dropped[n] = true
-				warnings = append(warnings, addr(n, reason))
+				if lostTarget != "" {
+					missing = addDetourMissing(missing, addr(n, ""), lostTarget, n.Tag)
+				} else {
+					// Без потерянной цели resolveCanonicalDetour роняет узел
+					// только за detour на самого себя.
+					w := addr(n, "")
+					w.Code = codeSourceDetourSelf
+					w.Params = map[string]string{"tag": n.Tag}
+					w.Text = registryWarningText(w.Code, w.Params, reason)
+					warnings = append(warnings, w)
+				}
 				debuglog.WarnLog("nodelink: %s", reason)
 				changed = true
 			}
@@ -318,14 +336,53 @@ func ApplyCanonicalNodeLinks(
 			break
 		}
 	}
+	for _, m := range missing {
+		w := m.w
+		w.Code = codeSourceDetourMissing
+		w.Params = map[string]string{"target": m.target, "count": strconv.Itoa(m.count)}
+		// Имена узлов — в запасном тексте (лог, строка Sources): отчёт
+		// переводит запись по коду, а человеку, читающему лог, нужно знать,
+		// кого именно сняли.
+		w.Text = registryWarningText(w.Code, w.Params,
+			locale.Tf(emitDetourTargetMissingText, m.count, m.target)) +
+			" (" + detourMissingNodeList(m.nodes) + ")"
+		warnings = append(warnings, w)
+	}
 
 	// Кольца detour: то, что осталось после фикспойнта и ходит по кругу.
 	if cycled := detectCanonicalDetourCycles(allNodes, dropped); len(cycled) > 0 {
 		for _, n := range cycled {
 			dropped[n] = true
 			reason := locale.Tf(emitDetourCycleText, n.Tag)
-			warnings = append(warnings, addr(n, reason))
+			w := addr(n, "")
+			w.Code = codeSourceDetourCycle
+			w.Params = map[string]string{"tag": n.Tag}
+			w.Text = registryWarningText(w.Code, w.Params, reason)
+			warnings = append(warnings, w)
 			debuglog.WarnLog("nodelink: %s", reason)
+		}
+	}
+
+	// Связи тела с detour, который сборка только что проставила: в теле
+	// состояния detour нет (managed-поле, санитайзер его снимает), поэтому
+	// связь реестра `conflicts {with: detour}` при санитайзе не сработала бы
+	// никогда. detour не уступает (fail-closed) — уступает поле, с кодом связи.
+	for _, n := range allNodes {
+		if n == nil || dropped[n] || n.CanonicalDetour == nil {
+			continue
+		}
+		target, _ := n.Outbound[buildDetourField].(string)
+		for _, y := range yieldToBuildDetour(n) {
+			w := addr(n, "")
+			w.Code = y.Code
+			if w.Code == "" {
+				w.Code = "field_conflict"
+			}
+			w.Params = map[string]string{"tag": n.Tag, "path": y.Path, "with": y.With, "target": target}
+			fallback := locale.Tf(emitDetourFieldYieldText, n.Tag, y.Path, target)
+			w.Text = registryWarningText(w.Code, w.Params, fallback)
+			warnings = append(warnings, w)
+			debuglog.WarnLog("nodelink: %s (%s)", fallback, w.Code)
 		}
 	}
 
@@ -337,13 +394,18 @@ func ApplyCanonicalNodeLinks(
 		if len(n.CanonicalGroupMembers) == 0 && n.CanonicalGroupDefault == nil {
 			continue // импортированная группа мостового пути — её состав уже сведён
 		}
-		for _, w := range resolveCanonicalGroup(n, targets, dropped) {
-			warnings = append(warnings, addr(n, w))
+		for _, gw := range resolveCanonicalGroup(n, targets, dropped) {
+			w := addr(n, gw.Text)
+			w.Code, w.Params = gw.Code, gw.Params
+			warnings = append(warnings, w)
 		}
 		if len(groupMemberTags(n)) == 0 {
 			dropped[n] = true
 			reason := locale.Tf(emitGroupEmptyText, n.Tag)
-			warnings = append(warnings, addr(n, reason))
+			w := addr(n, reason)
+			w.Code = codeGroupEmpty
+			w.Params = map[string]string{"tag": n.Tag}
+			warnings = append(warnings, w)
 			debuglog.WarnLog("nodelink: %s", reason)
 		}
 	}
@@ -362,10 +424,12 @@ func ApplyCanonicalNodeLinks(
 }
 
 // resolveCanonicalDetour штампует detour узлу. Возвращает непустую причину,
-// если носитель обязан выпасть (fail-closed).
-func resolveCanonicalDetour(n *ParsedNode, targets *NodeLinkTargets, dropped map[*ParsedNode]bool) string {
+// если носитель обязан выпасть (fail-closed); lostTarget — имя цели, когда
+// причина в том, что цели нет (не разрешилась или сама выпала): такие узлы
+// сводятся в одну запись source_detour_missing на пару источник→цель.
+func resolveCanonicalDetour(n *ParsedNode, targets *NodeLinkTargets, dropped map[*ParsedNode]bool) (reason, lostTarget string) {
 	if n.CanonicalDetour == nil {
-		return ""
+		return "", ""
 	}
 	// Исключения для WireGuard ЗДЕСЬ НЕТ (проверено запуском ядра
 	// 1.14.0-lx.28: endpoint/wireguard с `detour` стартует и честно
@@ -378,19 +442,105 @@ func resolveCanonicalDetour(n *ParsedNode, targets *NodeLinkTargets, dropped map
 	// работал.
 	res := targets.Resolve(*n.CanonicalDetour)
 	if res.Problem != "" {
-		return locale.Tf(emitDetourUnresolvedText, n.Tag, res.Problem)
+		target := strings.TrimSpace(n.CanonicalDetour.Tag)
+		if target == "" {
+			target = res.Problem
+		}
+		return locale.Tf(emitDetourUnresolvedText, n.Tag, res.Problem), target
 	}
 	if res.Node != nil && dropped[res.Node] {
-		return locale.Tf(emitDetourTargetDroppedText, n.Tag, res.Tag)
+		return locale.Tf(emitDetourTargetDroppedText, n.Tag, res.Tag), res.Tag
 	}
 	if res.Tag == n.Tag {
-		return locale.Tf(emitDetourSelfText, n.Tag)
+		return locale.Tf(emitDetourSelfText, n.Tag), ""
 	}
 	if n.Outbound == nil {
 		n.Outbound = map[string]interface{}{}
 	}
 	n.Outbound["detour"] = res.Tag
-	return ""
+	return "", ""
+}
+
+// buildDetourField — managed-поле тела, которое проставляет сборка
+// (resolveCanonicalDetour).
+const buildDetourField = "detour"
+
+// Фразы отчёта сборки о detour. Константы живут в файле использования:
+// проверка локализации (tools/l10n) резолвит locale.T(const) только по
+// константам того же файла.
+const (
+	emitDetourTargetMissingText = "%d node(s) dropped: detour target %q is gone"
+	emitDetourFieldYieldText    = "node %q: %s removed — it cannot be combined with detour %q"
+)
+
+// yieldToBuildDetour снимает с тела узла поля, которые реестр объявил
+// несовместимыми с detour (registry.Registry.YieldsTo), и возвращает их.
+// Правило — данные реестра; имён схем здесь нет.
+func yieldToBuildDetour(n *ParsedNode) []registry.BodyYield {
+	if n == nil || n.Outbound == nil {
+		return nil
+	}
+	reg, err := registry.Get()
+	if err != nil {
+		return nil
+	}
+	ys := reg.YieldsTo(n.Scheme, buildDetourField, n.Outbound)
+	for _, y := range ys {
+		n.Outbound = withoutBodyPath(n.Outbound, strings.Split(y.Path, "."))
+	}
+	return ys
+}
+
+// withoutBodyPath — тело без поля по пути. Вложенные объекты копируются по
+// пути к полю: они могут быть общими с состоянием.
+func withoutBodyPath(m map[string]interface{}, parts []string) map[string]interface{} {
+	if m == nil || len(parts) == 0 {
+		return m
+	}
+	if len(parts) == 1 {
+		delete(m, parts[0])
+		return m
+	}
+	inner, ok := m[parts[0]].(map[string]interface{})
+	if !ok {
+		return m
+	}
+	cp := make(map[string]interface{}, len(inner))
+	for k, v := range inner {
+		cp[k] = v
+	}
+	m[parts[0]] = withoutBodyPath(cp, parts[1:])
+	return m
+}
+
+// detourMissingGroup — узлы одного источника, выпавшие из-за одной и той же
+// потерянной цели detour.
+type detourMissingGroup struct {
+	w      EmissionWarning // адресат (источник)
+	target string
+	count  int
+	nodes  []string
+}
+
+func addDetourMissing(groups []detourMissingGroup, w EmissionWarning, target, node string) []detourMissingGroup {
+	for i := range groups {
+		if groups[i].w.SourceID == w.SourceID && groups[i].w.SourceLabel == w.SourceLabel && groups[i].target == target {
+			groups[i].count++
+			groups[i].nodes = append(groups[i].nodes, node)
+			return groups
+		}
+	}
+	return append(groups, detourMissingGroup{w: w, target: target, count: 1, nodes: []string{node}})
+}
+
+// detourMissingNodeList — имена снятых узлов для запасного текста; длинный
+// список обрезается: папка на сотни узлов дала бы строку на экран.
+func detourMissingNodeList(nodes []string) string {
+	const shown = 5
+	if len(nodes) <= shown {
+		return strings.Join(nodes, ", ")
+	}
+	return strings.Join(nodes[:shown], ", ") + ", …"
 }
 
 // detectCanonicalDetourCycles — участники колец по рёбрам detour среди
@@ -467,10 +617,21 @@ func detectCanonicalDetourCycles(allNodes []*ParsedNode, dropped map[*ParsedNode
 	return cycled
 }
 
+// Фразы отчёта сборки об Auto-группах. Константы живут в файле
+// использования: проверка локализации (tools/l10n) резолвит locale.T(const)
+// только по константам того же файла.
+const (
+	emitGroupMemberLostText     = "group %q: member %q left the group (%s)"
+	emitMemberDroppedReasonText = "the node fell out of the config"
+	emitGroupEmptyText          = "group %q is not emitted: no members left (an empty group breaks core startup)"
+	emitGroupDefaultDroppedText = "group %q: default %q is not among the members — the key was dropped"
+)
+
 // resolveCanonicalGroup сводит состав Auto-группы: члены → финальные теги,
-// битые и выключенные выпадают с предупреждением (prune).
-func resolveCanonicalGroup(n *ParsedNode, targets *NodeLinkTargets, dropped map[*ParsedNode]bool) []string {
-	var warnings []string
+// битые и выключенные выпадают с предупреждением (prune). Записи без
+// адресата — его проставляет вызывающий.
+func resolveCanonicalGroup(n *ParsedNode, targets *NodeLinkTargets, dropped map[*ParsedNode]bool) []EmissionWarning {
+	var warnings []EmissionWarning
 	members := make([]interface{}, 0, len(n.CanonicalGroupMembers))
 	seen := make(map[string]struct{}, len(n.CanonicalGroupMembers))
 	for _, link := range n.CanonicalGroupMembers {
@@ -480,9 +641,20 @@ func resolveCanonicalGroup(n *ParsedNode, targets *NodeLinkTargets, dropped map[
 			if why == "" {
 				why = locale.T(emitMemberDroppedReasonText)
 			}
-			w := locale.Tf(emitGroupMemberLostText, n.Tag, link.Tag, why)
+			fallback := locale.Tf(emitGroupMemberLostText, n.Tag, link.Tag, why)
+			w := EmissionWarning{
+				Code:   codeGroupMemberDropped,
+				Params: map[string]string{"tag": n.Tag, "member": link.Tag},
+			}
+			// Конкретная причина — в скобках к тексту реестра: отчёт переводит
+			// запись по коду, а читающему лог нужно знать, почему член выбыл.
+			if text := registryWarningText(w.Code, w.Params, ""); text != "" {
+				w.Text = text + " (" + why + ")"
+			} else {
+				w.Text = fallback
+			}
 			warnings = append(warnings, w)
-			debuglog.WarnLog("nodelink: %s", w)
+			debuglog.WarnLog("nodelink: %s", fallback)
 			continue
 		}
 		if _, dup := seen[res.Tag]; dup {
@@ -514,9 +686,9 @@ func resolveCanonicalGroup(n *ParsedNode, targets *NodeLinkTargets, dropped map[
 				return warnings
 			}
 		}
-		w := locale.Tf(emitGroupDefaultDroppedText, n.Tag, def.Tag)
-		warnings = append(warnings, w)
-		debuglog.WarnLog("nodelink: %s", w)
+		text := locale.Tf(emitGroupDefaultDroppedText, n.Tag, def.Tag)
+		warnings = append(warnings, EmissionWarning{Text: text})
+		debuglog.WarnLog("nodelink: %s", text)
 	}
 	return warnings
 }

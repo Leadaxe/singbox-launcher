@@ -66,7 +66,7 @@
 | Декодер | После trim строка начинается с **`[`**, **`json.Valid`**, успешный `json.Unmarshal` в массив — тело не отвергается как «не подписка» (`DecodeSubscriptionContent`). |
 | Вход в парсер | **`IsXrayJSONArrayBody`**: то же — префикс `[`, валидный JSON, массив объектов. |
 | Элемент массива | **`xrayElementHasProtocolOutbounds`**: в **`outbounds`** есть хотя бы один объект с полем **`protocol`** (строка) — признак **Xray-диалекта**. Элементы только с sing-box **`type`** без **`protocol`** не считаются Xray для этой ветки и **пропускаются** с `debuglog` (ожидается follow-up **016**). |
-| Нода | Основной outbound элемента выбирается на уровне документа, а переводит его движок реестра (`parseXrayElementByEngine` → `core/config/linkmap`); какая секция `mappers.xray` его ведёт, решает её собственный `detect`, а не список протоколов в коде. При **`dialerProxy`** hop разбирается как **`socks`** или **`vless`** (`xrayChainHopFromOutbound`; socks-звено — `xrayBuildJumpFromSocksOutbound`); иные `protocol` у hop — пропуск элемента (`WarnLog`). |
+| Нода | Основной outbound элемента выбирается на уровне документа, а переводит его движок реестра (`parseXrayElementByEngine` → `core/config/linkmap`); какая секция `mappers.xray` его ведёт, решает её собственный `detect`, а не список протоколов в коде. При **`dialerProxy`** hop (`socks`, `vless`, …) переводит та же секция движка, что и узел (`xrayChainHopFromOutbound`); hop, который не опознала ни одна секция, — пропуск элемента (`WarnLog`). |
 
 **`remarks` и теги sing-box**
 
@@ -80,7 +80,7 @@
 
 **Пример и код**
 
-Структура как у публичных Xray-подписок (**`dns`**, **`inbounds`**, **`log`**, **`mux`**, **`tcpSettings`**, **`routing`**, **`freedom`/`blackhole`**), с вымышленными данными: **`docs/examples/xray_subscription_array_sample.json`**. Тот же сценарий в тестах: **`core/config/subscription/testdata/xray_provider_anon.json`** (`go:embed` в **`xray_json_array_test.go`**). Реализация: **`xray_json_array.go`**, **`xray_outbound_convert.go`** и **`xray_protocols.go`** (уровень **документа**: какой элемент становится узлом, какой звеном цепочки, какой группой-балансером), **`xray_element_engine.go`** (сам элемент — движку реестра), **`decoder.go`** (`DecodeSubscriptionContent`), **`source_loader.go`** (`LoadNodesFromSource`, **`applyTagsToXrayNode`**), configurator: **`ui/configurator/tabs/source_tab.go`** (`refreshOneSourceFromUI`).
+Структура как у публичных Xray-подписок (**`dns`**, **`inbounds`**, **`log`**, **`mux`**, **`tcpSettings`**, **`routing`**, **`freedom`/`blackhole`**), с вымышленными данными: **`docs/examples/xray_subscription_array_sample.json`**. Тот же сценарий в тестах: **`core/config/subscription/testdata/xray_provider_anon.json`** (`go:embed` в **`xray_json_array_test.go`**). Реализация: **`xray_json_array.go`**, **`xray_outbound_convert.go`** и **`xray_protocols.go`** (уровень **документа**: какой элемент становится узлом, какой звеном цепочки, какой группой-балансером), **`xray_element_engine.go`** (сам элемент — движку реестра), **`decoder.go`** (`DecodeSubscriptionContent`), **`parse_body.go`** (`ParseSubscriptionBody`), configurator: **`ui/configurator/tabs/source_tab.go`** (`refreshOneSourceFromUI`).
 
 ## Коды деградации на узле
 
@@ -121,7 +121,7 @@
 |------------------|------------|
 | **Этот файл** (`docs/ParserConfig.md`) | Форматы прямых ссылок в `connections`, Share URI, структура ParserConfig, пайплайн обновления. |
 | **`contract/registry/protocols/<scheme>.json`** | **Нормативный справочник полей**, общий с мобильным приложением LxBox (SPEC 103): query-параметры каждой схемы, алиасы, allowlist'ы, правила деградации и пометки, что где реализовано. При расхождении этого файла с реестром прав реестр. |
-| **`contract/docs/CANON.md`, `IDENTITY.md`** | Как канонизируется разобранный узел (без дефолтов, без `tag`/`detour`, сортировка ключей) и как считается его identity-хеш — оба документа общие с LxBox. |
+| **`contract/docs/PARSING_PRINCIPLES.md`, `IDENTITY.md`** | Как канонизируется разобранный узел (без дефолтов, без `tag`/`detour`, сортировка ключей) и как считается его identity-хеш — оба документа общие с LxBox. |
 | **`contract/corpus/uri/`** | Конформанс-фикстуры, которые гоняют оба проекта (`core/config/contract_test.go` здесь, `test/contract/` там). Правка парсера, меняющая поведение, видна как дифф корпуса. |
 | **`SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN/SUBSCRIPTION_PARAMS_REPORT.md`** | Таблицы: query VLESS/Trojan → поля sing-box; примеры из публичных подписок; ключи query. |
 | **`SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY/SPEC.md`** | Расширения совместимости (029): `type=httpupgrade`, `peer`, `obfsParam`, VMess legacy / `httpupgrade` / `h2`, Hysteria2 TLS; сверка со схемой sing-box. |

@@ -75,17 +75,13 @@ func TestDedupCollapses32ByteCopiesIntoOne(t *testing.T) {
 		lines = append(lines, uri+"#"+names[i%len(names)]+fmt.Sprintf(" %d", i))
 	}
 
-	res := loadFromInlineBody(t, strings.Join(lines, "\n"), configtypes.ProxySource{})
+	res := parseInlineBody(t, strings.Join(lines, "\n"), nil)
 
-	if len(res.Nodes) != 1 {
-		got := make([]string, 0, len(res.Nodes))
-		for _, n := range res.Nodes {
-			got = append(got, n.Tag)
-		}
-		t.Fatalf("получено %d узлов, ожидался 1 (теги: %v)", len(res.Nodes), got)
+	if len(res.Entries) != 1 {
+		t.Fatalf("получено %d записей, ожидалась 1 (теги: %v)", len(res.Entries), rawTagsOf(res))
 	}
-	if want := "Страна А 0"; res.Nodes[0].Tag != want {
-		t.Errorf("выжил узел %q, ожидался первый по порядку (%q)", res.Nodes[0].Tag, want)
+	if want := "Страна А 0"; res.Entries[0].RawTag != want {
+		t.Errorf("выжил узел %q, ожидался первый по порядку (%q)", res.Entries[0].RawTag, want)
 	}
 }
 
@@ -100,10 +96,10 @@ func TestDedupKeepsSameServerWithDifferentSNI(t *testing.T) {
 		"vless://b831381d-6324-4d53-ad4f-8cda48b30811@e.com:443?security=tls&sni=www.cloudflare.com#CF",
 	}, "\n")
 
-	res := loadFromInlineBody(t, body, configtypes.ProxySource{})
+	res := parseInlineBody(t, body, nil)
 
-	if len(res.Nodes) != 2 {
-		t.Fatalf("получено %d узлов, ожидалось 2 — разные SNI это разные схемы обхода", len(res.Nodes))
+	if len(res.Entries) != 2 {
+		t.Fatalf("получено %d записей, ожидалось 2 — разные SNI это разные схемы обхода", len(res.Entries))
 	}
 }
 
@@ -116,10 +112,10 @@ func TestDedupKeepsSameServerWithDifferentTransport(t *testing.T) {
 		"vless://b831381d-6324-4d53-ad4f-8cda48b30811@e.com:443?security=tls&sni=e.com&type=xhttp&path=%2Fx#XHTTP",
 	}, "\n")
 
-	res := loadFromInlineBody(t, body, configtypes.ProxySource{})
+	res := parseInlineBody(t, body, nil)
 
-	if len(res.Nodes) != 2 {
-		t.Fatalf("получено %d узлов, ожидалось 2 — разные транспорты это разные соединения", len(res.Nodes))
+	if len(res.Entries) != 2 {
+		t.Fatalf("получено %d записей, ожидалось 2 — разные транспорты это разные соединения", len(res.Entries))
 	}
 }
 
@@ -132,10 +128,10 @@ func TestDedupKeepsDistinctCredentials(t *testing.T) {
 		"vless://11111111-2222-3333-4444-555555555555@e.com:443?security=tls&sni=e.com#B",
 	}, "\n")
 
-	res := loadFromInlineBody(t, body, configtypes.ProxySource{})
+	res := parseInlineBody(t, body, nil)
 
-	if len(res.Nodes) != 2 {
-		t.Fatalf("получено %d узлов, ожидалось 2 — креды разные", len(res.Nodes))
+	if len(res.Entries) != 2 {
+		t.Fatalf("получено %d записей, ожидалось 2 — креды разные", len(res.Entries))
 	}
 }
 
@@ -147,10 +143,10 @@ func TestDedupKeepsDistinctServers(t *testing.T) {
 		"vless://b831381d-6324-4d53-ad4f-8cda48b30811@b.com:443?security=tls&sni=b.com#B",
 	}, "\n")
 
-	res := loadFromInlineBody(t, body, configtypes.ProxySource{})
+	res := parseInlineBody(t, body, nil)
 
-	if len(res.Nodes) != 2 {
-		t.Fatalf("получено %d узлов, ожидалось 2", len(res.Nodes))
+	if len(res.Entries) != 2 {
+		t.Fatalf("получено %d записей, ожидалось 2", len(res.Entries))
 	}
 }
 
@@ -164,17 +160,13 @@ func TestDedupCollapsesDuplicatesInSingboxImport(t *testing.T) {
 	    {"type":"vless","tag":"other","server":"x.com","server_port":443,"uuid":"u1"}
 	  ]
 	}`
-	res := loadFromInlineBody(t, body, configtypes.ProxySource{})
+	res := parseInlineBody(t, body, nil)
 
-	if len(res.Nodes) != 2 {
-		got := make([]string, 0, len(res.Nodes))
-		for _, n := range res.Nodes {
-			got = append(got, n.Tag)
-		}
-		t.Fatalf("получено %d узлов, ожидалось 2 (теги: %v)", len(res.Nodes), got)
+	if len(res.Entries) != 2 {
+		t.Fatalf("получено %d записей, ожидалось 2 (теги: %v)", len(res.Entries), rawTagsOf(res))
 	}
-	if res.Nodes[0].Tag != "first" {
-		t.Errorf("выжил %q, ожидался first", res.Nodes[0].Tag)
+	if res.Entries[0].RawTag != "first" {
+		t.Errorf("выжил %q, ожидался first", res.Entries[0].RawTag)
 	}
 }
 
@@ -190,18 +182,18 @@ func TestDedupKeepsGroupMembershipConsistent(t *testing.T) {
 	    {"type":"urltest","tag":"auto","outbounds":["a","a-dup","b"]}
 	  ]
 	}`
-	res := loadFromInlineBody(t, body, configtypes.ProxySource{})
+	res := parseInlineBody(t, body, nil)
 
-	groups := groupNodesOf(res.Nodes)
+	groups := groupEntriesOf(res)
 	if len(groups) != 1 {
 		t.Fatalf("получено %d узлов-групп, ожидалась 1", len(groups))
 	}
 
 	finalTags := map[string]bool{}
-	for _, n := range res.Nodes {
-		finalTags[n.Tag] = true
+	for _, tag := range rawTagsOf(res) {
+		finalTags[tag] = true
 	}
-	members := groupMembersOf(groups[0])
+	members := groups[0].MemberRawTags
 	if len(members) == 0 {
 		t.Fatal("группа осталась без состава после дедупа")
 	}
@@ -247,13 +239,13 @@ func TestDedupIsPerSource(t *testing.T) {
 	withContentSignatureHook(t)
 	const uri = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@e.com:443?security=tls&sni=e.com#NL"
 
-	tagCounts := map[string]int{}
-	first := loadFromInlineBodyWithCounts(t, uri, configtypes.ProxySource{}, tagCounts)
-	second := loadFromInlineBodyWithCounts(t, uri, configtypes.ProxySource{}, tagCounts)
+	// Каждый источник разбирается своим вызовом — как fetch каждой подписки.
+	first := parseInlineBody(t, uri, nil)
+	second := parseInlineBody(t, uri, nil)
 
-	if len(first.Nodes) != 1 || len(second.Nodes) != 1 {
-		t.Fatalf("получено %d и %d узлов, ожидалось по 1 — дедуп не должен переживать источник",
-			len(first.Nodes), len(second.Nodes))
+	if len(first.Entries) != 1 || len(second.Entries) != 1 {
+		t.Fatalf("получено %d и %d записей, ожидалось по 1 — дедуп не должен переживать источник",
+			len(first.Entries), len(second.Entries))
 	}
 }
 
@@ -263,19 +255,19 @@ func TestDedupIsPerSource(t *testing.T) {
 func TestXrayServerKeyUsesTheSameSignatureAsDedup(t *testing.T) {
 	withContentSignatureHook(t)
 
-	node := &configtypes.ParsedNode{Scheme: "vless", Server: "e.com", Port: 443, UUID: "u1"}
+	node := &configtypes.ParsedNode{Scheme: "vless", Server: "e.com", Port: 443, Outbound: map[string]interface{}{"uuid": "u1"}}
 	if got, want := xrayServerKey(node), dedupSignature(node); got != want {
 		t.Fatalf("xrayServerKey() = %q, дедуп считает %q — ключ во всём парсере обязан быть один", got, want)
 	}
 
 	// Узел-группа подписи не имеет ни там, ни там.
-	group := &configtypes.ParsedNode{Scheme: configtypes.SchemeGroup, Server: "e.com", Port: 443, UUID: "u1"}
+	group := &configtypes.ParsedNode{Scheme: configtypes.SchemeGroup, Server: "e.com", Port: 443}
 	if got := xrayServerKey(group); got != "" {
 		t.Fatalf("узел-группа получил подпись %q", got)
 	}
 
 	// Разные креды на одном адресе — разные подписи (это разные аккаунты).
-	other := &configtypes.ParsedNode{Scheme: "vless", Server: "e.com", Port: 443, UUID: "u2"}
+	other := &configtypes.ParsedNode{Scheme: "vless", Server: "e.com", Port: 443, Outbound: map[string]interface{}{"uuid": "u2"}}
 	if xrayServerKey(node) == xrayServerKey(other) {
 		t.Fatal("узлы с разными кредами получили одну подпись")
 	}

@@ -15,8 +15,7 @@
       "max_nodes": 50,
       "update": { "interval_hours": 12, "auto_refresh": true },
       "disabled": { "dead-node": 0 },
-      "fold": { "mode": "select" },
-      "fold_tag": "Provider-group"
+      "replace": { "mode": "manual", "tag": "Provider-group" }
     },
     {
       "kind": "folder",

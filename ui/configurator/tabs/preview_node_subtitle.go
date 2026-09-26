@@ -9,6 +9,7 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/locale"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 )
 
 // SPEC 095 — подзаголовок узла на вкладке Preview окна источника.
@@ -106,29 +107,13 @@ func previewGroupSubtitleCounted(node *config.ParsedNode, alive int) string {
 	return label
 }
 
-// previewTransportName достаёт тип транспорта.
-//
-// Пустой транспорт означает голый TCP — так и подписываем, иначе строка
-// «vless··Reality» выглядит поломанной.
+// previewTransportName — метка транспорта узла; правило одно со списком
+// узлов конфига (wizardbusiness.TransportLabel, по реестру).
 func previewTransportName(node *config.ParsedNode) string {
 	if node.Outbound == nil {
 		return ""
 	}
-	// Протоколы поверх собственного стека транспорта не имеют: приписать им
-	// «tcp» значит соврать. WireGuard и MASQUE ходят по UDP, QUIC-протоколы
-	// несут транспорт внутри себя.
-	switch node.Scheme {
-	case "wireguard", "masque", "hysteria", "hysteria2", "tuic":
-		return ""
-	}
-	tr, ok := node.Outbound["transport"].(map[string]interface{})
-	if !ok {
-		return "tcp"
-	}
-	if t, ok := tr["type"].(string); ok && t != "" {
-		return t
-	}
-	return "tcp"
+	return wizardbusiness.TransportLabel(node.Scheme, node.Outbound)
 }
 
 // previewSecurityName описывает слой шифрования: Reality, TLS или ничего.

@@ -27,7 +27,7 @@
 - [x] Линтер реестра (Go-тест): каждый `code` объявлен, каждый `ref` существует, `order` покрывает `fields`, каждое поле `core_schema` на теге пина отражено или помечено `skip`
 
 Документы:
-- [x] `docs/CANON.md` §6 (`warnings[] = [{code, path, value?, params?}]`, порядок = `body.order`), новый §8 «Конвейер» с инвариантом «fatal-значение в entry не попадает»
+- [x] `docs/PARSING_PRINCIPLES.md` §6 (`warnings[] = [{code, path, value?, params?}]`, порядок = `body.order`), новый §8 «Конвейер» с инвариантом «fatal-значение в entry не попадает»
 - [x] `schema/backup.schema.json`: `warnings` у узла опционально; импорт не доверяет
 - [x] `corpus/**/expected.json`: `path` у существующих кодов; новые кейсы-пары ссылка↔JSON по `DRIFT.md` (сторона Go подтягивается к целевому поведению; изменения существующих ожиданий — со ссылкой на DRIFT/DECISIONS)
 - [x] `VERSION` 1.1.0, `README.md` version log, `SPECS/103…/DECISIONS.md` D-122 (решения владельца §2 SPEC)

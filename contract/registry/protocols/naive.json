@@ -37,7 +37,7 @@
         "default": null,
         "desc_en": "Ignored: sing-box has no naive padding switch.",
         "desc_ru": "Игнорируется: переключателя набивки у naive в sing-box нет.",
-        "impl": "Нет sing-box-эквивалента — игнорируется с warning в обоих (Go дополнительно удаляет из Query)."
+        "impl": "Нет sing-box-эквивалента — игнорируется с warning в обоих (Go — запись mappers.uri.params.padding: on_present drop, код naive_padding_ignored)."
       }
     },
     "fragment": "label"
@@ -67,20 +67,16 @@
       "kind": "drop",
       "desc_en": "One malformed header does not cost the node its remaining headers.",
       "desc_ru": "Одна битая пара не стоит узлу остальных заголовков.",
-      "impl": "core/config/subscription/node_parser_naive.go."
+      "impl": "Правило реестра: регулярка extract записи mappers.uri.params.extra-headers отсеивает битую пару, on_item_invalid skip с кодом naive_extra_headers_invalid (прежде — рукописный парсер naive)."
     }
   ],
   "refs": {
     "go": [
-      "core/config/subscription/node_parser_core.go:272-282",
-      "core/config/subscription/node_parser_core.go:376-387",
-      "core/config/subscription/node_parser_naive.go:44-146",
-      "core/config/subscription/shareuri_naive.go:17-76",
-      "core/config/outbound_generator.go:223"
+      "core/core_capabilities.go:cronetLibAvailable (libcronet рядом с бинарём ядра: без неё тег сборки with_naive_outbound не засчитывается, и узел naive снимает узловой гейт ядра по on_core_unsupported реестра)"
     ],
     "dart": [
       "lib/services/parser/uri_parsers.dart:59-60",
-      "lib/services/parser/uri_parsers/naive_parser.dart:13-95",
+      "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
       "lib/models/node_spec_emit.dart:371-426",
       "lib/services/parser/json_parsers.dart:797"
     ]
@@ -119,6 +115,7 @@
       },
       "username": {
         "type": "string",
+        "role": "credential",
         "desc_en": "Account user name.",
         "desc_ru": "Имя пользователя учётной записи.",
         "impl": "option/naive.go Username."
@@ -247,7 +244,11 @@
         "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
       }
     },
-    "build_tag": "with_naive_outbound"
+    "build_tag": "with_naive_outbound",
+    "on_core_unsupported": {
+      "action": "drop_node",
+      "code": "naive_unavailable"
+    }
   },
   "mappers": {
     "uri": {
@@ -313,7 +314,7 @@
         "server": {
           "source": "host",
           "maps_to": "server",
-          "impl": "§463 / контракт §24.6 — пустой host отбраковывается: ядро на пустом адресе валит ВЕСЬ конфиг, то есть один такой узел из подписки оставлял человека без VPN. Отбраковку делает САНИТАЙЗЕР (body.fields.server → field_missing), а не маппер, поэтому required здесь НЕ объявлен: прежний путь проверял hostname только у vless/trojan/ssh/tuic/anytls (node_parser_core.go:403-405), naive в том списке нет, и узел доезжал до санитайзера. Обе дороги роняют узел, но называют причину по-разному, а причина входит в контракт: корпус naive/empty_host_rejected ждёт emit_error + field_missing, а не parse_error. QUIRKS Q133-46."
+          "impl": "§463 / контракт §24.6 — пустой host отбраковывается: ядро на пустом адресе валит ВЕСЬ конфиг, то есть один такой узел из подписки оставлял человека без VPN. Отбраковку делает САНИТАЙЗЕР (body.fields.server → field_missing), а не маппер, поэтому required здесь НЕ объявлен: прежний рукописный путь проверял hostname только у vless/trojan/ssh/tuic/anytls, naive в том списке не было, и узел доезжал до санитайзера. Обе дороги роняют узел, но называют причину по-разному, а причина входит в контракт: корпус naive/empty_host_rejected ждёт emit_error + field_missing, а не parse_error. QUIRKS Q133-46."
         },
         "server_port": {
           "source": "port",

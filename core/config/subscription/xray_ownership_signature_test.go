@@ -148,7 +148,7 @@ func TestXrayServerKeyIsContentSignature(t *testing.T) {
 
 	newNode := func(tag string) *configtypes.ParsedNode {
 		return &configtypes.ParsedNode{
-			Tag: tag, Scheme: "vless", Server: "1.1.1.1", Port: 443, UUID: "u1",
+			Tag: tag, Scheme: "vless", Server: "1.1.1.1", Port: 443,
 			Outbound: map[string]interface{}{"type": "vless", "tag": tag, "server": "1.1.1.1"},
 		}
 	}

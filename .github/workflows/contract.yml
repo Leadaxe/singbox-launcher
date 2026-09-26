@@ -8,7 +8,8 @@ name: Contract
 #    Страницы генерируются, а не пишутся руками, поэтому единственный способ
 #    поймать расхождение — перегенерировать и сравнить.
 # 2. Линтер реестра (`TestRegistry*` в core/config) — реестр читается,
-#    ссылки разрешаются, у каждого правила есть код.
+#    ссылки разрешаются, у каждого правила есть код, ссылки на Go-код
+#    (refs.go / impl / go) указывают на существующие файлы и имена.
 #
 # Бинарь не собирается, GUI-зависимости (GL/GTK/wayland) не ставятся:
 # оба шага — чистый Go без CGO.
@@ -20,6 +21,10 @@ on:
       - 'contract/**'
       - 'core/config/registry/**'
       - 'core/config/registry_body_test.go'
+      # Ссылки реестра на код (TestRegistryCodeRefsResolve): переименование
+      # или удаление функции в Go ломает refs/impl/go реестра, поэтому
+      # джоба идёт и на правку любого Go-файла.
+      - '**/*.go'
       - '.github/workflows/contract.yml'
   pull_request:
     branches: [ main, develop ]
@@ -27,6 +32,10 @@ on:
       - 'contract/**'
       - 'core/config/registry/**'
       - 'core/config/registry_body_test.go'
+      # Ссылки реестра на код (TestRegistryCodeRefsResolve): переименование
+      # или удаление функции в Go ломает refs/impl/go реестра, поэтому
+      # джоба идёт и на правку любого Go-файла.
+      - '**/*.go'
       - '.github/workflows/contract.yml'
   workflow_dispatch:
 

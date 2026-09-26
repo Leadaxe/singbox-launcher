@@ -29,14 +29,14 @@ func TestGroupOfCollapsedMembersSurvivesWithSurvivors(t *testing.T) {
 	  ]
 	}`
 
-	res := loadFromInlineBody(t, body, configtypes.ProxySource{})
+	res := parseInlineBody(t, body, nil)
 
-	groups := groupNodesOf(res.Nodes)
+	groups := groupEntriesOf(res)
 	if len(groups) != 1 {
 		t.Fatalf("получено %d групп, ожидалась 1 — группа из одних копий не должна умирать (узлы: %v)",
-			len(groups), tagsOfNodes(res.Nodes))
+			len(groups), rawTagsOf(res))
 	}
-	members := groupMembersOf(groups[0])
+	members := groups[0].MemberRawTags
 	if len(members) != 2 || members[0] != "a" || members[1] != "b" {
 		t.Fatalf("состав группы = %v, ожидался [a b] — теги выживших копий", members)
 	}
@@ -55,13 +55,13 @@ func TestGroupMembersDeduplicatedAfterRebind(t *testing.T) {
 	  ]
 	}`
 
-	res := loadFromInlineBody(t, body, configtypes.ProxySource{})
+	res := parseInlineBody(t, body, nil)
 
-	groups := groupNodesOf(res.Nodes)
+	groups := groupEntriesOf(res)
 	if len(groups) != 1 {
 		t.Fatalf("получено %d групп, ожидалась 1", len(groups))
 	}
-	members := groupMembersOf(groups[0])
+	members := groups[0].MemberRawTags
 	if len(members) != 1 || members[0] != "a" {
 		t.Fatalf("состав группы = %v, ожидался [a] без повтора", members)
 	}
@@ -75,7 +75,7 @@ func TestDedupParsedNodesRebindsGroupMembers(t *testing.T) {
 
 	node := func(tag, server string) *configtypes.ParsedNode {
 		return &configtypes.ParsedNode{
-			Tag: tag, Scheme: "vless", Server: server, Port: 443, UUID: "u1",
+			Tag: tag, Scheme: "vless", Server: server, Port: 443,
 			Outbound: map[string]interface{}{"type": "vless", "tag": tag, "server": server},
 		}
 	}
@@ -112,14 +112,13 @@ func TestGroupDefaultFollowsCollapsedMember(t *testing.T) {
 	  ]
 	}`
 
-	res := loadFromInlineBody(t, body, configtypes.ProxySource{})
+	res := parseInlineBody(t, body, nil)
 
-	groups := groupNodesOf(res.Nodes)
+	groups := groupEntriesOf(res)
 	if len(groups) != 1 {
 		t.Fatalf("получено %d групп, ожидалась 1", len(groups))
 	}
-	def, _ := groups[0].Outbound["default"].(string)
-	if def != "a" {
+	if def := groups[0].GroupDefaultRaw; def != "a" {
 		t.Fatalf("default = %q, ожидался тег выжившей копии %q", def, "a")
 	}
 }

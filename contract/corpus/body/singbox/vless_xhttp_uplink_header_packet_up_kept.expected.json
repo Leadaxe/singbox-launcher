@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "body_kind": "singbox-outbound"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-6.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-6.com"
+        },
+        "transport": {
+          "mode": "packet-up",
+          "path": "/x",
+          "type": "xhttp",
+          "uplink_data_placement": "header"
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "sb-xhttp-header-packetup",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

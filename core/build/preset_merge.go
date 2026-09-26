@@ -215,6 +215,19 @@ type PresetMergeContext struct {
 	// входит: секции живут и умирают вместе с узлом, и запись без своего узла
 	// ссылалась бы в никуда.
 	NodeSections []NodeSectionSet
+
+	// templateWarnings — накопитель предупреждений раскрытия пресетов и
+	// DNS-серверов (SPEC 143): заполняет BuildConfig, пишут MergePresetsInto*.
+	// nil — вызывающий отчёт не собирает, предупреждения остаются в логе.
+	templateWarnings *[]template.TemplateWarning
+}
+
+// noteTemplateWarnings дописывает предупреждения в накопитель сборки.
+func (c PresetMergeContext) noteTemplateWarnings(ws []template.TemplateWarning) {
+	if c.templateWarnings == nil || len(ws) == 0 {
+		return
+	}
+	*c.templateWarnings = append(*c.templateWarnings, ws...)
 }
 
 // rulesWithNodeSections — правила состояния плюс правила узлов, в порядке оси.
@@ -350,8 +363,9 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 	// SPEC 121 §10.2: правила узлов дописываются к правилам состояния ДО
 	// резолва — дальше они рядовые inline/srs, и узловых веток в конвейере нет.
 	st := &state.State{Rules: ctx.rulesWithNodeSections(), DNS: ctx.dnsWithNodeSections()}
-	tdVal := template.TemplateData{Presets: ctx.Presets}
+	tdVal := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars}
 	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())
+	ctx.noteTemplateWarnings(resolved.Warnings)
 
 	// Dedup по tag (template уже мог эмитить rule_sets).
 	emittedTags := make(map[string]bool)
@@ -438,6 +452,7 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	// выбор пользователя (адрес провайдера, канал, профиль) молча терялся бы
 	// на каждой сборке.
 	resolved := ResolveDNS(st, &tdVal, ctx.globalVarValues(), ctx.Target)
+	ctx.noteTemplateWarnings(resolved.Warnings)
 
 	// SPEC 121: DNS-фрагменты узлов — ещё одна причина зайти внутрь.
 	if len(resolved.Servers) == 0 && len(resolved.Rules) == 0 && !hasAnyV6Rule(ctx.Rules) &&
@@ -629,7 +644,7 @@ func CollectEmittedRouteRuleSetTags(routeRaw json.RawMessage, routeCfg RouteConf
 	// (3) Единый резолв правил состояния — тот же вызов, что и в
 	// MergePresetsIntoRoute, с теми же фильтрами эмиссии.
 	st := &state.State{Rules: ctx.rulesWithNodeSections(), DNS: ctx.dnsWithNodeSections()}
-	tdVal := template.TemplateData{Presets: ctx.Presets}
+	tdVal := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars}
 	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())
 	for _, rs := range resolved.RuleSets {
 		if rs.Skipped || !rs.Enabled {

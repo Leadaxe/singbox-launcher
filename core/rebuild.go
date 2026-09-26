@@ -205,6 +205,9 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	// цель detour (исчез селектор шаблона — выключили мульти-VPN). Парсер про
 	// это не знал, поэтому записи доливаются в отчёт поверх его собственных.
 	FeedBuildReportFromSanitizer(gen, res.ExcludedSources)
+	// SPEC 143: мусор в переменных шаблона и директивы новее приложения —
+	// та же попытка, конфиг собран, Save не блокируется.
+	FeedBuildReportFromTemplate(gen, res.TemplateWarnings)
 
 	// Parser-stage warnings (e.g. naive nodes degraded on a core without
 	// naive support, SPEC 044 feature-probe) ride along with the build
@@ -224,7 +227,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	//
 	// Круг отказа, назвавшего НАШ узел, выключает этот узел в состоянии и
 	// пересобирает конфиг — и так до чистого прохода либо до стоп-условия
-	// (CANON §9.5). Всё это живёт в ОБЩЕЙ функции сборки, поэтому цикл
+	// (PARSING_PRINCIPLES §9.5). Всё это живёт в ОБЩЕЙ функции сборки, поэтому цикл
 	// достаётся всем входам сразу: pre-start обоих движков, кнопка Rebuild,
 	// автообновление подписок, API /action/rebuild-config.
 	disabler := &savedStateDisabler{s: s, path: statePath}

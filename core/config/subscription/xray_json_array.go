@@ -60,7 +60,7 @@ func ParseNodesFromXrayJSONArrayEx(
 	jsonBody string,
 	skip []map[string]string,
 ) ([]*configtypes.ParsedNode, []string, error) {
-	nodes, reasons, _, err := parseNodesFromXrayJSONArrayFull(jsonBody, skip)
+	nodes, reasons, _, _, err := parseNodesFromXrayJSONArrayFull(jsonBody, skip)
 	return nodes, reasons, err
 }
 
@@ -72,15 +72,17 @@ func ParseNodesFromXrayJSONArrayEx(
 // неразобранные записи — разные сущности с разными адресатами (см.
 // json_body_rejects.go), и единственный, кому нужны обе, — чистый парсер тела
 // `ParseSubscriptionBody`. Полутора десяткам точек вызова `Ex` четвёртое
-// значение не нужно.
+// значение не нужно. Пятое — теги групп, выброшенных резолвом состава
+// (ни один член не выжил): у синтезированной группы нет исходника, и
+// отбраковкой она не становится — вызывающий называет её кодом group_empty.
 func parseNodesFromXrayJSONArrayFull(
 	jsonBody string,
 	skip []map[string]string,
-) ([]*configtypes.ParsedNode, []string, []jsonRejectedRecord, error) {
+) ([]*configtypes.ParsedNode, []string, []jsonRejectedRecord, []string, error) {
 	jsonBody = strings.TrimSpace(jsonBody)
 	var elems []json.RawMessage
 	if err := json.Unmarshal([]byte(jsonBody), &elems); err != nil {
-		return nil, nil, nil, fmt.Errorf("subscription JSON array: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("subscription JSON array: %w", err)
 	}
 
 	rejected := &ParseFailureReasons{}
@@ -143,13 +145,13 @@ func parseNodesFromXrayJSONArrayFull(
 
 	// Состав групп резолвится ПОСЛЕ всех элементов: член мог достаться
 	// элементу, который ещё не разобран.
-	resolved := resolveGroupMembers(out, memberServers, finalTagByServer)
+	resolved, emptyGroups := resolveGroupMembers(out, memberServers, finalTagByServer)
 	// Резолв мог выбросить группы, потерявшие всех членов, — позиции считаются
 	// по ИТОГОВОМУ списку, поэтому пересчитываем ещё раз. Группа, которую
 	// выбросили здесь, неразобранной записью не становится: это не запись
 	// провайдера, а синтезированный лаунчером узел (origin у неё пуст).
 	rejectedRecords = remapRejectsToKeptNodes(rejectedRecords, out, resolved)
-	return resolved, rejected.List(), rejectedRecords, nil
+	return resolved, rejected.List(), rejectedRecords, emptyGroups, nil
 }
 
 // remapRejectsToKeptNodes пересчитывает позиции отбраковок с чернового списка
@@ -297,9 +299,9 @@ func resolveGroupMembers(
 	nodes []*configtypes.ParsedNode,
 	memberServers map[*configtypes.ParsedNode][]string,
 	finalTagByServer map[string]string,
-) []*configtypes.ParsedNode {
+) (resolved []*configtypes.ParsedNode, emptyGroups []string) {
 	if len(memberServers) == 0 {
-		return nodes
+		return nodes, nil
 	}
 
 	out := make([]*configtypes.ParsedNode, 0, len(nodes))
@@ -320,9 +322,14 @@ func resolveGroupMembers(
 
 		members := make([]interface{}, 0, len(ids))
 		dedup := make(map[string]struct{}, len(ids))
+		lost := make(map[string]struct{})
 		for _, id := range ids {
 			tag, alive := finalTagByServer[id]
 			if !alive {
+				// Сервер-член не дожил (отбракован или не выпущен ни одним
+				// элементом) — потеря члена, не молча; один сервер под
+				// двумя тегами считается один раз.
+				lost[id] = struct{}{}
 				continue
 			}
 			if _, dup := dedup[tag]; dup {
@@ -334,12 +341,14 @@ func resolveGroupMembers(
 
 		if len(members) == 0 {
 			debuglog.WarnLog("Parser: Xray group %q has no surviving members — dropped", node.Tag)
+			emptyGroups = append(emptyGroups, node.Tag)
 			continue
 		}
 		node.Outbound[configtypes.GroupMembersKey] = members
+		markGroupMemberMissing(node, len(lost))
 		out = append(out, node)
 	}
-	return out
+	return out, emptyGroups
 }
 
 // computeXrayServerOwners — проход 1 §342: определяет, какой элемент вправе
@@ -616,7 +625,7 @@ func parseXrayJSONArrayElementNodes(
 			label = fmt.Sprintf("xray-%d", elemIndex)
 		}
 
-		node, err := xrayNodeFromOutbound(ob, label)
+		node, err := xrayNodeFromOutboundInDoc(ob, outboundsRaw, label)
 		if err != nil {
 			// Два РАЗНЫХ класса отбраковки, и сваливать их в один список
 			// нельзя: до этого разделения элемент vless с пустым id объявлялся
@@ -659,11 +668,11 @@ func parseXrayJSONArrayElementNodes(
 		}
 
 		// dialerProxy → цепочка (C4). Глубина берётся из фазы B.
-		if err := attachXrayDialerChain(node, ob, byTag, node.Tag, label); err != nil {
+		if err := attachXrayDialerChain(node, ob, byTag, outboundsRaw, node.Tag, label); err != nil {
 			// Цепочка объявлена, но непригодна: узла не будет — значит,
 			// запись обязана остаться в составе неразобранной (W11).
 			// Код причины нормативен (D-088): текст ошибки у сторон свой,
-			// а сверять конверты корпуса нужно по коду.
+			// а сверять результаты разбора в корпусе нужно по коду.
 			reason := fmt.Sprintf("outbound rejected: %v", err)
 			records.addCoded(len(out), reason, WarnDialerProxyUnusable, marshalRawJSONElement(ob))
 			debuglog.WarnLog("Parser: Xray element %d: %v — skipping node %q", elemIndex, err, node.Tag)
@@ -729,6 +738,7 @@ func attachXrayDialerChain(
 	node *configtypes.ParsedNode,
 	ob map[string]interface{},
 	byTag map[string]map[string]interface{},
+	doc []interface{},
 	ownerTag, label string,
 ) error {
 	streamSettings, _ := ob["streamSettings"].(map[string]interface{})
@@ -755,19 +765,14 @@ func attachXrayDialerChain(
 
 		hopProtocol := strings.ToLower(strings.TrimSpace(xrayMapString(hopOb, "protocol")))
 		if hopProtocol == "freedom" {
-			// Служебный freedom с fragment — не хоп, а TLS ClientHello
-			// fragmentation (Xray DPI trick). Основной узел остаётся прямым;
-			// без fragment dialerProxy молча игнорируется.
-			// Предупреждение не ставится (решение владельца): Xray режет
-			// ClientHello вслепую по length и ждёт фиксированный interval;
-			// sing-box парсит ClientHello, режет каждую метку SNI (public
-			// suffix не трогается), включает TCP_NODELAY, ждёт ACK или
-			// fragment_fallback_delay (500 мс по умолчанию); record_fragment —
-			// тот же разрез на уровне TLS-записей. Механика ядра строго лучше.
-			if xrayFreedomFragmentSpec(hopOb) {
-				applyXrayFreedomFragment(node)
-			}
-			return nil
+			// Служебный freedom — не хоп: элемент ходит наружу напрямую.
+			// Если у него `settings.fragment`, это TLS ClientHello
+			// fragmentation (Xray DPI trick), и её уже перенесла в
+			// tls.fragment запись реестра `fragment_via_dialer`
+			// (dialer.json, блок xray, `deref` по dialerProxy) — у того
+			// элемента, чей dialerProxy указал на freedom. Звена цепочки
+			// здесь нет, dialerProxy без fragment молча игнорируется.
+			break
 		}
 
 		hopTag := fmt.Sprintf("%s%s", ownerTag, xrayJumpOutboundTagSuffix)
@@ -788,7 +793,7 @@ func attachXrayDialerChain(
 			hopLabel = label
 		}
 
-		hop, err := xrayChainHopFromOutbound(hopOb, hopTag, hopLabel)
+		hop, err := xrayChainHopFromOutbound(hopOb, doc, hopTag, hopLabel)
 		if err != nil {
 			return fmt.Errorf("dialerProxy %q: %w", ref, err)
 		}
@@ -809,59 +814,15 @@ func attachXrayDialerChain(
 	return nil
 }
 
-func xrayFreedomFragmentSpec(ob map[string]interface{}) bool {
-	settings, _ := ob["settings"].(map[string]interface{})
-	if settings == nil {
-		return false
-	}
-	frag, _ := settings["fragment"].(map[string]interface{})
-	return frag != nil
-}
-
-func nodeOutboundTLSEnabled(node *configtypes.ParsedNode) bool {
-	if node == nil || node.Outbound == nil {
-		return false
-	}
-	tls, ok := node.Outbound["tls"].(map[string]interface{})
-	if !ok {
-		return false
-	}
-	enabled, ok := tls["enabled"].(bool)
-	return ok && enabled
-}
-
-func applyXrayFreedomFragment(node *configtypes.ParsedNode) {
-	if !nodeOutboundTLSEnabled(node) {
-		return
-	}
-	tls, _ := node.Outbound["tls"].(map[string]interface{})
-	tls["fragment"] = true
-}
-
 // xrayChainHopFromOutbound строит звено цепочки.
 //
-// В отличие от узла, звеном может быть и socks — он не становится
-// самостоятельной нодой, но как первый хоп вполне пригоден.
-func xrayChainHopFromOutbound(ob map[string]interface{}, hopTag, label string) (*configtypes.ParsedNode, error) {
+// Звено разбирает тот же движок реестра, что и узел: секция `mappers.xray`
+// схемы (socks, vless, …) опознаёт элемент своим detect. Рукописной сборки
+// socks-звена больше нет (SPEC 142 A10) — тело хопа совпадает с телом того же
+// socks, пришедшего узлом.
+func xrayChainHopFromOutbound(ob map[string]interface{}, doc []interface{}, hopTag, label string) (*configtypes.ParsedNode, error) {
 	protocol := strings.ToLower(strings.TrimSpace(xrayMapString(ob, "protocol")))
-	if protocol == "socks" {
-		jump, err := xrayBuildJumpFromSocksOutbound(ob, hopTag)
-		if err != nil {
-			return nil, err
-		}
-		return &configtypes.ParsedNode{
-			Tag:      jump.Tag,
-			Scheme:   jump.Scheme,
-			Server:   jump.Server,
-			Port:     jump.Port,
-			UUID:     jump.UUID,
-			Flow:     jump.Flow,
-			Label:    label,
-			Outbound: jump.Outbound,
-		}, nil
-	}
-
-	hop, err := xrayNodeFromOutbound(ob, label)
+	hop, err := xrayNodeFromOutboundInDoc(ob, doc, label)
 	if err != nil {
 		return nil, err
 	}

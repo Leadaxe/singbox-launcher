@@ -852,6 +852,29 @@ func (t *daemonProxyTransport) rpc() (daemonpb.StartedServiceClient, context.Con
 	return client, ctx, cancel, nil
 }
 
+// EndpointStatuses implements services.EndpointSource через GetOutbounds.
+func (t *daemonProxyTransport) EndpointStatuses() (map[string]services.EndpointStatus, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	return services.EndpointStatusesRPC(ctx, client)
+}
+
+// SetEndpointEnabled implements services.EndpointSource через lx-RPC
+// SetEndpointEnabled (SPEC 106 ядра). Бюджет как у пробы: включение будит
+// устройство.
+func (t *daemonProxyTransport) SetEndpointEnabled(tag string, enabled bool) (string, error) {
+	client, err := t.b.grpcClient()
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(t.b.ctx, chainProbeCallTimeout())
+	defer cancel()
+	return services.SetEndpointEnabledRPC(ctx, client, tag, enabled)
+}
+
 // GroupProxies implements services.ProxyTransport через GetGroups.
 func (t *daemonProxyTransport) GroupProxies(group string) ([]api.ProxyInfo, string, error) {
 	client, ctx, cancel, err := t.rpc()

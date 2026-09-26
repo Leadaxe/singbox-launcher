@@ -22,37 +22,42 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`awg_headers_overlap`](#awg_headers_overlap) · `error` — AmneziaWG: headers {a} and {b} overlap
 - [`awg_mtu_clamped`](#awg_mtu_clamped) · `warning` — AmneziaWG: MTU lowered to 1280
 - [`awg_mtu_high`](#awg_mtu_high) · `info` — AmneziaWG: MTU above 1280
-- [`body_dialect_unrecognized`](#body_dialect_unrecognized) · `error` — Subscription: config dialect was read as the wrong one
 - [`chain_cycle_through_direction`](#chain_cycle_through_direction) · `warning` — Chain {chain} excluded from {direction}
 - [`chain_hop_missing`](#chain_hop_missing) · `error` — Chain: hop {position} not found
 - [`chain_invalid`](#chain_invalid) · `error` — Chain is malformed
 - [`chain_nested_position`](#chain_nested_position) · `error` — Chain: nested chain at position {position}
-- [`chain_strip_utls_on_reality`](#chain_strip_utls_on_reality) · `error` — Chain: cannot strip uTLS on REALITY
+- [`chain_strip_utls_on_reality`](#chain_strip_utls_on_reality) · `warning` — Chain: uTLS kept because of REALITY
 - [`chain_unsupported_by_core`](#chain_unsupported_by_core) · `error` — Chains are unavailable in core {version}
 - [`core_rejected`](#core_rejected) · `error` — The core rejected this server
 - [`detour_chain_too_deep`](#detour_chain_too_deep) · `warning` — Chain shortened to {limit} hops
 - [`detour_cycle_broken`](#detour_cycle_broken) · `warning` — Loop in the chain broken
 - [`detour_target_missing`](#detour_target_missing) · `warning` — Chain cut: {target} not found
 - [`detour_to_group`](#detour_to_group) · `warning` — Chain cut: {target} is a group
-- [`detour_with_listen_port`](#detour_with_listen_port) · `warning` — Chain not applied: node listens on a port
+- [`detour_with_listen_port`](#detour_with_listen_port) · `warning` — {tag}: listening port removed for the hop
 - [`dialer_proxy_unusable`](#dialer_proxy_unusable) · `error` — Preceding proxy {target} is unusable
+- [`direction_filter_matched_nothing`](#direction_filter_matched_nothing) · `warning` — Direction {direction}: filter matched no nodes
 - [`ech_ignored`](#ech_ignored) · `info` — ECH from the link removed
 - [`field_conflict`](#field_conflict) · `warning` — Field {path} removed: conflicts with {with}
 - [`field_missing`](#field_missing) · `error` — Required field {field} is missing
 - [`field_requires`](#field_requires) · `warning` — Field {path} removed: {requires} is missing
+- [`fields_order_invalid`](#fields_order_invalid) · `warning` — {a} is greater than {b}
 - [`flow_deprecated`](#flow_deprecated) · `info` — Obsolete flow removed
 - [`form_unrecognized`](#form_unrecognized) · `error` — Entry could not be read
 - [`group_empty`](#group_empty) · `warning` — Group {tag} left without members
+- [`group_member_dropped`](#group_member_dropped) · `warning` — Group {tag}: {member} left the group
 - [`group_member_missing`](#group_member_missing) · `warning` — {count} group members not imported
 - [`grpc_multi_mode_ignored`](#grpc_multi_mode_ignored) · `warning` — gRPC: multi mode not applied
 - [`hysteria2_server_ports_item_invalid`](#hysteria2_server_ports_item_invalid) · `warning` — Hysteria2: port hopping range dropped
 - [`hysteria_server_ports_item_invalid`](#hysteria_server_ports_item_invalid) · `warning` — Hysteria: port hopping range dropped
 - [`json_field_unknown`](#json_field_unknown) · `info` — Configuration: field {query_name} not read
+- [`masque_tls_field_ignored`](#masque_tls_field_ignored) · `info` — MASQUE: TLS field {path} not used
+- [`masque_tls_fragment_h3`](#masque_tls_fragment_h3) · `info` — MASQUE over h3: {path} removed
 - [`masque_vhttp_invalid`](#masque_vhttp_invalid) · `warning` — MASQUE: HTTP version {value} set to h3
 - [`max_nodes_exceeded`](#max_nodes_exceeded) · `warning` — {skipped} nodes over the limit skipped
 - [`naive_extra_headers_invalid`](#naive_extra_headers_invalid) · `info` — naive: header {entry} discarded
 - [`naive_padding_ignored`](#naive_padding_ignored) · `info` — naive: padding parameter ignored
 - [`naive_unavailable`](#naive_unavailable) · `error` — naive is unavailable in this build
+- [`obfs_object_flattened`](#obfs_object_flattened) · `info` — Obfuscation password taken from an object
 - [`obfs_password_missing`](#obfs_password_missing) · `warning` — Obfuscation removed: no password
 - [`obfs_unknown`](#obfs_unknown) · `warning` — Unknown obfuscation removed
 - [`packet_encoding_unknown`](#packet_encoding_unknown) · `warning` — Field removed: unknown packet_encoding
@@ -61,18 +66,25 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`protocol_unsupported`](#protocol_unsupported) · `error` — Protocol {scheme} is not supported
 - [`provider_banner_link`](#provider_banner_link) · `info` — Subscription: provider notice instead of a server
 - [`reality_fp_not_chrome`](#reality_fp_not_chrome) · `info` — REALITY: fingerprint {value} may not connect
+- [`reality_fp_random_pinned`](#reality_fp_random_pinned) · `info` — REALITY: fingerprint random pinned to chrome
 - [`reality_key_share_invalid`](#reality_key_share_invalid) · `info` — REALITY: key_share removed
 - [`reality_pbk_invalid`](#reality_pbk_invalid) · `warning` — REALITY disabled: invalid public key
 - [`reality_short_id_invalid`](#reality_short_id_invalid) · `info` — REALITY: short_id cleaned up
+- [`reality_utls_enabled`](#reality_utls_enabled) · `info` — REALITY: uTLS switched on
+- [`replace_group_empty`](#replace_group_empty) · `warning` — Swap group {tag} is not built
+- [`replace_tag_conflict`](#replace_tag_conflict) · `error` — Swap group {tag}: the tag is already declared
 - [`scheme_unsupported`](#scheme_unsupported) · `error` — Link: scheme {scheme} is not supported
-- [`selector_as_auto`](#selector_as_auto) · `info` — Manual selector imported as auto-select
 - [`service_record_ignored`](#service_record_ignored) · `info` — Subscription: service record {scheme} skipped
+- [`source_detour_cycle`](#source_detour_cycle) · `error` — Node {tag} excluded: hops form a loop
 - [`source_detour_missing`](#source_detour_missing) · `error` — Source chain broken: {target} not found
+- [`source_detour_self`](#source_detour_self) · `error` — Node {tag} excluded: hop points at itself
 - [`ss_method_invalid`](#ss_method_invalid) · `error` — Unsupported encryption method {method}
 - [`ss_method_legacy`](#ss_method_legacy) · `info` — Shadowsocks: legacy cipher
 - [`ssh_user_default`](#ssh_user_default) · `info` — SSH: user root substituted
 - [`tailscale_core_unsupported`](#tailscale_core_unsupported) · `warning` — Tailscale is unavailable in this core
+- [`tailscale_default_route_advertised`](#tailscale_default_route_advertised) · `warning` — Tailscale: default route {value} removed from advertised routes
 - [`tailscale_from_subscription`](#tailscale_from_subscription) · `info` — Tailscale node arrived from a subscription
+- [`template_fragment_dropped`](#template_fragment_dropped) · `warning` — Entry of {kind} from {owner} left out
 - [`template_int_clamped`](#template_int_clamped) · `warning` — Value of {name} clamped
 - [`template_int_invalid`](#template_int_invalid) · `warning` — Variable {name} is not a number
 - [`template_unknown_directive`](#template_unknown_directive) · `warning` — Unknown template directive {key}
@@ -337,23 +349,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`wireguard`](protocols/wireguard.md)
   - [`mtu`](protocols/wireguard.md#body-mtu) — the value is above `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more), but the body came from `singbox` → kept with a notice
 
-<a id="body_dialect_unrecognized"></a>
-### body_dialect_unrecognized
-
-**severity:** `error`
-
-**Subscription: config dialect was read as the wrong one**
-
-- **What happened:** The subscription body is a whole config, but its dialect was determined incorrectly, and the entries were read by a parser meant for another dialect. No nodes were imported.
-- **Why it happens:** An Xray config and a sing-box config have the same shape (`outbounds` with a list of entries) and differ only in what the entry itself is called: `protocol` for Xray, `type` for sing-box. A classifier that asks only for `outbounds` hands an Xray config to the sing-box parser, which finds no `type` in a single entry.
-- **What you can do:**
-  - Update the application: the dialect check is part of the parser.
-  - As a workaround, wrap the config in a JSON array of one element — an array of configs is recognised correctly.
-
-**Where it comes from:**
-
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
-
 <a id="chain_cycle_through_direction"></a>
 ### chain_cycle_through_direction
 
@@ -425,19 +420,20 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="chain_strip_utls_on_reality"></a>
 ### chain_strip_utls_on_reality
 
-**severity:** `error` · **params:** `target`
+**severity:** `warning` · **params:** `target`
 
-**Chain: cannot strip uTLS on REALITY**
+**Chain: uTLS kept because of REALITY**
 
-- **What happened:** The chain strips uTLS from hop {target}, whose node runs REALITY, where the fingerprint is a load-bearing part of the protocol rather than camouflage. The chain was excluded, because the core rejects such an entry and would refuse to start the whole config.
-- **Why it happens:** The chain was set up to strip uTLS from a hop, and the node in that position runs REALITY. In REALITY the TLS fingerprint (the ClientHello) is a load-bearing part of the protocol, not camouflage, so the core refuses to remove it.
+- **What happened:** The chain is set to strip uTLS, but hop {target} runs REALITY, which cannot work without it. Stripping uTLS was turned off for this chain, so every hop keeps its fingerprint; the chain works.
+- **Why it happens:** The chain was set up to strip uTLS from its inner hops, and a node in one of those positions runs REALITY. In REALITY the TLS fingerprint (the ClientHello) is a load-bearing part of the protocol, not camouflage, and the core applies the strip list to all hops at once, so it cannot spare just one.
 - **What you can do:**
-  - Turn off stripping uTLS for that position in the chain.
-  - Or put a node without REALITY into that position.
+  - Nothing to do if the chain works.
+  - To strip uTLS on the other hops, put a node without REALITY into that position.
 
 **Where it comes from:**
 
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+- [`chain`](protocols/chain.md)
+  - [`strip.tls.utls`](protocols/chain.md#body-strip-tls-utls) — a hop at position 2 or later requires this path → not stripped
 
 <a id="chain_unsupported_by_core"></a>
 ### chain_unsupported_by_core
@@ -546,19 +542,20 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="detour_with_listen_port"></a>
 ### detour_with_listen_port
 
-**severity:** `warning` · **params:** `target`
+**severity:** `warning` · **params:** `tag`, `target`
 
-**Chain not applied: node listens on a port**
+**{tag}: listening port removed for the hop**
 
-- **What happened:** This node listens on its own port, so it cannot additionally be routed through {target}. The chain was not applied, because the core rejects that combination and would refuse to start the whole config; the node keeps working.
-- **Why it happens:** The node was set up to listen on its own port, and at the same time a hop was assigned to it — as a source detour or in an imported config. The core does not allow those two together.
+- **What happened:** Node {tag} is routed through {target}, and a node that listens on its own port cannot go through a hop: the core rejects that combination and would refuse to start the whole config. The listening port was removed, the hop stays — the node connects through {target}.
+- **Why it happens:** The node arrived with its own listening port (from a .conf file, a link or an imported config), and you assigned a hop to it — personally or through its folder. The core does not allow those two together.
 - **What you can do:**
-  - Decide what this node is for: remove its listening port, or drop the assigned hop.
-  - Nothing to do if the node works as it is — it simply connects without the hop.
+  - Nothing to do if the node works through the hop.
+  - If the node has to listen on its port, remove the hop assigned to it.
 
 **Where it comes from:**
 
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+- [`wireguard`](protocols/wireguard.md)
+  - [`listen_port`](protocols/wireguard.md#body-listen-port) — conflicts with `detour` → removed
 
 <a id="dialer_proxy_unusable"></a>
 ### dialer_proxy_unusable
@@ -572,6 +569,22 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Ask the provider for a config that carries all the nodes its chains reference.
   - Pick another node from this subscription.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="direction_filter_matched_nothing"></a>
+### direction_filter_matched_nothing
+
+**severity:** `warning` · **params:** `direction`, `filter`, `count`
+
+**Direction {direction}: filter matched no nodes**
+
+- **What happened:** The node filter {filter} of direction {direction} matched none of the {count} nodes. The direction was left without nodes, so its traffic is blocked (the default member).
+- **Why it happens:** The filter no longer matches the node names — typically the provider renamed its servers, or the filter was written for another subscription.
+- **What you can do:**
+  - Check the node filter of the direction against the current node names.
 
 **Where it comes from:**
 
@@ -636,7 +649,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`i1`](protocols/wireguard.md#body-i1) — conflicts with `id` → removed
   - [`i1`](protocols/wireguard.md#body-i1) — conflicts with `ip` → removed
   - [`i2`](protocols/wireguard.md#body-i2) — conflicts with `ip` → removed
-  - [`listen_port`](protocols/wireguard.md#body-listen-port) — conflicts with `detour` → removed
 
 <a id="field_missing"></a>
 ### field_missing
@@ -705,10 +717,13 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`masque`](protocols/masque.md)
   - [`private_key`](protocols/masque.md#body-private-key) — set without `public_key` → removed
   - [`public_key`](protocols/masque.md#body-public-key) — set without `private_key` → removed
+- [`shadowsocks`](protocols/shadowsocks.md)
+  - [`plugin_opts`](protocols/shadowsocks.md#body-plugin-opts) — set without `plugin` → removed
+- [`tailscale`](protocols/tailscale.md)
+  - [`exit_node_allow_lan_access`](protocols/tailscale.md#body-exit-node-allow-lan-access) — set without `exit_node` → removed
 - [`tls`](protocols/_tls.md)
   - [`client_certificate`](protocols/_tls.md#body-client-certificate) — set without `tls.client_key` → removed
   - [`client_key`](protocols/_tls.md#body-client-key) — set without `tls.client_certificate` → removed
-  - [`reality.enabled`](protocols/_tls.md#body-reality-enabled) — set without `tls.utls.enabled` → removed
   - [`reality.key_share`](protocols/_tls.md#body-reality-key-share) — set without `tls.reality.public_key` → removed
   - [`reality.short_id`](protocols/_tls.md#body-reality-short-id) — set without `tls.reality.public_key` → removed
   - [`spoof_method`](protocols/_tls.md#body-spoof-method) — set without `tls.spoof` → removed
@@ -718,6 +733,24 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`wireguard`](protocols/wireguard.md)
   - [`ib`](protocols/wireguard.md#body-ib) — set without `ip` → removed
   - [`id`](protocols/wireguard.md#body-id) — set without `ip` → removed
+  - [`ip`](protocols/wireguard.md#body-ip) — set without `id` when `ip` is `quic` → removed
+
+<a id="fields_order_invalid"></a>
+### fields_order_invalid
+
+**severity:** `warning` · **params:** `a`, `b`, `value`, `with`
+
+**{a} is greater than {b}**
+
+- **What happened:** The node sets {a} = {value} above {b} = {with}, but the core requires {a} not to exceed {b} and would refuse to start the whole config with such a pair. Both fields were removed; the node works without them.
+- **Why it happens:** The bounds were typed in the wrong order or swapped by hand. Which of the two numbers is wrong cannot be told from the node itself, so neither is kept.
+- **What you can do:**
+  - Take the configuration from the provider again.
+  - If you set the values yourself, put the smaller bound first and import the configuration again.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
 <a id="flow_deprecated"></a>
 ### flow_deprecated
@@ -765,6 +798,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Nothing to do if you use the nodes directly: they were not affected.
   - If you need the group, ask the provider for a config that carries its servers too.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="group_member_dropped"></a>
+### group_member_dropped
+
+**severity:** `warning` · **params:** `tag`, `member`
+
+**Group {tag}: {member} left the group**
+
+- **What happened:** Member {member} of group {tag} did not resolve to a node when the config was built: the node is gone, disabled, or was excluded from the config itself. The group was kept without it; the other members work as before.
+- **Why it happens:** The group lists its members by reference, and this reference found no live node at build time: the node disappeared from its subscription after an update, was renamed or deleted, was turned off by you or by the application, or was itself dropped from the config because of a problem of its own.
+- **What you can do:**
+  - Nothing to do if the group still has the servers you need.
+  - If you need this member, turn the node back on or fix the problem that excluded it; after a subscription update, check that the node still exists.
 
 **Where it comes from:**
 
@@ -856,6 +906,45 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
+<a id="masque_tls_field_ignored"></a>
+### masque_tls_field_ignored
+
+**severity:** `info` · **params:** `path`
+
+**MASQUE: TLS field {path} not used**
+
+- **What happened:** MASQUE builds its TLS from the profile and the HTTP version (vhttp), and the core ignores the field {path} for this protocol. The field was removed; the node connects exactly as it would have anyway.
+- **Why it happens:** The subscription or a hand-written config applies one TLS template to every protocol, so a MASQUE node was handed ALPN, ECH, REALITY or kTLS settings it cannot use.
+- **What you can do:**
+  - Nothing to do: the node works, and the removed setting had no effect on MASQUE.
+
+**Where it comes from:**
+
+- [`tls`](protocols/_tls.md)
+  - [`ech`](protocols/_tls.md#body-ech) — not supported by `masque` → removed
+
+<a id="masque_tls_fragment_h3"></a>
+### masque_tls_fragment_h3
+
+**severity:** `info` · **params:** `path`, `with`
+
+**MASQUE over h3: {path} removed**
+
+- **What happened:** With {with} set to h3 the MASQUE tunnel runs over QUIC, where TLS travels inside QUIC packets and there are no TLS records over TCP to split. The core ignores {path} there, so the field was removed; the node works as before.
+- **Why it happens:** TLS fragmentation was set for a node that uses HTTP/3. It helps only on the HTTP/2 path (vhttp h2 or auto).
+- **What you can do:**
+  - Nothing to do if the node connects.
+  - If you need fragmentation against DPI, set vhttp to h2 or auto for this node.
+
+**Where it comes from:**
+
+- [`masque`](protocols/masque.md)
+  - [`fragment`](protocols/masque.md#body-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
+  - [`record_fragment`](protocols/masque.md#body-record-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
+- [`tls`](protocols/_tls.md)
+  - [`fragment`](protocols/_tls.md#body-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
+  - [`record_fragment`](protocols/_tls.md#body-record-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
+
 <a id="masque_vhttp_invalid"></a>
 ### masque_vhttp_invalid
 
@@ -941,6 +1030,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
+<a id="obfs_object_flattened"></a>
+### obfs_object_flattened
+
+**severity:** `info` · **params:** `path`
+
+**Obfuscation password taken from an object**
+
+- **What happened:** The obfuscation at {path} arrived as an object, while this protocol takes it as a plain password string. The password was taken from the object and used as the string; the node connects with obfuscation as intended.
+- **Why it happens:** Hysteria v1 takes the obfuscation secret as a plain string, while Hysteria2 writes the same key as an object {type, password}. Providers that convert configs automatically sometimes put the Hysteria2 form into a v1 entry; the core would reject such an entry and refuse to start the whole config.
+- **What you can do:**
+  - Nothing to do: the node works with the password from the object.
+
+**Where it comes from:**
+
+- [`hysteria`](protocols/hysteria.md)
+  - [`obfs`](protocols/hysteria.md#body-obfs) — the value does not fit the field → an object is replaced with its `password` member
+
 <a id="obfs_password_missing"></a>
 ### obfs_password_missing
 
@@ -956,6 +1062,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **Where it comes from:**
 
+- [`hysteria`](protocols/hysteria.md)
+  - [`obfs`](protocols/hysteria.md#body-obfs) — an object arrived without a usable `password` member → removed
 - [`hysteria2`](protocols/hysteria2.md)
   - [`obfs.password`](protocols/hysteria2.md#body-obfs-password) — the field is present
 
@@ -1087,6 +1195,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`tls`](protocols/_tls.md)
   - [`utls.fingerprint`](protocols/_tls.md#body-utls-fingerprint) — the value is anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random` → kept with a notice
 
+<a id="reality_fp_random_pinned"></a>
+### reality_fp_random_pinned
+
+**severity:** `info` · **params:** `path`, `value`
+
+**REALITY: fingerprint random pinned to chrome**
+
+- **What happened:** The node uses REALITY with uTLS fingerprint random at {path}. It was replaced with chrome: random makes the core pick one fingerprint per start, and two of the five it picks from lack the hybrid key exchange modern REALITY servers expect.
+- **Why it happens:** The subscription asked for the fingerprint random. The core resolves it once per start to chrome, firefox, edge, safari or ios; edge and ios carry no X25519MLKEM768 key share, so against Xray v26.9.8 and newer such a node would fail in roughly two starts out of five, and with key_share hybrid the core would refuse the handshake.
+- **What you can do:**
+  - Nothing to do: chrome is one of the fingerprints random picks from, and it works with every REALITY server.
+
+**Where it comes from:**
+
+- [`tls`](protocols/_tls.md)
+  - [`utls.fingerprint`](protocols/_tls.md#body-utls-fingerprint) — the value is `random` when `tls.reality.enabled` is `true` → replaced with `chrome`
+
 <a id="reality_key_share_invalid"></a>
 ### reality_key_share_invalid
 
@@ -1144,6 +1269,57 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`reality.short_id`](protocols/_tls.md#body-reality-short-id) — the value does not fit the field → removed
   - [`reality.short_id`](protocols/_tls.md#body-reality-short-id) — the value had to be cleaned up (hex_only) → value cleaned up
 
+<a id="reality_utls_enabled"></a>
+### reality_utls_enabled
+
+**severity:** `info` · **params:** `path`, `requires`
+
+**REALITY: uTLS switched on**
+
+- **What happened:** The node uses REALITY ({path}), but {requires} was missing or off. uTLS was switched on with the default chrome fingerprint, because the core refuses REALITY without it and would not start the whole config.
+- **Why it happens:** REALITY is built on top of uTLS: the core requires the uTLS block to be enabled on every REALITY node. Hand-written configs and some converters leave it out.
+- **What you can do:**
+  - Nothing to do: the node connects with the chrome fingerprint.
+
+**Where it comes from:**
+
+- [`tls`](protocols/_tls.md)
+  - [`reality.enabled`](protocols/_tls.md#body-reality-enabled) — set without `tls.utls.enabled` → `tls.utls.enabled` filled in with `true`
+
+<a id="replace_group_empty"></a>
+### replace_group_empty
+
+**severity:** `warning` · **params:** `tag`, `mode`
+
+**Swap group {tag} is not built**
+
+- **What happened:** The swap group {tag} ({mode}) was not built: the source has no enabled nodes. Rules and Directions aimed at it will not work.
+- **Why it happens:** An empty selector or auto group makes the core refuse the whole config, so the group is left out. The source either has no nodes yet (the subscription was never updated or came back empty) or every node in it is turned off.
+- **What you can do:**
+  - Update the subscription or add nodes to the folder.
+  - Turn on at least one node of the source.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="replace_tag_conflict"></a>
+### replace_tag_conflict
+
+**severity:** `error` · **params:** `tag`, `other`
+
+**Swap group {tag}: the tag is already declared**
+
+- **What happened:** The swap group {tag} was not built: that name is already declared by another owner ({other}: a Direction, another source's swap above in the list, or a template tag). The source was built unfolded, and the rest of the config was built without the group, because two outbounds with one tag make the core refuse the whole config.
+- **Why it happens:** The tag of a swap is a declared root name, just like the tag of a Direction. Two declared names cannot share a tag; a node with the same name is not a conflict — it gets a suffix.
+- **What you can do:**
+  - Open the source's Group tab and give the swap a tag nobody else uses.
+  - Or rename the Direction that carries this tag.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="scheme_unsupported"></a>
 ### scheme_unsupported
 
@@ -1156,22 +1332,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Update the application: a newer version may know this scheme.
   - Ask the provider for a link to the same server in a supported protocol.
-
-**Where it comes from:**
-
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
-
-<a id="selector_as_auto"></a>
-### selector_as_auto
-
-**severity:** `info`
-
-**Manual selector imported as auto-select**
-
-- **What happened:** The config contained a group with manual server selection, and this application has no such group type. The group was imported as auto-select, so its members stay available.
-- **Why it happens:** The imported config contains a group with manual server selection. That group type exists in sing-box configs, but this application has no equivalent of it, so the group is taken in as an auto-select one.
-- **What you can do:**
-  - Nothing to do: all the servers of the group stayed available, only the way one of them is chosen changed.
 
 **Where it comes from:**
 
@@ -1194,6 +1354,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
+<a id="source_detour_cycle"></a>
+### source_detour_cycle
+
+**severity:** `error` · **params:** `tag`
+
+**Node {tag} excluded: hops form a loop**
+
+- **What happened:** The hops assigned to node {tag} lead back to it. The node was excluded on purpose: the core rejects such a loop and would refuse to start the whole config, and breaking the loop silently would send traffic directly, past the boundary you set.
+- **Why it happens:** Two or more nodes were assigned as hops of each other — personally or through their folders — so the chain of hops closes on itself.
+- **What you can do:**
+  - Pick the hops so that they do not lead back to the node.
+  - Or remove the hop from one of the nodes in the loop.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="source_detour_missing"></a>
 ### source_detour_missing
 
@@ -1206,6 +1383,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Assign an existing node as the hop for this source.
   - Or remove the hop if the source no longer needs to go through one.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="source_detour_self"></a>
+### source_detour_self
+
+**severity:** `error` · **params:** `tag`
+
+**Node {tag} excluded: hop points at itself**
+
+- **What happened:** Node {tag} is routed through itself. It was excluded on purpose: a node cannot be its own hop, and dropping the hop silently would send the traffic directly, past the boundary you set.
+- **Why it happens:** The hop assigned to the node — personally or through its folder — resolved to the node itself: for example, the folder's hop is one of the folder's own nodes.
+- **What you can do:**
+  - Assign a different node as the hop.
+  - Or take this node out of the folder whose hop it is.
 
 **Where it comes from:**
 
@@ -1254,15 +1448,16 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **SSH: user root substituted**
 
-- **What happened:** The SSH link names no user. root was substituted, because the core rejects an entry without a user and would refuse to start the whole config; change the user if the server expects a different one.
-- **Why it happens:** The SSH link was written without the user part before the @ — usually shortened by hand, since many tools default the user silently and the author saw no need to spell it out.
+- **What happened:** No SSH user was given. root was written into the node explicitly: the core connects as root when the user is empty anyway, so the connection is unchanged. Change the user if the server expects a different one.
+- **Why it happens:** The SSH entry was written without a user — in an imported sing-box config the user key is simply absent, since the core fills in root silently and the author saw no need to spell it out.
 - **What you can do:**
   - Nothing to do if the server really accepts root.
   - If it expects a different user, set it in the node's settings.
 
 **Where it comes from:**
 
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+- [`ssh`](protocols/ssh.md)
+  - [`user`](protocols/ssh.md#body-user) — the field is absent → filled in with `root`
 
 <a id="tailscale_core_unsupported"></a>
 ### tailscale_core_unsupported
@@ -1281,6 +1476,24 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
+<a id="tailscale_default_route_advertised"></a>
+### tailscale_default_route_advertised
+
+**severity:** `warning` · **params:** `path`, `value`
+
+**Tailscale: default route {value} removed from advertised routes**
+
+- **What happened:** The node advertises the default route {value} at {path}. The core refuses to start with it: offering this node as an exit to the internet is a separate setting, advertise_exit_node. The route was removed; the other advertised routes stay.
+- **Why it happens:** A default route was written into the list of subnets to share, meaning "use this node as an exit". Tailscale expresses that with its own flag and rejects the route form.
+- **What you can do:**
+  - To offer this node as an exit, turn on advertise_exit_node (the exit node checkbox of the Tailscale form).
+  - Otherwise nothing to do: the remaining routes are advertised.
+
+**Where it comes from:**
+
+- [`tailscale`](protocols/tailscale.md)
+  - [`advertise_routes`](protocols/tailscale.md#body-advertise-routes) — a list item is `0.0.0.0/0`, `::/0` → item removed
+
 <a id="tailscale_from_subscription"></a>
 ### tailscale_from_subscription
 
@@ -1293,6 +1506,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Add the DNS server, the rule and the route for the tailnet yourself, or create the node locally through Add server → Tailscale — that way it gets them by default.
   - Nothing to do if you only use this node as a hop and do not need *.ts.net names.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="template_fragment_dropped"></a>
+### template_fragment_dropped
+
+**severity:** `warning` · **params:** `owner`, `kind`, `reason`
+
+**Entry of {kind} from {owner} left out**
+
+- **What happened:** After variable substitution an entry of {kind} from {owner} has no {reason}, which the core requires, so it was left out of the config. The rest of {owner} is kept.
+- **Why it happens:** A variable the entry refers to has no value — a setting left empty or switched off by another setting — and the key with it was dropped. Without that key the entry is incomplete: a rule without a target, a DNS server without an address, a rule set without a source.
+- **What you can do:**
+  - Fill in the setting of {owner} the entry depends on.
+  - If the entry is not needed, nothing has to be done: the config works without it.
 
 **Where it comes from:**
 
@@ -1398,7 +1628,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`tls`](protocols/_tls.md)
-  - [`alpn`](protocols/_tls.md#body-alpn) — not supported by `naive` → removed
+  - [`alpn`](protocols/_tls.md#body-alpn) — not supported by `naive`, `masque` → removed
   - [`certificate_public_key_sha256`](protocols/_tls.md#body-certificate-public-key-sha256) — not supported by `naive` → removed
   - [`cipher_suites`](protocols/_tls.md#body-cipher-suites) — not supported by `naive` → removed
   - [`client_certificate`](protocols/_tls.md#body-client-certificate) — not supported by `naive` → removed
@@ -1412,8 +1642,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`fragment_fallback_delay`](protocols/_tls.md#body-fragment-fallback-delay) — not supported by `naive` → removed
   - [`handshake_timeout`](protocols/_tls.md#body-handshake-timeout) — not supported by `naive` → removed
   - [`insecure`](protocols/_tls.md#body-insecure) — not supported by `naive` → removed
-  - [`kernel_rx`](protocols/_tls.md#body-kernel-rx) — not supported by `naive` → removed
-  - [`kernel_tx`](protocols/_tls.md#body-kernel-tx) — not supported by `naive` → removed
+  - [`kernel_rx`](protocols/_tls.md#body-kernel-rx) — not supported by `naive`, `masque` → removed
+  - [`kernel_tx`](protocols/_tls.md#body-kernel-tx) — not supported by `naive`, `masque` → removed
   - [`max_version`](protocols/_tls.md#body-max-version) — not supported by `naive` → removed
   - [`min_version`](protocols/_tls.md#body-min-version) — not supported by `naive` → removed
   - [`reality`](protocols/_tls.md#body-reality) — not supported by `naive`, `hysteria`, `hysteria2`, `tuic`, `masque` → removed
@@ -1700,15 +1930,15 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **flow removed: incompatible with transport**
 
-- **What happened:** xtls-rprx-vision works only over bare TLS, but the node has {with} set. The flow field at {path} was removed, because the value has no effect here; the node keeps working.
-- **Why it happens:** The panel put flow=xtls-rprx-vision into every link it generates, without looking at whether the node uses a transport. Vision only exists over bare TLS, so on a WebSocket, gRPC or HTTP node it is simply left over.
+- **What happened:** Without a VLESS Encryption layer, xtls-rprx-vision works only over bare TLS, but the node has {with} set and no encryption. The flow field at {path} was removed, because the value has no effect here; the node keeps working.
+- **Why it happens:** The panel put flow=xtls-rprx-vision into every link it generates, without looking at whether the node uses a transport. Without an encryption layer Vision only exists over bare TLS, so on a WebSocket, gRPC or HTTP node it is simply left over.
 - **What you can do:**
   - Nothing to do: the node works, and the removed value had no effect on this transport.
 
 **Where it comes from:**
 
 - [`vless`](protocols/vless.md)
-  - [`flow`](protocols/vless.md#body-flow) — conflicts with `transport` → removed
+  - [`flow`](protocols/vless.md#body-flow) — conflicts with `transport` (unless `encryption` is set) → removed
 
 <a id="vless_encryption_invalid"></a>
 ### vless_encryption_invalid
@@ -1850,7 +2080,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **Where it comes from:**
 
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+- [`transports`](protocols/_transports.md)
+  - [`xhttp.mode`](protocols/_transports.md#body-xhttp-mode) — the field is absent → filled in with `packet-up`
 
 <a id="xhttp_param_reset"></a>
 ### xhttp_param_reset
@@ -1871,6 +2102,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`xhttp.mode`](protocols/_transports.md#body-xhttp-mode) — the value does not fit the field → removed
   - [`xhttp.seq_placement`](protocols/_transports.md#body-xhttp-seq-placement) — the value does not fit the field → removed
   - [`xhttp.session_placement`](protocols/_transports.md#body-xhttp-session-placement) — the value does not fit the field → removed
+  - [`xhttp.uplink_data_placement`](protocols/_transports.md#body-xhttp-uplink-data-placement) — set without `transport.mode` when `transport.uplink_data_placement` is one of `header`, `cookie` → removed
   - [`xhttp.uplink_data_placement`](protocols/_transports.md#body-xhttp-uplink-data-placement) — the value does not fit the field → removed
   - [`xhttp.x_padding_method`](protocols/_transports.md#body-xhttp-x-padding-method) — the value does not fit the field → removed
   - [`xhttp.x_padding_placement`](protocols/_transports.md#body-xhttp-x-padding-placement) — the value does not fit the field → removed

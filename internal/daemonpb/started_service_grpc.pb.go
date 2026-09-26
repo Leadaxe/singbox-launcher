@@ -40,6 +40,7 @@ const (
 	StartedService_StartTailscalePing_FullMethodName             = "/daemon.StartedService/StartTailscalePing"
 	StartedService_SetTailscaleExitNode_FullMethodName           = "/daemon.StartedService/SetTailscaleExitNode"
 	StartedService_TailscaleLogout_FullMethodName                = "/daemon.StartedService/TailscaleLogout"
+	StartedService_GetTailscaleCertificate_FullMethodName        = "/daemon.StartedService/GetTailscaleCertificate"
 	StartedService_StartTailscaleSSHSession_FullMethodName       = "/daemon.StartedService/StartTailscaleSSHSession"
 	StartedService_SubscribeTaildropInbox_FullMethodName         = "/daemon.StartedService/SubscribeTaildropInbox"
 	StartedService_MarkTaildropInboxRead_FullMethodName          = "/daemon.StartedService/MarkTaildropInboxRead"
@@ -68,6 +69,7 @@ const (
 	StartedService_GetChains_FullMethodName                      = "/daemon.StartedService/GetChains"
 	StartedService_SetChainPositionEnabled_FullMethodName        = "/daemon.StartedService/SetChainPositionEnabled"
 	StartedService_GetChainCloneConfig_FullMethodName            = "/daemon.StartedService/GetChainCloneConfig"
+	StartedService_SetEndpointEnabled_FullMethodName             = "/daemon.StartedService/SetEndpointEnabled"
 )
 
 // StartedServiceClient is the client API for StartedService service.
@@ -99,6 +101,7 @@ type StartedServiceClient interface {
 	StartTailscalePing(ctx context.Context, in *TailscalePingRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TailscalePingResponse], error)
 	SetTailscaleExitNode(ctx context.Context, in *SetTailscaleExitNodeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	TailscaleLogout(ctx context.Context, in *TailscaleLogoutRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetTailscaleCertificate(ctx context.Context, in *TailscaleCertificateRequest, opts ...grpc.CallOption) (*TailscaleCertificate, error)
 	StartTailscaleSSHSession(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[TailscaleSSHClientMessage, TailscaleSSHServerMessage], error)
 	SubscribeTaildropInbox(ctx context.Context, in *SubscribeTaildropInboxRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaildropInbox], error)
 	MarkTaildropInboxRead(ctx context.Context, in *MarkTaildropInboxReadRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -127,6 +130,7 @@ type StartedServiceClient interface {
 	GetChains(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ChainList, error)
 	SetChainPositionEnabled(ctx context.Context, in *SetChainPositionEnabledRequest, opts ...grpc.CallOption) (*SetChainPositionEnabledResponse, error)
 	GetChainCloneConfig(ctx context.Context, in *GetChainCloneConfigRequest, opts ...grpc.CallOption) (*RunningConfig, error)
+	SetEndpointEnabled(ctx context.Context, in *SetEndpointEnabledRequest, opts ...grpc.CallOption) (*SetEndpointEnabledResponse, error)
 }
 
 type startedServiceClient struct {
@@ -486,6 +490,16 @@ func (c *startedServiceClient) TailscaleLogout(ctx context.Context, in *Tailscal
 	return out, nil
 }
 
+func (c *startedServiceClient) GetTailscaleCertificate(ctx context.Context, in *TailscaleCertificateRequest, opts ...grpc.CallOption) (*TailscaleCertificate, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TailscaleCertificate)
+	err := c.cc.Invoke(ctx, StartedService_GetTailscaleCertificate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *startedServiceClient) StartTailscaleSSHSession(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[TailscaleSSHClientMessage, TailscaleSSHServerMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[11], StartedService_StartTailscaleSSHSession_FullMethodName, cOpts...)
@@ -838,6 +852,16 @@ func (c *startedServiceClient) GetChainCloneConfig(ctx context.Context, in *GetC
 	return out, nil
 }
 
+func (c *startedServiceClient) SetEndpointEnabled(ctx context.Context, in *SetEndpointEnabledRequest, opts ...grpc.CallOption) (*SetEndpointEnabledResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetEndpointEnabledResponse)
+	err := c.cc.Invoke(ctx, StartedService_SetEndpointEnabled_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StartedServiceServer is the server API for StartedService service.
 // All implementations must embed UnimplementedStartedServiceServer
 // for forward compatibility.
@@ -867,6 +891,7 @@ type StartedServiceServer interface {
 	StartTailscalePing(*TailscalePingRequest, grpc.ServerStreamingServer[TailscalePingResponse]) error
 	SetTailscaleExitNode(context.Context, *SetTailscaleExitNodeRequest) (*emptypb.Empty, error)
 	TailscaleLogout(context.Context, *TailscaleLogoutRequest) (*emptypb.Empty, error)
+	GetTailscaleCertificate(context.Context, *TailscaleCertificateRequest) (*TailscaleCertificate, error)
 	StartTailscaleSSHSession(grpc.BidiStreamingServer[TailscaleSSHClientMessage, TailscaleSSHServerMessage]) error
 	SubscribeTaildropInbox(*SubscribeTaildropInboxRequest, grpc.ServerStreamingServer[TaildropInbox]) error
 	MarkTaildropInboxRead(context.Context, *MarkTaildropInboxReadRequest) (*emptypb.Empty, error)
@@ -895,6 +920,7 @@ type StartedServiceServer interface {
 	GetChains(context.Context, *emptypb.Empty) (*ChainList, error)
 	SetChainPositionEnabled(context.Context, *SetChainPositionEnabledRequest) (*SetChainPositionEnabledResponse, error)
 	GetChainCloneConfig(context.Context, *GetChainCloneConfigRequest) (*RunningConfig, error)
+	SetEndpointEnabled(context.Context, *SetEndpointEnabledRequest) (*SetEndpointEnabledResponse, error)
 	mustEmbedUnimplementedStartedServiceServer()
 }
 
@@ -1003,6 +1029,10 @@ func (UnimplementedStartedServiceServer) SetTailscaleExitNode(context.Context, *
 
 func (UnimplementedStartedServiceServer) TailscaleLogout(context.Context, *TailscaleLogoutRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TailscaleLogout not implemented")
+}
+
+func (UnimplementedStartedServiceServer) GetTailscaleCertificate(context.Context, *TailscaleCertificateRequest) (*TailscaleCertificate, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTailscaleCertificate not implemented")
 }
 
 func (UnimplementedStartedServiceServer) StartTailscaleSSHSession(grpc.BidiStreamingServer[TailscaleSSHClientMessage, TailscaleSSHServerMessage]) error {
@@ -1115,6 +1145,10 @@ func (UnimplementedStartedServiceServer) SetChainPositionEnabled(context.Context
 
 func (UnimplementedStartedServiceServer) GetChainCloneConfig(context.Context, *GetChainCloneConfigRequest) (*RunningConfig, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetChainCloneConfig not implemented")
+}
+
+func (UnimplementedStartedServiceServer) SetEndpointEnabled(context.Context, *SetEndpointEnabledRequest) (*SetEndpointEnabledResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetEndpointEnabled not implemented")
 }
 func (UnimplementedStartedServiceServer) mustEmbedUnimplementedStartedServiceServer() {}
 func (UnimplementedStartedServiceServer) testEmbeddedByValue()                        {}
@@ -1506,6 +1540,24 @@ func _StartedService_TailscaleLogout_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StartedServiceServer).TailscaleLogout(ctx, req.(*TailscaleLogoutRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_GetTailscaleCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TailscaleCertificateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).GetTailscaleCertificate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_GetTailscaleCertificate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).GetTailscaleCertificate(ctx, req.(*TailscaleCertificateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1932,6 +1984,24 @@ func _StartedService_GetChainCloneConfig_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StartedService_SetEndpointEnabled_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetEndpointEnabledRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).SetEndpointEnabled(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_SetEndpointEnabled_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).SetEndpointEnabled(ctx, req.(*SetEndpointEnabledRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StartedService_ServiceDesc is the grpc.ServiceDesc for StartedService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1994,6 +2064,10 @@ var StartedService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TailscaleLogout",
 			Handler:    _StartedService_TailscaleLogout_Handler,
+		},
+		{
+			MethodName: "GetTailscaleCertificate",
+			Handler:    _StartedService_GetTailscaleCertificate_Handler,
 		},
 		{
 			MethodName: "MarkTaildropInboxRead",
@@ -2066,6 +2140,10 @@ var StartedService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetChainCloneConfig",
 			Handler:    _StartedService_GetChainCloneConfig_Handler,
+		},
+		{
+			MethodName: "SetEndpointEnabled",
+			Handler:    _StartedService_SetEndpointEnabled_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

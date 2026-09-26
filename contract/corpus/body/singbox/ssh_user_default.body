@@ -1,0 +1,7 @@
+# sing-box: ssh без user (контракт 1.1.65, SPEC 142 волна 10b).
+#
+# Ядро при пустом user подключается как root (protocol/ssh/outbound.go
+# NewOutbound) — молча. Реестр: body.fields.user.default_when {absent,
+# value: root, code: ssh_user_default} — root пишется в тело ЯВНО с
+# info-кодом, соединение не меняется. Второй узел — user задан, кода нет.
+[{"type":"ssh","tag":"ssh-no-user","server":"example-1.com","server_port":22,"password":"secret"},{"type":"ssh","tag":"ssh-with-user","server":"example-2.com","server_port":2222,"user":"admin","password":"secret"}]

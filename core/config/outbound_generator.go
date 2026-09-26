@@ -44,7 +44,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/core/config/subscription"
+	"singbox-launcher/core/config/nodeflow"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 )
@@ -67,25 +67,12 @@ type OutboundGenerationResult struct {
 	TotalSources     int
 	SucceededSources int
 	FailedSources    int
-	// SkippedNaiveNodes — naive nodes dropped because the running sing-box
-	// core can't create them (SPEC 044 feature-probe: no with_naive_outbound
-	// tag, or a purego build without libcronet next to the binary). One such
-	// node would otherwise fail `sing-box check` for the whole config.
-	// SkippedNaiveReason carries the probe verdict for UI surfacing.
-	SkippedNaiveNodes  int
-	SkippedNaiveReason string
-	// SkippedTailscaleNodes — узлы `tailscale`, снятые потому, что ядро
-	// собрано без with_tailscale (SPEC 122). Причина та же, что у naive:
-	// один такой узел завалил бы `sing-box check` для всего конфига.
-	// SkippedTailscaleReason несёт вердикт пробы для показа в UI.
-	SkippedTailscaleNodes  int
-	SkippedTailscaleReason string
-	// SkippedAWG3Nodes — wireguard-узлы с полями AmneziaWG 3.x, снятые
-	// потому, что установленное ядро старше 1.14.0-lx.32 (SPEC 123).
-	// Причина та же, что у naive/tailscale: один такой узел завалил бы
-	// `sing-box check` для всего конфига.
-	SkippedAWG3Nodes  int
-	SkippedAWG3Reason string
+	// CoreSkips — узлы, снятые узловым гейтом ядра (SPEC 142 волна 5):
+	// ядро не умеет их протокол или поле (требование и код — в реестре,
+	// `on_core_unsupported`). Один такой узел завалил бы `sing-box check`
+	// для всего конфига, поэтому он снимается, а причина едет в UI. Одна
+	// запись на пару (код, схема), в порядке первой встречи.
+	CoreSkips []CoreSkip
 
 	// NodeSections — секции узлов, ДОШЕДШИХ до эмиссии (SPEC 121), в порядке
 	// эмиссии. Собирается здесь по той же причине, что и NodeOrigins: это
@@ -168,7 +155,7 @@ type OutboundGenerationResult struct {
 	// нельзя — тег-политика с переменными (`{$num}`) раскрывается только
 	// эмиссией, и суффикс глобальной уникализации знает тоже только она.
 	// Отсюда решение: карту отдаёт та же сборка, которая теги и выдала
-	// (CANON §9.3).
+	// (PARSING_PRINCIPLES §9.3).
 	//
 	// Попадают ТОЛЬКО узлы канона. Селекторы, Направления, группы шаблона,
 	// `direct`/`block` и хопы, собранные не из канона, узлами не являются:
@@ -267,27 +254,47 @@ func appendReason(reasons []string, extra string) []string {
 	return append(append([]string(nil), reasons...), extra)
 }
 
-// NaiveSupportProbe — hook installed by the app layer (core.AppController):
-// reports whether the running sing-box core supports naive outbounds and why
-// not. nil (parser-level tests, standalone use) → assume supported. Same
-// package-level-hook pattern used across the parser package.
-var NaiveSupportProbe func() (supported bool, reason string)
+// CoreSkip — узлы одной схемы, снятые узловым гейтом ядра с одним кодом.
+type CoreSkip struct {
+	// Code — код реестра (`on_core_unsupported.code`).
+	Code string
+	// Scheme — схема снятых узлов.
+	Scheme string
+	// Reason — причина словами (первая встреченная для пары код+схема).
+	Reason string
+	// Nodes — сколько узлов снято.
+	Nodes int
+}
 
-// TailscaleSupportProbe — та же схема для endpoint'а типа `tailscale`
-// (SPEC 122): ядро без тега `with_tailscale` отвергает такой узел, и
-// `sing-box check` падает на ВСЁМ конфиге, а не на одном узле. nil →
-// считаем, что ядро умеет: деградировать по догадке нельзя.
-var TailscaleSupportProbe func() (supported bool, reason string)
+// Summary — строка для статуса обновления, предупреждений сборки и ошибки
+// «узлов не осталось».
+func (s CoreSkip) Summary() string {
+	return fmt.Sprintf("%d %s node(s) skipped: %s", s.Nodes, s.Scheme, s.Reason)
+}
 
-// AWG3SupportProbe — та же схема для полей AmneziaWG 3.x на wireguard-узле
-// (SPEC 123): ядро до 1.14.0-lx.32 не знает header_protection_key и соседей и
-// отвергает ВЕСЬ конфиг как невалидный JSON. nil → считаем, что ядро умеет.
-var AWG3SupportProbe func() (supported bool, reason string)
+// coreSkipTally копит CoreSkip по паре (код, схема) в порядке встречи.
+type coreSkipTally struct {
+	list  []CoreSkip
+	index map[string]int
+}
+
+func (t *coreSkipTally) add(scheme string, r *nodeflow.CoreRefusal) {
+	key := r.Code + "|" + scheme
+	if t.index == nil {
+		t.index = map[string]int{}
+	}
+	if i, ok := t.index[key]; ok {
+		t.list[i].Nodes++
+		return
+	}
+	t.index[key] = len(t.list)
+	t.list = append(t.list, CoreSkip{Code: r.Code, Scheme: scheme, Reason: r.Reason, Nodes: 1})
+}
 
 // Полевого гейта tls.reality.key_share здесь БОЛЬШЕ НЕТ (SPEC 131 W2c):
 // частная проба на одно поле заменена табличной проверкой по реестру
-// (`min_core` в registry/tls.json, node_build_gate.go). Соседи выше остаются:
-// они выбрасывают УЗЕЛ и в реестре не выразимы (ловушка Л17).
+// (`min_core` в registry/tls.json, node_build_gate.go). Узловые гейты тоже
+// табличные: nodeflow.NodeCoreRefusal по `on_core_unsupported` реестра.
 
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
 // Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic, naive, masque, anytls, ssh, socks.
@@ -839,7 +846,19 @@ func GenerateOutboundsFromParserConfig(
 	// SPEC 118 W4, тот же проход 0 — разворачиваем свёртки папок (replace) в
 	// локальные группы. После Направлений и до подстановки переменных: у
 	// авто-группы замены те же `@urltest_*` в опциях.
-	PrepareFolderReplaces(parserConfig, directions.TwinOptions)
+	replaceWarnings, replaceTags := PrepareFolderReplaces(parserConfig, directions.TwinOptions, directions.SystemTags)
+	// Тег замены — объявленное корневое имя: он занимает место в счётчике
+	// финальных тегов РАНЬШЕ узлов, и узел-тёзка уникализируется суффиксом
+	// (X-2) той же машиной, что любая коллизия финальных тегов (контракт
+	// 1.1.80). Без этого узел и группа ушли бы в конфиг с одним тегом, и ядро
+	// отвергло бы его целиком.
+	if tagCounts != nil {
+		for _, tag := range replaceTags {
+			if tagCounts[tag] == 0 {
+				tagCounts[tag] = 1
+			}
+		}
+	}
 
 	// Hotfix v0.8.8.1 — substitute `@varname` placeholders in
 	// parser_config.outbounds[].options before generating selector JSONs. See
@@ -865,28 +884,12 @@ func GenerateOutboundsFromParserConfig(
 		progressCallback(10, fmt.Sprintf("Processing %d sources...", totalSources))
 	}
 
-	// SPEC 044 feature-probe: one probe per generation run. When the core
-	// can't create naive outbounds, drop those nodes (with a warning) instead
-	// of emitting a config that `sing-box check` rejects wholesale.
-	naiveSupported, naiveReason := true, ""
-	if NaiveSupportProbe != nil {
-		naiveSupported, naiveReason = NaiveSupportProbe()
-	}
-	skippedNaive := 0
-
-	// SPEC 122: та же проба для tailscale — одна на прогон.
-	tailscaleSupported, tailscaleReason := true, ""
-	if TailscaleSupportProbe != nil {
-		tailscaleSupported, tailscaleReason = TailscaleSupportProbe()
-	}
-	skippedTailscale := 0
-
-	// SPEC 123: та же проба для полей AmneziaWG 3.x — одна на прогон.
-	awg3Supported, awg3Reason := true, ""
-	if AWG3SupportProbe != nil {
-		awg3Supported, awg3Reason = AWG3SupportProbe()
-	}
-	skippedAWG3 := 0
+	// Узловой гейт ядра (SPEC 044/122/123 → SPEC 142 волна 5): узел, который
+	// ядру не по силам, снимается с кодом реестра вместо конфига, который
+	// `sing-box check` отверг бы целиком. Возможности ядра — одна проба на
+	// прогон.
+	buildCore := coreCapabilitiesForBuild()
+	var coreSkips coreSkipTally
 
 	// SPEC 118 W4: эмиссионные деградации канонического пути (битое тело,
 	// пустая группа, снятое умолчание) — тот же адресат, что у причин
@@ -926,68 +929,28 @@ func GenerateOutboundsFromParserConfig(
 			}
 		}
 
-		skippedNaiveHere := 0
-		if !naiveSupported {
+		skippedCoreHere := 0
+		{
 			kept := nodesFromSource[:0]
 			for _, n := range nodesFromSource {
-				if n.Scheme == "naive" {
-					skippedNaiveHere++
-					debuglog.WarnLog("GenerateOutboundsFromParserConfig: skipping naive node %q — %s", n.Tag, naiveReason)
-					continue
-				}
-				kept = append(kept, n)
-			}
-			nodesFromSource = kept
-			skippedNaive += skippedNaiveHere
-		}
-
-		// SPEC 122: та же ветка для tailscale. Секции такого узла (SPEC 121)
-		// сами собой не эмитятся — они собираются ниже по узлам, ДОШЕДШИМ до
-		// эмиссии, а выброшенный узел туда не доходит.
-		skippedTailscaleHere := 0
-		if !tailscaleSupported {
-			kept := nodesFromSource[:0]
-			for _, n := range nodesFromSource {
-				if n.Scheme == SchemeTailscale {
-					skippedTailscaleHere++
-					// Код деградации — из реестра (contract/registry/warnings.json):
-					// узел выбрасывается, вешать пометку не на что, и код едет
-					// в лог вместе с причиной.
-					debuglog.WarnLog("GenerateOutboundsFromParserConfig: %s — skipping tailscale node %q — %s",
-						subscription.WarnTailscaleCoreUnsupported, n.Tag, tailscaleReason)
-					continue
-				}
-				kept = append(kept, n)
-			}
-			nodesFromSource = kept
-			skippedTailscale += skippedTailscaleHere
-		}
-
-		// SPEC 123: та же ветка для wireguard-узлов с полями AWG 3.x —
-		// старое ядро отвергает такой конфиг целиком, а не один узел.
-		skippedAWG3Here := 0
-		if !awg3Supported {
-			kept := nodesFromSource[:0]
-			for _, n := range nodesFromSource {
-				if n.Scheme == "wireguard" && subscription.HasAWG3Fields(n.Outbound) {
-					skippedAWG3Here++
-					// Код деградации — из реестра (contract/registry/warnings.json):
-					// узел выброшен, вешать пометку не на что, и код едет в лог
+				if refusal := nodeflow.NodeCoreRefusal(n.Scheme, n.Outbound, buildCore); refusal != nil {
+					skippedCoreHere++
+					coreSkips.add(n.Scheme, refusal)
+					// Код деградации — из реестра (warnings.json): узел
+					// выброшен, вешать пометку не на что, и код едет в лог
 					// вместе с причиной.
-					debuglog.WarnLog("GenerateOutboundsFromParserConfig: %s — skipping AmneziaWG 3.x node %q — %s",
-						subscription.WarnAWG3CoreUnsupported, n.Tag, awg3Reason)
+					debuglog.WarnLog("GenerateOutboundsFromParserConfig: %s — skipping %s node %q — %s",
+						refusal.Code, n.Scheme, n.Tag, refusal.Reason)
 					continue
 				}
 				kept = append(kept, n)
 			}
 			nodesFromSource = kept
-			skippedAWG3 += skippedAWG3Here
 		}
 
-		// A source whose every node was a degraded naive/tailscale/awg3 node
-		// still fetched and parsed fine — count it as succeeded, not
-		// silent-empty.
-		if len(nodesFromSource) == 0 && (skippedNaiveHere > 0 || skippedTailscaleHere > 0 || skippedAWG3Here > 0) {
+		// A source whose every node was dropped by the core gate still
+		// fetched and parsed fine — count it as succeeded, not silent-empty.
+		if len(nodesFromSource) == 0 && skippedCoreHere > 0 {
 			succeededSources++
 			continue
 		}
@@ -1048,15 +1011,10 @@ func GenerateOutboundsFromParserConfig(
 				chainSourceFailure(parserConfig.ParserConfig.Proxies[i], i, nil))
 		}
 		diag := &OutboundGenerationResult{
-			TotalSources:           totalSources,
-			SucceededSources:       succeededSources,
-			FailedSources:          failedSources,
-			SkippedNaiveNodes:      skippedNaive,
-			SkippedNaiveReason:     naiveReason,
-			SkippedTailscaleNodes:  skippedTailscale,
-			SkippedTailscaleReason: tailscaleReason,
-			SkippedAWG3Nodes:       skippedAWG3,
-			SkippedAWG3Reason:      awg3Reason,
+			TotalSources:     totalSources,
+			SucceededSources: succeededSources,
+			FailedSources:    failedSources,
+			CoreSkips:        coreSkips.list,
 			// ExcludedSources здесь пуст по существу, а не по недосмотру:
 			// исключения считает резолв графа ссылок ниже, и при нулевом наборе
 			// узлов исключать нечего — до графа ссылок дело не дошло.
@@ -1065,14 +1023,8 @@ func GenerateOutboundsFromParserConfig(
 		if totalSources == 0 {
 			return diag, fmt.Errorf("no enabled sources (all subscriptions disabled in wizard)")
 		}
-		if skippedNaive > 0 {
-			return diag, fmt.Errorf("no usable nodes: %d naive node(s) skipped (%s)", skippedNaive, naiveReason)
-		}
-		if skippedTailscale > 0 {
-			return diag, fmt.Errorf("no usable nodes: %d tailscale node(s) skipped (%s)", skippedTailscale, tailscaleReason)
-		}
-		if skippedAWG3 > 0 {
-			return diag, fmt.Errorf("no usable nodes: %d AmneziaWG 3.x node(s) skipped (%s)", skippedAWG3, awg3Reason)
+		if len(coreSkips.list) > 0 {
+			return diag, fmt.Errorf("no usable nodes: %s", coreSkips.list[0].Summary())
 		}
 		return diag, fmt.Errorf("no nodes parsed from any source")
 	}
@@ -1102,8 +1054,10 @@ func GenerateOutboundsFromParserConfig(
 	// (SourceID/Направление), чтобы ⚠ встал у виновной строки Sources — так же,
 	// как у деградаций подписок.
 	emissionWarnings := ResolveCanonicalChainHops(parserConfig, linkTargets)
+	emissionWarnings = append(emissionWarnings, replaceWarnings...)
 
-	allNodes, brokenChains := ResolveChainSources(parserConfig, allNodes, nodesBySource, directionTagsForChains)
+	allNodes, brokenChains, chainNotes := ResolveChainSources(parserConfig, allNodes, nodesBySource, directionTagsForChains)
+	emissionWarnings = append(emissionWarnings, chainNotes...)
 	// Вердикт по источникам-цепочкам, отложенный с прохода 1: пуст только тот,
 	// у кого не собралась ни одна цепочка.
 	for _, i := range chainOnlySources {
@@ -1268,35 +1222,32 @@ func GenerateOutboundsFromParserConfig(
 	exposeCandidates := collectExposeTagCandidates(parserConfig)
 	outboundsInfo, chainCycles, detourCycles := buildOutboundsInfo(parserConfig, nodesBySource, globalPool, progressCallback)
 	computeOutboundValidity(outboundsInfo, parserConfig, exposeCandidates, progressCallback)
-	selectorJSONs, localSelectorsCount, globalSelectorsCount, emptyDirections := generateSelectorJSONs(
+	selectorJSONs, localSelectorsCount, globalSelectorsCount, emptyDirections, emptyReplaceWarnings := generateSelectorJSONs(
 		parserConfig, nodesBySource, globalPool, outboundsInfo, exposeCandidates, progressCallback, directions)
 	selectorsJSON = append(selectorsJSON, selectorJSONs...)
+	emissionWarnings = append(emissionWarnings, emptyReplaceWarnings...)
+	emissionWarnings = append(emissionWarnings, chainCycleWarnings(chainCycles)...)
 
 	return &OutboundGenerationResult{
-		OutboundsJSON:          selectorsJSON,
-		EndpointsJSON:          endpointsJSON,
-		NodesCount:             nodesCount,
-		EndpointsCount:         endpointsCount,
-		LocalSelectorsCount:    localSelectorsCount,
-		GlobalSelectorsCount:   globalSelectorsCount,
-		TotalSources:           totalSources,
-		SucceededSources:       succeededSources,
-		FailedSources:          failedSources,
-		SkippedNaiveNodes:      skippedNaive,
-		SkippedTailscaleNodes:  skippedTailscale,
-		SkippedTailscaleReason: tailscaleReason,
-		SkippedAWG3Nodes:       skippedAWG3,
-		SkippedAWG3Reason:      awg3Reason,
-		EmptyDirections:        emptyDirections,
-		BrokenChains:           brokenChains,
-		ChainCycles:            chainCycles,
-		DetourCycles:           detourCycles,
-		ParseFailedSources:     parseFailedSources,
-		EmissionWarnings:       emissionWarnings,
-		NodeOrigins:            nodeOrigins,
-		NodeLinks:              nodeLinks,
-		NodeSections:           nodeSections,
-		SkippedNaiveReason:     naiveReason,
+		OutboundsJSON:        selectorsJSON,
+		EndpointsJSON:        endpointsJSON,
+		NodesCount:           nodesCount,
+		EndpointsCount:       endpointsCount,
+		LocalSelectorsCount:  localSelectorsCount,
+		GlobalSelectorsCount: globalSelectorsCount,
+		TotalSources:         totalSources,
+		SucceededSources:     succeededSources,
+		FailedSources:        failedSources,
+		CoreSkips:            coreSkips.list,
+		EmptyDirections:      emptyDirections,
+		BrokenChains:         brokenChains,
+		ChainCycles:          chainCycles,
+		DetourCycles:         detourCycles,
+		ParseFailedSources:   parseFailedSources,
+		EmissionWarnings:     emissionWarnings,
+		NodeOrigins:          nodeOrigins,
+		NodeLinks:            nodeLinks,
+		NodeSections:         nodeSections,
 	}, nil
 }
 
@@ -1383,13 +1334,17 @@ func generateRawNodeJSON(node *ParsedNode) (string, error) {
 	if typ == "" {
 		return "", fmt.Errorf("manual node %q has no type", node.Tag)
 	}
+	// Правила-починки реестра (REALITY без uTLS, random под REALITY) — и у
+	// ручного объекта: это свойство ядра, а не входа. Остальное — как есть.
+	ob, notes := nodeflow.Repairs(node.Scheme, node.Outbound)
+	logBuildRepairs(node.Scheme, node.Tag, notes)
 
 	var parts []string
 	parts = append(parts, fmt.Sprintf(`"tag":%s`, marshalJSONString(node.Tag)))
 	parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString(typ)))
 
-	extraKeys := make([]string, 0, len(node.Outbound))
-	for k := range node.Outbound {
+	extraKeys := make([]string, 0, len(ob))
+	for k := range ob {
 		if k == "tag" || k == "type" {
 			continue
 		}
@@ -1398,7 +1353,7 @@ func generateRawNodeJSON(node *ParsedNode) (string, error) {
 	sort.Strings(extraKeys)
 
 	for _, k := range extraKeys {
-		encoded, err := json.Marshal(node.Outbound[k])
+		encoded, err := json.Marshal(ob[k])
 		if err != nil {
 			debuglog.WarnLog("GenerateNodeJSON: manual node %q: dropping unencodable field %q: %v", node.Tag, k, err)
 			continue
@@ -1423,7 +1378,7 @@ func generateCanonicalBodyJSON(node *ParsedNode) (string, error) {
 	// Здесь единственное место, где сохранённое тело становится outbound'ом
 	// config.json, — значит и гейту место здесь, одной табличной проверкой
 	// по реестру вместо частной пробы на каждое поле.
-	gated, _ := gateBodyForCore(node.Scheme, node.Tag, node.EmitBody)
+	gated, _ := gateBodyForCore(node.Scheme, node.Tag, repairBodyForBuild(node.Scheme, node.Tag, node.EmitBody))
 	return stampTagAndDetour(gated, node)
 }
 
@@ -1508,7 +1463,6 @@ func chainOfNode(node *ParsedNode) []*ParsedNode {
 		Scheme:   node.Jump.Scheme,
 		Server:   node.Jump.Server,
 		Port:     node.Jump.Port,
-		UUID:     node.Jump.UUID,
 		Flow:     node.Jump.Flow,
 		Outbound: node.Jump.Outbound,
 	}, node)}
@@ -1517,15 +1471,15 @@ func chainOfNode(node *ParsedNode) []*ParsedNode {
 // normalizeChainHop fills in the defaults a hop needs to emit cleanly.
 //
 // An empty scheme means SOCKS for backward compatibility (ParsedJump documented
-// it that way), and a SOCKS hop without an explicit version must default to 5 —
-// sing-box rejects the outbound otherwise.
+// it that way). A missing SOCKS `version` is NOT filled in: the core treats an
+// empty version as 5 (registry socks.json body.version), and PARSING_PRINCIPLES §2.4 does
+// not materialize core defaults (SPEC 142 A10).
 func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 	out := &ParsedNode{
 		Tag:      hop.Tag,
 		Scheme:   hop.Scheme,
 		Server:   hop.Server,
 		Port:     hop.Port,
-		UUID:     hop.UUID,
 		Flow:     hop.Flow,
 		Outbound: hop.Outbound,
 		Label:    owner.Label,
@@ -1536,11 +1490,6 @@ func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 	}
 	if out.Outbound == nil {
 		out.Outbound = map[string]interface{}{}
-	}
-	if out.Scheme == "socks" {
-		if _, ok := out.Outbound["version"]; !ok {
-			out.Outbound["version"] = "5"
-		}
 	}
 	return out
 }

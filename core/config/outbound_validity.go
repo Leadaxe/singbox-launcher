@@ -9,6 +9,9 @@
 package config
 
 import (
+	"fmt"
+	"strings"
+
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -373,12 +376,13 @@ func generateSelectorJSONs(
 	exposeCandidates []exposeTagCandidate,
 	progressCallback func(float64, string),
 	directions DirectionBuildOptions,
-) ([]string, int, int, []string) {
+) ([]string, int, int, []string, []EmissionWarning) {
 	if progressCallback != nil {
 		progressCallback(80, "Generating selectors (pass 3)...")
 	}
 	var out []string
 	var emptyDirections []string
+	var replaceWarns []EmissionWarning
 	localCount := 0
 	globalCount := 0
 
@@ -390,11 +394,24 @@ func generateSelectorJSONs(
 		if !ok {
 			sourceNodes = []*ParsedNode{}
 		}
+		emptyReported := false
 		for _, outboundConfig := range proxySource.LocalGroups {
 			info, exists := outboundsInfo[outboundConfig.Tag]
 			if !exists || !info.isValid {
 				if exists && !info.isValid {
 					debuglog.DebugLog("GenerateOutboundsFromParserConfig: Skipping empty local selector '%s'", outboundConfig.Tag)
+					// Группа свёртки без единого включённого узла в конфиг
+					// не идёт (пустой selector/urltest ядро отвергло бы
+					// целиком), и правила с Направлениями, метившие в неё,
+					// молча не сработали бы. Код replace_group_empty — в
+					// отчёт сборки, один на свёртку (у both пустеют обе
+					// половины сразу).
+					if !emptyReported {
+						if w, ok := replaceGroupEmptyWarning(proxySource, i); ok {
+							replaceWarns = append(replaceWarns, w)
+							emptyReported = true
+						}
+					}
 				}
 				continue
 			}
@@ -464,5 +481,25 @@ func generateSelectorJSONs(
 			globalCount++
 		}
 	}
-	return out, localCount, globalCount, emptyDirections
+	return out, localCount, globalCount, emptyDirections, replaceWarns
+}
+
+// replaceGroupEmptyWarning — код replace_group_empty {tag, mode} на свёртку
+// источника, чья группа не собралась за пустотой. false — у источника нет
+// свёртки (локальная группа другого происхождения).
+func replaceGroupEmptyWarning(ps ProxySource, index int) (EmissionWarning, bool) {
+	if ps.Canonical == nil || ps.Canonical.Replace == nil {
+		return EmissionWarning{}, false
+	}
+	r := ps.Canonical.Replace
+	params := map[string]string{"tag": r.Tag, "mode": r.Mode}
+	text := registryWarningText(codeReplaceGroupEmpty, params,
+		fmt.Sprintf("swap group %q (%s) is not built: the source has no enabled nodes", r.Tag, r.Mode))
+	return EmissionWarning{
+		Text:        text,
+		SourceID:    strings.TrimSpace(ps.ID),
+		SourceLabel: sourceDisplayName(ps, index),
+		Code:        codeReplaceGroupEmpty,
+		Params:      params,
+	}, true
 }

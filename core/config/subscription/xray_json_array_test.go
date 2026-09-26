@@ -24,9 +24,6 @@ func TestParseNodesFromXrayJSONArray_ProviderStyleFixture(t *testing.T) {
 	if a.Server != "exit-node-a.example.invalid" || a.Port != 443 {
 		t.Fatalf("node0 server: %s:%d", a.Server, a.Port)
 	}
-	if a.UUID != "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" {
-		t.Fatalf("node0 uuid: %s", a.UUID)
-	}
 	wantBase := xrayRemarksToTagBase("🇱🇻 Sample-A | fixture", 0)
 	if a.Tag != wantBase {
 		t.Fatalf("node0 tag: got %q want %q", a.Tag, wantBase)
@@ -182,9 +179,6 @@ func TestParseNodesFromXrayJSONArray_VLESSJump(t *testing.T) {
 	}
 	if n.Jump.Server != "198.51.100.20" || n.Jump.Port != 443 {
 		t.Fatalf("jump server: %s:%d", n.Jump.Server, n.Jump.Port)
-	}
-	if n.Jump.UUID != "11111111-1111-1111-1111-111111111111" {
-		t.Fatalf("jump uuid: %s", n.Jump.UUID)
 	}
 	if n.Server != "198.51.100.21" {
 		t.Fatalf("main server: %s", n.Server)

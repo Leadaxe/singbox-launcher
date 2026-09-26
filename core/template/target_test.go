@@ -45,7 +45,7 @@ func TestRuntimeTargetGlobal(t *testing.T) {
 		{TargetRemote, "kept", "dropped"},
 		{TargetLocal, "dropped", "kept"},
 	} {
-		out, err := SubstituteVarsInJSON(body, nil, nil, TargetSpec{GOOS: "linux", GOARCH: "amd64", Target: tc.target})
+		out, _, err := SubstituteVarsInJSONCanon(body, nil, nil, TargetSpec{GOOS: "linux", GOARCH: "amd64", Target: tc.target})
 		if err != nil {
 			t.Fatalf("%s: %v", tc.target, err)
 		}
@@ -69,7 +69,7 @@ func TestZeroTargetIsLocal(t *testing.T) {
 		t.Fatalf("zero TargetSpec must normalize to local/runtime, got %+v", got)
 	}
 	body := []byte(`{"#if":{"and":[{"@runtime.target":"local"}],"value":{"ok":1}}}`)
-	out, err := SubstituteVarsInJSON(body, nil, nil, TargetSpec{})
+	out, _, err := SubstituteVarsInJSONCanon(body, nil, nil, TargetSpec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestZeroTargetIsLocal(t *testing.T) {
 // @runtime.isRemote: типизировать globals не потребовалось.
 func TestRuntimeTargetBareFormRejected(t *testing.T) {
 	body := []byte(`{"#if":{"and":["@runtime.target"],"value":{"leaked":1}}}`)
-	out, err := SubstituteVarsInJSON(body, nil, nil, TargetSpec{Target: TargetRemote})
+	out, _, err := SubstituteVarsInJSONCanon(body, nil, nil, TargetSpec{Target: TargetRemote})
 	if err != nil {
 		t.Fatal(err)
 	}

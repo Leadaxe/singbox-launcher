@@ -1,0 +1,2 @@
+# sing-box JSON: xhttp uplink_data_placement=body при mode=stream-one -> ядро принимает body/auto в любом режиме: ничего не тронуто, кодов нет (LxBox §546/§547, контракт 1.1.56).
+{"type": "vless", "tag": "sb-xhttp-body-streamone", "server": "example-6.com", "server_port": 443, "uuid": "11111111-1111-1111-1111-111111111111", "tls": {"enabled": true, "server_name": "example-6.com"}, "transport": {"type": "xhttp", "path": "/x", "mode": "stream-one", "uplink_data_placement": "body"}}

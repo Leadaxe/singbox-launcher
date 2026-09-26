@@ -167,7 +167,8 @@ func DedupParsedNodes(nodes []*configtypes.ParsedNode) []*configtypes.ParsedNode
 
 // rebindCollapsedGroupMembers переписывает состав узлов-групп со схлопнутых
 // копий на выживших. Работает с ТЕКУЩИМИ тегами (превью тегов не переставляет),
-// в отличие от rebindImportedGroupNodes, который идёт от SourceTag к итоговому.
+// в отличие от разбора тела (bodyParseState.finish), который идёт от SourceTag
+// к сырому тегу записи.
 func rebindCollapsedGroupMembers(
 	nodes []*configtypes.ParsedNode,
 	collapsedInto map[string]string,

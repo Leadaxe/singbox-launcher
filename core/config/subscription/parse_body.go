@@ -30,6 +30,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -88,9 +89,9 @@ type ParsedBodyEntry struct {
 	// Node — разобранный узел. У группы Scheme == configtypes.SchemeGroup.
 	Node *configtypes.ParsedNode
 	// OriginKind / OriginRaw — происхождение записи ("uri" — строка
-	// URI-списка, "json" — объект sing-box/Xray-тела). Пустой kind =
-	// пофрагментного происхождения нет (синтезированные группы Xray,
-	// vpn://-контейнеры).
+	// URI-списка, "json" — объект sing-box/Xray-тела, "wg_ini" — блок .conf,
+	// в том числе из vpn://-контейнера). Пустой kind =
+	// пофрагментного происхождения нет (синтезированные группы Xray).
 	OriginKind string
 	OriginRaw  string
 	// Группа: тип, default и члены ПО СЫРЫМ тегам (после дедупа и
@@ -288,6 +289,10 @@ type ParsedBody struct {
 	// Warnings — per-record деградации (битые записи, потерянные
 	// группы-члены, пустые группы). Персистятся в updateStatus (W3).
 	Warnings []string
+	// WarningCodes — машинные коды тех из Warnings, которым код назначен
+	// (warnings.json), по индексу строки. Текст остаётся запасным: UI
+	// переводит по коду, а строка без кода показывается как есть.
+	WarningCodes []BodyWarningCode
 	// IgnoredSections — секции целого sing-box-конфига, которые импорт не
 	// читает (route/dns/inbounds/...).
 	IgnoredSections []string
@@ -323,17 +328,19 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 	bodyKind := ClassifySubscriptionBody(contentStr)
 
 	// vpn:// — Amnezia-профиль: все WG/AWG-контейнеры (SPEC 103 §9.B12).
-	// Пофрагментного raw у контейнеров нет — origin остаётся пустым.
+	// Ссылка — источник-контейнер, а не происхождение узла: origin каждого
+	// узла — текст `.conf` из контейнера (wg_ini) с уже перенесёнными
+	// значениями контейнера, самодостаточный для пересборки (контракт 1.1.72).
 	if bodyKind == BodyKindVPNLink {
-		vpnNodes, skippedContainers, vpnErr := ParseAmneziaVPNLinkAll(contentStr, skip)
+		vpnNodes, vpnOrigins, skippedContainers, vpnErr := parseAmneziaVPNLinkWithOrigins(contentStr, skip)
 		if vpnErr != nil {
 			st.warn(fmt.Sprintf("vpn:// body rejected: %v", vpnErr))
 		} else {
 			if skippedContainers > 0 {
 				st.warn(fmt.Sprintf("vpn:// body: %d container(s) skipped", skippedContainers))
 			}
-			for _, node := range vpnNodes {
-				st.accept(node, "", "")
+			for i, node := range vpnNodes {
+				st.accept(node, OriginKindWGIni, vpnOrigins[i])
 			}
 		}
 		st.finish()
@@ -412,7 +419,7 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 		flushJSON(0)
 		for i, node := range importRes.Nodes {
 			// Исходный тег нужен группам для перепривязки состава на сырые
-			// теги (тот же приём, что applyTagsToSingboxNode → SourceTag).
+			// теги (bodyParseState.finish сопоставляет членов по SourceTag).
 			if node != nil && node.SourceTag == "" {
 				node.SourceTag = node.Tag
 			}
@@ -427,9 +434,15 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 		if bodyKind == BodyKindXrayConfig {
 			xrayBody = XrayConfigToArray(contentStr)
 		}
-		arrayNodes, xrayReasons, xrayRejects, err := parseNodesFromXrayJSONArrayFull(xrayBody, skip)
+		arrayNodes, xrayReasons, xrayRejects, emptyGroups, err := parseNodesFromXrayJSONArrayFull(xrayBody, skip)
 		for _, r := range xrayReasons {
 			st.warn(r)
+		}
+		// Группа-балансировщик без единого выжившего члена: исходника у неё
+		// нет (синтезирована), поэтому не отбраковка, а код уровня тела.
+		for _, tag := range emptyGroups {
+			st.warnCoded(fmt.Sprintf("group %q lost all members — dropped", tag),
+				WarnGroupEmpty, map[string]string{"tag": tag})
 		}
 		if err != nil {
 			st.warn(fmt.Sprintf("Xray JSON array body rejected: %v", err))
@@ -503,6 +516,15 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			if st.capReached() {
 				continue
 			}
+			// Строка `vpn://` в списке — тот же контейнер, что и тело из одной
+			// этой ссылки (контракт 1.1.80): ВСЕ WG/AWG-контейнеры профиля,
+			// origin каждого узла — самодостаточный текст `.conf` (wg_ini), а
+			// не сама ссылка. Одиночный ParseNode отдал бы один контейнер из
+			// нескольких с origin uri, и остальные локации терялись бы.
+			if isAmneziaVPNLink(line) {
+				st.acceptVPNLinkLine(line, skip)
+				continue
+			}
 			node, err := ParseNode(line, skip)
 			if err != nil {
 				// Битая запись — деградация записи с warning, не подписки.
@@ -548,6 +570,25 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 	return res, nil
 }
 
+// acceptVPNLinkLine — строка `vpn://` URI-списка: все контейнеры профиля
+// принимаются по одному узлу с origin wg_ini, как у тела-ссылки. Профиль,
+// который не распаковался вовсе, — отбраковка ЗАПИСИ на её позиции с
+// исходником-строкой (SPEC 116 W11), как у любой битой строки списка.
+func (st *bodyParseState) acceptVPNLinkLine(line string, skip []map[string]string) {
+	nodes, origins, skipped, err := parseAmneziaVPNLinkWithOrigins(line, skip)
+	if err != nil {
+		st.warn(fmt.Sprintf("record rejected: %v", err))
+		st.rejectCoded(err.Error(), rejectCodeOf(err), OriginKindURI, line)
+		return
+	}
+	if skipped > 0 {
+		st.warn(fmt.Sprintf("vpn:// line: %d container(s) skipped", skipped))
+	}
+	for i, node := range nodes {
+		st.accept(node, OriginKindWGIni, origins[i])
+	}
+}
+
 // bodyParseState — счётчики одного разбора: кап, дедуп, уникализация.
 type bodyParseState struct {
 	res      *ParsedBody
@@ -560,6 +601,24 @@ type bodyParseState struct {
 
 func (st *bodyParseState) warn(msg string) {
 	st.res.Warnings = append(st.res.Warnings, msg)
+}
+
+// warnCoded — то же предупреждение уровня тела с машинным кодом.
+func (st *bodyParseState) warnCoded(msg, code string, params map[string]string) {
+	st.res.WarningCodes = append(st.res.WarningCodes, BodyWarningCode{
+		Index:  len(st.res.Warnings),
+		Code:   code,
+		Params: params,
+	})
+	st.warn(msg)
+}
+
+// BodyWarningCode — код предупреждения уровня тела подписки: Index — номер
+// строки в ParsedBody.Warnings, к которой код относится.
+type BodyWarningCode struct {
+	Index  int
+	Code   string
+	Params map[string]string
 }
 
 // reject запоминает неразобранную запись на её позиции (SPEC 116 W11).
@@ -689,7 +748,11 @@ func (st *bodyParseState) accept(node *configtypes.ParsedNode, originKind, origi
 func (st *bodyParseState) finish() {
 	if st.skipped > 0 {
 		st.res.Truncated = true
-		st.warn(fmt.Sprintf("body truncated: %d record(s) beyond the cap of %d", st.skipped, st.capN))
+		st.warnCoded(fmt.Sprintf("body truncated: %d record(s) beyond the cap of %d", st.skipped, st.capN),
+			WarnMaxNodesExceeded, map[string]string{
+				"limit":   strconv.Itoa(st.capN),
+				"skipped": strconv.Itoa(st.skipped),
+			})
 	}
 
 	// Сырые теги групп — ПОСЛЕ всех узлов, тем же счётчиком и в порядке тела
@@ -743,6 +806,7 @@ func (st *bodyParseState) finish() {
 		}
 		members := make([]string, 0)
 		seen := make(map[string]struct{})
+		var lost []string
 		if rawMembers, ok := e.Node.Outbound[configtypes.GroupMembersKey].([]interface{}); ok {
 			for _, item := range rawMembers {
 				memberTag, ok := item.(string)
@@ -752,8 +816,8 @@ func (st *bodyParseState) finish() {
 				raw, found := resolveMember(memberTag)
 				if !found {
 					// Вложенная группа-член или потерянный узел — потеря с
-					// warning, не молча (SPEC Т3).
-					st.warn(fmt.Sprintf("group %q: member %q not resolvable — dropped", e.RawTag, memberTag))
+					// warning, не молча (SPEC Т3); одна запись на группу ниже.
+					lost = append(lost, memberTag)
 					continue
 				}
 				if _, dup := seen[raw]; dup {
@@ -763,8 +827,31 @@ func (st *bodyParseState) finish() {
 				members = append(members, raw)
 			}
 		}
+		if len(lost) > 0 && len(members) > 0 {
+			// Группа живёт без части членов: код — на самом узле-группе
+			// (warnings у kind=auto, контракт 1.1.66), в сводку источника
+			// уходит только текст с именами потерянных — второй записи с
+			// тем же кодом там нет.
+			st.warn(fmt.Sprintf("group %q: %d member(s) not resolvable — dropped (%s)",
+				e.RawTag, len(lost), strings.Join(lost, ", ")))
+			markGroupMemberMissing(e.Node, len(lost))
+		}
 		if len(members) == 0 {
-			st.warn(fmt.Sprintf("group %q lost all members — dropped", e.RawTag))
+			st.warnCoded(fmt.Sprintf("group %q lost all members — dropped", e.RawTag),
+				WarnGroupEmpty, map[string]string{"tag": e.RawTag})
+			// Не молчаливая пропажа: группа с исходником встаёт в состав
+			// отбраковкой с кодом на своём месте среди выживших (контракт
+			// 1.1.49 — у каждой отбраковки код). Синтезированная группа
+			// Xray исходника не имеет, и rejectCoded её не запомнит.
+			if strings.TrimSpace(e.OriginRaw) != "" {
+				st.res.Rejected = append(st.res.Rejected, RejectedBodyRecord{
+					After:      len(kept),
+					Reason:     fmt.Sprintf("group %q rejected: no resolvable members", e.RawTag),
+					Code:       WarnGroupEmpty,
+					OriginKind: e.OriginKind,
+					OriginRaw:  e.OriginRaw,
+				})
+			}
 			continue
 		}
 		e.MemberRawTags = members

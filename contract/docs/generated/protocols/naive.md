@@ -16,6 +16,7 @@
 | `aliases` | — |
 | `sources` | `uri`, `singbox` |
 | Core the schema was checked against | `1.14.1-lx.4` |
+| Core requirement | build tag `with_naive_outbound`; on a core that lacks it the node is dropped at build: `naive_unavailable` |
 | URI fragment | `label` |
 
 ## How to read this page
@@ -92,7 +93,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
 - <a id="body-username"></a>**`username`** — Account user name.
-  - Type: string
+  - Type: string, role `credential`
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
 - <a id="body-password"></a>**`password`** — Account password.
   - Type: string, secret
@@ -191,6 +192,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool
   - Default: `false`
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-tls-fragment-fallback-delay"></a>**`tls.fragment_fallback_delay`** — Delay before falling back when fragmenting.
   - Type: duration
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)
@@ -198,6 +200,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool
   - Default: `false`
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)
+  - Conflicts with: `vhttp` when `vhttp` is `h3`
 - <a id="body-tls-spoof"></a>**`tls.spoof`** — Domain used for the spoofed ClientHello.
   - Type: string, format `host`
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)
@@ -255,7 +258,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Conflicts with: `tls.ech.enabled`
   - Conflicts with: `tls.disable_sni`
   - Conflicts with: `tls.spoof`
-  - Meaningless without: `tls.utls.enabled`
+  - Requires: `tls.utls.enabled` — if missing, filled in with `true`
 - <a id="body-tls-reality-public-key"></a>**`tls.reality.public_key`** — Server REALITY public key (x25519).
   - Type: string, format `base64_32`, normalized: `base64_rawurl`
   - Required: the node is dropped without it
@@ -355,6 +358,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `tls.spoof_method` — normalized: `trim_lower`
 - `tls.utls.fingerprint` — normalized: `trim_lower`
 - `tls.utls.fingerprint` — an invalid value is replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
+- `tls.utls.fingerprint` — `random` is replaced with `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
+- `tls.reality.enabled` — without `tls.utls.enabled`, it is filled in with `true` → [`reality_utls_enabled`](../warnings.md#reality_utls_enabled)
 - `tls.reality.public_key` — normalized: `base64_rawurl`
 - `tls.reality.short_id` — normalized: `hex_only` → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
 - `tls.reality.key_share` — normalized: `trim_lower`

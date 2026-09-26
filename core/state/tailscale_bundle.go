@@ -136,8 +136,8 @@ func DefaultTailscaleSections() *NodeSections {
 // Возвращает прежнее значение, если связка у узла уже есть: своя связка
 // пользователя не трогается никогда, даже если она отличается от канонической.
 //
-// Признак «тело это tailnet» решает ВЫЗЫВАЮЩИЙ: таблица схем живёт в
-// core/config и core/config/subscription, а этот пакет про схемы не знает.
+// Признак «тело это tailnet» решает ВЫЗЫВАЮЩИЙ (схему по типу тела даёт
+// реестр, core/config/registry), а этот пакет про схемы не знает.
 func ApplyTailscaleDefaultSections(isTailscale bool, sections *NodeSections) *NodeSections {
 	if !isTailscale || !sections.IsEmpty() {
 		return sections
