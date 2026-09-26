@@ -815,6 +815,12 @@ func (st *execState) applyEntry(e *Entry) {
 		return
 	}
 
+	// Декодирование поверх декодера формы, потом форм-семантика `+`. ДО
+	// on_present: `value` кода — то же значение, что увидела бы запись в
+	// теле, а не сырой query-текст с `+` вместо пробела (MAPPER_ENGINE.md,
+	// политика декодирования `+`).
+	val := st.decodeValue(p, rawVal)
+
 	// on_present — код за САМО наличие значения, независимо от того, едет оно
 	// куда-нибудь или нет. Нужен записям с `maps_to: null`: значение осознанно
 	// никуда не переводится, и без кода оно исчезало бы молча.
@@ -829,7 +835,7 @@ func (st *execState) applyEntry(e *Entry) {
 			if params == nil {
 				params = map[string]string{}
 			}
-			params["value"] = rawVal
+			params["value"] = val
 		}
 		// Путь — ИМЯ ЗАПИСИ, а не путь в теле: у записи с `maps_to: null`
 		// тела нет по построению, и назвать место потери больше нечем.
@@ -839,8 +845,11 @@ func (st *execState) applyEntry(e *Entry) {
 		st.notePath(code, e.Name, params)
 	}
 
-	// Декодирование поверх декодера формы, потом форм-семантика `+`.
-	val := st.decodeValue(p, rawVal)
+	// on_invalid: default_from — присутствующее значение, на котором
+	// выполнено условие записи, уступает источнику default_from.
+	if st.onInvalidDefaultFrom(e, val) {
+		return
+	}
 
 	// list + extract = СПИСОК ПАР в объект тела (PRIMITIVES §0.10).
 	// Перехватывается до convert: иначе list резал значение в срез, а extract
@@ -966,6 +975,106 @@ func sameJSON(a, b interface{}) bool {
 	return err1 == nil && err2 == nil && string(ab) == string(bb)
 }
 
+// defaultFromValue — значение, которое объявил `default_from` записи.
+//
+// Имя может называть не ИСТОЧНИК, а ПУТЬ ТЕЛА: SNI по умолчанию равен адресу
+// сервера, а адрес у разных форм приезжает из разных источников (`host` у
+// ссылки, `json.add` у контейнера v2rayN). Написать «host» значило бы назвать
+// источник ОДНОЙ формы, и у другой дефолт молча не срабатывал — так терялся
+// tls.server_name у vmess. Путь тела свободен от этого: к моменту чтения его
+// уже заполнила запись `server`, чей источник объявлен по формам.
+func (st *execState) defaultFromValue(p *registry.Param) (string, string, bool) {
+	if len(p.DefaultFrom) == 0 {
+		return "", "", false
+	}
+	name := rawString(p.DefaultFrom)
+	if name == "" {
+		return "", "", false
+	}
+	v, ok := st.space.Lookup(name)
+	if !ok || v == "" {
+		if bv, hit := getPath(st.res.Body, name); hit {
+			if s := toString(bv); s != "" {
+				v, ok = s, true
+			}
+		}
+	}
+	if !ok || v == "" {
+		return "", "", false
+	}
+	return name, v, true
+}
+
+// applyDefaultFrom пишет значение `default_from` в путь записи. false —
+// дефолта нет (источник и путь тела пусты) либо записи некуда писать.
+// merge — как у обычной записи: "" (путь за владельцем) либо "overwrite".
+func (st *execState) applyDefaultFrom(e *Entry, merge string) bool {
+	p := e.Param
+	name, v, ok := st.defaultFromValue(p)
+	if !ok {
+		return false
+	}
+	path := st.pathOf(p)
+	if path == "" {
+		return false
+	}
+	st.writeMerge(e.Name, name, v, v, path, p.Priority, e.Decl, WhyDefault, merge)
+	st.applyImplies(e)
+	return true
+}
+
+// onInvalidDefaultFrom — `on_invalid: {action: default_from, when: …}`:
+// ПРИСУТСТВУЮЩЕЕ значение, на котором выполнено условие, уступает источнику
+// `default_from` записи (правило выбирает ИСТОЧНИК поля, а не судит
+// значение: метка вместо имени хоста в sni= берётся с адреса сервера).
+// Условие `value` судит декодированное значение записи операторами
+// matches / not_matches, прочие ключи — как обычное `when`. Код ставится,
+// только если on_invalid его объявил. true — значение заменено.
+func (st *execState) onInvalidDefaultFrom(e *Entry, val string) bool {
+	p := e.Param
+	if actionOf(p.OnInvalid) != "default_from" {
+		return false
+	}
+	when, _ := p.OnInvalid["when"].(map[string]interface{})
+	for key, want := range when {
+		if key == "value" {
+			cond, _ := want.(map[string]interface{})
+			if !itemMatches(cond, val) {
+				return false
+			}
+			continue
+		}
+		if !st.oneWhen(key, want) {
+			return false
+		}
+	}
+	// Негодное значение уже могла положить в тот же путь другая запись того
+	// же поля (общий блок tls#uri читает sni= раньше записи секции, и их
+	// цепочки источников различны, так что изъятия блочной нет). Отвергнутое
+	// значение уходит из тела, где бы оно ни легло: путь, занятый РОВНО им,
+	// переписывается. Путь с другим значением остаётся за владельцем.
+	merge := ""
+	if path := st.pathOf(p); path != "" {
+		if cur, has := getPath(st.res.Body, path); has && toString(cur) == val {
+			merge = "overwrite"
+		}
+	}
+	if !st.applyDefaultFrom(e, merge) {
+		return false
+	}
+	if code := codeOf(p.OnInvalid); code != "" {
+		params := paramsOf(p.OnInvalid)
+		if _, has := params["value"]; !has {
+			if params == nil {
+				params = map[string]string{}
+			}
+			params["value"] = val
+		}
+		st.notePath(code, st.pathOf(p), params)
+	}
+	return true
+}
+
 // applyMissing — источник промолчал: materialize_default, default_from, sets по
 // пустому значению.
 func (st *execState) applyMissing(e *Entry) {
@@ -986,32 +1095,8 @@ func (st *execState) applyMissing(e *Entry) {
 
 	// default_from — источник значения по умолчанию (эвристика SNI у trojan
 	// выражается именно им, а не веткой кода).
-	if len(p.DefaultFrom) > 0 {
-		if name := rawString(p.DefaultFrom); name != "" {
-			v, ok := st.space.Lookup(name)
-			if !ok || v == "" {
-				// Имя может называть не ИСТОЧНИК, а ПУТЬ ТЕЛА: SNI по
-				// умолчанию равен адресу сервера, а адрес у разных форм
-				// приезжает из разных источников (`host` у ссылки,
-				// `json.add` у контейнера v2rayN). Написать «host» значило
-				// бы назвать источник ОДНОЙ формы, и у другой дефолт молча
-				// не срабатывал — так терялся tls.server_name у vmess.
-				// Путь тела свободен от этого: к моменту чтения его уже
-				// заполнила запись `server`, чей источник объявлен по формам.
-				if bv, hit := getPath(st.res.Body, name); hit {
-					if s := toString(bv); s != "" {
-						v, ok = s, true
-					}
-				}
-			}
-			if ok && v != "" {
-				if path := st.pathOf(p); path != "" {
-					st.write(e.Name, name, v, v, path, p.Priority, e.Decl, WhyDefault)
-					st.applyImplies(e)
-					return
-				}
-			}
-		}
+	if st.applyDefaultFrom(e, "") {
+		return
 	}
 
 	// default_when — дефолт с УСЛОВИЕМ. Сегодня условие одно: `absent:

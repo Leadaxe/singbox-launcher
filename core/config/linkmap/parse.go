@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"singbox-launcher/core/config/registry"
 )
@@ -664,10 +665,24 @@ func decodeBase64Any(s string) (string, error) {
 		base64.StdEncoding, base64.RawStdEncoding,
 		base64.URLEncoding, base64.RawURLEncoding,
 	}
+	decodedBinary := false
 	for _, enc := range encs {
 		if b, err := enc.DecodeString(s); err == nil {
+			// Оболочка base64 у ссылок и userinfo всегда несёт ТЕКСТ (JSON,
+			// ссылку, `.conf`, `user:pass`). Алфавит base64url покрывает
+			// обычные слова (`not-base64` декодируется без ошибки), и без
+			// этой проверки мусор проходил дальше как «раскрытый» пейлоад:
+			// форма читала пустоту, и отказ приходил не тем кодом
+			// (field_missing вместо form_unrecognized, CANON §4.1).
+			if !utf8.Valid(b) {
+				decodedBinary = true
+				continue
+			}
 			return string(b), nil
 		}
+	}
+	if decodedBinary {
+		return "", fmt.Errorf("не base64: результат не текст")
 	}
 	return "", fmt.Errorf("не base64")
 }

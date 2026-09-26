@@ -221,6 +221,17 @@ func corpusDropIndexes(t *testing.T, body string, drops []contractDrop) {
 		}
 		claimed[found] = true
 		drops[i].Index = dropIndex(found)
+		// `ref` у JSON-тела — тег OUTBOUND'а, а не тег узла, и от стадии
+		// отказа он не зависит (README корпуса, D-088). Отказ санитайзера
+		// приходит на эмите, где у узла уже выведенный тег (Xray берёт его из
+		// remarks конфига), — поэтому ref берётся с найденного элемента.
+		if drops[i].node != nil {
+			if tag := corpusElementRef(res.Elements[found]); tag != "" {
+				if _, isJSON := res.Elements[found].Value.(map[string]interface{}); isJSON {
+					drops[i].Ref = tag
+				}
+			}
+		}
 	}
 }
 
