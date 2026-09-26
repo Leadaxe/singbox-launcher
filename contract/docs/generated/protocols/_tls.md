@@ -116,6 +116,8 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Default: `false`
   - Not supported by: `naive`
   - Conflicts with: `vhttp` when `vhttp` is `h3`
+  - Conflicts with: `tls.engine` when `tls.engine` is one of `apple`, `windows`
+  - Conflicts with: `detour`
 - <a id="body-fragment-fallback-delay"></a>**`fragment_fallback_delay`** — Delay before falling back when fragmenting.
   - Type: duration
   - Not supported by: `naive`
@@ -124,6 +126,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Default: `false`
   - Not supported by: `naive`
   - Conflicts with: `vhttp` when `vhttp` is `h3`
+  - Conflicts with: `tls.engine` when `tls.engine` is one of `apple`, `windows`
 - <a id="body-spoof"></a>**`spoof`** — Domain used for the spoofed ClientHello.
   - Type: string, format `host`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)

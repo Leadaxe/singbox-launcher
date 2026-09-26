@@ -193,6 +193,8 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `false`
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)
   - Conflicts with: `vhttp` when `vhttp` is `h3`
+  - Conflicts with: `tls.engine` when `tls.engine` is one of `apple`, `windows`
+  - Conflicts with: `detour`
 - <a id="body-tls-fragment-fallback-delay"></a>**`tls.fragment_fallback_delay`** — Delay before falling back when fragmenting.
   - Type: duration
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)
@@ -201,6 +203,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `false`
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)
   - Conflicts with: `vhttp` when `vhttp` is `h3`
+  - Conflicts with: `tls.engine` when `tls.engine` is one of `apple`, `windows`
 - <a id="body-tls-spoof"></a>**`tls.spoof`** — Domain used for the spoofed ClientHello.
   - Type: string, format `host`
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)

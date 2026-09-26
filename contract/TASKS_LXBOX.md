@@ -8345,3 +8345,31 @@ Xray эту тройку из extra не применяет НИКОГДА: `Spl
 (3) проверить, что `$type` с `not_in` и `ref.dialer.*` из `deref` соседней
 записи исполняются в `when` в этом порядке. Та же форма пригодна для
 `finalmask.udp.0.*` у hysteria2 (сейчас индекс 0) — переводить не просим.
+
+## 81. Контракт 1.1.84 — `tls.fragment` уступает `detour` сборки и системному TLS-движку
+
+По фактам ядра из дополнения к задаче 573 (п. 1 и 5), решение владельца
+27.09.2026 — «решайте сами».
+
+**1. `detour`.** `tls.json` → `fragment.conflicts`:
+`{with: detour, code: detour_with_tls_fragment}` (info, params `tag`,
+`target`). Тот же механизм, что у `listen_port` (1.1.65): detour пишет
+сборка, связь проверяется по готовому телу. У вас это уже сделано в
+post-step — теперь то же правило записано данными, `record_fragment` связи
+с detour НЕ имеет (это дефолт ядра под detour).
+
+**2. Системный движок.** `fragment` и `record_fragment` →
+`conflicts {with: tls.engine, when: {tls.engine: {in: [apple, windows]}},
+code: tls_fragment_system_engine}` (warning, params `path`, `with`).
+Уступает фрагментация, движок остаётся. На Android не встречается, но
+правило общее — исполняет санитайзер на любом входе.
+
+**3. Норма санитайзера:** managed-поле (`detour`) для связей соседей
+отсутствует. `detour`, пришедший во входе sing-box, до ядра не доезжает —
+снимать из-за него `fragment`/`listen_port` нельзя. Кейс
+`body/singbox/tls_fragment_detour_in_body` (fragment остаётся, кода нет).
+
+*За LxBox:* (1) если ваш санитайзер видит `detour` входа в связях —
+перевести на правило п. 3; (2) код `tls_fragment_system_engine` в
+санитайзере (кейс `body/singbox/tls_fragment_system_engine`); (3) ваш
+post-step по detour может ставить код `detour_with_tls_fragment`.

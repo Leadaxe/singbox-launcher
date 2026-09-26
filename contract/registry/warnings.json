@@ -2126,6 +2126,54 @@
       "dart": null,
       "go": "правило реестра contract/registry/tls.json body.fields (alpn, ech, reality, kernel_tx, kernel_rx: forbidden_for masque); исполнение — core/config/nodeflow/sanitize.go:sanitizer.forbiddenCode"
     },
+    "tls_fragment_system_engine": {
+      "severity": "warning",
+      "params": [
+        "path",
+        "with"
+      ],
+      "title_en": "System TLS engine: {path} removed",
+      "title_ru": "Системный TLS-движок: {path} снято",
+      "text_en": "The node uses the system TLS engine ({with}), which cannot split the ClientHello. The core would refuse to start the whole config with this combination, so {path} was removed; the engine stays and the node works without fragmentation.",
+      "text_ru": "Узел использует системный TLS-движок ({with}), а он не умеет разбивать ClientHello. С таким сочетанием ядро не запустило бы весь конфиг, поэтому {path} снято; движок сохранён, узел работает без фрагментации.",
+      "cause_en": "TLS fragmentation and the apple or windows TLS engine were both set for the node, usually in an imported sing-box config or by hand.",
+      "cause_ru": "Узлу заданы и фрагментация TLS, и движок TLS apple или windows — обычно в импортированном конфиге sing-box или вручную.",
+      "fix_en": [
+        "Nothing to do if the node connects.",
+        "If you need fragmentation against DPI, remove the engine setting so the node uses the default Go TLS."
+      ],
+      "fix_ru": [
+        "Если узел подключается, делать ничего не нужно.",
+        "Если фрагментация нужна против DPI, уберите у узла настройку движка — будет использован TLS по умолчанию (Go)."
+      ],
+      "desc": "Контракт 1.1.84, факт ядра от LxBox §573: sing-box-lx common/tls/system_client.go ValidateSystemTLSOptions — fragment/record_fragment вместе с engine apple/windows дают «tls fragment is unsupported in …», отказ старта всего конфига; движок по умолчанию (go) проверку не делает. Связь tls.json body.fields.fragment/record_fragment conflicts {with: tls.engine, when: {tls.engine: {in: [apple, windows]}}}: уступает фрагментация, движок не трогается. Xray-вход engine не пишет — сочетание приходит входом singbox или ручной правкой. Сборка не дописывает глобальную фрагментацию такому узлу тем же вопросом реестру.",
+      "dart": null,
+      "go": "правило реестра contract/registry/tls.json body.fields.fragment/record_fragment conflicts; исполнение — core/config/nodeflow/sanitize.go:sanitizer.relationsOK, сборка — core/build/tls_transforms.go:isFirstHopTLSOutbound"
+    },
+    "detour_with_tls_fragment": {
+      "severity": "info",
+      "params": [
+        "tag",
+        "target"
+      ],
+      "title_en": "{tag}: TLS fragmentation removed for the hop",
+      "title_ru": "{tag}: фрагментация TLS снята ради хопа",
+      "text_en": "Node {tag} is routed through {target}, so its TLS runs inside the hop's tunnel, where splitting the ClientHello does not help against DPI. An explicit fragmentation setting would also turn off the record fragmentation the core applies to such nodes on its own and add a 500 ms pause per segment. The setting was removed; the core's own default applies.",
+      "text_ru": "Узел {tag} ведётся через {target}, и его TLS идёт внутри туннеля хопа, где разбиение ClientHello против DPI не помогает. Явная фрагментация к тому же отключила бы разбиение TLS-записей, которое ядро само включает таким узлам, и добавила бы паузу 500 мс на сегмент. Настройка снята; действует умолчание ядра.",
+      "cause_en": "The node arrived with TLS fragmentation (from a subscription or a link), and you assigned a hop to it — personally, through its folder or in a chain.",
+      "cause_ru": "Узел пришёл с фрагментацией TLS (из подписки или ссылки), а вы назначили ему хоп — лично, через папку или в цепочке.",
+      "fix_en": [
+        "Nothing to do: fragmentation belongs on the hop that connects directly.",
+        "If the hop itself needs fragmentation, turn it on for the hop node."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно: фрагментация нужна хопу, который подключается напрямую.",
+        "Если фрагментация нужна самому хопу, включите её у узла-хопа."
+      ],
+      "desc": "Контракт 1.1.84, факт ядра от LxBox §573: при непустом detour ядро само ставит record_fragment, если не заданы ни fragment, ни record_fragment; явный fragment этот дефолт отключает и даёт паузу 500 мс на сегмент. Связь tls.json body.fields.fragment conflicts {with: detour}; detour — managed-поле, его пишет сборка после санитайзера, связь проверяется по готовому телу сразу после проставления detour (тот же механизм, что у detour_with_listen_port). Уступает fragment, detour не трогается. Та же норма у LxBox.",
+      "dart": null,
+      "go": "core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks — после проставления detour поля, уступающие ему, снимает core/config/nodelink_resolve.go:yieldToBuildDetour (вопрос к реестру — core/config/registry/registry.go:Registry.YieldsTo); владелец цепочки — core/config/outbound_generator.go:EmitNodeJSONs"
+    },
     "masque_tls_fragment_h3": {
       "severity": "info",
       "params": [
