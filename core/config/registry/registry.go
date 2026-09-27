@@ -516,6 +516,10 @@ type section struct {
 	// узла, контракт 1.1.60): поля и формы диапазона ссылаются на него
 	// атрибутом `level`.
 	Levels []string `json:"levels"`
+	// FieldsUnchecked — поля тела не описаны и не проверяются (контракт
+	// 1.1.99): тело узла уходит в ядро как написано, без unknown_key и без
+	// правил. `fields` у такой секции пустой.
+	FieldsUnchecked bool `json:"fields_unchecked"`
 	// ExitCapableWhen — условие, при котором узел схемы годится ВЫХОДОМ В
 	// ИНТЕРНЕТ, то есть кандидатом в состав Направления (контракт 1.1.63).
 	// Без атрибута — годится всегда.
@@ -616,6 +620,8 @@ type BodySchema struct {
 	OnCoreUnsupported *OnCoreUnsupported
 	// Levels — словарь уровней расширения по возрастанию (см. section).
 	Levels []string
+	// FieldsUnchecked — тело не проверяется и едет как написано (см. section).
+	FieldsUnchecked bool
 	// ExitCapableWhen — условие «узел годится выходом» (см. section).
 	ExitCapableWhen *Condition
 }
@@ -686,8 +692,8 @@ type Registry struct {
 // нового файла — осознанным (линтер реестра держит тот же список).
 var protocolFiles = []string{
 	"anytls", "chain", "http", "hysteria", "hysteria2", "masque",
-	"naive", "shadowsocks", "socks", "ssh", "tailscale", "trojan", "tuic",
-	"vless", "vmess", "wireguard",
+	"naive", "openvpn-client", "shadowsocks", "socks", "ssh", "tailscale",
+	"trojan", "tuic", "vless", "vmess", "wireguard",
 }
 
 var (
@@ -885,6 +891,7 @@ func resolveSection(scheme string, sec *section, subs map[string]*section) (*Bod
 		BuildTag:          sec.BuildTag,
 		OnCoreUnsupported: sec.OnCoreUnsupported,
 		Levels:            sec.Levels,
+		FieldsUnchecked:   sec.FieldsUnchecked,
 		ExitCapableWhen:   sec.ExitCapableWhen,
 	}
 	for _, name := range sec.Order {

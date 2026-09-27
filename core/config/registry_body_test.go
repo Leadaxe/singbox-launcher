@@ -465,8 +465,8 @@ func loadWarningCodes(t *testing.T) map[string]bool {
 // осознанным, а не подхватываться обходом каталога молча.
 var registryProtocolSchemes = []string{
 	"anytls", "chain", "http", "hysteria", "hysteria2", "masque",
-	"naive", "shadowsocks", "socks", "ssh", "tailscale", "trojan", "tuic",
-	"vless", "vmess", "wireguard",
+	"naive", "openvpn-client", "shadowsocks", "socks", "ssh", "tailscale",
+	"trojan", "tuic", "vless", "vmess", "wireguard",
 }
 
 // registryBodyFiles — файлы реестра с секцией body и имена суб-схем, на

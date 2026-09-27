@@ -6,8 +6,8 @@ These pages are generated from the `contract/registry/` registry by `go generate
 
 |  | Version |
 |---|---|
-| Contract (`contract/VERSION`) | `1.1.98` |
-| Core (`body.core`) | `1.14.1-lx.4` |
+| Contract (`contract/VERSION`) | `1.1.99` |
+| Core (`body.core`) | `1.14.1-lx.4`, `1.14.2-lx.6` |
 
 ## How to read these pages
 
@@ -42,6 +42,7 @@ The normative text is [`contract/docs/PARSING_PRINCIPLES.md` §8](../PARSING_PRI
 | [`hysteria2`](protocols/hysteria2.md) | `hysteria2` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
 | [`masque`](protocols/masque.md) | `masque` | `outbound` | share link, sing-box JSON | yes |
 | [`naive`](protocols/naive.md) | `naive` | `outbound` | share link, sing-box JSON | yes |
+| [`openvpn-client`](protocols/openvpn-client.md) | `openvpn-client` | `endpoint` | sing-box JSON | no |
 | [`shadowsocks`](protocols/shadowsocks.md) | `shadowsocks` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
 | [`socks`](protocols/socks.md) | `socks` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
 | [`ssh`](protocols/ssh.md) | `ssh` | `outbound` | share link, sing-box JSON | yes |

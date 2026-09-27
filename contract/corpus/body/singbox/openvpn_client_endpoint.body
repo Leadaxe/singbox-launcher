@@ -1,0 +1,9 @@
+# sing-box: endpoint типа openvpn-client (контракт 1.1.99, решение владельца
+# 28.09.2026). Тип известен реестру (protocols/openvpn-client.json, kind
+# endpoint), но поля не описаны и не проверяются (body.fields_unchecked):
+# тело уходит как написано — вложенные объекты, списки и ключи, которых
+# реестр не знает, на месте, и НИ ОДНОГО предупреждения (ни unknown_key, ни
+# json_field_unknown). Снят только tag — он уходит в имя узла.
+#
+# kind в ожидании — endpoint: узел пишется в endpoints[], а не в outbounds[].
+{"endpoints":[{"type":"openvpn-client","tag":"ovpn-office","mode":"tls","network":"udp","servers":[{"server":"vpn.example.com","server_port":1194}],"username":"user","password":"pass","tls":{"enabled":true,"server_name":"vpn.example.com"},"data_ciphers":["AES-256-GCM"],"x_future_key":1}]}

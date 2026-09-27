@@ -15,6 +15,7 @@
 - A Tailscale node added with an empty Tag field is now named `🕸️ tailscale`, as in LxBox. A tag you type is kept as is; existing nodes keep their tags.
 - A node window opened from the Local panel now always talks to the local core. Before, if the main window was switched to Remote with a machine connected, its commands (for example the WireGuard Enable/Disable switch) went to that machine. A node window opened from Remote stays with the machine that was selected when it opened; after you switch machines, its commands report that the core is not available and do not reach the other machine.
 - Core `sing-box-lx 1.14.2-lx.6` (was 1.14.2-lx.4); the launcher offers to update it. An XHTTP node without an `xmux` section now keeps at most three connections to the server instead of opening a new one per stream (the current Xray-core default: a burst of parallel connections to one server gets cut on some networks). An `xmux` section with any field set is taken as written.
+- OpenVPN endpoints (`openvpn-client`) written as sing-box JSON are now accepted: as your own node, inside a document with other nodes, or from a subscription. The node goes to `endpoints[]` exactly as written, with no field checks and no warnings. There is no form and no `.ovpn` import. On a core built without `with_openvpn` the node is left out of the config with a warning.
 
 ### Technical / Internal
 - Contract 1.1.87: registry attribute `core_rejects`, warning flag `applied`, bare-body node source (SPEC 146).
@@ -41,6 +42,7 @@
 - Узел Tailscale, добавленный с пустым полем Tag, теперь называется `🕸️ tailscale`, как в LxBox. Введённый тег сохраняется как есть; теги существующих узлов не меняются.
 - Ядро `sing-box-lx 1.14.2-lx.6` (было 1.14.2-lx.4), лаунчер предложит его обновить. Узел XHTTP без секции `xmux` теперь держит к серверу не больше трёх соединений, а не открывает новое на каждый поток (текущий дефолт Xray-core: пачку параллельных соединений к одному серверу в некоторых сетях режут). Секция `xmux` хотя бы с одним заданным полем берётся как есть.
 - Окно узла, открытое с панели Local, всегда говорит с локальным ядром. Раньше, если главное окно переключали на Remote с подключённой машиной, его команды (например, выключатель Enable/Disable у WireGuard) уходили на эту машину. Окно узла, открытое с Remote, остаётся за машиной, выбранной при открытии; после переключения на другую машину его команды сообщают, что ядро недоступно, и в другую машину не уходят.
+- Узлы OpenVPN (`openvpn-client`) в виде sing-box JSON теперь принимаются: своей записью, в документе с другими узлами и из подписки. Узел пишется в `endpoints[]` как написан, без проверок полей и без предупреждений. Формы и импорта `.ovpn` нет. На ядре без тега `with_openvpn` узел исключается из конфига с предупреждением.
 
 ### Техническое / Внутреннее
 - Контракт 1.1.87: атрибут реестра `core_rejects`, признак предупреждения `applied`, источник узла — голое тело (SPEC 146).

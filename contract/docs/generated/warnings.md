@@ -61,6 +61,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`obfs_object_flattened`](#obfs_object_flattened) · `info` — Obfuscation password taken from an object
 - [`obfs_password_missing`](#obfs_password_missing) · `warning` — Obfuscation removed: no password
 - [`obfs_unknown`](#obfs_unknown) · `warning` — Unknown obfuscation removed
+- [`openvpn_core_unsupported`](#openvpn_core_unsupported) · `warning` — OpenVPN is unavailable in this core
 - [`packet_encoding_unknown`](#packet_encoding_unknown) · `warning` — Field removed: unknown packet_encoding
 - [`password_empty`](#password_empty) · `warning` — Password is empty
 - [`port_invalid`](#port_invalid) · `error` — Invalid port {value}
@@ -1103,6 +1104,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - [`hysteria2`](protocols/hysteria2.md)
   - [`obfs.type`](protocols/hysteria2.md#body-obfs-type) — the value does not fit the field → removed
+
+<a id="openvpn_core_unsupported"></a>
+### openvpn_core_unsupported
+
+**severity:** `warning` · **params:** `reason`
+
+**OpenVPN is unavailable in this core**
+
+- **What happened:** The node uses OpenVPN, which this core cannot run ({reason}). The node was excluded from the config, because the core rejects such a value and would refuse to start the whole config; the remaining nodes work.
+- **Why it happens:** OpenVPN is an extension of the lx fork: it needs a core built with the with_openvpn tag, version 1.14.0-lx.10 or newer. A core without it rejects the whole config as soon as such a node appears in it.
+- **What you can do:**
+  - Update the core to 1.14.0-lx.10 or newer, built with the with_openvpn tag.
+  - Use another node until the core is updated.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
 <a id="packet_encoding_unknown"></a>
 ### packet_encoding_unknown

@@ -215,6 +215,19 @@ func SanitizeFromKind(scheme, source, kind string, m map[string]interface{}) Res
 			},
 		}
 	}
+	if body.FieldsUnchecked {
+		// Поля схемы не описаны (контракт 1.1.99, `fields_unchecked`): тело
+		// едет в ядро как написано — без правил и без unknown_key. Снимаются
+		// только ключи, которые пишет сама сборка (tag, type).
+		clean := make(map[string]interface{}, len(m))
+		for k, v := range m {
+			if buildManagedKeys[k] {
+				continue
+			}
+			clean[k] = deepCopyValue(v)
+		}
+		return Result{Clean: clean}
+	}
 	s := &sanitizer{reg: reg, scheme: scheme, source: source, kind: kind, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}, absent: map[string]bool{}, dropped: map[string]bool{}, building: map[string]map[string]interface{}{}}
 	s.cleanRoot = map[string]interface{}{}
 	s.res.Clean = s.cleanRoot

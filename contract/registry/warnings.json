@@ -1896,6 +1896,29 @@
       "dart": "lib/services/builder/core_chain_capability.dart (coreVersionSupportsTailscale)",
       "go": "core/config/nodeflow/gate.go:NodeCoreRefusal (узловой гейт ядра по on_core_unsupported реестра); вызов — core/config/outbound_generator.go:GenerateOutboundsFromParserConfig; теги сборки — core/core_capabilities.go:AppController.CoreBuildTags; реестр — protocols/tailscale.json body.on_core_unsupported"
     },
+    "openvpn_core_unsupported": {
+      "severity": "warning",
+      "params": [
+        "reason"
+      ],
+      "title_en": "OpenVPN is unavailable in this core",
+      "title_ru": "OpenVPN недоступен в этом ядре",
+      "text_en": "The node uses OpenVPN, which this core cannot run ({reason}). The node was excluded from the config, because the core rejects such a value and would refuse to start the whole config; the remaining nodes work.",
+      "text_ru": "Узел использует OpenVPN, который это ядро запустить не может ({reason}). Узел исключён из конфига: ядро отвергает такое значение и не запустит весь конфиг. Остальные узлы работают.",
+      "cause_en": "OpenVPN is an extension of the lx fork: it needs a core built with the with_openvpn tag, version 1.14.0-lx.10 or newer. A core without it rejects the whole config as soon as such a node appears in it.",
+      "cause_ru": "OpenVPN — расширение форка lx: нужно ядро, собранное с тегом with_openvpn, версии 1.14.0-lx.10 или новее. Ядро без него отвергает весь конфиг, как только в нём появляется такой узел.",
+      "fix_en": [
+        "Update the core to 1.14.0-lx.10 or newer, built with the with_openvpn tag.",
+        "Use another node until the core is updated."
+      ],
+      "fix_ru": [
+        "Обновите ядро до 1.14.0-lx.10 или новее, собранного с тегом with_openvpn.",
+        "Пока ядро не обновлено, пользуйтесь другим узлом."
+      ],
+      "desc": "Узел `openvpn-client` снят на сборке: ядро собрано без тега with_openvpn (нужен форк 1.14.0-lx.10 или новее). Тот же узловой гейт, что у tailscale_core_unsupported; severity=warning — конфиг собирается, остальные узлы на месте. Контракт 1.1.99.",
+      "dart": null,
+      "go": "core/config/nodeflow/gate.go:NodeCoreRefusal (узловой гейт ядра по on_core_unsupported реестра); реестр — protocols/openvpn-client.json body.on_core_unsupported"
+    },
     "ws_early_data_converted": {
       "severity": "info",
       "params": [
