@@ -111,7 +111,8 @@ func RepairsFor(scheme string, authored bool, m map[string]interface{}) (map[str
 }
 
 // patchFromClean переносит в body значение пути path из clean; нет
-// значения в clean — путь в body снимается.
+// значения в clean — путь в body снимается; снят в clean родитель пути —
+// снимается родитель (контракт 1.1.97).
 //
 // Индекс элемента в скобках (`peers[0].port`) — отдельный сегмент; правка
 // самого элемента (`server_ports[0]`: элемент снят) переносится массивом
@@ -123,6 +124,23 @@ func patchFromClean(body, clean map[string]interface{}, path string) {
 	}
 	if v, ok := lookupBodyPath(clean, parts); ok {
 		setBodyPath(body, parts, deepCopyValue(v))
+		return
+	}
+	// Родитель пути снят в clean (норма снимает блок целиком, например
+	// `tls.reality` при негодном `public_key`) — снимается и в body, начиная с
+	// самого верхнего снятого сегмента. Снятый элемент массива — массив
+	// переносится целиком.
+	for k := 1; k < len(parts); k++ {
+		if _, ok := lookupBodyPath(clean, parts[:k]); ok {
+			continue
+		}
+		if k > 1 && isIndexPart(parts[k-1]) {
+			if arr, ok := lookupBodyPath(clean, parts[:k-1]); ok {
+				setBodyPath(body, parts[:k-1], deepCopyValue(arr))
+				return
+			}
+		}
+		deleteBodyPath(body, parts[:k])
 		return
 	}
 	deleteBodyPath(body, parts)

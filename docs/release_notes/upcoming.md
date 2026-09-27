@@ -16,6 +16,7 @@
 - Contract 1.1.89: node document with several nodes in the node JSON tab keeps the first node; import still creates one record per node.
 - Contract 1.1.90: the DNS rule of the "Tailscale networks" preset names the node's DNS server in `preferred_by`, not the node itself; the old value kept the core from starting.
 - Contract 1.1.91: 29 more registry rules are marked `core_rejects` (the core refuses to start with such a value), so they are applied to hand-written nodes too: VLESS `encryption`, Shadowsocks `method`, WireGuard keys and peer port, REALITY keys, xhttp placements and others.
+- Contract 1.1.97: an invalid REALITY `public_key` in a hand-written sing-box JSON node removes the whole `reality` block, as for other nodes; before, only the key was removed and the core refused the config.
 - Contract 1.1.95: the DNS cache size defaults to 4000 answers.
 - Contract 1.1.94: the DNS cache size upper bound is 65535 (a larger value is not saved); eight authored-body corpus cases shared with LxBox are back.
 - Contract 1.1.93: template variables `dns_cache_capacity`, `dns_optimistic`, `dns_store_cache` (SPEC 147); a saved cache size outside 1024..65535 is not written to the config.
@@ -34,6 +35,7 @@
 - Контракт 1.1.89: документ с несколькими узлами во вкладке JSON узла сохраняет первый узел; импорт по-прежнему создаёт запись на каждый узел.
 - Контракт 1.1.90: DNS-правило пресета «Tailscale networks» указывает в `preferred_by` DNS-сервер узла, а не сам узел; прежнее значение не давало ядру стартовать.
 - Контракт 1.1.91: ещё 29 правил реестра помечены `core_rejects` (с таким значением ядро не стартует) и применяются и к узлу, написанному вручную: `encryption` VLESS, `method` Shadowsocks, ключи и порт пира WireGuard, ключи REALITY, placement-поля xhttp и другие.
+- Контракт 1.1.97: негодный `public_key` REALITY в узле, написанном вручную в форме sing-box JSON, снимает весь блок `reality`, как у остальных узлов; раньше снимался только ключ, и ядро отвергало конфиг.
 - Контракт 1.1.95: размер кэша DNS по умолчанию 4000 ответов.
 - Контракт 1.1.94: верхняя граница размера кэша DNS 65535 (значение выше не сохраняется); в корпус authored возвращены восемь кейсов сверки с LxBox.
 - Контракт 1.1.93: переменные шаблона `dns_cache_capacity`, `dns_optimistic`, `dns_store_cache` (SPEC 147); сохранённый размер кэша вне 1024..65535 в конфиг не попадает.
