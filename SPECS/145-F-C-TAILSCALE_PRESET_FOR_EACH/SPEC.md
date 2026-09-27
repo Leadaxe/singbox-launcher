@@ -62,9 +62,40 @@ Debug API: `GET /state/full` отдаёт `skip_presets` в записи узл�
 
 ## 6. Не сделано
 
-- Строка пресета на вкладках Rules/DNS не показывает обслуживаемые узлы;
-  серверы пресета с `for_each` не видны в списке DNS-серверов визарда
-  (раскрытие в UI идёт без узлов).
-- Превью визарда не знает `skip_presets` (кэш превью строится из
-  `GeneratedOutbounds` без записи): узел со `skip_presets` в превью
-  обслуживается, в боевой сборке — нет.
+- Вкладка JSON редактора пресета (`buildPresetJSONPreview`) раскрывает пресет
+  с `for_each` без узлов: фрагменты пусты.
+
+## 7. Интерфейс визарда (доделка, 2026-09-27)
+
+Список узлов для `for_each` в визарде строится ТОЙ ЖЕ функцией, что в сборке:
+`build.CollectPresetNodes` (экспортирована из `core/build/build.go`), отбор
+пресетом (`node_type`, `filter`) — `build.PresetForEachNodes`, общий с
+`ExpandPresetForNodes` (`selectForEachNodes` в `core/build/preset_expand.go`).
+
+| Что | Где |
+|---|---|
+| превью знает `skip_presets`: `model.GeneratedSkipPresets` из `result.SkipPresetsTags` эмиссии, кэш превью (`inMemoryCacheFromModel`) несёт карту так же, как кэш боевой сборки (`rebuild_snapshot`) | `ui/configurator/models/wizard_model.go`, `business/parser.go`, `business/create_config.go`, `presentation/presenter_target.go` |
+| узлы и раскрытие для экранов: `PresetNodesForView`, `ExpandPresetForView`, `PresetServedTags`, `PresetServedNodesLabel` | `ui/configurator/business/preset_nodes_view.go` |
+| серверы пресета с `for_each` в списке DNS-серверов (`ResolveDNS` получает `PresetNodes`) и в пикерах резолверов (`PresetBundledDNSTags`) | `tabs/dns_preset_bundled.go`, `business/preset_bundled_dns.go` |
+| строка пресета на вкладках Rules и DNS: `<метка> · <теги через запятую>`, узлов нет — `No matching nodes` | `tabs/rules_unified_rows.go`, `tabs/dns_unified_rules.go` |
+| DNS-правила пресета на вкладке DNS раскрываются по тем же узлам | `tabs/dns_unified_rules.go`, `tabs/dns_user_rules.go` |
+| после разбора визард перерисовывает Rules и DNS, если в шаблоне есть пресет с `for_each`; вход на вкладку DNS тоже запускает разбор | `presentation/presenter_async.go`, `ui/configurator/configurator.go` |
+
+Отбор в визарде: узел попадает в список, если эмиссия его выпустила
+(выключенный узел, выключенный источник, отметка подписки и гейт ядра
+эмиссией уже сняты), `skip_presets` — из карты эмиссии, у узла подписки
+всегда ложь (`adapter_source.go`). Теги — финальные теги эмиссии.
+
+Допущение (как в LxBox): до сборки готового конфига нет. Визард строит список
+по последней эмиссии источников без граф-санитайзера и гейта реестра сборки,
+поэтому может назвать узел, который сборка потом снимет. До первого разбора
+список пуст: строка пресета показывает `No matching nodes`, пока разбор не
+закончится.
+
+Сервер пресета с `for_each` в списке DNS-серверов показывается без
+выключателя (чекбокс неактивен): состояние такого сервера сборка читает по
+тегу без пространства пресета, запись визарда `<preset_id>:<тег>` до неё не
+доходит, и выключение в визарде было бы ложным.
+
+Проверка: `go test ./ui/configurator/business -run
+'TestPresetNodesForView_MatchesBuildSelection|TestPresetServedNodesLabel'`.

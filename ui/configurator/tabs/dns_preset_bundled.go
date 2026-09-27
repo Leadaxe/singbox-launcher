@@ -52,7 +52,11 @@ func renderPresetBundledDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.W
 	}
 	// Build shadow state из model для передачи в ResolveDNS.
 	shadowState := buildShadowStateForResolve(m)
-	resolved := build.ResolveDNS(shadowState, m.TemplateData, gatherTemplateVars(m), m.Target)
+	// LxBox §578: серверы пресета с for_each раскрываются по узлам — тем же
+	// списком, что превью (SPEC 145 §7). Копия: TemplateData модели общая.
+	td := *m.TemplateData
+	td.PresetNodes = wizardbusiness.PresetNodesForView(m)
+	resolved := build.ResolveDNS(shadowState, &td, gatherTemplateVars(m), m.Target)
 
 	presetByID := make(map[string]*wizardtemplate.Preset, len(m.TemplateData.Presets))
 	for i := range m.TemplateData.Presets {
@@ -95,6 +99,13 @@ func renderPresetBundledDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.W
 			)
 			helpLabel.Wrapping = fyne.TextWrapWord
 			showJSONReadOnlyDialog(parentWindow, "DNS server details", header, helpLabel, body)
+		}
+		// Сервер пресета с for_each выключателя не имеет: сборка читает его
+		// состояние по тегу без пространства пресета, а запись визарда
+		// (<preset_id>:<тег>) до неё не доходит. Чекбокс показал бы
+		// выключение, которого в конфиге не будет.
+		if tplCopy.ForEach != nil {
+			onToggle = nil
 		}
 		rows = append(rows, buildPresetBundledDNSRowFromResolved(tplCopy, srvCopy, onToggle, onView))
 	}
@@ -286,7 +297,7 @@ func buildPresetBundledDNSRowFromResolved(
 			onToggle(checked)
 		}
 	}
-	if !srv.Active {
+	if !srv.Active || onToggle == nil {
 		cwc.Check.Disable()
 	}
 

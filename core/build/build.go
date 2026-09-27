@@ -319,7 +319,7 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 	// так же, и неполное множество врало бы и в превью.
 	// LxBox §578: узлы для for_each — здесь состав окончателен (граф-санитайзер
 	// уже снял узлы с висячими ссылками) и финальные теги назначены.
-	ctx.Preset.PresetNodes = collectPresetNodes(ctx.Cache, order)
+	ctx.Preset.PresetNodes = CollectPresetNodes(ctx.Cache, order)
 	ctx.Preset.EmittedRuleSetTags = CollectEmittedRouteRuleSetTags(cfg["route"], ctx.Route, ctx.Preset)
 
 	// SPEC 129 Н10: секция dns собирается ПЕРВОЙ, независимо от порядка
@@ -561,10 +561,12 @@ func splitEntryComment(entry string) (prefix, jsonPart string) {
 	}
 }
 
-// collectPresetNodes — узлы конфига для раскрытия for_each (LxBox §578) в
+// CollectPresetNodes — узлы конфига для раскрытия for_each (LxBox §578) в
 // порядке секций шаблона: тег, тело и skip_presets записи. Выключенные узлы и
-// снятые гейтами в кэш не попадают — и сюда тоже.
-func collectPresetNodes(c *ParsedCache, order []string) []template.PresetNode {
+// снятые гейтами в кэш не попадают — и сюда тоже. Экспортирована для
+// визарда: превью и строки пресетов строят список этой же функцией
+// (SPEC 145 §7).
+func CollectPresetNodes(c *ParsedCache, order []string) []template.PresetNode {
 	if c == nil {
 		return nil
 	}

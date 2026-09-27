@@ -280,7 +280,9 @@ func BuildRemoteConfig(model *wizardmodels.WizardModel) (string, error) {
 // (legacy []string format с `\t`-префиксом и trailing `,`) в build.ParsedCache.
 // Используется только preview-путём (Save не строит config из этих полей).
 func inMemoryCacheFromModel(model *wizardmodels.WizardModel) *build.ParsedCache {
-	pc := &build.ParsedCache{}
+	// LxBox §578: skip_presets — как у кэша боевой сборки (rebuild_snapshot),
+	// иначе превью раскрыло бы for_each и на исключённый узел.
+	pc := &build.ParsedCache{SkipPresets: model.GeneratedSkipPresets}
 	for _, s := range model.GeneratedOutbounds {
 		cleaned := strings.TrimSpace(strings.TrimRight(s, ",\n\r\t "))
 		if cleaned == "" {

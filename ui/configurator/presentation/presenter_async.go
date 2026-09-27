@@ -64,5 +64,24 @@ func (p *WizardPresenter) TriggerParseForPreview() {
 		// разбор подписок обновляет список outbound'ов, на который
 		// опираются Rules и Направления.
 		p.RefreshOutboundOptions()
+		// LxBox §578: строки пресетов с for_each и их DNS-серверы строятся по
+		// узлам последней эмиссии — после разбора их надо перерисовать.
+		if p.templateHasForEachPreset() {
+			p.RefreshRulesTabAfterLoadState()
+			p.RefreshDNSListAndSelects()
+		}
 	}()
+}
+
+// templateHasForEachPreset — в шаблоне есть пресет с `for_each` (LxBox §578).
+func (p *WizardPresenter) templateHasForEachPreset() bool {
+	if p.model == nil || p.model.TemplateData == nil {
+		return false
+	}
+	for i := range p.model.TemplateData.Presets {
+		if p.model.TemplateData.Presets[i].ForEach != nil {
+			return true
+		}
+	}
+	return false
 }

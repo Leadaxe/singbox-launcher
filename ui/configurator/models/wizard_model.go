@@ -97,6 +97,10 @@ type WizardModel struct {
 	// Карту строит ParseAndPreview; цикл страховки на Final / remote-Save
 	// выключает по ней, а не угадывает тег-политику.
 	NodeLinks map[string]corestate.NodeLink
+	// GeneratedSkipPresets — финальные теги узлов со skip_presets=true с
+	// последней эмиссии (LxBox §578, SPEC 145 §7). Кэш превью несёт их так же,
+	// как кэш боевой сборки: иначе превью обслуживало бы исключённый узел.
+	GeneratedSkipPresets map[string]bool
 
 	// Template данные
 	TemplateData *wizardtemplate.TemplateData

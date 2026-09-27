@@ -26,6 +26,7 @@ import (
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
@@ -94,6 +95,10 @@ func buildSinglePresetRefRow(
 	}
 
 	labelText, brokenRef := presetTileLabel(pr, tplPreset)
+	// LxBox §578: у пресета с for_each строка называет обслуживаемые узлы.
+	if served := wizardbusiness.PresetServedTags(model, tplPreset, pr.Vars); served != nil {
+		labelText += "  ·  " + wizardbusiness.PresetServedNodesLabel(served)
+	}
 	srsEntries := presetRefSRSEntries(pr, tplPreset)
 
 	// SPEC 106: системное правило (sortable:false в шаблоне) — часть конфига,

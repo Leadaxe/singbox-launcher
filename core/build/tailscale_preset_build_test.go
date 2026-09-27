@@ -47,7 +47,7 @@ func TestTailscalePresetBuild_TwoNodes(t *testing.T) {
 		Presets:     []template.Preset{*ts},
 		Rules:       []state.Rule{presetRule("tailscale", nil, true)},
 		Target:      template.LocalTarget(),
-		PresetNodes: collectPresetNodes(cache, []string{"endpoints", "outbounds"}),
+		PresetNodes: CollectPresetNodes(cache, []string{"endpoints", "outbounds"}),
 	}
 	route, err := MergePresetsIntoRoute(json.RawMessage(`{"rules":[]}`), ctx)
 	if err != nil {

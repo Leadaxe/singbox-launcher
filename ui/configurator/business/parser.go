@@ -166,6 +166,7 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 		model.GeneratedOutbounds = nil
 		model.GeneratedEndpoints = nil
 		model.NodeLinks = nil
+		model.GeneratedSkipPresets = nil
 		model.PreviewNeedsParse = true
 		// Попытки не было: результат выброшен, и оставленный номер разрешил бы
 		// сборке «Итога» дописать санитайзерные записи в чужую попытку.
@@ -206,6 +207,7 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	model.GeneratedOutbounds = result.OutboundsJSON
 	model.GeneratedEndpoints = result.EndpointsJSON
 	model.NodeLinks = nodeLinksFromEmit(result.NodeLinks)
+	model.GeneratedSkipPresets = result.SkipPresetsTags
 
 	timing.LogTiming("total outbound generation", time.Since(generateStartTime))
 

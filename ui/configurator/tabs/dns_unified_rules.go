@@ -19,7 +19,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
-	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
@@ -177,11 +176,15 @@ func buildSingleDNSPresetRuleRow(
 		presetLabel = tplPreset.ID
 	}
 	labelText := "🔗 " + presetLabel
+	// LxBox §578: у пресета с for_each строка называет обслуживаемые узлы.
+	if served := wizardbusiness.PresetServedTags(model, tplPreset, pr.Vars); served != nil {
+		labelText += "  ·  " + wizardbusiness.PresetServedNodesLabel(served)
+	}
 
 	// Resolve dns_rule body для tooltip + View JSON. SPEC 085.1: пресет может
 	// нести несколько DNS-правил под одним slot'ом — для summary берём первое
 	// доступное (singular DNSRule, иначе первый элемент DNSRules).
-	frags, _, ok := build.ExpandPresetWithGlobals(tplPreset, pr.Vars, wizardbusiness.PresetGlobalVars(model), wizardbusiness.PresetGlobalDecls(model), model.Target)
+	frags, _, ok := wizardbusiness.ExpandPresetForView(model, tplPreset, pr.Vars)
 	var ruleBody map[string]interface{}
 	if ok {
 		if frags.DNSRule != nil {

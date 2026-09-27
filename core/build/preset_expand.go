@@ -215,14 +215,8 @@ func ExpandPresetForNodes(
 	}
 	out := &PresetFragments{}
 	seen := make(map[string]bool)
-	for _, n := range nodes {
-		if t, _ := n.Body["type"].(string); t != fe.NodeType {
-			continue
-		}
+	for _, n := range selectForEachNodes(fe, varsMap, target, nodes) {
 		scope := template.NewNodeScope(fe.As, n)
-		if !fe.EvalFilter(scope, varsMap, target) {
-			continue
-		}
 		frags, ws := expandPresetBody(preset, varsMap, globalDecls, target, scope)
 		out.RuleSets = append(out.RuleSets, frags.RuleSets...)
 		out.RoutingRules = append(out.RoutingRules, frags.RoutingRules...)
@@ -240,6 +234,39 @@ func ExpandPresetForNodes(
 		}
 	}
 	return out, warnings, true
+}
+
+// PresetForEachNodes — узлы, которые обслуживает пресет с `for_each` (SPEC 145
+// §7): тот же отбор, что у ExpandPresetForNodes (node_type, затем filter с
+// переменными пресета поверх глобалей). Пресет без for_each — nil.
+func PresetForEachNodes(
+	preset *template.Preset,
+	userVars map[string]string,
+	globalVars map[string]string,
+	target template.TargetSpec,
+	nodes []template.PresetNode,
+) []template.PresetNode {
+	if preset == nil || preset.ForEach == nil {
+		return nil
+	}
+	varsMap, _ := presetVarsMapWithGlobals(preset, userVars, globalVars, target)
+	return selectForEachNodes(preset.ForEach, varsMap, target, nodes)
+}
+
+// selectForEachNodes — узлы из nodes, чей `type` равен node_type и filter
+// истинен, в порядке nodes.
+func selectForEachNodes(fe *template.PresetForEach, varsMap map[string]string, target template.TargetSpec, nodes []template.PresetNode) []template.PresetNode {
+	out := make([]template.PresetNode, 0, len(nodes))
+	for _, n := range nodes {
+		if t, _ := n.Body["type"].(string); t != fe.NodeType {
+			continue
+		}
+		if !fe.EvalFilter(template.NewNodeScope(fe.As, n), varsMap, target) {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 // presetVarsMapWithGlobals — шаги 1–2 раскрытия: значения переменных пресета
