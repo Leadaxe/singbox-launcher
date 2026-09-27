@@ -34,8 +34,19 @@ const addServerTailscaleAdvertiseNoteText = "Advertised routes and exit nodes st
 
 // tailscaleDefaultTag — тег по умолчанию. Тег обязателен: по нему называется
 // каталог состояния узла, и на него же ссылаются DNS-сервер и правило
-// маршрута из секций.
-const tailscaleDefaultTag = "tailscale"
+// маршрута из секций. Знак 🕸️ (U+1F578 U+FE0F) — как у узла Tailscale в
+// LxBox; к тегу, введённому пользователем, знак не добавляется: лаунчер не
+// дописывает эмодзи к пользовательским тегам ни у одного вида узла.
+const tailscaleDefaultTag = "\U0001F578\uFE0F tailscale"
+
+// tailscaleTag — тег нового узла: введённый пользователем или, если поле
+// пустое, тег по умолчанию.
+func tailscaleTag(raw string) string {
+	if tag := strings.TrimSpace(raw); tag != "" {
+		return tag
+	}
+	return tailscaleDefaultTag
+}
 
 // tailscaleFields — виджеты варианта.
 type tailscaleFields struct {
@@ -145,10 +156,7 @@ func (t *tailscaleFields) syncExitRole() {
 
 // tailscaleDocument собирает документ узла: один endpoint.
 func tailscaleDocument(tag string, t *tailscaleFields) ([]byte, error) {
-	tag = strings.TrimSpace(tag)
-	if tag == "" {
-		tag = tailscaleDefaultTag
-	}
+	tag = tailscaleTag(tag)
 	key := strings.TrimSpace(t.authKey.Text)
 	if key == "" {
 		return nil, fmt.Errorf("%s", locale.T("Auth key is required"))

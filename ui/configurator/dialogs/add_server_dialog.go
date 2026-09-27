@@ -630,10 +630,7 @@ func (f *addServerForm) result() (AddServerResult, error) {
 		if derr != nil {
 			return AddServerResult{}, derr
 		}
-		if label == "" {
-			label = tailscaleDefaultTag
-		}
-		return AddServerResult{ConfigJSON: doc, Label: label}, nil
+		return AddServerResult{ConfigJSON: doc, Label: tailscaleTag(label)}, nil
 	}
 
 	if f.mode == modeSource {

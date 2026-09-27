@@ -12,6 +12,7 @@
 - Tailscale nodes without `exit_node` are now visible on the Servers tab: while the core is running, the group list gets a last item NETWORKS with these nodes. In place of the delay each row shows the node state (starting, running, sign-in needed, stopped); a click opens the node window. There is no node choice, delay test, sorting or filter there, and the config does not change.
 - New Network tab in the Tailscale node window (macOS and other daemon setups): state, network name, Sign in and Log out (with confirmation), this device, exit node and the devices of the network with a Ping check (delay, direct or relay, region). Choosing an exit node switches it at once without touching the node; when the choice differs from the node, a warning says so and Save choice writes `exit_node` into your own node and rebuilds the config. Subscription nodes have no Save choice. The former Tailscale section of the Details tab moved here; traffic per device is no longer shown.
 - A Tailscale node that has no working exit node shows "no exit" instead of a delay, and its window says to check devices on the Network tab.
+- A Tailscale node added with an empty Tag field is now named `🕸️ tailscale`, as in LxBox. A tag you type is kept as is; existing nodes keep their tags.
 
 ### Technical / Internal
 - Contract 1.1.87: registry attribute `core_rejects`, warning flag `applied`, bare-body node source (SPEC 146).
@@ -34,6 +35,7 @@
 - Узлы Tailscale без `exit_node` видны на вкладке Servers: при работающем ядре в списке групп последним пунктом стоит NETWORKS с этими узлами. На месте задержки строка показывает состояние узла (starting, running, sign-in needed, stopped), нажатие открывает окно узла. Выбора узла, замера задержки, сортировки и фильтров там нет, конфиг не меняется.
 - Новая вкладка Network в окне узла Tailscale (macOS и другие установки с демоном): состояние, имя сети, Sign in и Log out (с подтверждением), это устройство, exit node и устройства сети с проверкой Ping (задержка, напрямую или через ретранслятор, регион). Выбор exit node переключает выход сразу и узел не меняет; если выбор расходится с узлом, об этом предупреждает знак, а Save choice пишет `exit_node` в свой узел и пересобирает конфиг. У узлов подписки Save choice нет. Прежняя секция Tailscale вкладки Details переехала сюда; трафик по устройствам больше не показывается.
 - Узел Tailscale без действующего exit node показывает «нет выхода» вместо задержки, а его окно предлагает проверить устройства на вкладке Network.
+- Узел Tailscale, добавленный с пустым полем Tag, теперь называется `🕸️ tailscale`, как в LxBox. Введённый тег сохраняется как есть; теги существующих узлов не меняются.
 
 ### Техническое / Внутреннее
 - Контракт 1.1.87: атрибут реестра `core_rejects`, признак предупреждения `applied`, источник узла — голое тело (SPEC 146).
