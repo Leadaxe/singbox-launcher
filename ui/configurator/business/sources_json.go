@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"strings"
 
+	"singbox-launcher/internal/locale"
+
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
@@ -108,6 +110,13 @@ type singboxJSONNode struct {
 // Один текст на все входы документа: вкладку JSON окна источника и форму
 // «Add server».
 const NodeDocumentDroppedText = "Only the node is saved. The document's %s will not be kept: a node does not carry routing or DNS entries."
+
+// NodeDocumentDroppedMessage — переведённое сообщение о снятых частях
+// документа. Перевод здесь, рядом с константой: проверка каталога (SPEC 111)
+// резолвит locale.Tf(const) только в пределах файла константы.
+func NodeDocumentDroppedMessage(dropped []string) string {
+	return locale.Tf(NodeDocumentDroppedText, strings.Join(dropped, ", "))
+}
 
 // compactJSON сжимает документ, сохраняя порядок полей автора (json.Compact
 // не пересобирает объект, в отличие от Unmarshal→Marshal).

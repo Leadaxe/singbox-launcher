@@ -420,7 +420,7 @@ func (f *addServerForm) buildJSONTab() {
 		// Документ узла с `dns`/`route`/`sections`: сохранится только узел
 		// (секции узла упразднены, контракт 1.1.85) — сказать это до Add.
 		if dropped := manualDocDroppedKeys(text); len(dropped) > 0 {
-			f.jsonStatus.SetText(locale.Tf(wizardbusiness.NodeDocumentDroppedText, strings.Join(dropped, ", ")))
+			f.jsonStatus.SetText(wizardbusiness.NodeDocumentDroppedMessage(dropped))
 			return
 		}
 		f.jsonStatus.SetText(locale.T(addServerJSONDirtyText))

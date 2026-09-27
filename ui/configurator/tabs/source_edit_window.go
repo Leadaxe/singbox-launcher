@@ -2036,7 +2036,7 @@ func showSourceEditWindowAt(
 		if isDoc {
 			if _, dropped, derr := config.ParseNodeDocument([]byte(text)); derr == nil && len(dropped) > 0 {
 				dialog.ShowInformation(locale.T("Node saved"),
-					locale.Tf(wizardbusiness.NodeDocumentDroppedText, strings.Join(dropped, ", ")), win)
+					wizardbusiness.NodeDocumentDroppedMessage(dropped), win)
 			}
 		}
 		doRefreshJSONTab()

@@ -4109,9 +4109,6 @@
   "A manual config_json is set — the origin above is ignored at build time (see the JSON tab). Regen from raw rebuilds the node from it.": {
     "value": "Задан ручной config_json — происхождение выше при сборке игнорируется (см. вкладку JSON). «Regen from raw» пересобирает узел из него."
   },
-  "Node rule · %s": {
-    "value": "Правило узла · %s"
-  },
   "Endpoints": {
     "value": "Endpoints"
   },
