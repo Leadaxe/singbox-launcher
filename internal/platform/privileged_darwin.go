@@ -117,6 +117,13 @@ const (
 	privilegedShell     = "/bin/sh"
 	privilegedKillTool  = "/bin/kill"
 	privilegedPkillTool = "/usr/bin/pkill"
+	// privilegedShellPrivilegedFlag — флаги шелла для постоянного тела
+	// (SPEC 143 §5.1): `-p` сохраняет effective root, `-c` передаёт тело.
+	//
+	// Одного `-c` мало: AEWP запускает инструмент с real uid пользователя и
+	// effective uid 0, и bash при расхождении uid БЕЗ `-p` возвращает
+	// effective uid к real — root теряется. `-p` этот сброс отключает.
+	privilegedShellPrivilegedFlag = "-pc"
 	// privilegedSafePath — единственная переменная окружения root-шелла.
 	// AEWP передаёт инструменту окружение лаунчера, а его задаёт
 	// пользователь: PATH решал бы, какой `rm` запустит root, а /bin/sh
@@ -262,15 +269,25 @@ func RunWithPrivileges(toolPath string, args []string) (scriptPID, singboxPID in
 }
 
 // PrivilegedStartArgs — инструмент и argv AEWP для старта ядра corePath с
-// TUN (SPEC 137 §3): `/usr/bin/env -i PATH=… /bin/sh -c <тело> <имя>
+// TUN (SPEC 137 §3): `/usr/bin/env -i PATH=… /bin/sh -pc <тело> <имя>
 // <bin> <ядро> <конфиг> <каталог лога> <владелец каталога> <uid
 // пользователя> <порог>`. env заменяет себя шеллом через exec — PID для
 // Wait4 тот же. Каталог лога и его владелец — параметры ради теста тела без
 // root; прод — StartPrivilegedCore.
+//
+// `-pc`, а не `-c` (SPEC 143 §5.1): AEWP отдаёт инструменту real uid
+// пользователя и effective uid 0. Без `-p` шелл видит расхождение uid и
+// намеренно возвращает effective uid к real — root теряется у шелла и у
+// всего, что он запускает; ядро тогда не может создать TUN («operation not
+// permitted») и не может писать в root-owned каталог лога. `-p` (privileged)
+// запрещает этот сброс, поэтому root сохраняется до самого ядра. Заодно `-p`
+// отключает обработку $ENV и импорт функций окружения — то, ради чего тело
+// и запускается через `env -i`; `env -i` при этом остаётся: он чистит
+// окружение, но credentials не трогает, поэтому одно другое не заменяет.
 func PrivilegedStartArgs(corePath, binDir, configName, logDir string, logDirOwnerUID, userUID int, rotateBytes int64) (tool string, args []string) {
 	return privilegedEnvTool, []string{
 		"-i", privilegedSafePath,
-		privilegedShell, "-c", privilegedStartBody,
+		privilegedShell, privilegedShellPrivilegedFlag, privilegedStartBody,
 		PrivilegedStartName, binDir, corePath, configName,
 		logDir, strconv.Itoa(logDirOwnerUID), strconv.Itoa(userUID), strconv.FormatInt(rotateBytes, 10),
 	}

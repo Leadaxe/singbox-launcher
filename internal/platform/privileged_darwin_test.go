@@ -94,10 +94,20 @@ func TestPrivilegedStartCommand(t *testing.T) {
 
 	tool, args := PrivilegedStartArgs(core, binDir, "config.json", logDir, 0, uid, rotate)
 	if tool != privilegedEnvTool || len(args) != 13 || args[0] != "-i" || args[1] != privilegedSafePath ||
-		args[2] != privilegedShell || args[3] != "-c" || args[4] != privilegedStartBody || args[5] != PrivilegedStartName ||
+		args[2] != privilegedShell || args[3] != privilegedShellPrivilegedFlag || args[4] != privilegedStartBody || args[5] != PrivilegedStartName ||
 		args[6] != binDir || args[7] != core || args[8] != "config.json" || args[9] != logDir ||
 		args[10] != "0" || args[11] != strconv.Itoa(uid) || args[12] != strconv.Itoa(rotate) {
 		t.Fatalf("unexpected command: %s %q", tool, args)
+	}
+	// SPEC 143 §5.1: без `-p` шелл возвращает effective uid к real и root
+	// теряется — ядро не создаст TUN и не запишет в root-owned каталог лога.
+	// Флаг обязан нести `p`; `-c` без него — регрессия, которую поймал
+	// реальный запуск.
+	if !strings.Contains(privilegedShellPrivilegedFlag, "p") {
+		t.Fatalf("the shell flag %q must retain effective root (-p)", privilegedShellPrivilegedFlag)
+	}
+	if !strings.HasSuffix(privilegedShellPrivilegedFlag, "c") {
+		t.Fatalf("the shell flag %q must also pass the body (-c)", privilegedShellPrivilegedFlag)
 	}
 
 	// Отказы по uid пользователя: не число, системный, несуществующий.
