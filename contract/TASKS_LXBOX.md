@@ -8738,3 +8738,25 @@ Go: `registry.RuleCoreRejects` читает путь предупреждени�
 1. Синк 1.1.93; шаблон и вкладка DNS по §580.
 2. Корпус `template/subst/dns_cache_*` проходит.
 3. `portable_vars` бэкапа — три имени.
+
+## 91. Контракт 1.1.94 — корпус authored возвращён; граница `dns_cache_capacity` 65535
+
+1. Возвращены восемь кейсов, снятых в 1.1.92 (§89): `hard_hysteria_obfs_object_flattened`,
+   `hard_hysteria_server_ports_item_dropped` (эталон поправлен: снятый элемент
+   `server_ports[0]` не остаётся в теле), `hard_masque_*` (3),
+   `hard_tuic_uuid_invalid_removed`, `hard_wg_peer_allowed_ips_invalid_removed`,
+   `hard_reality_short_id_invalid_removed`. Эталон — поведение Go.
+2. `hard_reality_pbk_invalid_removed` остаётся снятым: Go снимает одно поле
+   `tls.reality.public_key`, и блок `reality` без ключа ядро отвергает
+   (`common/tls/reality_client.go`: «invalid public_key»). Норма `tls.json` —
+   снимается весь блок `reality`, как на обычном теле
+   (`body/xray/vless_reality_pbk_junk`). Правка на стороне Go
+   (`nodeflow.patchFromClean`: родитель пути снят в clean); у LxBox лишнее
+   предупреждение `field_missing` на этом пути.
+3. `dns_cache_capacity`: допустимо 1024..65535 (решение владельца 27.09.2026),
+   совпадает с отсечкой int-подстановки §2.2; исключений нет. §90 в части
+   границы 65536 заменяется этим пунктом.
+4. Новых правил реестра и признаков `core_rejects` нет.
+
+Что сделать LxBox: синк 1.1.94; корпус `authored` проходит без пропусков;
+граница 65535 в §580.

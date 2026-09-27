@@ -52,7 +52,7 @@ func TestDNSCacheSettings_ChangedValuesInConfig(t *testing.T) {
 }
 
 func TestDNSCacheSettings_CapacityOutOfBoundsNotInConfig(t *testing.T) {
-	for _, bad := range []string{"100", "1023", "65537", "1000000", "abc", ""} {
+	for _, bad := range []string{"100", "1023", "65536", "65537", "1000000", "abc", ""} {
 		vars := map[string]string{VarDNSCacheCapacity: bad}
 		c, _, _, res := dnsCacheFields(t, vars)
 		if c != float64(16384) {
@@ -65,7 +65,7 @@ func TestDNSCacheSettings_CapacityOutOfBoundsNotInConfig(t *testing.T) {
 			t.Fatalf("%q: caller vars mutated", bad)
 		}
 	}
-	for _, ok := range []string{"1024", "65536"} {
+	for _, ok := range []string{"1024", "65535"} {
 		if !ValidDNSCacheCapacity(ok) {
 			t.Fatalf("%q must be valid", ok)
 		}

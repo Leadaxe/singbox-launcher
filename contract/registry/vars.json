@@ -42,7 +42,7 @@
       "type": "int",
       "portable": true,
       "in": "both",
-      "note": "dns.cache_capacity — число записей кэша DNS (контракт 1.1.93, LxBox §580, TEMPLATE_LANG §6.8). default 16384, допустимо 1024..65536; значение вне границ не сохраняется и в конфиг не уходит (действует default)."
+      "note": "dns.cache_capacity — число записей кэша DNS (контракт 1.1.93, LxBox §580, TEMPLATE_LANG §6.8). default 16384, допустимо 1024..65535; значение вне границ не сохраняется и в конфиг не уходит (действует default)."
     },
     "dns_optimistic": {
       "type": "bool",

@@ -16,7 +16,7 @@ const (
 	// dns.cache_capacity (число записей). Ниже 1024 ядро само поднимает
 	// значение до 1024.
 	DNSCacheCapacityMin = 1024
-	DNSCacheCapacityMax = 65536
+	DNSCacheCapacityMax = 65535
 )
 
 // ValidDNSCacheCapacity true, если строка — целое число в допустимых границах.

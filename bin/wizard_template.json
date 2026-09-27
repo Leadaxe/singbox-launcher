@@ -606,7 +606,7 @@
    "wizard_ui": "fix",
    "title": "DNS cache size",
    "tooltip": "Number of cached answers.",
-   "comment": "DNS tab only: config.dns.cache_capacity (entries, 1024..65536; the core raises lower values to 1024).",
+   "comment": "DNS tab only: config.dns.cache_capacity (entries, 1024..65535; the core raises lower values to 1024).",
    "default_value": "16384"
   },
   {
