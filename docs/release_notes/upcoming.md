@@ -13,6 +13,7 @@
 - New Network tab in the Tailscale node window (macOS and other daemon setups): state, network name, Sign in and Log out (with confirmation), this device, exit node and the devices of the network with a Ping check (delay, direct or relay, region). Choosing an exit node switches it at once without touching the node; when the choice differs from the node, a warning says so and Save choice writes `exit_node` into your own node and rebuilds the config. Subscription nodes have no Save choice. The former Tailscale section of the Details tab moved here; traffic per device is no longer shown.
 - A Tailscale node that has no working exit node shows "no exit" instead of a delay, and its window says to check devices on the Network tab.
 - A Tailscale node added with an empty Tag field is now named `🕸️ tailscale`, as in LxBox. A tag you type is kept as is; existing nodes keep their tags.
+- Core `sing-box-lx 1.14.2-lx.6` (was 1.14.2-lx.4); the launcher offers to update it. An XHTTP node without an `xmux` section now keeps at most three connections to the server instead of opening a new one per stream (the current Xray-core default: a burst of parallel connections to one server gets cut on some networks). An `xmux` section with any field set is taken as written.
 
 ### Technical / Internal
 - Contract 1.1.87: registry attribute `core_rejects`, warning flag `applied`, bare-body node source (SPEC 146).
@@ -21,6 +22,7 @@
 - Contract 1.1.90: the DNS rule of the "Tailscale networks" preset names the node's DNS server in `preferred_by`, not the node itself; the old value kept the core from starting.
 - Contract 1.1.91: 29 more registry rules are marked `core_rejects` (the core refuses to start with such a value), so they are applied to hand-written nodes too: VLESS `encryption`, Shadowsocks `method`, WireGuard keys and peer port, REALITY keys, xhttp placements and others.
 - Contract 1.1.97: an invalid REALITY `public_key` in a hand-written sing-box JSON node removes the whole `reality` block, as for other nodes; before, only the key was removed and the core refused the config.
+- Contract 1.1.98: the registry names the core default for XHTTP `xmux` as `max_connections` 3 (core lx.6); rules unchanged.
 - Contract 1.1.95: the DNS cache size defaults to 4000 answers.
 - Contract 1.1.94: the DNS cache size upper bound is 65535 (a larger value is not saved); eight authored-body corpus cases shared with LxBox are back.
 - Contract 1.1.93: template variables `dns_cache_capacity`, `dns_optimistic`, `dns_store_cache` (SPEC 147); a saved cache size outside 1024..65535 is not written to the config.
@@ -36,6 +38,7 @@
 - Новая вкладка Network в окне узла Tailscale (macOS и другие установки с демоном): состояние, имя сети, Sign in и Log out (с подтверждением), это устройство, exit node и устройства сети с проверкой Ping (задержка, напрямую или через ретранслятор, регион). Выбор exit node переключает выход сразу и узел не меняет; если выбор расходится с узлом, об этом предупреждает знак, а Save choice пишет `exit_node` в свой узел и пересобирает конфиг. У узлов подписки Save choice нет. Прежняя секция Tailscale вкладки Details переехала сюда; трафик по устройствам больше не показывается.
 - Узел Tailscale без действующего exit node показывает «нет выхода» вместо задержки, а его окно предлагает проверить устройства на вкладке Network.
 - Узел Tailscale, добавленный с пустым полем Tag, теперь называется `🕸️ tailscale`, как в LxBox. Введённый тег сохраняется как есть; теги существующих узлов не меняются.
+- Ядро `sing-box-lx 1.14.2-lx.6` (было 1.14.2-lx.4), лаунчер предложит его обновить. Узел XHTTP без секции `xmux` теперь держит к серверу не больше трёх соединений, а не открывает новое на каждый поток (текущий дефолт Xray-core: пачку параллельных соединений к одному серверу в некоторых сетях режут). Секция `xmux` хотя бы с одним заданным полем берётся как есть.
 
 ### Техническое / Внутреннее
 - Контракт 1.1.87: атрибут реестра `core_rejects`, признак предупреждения `applied`, источник узла — голое тело (SPEC 146).
@@ -44,6 +47,7 @@
 - Контракт 1.1.90: DNS-правило пресета «Tailscale networks» указывает в `preferred_by` DNS-сервер узла, а не сам узел; прежнее значение не давало ядру стартовать.
 - Контракт 1.1.91: ещё 29 правил реестра помечены `core_rejects` (с таким значением ядро не стартует) и применяются и к узлу, написанному вручную: `encryption` VLESS, `method` Shadowsocks, ключи и порт пира WireGuard, ключи REALITY, placement-поля xhttp и другие.
 - Контракт 1.1.97: негодный `public_key` REALITY в узле, написанном вручную в форме sing-box JSON, снимает весь блок `reality`, как у остальных узлов; раньше снимался только ключ, и ядро отвергало конфиг.
+- Контракт 1.1.98: реестр называет дефолт ядра для XHTTP `xmux` — `max_connections` 3 (ядро lx.6); правила не менялись.
 - Контракт 1.1.95: размер кэша DNS по умолчанию 4000 ответов.
 - Контракт 1.1.94: верхняя граница размера кэша DNS 65535 (значение выше не сохраняется); в корпус authored возвращены восемь кейсов сверки с LxBox.
 - Контракт 1.1.93: переменные шаблона `dns_cache_capacity`, `dns_optimistic`, `dns_store_cache` (SPEC 147); сохранённый размер кэша вне 1024..65535 в конфиг не попадает.

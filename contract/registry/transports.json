@@ -785,7 +785,6 @@
             "fields": {
               "max_concurrency": {
                 "type": "string",
-                "default": "1-1",
                 "conflicts": [
                   {
                     "with": "transport.xmux.max_connections",
@@ -798,9 +797,10 @@
               },
               "max_connections": {
                 "type": "string",
+                "default": "3",
                 "desc_en": "Number of parallel connections, as a range.",
                 "desc_ru": "Число параллельных соединений, диапазоном.",
-                "impl": "XmuxRange. Взаимоисключающе с max_concurrency (option/v2ray_xhttp.go)."
+                "impl": "XmuxRange. Взаимоисключающе с max_concurrency (option/v2ray_xhttp.go). Дефолт «3» — с ядра 1.14.2-lx.6 (Xray-core 18e2839); ядра до lx.6 без секции ставили max_concurrency=1-1, соединение на поток."
               },
               "c_max_reuse_times": {
                 "type": "string",
@@ -835,7 +835,7 @@
             "min_core": "1.13.13-lx.1",
             "desc_en": "Connection multiplexing for XHTTP.",
             "desc_ru": "Мультиплексирование соединений XHTTP.",
-            "impl": "option/v2ray_xhttp_xmux_range.go. Всё-или-ничего: секции нет ИЛИ она пуста → дефолты max_concurrency=1-1, h_max_request_times=600-900, h_max_reusable_secs=1800-3000; задано хоть одно поле → остальные становятся 0 (без лимита). Атрибут описывает ПОВЕДЕНИЕ ЯДРА и действия санитайзера не влечёт: дописывать дефолты соседей нельзя — частичная секция обязана доехать до ядра как есть, иначе у живого узла меняются пределы (SPEC 131 DRIFT §7). nil ≠ выключено — XMUX включён всегда."
+            "impl": "option/v2ray_xhttp_xmux_range.go. Всё-или-ничего: секции нет ИЛИ она пуста → дефолты max_connections=3 (с ядра 1.14.2-lx.6; прежде max_concurrency=1-1, соединение на поток), h_max_request_times=600-900, h_max_reusable_secs=1800-3000; задано хоть одно поле → остальные становятся 0 (без лимита). Атрибут описывает ПОВЕДЕНИЕ ЯДРА и действия санитайзера не влечёт: дописывать дефолты соседей нельзя — частичная секция обязана доехать до ядра как есть, иначе у живого узла меняются пределы (SPEC 131 DRIFT §7). nil ≠ выключено — XMUX включён всегда."
           },
           "session_placement": {
             "type": "enum",

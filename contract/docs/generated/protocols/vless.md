@@ -577,10 +577,10 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only
 - <a id="body-transport-xhttp-xmux-max-concurrency"></a>**`transport.xhttp.xmux.max_concurrency`** — Concurrent streams per connection, as a range.
   - Type: string
-  - Default: `1-1`
   - Conflicts with: `transport.xmux.max_connections`
 - <a id="body-transport-xhttp-xmux-max-connections"></a>**`transport.xhttp.xmux.max_connections`** — Number of parallel connections, as a range.
   - Type: string
+  - Default: `3`
 - <a id="body-transport-xhttp-xmux-c-max-reuse-times"></a>**`transport.xhttp.xmux.c_max_reuse_times`** — How many times a connection is reused.
   - Type: string
 - <a id="body-transport-xhttp-xmux-h-max-request-times"></a>**`transport.xhttp.xmux.h_max_request_times`** — Requests served by one HTTP connection.
