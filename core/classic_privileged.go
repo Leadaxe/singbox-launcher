@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 
 	"singbox-launcher/internal/debuglog"
@@ -122,19 +123,72 @@ func checkPrivilegedCoreCopy(l daemonServiceLayout, launcherCore string, hashes 
 // privilegedCopyCommandFor — одна sudo-команда, которая создаёт или
 // обновляет копию (SPEC 137 §5). Установлена служба демона — её команда
 // install из SPEC 136: она обновляет ту же копию и перезапускает службу.
-// Иначе — `lxd --service=copy` (lx.11): только копия и сайдкар, без plist.
-// Бинарь — ядро лаунчера версии launcherVersion: ядро копирует себя само.
-// Ядро, не умеющее копию (serviceCoreGate), — команды нет, ошибка
-// *serviceCoreTooOldError: сначала обновить ядро.
+//
+// Иначе копию надо положить без демона. Способ зависит от того, что это за
+// ядро (SPEC 143):
+//
+//   - ядро форка с `lxd --service=copy` и опознанной версией — копирует
+//     себя само: штатный путь SPEC 137;
+//   - опознанный релиз форка СТАРШЕ порога (например 1.14.1-lx.8) — команды
+//     нет: такой релиз копию ещё не умеет, версия форка обещает свою
+//     раскладку, и подменять её копией от лаунчера нельзя. Поведение
+//     прежнее: подсказка обновить ядро;
+//   - НЕопознанная версия (кастомная сборка без `-lx.N`, например
+//     1.15.0-jiejie-masquerade.5) — копию кладёт сам лаунчер одной
+//     проверяемой командой. Classic run не требует от ядра поддержки lxd
+//     (SPEC 143 §5.2), а версия о способностях не говорит ничего, поэтому
+//     решает проба бинаря, а не строка.
+//
+// Гейт по версии (serviceCoreGate) остаётся для пути СЛУЖБЫ: установка
+// службы — это протокол демона, и без lxd она невозможна.
 func privilegedCopyCommandFor(l daemonServiceLayout, launcherCore, launcherVersion string) (command string, viaService bool, err error) {
 	viaService = daemonServiceDefined(l)
-	if err := serviceCoreGate(launcherVersion); err != nil {
-		return "", viaService, err
-	}
 	if viaService {
+		// Служба установлена: её install — единственный корректный путь,
+		// и он действительно требует lxd у ядра.
+		if err := serviceCoreGate(launcherVersion); err != nil {
+			return "", true, err
+		}
 		return daemonServiceCommand(launcherCore, daemonInstallArgs()...), true, nil
 	}
-	return daemonServiceCommand(launcherCore, "lxd", "--service=copy"), false, nil
+	// Опознанный релиз форка не старше порога — штатный путь SPEC 137: ядро
+	// копирует себя само (`lxd --service=copy`). Гейт по версии здесь и есть
+	// доказательство способности: порог `minCoreForRootOwnedService` введён
+	// именно как «первое ядро форка, чей lxd умеет --service=copy».
+	if serviceCoreGate(launcherVersion) == nil {
+		return daemonServiceCommand(launcherCore, "lxd", "--service=copy"), false, nil
+	}
+	// Версия опознана, но старше порога: команды нет (прежнее поведение) —
+	// версия форка обещает свою раскладку копии.
+	if _, recognized := parseCoreBuild(launcherVersion); recognized {
+		return "", false, &serviceCoreTooOldError{version: launcherVersion}
+	}
+	// Версия не опознана — кастомная сборка. Classic TUN не требует lxd, а
+	// версия о способностях не говорит: спрашиваем сам бинарь. Умеет
+	// копировать себя — его штатная команда; нет — копию кладём сами.
+	if coreSupportsServiceCopy(launcherCore) {
+		return daemonServiceCommand(launcherCore, "lxd", "--service=copy"), false, nil
+	}
+	debuglog.DebugLog("privilegedCopyCommandFor: core %q has an unrecognized version %q and cannot copy itself; using the launcher install command", launcherCore, launcherVersion)
+	return rootCopyInstallCommand(launcherCore, l.CorePath), false, nil
+}
+
+// rootCopyInstallCommand — sudo-команда, которая кладёт копию ядра в
+// защищённый каталог от root, не полагаясь на поддержку lxd ядром.
+//
+// Команда намеренно минимальна и проверяема человеком: install с
+// владельцем root:wheel и правами 0755, во временный файл рядом с целью с
+// последующим переименованием, чтобы работающий экземпляр никогда не
+// наблюдал полузаписанный бинарь. Целевой каталог создаётся при необходимости.
+func rootCopyInstallCommand(src, dst string) string {
+	dir := path.Dir(dst)
+	// cp во временный файл в ТОМ ЖЕ каталоге + chown/chmod + atomic mv.
+	// Никаких симлинков: mv по одному каталогу атомарен.
+	return "sudo /bin/mkdir -p " + shellQuote(dir) +
+		" && sudo /bin/cp -f " + shellQuote(src) + " " + shellQuote(dst+".new") +
+		" && sudo /usr/sbin/chown root:wheel " + shellQuote(dst+".new") +
+		" && sudo /bin/chmod 0755 " + shellQuote(dst+".new") +
+		" && sudo /bin/mv -f " + shellQuote(dst+".new") + " " + shellQuote(dst)
 }
 
 // privilegedCoreCopyGate — гейт перед AEWP: путь копии для старта или

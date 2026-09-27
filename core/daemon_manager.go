@@ -434,6 +434,36 @@ func (ac *AppController) CoreSupportsLxd() bool {
 	return strings.Contains(string(out), "--state-dir")
 }
 
+// coreSupportsServiceCopy — ядро corePath умеет `lxd --service=copy`, то
+// есть может само положить root-owned копию (SPEC 137 §5, SPEC 143).
+//
+// Проверяется сам бинарь, а не строка версии: кастомная сборка
+// (1.15.0-jiejie-masquerade.5) не содержит `-lx.N`, и вывод о способностях
+// по имени версии для неё невозможен. Проба безопасна — только `--help`,
+// без root, без сети и без сайд-эффектов; тот же принцип, что у CoreSupportsLxd.
+func coreSupportsServiceCopy(corePath string) bool {
+	if corePath == "" {
+		return false
+	}
+	if _, err := os.Stat(corePath); err != nil {
+		return false
+	}
+	cmd := exec.Command(corePath, "lxd", "--service=copy", "--help")
+	platform.PrepareCommand(cmd)
+	out, err := cmd.CombinedOutput()
+	text := string(out)
+	if err != nil && text == "" {
+		return false
+	}
+	// Ядро без этой сабкоманды отвечает «unknown command» — не предлагаем
+	// пользователю команду, которая заведомо не сработает.
+	if strings.Contains(text, "unknown command") || strings.Contains(text, "unrecognized") {
+		return false
+	}
+	// Маркер — сам флаг: именно его лаунчер и просит выполнить.
+	return strings.Contains(text, "--service")
+}
+
 // PairDaemonWithInvite выполняет сопряжение по приглашению
 // `адрес#отпечаток#код` (поле сопряжения в настройках, либо авто-путь
 // установки). secret — Bearer-секрет демона (пусто, если не настроен).
