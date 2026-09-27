@@ -6,7 +6,10 @@
 //
 //	{ "endpoints": [ { "type": "wireguard", "tag": "ts", … } ] }
 //
-// Ровно одна запись в `outbounds[]`+`endpoints[]` становится ТЕЛОМ узла.
+// Ровно одна запись в `outbounds[]`+`endpoints[]` становится ТЕЛОМ узла
+// (ParseNodeDocument). Вкладка JSON окна узла правит ОДИН узел и берёт первую
+// запись, которая не служебная и не группа (ParseNodeDocumentFirstNode,
+// контракт 1.1.89); импорт своих узлов создаёт запись на каждый узел.
 // Ключи `dns`, `route` и `sections` принимаются и ОТБРАСЫВАЮТСЯ: секций у
 // узла нет (контракт 1.1.85, NODE_SECTIONS.md; LxBox §575), а вызывающий
 // сообщает пользователю, что остальное содержимое документа не сохранено.
@@ -28,6 +31,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"singbox-launcher/core/config/subscription"
 )
 
 // nodeDocTopKeys — верхние ключи, которые документ узла признаёт.
@@ -79,6 +84,64 @@ func IsNodeDocument(raw []byte) bool {
 // показывает причину и оставляет узел прежним (тот же откат, что у
 // applyServerBodyJSON).
 func ParseNodeDocument(raw []byte) (body json.RawMessage, dropped []string, err error) {
+	doc, entries, err := parseNodeDocEntries(raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(entries) != 1 {
+		return nil, nil, fmt.Errorf(
+			"a node document must carry exactly one node in outbounds/endpoints (found %d)", len(entries))
+	}
+	body, err = compactNodeBody(entries[0])
+	if err != nil {
+		return nil, nil, err
+	}
+	return body, nodeDocDropped(doc), nil
+}
+
+// ParseNodeDocumentFirstNode — разбор документа для правки ОДНОГО узла
+// (вкладка JSON окна узла; контракт 1.1.89, PARSING_PRINCIPLES §11 п.1).
+//
+// Тело — первая запись `outbounds[]`+`endpoints[]`, которая не служебная
+// (`direct`/`block`/`dns`) и не группа (`selector`/`urltest`); прочие записи
+// отбрасываются. restDropped — не сохранено ли что-то кроме тела: другие
+// записи или непустые `dns`/`route`/`sections`; вызывающий сообщает об этом
+// одним сообщением.
+//
+// Импорт своих узлов этой функцией не пользуется: там запись на КАЖДЫЙ узел,
+// а документ с одним узлом разбирает ParseNodeDocument.
+//
+// Подходящей записи нет — ошибка, узел не меняется.
+func ParseNodeDocumentFirstNode(raw []byte) (body json.RawMessage, restDropped bool, err error) {
+	doc, entries, err := parseNodeDocEntries(raw)
+	if err != nil {
+		return nil, false, err
+	}
+	for _, e := range entries {
+		var probe struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(e, &probe) != nil {
+			continue
+		}
+		if strings.TrimSpace(probe.Type) == "" ||
+			subscription.IsSingboxServiceType(probe.Type) || subscription.IsSingboxGroupType(probe.Type) {
+			continue
+		}
+		body, err = compactNodeBody(e)
+		if err != nil {
+			return nil, false, err
+		}
+		return body, len(entries) > 1 || len(nodeDocDropped(doc)) > 0, nil
+	}
+	return nil, false, fmt.Errorf(
+		"a node document must carry a node in outbounds/endpoints (service outbounds and groups do not count; found %d entries)",
+		len(entries))
+}
+
+// parseNodeDocEntries — общий шаг обоих разборов: JSON, признаваемые верхние
+// ключи, записи `outbounds[]`+`endpoints[]` одним списком.
+func parseNodeDocEntries(raw []byte) (map[string]json.RawMessage, []json.RawMessage, error) {
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, nil, fmt.Errorf("document: %w", err)
@@ -103,31 +166,36 @@ func ParseNodeDocument(raw []byte) (body json.RawMessage, dropped []string, err 
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(entries) != 1 {
-		return nil, nil, fmt.Errorf(
-			"a node document must carry exactly one node in outbounds/endpoints (found %d)", len(entries))
-	}
+	return doc, entries, nil
+}
 
+// compactNodeBody — запись документа → тело узла с порядком ключей автора.
+func compactNodeBody(entry json.RawMessage) (json.RawMessage, error) {
 	var buf bytes.Buffer
-	if err := json.Compact(&buf, entries[0]); err != nil {
-		return nil, nil, fmt.Errorf("node body: %w", err)
+	if err := json.Compact(&buf, entry); err != nil {
+		return nil, fmt.Errorf("node body: %w", err)
 	}
 	// Проверка та же, что у прежней формы вкладки: ядро не принимает
 	// outbound без типа, и сказать это здесь дешевле, чем на sing-box check.
 	var probe map[string]interface{}
 	if err := json.Unmarshal(buf.Bytes(), &probe); err != nil {
-		return nil, nil, fmt.Errorf("node body: %w", err)
+		return nil, fmt.Errorf("node body: %w", err)
 	}
 	if t, _ := probe["type"].(string); strings.TrimSpace(t) == "" {
-		return nil, nil, fmt.Errorf("the node object must have a non-empty \"type\" field")
+		return nil, fmt.Errorf("the node object must have a non-empty \"type\" field")
 	}
+	return json.RawMessage(buf.Bytes()), nil
+}
 
+// nodeDocDropped — присутствующие непустые `dns`/`route`/`sections`.
+func nodeDocDropped(doc map[string]json.RawMessage) []string {
+	var dropped []string
 	for _, k := range nodeDocDroppedKeys {
 		if v, ok := doc[k]; ok && !isEmptyJSONValue(v) {
 			dropped = append(dropped, k)
 		}
 	}
-	return json.RawMessage(buf.Bytes()), dropped, nil
+	return dropped
 }
 
 // isEmptyJSONValue — null, пустой объект или пустой массив.

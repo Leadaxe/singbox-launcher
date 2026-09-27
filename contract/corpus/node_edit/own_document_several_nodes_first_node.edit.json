@@ -1,0 +1,9 @@
+{
+  "_comment": "Документ с несколькими узлами: в источник первый узел, не служебный и не группа; об остатке одно сообщение.",
+  "container": "own",
+  "origin": {
+    "kind": "json",
+    "raw": "{\"type\":\"trojan\",\"server\":\"example-2.com\",\"server_port\":443,\"password\":\"testpass581\"}"
+  },
+  "input": "{\"outbounds\": [{\"type\": \"direct\", \"tag\": \"direct\"}, {\"type\": \"selector\", \"tag\": \"proxy\", \"outbounds\": [\"n1\", \"n2\"]}, {\"type\": \"trojan\", \"server\": \"example-1.com\", \"server_port\": 443, \"password\": \"testpass580\"}, {\"type\": \"trojan\", \"server\": \"example-3.com\", \"server_port\": 443, \"password\": \"testpass582\"}]}"
+}

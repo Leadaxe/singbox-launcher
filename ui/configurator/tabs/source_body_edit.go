@@ -126,12 +126,13 @@ func ownEditDropsOrigin(node *wizardmodels.Node, ownContainer bool) bool {
 }
 
 // nodeBodyFromJSONInput — ввод вкладки JSON → текст тела узла. Формы ввода
-// три: голое тело, документ узла и массив тел (PARSING_PRINCIPLES §11 п.1);
+// три: голое тело, документ узла (из него — первый узел, не служебный и не
+// группа) и массив тел (PARSING_PRINCIPLES §11 п.1);
 // в хранение уходит только тело. Об остатке документа или массива сообщает
 // вызывающий (jsonInputDropsRest) — одним сообщением на сохранение.
 func nodeBodyFromJSONInput(text string) (string, error) {
 	if config.IsNodeDocument([]byte(text)) {
-		body, _, err := config.ParseNodeDocument([]byte(text))
+		body, _, err := config.ParseNodeDocumentFirstNode([]byte(text))
 		if err != nil {
 			return "", err
 		}
@@ -159,12 +160,12 @@ func nodeBodyFromJSONInput(text string) (string, error) {
 }
 
 // jsonInputDropsRest — осталось ли во вводе вкладки JSON что-то кроме тела
-// узла: `dns`/`route`/`sections` документа или элементы массива после
-// первого.
+// узла: `dns`/`route`/`sections` документа, прочие записи документа
+// (контракт 1.1.89) или элементы массива после первого.
 func jsonInputDropsRest(text string) bool {
 	if config.IsNodeDocument([]byte(text)) {
-		_, dropped, err := config.ParseNodeDocument([]byte(text))
-		return err == nil && len(dropped) > 0
+		_, rest, err := config.ParseNodeDocumentFirstNode([]byte(text))
+		return err == nil && rest
 	}
 	if config.IsNodeBodyArray([]byte(text)) {
 		_, extra, err := config.ParseNodeBodyArray([]byte(text))

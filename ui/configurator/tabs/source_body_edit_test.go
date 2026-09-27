@@ -180,4 +180,32 @@ func TestApplyServerBodyJSON(t *testing.T) {
 			t.Error("пустой массив принят")
 		}
 	})
+
+	t.Run("документ с несколькими узлами: в источник первый узел, остаток назван", func(t *testing.T) {
+		src := serverWithBody(wizardmodels.OriginKindJSON, workingBody)
+		const doc = `{"outbounds":[{"type":"direct","tag":"direct"},{"type":"selector","tag":"sel","outbounds":["x"]},` +
+			`{"type":"trojan","server":"b.example","server_port":8443,"password":"q"},` +
+			`{"type":"trojan","server":"c.example","server_port":443,"password":"r"}]}`
+		if !jsonInputDropsRest(doc) {
+			t.Error("остаток документа не назван")
+		}
+		if err := applyServerBodyJSON(&src.Node, doc, true); err != nil {
+			t.Fatalf("документ отвергнут: %v", err)
+		}
+		const first = `{"type":"trojan","server":"b.example","server_port":8443,"password":"q"}`
+		if src.Origin == nil || src.Origin.Raw != first {
+			t.Fatalf("источник = %+v, ожидали первый узел", src.Origin)
+		}
+	})
+
+	t.Run("документ из служебных и групп откатывается", func(t *testing.T) {
+		src := serverWithBody(wizardmodels.OriginKindJSON, workingBody)
+		const doc = `{"outbounds":[{"type":"direct","tag":"direct"},{"type":"block","tag":"block"},{"type":"urltest","tag":"u","outbounds":["direct"]}]}`
+		if err := applyServerBodyJSON(&src.Node, doc, true); err == nil {
+			t.Fatal("документ без узла принят")
+		}
+		if string(src.Body) != workingBody {
+			t.Errorf("тело изменилось при откате: %s", src.Body)
+		}
+	})
 }

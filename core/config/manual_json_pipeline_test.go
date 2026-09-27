@@ -27,16 +27,38 @@ func TestManualJSONGoesThroughPipeline(t *testing.T) {
 	if err := json.Unmarshal(res.Body, &m); err != nil {
 		t.Fatalf("unmarshal body: %v", err)
 	}
-	for _, k := range []string{"bogus_key", "flow", "tag", "detour"} {
+	// Ручной объект — авторское тело (контракт 1.1.87): мягкий код
+	// (`unknown_key`) тело не меняет и приходит с applied: false, жёсткий
+	// (`flow` вне допустимых, core_rejects) снимается. tag/detour — служебные
+	// поля записи, в теле их нет.
+	for _, k := range []string{"flow", "tag", "detour"} {
 		if _, bad := m[k]; bad {
 			t.Errorf("%q must not survive in the body", k)
 		}
 	}
+	if _, ok := m["bogus_key"]; !ok {
+		t.Error(`"bogus_key" must stay in the authored body (soft code)`)
+	}
 	if m["type"] != "vless" {
 		t.Errorf("type lost: %v", m["type"])
 	}
-	if len(res.Warnings) == 0 {
-		t.Error("junk must produce warnings")
+	var sawUnknown, sawFlow bool
+	for _, w := range res.Warnings {
+		switch {
+		case w.Code == "unknown_key" && w.Path == "bogus_key":
+			sawUnknown = true
+			if w.Applied == nil || *w.Applied {
+				t.Errorf("unknown_key on an authored body must come with applied=false, got %+v", w)
+			}
+		case w.Code == "flow_deprecated":
+			sawFlow = true
+			if w.Applied != nil && !*w.Applied {
+				t.Errorf("flow_deprecated is hard and applied, got applied=false: %+v", w)
+			}
+		}
+	}
+	if !sawUnknown || !sawFlow {
+		t.Errorf("warnings must carry unknown_key and flow_deprecated, got %+v", res.Warnings)
 	}
 	// Тип вне реестра остаётся passthrough: правил для него нет, и выдумывать
 	// их конвейер не вправе — ради таких узлов вкладка JSON и существует.
