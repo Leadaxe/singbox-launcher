@@ -37,6 +37,13 @@ const (
 	// путь (onPrivilegedScriptExited) такого сигнала не имеет (нет cmd.Wait и
 	// нет err), поэтому всегда передаёт cleanExit=false и actionClean не получит.
 	actionClean
+
+	// actionDeterministicFailure — причина завершения детерминированная
+	// (SPEC 143): несовместимый конфиг, потерянные права, занятый порт,
+	// отсутствующий ресурс, недоступный API. Повтор не изменит результат,
+	// поэтому авто-перезапуск прекращается сразу — без трёх одинаковых
+	// попыток, которые только маскировали причину под «ещё подключаюсь».
+	actionDeterministicFailure
 )
 
 // decideCrashAction — чистое решение по флагам завершения процесса.
@@ -46,12 +53,18 @@ const (
 //  2. restartRequested→ actionUserRestart,   счётчик → 0
 //  3. cleanExit       → actionClean,         счётчик → 0
 //     (только Monitor передаёт cleanExit = (err == nil); privileged путь — false)
-//  4. иначе — крэш: counter++; если превысил maxAttempts → actionMaxAttempts,
+//  4. детерминированная причина (reason.Deterministic()) → actionDeterministicFailure,
+//     счётчик → 0: повторять нечего, пользователю нужно конкретное действие.
+//  5. иначе — крэш: counter++; если превысил maxAttempts → actionMaxAttempts,
 //     счётчик → 0; иначе actionCrashRestart с инкрементированным счётчиком.
 //
 // newAttempts — значение, которое вызывающий должен записать в
 // ac.ConsecutiveCrashAttempts. Для actionCrashRestart это
 // consecutiveCrashAttempts+1; для всех остальных — 0.
+//
+// reason — классификация причины по логу ядра (classifyExitText). Нулевое
+// значение (exitReasonUnknown) сохраняет прежнее поведение: неизвестная
+// причина считается транзиентной.
 //
 // Что НЕ делается здесь (намеренно остаётся в вызывающих, т.к. пути различаются):
 //   - PID-check (Monitor: «это мой процесс?») — до вызова;
@@ -66,6 +79,19 @@ func decideCrashAction(
 	consecutiveCrashAttempts int,
 	maxAttempts int,
 ) (action crashAction, newAttempts int) {
+	return decideCrashActionReason(stoppedByUser, restartRequested, cleanExit,
+		consecutiveCrashAttempts, maxAttempts, exitReasonUnknown)
+}
+
+// decideCrashActionReason — decideCrashAction с явной причиной завершения.
+func decideCrashActionReason(
+	stoppedByUser bool,
+	restartRequested bool,
+	cleanExit bool,
+	consecutiveCrashAttempts int,
+	maxAttempts int,
+	reason exitReason,
+) (action crashAction, newAttempts int) {
 	switch {
 	case stoppedByUser:
 		return actionStoppedByUser, 0
@@ -73,6 +99,9 @@ func decideCrashAction(
 		return actionUserRestart, 0
 	case cleanExit:
 		return actionClean, 0
+	case reason.Deterministic():
+		// Детерминированная ошибка: три одинаковых попытки ничего не дадут.
+		return actionDeterministicFailure, 0
 	default:
 		inc := consecutiveCrashAttempts + 1
 		if inc > maxAttempts {

@@ -164,6 +164,47 @@ func (ac *AppController) CoreLogPath() string {
 	return ac.FileService.ChildLogPath
 }
 
+// classifyCoreExitReason — причина завершения ядра по хвосту его лога
+// (SPEC 143). Ошибки ядра печатаются перед выходом, поэтому читаем
+// последние строки. Лог недоступен — exitReasonUnknown: отсутствие лога
+// не доказательство отсутствия ошибки, и неизвестная причина остаётся
+// транзиентной, то есть авто-восстановление не отключается зря.
+func (ac *AppController) classifyCoreExitReason() exitReason {
+	path := ac.CoreLogPath()
+	if path == "" {
+		return exitReasonUnknown
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		debuglog.DebugLog("classifyCoreExitReason: cannot read %s: %v", path, err)
+		return exitReasonUnknown
+	}
+	// Ограничиваем объём: причина — в хвосте, читать весь лог незачем.
+	const tailBytes = 16 * 1024
+	text := string(data)
+	if len(text) > tailBytes {
+		text = text[len(text)-tailBytes:]
+	}
+	reason := classifyExitText(lastLines(text, 40))
+	debuglog.InfoLog("classifyCoreExitReason: %s (log %s)", reason, path)
+	return reason
+}
+
+// showDeterministicExitDialog — диалог детерминированного отказа (SPEC 143).
+// Показывает конкретную причину и действие вместо «не удалось
+// перезапустить»: авто-перезапуск прекращён осознанно, потому что повтор
+// ничего не изменит.
+func (ac *AppController) showDeterministicExitDialog(reason exitReason) {
+	if ac.UIService == nil || ac.UIService.MainWindow == nil {
+		return
+	}
+	body := locale.T(deterministicExitText(reason))
+	if body == "" {
+		return
+	}
+	dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s", body))
+}
+
 // NewProcessService constructs a ProcessService bound to the controller.
 func NewProcessService(ac *AppController) *ProcessService {
 	return &ProcessService{ac: ac}
@@ -447,7 +488,11 @@ func (svc *ProcessService) onPrivilegedScriptExited() {
 	// SPEC 070: shared crash/restart decision. Privileged путь не имеет err
 	// (скрипт ждёт sing-box; cmd.Wait отсутствует) → cleanExit=false, поэтому
 	// actionClean здесь не возникает.
-	action, newAttempts := decideCrashAction(ac.StoppedByUser, ac.RestartRequestedByUser, false, ac.ConsecutiveCrashAttempts, restartAttempts)
+	//
+	// SPEC 143: причина классифицируется по логу ядра — детерминированный
+	// отказ (права, порт, конфиг) не перезапускается.
+	reason := ac.classifyCoreExitReason()
+	action, newAttempts := decideCrashActionReason(ac.StoppedByUser, ac.RestartRequestedByUser, false, ac.ConsecutiveCrashAttempts, restartAttempts, reason)
 	ac.ConsecutiveCrashAttempts = newAttempts
 	switch action {
 	case actionStoppedByUser:
@@ -464,6 +509,10 @@ func (svc *ProcessService) onPrivilegedScriptExited() {
 			ac.UIService.UpdateCoreStatusFunc()
 		}
 		ac.CmdMutex.Lock()
+		return
+	case actionDeterministicFailure:
+		debuglog.WarnLog("onPrivilegedScriptExited: deterministic failure (%s), not restarting", reason)
+		ac.showDeterministicExitDialog(reason)
 		return
 	case actionMaxAttempts:
 		debuglog.DebugLog("onPrivilegedScriptExited: Max restart attempts reached.")
@@ -522,7 +571,12 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 	// SPEC 070: shared crash/restart decision (steps 2-5). PID-check (step 1)
 	// stays above; err==nil graceful-exit is fed via cleanExit so the decision
 	// lives in one place but Monitor keeps its per-branch RunningState placement.
-	action, newAttempts := decideCrashAction(ac.StoppedByUser, ac.RestartRequestedByUser, err == nil, ac.ConsecutiveCrashAttempts, restartAttempts)
+	//
+	// SPEC 143: причина берётся из лога ядра. Детерминированная ошибка
+	// (конфиг, права, порт) прекращает авто-перезапуск сразу, а не после
+	// трёх одинаковых попыток.
+	reason := ac.classifyCoreExitReason()
+	action, newAttempts := decideCrashActionReason(ac.StoppedByUser, ac.RestartRequestedByUser, err == nil, ac.ConsecutiveCrashAttempts, restartAttempts, reason)
 
 	// 2. Then StoppedByUser (did user stop it?)
 	if action == actionStoppedByUser {
@@ -557,6 +611,17 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 		debuglog.WarnLog("monitorSingBox: Sing-Box exited gracefully (exit code 0).")
 		ac.ConsecutiveCrashAttempts = newAttempts
 		ac.RunningState.Set(false)
+		return
+	}
+
+	// 4b. Детерминированная ошибка (SPEC 143): повтор даст тот же
+	// результат, поэтому не перезапускаем и показываем конкретную причину
+	// с действием, а не «не удалось перезапустить».
+	if action == actionDeterministicFailure {
+		debuglog.WarnLog("monitorSingBox: deterministic failure (%s), not restarting", reason)
+		ac.ConsecutiveCrashAttempts = newAttempts
+		ac.RunningState.Set(false)
+		ac.showDeterministicExitDialog(reason)
 		return
 	}
 
