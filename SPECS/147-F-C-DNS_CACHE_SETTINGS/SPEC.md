@@ -64,11 +64,42 @@
 (свой шаблон), скрыта. Перечитывание — `GUIState.RefreshDNSCacheSettings`
 из `refreshDNSSelectsFromModel`. Переводы — `bin/locale/ru.json`.
 
+### 3.1. Кнопка «Clear DNS cache» (решение владельца 27.09.2026)
+
+Под переключателями — кнопка «Clear DNS cache» с пояснением. Условия:
+
+1. Ядро работает (`RunningState.IsRunning()`), Clash API включён и адрес
+   известен → подтверждение «Clear DNS cache?» → `api.FlushDNSCache`:
+   `POST /cache/dns/flush` Clash API (в режиме демона — его Clash-адрес
+   `DaemonClashEndpoint`). Ответ 200/204 → «DNS cache cleared.», иначе
+   ошибка «Could not clear DNS cache: …».
+2. Ядро работает, Clash API выключен → сообщение «Clearing the DNS cache
+   needs the Clash API, which is off in this config.», ядро не зовётся.
+3. Ядро не работает → кнопка доступна, но сразу сообщает «DNS cache can be
+   cleared only while the core is running.» без подтверждения. Файл
+   `cache.db` лаунчер не удаляет.
+
+Что делает ядро (`sing-box-lx`): `experimental/clashapi/cache.go`
+`flushDNS` → `DNSRouter.ClearCache` (`dns/router.go`) →
+`Client.ClearCache` (`dns/client.go`): чистит кэш в памяти и, если задан
+`store_dns` (тогда `dnsCache` = cache file), зовёт
+`CacheFile.ClearDNSCache` (`experimental/cachefile/dns_cache.go`), которая
+удаляет бакет `dns_cache` из `cache.db`. Плюс платформенный кэш и обратное
+отображение IP → домен. Соединение не рвётся, ядро не перезапускается.
+
+Отличие от LxBox (§263): LxBox удаляет файл `cache.db` целиком и
+перезапускает ядро, поэтому сбрасывает и выделения FakeIP. Лаунчер FakeIP
+не трогает: `POST /cache/fakeip/flush` чистит только бакеты в файле, а
+выделения в памяти работающего ядра остаются, и файл разошёлся бы с памятью.
+
 ## 4. Проверка
 
 - `core/build/dns_cache_vars_test.go`: `TestDNSCacheSettings_DefaultsInConfig`,
   `TestDNSCacheSettings_ChangedValuesInConfig`,
   `TestDNSCacheSettings_CapacityOutOfBoundsNotInConfig`.
+- `ui/configurator/tabs/dns_cache_clear_test.go`:
+  `TestClearDNSCacheOutcome` — логика кнопки (ядро остановлено, Clash API
+  выключен, успех, отказ ядра).
 - Эталоны `core/build/testdata/wizard_template_config/*` перегенерированы:
   разница — только три новых поля.
 - Корпус: `contract/corpus/template/subst/dns_cache_defaults`,

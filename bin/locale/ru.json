@@ -4822,5 +4822,29 @@
   },
   "From %d to %d": {
     "value": "От %d до %d"
+  },
+  "Clear DNS cache": {
+    "value": "Очистить кэш DNS"
+  },
+  "Clear DNS cache?": {
+    "value": "Очистить кэш DNS?"
+  },
+  "Drops cached answers of the running core, including those kept after restart.": {
+    "value": "Сбрасывает кэшированные ответы работающего ядра, включая сохранённые между запусками."
+  },
+  "Cached DNS answers are dropped, including those kept in cache.db. The connection stays up.": {
+    "value": "Кэшированные ответы DNS будут удалены, включая сохранённые в cache.db. Соединение не прерывается."
+  },
+  "DNS cache can be cleared only while the core is running.": {
+    "value": "Кэш DNS можно очистить только при работающем ядре."
+  },
+  "Clearing the DNS cache needs the Clash API, which is off in this config.": {
+    "value": "Для очистки кэша DNS нужен Clash API, а в этом конфиге он выключен."
+  },
+  "Could not clear DNS cache: %s": {
+    "value": "Не удалось очистить кэш DNS: %s"
+  },
+  "DNS cache cleared.": {
+    "value": "Кэш DNS очищен."
   }
 }

@@ -9,8 +9,10 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/api"
 	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
@@ -115,9 +117,74 @@ func buildDNSCacheSettings(presenter *wizardpresentation.WizardPresenter) fyne.C
 	}
 	refresh()
 
+	clearBtn := widget.NewButton(locale.T("Clear DNS cache"), func() {
+		showClearDNSCache(presenter)
+	})
+	clearHint := widget.NewLabel(locale.T("Drops cached answers of the running core, including those kept after restart."))
+	clearHint.Importance = widget.LowImportance
+
 	return container.NewVBox(
 		capRow,
 		optimisticRow,
 		storeCheck,
+		container.NewHBox(clearBtn, clearHint),
 	)
+}
+
+// showClearDNSCache — кнопка «Clear DNS cache» (SPEC 147): при работающем
+// ядре после подтверждения чистит кэш вызовом Clash API POST /cache/dns/flush;
+// при остановленном ядре только сообщает, что очистка возможна при
+// работающем ядре. Файл cache.db не трогается.
+func showClearDNSCache(presenter *wizardpresentation.WizardPresenter) {
+	parent := presenter.DialogParent()
+	ac := presenter.Controller()
+	running := ac != nil && ac.RunningState != nil && ac.RunningState.IsRunning()
+	var baseURL, token string
+	var apiEnabled bool
+	if ac != nil {
+		if b, t, ok := ac.DaemonClashEndpoint(); ok {
+			baseURL, token, apiEnabled = b, t, true
+		} else if ac.APIService != nil {
+			baseURL, token, apiEnabled = ac.APIService.GetClashAPIConfig()
+		}
+	}
+	title := locale.T("Clear DNS cache")
+	if !running {
+		_, msg := clearDNSCacheOutcome(false, apiEnabled, baseURL, token, nil)
+		dialogs.ShowInfo(parent, title, msg)
+		return
+	}
+	dialogs.ShowConfirm(parent, locale.T("Clear DNS cache?"),
+		locale.T("Cached DNS answers are dropped, including those kept in cache.db. The connection stays up."),
+		func(ok bool) {
+			if !ok {
+				return
+			}
+			go func() {
+				done, msg := clearDNSCacheOutcome(true, apiEnabled, baseURL, token, api.FlushDNSCache)
+				fyne.Do(func() {
+					if done {
+						dialogs.ShowInfo(parent, title, msg)
+					} else {
+						dialogs.ShowErrorText(parent, title, msg)
+					}
+				})
+			}()
+		})
+}
+
+// clearDNSCacheOutcome — логика кнопки очистки кэша DNS без интерфейса:
+// решает, можно ли звать ядро, зовёт flush и возвращает итог и текст для
+// пользователя.
+func clearDNSCacheOutcome(running, apiEnabled bool, baseURL, token string, flush func(baseURL, token string) error) (bool, string) {
+	if !running {
+		return false, locale.T("DNS cache can be cleared only while the core is running.")
+	}
+	if !apiEnabled || strings.TrimSpace(baseURL) == "" || flush == nil {
+		return false, locale.T("Clearing the DNS cache needs the Clash API, which is off in this config.")
+	}
+	if err := flush(baseURL, token); err != nil {
+		return false, locale.Tf("Could not clear DNS cache: %s", err.Error())
+	}
+	return true, locale.T("DNS cache cleared.")
 }
