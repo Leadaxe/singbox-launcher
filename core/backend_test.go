@@ -1,6 +1,11 @@
 package core
 
-import "testing"
+import (
+	"testing"
+
+	"singbox-launcher/api"
+	"singbox-launcher/core/services"
+)
 
 // fakeBackend — минимальная реализация CoreBackend для проверки
 // диспетчеризации и учёта Close при setBackend.
@@ -91,4 +96,64 @@ func TestSwitchBackendModeBlockedWhileRunning(t *testing.T) {
 	if err := ac.SwitchBackendMode(BackendDaemon); err == nil {
 		t.Fatal("expected error switching mode while VPN is running")
 	}
+}
+
+// fakeOwnTransportBackend — daemon-подобный бэкенд со своим транспортом
+// (реализует ownTransportSource, как DaemonBackend).
+type fakeOwnTransportBackend struct {
+	fakeBackend
+	own services.ProxyTransport
+}
+
+func (f *fakeOwnTransportBackend) ownProxyTransport() services.ProxyTransport { return f.own }
+
+// markerTransport — транспорт-метка: сравнивается по указателю.
+type markerTransport struct{ name string }
+
+func (*markerTransport) GroupProxies(string) ([]api.ProxyInfo, string, error) { return nil, "", nil }
+func (*markerTransport) SwitchProxy(string, string) error                     { return nil }
+func (*markerTransport) Delay(string) (int64, error)                          { return 0, nil }
+
+// TestLocalProxyTransportIgnoresMachineOverride — пока на экране вкладка
+// Remote, в APIService стоит транспорт удалённой машины. Область Local всё
+// равно обязана получить транспорт СВОЕГО ядра: иначе команды панели Local и
+// её окон (выключатель WireGuard, переключение узла) уходят на роутер.
+func TestLocalProxyTransportIgnoresMachineOverride(t *testing.T) {
+	machine := &markerTransport{name: "machine"}
+
+	t.Run("daemon", func(t *testing.T) {
+		own := &markerTransport{name: "own"}
+		ac := &AppController{APIService: &services.APIService{}}
+		ac.setBackend(&fakeOwnTransportBackend{fakeBackend: fakeBackend{mode: BackendDaemon}, own: own})
+		ac.APIService.SetTransport(machine) // вкладка Remote с выбранной машиной
+
+		if got := ac.LocalProxyTransport(); got != services.ProxyTransport(own) {
+			t.Fatalf("Local got %v, want own daemon transport", got)
+		}
+		if got, ok := ac.OwnDaemonTransport(); !ok || got != services.ProxyTransport(own) {
+			t.Fatalf("OwnDaemonTransport = (%v,%v), want own daemon transport", got, ok)
+		}
+		// Цель Remote без подключённой машины не подхватывает транспорт,
+		// стоящий в APIService: источник машины — только её выбор.
+		if ac.ChainsAvailable(CoreIn(services.ScopeRemote)) || ac.DaemonPoolAvailable(CoreIn(services.ScopeRemote)) {
+			t.Fatal("Remote target must not read the transport from APIService")
+		}
+	})
+
+	t.Run("classic", func(t *testing.T) {
+		ac := &AppController{APIService: &services.APIService{Enabled: true, BaseURL: "http://127.0.0.1:9090", Token: "tok"}}
+		ac.setBackend(&fakeBackend{mode: BackendClassic})
+		ac.APIService.SetTransport(machine) // classic-клиент с подключённой машиной
+
+		ct, ok := ac.LocalProxyTransport().(services.ClashTransport)
+		if !ok {
+			t.Fatalf("Local got %T, want Clash HTTP of own core", ac.LocalProxyTransport())
+		}
+		if ct.BaseURL != "http://127.0.0.1:9090" || ct.Token != "tok" {
+			t.Fatalf("Local Clash endpoint = %+v, want own config endpoint", ct)
+		}
+		if _, ok := ac.OwnDaemonTransport(); ok {
+			t.Fatal("classic backend has no own daemon transport")
+		}
+	})
 }

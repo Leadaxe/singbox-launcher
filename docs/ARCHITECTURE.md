@@ -1070,6 +1070,25 @@ override is what made the remote connection drag the Local tab onto an empty
 base URL (fixed in `fe575b6`): resolvers must ask for the scope's transport, and
 the gRPC gate must consult the remote override rather than the backend mode.
 
+**Scope, not the visible tab.** `APIService` holds one transport slot
+(`SetTransport` / `TransportOverride`) whose content follows the main window's
+tab: the own engine's transport on Local (`RestoreOwnTransport`), the selected
+machine's on Remote (`ReapplyLxdRemoteTransport`). Only scope-less core
+operations read it (`wireTransport`: auto-load of the list, tray, hotkeys) — so
+while Remote is on screen with a machine connected, they go to that machine.
+Everything that has a scope reads its source directly:
+- `ui.EffectiveProxyTransportIn(ScopeLocal)` → `core.LocalProxyTransport()`:
+  the own backend's gRPC transport in daemon mode, the own core's Clash HTTP in
+  classic. A machine's transport never reaches Local.
+- `ScopeRemote` → the selected machine from its selection, then the own daemon
+  transport, then the Clash override (SPEC 064), then the own Clash API.
+- Core readers of pools, chains and tailnet take a `core.CoreTarget`
+  (scope + machine id): Local reads the own backend, Remote reads the machine
+  through `UIService.LxdMachineTransportFunc`. A node window fixes its target
+  when opened (`nodeWindowTarget`): opened from Remote it stays bound to the
+  machine selected then, and after the selection changes its commands answer
+  "not available" instead of going to another machine.
+
 ### 11.3 Target and role are independent axes (SPEC 097)
 
 Config generation used to assume "the machine the launcher runs on": `runtime.GOOS`

@@ -40,18 +40,12 @@ type tailscaleSource interface {
 	TailscaleLive() bool
 }
 
-// TailscaleTarget — чьё ядро описывает окно или панель: своё (Local) или
-// удалённой машины. MachineID "" у Remote — машина, выбранная сейчас
-// (панель Remote); непустой — только эта машина (окно узла запоминает её при
-// открытии, и команда не уйдёт в другую, если выбор сменили).
-type TailscaleTarget struct {
-	Scope     services.ProxyScope
-	MachineID string
-}
+// TailscaleTarget — цель ядра (CoreTarget): та же, что у пулов и цепочек.
+type TailscaleTarget = CoreTarget
 
 // TailscaleIn — цель области панели; у Remote — выбранная сейчас машина.
 func TailscaleIn(scope services.ProxyScope) TailscaleTarget {
-	return TailscaleTarget{Scope: scope}
+	return CoreIn(scope)
 }
 
 // tailscaleSource — источник статуса цели. Local глух к remote-override:
@@ -65,10 +59,7 @@ func (ac *AppController) tailscaleSource(t TailscaleTarget) (tailscaleSource, bo
 		return nil, false
 	}
 	if t.Scope == services.ScopeRemote {
-		if ac.UIService == nil || ac.UIService.LxdMachineTransportFunc == nil {
-			return nil, false
-		}
-		tr, ok := ac.UIService.LxdMachineTransportFunc(t.MachineID)
+		tr, ok := ac.machineTransport(t)
 		if !ok {
 			return nil, false
 		}

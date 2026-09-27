@@ -44,6 +44,11 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 
 	nodes := wizardbusiness.LoadConfigNodes(cfgPath)
 	node := nodes.Lookup(proxy.Name)
+	// Ядро окна фиксируется при открытии: Local — своё, Remote — машина,
+	// выбранная сейчас. Смена вкладки или машины окно не переводит. Remote
+	// без машины (bound=false) ни к какому ядру не привязан — живых секций
+	// (пул, цепочка, WireGuard) у такого окна нет.
+	target, bound := nodeWindowTarget(scope)
 
 	win := fyne.CurrentApp().NewWindow(
 		locale.Tf("Node: %s", proxy.DisplayOrName()))
@@ -166,7 +171,11 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		}
 		applyMemberDelays(ac.GetProxiesList())
 		go func(group string) {
-			list, _, err := EffectiveProxyTransport(ac).GroupProxies(group)
+			tr, ok := proxyTransportFor(ac, target)
+			if !ok {
+				return
+			}
+			list, _, err := tr.GroupProxies(group)
 			if err != nil || len(list) == 0 {
 				return
 			}
@@ -196,7 +205,8 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		// Живая подписка: ядро пушит смену выбора по событию, поэтому окно
 		// отражает перевыбор само. Разовый снимок «замёрз» бы — у least_test
 		// перевыбор случается по результатам url-теста в любой момент.
-		if sub, ok := EffectiveProxyTransport(ac).(groupSelectionSource); ok {
+		windowTransport, _ := proxyTransportFor(ac, target)
+		if sub, ok := windowTransport.(groupSelectionSource); ok {
 			if cancel, err := sub.SubscribeGroupSelection(proxy.Name, func(selected string) {
 				fyne.Do(func() { markSelected(selected) })
 			}); err == nil {
@@ -207,7 +217,11 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		} else {
 			// Транспорт без подписки (Clash HTTP) — разовый снимок.
 			go func(group string) {
-				_, now, err := EffectiveProxyTransport(ac).GroupProxies(group)
+				tr, ok := proxyTransportFor(ac, target)
+				if !ok {
+					return
+				}
+				_, now, err := tr.GroupProxies(group)
 				if err != nil || strings.TrimSpace(now) == "" {
 					return
 				}
@@ -231,11 +245,11 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		// СОЗДАЁМ секцию. Пустой ответ (в т.ч. Unimplemented без
 		// with_lx_command) не рисует ничего — про пул не говорим там, где
 		// балансировки нет.
-		if node.Type == "urltest" && ac.DaemonPoolAvailable() {
+		if node.Type == "urltest" && bound && ac.DaemonPoolAvailable(target) {
 			poolBox := container.NewVBox()
 			body.Add(poolBox)
 			go func(group string) {
-				slots, err := ac.DaemonPoolSlots(group)
+				slots, err := ac.DaemonPoolSlots(target, group)
 				fyne.Do(func() {
 					switch {
 					case err != nil || len(slots) == 0:
@@ -274,8 +288,8 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 
 	// Цепочка: позиции и послойный замер. Только у outbound'а типа chain и
 	// только там, где ядро отвечает по gRPC (см. addChainSection).
-	if node.Type == configtypes.ChainOutboundType {
-		addChainSection(ac, body, win, proxy.Name)
+	if bound && node.Type == configtypes.ChainOutboundType {
+		addChainSection(ac, target, body, win, proxy.Name)
 	}
 
 	// Tailnet: состояние, вход, устройства, exit node — отдельной вкладкой
@@ -288,8 +302,8 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 
 	// WG/AWG: состояние в ядре и выключатель. Секция сама решает, рисоваться
 	// ли, — по ответу ядра (addWireGuardSection).
-	if !node.IsGroup() {
-		addWireGuardSection(ac, body, win, proxy.Name, scope)
+	if bound && !node.IsGroup() {
+		addWireGuardSection(ac, target, body, win, proxy.Name)
 	}
 
 	// TLS-подробности отдельной секцией: их много и они длинные.
