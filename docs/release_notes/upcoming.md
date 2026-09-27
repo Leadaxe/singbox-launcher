@@ -13,6 +13,7 @@
 - Contract 1.1.88: an invalid VLESS `flow` is removed even on a hand-written node (the core refuses to start with it); new corpus section `node_edit`; a source test keeps build steps that change a node body behind the single decision point.
 - Contract 1.1.89: node document with several nodes in the node JSON tab keeps the first node; import still creates one record per node.
 - Contract 1.1.90: the DNS rule of the "Tailscale networks" preset names the node's DNS server in `preferred_by`, not the node itself; the old value kept the core from starting.
+- Contract 1.1.91: 29 more registry rules are marked `core_rejects` (the core refuses to start with such a value), so they are applied to hand-written nodes too: VLESS `encryption`, Shadowsocks `method`, WireGuard keys and peer port, REALITY keys, xhttp placements and others.
 
 ## RU
 ### Основное
@@ -25,3 +26,4 @@
 - Контракт 1.1.88: недопустимый `flow` VLESS снимается и у узла, написанного вручную (ядро с ним не стартует); новый раздел корпуса `node_edit`; тест по исходникам держит шаги сборки, меняющие тело узла, за единой точкой решения.
 - Контракт 1.1.89: документ с несколькими узлами во вкладке JSON узла сохраняет первый узел; импорт по-прежнему создаёт запись на каждый узел.
 - Контракт 1.1.90: DNS-правило пресета «Tailscale networks» указывает в `preferred_by` DNS-сервер узла, а не сам узел; прежнее значение не давало ядру стартовать.
+- Контракт 1.1.91: ещё 29 правил реестра помечены `core_rejects` (с таким значением ядро не стартует) и применяются и к узлу, написанному вручную: `encryption` VLESS, `method` Shadowsocks, ключи и порт пира WireGuard, ключи REALITY, placement-поля xhttp и другие.

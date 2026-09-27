@@ -96,6 +96,20 @@ sing-box JSON подписок.
   `ui/configurator/tabs`): контейнер, прежний источник, ввод вкладки JSON →
   источник после правки, `authored`, `rest_not_kept`, коды.
 
+## 7. Пробел `core_rejects` (контракт 1.1.91, TASKS_LXBOX §88)
+
+Правила, которые по прозе реестра роняют старт всего конфига, но признака не
+имели, сверены с sing-box-lx: 29 признаков поставлены (`vless.encryption`,
+`shadowsocks.method`, ключи и порт WireGuard, `header_protection_key`,
+`id`/`ip`/`ib`, REALITY `public_key`/`short_id`/`key_share`, xhttp
+placements и `x_padding_method`, `tuic.uuid`, `naive.quic_congestion_control`,
+`masque.profile`/ключи, `hysteria.obfs`, `server_ports` обоих hysteria,
+`tailscale.advertise_routes`). Перечень с функциями ядра — TASKS_LXBOX §88.
+Мягкими остались `server` и `peers[].address` (ошибка только при соединении)
+и `on_core_unsupported`. Пароль shadowsocks 2022 — правила в реестре нет.
+`registry.RuleCoreRejects` понимает путь с индексом в скобках. Корпус —
+26 кейсов `authored/hard_*`.
+
 ## 6. Не сделано
 
 Расхождений нет. Документ с несколькими узлами во вкладке JSON закрыт в

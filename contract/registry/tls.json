@@ -1035,7 +1035,8 @@
             "normalize": "base64_rawurl",
             "on_invalid": {
               "action": "drop",
-              "code": "reality_pbk_invalid"
+              "code": "reality_pbk_invalid",
+              "core_rejects": true
             },
             "required": true,
             "desc_en": "Server REALITY public key (x25519).",
@@ -1051,7 +1052,8 @@
             "normalize_code": "reality_short_id_invalid",
             "on_invalid": {
               "action": "drop",
-              "code": "reality_short_id_invalid"
+              "code": "reality_short_id_invalid",
+              "core_rejects": true
             },
             "requires": [
               {
@@ -1073,7 +1075,8 @@
             "normalize": "trim_lower",
             "on_invalid": {
               "action": "drop",
-              "code": "reality_key_share_invalid"
+              "code": "reality_key_share_invalid",
+              "core_rejects": true
             },
             "default": "",
             "lx_only": true,

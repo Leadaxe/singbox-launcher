@@ -8641,3 +8641,56 @@ SPEC 146, хвосты.
    server: <тег>-dns}`; проверка, что сервер с этим тегом есть в `dns.servers`.
 3. Синк контракта 1.1.90: корпус `corpus/template/for_each/` (пресеты и
    ожидания пяти кейсов с DNS-правилом) переписан на тег сервера.
+
+## 88. Контракт 1.1.91 — пробел `core_rejects`: ещё 29 правил жёсткие
+
+LxBox §577 нашла правила, которые по прозе реестра роняют старт всего
+конфига, но признака `core_rejects` не имели: на авторском теле они
+оставались мягкими (`applied: false`), и ядро не стартовало. Каждое правило
+сверено с sing-box-lx; признак стоит там, где ядро отказывает при разборе
+конфига или при создании узла.
+
+| Правило | Где признак | Ядро отказывает |
+|---|---|---|
+| `vless.encryption` | `on_invalid` (drop_node) | `protocol/vless/outbound.go` NewOutbound → `lx_encryption.go` parseClientEncryption |
+| `shadowsocks.method` | `on_invalid` (drop_node) | `protocol/shadowsocks/outbound.go` NewOutbound → sing-shadowsocks2 CreateMethod |
+| `tuic.uuid` | `on_invalid` | `protocol/tuic/outbound.go` NewOutbound «invalid uuid» |
+| `naive.quic_congestion_control` | `on_invalid` | `protocol/naive/outbound.go` NewOutbound «unknown quic congestion control» |
+| `masque.profile`, `private_key`, `public_key` | `on_invalid` | `protocol/masque/outbound.go` NewOutbound: ParseProfile, parseECPrivateKey/parseECPublicKey, «required for the cloudflare profile» |
+| `hysteria.obfs` (объект) | `on_invalid` (unwrap) | разбор опций: поле — строка |
+| `hysteria.server_ports`, `hysteria2.server_ports` | у поля (`on_item_invalid` своего признака не имеет) | sing-quic `hysteria.NewClient` / `hysteria2.NewClient` → ParsePorts «bad port range» |
+| `wireguard.private_key`, `peers[].public_key`, `peers[].pre_shared_key` | `on_invalid` (drop_node) | `transport/wireguard/endpoint.go` NewEndpoint: base64-декод ключей |
+| `peers[].port` | `on_invalid` (drop_node) | разбор опций: uint16; как `server_port` (1.1.87) |
+| `peers[].allowed_ips` | `on_invalid` | разбор `[]netip.Prefix`; пустой — NewEndpoint «missing allowed ips» |
+| `header_protection_key` | `on_invalid` (drop_node) | `transport/wireguard/device_awg.go` awgHeaderProtectionKeyHex из NewEndpoint |
+| `id`, `ip`, `ib` | `on_invalid` | `transport/wireguard/masque_awg.go` validateMasqueDomain, masqueI1, normalizeMasqueBrowser из NewEndpoint |
+| `tls.reality.public_key`, `short_id`, `key_share` | `on_invalid` | `common/tls/reality_client.go` NewRealityClient при создании узла |
+| xhttp `session_placement`, `seq_placement`, `x_padding_placement`, `x_padding_method` | `on_invalid` | `transport/v2rayxhttp/meta.go` normalizeMeta из NewClient |
+| `tailscale.advertise_routes` | `on_invalid` и у поля (для `item_forbidden`) | разбор `[]netip.Prefix`; `protocol/tailscale/endpoint.go` NewEndpoint «cannot be default» |
+
+Мягкими остались:
+
+- `server` (`dialer.json`, `field_missing`) и `peers[].address`: негодный
+  адрес ядро принимает как домен, ошибка только при соединении.
+- `on_core_unsupported` (`naive_unavailable`, `tailscale_core_unsupported`,
+  `awg3_core_unsupported`): признак сборки ядра, а не значения.
+- Пароль shadowsocks 2022 неверной длины: ядро отказывает
+  (`shadowaead_2022/method.go` NewMethod «bad key length»), но правила в
+  реестре нет — только проза у `body.fields.password`. Машинная форма
+  («формат пароля зависит от метода») требует нового вида правила с
+  исполнением в обоих движках; не заведена, до неё страховка «ядро отвергло
+  узел».
+- Прочие поля AWG 3 с типом `awg_range`/`bool` (`awg3_field_invalid`): в
+  прозе отказ назван только для сборки без `with_awg`.
+
+Go: `registry.RuleCoreRejects` читает путь предупреждения с индексом в
+скобках (`peers[0].port`, `server_ports[0]`): прежде жёсткое правило внутри
+элемента массива на авторском теле оставалось мягким.
+
+Что сделать LxBox:
+
+1. Синк 1.1.91; `body_edit.dart` — проверить, что признак находится и для
+   пути с индексом в скобках (как в Go выше).
+2. Корпус `authored/hard_*` — 26 новых кейсов, по одному на правило.
+3. `registry_gate_test.dart`: авторский узел с негодным `vless.encryption`
+   теперь снимается.

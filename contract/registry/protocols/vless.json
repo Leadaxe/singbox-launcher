@@ -243,7 +243,8 @@
         "min_core": "1.14.0-lx.18",
         "on_invalid": {
           "action": "drop_node",
-          "code": "vless_encryption_invalid"
+          "code": "vless_encryption_invalid",
+          "core_rejects": true
         },
         "desc_en": "Post-quantum encryption layer.",
         "desc_ru": "Постквантовый слой шифрования.",

@@ -1870,7 +1870,11 @@ func (r *Registry) RuleCoreRejects(scheme, code, path string) bool {
 	if path == "" {
 		return false
 	}
-	for _, f := range fieldsAtBodyPath(b.Fields, strings.Split(path, ".")) {
+	// Путь предупреждения пишет индекс элемента в скобках (`peers[0].port`,
+	// `server_ports[1]`); поля реестра индекса не знают — скобки становятся
+	// отдельным сегментом, который fieldsAtBodyPath пропускает.
+	fieldPath := strings.NewReplacer("[", ".", "]", "").Replace(path)
+	for _, f := range fieldsAtBodyPath(b.Fields, strings.Split(fieldPath, ".")) {
 		if f.ruleCoreRejects(code) {
 			return true
 		}

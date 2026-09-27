@@ -102,6 +102,7 @@
       },
       "advertise_routes": {
         "type": "string_array",
+        "core_rejects": true,
         "format": "cidr",
         "normalize": "cidr_masked",
         "item_forbidden": {
@@ -110,7 +111,8 @@
         },
         "on_invalid": {
           "action": "drop",
-          "code": "type_invalid"
+          "code": "type_invalid",
+          "core_rejects": true
         },
         "desc_en": "Prefixes advertised to the tailnet.",
         "desc_ru": "Префиксы, объявляемые в tailnet.",

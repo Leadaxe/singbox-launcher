@@ -1,0 +1,5 @@
+# Авторское тело (свой сервер, источник — голое тело узла): ib (браузер маскировки) вне набора.
+# Ядро sing-box-lx отвергает такой конфиг целиком (transport/wireguard/masque_awg.go normalizeMasqueBrowser: «unknown masquerade browser»), поэтому правило
+# жёсткое (core_rejects, контракт 1.1.91) и применяется и на авторском теле:
+# код без applied:false.
+{"type":"wireguard","tag":"own-wg","address":["10.0.0.2/32"],"private_key":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=","peers":[{"address":"example-3.com","port":51820,"public_key":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=","allowed_ips":["0.0.0.0/0"]}],"jc":4,"jmin":10,"jmax":50,"ip":"quic","id":"example-5.com","ib":"opera"}

@@ -1,0 +1,15 @@
+{
+  "dropped": [
+    {
+      "code": "ss_method_invalid",
+      "index": 0,
+      "reason": "emit_error",
+      "ref": "own-ss"
+    }
+  ],
+  "meta": {
+    "container": "own"
+  },
+  "nodes": [],
+  "v": 1
+}

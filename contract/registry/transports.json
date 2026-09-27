@@ -848,7 +848,8 @@
             ],
             "on_invalid": {
               "action": "drop",
-              "code": "xhttp_param_reset"
+              "code": "xhttp_param_reset",
+              "core_rejects": true
             },
             "default": "path",
             "desc_en": "Where the session id is carried.",
@@ -873,7 +874,8 @@
             ],
             "on_invalid": {
               "action": "drop",
-              "code": "xhttp_param_reset"
+              "code": "xhttp_param_reset",
+              "core_rejects": true
             },
             "default": "path",
             "desc_en": "Where the packet sequence number is carried.",
@@ -997,7 +999,8 @@
             ],
             "on_invalid": {
               "action": "drop",
-              "code": "xhttp_param_reset"
+              "code": "xhttp_param_reset",
+              "core_rejects": true
             },
             "default": "queryInHeader",
             "desc_en": "Where the padding is carried.",
@@ -1013,7 +1016,8 @@
             ],
             "on_invalid": {
               "action": "drop",
-              "code": "xhttp_param_reset"
+              "code": "xhttp_param_reset",
+              "core_rejects": true
             },
             "default": "repeat-x",
             "desc_en": "How the padding content is generated.",

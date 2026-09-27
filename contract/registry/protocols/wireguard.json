@@ -1947,7 +1947,8 @@
         "normalize": "base64_std",
         "on_invalid": {
           "action": "drop_node",
-          "code": "wg_key_invalid"
+          "code": "wg_key_invalid",
+          "core_rejects": true
         },
         "required": true,
         "secret": true,
@@ -2008,7 +2009,8 @@
               "max": 65535,
               "on_invalid": {
                 "action": "drop_node",
-                "code": "port_invalid"
+                "code": "port_invalid",
+                "core_rejects": true
               },
               "required": true,
               "desc_en": "Peer endpoint port.",
@@ -2020,7 +2022,8 @@
               "format": "base64_32",
               "on_invalid": {
                 "action": "drop_node",
-                "code": "wg_key_invalid"
+                "code": "wg_key_invalid",
+                "core_rejects": true
               },
               "required": true,
               "normalize": "base64_std",
@@ -2033,7 +2036,8 @@
               "format": "base64_32",
               "on_invalid": {
                 "action": "drop_node",
-                "code": "wg_key_invalid"
+                "code": "wg_key_invalid",
+                "core_rejects": true
               },
               "secret": true,
               "normalize": "base64_std",
@@ -2047,7 +2051,8 @@
               "normalize": "cidr_prefix",
               "on_invalid": {
                 "action": "drop",
-                "code": "type_invalid"
+                "code": "type_invalid",
+                "core_rejects": true
               },
               "default_when": {
                 "absent": true,
@@ -2452,7 +2457,8 @@
         "max": 253,
         "on_invalid": {
           "action": "drop",
-          "code": "awg3_field_invalid"
+          "code": "awg3_field_invalid",
+          "core_rejects": true
         },
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
@@ -2481,7 +2487,8 @@
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
-          "code": "awg3_field_invalid"
+          "code": "awg3_field_invalid",
+          "core_rejects": true
         },
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
@@ -2512,7 +2519,8 @@
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
-          "code": "awg3_field_invalid"
+          "code": "awg3_field_invalid",
+          "core_rejects": true
         },
         "lx_only": true,
         "min_core": "1.13.13-lx.1",
@@ -2536,7 +2544,8 @@
         "normalize": "base64_std",
         "on_invalid": {
           "action": "drop_node",
-          "code": "awg3_header_key_invalid"
+          "code": "awg3_header_key_invalid",
+          "core_rejects": true
         },
         "secret": true,
         "lx_only": true,

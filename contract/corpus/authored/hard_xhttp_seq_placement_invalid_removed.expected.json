@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "container": "own"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-5.com",
+        "server_port": 443,
+        "transport": {
+          "mode": "stream-one",
+          "path": "/x",
+          "type": "xhttp"
+        },
+        "type": "vless",
+        "uuid": "00000000-0000-4000-8000-000000000591"
+      },
+      "kind": "outbound",
+      "label": "own-vless",
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "xhttp_param_reset",
+          "path": "transport.seq_placement",
+          "value": "bogus"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}
