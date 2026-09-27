@@ -91,6 +91,15 @@ func buildStorageSection(ac *core.AppController) (fyne.CanvasObject, func()) {
 		})),
 		key(locale.T("Template")), container.NewVBox(tmplVal, tmplMeta),
 	}
+	// Защищённая root-owned копия (SPEC 143): путь, состояние сверки с
+	// текущим ядром и подсказка синхронизации. Строка показывается только
+	// там, где такая копия вообще есть (macOS/Windows).
+	rootCopyVal := widget.NewLabel("")
+	rootCopyMeta := widget.NewLabel("")
+	rootCopyMeta.Wrapping = fyne.TextWrapBreak
+	if info.RootCopyPath != "" {
+		rows = append(rows, key(locale.T("Root copy")), container.NewVBox(rootCopyVal, rootCopyMeta))
+	}
 	var wintunVal *widget.Label
 	if runtime.GOOS == "windows" {
 		wintunVal = value()
@@ -119,6 +128,33 @@ func buildStorageSection(ac *core.AppController) (fyne.CanvasObject, func()) {
 			meta += "\n" + locale.Tf("Shadows: %s", info.ShadowedCore)
 		}
 		coreMeta.SetText(meta)
+
+		// Состояние защищённой копии: пользователь должен видеть «копия не
+		// текущее ядро — синхронизируйте», а не узнавать об этом только
+		// отказом старта с TUN.
+		if info.RootCopyPath != "" {
+			rootCopyVal.SetText(info.RootCopyPath)
+			var stateText string
+			switch info.RootCopyState {
+			case "ok":
+				stateText = locale.T("matches the current core")
+				rootCopyMeta.Importance = widget.LowImportance
+			case "missing":
+				stateText = locale.T("missing — sync it before starting TUN")
+				rootCopyMeta.Importance = widget.WarningImportance
+			case "outdated":
+				stateText = locale.T("not the current core — sync it before starting TUN")
+				rootCopyMeta.Importance = widget.WarningImportance
+			case "unsafe":
+				stateText = locale.T("failed the ownership check — see the core copy dialog")
+				rootCopyMeta.Importance = widget.WarningImportance
+			default:
+				stateText = locale.T("unknown")
+				rootCopyMeta.Importance = widget.LowImportance
+			}
+			rootCopyMeta.SetText(locale.Tf("State: %s", stateText))
+			rootCopyMeta.Refresh()
+		}
 
 		tmplVal.SetText(info.TemplatePath)
 		if info.TemplateSource == "" {

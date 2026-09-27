@@ -426,6 +426,18 @@ type PathsInfo struct {
 	TemplateSource string // data|app|"" (шаблона нет)
 	WintunPath     string // только Windows, иначе ""
 	WintunFound    bool
+
+	// RootCopyPath — защищённая root-owned копия, которую исполняет
+	// привилегированный старт (macOS: /Library/PrivilegedHelperTools/…).
+	// "" — копии для этой платформы нет.
+	RootCopyPath string
+	// RootCopyState — вердикт сверки копии с ядром лаунчера: ok | missing |
+	// outdated | unsafe | legacy | "" (не проверялось). Пользователь должен
+	// видеть, что копия «не текущее ядро» и её надо синхронизировать, а не
+	// узнавать об этом только при отказе старта с TUN.
+	RootCopyState string
+	// RootCopyDetail — краткая причина (sha/владелец) для строки в UI.
+	RootCopyDetail string
 }
 
 // pathsInfoNone — подстановка пустого значения в Lines.

@@ -18,11 +18,13 @@ func (ac *AppController) PathsInfo() paths.PathsInfo {
 		return paths.PathsInfo{}
 	}
 	fs := ac.FileService
-	return pathsInfo(fs.Layout, platform.CoreResolution{
+	info := pathsInfo(fs.Layout, platform.CoreResolution{
 		Path:     fs.SingboxPath,
 		Source:   fs.CoreSource,
 		Shadowed: fs.ShadowedCorePath,
 	}, fs.WintunPath, ac.knownCoreVersion())
+	ac.fillRootCopyStatus(&info)
+	return info
 }
 
 // PathsInfoFor — лёгкая сборка блока до контроллера (флаг -paths): цепочка
