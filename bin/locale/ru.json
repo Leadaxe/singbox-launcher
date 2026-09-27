@@ -438,6 +438,9 @@
   "Reinstall v%s": {
     "value": "Переустановить v%s"
   },
+  "Use pinned v%s": {
+    "value": "Заменить на закреплённую v%s"
+  },
   "Close": {
     "value": "Закрыть"
   },
@@ -4804,5 +4807,38 @@
   },
   "Tag %q is already used by a Direction: the swap group will not be built until the tag is free.": {
     "value": "Тег %q уже носит Направление: группа свёртки не соберётся, пока тег не освободится."
+  },
+  "The core rejected its configuration, so restarting cannot help. The launcher has stopped auto-restart. Open the config, fix the reported field, save, then start again.": {
+    "value": "Ядро отвергло конфигурацию, поэтому перезапуск не поможет. Авто-перезапуск остановлен. Откройте конфиг, исправьте указанное поле, сохраните и запустите снова."
+  },
+  "The core did not have the privileges it needs (TUN requires root). Restarting cannot help while the privileges are missing. Check that the root-owned core copy matches the current core, then start again.": {
+    "value": "У ядра не было нужных прав (для TUN нужен root). Пока прав нет, перезапуск не поможет. Проверьте, что root-копия ядра совпадает с текущим ядром, и запустите снова."
+  },
+  "A local port the core needs is already in use, so restarting would fail the same way. The launcher has stopped auto-restart. Free the port (another proxy client may hold it) or change the port in the config, then start again.": {
+    "value": "Нужный ядру локальный порт уже занят, поэтому перезапуск даст ту же ошибку. Авто-перезапуск остановлен. Освободите порт (его может держать другой прокси-клиент) или смените порт в конфиге и запустите снова."
+  },
+  "A local file or folder the core needs is missing. Restarting cannot help. Check the paths in the config and the launcher's data folder, then start again.": {
+    "value": "Не хватает локального файла или каталога, нужного ядру. Перезапуск не поможет. Проверьте пути в конфиге и каталог данных лаунчера и запустите снова."
+  },
+  "The core's own API did not come up or rejected the launcher's credentials. Restarting cannot help. Check the Clash API settings (address and secret) and apply them.": {
+    "value": "Собственный API ядра не поднялся или отверг учётные данные лаунчера. Перезапуск не поможет. Проверьте настройки Clash API (адрес и secret) и примените их."
+  },
+  "Root copy": {
+    "value": "Root-копия"
+  },
+  "matches the current core": {
+    "value": "совпадает с текущим ядром"
+  },
+  "missing — sync it before starting TUN": {
+    "value": "отсутствует — синхронизируйте до запуска TUN"
+  },
+  "not the current core — sync it before starting TUN": {
+    "value": "не текущее ядро — синхронизируйте до запуска TUN"
+  },
+  "failed the ownership check — see the core copy dialog": {
+    "value": "не прошла проверку владения — см. диалог копии ядра"
+  },
+  "State: %s": {
+    "value": "Состояние: %s"
   }
 }
