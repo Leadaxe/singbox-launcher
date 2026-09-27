@@ -105,3 +105,10 @@ core/build/testdata/golden/*/actual.config.json
 
 # Эталон v6mig: раннер пишет outbounds.actual.json при расхождении.
 SPECS/118-F-N-STATE_V7/etalon/v6mig/outbounds.actual.json
+
+# Локальные кеши сборки/модулей рабочего дерева (песочница: ~/go и
+# ~/Library/Caches недоступны на запись) — не часть репозитория.
+.gocache/
+
+# Одноразовые локальные пробы (например, AEWP UID-проба) — не часть репозитория.
+.probe/
