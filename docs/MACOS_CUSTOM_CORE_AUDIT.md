@@ -164,6 +164,30 @@ at UID 0 creating `utun`) remains §9 manual acceptance, to be run from the GUI 
 authorization dialog can be displayed — see the acceptance checklist in the delivery
 report. It is not claimed as verified.
 
+## 1a. Test status on this machine
+
+The project's own CI test runner (`build/test_darwin.sh`, the script
+`.github/workflows/ci.yml` invokes on `macos-latest`) was run on the working branch and
+on the unmodified baseline. Both produce **exactly the same two failures**:
+
+| Test | Cause | Related to this work? |
+|---|---|---|
+| `TestListProcesses_Smoke` | `fork/exec /bin/ps: operation not permitted` — the build sandbox blocks `/bin/ps` | No. Fails identically at baseline. |
+| `TestCorpusBodiesPassSingboxCheck` | The corpus is checked against a sing-box binary; the one installed here is the custom core and is not built with `with_wireguard`, so `endpoints[0]: unknown endpoint type: wireguard` | No. Fails identically at baseline, and is a property of the core's build tags. |
+
+Confirmed for the second failure directly:
+
+```text
+$ sing-box version | grep ^Tags:
+Tags: with_gvisor,with_quic,with_utls,with_clash_api,with_naive_outbound,jiejie_client_macos,badlinkname,tfogo_checklinkname0
+# no with_wireguard
+```
+
+No new failures are introduced by the changes: the failure set is identical before and
+after. Upstream CI on the pull request sits in `action_required` because GitHub requires
+a maintainer of the target repository to approve workflow runs from a fork; that approval
+is outside this task's control and is deliberately not worked around.
+
 ### 5.2 Custom core rejected by the version-naming gate
 
 | | |
