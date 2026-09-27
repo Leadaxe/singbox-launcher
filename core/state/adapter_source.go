@@ -122,7 +122,12 @@ func (s *Source) canonicalProjection() *configtypes.CanonicalSource {
 			if s.Nodes[i].IsUnsupported() {
 				continue
 			}
-			cs.Nodes = append(cs.Nodes, canonicalNodeProjection(&s.Nodes[i]))
+			cn := canonicalNodeProjection(&s.Nodes[i])
+			// §578: у узла подписки записи нет — skip_presets всегда ложь.
+			if s.Kind == SourceKindSubscription {
+				cn.SkipPresets = false
+			}
+			cs.Nodes = append(cs.Nodes, cn)
 		}
 		return cs
 
@@ -165,6 +170,8 @@ func canonicalNodeProjection(n *Node) configtypes.CanonicalNode {
 		Body:    n.Body,
 		Detour:  canonicalLink(n.Detour),
 		Service: n.Service,
+
+		SkipPresets: n.SkipPresets,
 	}
 	if n.Origin != nil {
 		out.OriginKind = n.Origin.Kind

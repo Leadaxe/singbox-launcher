@@ -1,0 +1,9 @@
+{
+  "load": "either",
+  "config": {
+    "keep": "k"
+  },
+  "warnings": [
+    "template_var_undeclared"
+  ]
+}

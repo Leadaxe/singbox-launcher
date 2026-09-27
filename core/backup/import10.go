@@ -108,6 +108,8 @@ func decode10Source(in Source10, ruleGroup func(node int) bool) (decodedSource, 
 		Group:   in.Group,
 		Service: in.Service,
 		Reason:  in.Reason,
+
+		SkipPresets: in.SkipPresets,
 		// in.Warnings НЕ переносится намеренно (PARSING_PRINCIPLES §6): коды —
 		// производная тела, и чужой набор, посчитанный другой версией
 		// реестра, врал бы про наш узел. Поле прочитано (значит не

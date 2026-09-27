@@ -175,17 +175,19 @@ func export10Source(src state.Source) (Source10, bool) {
 
 	node := cloneNode(src.Node)
 	out := Source10{
-		Kind:     node.Kind,
-		Tag:      node.Tag,
-		Enabled:  node.Enabled,
-		Origin:   node.Origin,
-		Body:     node.Body,
-		Detour:   node.Detour,
-		Hops:     node.Hops,
-		Group:    node.Group,
-		Service:  node.Service,
-		Reason:   node.Reason,
-		Warnings: node.Warnings,
+		Kind:    node.Kind,
+		Tag:     node.Tag,
+		Enabled: node.Enabled,
+		Origin:  node.Origin,
+		Body:    node.Body,
+		Detour:  node.Detour,
+		Hops:    node.Hops,
+		Group:   node.Group,
+		Service: node.Service,
+		Reason:  node.Reason,
+
+		SkipPresets: node.SkipPresets,
+		Warnings:    node.Warnings,
 
 		ID:        src.ID,
 		Name:      src.Name,

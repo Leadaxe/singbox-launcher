@@ -140,6 +140,8 @@ type OutboundGenerationResult struct {
 	// пользователю ИСТОЧНИК, у которого сломался переход. Селекторы и
 	// Направления сюда не попадают — у них источника нет.
 	NodeOrigins map[string]NodeOrigin
+	// SkipPresetsTags — финальные теги узлов с skip_presets=true (LxBox §578).
+	SkipPresetsTags map[string]bool
 
 	// NodeLinks — финальный тег узла → его идентичность в состоянии
 	// ({FolderID, сырой тег}), SPEC 132.
@@ -1185,6 +1187,15 @@ func GenerateOutboundsFromParserConfig(
 	// эмиссия не выпустила, ядро назвать не может, и запись о нём завела бы
 	// сопоставление на узел, которого в конфиге нет.
 	nodeLinks := make(map[string]configtypes.NodeLink, len(allNodes))
+	var skipPresets map[string]bool
+	for _, node := range allNodes {
+		if node != nil && node.SkipPresets && node.Tag != "" {
+			if skipPresets == nil {
+				skipPresets = make(map[string]bool)
+			}
+			skipPresets[node.Tag] = true
+		}
+	}
 	for _, node := range allNodes {
 		outJSONs, epJSON, err := EmitNodeJSONs(node)
 		if err != nil {
@@ -1247,6 +1258,7 @@ func GenerateOutboundsFromParserConfig(
 		ParseFailedSources:   parseFailedSources,
 		EmissionWarnings:     emissionWarnings,
 		NodeOrigins:          nodeOrigins,
+		SkipPresetsTags:      skipPresets,
 		NodeLinks:            nodeLinks,
 	}, nil
 }

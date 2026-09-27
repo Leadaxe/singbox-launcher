@@ -115,6 +115,17 @@ func LoadPresets(raw json.RawMessage, globalVarsNames map[string]bool) ([]Preset
 func validatePreset(p *Preset, globalVars map[string]bool) ([]PresetWarning, bool) {
 	var warns []PresetWarning
 
+	// §578: for_each — node_type и as обязательны; без них пресет не
+	// раскрыть ни для одного узла.
+	if p.ForEach != nil && !p.ForEach.Valid() {
+		warns = append(warns, PresetWarning{
+			PresetID: p.ID,
+			Message:  "for_each requires non-empty node_type and as (as without '.', '@', braces, spaces)",
+			Action:   "skip",
+		})
+		return warns, false
+	}
+
 	// vars[].name uniqueness + collision с globals
 	if ws := validateVarsNames(p, globalVars); len(ws) > 0 {
 		warns = append(warns, ws...)

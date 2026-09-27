@@ -82,6 +82,7 @@ func parseV8(data []byte) (*State, error) {
 		Target:             raw.Meta.Target,
 		TargetPlatform:     raw.Meta.TargetPlatform,
 		TargetArch:         raw.Meta.TargetArch,
+		LatePresetsSeeded:  raw.Meta.LatePresetsSeeded,
 		Sources:            raw.Sources,
 		Directions:         raw.Directions,
 		Vars:               raw.Vars,

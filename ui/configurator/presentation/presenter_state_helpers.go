@@ -88,9 +88,13 @@ func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile)
 	// неотчуждаемый пресет попадал в config.json, но не показывался в списке
 	// правил — пользователь видел в конфиге правила, которых нет в UI, и не
 	// мог добраться до их настроек.
+	p.model.LatePresetsSeeded = append([]string(nil), state.LatePresetsSeeded...)
 	if p.model.TemplateData != nil {
-		state.Rules = corestate.NormalizeRuleOrder(state.Rules,
-			wizardtemplate.RuleOrderSpecs(p.model.TemplateData.Presets))
+		specs := wizardtemplate.RuleOrderSpecs(p.model.TemplateData.Presets)
+		// LxBox §578: разовый засев поздних дефолтных пресетов — до
+		// нормализации оси, чтобы новое правило сразу встало на свой номер.
+		state.Rules, p.model.LatePresetsSeeded = corestate.SeedLateDefaultRules(state.Rules, specs, state.LatePresetsSeeded)
+		state.Rules = corestate.NormalizeRuleOrder(state.Rules, specs)
 	}
 
 	p.model.PresetRefs = wizardmodels.SyncStateRulesToPresetRefs(state.Rules)

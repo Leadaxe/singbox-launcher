@@ -110,6 +110,7 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 		state.Directions = []configtypes.Direction{}
 	}
 	state.WarpAccounts = p.model.WarpAccounts
+	state.LatePresetsSeeded = append([]string(nil), p.model.LatePresetsSeeded...)
 
 	// Извлекаем config_params из модели
 	state.ConfigParams = p.extractConfigParams()

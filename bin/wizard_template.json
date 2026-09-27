@@ -1095,6 +1095,87 @@
    ]
   },
   {
+   "id": "tailscale",
+   "label": "Tailscale networks",
+   "description": "Route each tailnet through its Tailscale node and resolve its names with the node's own DNS.",
+   "default_enabled": true,
+   "for_each": {
+    "node_type": "tailscale",
+    "as": "node",
+    "filter": {
+     "#not": "@node.skip_presets"
+    }
+   },
+   "vars": [
+    {
+     "name": "dns_enable",
+     "type": "bool",
+     "default": "true",
+     "title": "DNS",
+     "tooltip": "Resolve tailnet names with the node's own DNS."
+    }
+   ],
+   "rules": [
+    {
+     "#if": {
+      "#and": [
+       "@dns_enable"
+      ],
+      "#value": {
+       "preferred_by": [
+        "@node"
+       ],
+       "action": "resolve",
+       "server": {
+        "#tpl": "@{node}-dns"
+       }
+      }
+     }
+    },
+    {
+     "preferred_by": [
+      "@node"
+     ],
+     "outbound": "@node"
+    }
+   ],
+   "dns_servers": [
+    {
+     "#if": {
+      "#and": [
+       "@dns_enable"
+      ],
+      "#value": {
+       "type": "tailscale",
+       "tag": {
+        "#tpl": "@{node}-dns"
+       },
+       "endpoint": "@node",
+       "description": "MagicDNS of the tailnet"
+      }
+     }
+    }
+   ],
+   "dns_rules": [
+    {
+     "#if": {
+      "#and": [
+       "@dns_enable"
+      ],
+      "#value": {
+       "preferred_by": [
+        "@node"
+       ],
+       "server": {
+        "#tpl": "@{node}-dns"
+       }
+      }
+     }
+    }
+   ],
+   "num": 945
+  },
+  {
    "id": "private-ips",
    "label": "Private IPs",
    "description": "Route private IP ranges (LAN, etc.) directly to guarantee local network access.",

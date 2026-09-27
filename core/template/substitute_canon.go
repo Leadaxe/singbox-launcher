@@ -36,6 +36,9 @@ type canonCtx struct {
 	target   TargetSpec
 	warnings []TemplateWarning
 	seen     map[string]bool
+	// dynPrefixes — пространства имён узла for_each (§578): имя `<as>` и
+	// всякое `<as>.…` считаются объявленными.
+	dynPrefixes []string
 }
 
 // warn добавляет warning без дублей по паре (код, параметры): одна и та же
@@ -103,6 +106,11 @@ const (
 func substituteWalkCanon(v *interface{}, ctx *canonCtx) {
 	switch x := (*v).(type) {
 	case map[string]interface{}:
+		// §578: составная строка {"#tpl": "…"} — значение целиком.
+		if _, has := x[tplKey]; has {
+			*v = evalTplCanon(x, ctx)
+			return
+		}
 		// SPEC 107: #enable — ПЕРВЫМ, до #if и до обхода детей. При false узел
 		// исчезает целиком и внутри ничего не вычисляется (ни подстановок, ни
 		// warning'ов). Обязательно ДО ветки warnUnknownDirective ниже: иначе
@@ -234,7 +242,7 @@ func replacementCanon(name string, ctx *canonCtx) interface{} {
 
 	r, ok := ctx.resolved[name]
 	if !ok {
-		if !ctx.declared[name] {
+		if !ctx.isDeclared(name) {
 			// Имя не объявлено — опечатка автора шаблона. Плейсхолдер остаётся
 			// видимым: пустая строка спрятала бы ошибку, а падение сборки
 			// превратило бы опечатку в отказ всего конфига (§5.2).
@@ -245,6 +253,9 @@ func replacementCanon(name string, ctx *canonCtx) interface{} {
 		return droppedValue{}
 	}
 
+	if r.Raw != nil {
+		return deepCopyRaw(r.Raw)
+	}
 	typ := ctx.varTypes[name]
 	if typ == "text_list" {
 		out := make([]interface{}, len(r.List))
@@ -439,7 +450,7 @@ func (c *canonCtx) noteVarRef(ref string) {
 	if name == "" || isRuntimeGlobalRef(name) {
 		return
 	}
-	if !c.declared[name] {
+	if !c.isDeclared(name) {
 		c.warnUndeclared(name)
 	}
 }

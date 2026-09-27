@@ -317,6 +317,9 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 	// было неполным и снимало живые ссылки (DNS-правило теряло ограничение
 	// и начинало матчить всё). Считается и для preview: чистка работает там
 	// так же, и неполное множество врало бы и в превью.
+	// LxBox §578: узлы для for_each — здесь состав окончателен (граф-санитайзер
+	// уже снял узлы с висячими ссылками) и финальные теги назначены.
+	ctx.Preset.PresetNodes = collectPresetNodes(ctx.Cache, order)
 	ctx.Preset.EmittedRuleSetTags = CollectEmittedRouteRuleSetTags(cfg["route"], ctx.Route, ctx.Preset)
 
 	// SPEC 129 Н10: секция dns собирается ПЕРВОЙ, независимо от порядка
@@ -556,4 +559,48 @@ func splitEntryComment(entry string) (prefix, jsonPart string) {
 		}
 		rest = rest[nl+1:]
 	}
+}
+
+// collectPresetNodes — узлы конфига для раскрытия for_each (LxBox §578) в
+// порядке секций шаблона: тег, тело и skip_presets записи. Выключенные узлы и
+// снятые гейтами в кэш не попадают — и сюда тоже.
+func collectPresetNodes(c *ParsedCache, order []string) []template.PresetNode {
+	if c == nil {
+		return nil
+	}
+	var out []template.PresetNode
+	add := func(entries []json.RawMessage) {
+		for _, e := range entries {
+			_, jsonPart := splitEntryComment(string(e))
+			dec := json.NewDecoder(strings.NewReader(jsonPart))
+			dec.UseNumber()
+			var body map[string]interface{}
+			if err := dec.Decode(&body); err != nil || body == nil {
+				continue
+			}
+			tag, _ := body["tag"].(string)
+			if tag == "" {
+				continue
+			}
+			out = append(out, template.PresetNode{Tag: tag, Body: body, SkipPresets: c.SkipPresets[tag]})
+		}
+	}
+	endpointsFirst := false
+	for _, k := range order {
+		if k == "endpoints" {
+			endpointsFirst = true
+			break
+		}
+		if k == "outbounds" {
+			break
+		}
+	}
+	if endpointsFirst {
+		add(c.Endpoints)
+		add(c.Outbounds)
+	} else {
+		add(c.Outbounds)
+		add(c.Endpoints)
+	}
+	return out
 }

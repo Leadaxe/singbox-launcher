@@ -245,6 +245,9 @@ type CanonicalNode struct {
 	// Service — узел служебный (релей BYPASS, SPEC 120): в конфиг идёт, в
 	// пользовательский выбор — нет.
 	Service bool
+	// SkipPresets — поле записи skip_presets (LxBox §578); у узла подписки
+	// всегда false.
+	SkipPresets bool
 }
 
 // CanonicalAutoGroup — провайдерская группа канона в сборочной форме.
@@ -718,6 +721,9 @@ type ParsedNode struct {
 	// показал его шестерёнкой, а выбор Направлений не предлагал.
 	// В конфиг попадает как всякий другой — detour на него иначе повис бы.
 	Service bool
+	// SkipPresets — поле записи skip_presets (LxBox §578): пресеты с
+	// for_each узел не обслуживают.
+	SkipPresets bool
 	// Chain is the ordered detour path from the nearest hop outwards
 	// (SPEC 094 B1). Empty means the node dials directly.
 	//

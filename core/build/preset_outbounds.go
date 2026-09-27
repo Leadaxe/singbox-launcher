@@ -126,7 +126,7 @@ func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string, 
 			})
 			continue
 		}
-		substituted, subWarns, ok := substitutePresetBody(asMap, preset.Vars, nil, varsMap, target)
+		substituted, subWarns, ok := substitutePresetBody(asMap, preset.Vars, nil, varsMap, target, nil)
 		warnings = append(warnings, substitutionWarnings(preset.ID, subWarns)...)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{

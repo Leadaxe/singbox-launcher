@@ -162,7 +162,7 @@ func ResolveRouteWithGlobals(
 	for _, rule := range rules {
 		switch rule.Kind {
 		case corestate.RuleKindPreset:
-			resolvePresetRouteRule(&out, presetByID, rule, dataDir, emittedTags, target, globalVars, td.Vars)
+			resolvePresetRouteRule(&out, presetByID, rule, dataDir, emittedTags, target, globalVars, td.Vars, td.PresetNodes)
 		case corestate.RuleKindInline:
 			resolveInlineRouteRule(&out, rule)
 		case corestate.RuleKindSrs:
@@ -183,6 +183,7 @@ func resolvePresetRouteRule(
 	target template.TargetSpec,
 	globalVars map[string]string,
 	globalDecls []template.TemplateVar,
+	nodes []template.PresetNode,
 ) {
 	p, ok := presetByID[rule.Ref]
 	if !ok {
@@ -195,7 +196,7 @@ func resolvePresetRouteRule(
 		return
 	}
 	pb := body.(*corestate.PresetBody)
-	frags, warns, ok := ExpandPresetWithGlobals(p, pb.Vars, globalVars, globalDecls, target)
+	frags, warns, ok := ExpandPresetForNodes(p, pb.Vars, globalVars, globalDecls, target, nodes)
 	for _, w := range warns {
 		debuglog.WarnLog("route resolve: %s", w.String())
 	}

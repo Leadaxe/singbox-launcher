@@ -37,6 +37,11 @@ type ParsedCache struct {
 	// переход, — иначе исключение снова становится молчаливым. Пустая карта
 	// не ошибка: узел тогда назовут собственным тегом.
 	NodeOrigins map[string]NodeOrigin
+
+	// SkipPresets — финальные теги узлов, чья запись несёт skip_presets=true
+	// (LxBox §578): пресеты с for_each читают поле как @<as>.skip_presets.
+	// У узла подписки записи нет — его тега здесь не бывает.
+	SkipPresets map[string]bool
 }
 
 // NodeOrigin — чей это узел: ULID источника и его человеческая подпись.

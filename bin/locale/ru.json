@@ -4112,6 +4112,12 @@
   "Endpoints": {
     "value": "Endpoints"
   },
+  "Skip presets": {
+    "value": "Не применять пресеты"
+  },
+  "Presets will not add routing or DNS rules for this node.": {
+    "value": "Пресеты не добавят для этого узла правил маршрутизации и DNS."
+  },
   "Loading…": {
     "value": "Загрузка…"
   },

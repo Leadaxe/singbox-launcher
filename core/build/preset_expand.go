@@ -183,10 +183,68 @@ func ExpandPresetWithGlobals(
 	globalDecls []template.TemplateVar,
 	target template.TargetSpec,
 ) (*PresetFragments, []ExpandWarning, bool) {
+	return ExpandPresetForNodes(preset, userVars, globalVars, globalDecls, target, nil)
+}
+
+// ExpandPresetForNodes — раскрытие с узлами конфига для `for_each` (LxBox
+// §578, TEMPLATE_LANG §6.5). Пресет без for_each раскрывается как прежде,
+// nodes не читаются. Пресет с for_each повторяет тело для каждого узла из
+// nodes (порядок конфига), у которого `type` тела равен node_type и filter
+// истинен; фрагменты повторов идут подряд. Узлов нет — фрагменты пусты.
+// Теги такого пресета не получают пространство `<preset_id>:` (уникальность
+// даёт тег узла, `@{node}-dns`).
+//
+// nodes — только узлы, уже попавшие в конфиг (выключенные и снятые гейтами
+// сюда не передаются).
+func ExpandPresetForNodes(
+	preset *template.Preset,
+	userVars map[string]string,
+	globalVars map[string]string,
+	globalDecls []template.TemplateVar,
+	target template.TargetSpec,
+	nodes []template.PresetNode,
+) (*PresetFragments, []ExpandWarning, bool) {
 	if preset == nil {
 		return nil, nil, false
 	}
+	varsMap, warnings := presetVarsMapWithGlobals(preset, userVars, globalVars, target)
+	fe := preset.ForEach
+	if fe == nil {
+		frags, ws := expandPresetBody(preset, varsMap, globalDecls, target, nil)
+		return frags, append(warnings, ws...), true
+	}
+	out := &PresetFragments{}
+	seen := make(map[string]bool)
+	for _, n := range nodes {
+		if t, _ := n.Body["type"].(string); t != fe.NodeType {
+			continue
+		}
+		scope := template.NewNodeScope(fe.As, n)
+		if !fe.EvalFilter(scope, varsMap, target) {
+			continue
+		}
+		frags, ws := expandPresetBody(preset, varsMap, globalDecls, target, scope)
+		out.RuleSets = append(out.RuleSets, frags.RuleSets...)
+		out.RoutingRules = append(out.RoutingRules, frags.RoutingRules...)
+		if frags.DNSRule != nil {
+			out.DNSRules = append(out.DNSRules, frags.DNSRule)
+		}
+		out.DNSRules = append(out.DNSRules, frags.DNSRules...)
+		out.DNSServers = append(out.DNSServers, frags.DNSServers...)
+		// Одна и та же запись от каждого повтора — одна.
+		for _, w := range ws {
+			if k := w.String(); !seen[k] {
+				seen[k] = true
+				warnings = append(warnings, w)
+			}
+		}
+	}
+	return out, warnings, true
+}
 
+// presetVarsMapWithGlobals — шаги 1–2 раскрытия: значения переменных пресета
+// поверх глобалей, с отсевом неактивных по их гейтам.
+func presetVarsMapWithGlobals(preset *template.Preset, userVars, globalVars map[string]string, target template.TargetSpec) (map[string]string, []ExpandWarning) {
 	var warnings []ExpandWarning
 
 	// === 1. Build varsMap ===
@@ -249,12 +307,31 @@ func ExpandPresetWithGlobals(
 		}
 	}
 
+	return varsMap, warnings
+}
+
+// expandPresetBody — шаги 3–6 раскрытия на готовой карте значений. scope —
+// узел for_each (§578) или nil; с узлом теги не получают пространство
+// пресета, а dns_servers читаются из сырого списка.
+func expandPresetBody(preset *template.Preset, varsMap map[string]string, globalDecls []template.TemplateVar, target template.TargetSpec, scope *template.NodeScope) (*PresetFragments, []ExpandWarning) {
+	var warnings []ExpandWarning
+	gateVars := varsMap
+	if scope != nil {
+		gateVars = scope.VarsMap(varsMap)
+	}
+	prefix := func(tag string) string {
+		if scope != nil {
+			return tag
+		}
+		return preset.ID + TagSeparator + tag
+	}
+
 	frags := &PresetFragments{}
 
 	// === 3. Filter + substitute rule_set ===
 	emittedTags := make(map[string]bool) // tag после prefix
 	for _, rs := range preset.RuleSet {
-		if !template.NormalizeGate(rs.EnableRaw(), rs.If, rs.IfOr).SatisfiedVars(varsMap, target) {
+		if !template.NormalizeGate(rs.EnableRaw(), rs.If, rs.IfOr).SatisfiedVars(gateVars, target) {
 			continue
 		}
 		raw, err := deepCopy(rs)
@@ -263,7 +340,7 @@ func ExpandPresetWithGlobals(
 				Message: fmt.Sprintf("deep copy rule_set %q: %v", rs.Tag, err)})
 			continue
 		}
-		substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target)
+		substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target, scope)
 		warnings = append(warnings, substitutionWarnings(preset.ID, subWarns)...)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{PresetID: preset.ID,
@@ -284,8 +361,7 @@ func ExpandPresetWithGlobals(
 		}
 		// Prefix tag.
 		localTag, _ := m["tag"].(string)
-		prefixed := preset.ID + TagSeparator + localTag
-		m["tag"] = prefixed
+		m["tag"] = prefix(localTag)
 		emittedTags[localTag] = true // ← для cleanDanglingRefs ниже сравниваем по local
 		frags.RuleSets = append(frags.RuleSets, m)
 	}
@@ -297,7 +373,7 @@ func ExpandPresetWithGlobals(
 		if ruleMap == nil {
 			continue
 		}
-		if !extractGateFromMap(ruleMap).SatisfiedVars(varsMap, target) {
+		if !extractGateFromMap(ruleMap).SatisfiedVars(gateVars, target) {
 			continue
 		}
 		raw, err := deepCopyMap(ruleMap)
@@ -306,7 +382,7 @@ func ExpandPresetWithGlobals(
 				Message: fmt.Sprintf("deep copy rules[%d]: %v", idx, err)})
 			continue
 		}
-		substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target)
+		substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target, scope)
 		warnings = append(warnings, substitutionWarnings(preset.ID, subWarns)...)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{PresetID: preset.ID,
@@ -319,7 +395,7 @@ func ExpandPresetWithGlobals(
 		}
 		stripGateKeys(m)
 		// Rewrite rule_set refs: local → prefixed, filter dangling.
-		ruleSetLost := rewriteRuleSetRefs(m, preset.ID, emittedTags)
+		ruleSetLost := rewriteRuleSetRefs(m, presetNamespace(preset, scope), emittedTags)
 		// Apply outbound sentinels (reject/drop) — shared util с UI.
 		if outbound, ok := m["outbound"].(string); ok {
 			m = outboundutil.ApplyOutboundToRule(m, outbound)
@@ -343,7 +419,7 @@ func ExpandPresetWithGlobals(
 
 	// === 5. Resolve dns_rule (singular) + dns_rules (plural, SPEC 085.1) ===
 	if preset.DNSRule != nil {
-		if m, ok := expandOnePresetDNSRule(preset, preset.DNSRule, globalDecls, varsMap, emittedTags, target, &warnings); ok {
+		if m, ok := expandOnePresetDNSRule(preset, preset.DNSRule, globalDecls, varsMap, emittedTags, target, &warnings, scope); ok {
 			frags.DNSRule = m
 		}
 	}
@@ -351,7 +427,7 @@ func ExpandPresetWithGlobals(
 		if dr == nil {
 			continue
 		}
-		if m, ok := expandOnePresetDNSRule(preset, dr, globalDecls, varsMap, emittedTags, target, &warnings); ok {
+		if m, ok := expandOnePresetDNSRule(preset, dr, globalDecls, varsMap, emittedTags, target, &warnings, scope); ok {
 			frags.DNSRules = append(frags.DNSRules, m)
 		}
 	}
@@ -362,7 +438,7 @@ func ExpandPresetWithGlobals(
 	// который применяется в ResolveDNS → MergePresetsIntoDNS. Здесь только
 	// материализуем body + substitute.
 	for _, ds := range preset.DNSServers {
-		if !template.NormalizeGate(ds.EnableRaw(), ds.If, ds.IfOr).SatisfiedVars(varsMap, target) {
+		if !template.NormalizeGate(ds.EnableRaw(), ds.If, ds.IfOr).SatisfiedVars(gateVars, target) {
 			continue
 		}
 		raw, err := deepCopy(ds)
@@ -371,7 +447,7 @@ func ExpandPresetWithGlobals(
 				Message: fmt.Sprintf("deep copy dns_server %q: %v", ds.Tag, err)})
 			continue
 		}
-		substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target)
+		substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target, scope)
 		warnings = append(warnings, substitutionWarnings(preset.ID, subWarns)...)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{PresetID: preset.ID,
@@ -397,11 +473,63 @@ func ExpandPresetWithGlobals(
 		}
 		// Prefix tag.
 		localTag, _ := m["tag"].(string)
-		m["tag"] = preset.ID + TagSeparator + localTag
+		m["tag"] = prefix(localTag)
 		frags.DNSServers = append(frags.DNSServers, m)
 	}
+	if scope != nil {
+		frags.DNSServers = append(frags.DNSServers, expandForEachDNSServers(preset, varsMap, gateVars, globalDecls, target, scope, &warnings)...)
+	}
 
-	return frags, warnings, true
+	return frags, warnings
+}
+
+// presetNamespace — пространство тегов пресета для ссылок rule_set: у
+// раскрытия по узлу for_each пространства нет (§578).
+func presetNamespace(preset *template.Preset, scope *template.NodeScope) string {
+	if scope != nil {
+		return ""
+	}
+	return preset.ID
+}
+
+// expandForEachDNSServers — dns_servers пресета с for_each (сырой список:
+// элемент бывает обёрнут в #if, tag задан #tpl). Сервер без tag после
+// подстановки выпадает; ветка #if с ложным условием — молча.
+func expandForEachDNSServers(preset *template.Preset, varsMap, gateVars map[string]string, globalDecls []template.TemplateVar, target template.TargetSpec, scope *template.NodeScope, warnings *[]ExpandWarning) []map[string]interface{} {
+	var out []map[string]interface{}
+	for _, src := range preset.ForEachDNSServers {
+		if src == nil || !extractGateFromMap(src).SatisfiedVars(gateVars, target) {
+			continue
+		}
+		raw, err := deepCopyMap(src)
+		if err != nil {
+			continue
+		}
+		stripGateKeys(raw)
+		substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target, scope)
+		*warnings = append(*warnings, substitutionWarnings(preset.ID, subWarns)...)
+		if !ok {
+			continue
+		}
+		m, _ := substituted.(map[string]interface{})
+		if len(m) == 0 {
+			continue
+		}
+		if tag, _ := m["tag"].(string); tag == "" {
+			*warnings = append(*warnings, fragmentDropped(preset.ID, fragmentKindDNSServer, "tag"))
+			continue
+		}
+		if dnsServerMissingAddress(m) {
+			*warnings = append(*warnings, fragmentDropped(preset.ID, fragmentKindDNSServer, "server"))
+			continue
+		}
+		delete(m, "title")
+		if det, ok := m["detour"].(string); ok && det == "direct-out" {
+			delete(m, "detour")
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // filterActiveVars — оценивает if/if_or каждой var'ы. Возвращает set активных имён.
@@ -482,7 +610,7 @@ func extractIfFromMap(m map[string]interface{}) (ifList, ifOrList []string) {
 // на сломанном marshal/unmarshal.
 //
 // target — для @runtime.* globals (SPEC 067, SPEC 097).
-func substitutePresetBody(raw interface{}, presetVars []template.PresetVar, globalDecls []template.TemplateVar, varsMap map[string]string, target template.TargetSpec) (interface{}, []template.TemplateWarning, bool) {
+func substitutePresetBody(raw interface{}, presetVars []template.PresetVar, globalDecls []template.TemplateVar, varsMap map[string]string, target template.TargetSpec, scope *template.NodeScope) (interface{}, []template.TemplateWarning, bool) {
 	if raw == nil {
 		return nil, nil, true
 	}
@@ -491,7 +619,7 @@ func substitutePresetBody(raw interface{}, presetVars []template.PresetVar, glob
 		return nil, nil, false
 	}
 	decls, resolved := presetSubstitutionScope(presetVars, globalDecls, varsMap)
-	out, warns, err := template.SubstituteVarsInJSONCanonWarnings(data, decls, resolved, target)
+	out, warns, err := template.SubstituteVarsInJSONCanonScoped(data, decls, resolved, target, scope)
 	if err != nil {
 		return nil, nil, false
 	}
@@ -621,6 +749,12 @@ func splitTextList(scalar string) []string {
 // него остались другие условия, — снятое условие расширило бы совпадение.
 // Висячее имя рядом с живыми просто убирается: список наборов сужается.
 func rewriteRuleSetRefs(m map[string]interface{}, presetID string, validTags map[string]bool) bool {
+	ns := func(tag string) string {
+		if presetID == "" {
+			return tag
+		}
+		return presetID + TagSeparator + tag
+	}
 	ref, ok := m["rule_set"]
 	if !ok {
 		return false
@@ -631,7 +765,7 @@ func rewriteRuleSetRefs(m map[string]interface{}, presetID string, validTags map
 			return false
 		}
 		if validTags[v] {
-			m["rule_set"] = presetID + TagSeparator + v
+			m["rule_set"] = ns(v)
 		} else {
 			delete(m, "rule_set")
 			return true
@@ -644,7 +778,7 @@ func rewriteRuleSetRefs(m map[string]interface{}, presetID string, validTags map
 				continue
 			}
 			if validTags[s] {
-				out = append(out, presetID+TagSeparator+s)
+				out = append(out, ns(s))
 			}
 			// dangling — skip
 		}
@@ -795,8 +929,12 @@ func dnsServerMissingAddress(m map[string]interface{}) bool {
 // gated off, empty, or hit an unresolved @var — правило выпадает с warning, а
 // пресет продолжает собираться (Dropped-каскад §5.1). Shared by the singular
 // dns_rule and the plural dns_rules.
-func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{}, globalDecls []template.TemplateVar, varsMap map[string]string, emittedTags map[string]bool, target template.TargetSpec, warnings *[]ExpandWarning) (map[string]interface{}, bool) {
-	if !extractGateFromMap(src).SatisfiedVars(varsMap, target) {
+func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{}, globalDecls []template.TemplateVar, varsMap map[string]string, emittedTags map[string]bool, target template.TargetSpec, warnings *[]ExpandWarning, scope *template.NodeScope) (map[string]interface{}, bool) {
+	gateVars := varsMap
+	if scope != nil {
+		gateVars = scope.VarsMap(varsMap)
+	}
+	if !extractGateFromMap(src).SatisfiedVars(gateVars, target) {
 		return nil, false
 	}
 	raw, err := deepCopyMap(src)
@@ -804,7 +942,7 @@ func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{},
 		*warnings = append(*warnings, ExpandWarning{PresetID: preset.ID, Message: fmt.Sprintf("deep copy dns_rule: %v", err)})
 		return nil, false
 	}
-	substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target)
+	substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target, scope)
 	*warnings = append(*warnings, substitutionWarnings(preset.ID, subWarns)...)
 	if !ok {
 		*warnings = append(*warnings, ExpandWarning{PresetID: preset.ID, Message: "substitution in dns_rule failed — rule dropped"})
@@ -816,7 +954,7 @@ func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{},
 	}
 	delete(m, "if")
 	delete(m, "if_or")
-	ruleSetLost := rewriteRuleSetRefs(m, preset.ID, emittedTags)
+	ruleSetLost := rewriteRuleSetRefs(m, presetNamespace(preset, scope), emittedTags)
 	// dns_rule.server — может быть локальный bundled tag (без префикса), prefix'ить.
 	if srv, ok := m["server"].(string); ok && srv != "" && !strings.HasPrefix(srv, "@") {
 		for _, ds := range preset.DNSServers {

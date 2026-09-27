@@ -15,6 +15,7 @@
 package template
 
 import (
+	"bytes"
 	"encoding/json"
 
 	"singbox-launcher/core/config/configtypes"
@@ -107,6 +108,43 @@ type Preset struct {
 	// нативный generator сам делает options-flatten, filters/addOutbounds
 	// резолв, comment-prefix. Никаких post-merge JSON-патчей или strip'ов.
 	Outbounds []PresetOutbound `json:"outbounds,omitempty"`
+
+	// ForEach — §578: тело повторяется для каждого узла конфига типа
+	// ForEach.NodeType. nil — обычный пресет.
+	ForEach *PresetForEach `json:"for_each,omitempty"`
+
+	// ForEachDNSServers — dns_servers пресета с for_each, как в шаблоне:
+	// элемент может быть обёрнут в {"#if": …}, а tag задан {"#tpl": …}, и
+	// типизированный PresetDNSServer (tag строкой) такую форму не читает.
+	// У пресета с for_each DNSServers пуст: код, который перечисляет
+	// серверы пресета по строковому tag, их не видит — теги появляются
+	// только при раскрытии по узлам.
+	ForEachDNSServers []map[string]interface{} `json:"-"`
+}
+
+// UnmarshalJSON — у пресета с for_each dns_servers читаются сырыми
+// (ForEachDNSServers), у остальных — как прежде.
+func (p *Preset) UnmarshalJSON(data []byte) error {
+	type presetAlias Preset
+	var in struct {
+		presetAlias
+		DNSServers json.RawMessage `json:"dns_servers,omitempty"`
+	}
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	*p = Preset(in.presetAlias)
+	p.DNSServers = nil
+	p.ForEachDNSServers = nil
+	if len(in.DNSServers) == 0 || string(in.DNSServers) == "null" {
+		return nil
+	}
+	if p.ForEach != nil {
+		dec := json.NewDecoder(bytes.NewReader(in.DNSServers))
+		dec.UseNumber()
+		return dec.Decode(&p.ForEachDNSServers)
+	}
+	return json.Unmarshal(in.DNSServers, &p.DNSServers)
 }
 
 // DisplayLabel returns the human-facing name for the preset: Label, or the ID

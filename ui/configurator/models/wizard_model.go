@@ -81,6 +81,11 @@ type WizardModel struct {
 	// вместо новой регистрации, поэтому MASQUE H2/H3 ложатся на один ключ.
 	WarpAccounts *corestate.WarpAccountsSection
 
+	// LatePresetsSeeded — отметки разового засева поздних дефолтных пресетов
+	// (LxBox §578): читаются из состояния, дополняются при загрузке и
+	// сохраняются обратно — удалённый пользователем пресет не возвращается.
+	LatePresetsSeeded []string
+
 	// SourceURLs — текст в поле "Subscription URL or Direct Links" (ввод для кнопки Add); не используется для замены Proxies
 	SourceURLs string
 

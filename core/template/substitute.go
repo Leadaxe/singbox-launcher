@@ -131,6 +131,12 @@ func SubstituteVarsInJSONCanon(data []byte, vars []TemplateVar, resolved map[str
 // template_unknown_directive {key}, template_int_* {name, value}), без дублей
 // по паре (код, параметры). Порядок не нормирован: обход объекта идёт по map.
 func SubstituteVarsInJSONCanonWarnings(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) (json.RawMessage, []TemplateWarning, error) {
+	return substituteCanon(data, vars, resolved, target, nil)
+}
+
+// substituteCanon — общий канонический обход; dynPrefixes — пространства имён
+// узла for_each (§578), объявленные целиком.
+func substituteCanon(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec, dynPrefixes []string) (json.RawMessage, []TemplateWarning, error) {
 	varTypes := make(map[string]string, len(vars))
 	declared := make(map[string]bool, len(vars))
 	for _, v := range vars {
@@ -148,7 +154,7 @@ func SubstituteVarsInJSONCanonWarnings(data []byte, vars []TemplateVar, resolved
 		return nil, nil, err
 	}
 
-	ctx := &canonCtx{varTypes: varTypes, declared: declared, resolved: resolved, target: target}
+	ctx := &canonCtx{varTypes: varTypes, declared: declared, resolved: resolved, target: target, dynPrefixes: dynPrefixes}
 	substituteWalkCanon(&root, ctx)
 	// Dropped на самом верху дерева означает пустой конфиг — вырожденный
 	// случай, отдаём пустой объект вместо sentinel'а наружу.

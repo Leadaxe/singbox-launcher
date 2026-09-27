@@ -1,0 +1,26 @@
+{
+  "_comment": "for_each без as — пресет отвергается на загрузке (load: reject); раскрывать нечего.",
+  "preset": {
+    "for_each": {
+      "node_type": "tailscale"
+    },
+    "rules": [
+      {
+        "outbound": "direct-out",
+        "domain": [
+          "x.example"
+        ]
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    }
+  ]
+}

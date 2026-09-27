@@ -142,6 +142,8 @@ func (s *State) marshalDisk() ([]byte, error) {
 			Target:         s.Target,
 			TargetPlatform: s.TargetPlatform,
 			TargetArch:     s.TargetArch,
+
+			LatePresetsSeeded: s.LatePresetsSeeded,
 		},
 		Sources:    s.Sources,
 		Directions: s.Directions,

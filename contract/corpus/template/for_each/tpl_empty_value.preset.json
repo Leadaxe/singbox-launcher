@@ -1,0 +1,30 @@
+{
+  "_comment": "Поле тела — пустая строка: пустое значение, #tpl снимается целиком (ключ исчезает).",
+  "preset": {
+    "for_each": {
+      "node_type": "tailscale",
+      "as": "n"
+    },
+    "rules": [
+      {
+        "domain": [
+          "x.example"
+        ],
+        "outbound": "@n",
+        "comment": {
+          "#tpl": "@{n.body.control_url}-x"
+        }
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "control_url": ""
+      }
+    }
+  ]
+}

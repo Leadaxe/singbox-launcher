@@ -210,6 +210,11 @@ type PresetMergeContext struct {
 	// DNS-серверов (SPEC 143): заполняет BuildConfig, пишут MergePresetsInto*.
 	// nil — вызывающий отчёт не собирает, предупреждения остаются в логе.
 	templateWarnings *[]template.TemplateWarning
+
+	// PresetNodes — узлы конфига для for_each (LxBox §578): финальные теги,
+	// тела и skip_presets. Заполняет BuildConfig после граф-санитайзера —
+	// состав узлов окончателен. nil — пресеты с for_each пусты.
+	PresetNodes []template.PresetNode
 }
 
 // noteTemplateWarnings дописывает предупреждения в накопитель сборки.
@@ -268,7 +273,7 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 	ruleSets, _ := route["rule_set"].([]interface{})
 
 	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
-	tdVal := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars}
+	tdVal := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars, PresetNodes: ctx.PresetNodes}
 	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())
 	ctx.noteTemplateWarnings(resolved.Warnings)
 
@@ -474,6 +479,7 @@ func templateLikeFromCtx(ctx PresetMergeContext) template.TemplateData {
 		DNSOptionsRaw: raw,
 		Vars:          ctx.TemplateVars,
 		DNSServerVars: ctx.DNSServerVars,
+		PresetNodes:   ctx.PresetNodes,
 	}
 	return td
 }

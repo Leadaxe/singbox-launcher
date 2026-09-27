@@ -8406,3 +8406,49 @@ post-step по detour может ставить код `detour_with_tls_fragment
 
 *За LxBox:* реализация §575 по вашей спеке; раннеры корпуса — перестать
 сверять `sections` у результата разбора и у импорта бэкапа.
+
+## 83. Контракт 1.1.86 — пресет `tailscale`, `for_each`, `@node`, `#tpl`, `skip_presets`
+
+Источник решения — ваша спека §578
+(`docs/spec/tasks/578-tailscale-preset-template-for-each.md`), решение
+владельца 27.09.2026, реализация фазы 1 — ваш коммит `b0176c93`. Лаунчер —
+SPEC 145. Норма — `docs/TEMPLATE_LANG.md` §4.8, §6.5–§6.7.
+
+**1. Язык шаблона.** `#tpl` (§4.8), `for_each` (§6.5), доступ `@<as>`,
+`@<as>.skip_presets`, `@<as>.body.<путь>` (§6.6) — нормы по вашей спеке без
+отступлений. Уточнено контрактом: `as` без `.`, `@`, скобок и пробелов;
+`for_each` без `node_type`/`as` — пресет отвергается загрузкой целиком;
+значение `#tpl` не строка — ошибка загрузки, как лишний ключ.
+
+**2. Пресет `tailscale`** (§6.7). Тело — текст вашей спеки; оболочка в
+диалекте стороны (у лаунчера `id`, `default_enabled`, `num: 945`,
+`vars[].default`). D-120 подтверждён; `preferred_by` в DNS-правиле связки.
+
+**3. Поле записи `skip_presets`.** `backup.schema.json` (`$defs/sourceServer`,
+`$defs/node`), `BACKUP.md` таблица узла, «Поддержка: обе».
+
+**4. Корпус.** `corpus/template/tpl/` — формат прежний (тройка
+template/vars/expected); `corpus/template/for_each/` — **новый формат**
+(`<case>.preset.json` + `vars.json` + `expected.json`, описан в
+`corpus/template/README.md`).
+
+**Расхождение, которое лаунчер оставил сознательно:** лаунчер при эмиссии
+снимает `description` у DNS-серверов пресетов (как у всех прочих), поэтому в
+его `config.json` у `<тег>-dns` нет `description`. Корпус сравнивает
+фрагменты до этого шага и от него не зависит.
+
+*За LxBox после синка — сверить:*
+1. раннер нового раздела `corpus/template/for_each/` (формат выше) и раздел
+   `corpus/template/tpl/` через существующий раннер тройки; ожидания
+   `warnings` — коды реестра (`template_unknown_directive`,
+   `template_var_undeclared`);
+2. `tpl/extra_key_is_error` — `load: reject` (ваш `validateIfConstructs`
+   бросает — совпадает); `tpl/undeclared_name_drops` — `load: either`;
+3. `for_each/missing_as_rejected` — ваш `validateTemplateConstructs` бросает
+   на весь шаблон, лаунчер снимает один пресет: вердикт кейса «пресет не
+   раскрывается», оба поведения ему соответствуют;
+4. `for_each/filter_body_field` — `#notEmpty` на отсутствующем поле тела ложен;
+5. `backup.schema.json`: `skip_presets` у `$defs/sourceServer` и `$defs/node`;
+   запись только `true`, импорт совпавшего по телу узла не сбрасывает `true`;
+6. текст пресета в вашем `wizard_template.json` против `TEMPLATE_LANG` §6.7
+   (тело должно совпасть символ в символ, кроме оболочки).

@@ -1,0 +1,30 @@
+{
+  "_comment": "@n.body.<поле> и вставка @{n.body.<поле>} с путём для существующего поля.",
+  "preset": {
+    "for_each": {
+      "node_type": "tailscale",
+      "as": "n"
+    },
+    "rules": [
+      {
+        "domain": [
+          "@n.body.hostname"
+        ],
+        "outbound": "@n",
+        "comment": {
+          "#tpl": "host @{n.body.hostname} via @{n}"
+        }
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    }
+  ]
+}

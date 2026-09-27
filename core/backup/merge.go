@@ -822,7 +822,11 @@ func mergeServerItem(s *state.State, item decodedSource, rootBodies map[string]i
 	if item.Folder == "" {
 		key := nodeBodyKey(&incoming.Node)
 		if at, dup := rootBodies[key]; key != "" && dup {
-			// Узел уже есть: тело то же.
+			// Узел уже есть: тело то же. skip_presets из файла — только true:
+			// отсутствие поля неотличимо от false и своё не сбрасывает (§578).
+			if incoming.SkipPresets {
+				s.Sources[at].SkipPresets = true
+			}
 			info.landedRoot(fileTag, fileID, s.Sources[at].NodeTagOrLabel(), item.FullSettings)
 			cnt.SkippedServers++
 			return
@@ -969,6 +973,9 @@ func ensureFolderAt(s *state.State, name string, folderAt *folderIndex, cnt *mer
 func addFolderMember(s *state.State, folderAt int, node state.Node, fileContainer string, cnt *mergeCounters, info *mergedInfo) (state.NodeLink, bool) {
 	folder := &s.Sources[folderAt]
 	if hit := folderNodeWithBody(folder, &node); hit >= 0 {
+		if node.SkipPresets {
+			folder.Nodes[hit].SkipPresets = true // §578: только true
+		}
 		cnt.SkippedServers++
 		return state.NodeLink{FolderID: folder.ID, Tag: folder.Nodes[hit].Tag}, false
 	}

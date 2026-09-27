@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "domain": [
+        "x.example"
+      ],
+      "outbound": "home-ts",
+      "network": "tcp"
+    }
+  ],
+  "dns_servers": [],
+  "dns_rules": [],
+  "warnings": []
+}

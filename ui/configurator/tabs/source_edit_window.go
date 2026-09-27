@@ -1321,6 +1321,11 @@ func showSourceEditWindowAt(
 			settingsContent.Add(nodeTagEntry)
 			settingsContent.Add(widget.NewSeparator())
 			detourBlock()
+			// LxBox §578: исключение узла из пресетов с for_each.
+			if blk := skipPresetsBlock(m, nodeLink, &scratch.Node); blk != nil {
+				settingsContent.Add(widget.NewSeparator())
+				settingsContent.Add(blk)
+			}
 			if awgVisibleFor() {
 				settingsContent.Add(widget.NewSeparator())
 				awgUI.load(&scratch.Node)
