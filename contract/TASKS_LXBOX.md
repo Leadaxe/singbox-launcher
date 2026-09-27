@@ -1448,6 +1448,11 @@ domains and peers' allowed IPs» из **живого** состояния tailne
 { "preferred_by": ["@self"], "outbound": "@self" }
 ```
 
+Уточнение 1.1.90: в правиле маршрута `preferred_by` называет узел (endpoint),
+в DNS-правиле — DNS-сервер (`<тег>-dns`); ядро ищет DNS-тег в менеджере
+DNS-серверов (`route/rule/rule_item_preferred_by_dns.go`), тег узла там — отказ
+старта. См. §87.
+
 - правило маршрута связки по-прежнему **одно**; DNS-сервер и DNS-правило
   без изменений;
 - `@self` в `preferred_by` — массив строк, подставляется тем же путём, что
@@ -8609,3 +8614,30 @@ SPEC 146, хвосты.
 *За LxBox после синка — сверить:* кейс корпуса выше в раннере
 `corpus/node_edit/`; импорт документа с несколькими узлами по-прежнему даёт
 запись на каждый узел.
+
+## 87. Контракт 1.1.90 — `preferred_by` в DNS-правиле пресета `tailscale` называет сервер
+
+Дефект пресета `tailscale` (1.1.86): DNS-правило писало
+`"preferred_by": ["@node"]`, то есть тег узла. Ядро в DNS-правиле ищет
+`preferred_by` в менеджере DNS-серверов
+(`route/rule/rule_item_preferred_by_dns.go`) и отказывает
+`DNS server not found: <тег>` — с пресетом по умолчанию ядро не стартует
+(подтверждено на эмуляторе). В правиле маршрута `preferred_by` ищется через
+менеджер outbound/endpoint (`rule_item_preferred_by.go`), там тег узла верен.
+
+Норма (`TEMPLATE_LANG.md` §6.7):
+
+```json
+{ "#if": { "#and": ["@dns_enable"], "#value": {
+    "preferred_by": [ { "#tpl": "@{node}-dns" } ],
+    "server": { "#tpl": "@{node}-dns" } } } }
+```
+
+Что сделать LxBox:
+
+1. `app/assets/wizard_template.json`, пресет `tailscale`, раздел `dns_rules` —
+   тело как выше; `#tpl` внутри элемента массива раскрывается движком.
+2. Тесты сборки пресета: ожидание DNS-правила `{preferred_by: [<тег>-dns],
+   server: <тег>-dns}`; проверка, что сервер с этим тегом есть в `dns.servers`.
+3. Синк контракта 1.1.90: корпус `corpus/template/for_each/` (пресеты и
+   ожидания пяти кейсов с DNS-правилом) переписан на тег сервера.

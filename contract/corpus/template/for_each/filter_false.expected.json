@@ -25,7 +25,7 @@
   "dns_rules": [
     {
       "preferred_by": [
-        "sub-ts"
+        "sub-ts-dns"
       ],
       "server": "sub-ts-dns"
     }

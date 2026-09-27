@@ -96,8 +96,21 @@ func TestTailscalePresetBuild_TwoNodes(t *testing.T) {
 	if len(d.Rules) != 2 {
 		t.Fatalf("dns.rules = %s", dns)
 	}
-	if got, _ := json.Marshal(d.Rules[1]); string(got) != `{"preferred_by":["work-ts"],"server":"work-ts-dns"}` {
+	if got, _ := json.Marshal(d.Rules[1]); string(got) != `{"preferred_by":["work-ts-dns"],"server":"work-ts-dns"}` {
 		t.Errorf("dns.rules[1] = %s", got)
+	}
+	// Контракт 1.1.90: в DNS-правиле preferred_by называет DNS-сервер (ядро
+	// ищет тег в менеджере DNS-серверов), и такой сервер есть в dns.servers.
+	serverTags := map[string]bool{}
+	for _, s := range d.Servers {
+		tag, _ := s["tag"].(string)
+		serverTags[tag] = true
+	}
+	for i, rule := range d.Rules {
+		pb, _ := rule["preferred_by"].([]interface{})
+		if len(pb) != 1 || pb[0] != rule["server"] || !serverTags[rule["server"].(string)] {
+			t.Errorf("dns.rules[%d] = %v: preferred_by должен называть сервер из dns.servers", i, rule)
+		}
 	}
 	all := string(route) + string(dns)
 	for _, bad := range []string{"100.64.0.0/10", "fd7a:115c:a1e0", "ts.net", "skip-ts", "tailscale:"} {

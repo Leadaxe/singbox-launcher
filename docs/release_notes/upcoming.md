@@ -12,6 +12,7 @@
 - Contract 1.1.87: registry attribute `core_rejects`, warning flag `applied`, bare-body node source (SPEC 146).
 - Contract 1.1.88: an invalid VLESS `flow` is removed even on a hand-written node (the core refuses to start with it); new corpus section `node_edit`; a source test keeps build steps that change a node body behind the single decision point.
 - Contract 1.1.89: node document with several nodes in the node JSON tab keeps the first node; import still creates one record per node.
+- Contract 1.1.90: the DNS rule of the "Tailscale networks" preset names the node's DNS server in `preferred_by`, not the node itself; the old value kept the core from starting.
 
 ## RU
 ### Основное
@@ -23,3 +24,4 @@
 - Контракт 1.1.87: атрибут реестра `core_rejects`, признак предупреждения `applied`, источник узла — голое тело (SPEC 146).
 - Контракт 1.1.88: недопустимый `flow` VLESS снимается и у узла, написанного вручную (ядро с ним не стартует); новый раздел корпуса `node_edit`; тест по исходникам держит шаги сборки, меняющие тело узла, за единой точкой решения.
 - Контракт 1.1.89: документ с несколькими узлами во вкладке JSON узла сохраняет первый узел; импорт по-прежнему создаёт запись на каждый узел.
+- Контракт 1.1.90: DNS-правило пресета «Tailscale networks» указывает в `preferred_by` DNS-сервер узла, а не сам узел; прежнее значение не давало ядру стартовать.

@@ -25,7 +25,7 @@
   "dns_rules": [
     {
       "preferred_by": [
-        "home-ts"
+        "home-ts-dns"
       ],
       "server": "home-ts-dns"
     }

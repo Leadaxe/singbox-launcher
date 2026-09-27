@@ -25,7 +25,7 @@
   "dns_rules": [
     {
       "preferred_by": [
-        "work-ts"
+        "work-ts-dns"
       ],
       "server": "work-ts-dns"
     }

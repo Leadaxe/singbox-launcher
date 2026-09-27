@@ -1164,7 +1164,9 @@
       ],
       "#value": {
        "preferred_by": [
-        "@node"
+        {
+          "#tpl": "@{node}-dns"
+        }
        ],
        "server": {
         "#tpl": "@{node}-dns"

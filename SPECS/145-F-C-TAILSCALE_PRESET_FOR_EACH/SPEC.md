@@ -100,3 +100,5 @@ Debug API: `GET /state/full` отдаёт `skip_presets` в записи узл�
 
 Проверка: `go test ./ui/configurator/business -run
 'TestPresetNodesForView_MatchesBuildSelection|TestPresetServedNodesLabel'`.
+
+Исправление (контракт 1.1.90): в DNS-правиле пресета `preferred_by` — тег DNS-сервера `{"#tpl": "@{node}-dns"}`, не узла (ядро ищет его среди DNS-серверов, `route/rule/rule_item_preferred_by_dns.go`); проверка — `TestTailscalePresetBuild_TwoNodes`, `TestContractCorpusForEach`.

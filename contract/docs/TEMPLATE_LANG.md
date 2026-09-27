@@ -701,7 +701,8 @@ warning (`preset_expand.dart:473-526`). Миграция LxBox меняет те
 ],
 "dns_rules": [
   { "#if": { "#and": ["@dns_enable"], "#value": {
-      "preferred_by": ["@node"], "server": { "#tpl": "@{node}-dns" } } } }
+      "preferred_by": [ { "#tpl": "@{node}-dns" } ],
+      "server": { "#tpl": "@{node}-dns" } } } }
 ]
 ```
 
@@ -714,13 +715,20 @@ warning (`preset_expand.dart:473-526`). Миграция LxBox меняет те
 | `route.rules` | `{preferred_by: [home-ts], outbound: home-ts}` |
 | `route.rules` | то же для `work-ts` |
 | `dns.servers` | `{type: tailscale, tag: home-ts-dns, endpoint: home-ts}`, то же для `work-ts` |
-| `dns.rules` | `{preferred_by: [home-ts], server: home-ts-dns}`, то же для `work-ts` |
+| `dns.rules` | `{preferred_by: [home-ts-dns], server: home-ts-dns}`, то же для `work-ts` |
 
 `dns_enable = false` снимает DNS-сервер, DNS-правило и правило `resolve`;
 правило маршрута остаётся. Условие `preferred_by` — живой ответ узла (имена и
 адреса машин tailnet, принятые подсети); постоянных подсетей
 `100.64.0.0/10`, `fd7a:115c:a1e0::/48` и суффикса `.ts.net` нет (D-120,
 подтверждено LxBox; `preferred_by` в DNS-правиле — новое относительно D-120).
+
+**`preferred_by` в DNS-правиле называет сервер, в правиле маршрута — узел**
+(контракт 1.1.90). Ядро разбирает поле по-разному: в правиле маршрута ищет тег
+через менеджер outbound/endpoint (`route/rule/rule_item_preferred_by.go`), в
+DNS-правиле — через менеджер DNS-серверов (`rule_item_preferred_by_dns.go`,
+отказ `DNS server not found: <тег>`). Тег узла в DNS-правиле валит старт ядра,
+поэтому там стоит `<тег>-dns` — тот же сервер, что в `server`.
 
 **Появление у существующих пользователей.** Пресет, включённый по умолчанию
 и добавленный в шаблон позже, появляется в состоянии сам, один раз; удалённый

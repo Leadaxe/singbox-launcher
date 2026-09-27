@@ -149,7 +149,8 @@ DNS-сервера** (узел, на который сервер смотрит,
 - пресет обслуживает КАЖДЫЙ узел Tailscale конфига (`for_each`, `node_type:
   tailscale`), в любом контейнере — свой сервер, член папки, узел подписки;
 - на узел: DNS-сервер `{type: tailscale, tag: <тег>-dns, endpoint: <тег>}`,
-  DNS-правило `{preferred_by: [<тег>], server: <тег>-dns}`, правило маршрута
+  DNS-правило `{preferred_by: [<тег>-dns], server: <тег>-dns}` (в DNS-правиле
+  `preferred_by` называет DNS-сервер, в правиле маршрута — узел; 1.1.90), правило маршрута
   `{preferred_by: [<тег>], action: resolve, server: <тег>-dns}` и правило
   `{preferred_by: [<тег>], outbound: <тег>}`; переменная пресета
   `dns_enable = false` оставляет только последнее;
