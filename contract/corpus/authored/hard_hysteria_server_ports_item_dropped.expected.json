@@ -1,6 +1,7 @@
 {
   "meta": {
-    "container": "own"
+    "container": "own",
+    "extension": "desktop"
   },
   "nodes": [
     {

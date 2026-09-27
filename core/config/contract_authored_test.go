@@ -39,6 +39,11 @@ func TestContractCorpusAuthored(t *testing.T) {
 				t.Fatalf("ручной объект обязан быть авторским")
 			}
 			env := contractEnvelope{V: 1, Meta: map[string]any{"container": "own"}}
+			// meta.extension — свойство кейса (как у корпуса body): hysteria v1
+			// только у лаунчера, LxBox такой кейс пропускает (контракт 1.1.96).
+			if ext := corpusExtensionMark(expectedPathFor(strings.TrimSuffix(casePath, ".body"))); ext != "" {
+				env.Meta["extension"] = ext
+			}
 			cn, code, err := canonNodeDrop(node)
 			if err != nil {
 				env.Dropped = append(env.Dropped, contractDrop{Ref: node.Tag, Index: dropIndex(0), Code: code, Reason: "emit_error"})

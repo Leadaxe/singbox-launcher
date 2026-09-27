@@ -8773,3 +8773,15 @@ Go: `registry.RuleCoreRejects` читает путь предупреждени�
 
 Что сделать LxBox: синк 1.1.95; в §580 значение по умолчанию 4000 и граница
 65535.
+
+## 93. Контракт 1.1.96 — кейсы hysteria v1 в корпусе authored помечены `desktop`
+
+`hard_hysteria_obfs_object_flattened` и `hard_hysteria_server_ports_item_dropped`
+(возвращены в 1.1.94, §91) — тела hysteria v1, а это расширение лаунчера
+(`protocols/hysteria.json` `extension: desktop`). Расхождение «LxBox отвечает
+`protocol_unsupported`» — не дефект: у LxBox схемы нет по контракту. Ожидания
+несут `meta.extension: "desktop"`; раннер Go переносит пометку, как в корпусе
+body.
+
+Что сделать LxBox: раннер корпуса `authored` пропускает кейс с чужим
+`meta.extension`, как раннер корпуса body.
