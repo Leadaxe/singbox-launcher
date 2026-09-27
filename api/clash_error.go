@@ -5,12 +5,32 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 
 	"singbox-launcher/internal/platform"
 )
 
 // ErrPlatformInterrupt is returned when a request is aborted due to system sleep (platform cancelled the context).
 var ErrPlatformInterrupt = errors.New("platform: interrupt")
+
+// ErrAPIAuth is wrapped into errors that mean "the core rejected our
+// credentials". 401 and 403 are the core's own verdict and must be told apart
+// from a refused connection or a wrong address: with a secret the launcher can
+// offer to re-sync it, and with an unauthenticated loopback config a 401 means
+// the config the launcher read is not the one the core is running (SPEC 143).
+var ErrAPIAuth = errors.New("clash api: authentication failed")
+
+// IsAuthError reports whether err means the core rejected our credentials.
+func IsAuthError(err error) bool { return errors.Is(err, ErrAPIAuth) }
+
+// authStatusError returns an ErrAPIAuth-wrapped error for 401/403, else nil.
+func authStatusError(statusCode int) error {
+	switch statusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("%w (HTTP %d)", ErrAPIAuth, statusCode)
+	}
+	return nil
+}
 
 // requestContext returns the platform power context for an outgoing request, or ErrPlatformInterrupt if the system is sleeping.
 func requestContext() (context.Context, error) {

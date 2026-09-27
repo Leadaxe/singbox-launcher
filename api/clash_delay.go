@@ -167,7 +167,7 @@ func GetDelay(baseURL, token, proxyName string) (int64, error) {
 		return 0, fmt.Errorf("failed to create delay request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+token)
+	SetAuthHeader(req.Header, token)
 
 	resp, err := getHTTPClient().Do(req)
 	defer func() {

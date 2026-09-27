@@ -85,7 +85,7 @@ func GetProxiesInGroup(baseURL, token, groupName string) ([]ProxyInfo, string, e
 		logMsg(debuglog.LevelInfo, "GetProxiesInGroup: ERROR: Failed to create request: %v", err)
 		return nil, "", fmt.Errorf("failed to create /proxies request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	SetAuthHeader(req.Header, token)
 
 	resp, err := getHTTPClient().Do(req)
 	defer func() {

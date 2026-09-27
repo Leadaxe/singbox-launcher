@@ -37,7 +37,7 @@ func SwitchProxy(baseURL, token, group, proxy string) error {
 		return fmt.Errorf("failed to create switch request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+token)
+	SetAuthHeader(req.Header, token)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := getHTTPClient().Do(req)

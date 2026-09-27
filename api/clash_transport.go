@@ -78,7 +78,7 @@ func TestAPIConnection(baseURL, token string) error {
 		writeLog(debuglog.LevelInfo, "[%s] Error creating API test request: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
 		return fmt.Errorf("failed to create API test request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	SetAuthHeader(req.Header, token)
 
 	resp, err := getHTTPClient().Do(req)
 	defer func() {
@@ -96,6 +96,11 @@ func TestAPIConnection(baseURL, token string) error {
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		writeLog(debuglog.LevelInfo, "[%s] Unexpected status code for API test: %d, body: %s\n", time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode, string(bodyBytes))
+		// 401/403 — ядро отвергло учётные данные. Это отдельное состояние:
+		// секрет разошёлся с тем, что реально запущено (SPEC 143).
+		if authErr := authStatusError(resp.StatusCode); authErr != nil {
+			return authErr
+		}
 		return fmt.Errorf("unexpected status code for API test: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 	writeLog(debuglog.LevelVerbose, "[%s] Clash API connection successful.\n", time.Now().Format("2006-01-02 15:04:05"))

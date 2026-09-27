@@ -60,6 +60,13 @@ type APIService struct {
 	BaseURL string
 	Token   string
 	Enabled bool
+	// APIState — почему API включён или нет (SPEC 143): ok / no_auth /
+	// missing / invalid / unreadable. Отличает «не настроен» от «настроен
+	// без secret» и от «конфиг не разобрался», чтобы UI не показывал
+	// «Config Error» для валидной конфигурации ядра.
+	APIState api.APIConfigState
+	// APIDetail — английская причина для лога и UI.
+	APIDetail string
 
 	// Auto-load state
 	AutoLoadInProgress bool
@@ -118,16 +125,27 @@ func NewAPIService(configPath string,
 		},
 	}
 
-	// Load Clash API configuration from config.json
-	if base, tok, err := api.LoadClashAPIConfig(configPath); err != nil {
+	// Load Clash API configuration from config.json.
+	//
+	// Отсутствие секции и пустой secret — штатные состояния, а не ошибка:
+	// ядро может отдавать API без аутентификации на петле (SPEC 143).
+	cfg, err := api.LoadClashAPIConfig(configPath)
+	apiSvc.APIState = cfg.State
+	apiSvc.APIDetail = cfg.Detail
+	if err != nil {
 		debuglog.WarnLog("NewAPIService: Clash API config error: %v", err)
+	}
+	if cfg.Enabled() {
+		apiSvc.BaseURL = cfg.BaseURL
+		apiSvc.Token = cfg.Token
+		apiSvc.Enabled = true
+		if !cfg.RequiresAuth() {
+			debuglog.InfoLog("NewAPIService: Clash API is unauthenticated (no secret) at %s", cfg.BaseURL)
+		}
+	} else {
 		apiSvc.BaseURL = ""
 		apiSvc.Token = ""
 		apiSvc.Enabled = false
-	} else {
-		apiSvc.BaseURL = base
-		apiSvc.Token = tok
-		apiSvc.Enabled = true
 	}
 
 	// Initialize SelectedClashGroup from config.
@@ -358,8 +376,21 @@ func (apiSvc *APIService) ReloadClashAPIConfig() error {
 	debuglog.InfoLog("ReloadClashAPIConfig: Reloading Clash API configuration from config.json...")
 
 	// Load Clash API configuration from config.json
-	if base, tok, err := api.LoadClashAPIConfig(apiSvc.ConfigPath); err != nil {
+	cfg, err := api.LoadClashAPIConfig(apiSvc.ConfigPath)
+	apiSvc.APIState = cfg.State
+	apiSvc.APIDetail = cfg.Detail
+	if err != nil {
 		debuglog.WarnLog("ReloadClashAPIConfig: Clash API config error: %v", err)
+	}
+	if cfg.Enabled() {
+		oldEnabled := apiSvc.Enabled
+		apiSvc.BaseURL = cfg.BaseURL
+		apiSvc.Token = cfg.Token
+		apiSvc.Enabled = true
+		debuglog.InfoLog("ReloadClashAPIConfig: Successfully reloaded - BaseURL: %s, auth: %v, Enabled: %v (was %v)",
+			cfg.BaseURL, cfg.RequiresAuth(), true, oldEnabled)
+	} else {
+		debuglog.WarnLog("ReloadClashAPIConfig: Clash API unavailable (%s): %s", cfg.State, cfg.Detail)
 		apiSvc.BaseURL = ""
 		apiSvc.Token = ""
 		apiSvc.Enabled = false
@@ -367,13 +398,9 @@ func (apiSvc *APIService) ReloadClashAPIConfig() error {
 		// область. Через активную область перезагрузка, сделанная пока открыта
 		// вкладка Remote, затёрла бы группу удалённой машины.
 		apiSvc.scopes[ScopeLocal].SelectedClashGroup = ""
-		return fmt.Errorf("failed to reload Clash API config: %w", err)
-	} else {
-		oldEnabled := apiSvc.Enabled
-		apiSvc.BaseURL = base
-		apiSvc.Token = tok
-		apiSvc.Enabled = true
-		debuglog.InfoLog("ReloadClashAPIConfig: Successfully reloaded - BaseURL: %s, Enabled: %v (was %v)", base, true, oldEnabled)
+		if err != nil {
+			return fmt.Errorf("failed to reload Clash API config: %w", err)
+		}
 	}
 
 	// Reload SelectedClashGroup from config if API is enabled
