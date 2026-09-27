@@ -39,7 +39,7 @@ Four layers that together define the product:
   - **Exit node**: a node with `exit_node` set is an ordinary exit and can be picked in a Direction. A node without it gives access to the tailnet only.
   - **NETWORKS** — the last item of the group list on the Servers tab — lists the nodes without an exit and shows their state: starting, running, sign-in needed, stopped.
   - **Network tab** of the node window: state, sign in and log out, this device, devices of the tailnet, exit node choice (**Save choice** writes it into your own node), ping of a device with the path (direct or relay).
-  - NETWORKS and the Network tab commands need the local daemon engine (macOS). On a Remote machine the tab shows state without commands; the classic engine has neither.
+  - NETWORKS and the Network tab commands work with the local daemon engine (macOS) and with a connected Remote machine. On Remote, **Save choice** writes into that machine's own node and rebuilds its config; send it with **Deploy config**. The local classic engine has neither.
 - **Multiple sources per profile** — subscription URLs and direct links (`vless://`, `vmess://`, …) can be mixed in a single configuration.
 - **Subscription provider compatibility** — first-class support for HWID-binding panels (Marzban, Marzneshin, Remnawave, NashVPN, V2Board / Xboard) via the canonical XTLS subscription-header protocol (`X-Hwid`, `X-Hwid-Limit`, `Announce`, `Subscription-Userinfo`).
 - **Per-source raw cache** — last working subscription body preserved on fetch failure (no broken config when provider is down).

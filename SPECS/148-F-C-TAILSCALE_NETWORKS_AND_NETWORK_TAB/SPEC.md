@@ -1,6 +1,7 @@
 # SPEC 148 — Tailscale: псевдо-направление NETWORKS и вкладка Network
 
-Статус: **C** (решение владельца 2026-09-27, реализовано 2026-09-27).
+Статус: **C** (решение владельца 2026-09-27, реализовано 2026-09-27;
+удалённые машины — решение владельца 2026-09-28, реализовано 2026-09-28).
 Тип: Feature. Контракт: не затрагивается (форма конфига и реестр не меняются,
 `contract/` 1.1.97 без правок).
 
@@ -39,11 +40,17 @@
 - Отбор — `config.NetworksNodeTags` (`core/config/config_loader.go`):
   запись в `endpoints[]`, тип `tailscale`, `registry.ExitCapable` ложно (при
   нечитаемом реестре узел считается выходом, как в сборке).
-- Показ: только панель Local, ядро работает (`RunningState.IsRunning`), узлы
-  есть. Пункт `NETWORKS` последним в `groupSelect`. Опрос —
-  `watchNetworksDirection` (`ui/networks_direction.go`): раз в секунду,
-  config.json перечитывается при смене размера или mtime; тот же тик
-  перерисовывает состояния.
+- Показ: обе панели — Local и Remote; ядро области работает
+  (`ac.TailscaleCoreRunning(scope)`), узлы есть. Пункт `NETWORKS` последним
+  в `groupSelect`. Опрос — `watchNetworksDirection(ac, scope, …)`
+  (`ui/networks_direction.go`): раз в секунду; конфиг области —
+  `effectiveNodeConfigPath` (у Remote собранный конфиг выбранной машины,
+  `wizard_states/remote/<id>/config.json`), перечитывается при смене пути,
+  размера или mtime; тот же тик перерисовывает состояния.
+- Работает ли ядро области: Local — `RunningState`; Remote — живость стрима
+  статуса машины (StartedService отдаёт его только работающему ядру, при
+  остановке или Deploy стрим рвётся). Ленивый стрим машины поднимается
+  только после отбора: без узлов Tailscale в её конфиге он не открывается.
 - Только вид: `networksOpen` в панели; `selectedGroup`, выбор группы в
   `APIService`, общий список прокси и трей не меняются. Пункты Select —
   строки, поэтому при направлении пользователя с тегом `NETWORKS` к пункту
@@ -61,8 +68,18 @@
 ## 3. Вкладка Network
 
 Файл `ui/servers_node_network_tab.go`. Видна у узла типа `tailscale`, когда
-источник отдаёт статус tailnet (`ac.TailscaleAvailable`), между Details и
-Outbound JSON. Перерисовка — не чаще раза в секунду и только при новом
+источник области отдаёт статус tailnet (`ac.TailscaleAvailable(scope)`),
+между Details и Outbound JSON — у Local и у Remote одинаково.
+
+- **Источник по области.** Статус и команды (`core/tailscale_status.go`)
+  берутся по `services.ProxyScope` окна: Local — бэкенд своего ядра, глух к
+  remote-override; Remote — транспорт выбранной машины
+  (`LxdRemoteTransport`: `TailscaleSetExitNode`, `TailscaleLogout`,
+  `TailscalePing` в `core/services/lxd_remote_tailscale.go`, те же RPC, что
+  у локального демона). Признак машины — override, не режим бэкенда (на
+  Windows-клиенте режим classic, а машина подключена). Машина запоминается
+  при открытии окна: сменил её пользователь — вкладка показывает вид без
+  данных «Start VPN to see the network.», команды и Save choice не уходят. Перерисовка — не чаще раза в секунду и только при новом
 снимке или смене записанного `exit_node`; обновление останавливается, когда
 окно закрыто.
 
@@ -79,14 +96,20 @@ Outbound JSON. Перерисовка — не чаще раза в секунд
   тела в собранном конфиге; сравнение — `services.CompareExitNode` (совпадение
   по адресу, имени или DNS-имени: ядро принимает IP или имя). Различие — знак
   предупреждения, один из трёх текстов §5 LxBox §581 и Save choice.
-- **Save choice** — `ac.SaveTailscaleExitNode` (`core/tailscale_exit_save.go`):
-  только свой узел (сервер в корне или член папки, не подписка, только
-  Local); у узла с источником-телом правится поле в тексте источника и тело
+- **Save choice** — `core/tailscale_exit_save.go`
+  (`WriteTailscaleExitNodeChoice`): только свой узел (сервер в корне или член
+  папки, не подписка) в профиле области — Local или выбранной машины
+  (`wizard_states/remote/<id>/state.json`); у узла с источником-телом правится поле в тексте источника и тело
   материализуется из него (`MaterializeServerNode`, как Apply вкладки JSON),
   у узла из ссылки или INI — поле в теле с сохранением происхождения
   (`MaterializeEditedBody`). Порядок ключей сохраняется
   (`SetBodyTopLevelString`); пишется первый адрес tailnet устройства; «None»
-  убирает поле. Затем `MarkConfigStale` и `RebuildConfigIfDirty`.
+  убирает поле. Затем Local — `MarkConfigStale` и `RebuildConfigIfDirty`
+  (`ac.SaveTailscaleExitNode`); Remote — пересборка config.json машины тем
+  же шагом, что Save её Мастера (`configurator.RebuildMachineConfig` →
+  `WriteRemoteConfig`: разбор узлов, check, запись), без окна. Машине
+  конфиг не отправляется — как и после Save Мастера; показывается тот же
+  диалог «Remote config exported», доставка — Deploy config в строке машины.
 - **Devices**: сначала в сети, затем остальные, внутри по имени
   (`services.SortDevices`); группы по владельцам при числе групп больше
   одного (заголовок `DisplayName`, иначе `LoginName`); отметки online / last
@@ -100,10 +123,12 @@ Outbound JSON. Перерисовка — не чаще раза в секунд
 
 ## 4. Проверка через внешний адрес (LxBox §581 раздел 8)
 
-Узел Tailscale Local с состоянием Running без действующего exit node
+Узел Tailscale (Local и Remote) с состоянием Running без действующего exit node
 (`tailscaleHasNoExit`): в строке списка вместо задержки «no exit», клик замер
 не запускает; в Details вместо «Last delay» — «This node has no exit. Check
-devices on the Network tab.». С действующим выходом — как у обычного узла.
+devices on the Network tab.». С действующим выходом — как у обычного узла. У Remote статус читается
+только для строки типа `tailscale` — строки прочих узлов стрим машины не
+поднимают.
 
 ## 5. Проверено по исходникам ядра (sing-box-lx, `protocol/tailscale/endpoint.go`)
 
@@ -124,16 +149,18 @@ devices on the Network tab.». С действующим выходом — ка
   без, пустой `exit_node`, WireGuard, запись в `outbounds[]`, без тега,
   пустой итог).
 - `core/tailscale_exit_save_test.go`: поле появляется, меняется, убирается;
-  свой узел в корне и в папке, узел подписки не свой.
+  свой узел в корне и в папке, узел подписки не свой; запись в профиль
+  удалённой машины кладёт `exit_node` в её узел и не трогает профиль Local
+  с узлом того же тега (`TestWriteTailscaleExitNodeChoiceRemoteProfile`).
 - `ui/networks_direction_test.go`: строки таблицы состояния, пункт при
   совпадении тега, вид вкладки без данных, три текста, отметки устройства.
 
 ## 7. Не сделано
 
-- Удалённая машина: NETWORKS и команды tailnet (выбор выхода, Log out, Ping)
-  только у локального демона; у Remote вкладка показывает состояние без
-  команд, Save choice скрыта.
 - Legacy-движок (Windows 386 и прочие без демона): вкладки Network и
   NETWORKS нет — статуса tailnet там нет (SPEC 130 §3).
 - Список устройств строится целиком, не лениво; перерисовка только по новому
   снимку.
+- Save choice у Remote конфиг на машину не отправляет (как и Save Мастера):
+  до Deploy config машина после перезапуска ядра стартует с прежним
+  конфигом.

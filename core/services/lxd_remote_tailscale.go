@@ -1,5 +1,8 @@
 // File lxd_remote_tailscale.go — стрим статуса tailnet удалённой машины
-// (SPEC 130). Образец — SubscribeStatus: streamConn + runResilientStream.
+// (SPEC 130) и команды tailnet (SPEC 148): выбор exit node на ходу, выход из
+// аккаунта, проверка устройства. Образец стрима — SubscribeStatus:
+// streamConn + runResilientStream; команд — DaemonBackend
+// (core/backend_daemon_tailscale.go), те же RPC StartedService.
 //
 // Отличие от SubscribeStatus: тот открывается по требованию (профайлером), а
 // этот живёт с транспортом от создания до Close — колонка на вкладке
@@ -11,6 +14,9 @@ package services
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"sync"
 
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -71,4 +77,66 @@ func (t *LxdRemoteTransport) TailscaleStatus(tag string) (TailscaleStatus, bool)
 func (t *LxdRemoteTransport) TailscaleLive() bool {
 	t.ensureTailscaleStream()
 	return t.ts.cache.Live()
+}
+
+// TailscaleSetExitNode — выбор exit node удалённого ядра на ходу
+// (реализует core.tailscaleController); stableID "" снимает выход. Тело узла
+// в конфиге машины не меняется — это делает Save choice.
+func (t *LxdRemoteTransport) TailscaleSetExitNode(tag, stableID string) error {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	if _, err := client.SetTailscaleExitNode(ctx, &daemonpb.SetTailscaleExitNodeRequest{
+		EndpointTag: tag, StableID: stableID,
+	}); err != nil {
+		return fmt.Errorf("lxd remote SetTailscaleExitNode: %w", err)
+	}
+	return nil
+}
+
+// TailscaleLogout — выход узла удалённого ядра из аккаунта tailnet.
+func (t *LxdRemoteTransport) TailscaleLogout(tag string) error {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	if _, err := client.TailscaleLogout(ctx, &daemonpb.TailscaleLogoutRequest{EndpointTag: tag}); err != nil {
+		return fmt.Errorf("lxd remote TailscaleLogout: %w", err)
+	}
+	return nil
+}
+
+// TailscalePing — проверка устройства tailnet через удалённое ядро: каждый
+// ответ в onReply, до отмены ctx, до TailscalePingMaxReplies ответов или до
+// конца стрима. Дедлайна у вызова нет — его задаёт ctx вызывающего (лист
+// проверки живёт до закрытия).
+func (t *LxdRemoteTransport) TailscalePing(ctx context.Context, tag, peerIP string, onReply func(TailscalePingResult)) error {
+	conn, err := t.streamConn()
+	if err != nil {
+		return err
+	}
+	stream, err := daemonpb.NewStartedServiceClient(conn).StartTailscalePing(ctx, &daemonpb.TailscalePingRequest{EndpointTag: tag, PeerIP: peerIP})
+	if err != nil {
+		return fmt.Errorf("lxd remote StartTailscalePing: %w", err)
+	}
+	for n := 0; n < TailscalePingMaxReplies; n++ {
+		resp, rerr := stream.Recv()
+		if rerr != nil {
+			if errors.Is(rerr, io.EOF) || ctx.Err() != nil {
+				return nil
+			}
+			return fmt.Errorf("lxd remote StartTailscalePing: %w", rerr)
+		}
+		onReply(TailscalePingResult{
+			LatencyMs:      resp.GetLatencyMs(),
+			IsDirect:       resp.GetIsDirect(),
+			Endpoint:       resp.GetEndpoint(),
+			DERPRegionCode: resp.GetDerpRegionCode(),
+			Error:          resp.GetError(),
+		})
+	}
+	return nil
 }

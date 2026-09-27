@@ -4,7 +4,8 @@
 //
 // Данные — кеш стрима SubscribeTailscaleStatus (SPEC 130); команды —
 // SetTailscaleExitNode, TailscaleLogout, StartTailscalePing того же
-// источника. Вкладка перерисовывается не чаще раза в секунду и только когда
+// источника: ядра области окна — своего (Local) или выбранной машины
+// (Remote). Вкладка перерисовывается не чаще раза в секунду и только когда
 // пришёл новый снимок или сменилось записанное значение.
 //
 // Имена устройств, адреса, имя сети, владельцы и ссылка входа в журнал не
@@ -28,6 +29,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
+	"singbox-launcher/ui/configurator"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 )
 
@@ -80,9 +82,26 @@ func writtenExitNode(cfgPath, tag string) string {
 
 // tailscaleNetworkTab строит вкладку и запускает её обновление; обновление
 // останавливается, когда окно закрыто.
-func tailscaleNetworkTab(ac *core.AppController, win fyne.Window, tag, cfgPath string, local bool) fyne.CanvasObject {
+//
+// Статус и команды — источника области scope (у Remote — выбранной машины).
+// Машина запоминается при открытии окна: переключись пользователь на другую,
+// тег этого окна описывал бы узел чужого ядра, поэтому вкладка гаснет до
+// вида без данных, а команды и Save choice больше никуда не уходят.
+func tailscaleNetworkTab(ac *core.AppController, win fyne.Window, tag, cfgPath string, scope services.ProxyScope) fyne.CanvasObject {
 	box := container.NewVBox()
-	canSave := local && ac.CanSaveTailscaleExitNode(tag)
+	machineID := ""
+	if scope == services.ScopeRemote {
+		machineID, _, _ = GetLxdRemoteOverride()
+	}
+	sameMachine := func() bool {
+		if scope != services.ScopeRemote {
+			return true
+		}
+		id, _, active := GetLxdRemoteOverride()
+		return active && id == machineID
+	}
+	canSave := (scope == services.ScopeLocal || machineID != "") && ac.CanSaveTailscaleExitNode(machineID, tag)
+	cmd := tailscaleCommands{ac: ac, scope: scope, machineID: machineID}
 
 	type snapKey struct {
 		view     tailscaleNetworkView
@@ -92,18 +111,28 @@ func tailscaleNetworkTab(ac *core.AppController, win fyne.Window, tag, cfgPath s
 	}
 	var last *snapKey
 	refresh := func() {
-		running := ac.RunningState != nil && ac.RunningState.IsRunning()
-		st, ok := ac.TailscaleStatus(tag)
-		live := ac.TailscaleLive()
+		var (
+			st      services.TailscaleStatus
+			ok      bool
+			running bool
+			live    bool
+		)
+		haveCtrl := false
+		if sameMachine() {
+			running = ac.TailscaleCoreRunning(scope)
+			st, ok = ac.TailscaleStatus(scope, tag)
+			live = ac.TailscaleLive(scope)
+			haveCtrl = ac.TailscaleControlAvailable(scope)
+		}
 		written := writtenExitNode(cfgPath, tag)
-		key := snapKey{view: tailscaleNetworkViewFor(running, live, ok), at: st.ReceivedAt, written: written, haveCtrl: ac.TailscaleControlAvailable()}
+		key := snapKey{view: tailscaleNetworkViewFor(running, live, ok), at: st.ReceivedAt, written: written, haveCtrl: haveCtrl}
 		if last != nil && *last == key {
 			return
 		}
 		last = &key
 		fyne.Do(func() {
 			box.RemoveAll()
-			buildTailscaleNetwork(ac, win, box, tag, key.view, st, written, canSave, key.haveCtrl)
+			buildTailscaleNetwork(cmd, win, box, tag, key.view, st, written, canSave, key.haveCtrl)
 			box.Refresh()
 		})
 	}
@@ -121,6 +150,32 @@ func tailscaleNetworkTab(ac *core.AppController, win fyne.Window, tag, cfgPath s
 	return withScrollGutter(box)
 }
 
+// tailscaleCommands — команды вкладки, привязанные к области и машине окна.
+type tailscaleCommands struct {
+	ac        *core.AppController
+	scope     services.ProxyScope
+	machineID string
+}
+
+// saveExitNode — Save choice. Local: запись в профиль Local и пересборка
+// bin/config.json (SaveTailscaleExitNode). Remote: запись в профиль ЭТОЙ
+// машины и пересборка её config.json тем же шагом, что Save её Мастера
+// (configurator.RebuildMachineConfig). Машине конфиг не отправляется — как
+// и после Save Мастера; remoteWritten=true — показать тот же признак, что
+// показывает Мастер («Remote config exported»), доставка за Deploy config.
+func (c tailscaleCommands) saveExitNode(tag, value string) (remoteWritten bool, err error) {
+	if c.scope != services.ScopeRemote {
+		return false, c.ac.SaveTailscaleExitNode(tag, value)
+	}
+	if err := core.WriteTailscaleExitNodeChoice(c.ac.FileService.Layout.Data, c.machineID, tag, value); err != nil {
+		return false, err
+	}
+	if _, err := configurator.RebuildMachineConfig(c.machineID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // windowOpen — окно ещё среди окон приложения.
 func windowOpen(win fyne.Window) bool {
 	app := fyne.CurrentApp()
@@ -135,8 +190,9 @@ func windowOpen(win fyne.Window) bool {
 	return false
 }
 
-func buildTailscaleNetwork(ac *core.AppController, win fyne.Window, box *fyne.Container, tag string,
+func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Container, tag string,
 	view tailscaleNetworkView, st services.TailscaleStatus, written string, canSave, haveCtrl bool) {
+	ac := cmd.ac
 	note := func(text string) {
 		l := widget.NewLabel(text)
 		l.Wrapping = fyne.TextWrapWord
@@ -185,7 +241,7 @@ func buildTailscaleNetwork(ac *core.AppController, win fyne.Window, box *fyne.Co
 						return
 					}
 					go func() {
-						if err := ac.TailscaleLogout(tag); err != nil {
+						if err := ac.TailscaleLogout(cmd.scope, tag); err != nil {
 							debuglog.WarnLog("tailscale %s: logout failed", tag)
 							fyne.Do(func() { ShowError(win, err) })
 						}
@@ -259,7 +315,7 @@ func buildTailscaleNetwork(ac *core.AppController, win fyne.Window, box *fyne.Co
 			stableID = byLabel[v].StableID
 		}
 		go func() {
-			if err := ac.TailscaleSetExitNode(tag, stableID); err != nil {
+			if err := ac.TailscaleSetExitNode(cmd.scope, tag, stableID); err != nil {
 				debuglog.WarnLog("tailscale %s: exit node not switched", tag)
 				fyne.Do(func() { ShowError(win, err) })
 			}
@@ -283,11 +339,19 @@ func buildTailscaleNetwork(ac *core.AppController, win fyne.Window, box *fyne.Co
 			save = widget.NewButton(locale.T("Save choice"), func() {
 				save.Disable()
 				go func() {
-					err := ac.SaveTailscaleExitNode(tag, value)
+					remoteWritten, err := cmd.saveExitNode(tag, value)
+					if err != nil {
+						debuglog.WarnLog("tailscale %s: exit node choice not saved", tag)
+					}
 					fyne.Do(func() {
 						if err != nil {
 							save.Enable()
 							ShowError(win, err)
+							return
+						}
+						if remoteWritten {
+							dialog.ShowInformation(locale.T("Remote config exported"),
+								locale.T("The config for the remote machine was written to a separate file. The local bin/config.json was not touched."), win)
 						}
 					})
 				}()
@@ -325,7 +389,7 @@ func buildTailscaleNetwork(ac *core.AppController, win fyne.Window, box *fyne.Co
 			box.Add(h)
 		}
 		for _, p := range services.SortDevices(g.Peers) {
-			box.Add(tailscaleDeviceRow(ac, win, tag, p, haveCtrl))
+			box.Add(tailscaleDeviceRow(cmd, win, tag, p, haveCtrl))
 		}
 	}
 }
@@ -368,7 +432,7 @@ func tailscaleDeviceDetails(p services.TailscalePeer, now time.Time) string {
 }
 
 // tailscaleDeviceRow — строка устройства и меню: Copy name, Copy address, Ping.
-func tailscaleDeviceRow(ac *core.AppController, win fyne.Window, tag string, p services.TailscalePeer, haveCtrl bool) fyne.CanvasObject {
+func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer, haveCtrl bool) fyne.CanvasObject {
 	mark := "○"
 	if p.Online {
 		mark = "●"
@@ -392,7 +456,7 @@ func tailscaleDeviceRow(ac *core.AppController, win fyne.Window, tag string, p s
 			items = append(items, fyne.NewMenuItem(locale.T("Copy address"), func() { setClipboard(addr) }))
 			if haveCtrl {
 				items = append(items, fyne.NewMenuItem(locale.T("Ping"), func() {
-					showTailscalePing(ac, win, tag, p.HostName, addr)
+					showTailscalePing(cmd, win, tag, p.HostName, addr)
 				}))
 			}
 		}
@@ -426,7 +490,7 @@ func tailscalePingLine(r services.TailscalePingResult) string {
 
 // showTailscalePing — лист проверки устройства: до закрытия или до пяти
 // ответов.
-func showTailscalePing(ac *core.AppController, win fyne.Window, tag, name, addr string) {
+func showTailscalePing(cmd tailscaleCommands, win fyne.Window, tag, name, addr string) {
 	lines := container.NewVBox(widget.NewProgressBarInfinite())
 	ctx, cancel := context.WithCancel(context.Background())
 	d := dialog.NewCustom(locale.Tf("Ping %s", name), locale.T("Close"), lines, win)
@@ -435,7 +499,7 @@ func showTailscalePing(ac *core.AppController, win fyne.Window, tag, name, addr 
 	d.Show()
 	go func() {
 		first := true
-		err := ac.TailscalePing(ctx, tag, addr, func(r services.TailscalePingResult) {
+		err := cmd.ac.TailscalePing(ctx, cmd.scope, tag, addr, func(r services.TailscalePingResult) {
 			line := tailscalePingLine(r)
 			fyne.Do(func() {
 				if first {

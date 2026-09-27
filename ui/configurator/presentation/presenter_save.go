@@ -448,6 +448,12 @@ func (p *WizardPresenter) writeRemoteConfig() (string, error) {
 	return outPath, nil
 }
 
+// WriteRemoteConfig — writeRemoteConfig для сборки без окна Мастера
+// (configurator.RebuildMachineConfig, Save choice вкладки Network у Remote).
+func (p *WizardPresenter) WriteRemoteConfig() (string, error) {
+	return p.writeRemoteConfig()
+}
+
 // remoteConfigRejectedError — конфиг машины записан, но ядро его не приняло.
 // Отдельный тип, потому что это не провал записи: outPath при нём валиден.
 type remoteConfigRejectedError struct{ cause error }

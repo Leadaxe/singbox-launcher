@@ -2,9 +2,14 @@ package core
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/paths"
+	"singbox-launcher/internal/platform"
 )
 
 // SPEC 148 §5: Save choice — поле появляется, меняется, убирается; порядок
@@ -72,5 +77,72 @@ func TestFindOwnTailscaleNode(t *testing.T) {
 	}
 	if n := findOwnTailscaleNode(s, "v"); n != nil {
 		t.Error("не tailscale")
+	}
+}
+
+// SPEC 148 §3: Save choice у Remote пишет `exit_node` в узел профиля ЭТОЙ
+// машины (wizard_states/remote/<id>/state.json) и не трогает профиль Local,
+// где лежит узел с тем же тегом.
+func TestWriteTailscaleExitNodeChoiceRemoteProfile(t *testing.T) {
+	d := paths.DataDir(t.TempDir())
+	const tag = "ts"
+	newState := func() *state.State {
+		return &state.State{Sources: []state.Source{{Node: state.Node{
+			Kind: state.SourceKindServer, Tag: tag, Enabled: true,
+			Body: json.RawMessage(`{"type":"tailscale","tag":"ts","hostname":"box"}`),
+		}}}}
+	}
+	localPath := platform.GetWizardStatePath(d)
+	remotePath := platform.GetWizardStatePathFor(d, constants.ConfigTargetRemote, "m1")
+	for _, p := range []string{localPath, remotePath} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := newState().Save(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	localBefore, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := WriteTailscaleExitNodeChoice(d, "m1", tag, "100.64.0.7"); err != nil {
+		t.Fatalf("запись в профиль машины: %v", err)
+	}
+
+	remote, err := state.Load(remotePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := findOwnTailscaleNode(remote, tag)
+	if n == nil {
+		t.Fatal("узел профиля машины пропал")
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(n.Body, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["exit_node"] != "100.64.0.7" {
+		t.Errorf("exit_node в профиле машины = %v, want 100.64.0.7; тело %s", body["exit_node"], n.Body)
+	}
+	if body["hostname"] != "box" {
+		t.Errorf("прочие поля тела не сохранились: %s", n.Body)
+	}
+
+	localAfter, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(localAfter) != string(localBefore) {
+		t.Error("профиль Local изменён записью в профиль машины")
+	}
+
+	// Узла нет в профиле машины — ошибка, профиль Local не подменяет его.
+	if err := WriteTailscaleExitNodeChoice(d, "m2", tag, "100.64.0.7"); err == nil {
+		t.Error("машина без профиля обязана давать ошибку")
+	}
+	if got, _ := os.ReadFile(localPath); string(got) != string(localBefore) {
+		t.Error("профиль Local изменён при ошибке записи в машину")
 	}
 }

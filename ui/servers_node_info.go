@@ -56,7 +56,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	if display := proxy.DisplayOrName(); display != proxy.Name {
 		body.Add(infoRow(locale.T("Display name"), display))
 	}
-	if tailscaleHasNoExit(ac, scope, proxy.Name) {
+	if tailscaleHasNoExit(ac, scope, proxy) {
 		// SPEC 148 §8: замер через узел без выхода неприменим.
 		l := widget.NewLabel(locale.T("This node has no exit. Check devices on the Network tab."))
 		l.Wrapping = fyne.TextWrapWord
@@ -282,8 +282,8 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	// Network (SPEC 148; прежде секция SPEC 130). Только у tailscale-endpoint'а
 	// и только там, где ядро отдаёт статус по gRPC.
 	var networkTab fyne.CanvasObject
-	if node.Type == configtypes.SchemeTailscale && ac.TailscaleAvailable() {
-		networkTab = tailscaleNetworkTab(ac, win, proxy.Name, cfgPath, scope == services.ScopeLocal)
+	if node.Type == configtypes.SchemeTailscale && ac.TailscaleAvailable(scope) {
+		networkTab = tailscaleNetworkTab(ac, win, proxy.Name, cfgPath, scope)
 	}
 
 	// WG/AWG: состояние в ядре и выключатель. Секция сама решает, рисоваться

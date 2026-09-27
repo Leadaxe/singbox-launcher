@@ -17,6 +17,7 @@ import (
 	"singbox-launcher/api"
 	"singbox-launcher/core"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
@@ -109,11 +110,18 @@ func sameStrings(a, b []string) bool {
 // состояний (поток ядра чаще раза в секунду экран не перерисовывает).
 const networksPollInterval = time.Second
 
-// watchNetworksDirection раз в секунду отдаёт состав NETWORKS: пусто, когда
-// ядро не работает. config.json перечитывается только при смене размера или
+// watchNetworksDirection раз в секунду отдаёт состав NETWORKS области scope:
+// пусто, когда ядро области не работает. Конфиг — тот, по которому работает
+// ядро области (effectiveNodeConfigPath: у Remote собранный конфиг
+// выбранной машины); перечитывается только при смене пути, размера или
 // времени изменения. Живёт всё время работы приложения, как и панель.
-func watchNetworksDirection(ac *core.AppController, onTick func(tags []string)) {
+//
+// Состояние ядра спрашивается ПОСЛЕ отбора: у Remote оно поднимает ленивый
+// стрим статуса машины, и без узлов Tailscale в её конфиге открывать его
+// незачем.
+func watchNetworksDirection(ac *core.AppController, scope services.ProxyScope, onTick func(tags []string)) {
 	var (
+		lastPath string
 		lastMod  time.Time
 		lastSize int64
 		cached   []string
@@ -121,39 +129,57 @@ func watchNetworksDirection(ac *core.AppController, onTick func(tags []string)) 
 	ticker := time.NewTicker(networksPollInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		if platform.IsSleeping() || ac == nil || ac.FileService == nil || ac.RunningState == nil {
+		if platform.IsSleeping() || ac == nil || ac.FileService == nil {
 			continue
 		}
-		var tags []string
-		// Без статуса tailnet (legacy-движок) состояние узла не узнать —
-		// псевдо-направления нет.
-		if ac.RunningState.IsRunning() && ac.TailscaleAvailable() {
-			path := ac.FileService.ConfigPath
-			if fi, err := os.Stat(path); err == nil {
-				if !fi.ModTime().Equal(lastMod) || fi.Size() != lastSize {
-					fresh, rerr := config.GetNetworksNodeTagsFromConfig(path)
-					if rerr != nil {
-						debuglog.DebugLog("networks: config not read: %v", rerr)
-					} else {
-						cached = fresh
-						lastMod, lastSize = fi.ModTime(), fi.Size()
-					}
-				}
-				tags = cached
-			}
-		}
-		onTick(tags)
+		onTick(networksTagsNow(ac, scope, &lastPath, &lastMod, &lastSize, &cached))
 	}
 }
 
-// tailscaleHasNoExit — узел Tailscale локального ядра, у которого по
-// состоянию ядра нет действующего exit node (SPEC 148 §8). Только Local:
-// чтение статуса удалённой машины подняло бы её ленивый стрим ради строки
-// списка.
-func tailscaleHasNoExit(ac *core.AppController, scope services.ProxyScope, tag string) bool {
-	if ac == nil || scope != services.ScopeLocal || ac.RunningState == nil || !ac.RunningState.IsRunning() {
+// networksTagsNow — один тик watchNetworksDirection.
+func networksTagsNow(ac *core.AppController, scope services.ProxyScope, lastPath *string, lastMod *time.Time, lastSize *int64, cached *[]string) []string {
+	// Без статуса tailnet (legacy-движок, машина не выбрана) состояние узла
+	// не узнать — псевдо-направления нет.
+	if !ac.TailscaleAvailable(scope) {
+		return nil
+	}
+	path := effectiveNodeConfigPath(ac, scope)
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil
+	}
+	if path != *lastPath || !fi.ModTime().Equal(*lastMod) || fi.Size() != *lastSize {
+		fresh, rerr := config.GetNetworksNodeTagsFromConfig(path)
+		if rerr != nil {
+			debuglog.DebugLog("networks: config not read: %v", rerr)
+			if path != *lastPath {
+				return nil
+			}
+		} else {
+			*cached = fresh
+			*lastPath, *lastMod, *lastSize = path, fi.ModTime(), fi.Size()
+		}
+	}
+	if len(*cached) == 0 || !ac.TailscaleCoreRunning(scope) {
+		return nil
+	}
+	return *cached
+}
+
+// tailscaleHasNoExit — узел Tailscale ядра области, у которого по состоянию
+// ядра нет действующего exit node (SPEC 148 §4). У Remote статус читается
+// только для строки типа tailscale: чтение поднимает ленивый стрим машины, и
+// ради строк без узлов Tailscale открывать его незачем.
+func tailscaleHasNoExit(ac *core.AppController, scope services.ProxyScope, proxy api.ProxyInfo) bool {
+	if ac == nil {
 		return false
 	}
-	st, ok := ac.TailscaleStatus(tag)
+	if scope == services.ScopeRemote && !strings.EqualFold(proxy.ClashType, configtypes.SchemeTailscale) {
+		return false
+	}
+	if !ac.TailscaleCoreRunning(scope) {
+		return false
+	}
+	st, ok := ac.TailscaleStatus(scope, proxy.Name)
 	return ok && st.BackendState == services.TailscaleStateRunning && st.ExitNode == nil
 }

@@ -1,6 +1,7 @@
 // File tailscale_exit_save.go — кнопка Save choice вкладки Network (SPEC 148
-// §5, LxBox §581 раздел 5): действующий exit node пишется в `exit_node`
-// тела узла, конфиг пересобирается. Меняется только это поле.
+// §3, LxBox §581 раздел 5): действующий exit node пишется в `exit_node`
+// тела узла в профиле той области, чьё ядро на экране (Local или удалённая
+// машина), конфиг пересобирается. Меняется только это поле.
 //
 // Писать можно только в СВОЙ узел: свободный сервер в корне или член папки.
 // У узла подписки тело принадлежит провайдеру, и правка потерялась бы при
@@ -16,7 +17,9 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -126,31 +129,58 @@ func findOwnTailscaleNode(s *state.State, finalTag string) *state.Node {
 	return nil
 }
 
-// CanSaveTailscaleExitNode — показывать ли Save choice: узел свой и
-// локальный (удалённая машина строит конфиг из своего состояния).
-func (ac *AppController) CanSaveTailscaleExitNode(finalTag string) bool {
+// tailscaleExitStatePath — state.json профиля, в чей узел пишется выбор:
+// machineID "" — профиль Local, иначе профиль удалённой машины
+// (wizard_states/remote/<id>/state.json). Конфиг каждой машины строится из
+// её собственного состояния, поэтому выбор, сделанный на её ядре, обязан лечь
+// туда, а не в профиль Local.
+func tailscaleExitStatePath(d paths.DataDir, machineID string) string {
+	if id := strings.TrimSpace(machineID); id != "" {
+		return platform.GetWizardStatePathFor(d, constants.ConfigTargetRemote, id)
+	}
+	return platform.GetWizardStatePath(d)
+}
+
+// CanSaveTailscaleExitNode — показывать ли Save choice: узел свой в профиле
+// области (machineID "" — Local, иначе удалённая машина).
+func (ac *AppController) CanSaveTailscaleExitNode(machineID, finalTag string) bool {
 	if ac == nil || ac.FileService == nil {
 		return false
 	}
-	s, err := state.Load(platform.GetWizardStatePath(ac.FileService.Layout.Data))
+	s, err := state.Load(tailscaleExitStatePath(ac.FileService.Layout.Data, machineID))
 	if err != nil {
 		return false
 	}
 	return findOwnTailscaleNode(s, finalTag) != nil
 }
 
-// SaveTailscaleExitNode пишет value в `exit_node` тела своего узла ("" —
-// убирает поле), сохраняет состояние и пересобирает конфиг.
+// SaveTailscaleExitNode — Save choice панели Local: запись в свой узел
+// профиля Local, затем MarkConfigStale и пересборка bin/config.json.
+func (ac *AppController) SaveTailscaleExitNode(finalTag, value string) error {
+	if ac == nil || ac.FileService == nil {
+		return fmt.Errorf("FileService not initialized")
+	}
+	if err := WriteTailscaleExitNodeChoice(ac.FileService.Layout.Data, "", finalTag, value); err != nil {
+		return err
+	}
+	if ac.StateService != nil {
+		ac.StateService.MarkConfigStale()
+	}
+	return ac.RebuildConfigIfDirty()
+}
+
+// WriteTailscaleExitNodeChoice пишет value в `exit_node` тела своего узла
+// профиля machineID ("" — Local; value "" убирает поле) и сохраняет его
+// state.json. Конфиг не пересобирается: у Local это делает
+// SaveTailscaleExitNode, у удалённой машины — сборка её визарда
+// (configurator.RebuildMachineConfig), единственный путь к её config.json.
 //
 // У узла с источником-телом (`singbox_outbound`, вид json) правится текст
 // источника, тело материализуется из него — тем же путём, что Apply вкладки
 // JSON. У узла из ссылки или INI правится тело, происхождение не меняется
 // (MaterializeEditedBody), как у правки тела узла с таким источником.
-func (ac *AppController) SaveTailscaleExitNode(finalTag, value string) error {
-	if ac == nil || ac.FileService == nil {
-		return fmt.Errorf("FileService not initialized")
-	}
-	statePath := platform.GetWizardStatePath(ac.FileService.Layout.Data)
+func WriteTailscaleExitNodeChoice(d paths.DataDir, machineID, finalTag, value string) error {
+	statePath := tailscaleExitStatePath(d, machineID)
 	s, err := state.Load(statePath)
 	if err != nil {
 		return fmt.Errorf("load state: %w", err)
@@ -194,8 +224,5 @@ func (ac *AppController) SaveTailscaleExitNode(finalTag, value string) error {
 		return fmt.Errorf("save state: %w", err)
 	}
 	debuglog.InfoLog("tailscale: exit node choice saved to the node body")
-	if ac.StateService != nil {
-		ac.StateService.MarkConfigStale()
-	}
-	return ac.RebuildConfigIfDirty()
+	return nil
 }

@@ -910,8 +910,8 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			subtitleText.Color = theme.Color(theme.ColorNamePlaceHolder)
 			subtitleText.Refresh()
 			subtitleLine.Update(nil)
-			st, ok := ac.TailscaleStatus(info.Name)
-			word, tone := networksRowState(ac.RunningState.IsRunning(), st, ok)
+			st, ok := ac.TailscaleStatus(panel.scope, info.Name)
+			word, tone := networksRowState(ac.TailscaleCoreRunning(panel.scope), st, ok)
 			delayText.Text = word
 			delayText.Color = networksToneColor(tone)
 			delayText.Refresh()
@@ -976,7 +976,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		// Узел Tailscale без действующего exit node: проверка запросом к
 		// внешнему адресу к нему неприменима (SPEC 148 §8) — вместо замера
 		// «no exit», клик по нему замер не запускает.
-		noExit := tailscaleHasNoExit(ac, panel.scope, proxyInfo.Name)
+		noExit := tailscaleHasNoExit(ac, panel.scope, proxyInfo)
 		if noExit {
 			delayText.Text = locale.T("no exit")
 			delayText.Color = theme.Color(theme.ColorNameWarning)
@@ -2085,30 +2085,30 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			status.SetText(locale.Tf("NETWORKS: %d nodes", len(networksTags)))
 		}
 	}
-	if scope == services.ScopeLocal {
-		go watchNetworksDirection(ac, func(tags []string) {
-			fyne.Do(func() {
-				if !sameStrings(tags, networksTags) {
-					networksTags = tags
-					if len(tags) == 0 && networksOpen {
-						// Узлы пропали (VPN выключен, узел удалён или стал
-						// выходом) — снова виден выбранный настоящий список.
-						networksOpen = false
-						applyNetworksMode()
-					}
-					setGroupOptions(selectorOptions)
-					if !networksOpen {
-						suppressSelectCallback = true
-						groupSelect.SetSelected(selectedGroup)
-						suppressSelectCallback = false
-					}
+	// Обе панели: у Remote — узлы NETWORKS выбранной машины по её
+	// собранному конфигу и статус её ядра (SPEC 148 §2).
+	go watchNetworksDirection(ac, scope, func(tags []string) {
+		fyne.Do(func() {
+			if !sameStrings(tags, networksTags) {
+				networksTags = tags
+				if len(tags) == 0 && networksOpen {
+					// Узлы пропали (VPN выключен, узел удалён или стал
+					// выходом) — снова виден выбранный настоящий список.
+					networksOpen = false
+					applyNetworksMode()
 				}
-				if networksOpen {
-					proxiesListWidget.Refresh()
+				setGroupOptions(selectorOptions)
+				if !networksOpen {
+					suppressSelectCallback = true
+					groupSelect.SetSelected(selectedGroup)
+					suppressSelectCallback = false
 				}
-			})
+			}
+			if networksOpen {
+				proxiesListWidget.Refresh()
+			}
 		})
-	}
+	})
 
 	// Обертываем status label в контейнер с горизонтальной прокруткой
 	// Scroll контейнер ограничит ширину label и добавит прокрутку при необходимости
