@@ -44,41 +44,28 @@ import (
 // не имеют — они поля `Node`, и сужение сигнатуры до них не даёт завести
 // вторую реализацию «текст → тело» для узла папки (ловушка «эмиттер и парсер
 // ходят парой»).
-func applyServerBodyJSON(node *wizardmodels.Node, text string) error {
+//
+// ownContainer — узел свой: свободный сервер в корне или член папки, не узел
+// подписки. Условие контейнера знает только вызывающий (адрес окна).
+func applyServerBodyJSON(node *wizardmodels.Node, text string, ownContainer bool) error {
 	if node == nil {
 		return fmt.Errorf("no node")
 	}
-	// SPEC 121 §5.1: вкладка принимает ДВЕ формы — прежнее тело и документ
-	// узла. Из документа берётся только узел (контракт 1.1.85); о
-	// несохранённом `dns`/`route`/`sections` сообщает вызывающий. Разбор
-	// документа живёт в core/config одной чистой функцией: её же зовут
-	// вставка источника и форма «Add server».
-	var bodyText string
-	if config.IsNodeDocument([]byte(text)) {
-		body, _, err := config.ParseNodeDocument([]byte(text))
-		if err != nil {
-			return err
-		}
-		bodyText = string(body)
-	} else {
-		var ob map[string]interface{}
-		if err := json.Unmarshal([]byte(text), &ob); err != nil {
-			return err
-		}
-		if t, _ := ob["type"].(string); t == "" {
-			return fmt.Errorf("outbound object must have a non-empty \"type\" field")
-		}
-		var compact bytes.Buffer
-		if err := json.Compact(&compact, []byte(text)); err != nil {
-			return err
-		}
-		bodyText = compact.String()
+	bodyText, err := nodeBodyFromJSONInput(text)
+	if err != nil {
+		return err
 	}
-	// Авторское тело — только у узла с JSON-происхождением или без него
-	// (контракт 1.1.87, PARSING_PRINCIPLES §10.1): правка тела узла из
-	// ссылки или INI происхождение не меняет, и реестр правит его как прежде.
+	// Свой узел после ручной правки JSON — АВТОРСКИЙ (контракт 1.1.88,
+	// PARSING_PRINCIPLES §11 п.1; решение владельца 27.09.2026, LxBox §576):
+	// в источнике записи остаётся только голое тело, вид `json`, какой бы ни
+	// была прежняя форма — ссылка, INI, документ. Реестр на таком теле
+	// сообщает, а не правит (§10). Предупреждение о потере ссылки показывает
+	// вызывающий ДО вызова (ownEditDropsOrigin).
+	//
+	// Узел подписки — не свой: вид и исходник происхождения переживают правку
+	// тела, и правила реестра применяются как у обычного тела.
 	materialize := config.MaterializeServerNode
-	if node.Origin != nil && node.Origin.Kind != wizardmodels.OriginKindJSON {
+	if !ownContainer && node.Origin != nil && node.Origin.Kind != wizardmodels.OriginKindJSON {
 		materialize = func(_ string, js json.RawMessage) (*config.ServerNodeMaterial, error) {
 			return config.MaterializeEditedBody(js)
 		}
@@ -98,42 +85,92 @@ func applyServerBodyJSON(node *wizardmodels.Node, text string) error {
 	// обратно и проверится следующей сборкой.
 	node.RevalidateCoreVerdictAfterBodyChange(bodyBefore)
 
-	// ВИД и ИСХОДНИК происхождения переживают правку тела.
-	//
-	// Правка тела — это правка тела, а не смена того, откуда узел взялся.
-	// Раньше здесь безусловно писался origin материализации, и узел,
-	// заведённый из wg-quick INI, после первой же правки JSON терял исходник:
-	// kind ехал в "json", а блок [Interface]/[Peer] со всеми комментариями
-	// (включая имя пира) пропадал навсегда — «Regen from raw» после этого
-	// пересобирал узел уже из нашего собственного вывода.
-	//
-	// А вот СВЯЗЬ С ПОДПИСКОЙ ручная правка рвёт (Д5, разыменование): тело
+	// СВЯЗЬ С ПОДПИСКОЙ ручная правка рвёт (Д5, разыменование): тело
 	// теперь наше, и следующий fetch не имеет права его переписать. Поэтому
 	// origin.SubURL снимается — это ровно то, что делает
-	// business.DereferenceNodeOrigin.
-	if node.Origin == nil {
-		// Узла без происхождения не было — он собран прямо здесь из
-		// вставленного JSON и честно происходит из него.
-		node.Origin = &wizardmodels.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw}
+	// business.DereferenceNodeOrigin. Origin ПЕРЕСАЖИВАЕТСЯ на новый
+	// экземпляр: Node несёт *Origin, и копии узла делят его с оригиналом.
+	if node.Origin == nil || ownContainer {
+		// Узел без происхождения собран прямо здесь из вставленного JSON, а
+		// свой узел после правки происходит из неё: источник — голое тело.
+		node.Origin = &wizardmodels.Origin{Kind: wizardmodels.OriginKindJSON, Raw: mat.OriginRaw}
 		return nil
 	}
+	// Узел подписки: ВИД и ИСХОДНИК происхождения переживают правку тела.
+	// Узел, заведённый из wg-quick INI, иначе терял бы исходник (блок
+	// [Interface]/[Peer] с комментариями), и «Regen from raw» пересобирал бы
+	// его уже из нашего собственного вывода.
 	if node.Origin.Kind == wizardmodels.OriginKindJSON && node.Origin.Raw != mat.OriginRaw {
 		// Источник JSON-узла после правки — только тело узла (контракт
 		// 1.1.87, PARSING_PRINCIPLES §11 п.1): документ из вкладки в источник
-		// не попадает. Origin пересаживается на новый экземпляр (см. ниже).
+		// не попадает.
 		o := *node.Origin
 		o.Raw = mat.OriginRaw
 		node.Origin = &o
 	}
 	if node.Origin.SubURL != "" {
-		// Origin ПЕРЕСАЖИВАЕТСЯ на новый экземпляр: Node несёт *Origin, и
-		// копии узла делят его с оригиналом (тот же довод, что в
-		// DereferenceNodeOrigin).
 		o := *node.Origin
 		o.SubURL = ""
 		node.Origin = &o
 	}
 	return nil
+}
+
+// ownEditDropsOrigin — заменит ли правка JSON своего узла его исходник
+// ссылку или INI (ownContainer: свободный сервер в корне или член папки).
+// Вызывающий спрашивает подтверждение до applyServerBodyJSON: узел
+// перестаёт быть связан со ссылкой, и реестр его больше не правит.
+func ownEditDropsOrigin(node *wizardmodels.Node, ownContainer bool) bool {
+	return ownContainer && node != nil && node.Origin != nil &&
+		node.Origin.Kind != wizardmodels.OriginKindJSON && node.Origin.Raw != ""
+}
+
+// nodeBodyFromJSONInput — ввод вкладки JSON → текст тела узла. Формы ввода
+// три: голое тело, документ узла и массив тел (PARSING_PRINCIPLES §11 п.1);
+// в хранение уходит только тело. Об остатке документа или массива сообщает
+// вызывающий (jsonInputDropsRest) — одним сообщением на сохранение.
+func nodeBodyFromJSONInput(text string) (string, error) {
+	if config.IsNodeDocument([]byte(text)) {
+		body, _, err := config.ParseNodeDocument([]byte(text))
+		if err != nil {
+			return "", err
+		}
+		return string(body), nil
+	}
+	if config.IsNodeBodyArray([]byte(text)) {
+		body, _, err := config.ParseNodeBodyArray([]byte(text))
+		if err != nil {
+			return "", err
+		}
+		return string(body), nil
+	}
+	var ob map[string]interface{}
+	if err := json.Unmarshal([]byte(text), &ob); err != nil {
+		return "", err
+	}
+	if t, _ := ob["type"].(string); t == "" {
+		return "", fmt.Errorf("outbound object must have a non-empty \"type\" field")
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, []byte(text)); err != nil {
+		return "", err
+	}
+	return compact.String(), nil
+}
+
+// jsonInputDropsRest — осталось ли во вводе вкладки JSON что-то кроме тела
+// узла: `dns`/`route`/`sections` документа или элементы массива после
+// первого.
+func jsonInputDropsRest(text string) bool {
+	if config.IsNodeDocument([]byte(text)) {
+		_, dropped, err := config.ParseNodeDocument([]byte(text))
+		return err == nil && len(dropped) > 0
+	}
+	if config.IsNodeBodyArray([]byte(text)) {
+		_, extra, err := config.ParseNodeBodyArray([]byte(text))
+		return err == nil && extra > 0
+	}
+	return false
 }
 
 // regenServerBodyFromRaw — «Regen from raw»: тело пересобирается из

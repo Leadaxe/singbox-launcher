@@ -1,7 +1,7 @@
 # SPEC 146 — Авторское тело: реестр сообщает, не правит; источник узла — тело узла
 
 Статус: **C** (решение владельца 2026-09-27, реализовано 2026-09-27).
-Тип: Feature. Контракт: бамп `contract/VERSION` → **1.1.87**, параграф **§84** в `contract/TASKS_LXBOX.md`.
+Тип: Feature. Контракт: бамп `contract/VERSION` → **1.1.87**, параграф **§84** в `contract/TASKS_LXBOX.md`; хвосты — **1.1.88**, **§85** (раздел 6).
 
 Источник решения — спеки LxBox §576
 (`LxBox/docs/spec/tasks/576-node-source-is-bare-body.md`) и §577
@@ -63,13 +63,41 @@ sing-box JSON подписок.
 ## 4. Проверка
 
 `TestContractCorpusAuthored`, `TestContractCorpusBody`, `TestBackupCorpus`,
-`TestAuthoredDetourYield`, `TestPipelineAWGMTUExceptionSurvivesStateReload`.
+`TestAuthoredDetourYield`, `TestPipelineAWGMTUExceptionSurvivesStateReload`;
+хвосты — `TestAuthoredEditStepsGoThroughDecide`, `TestContractCorpusNodeEdit`,
+`TestApplyServerBodyJSON`, `TestApplyBodyLeavesNodeDereferenced`.
 
-## 5. Не сделано
+## 5. Хвосты (контракт 1.1.88, TASKS_LXBOX §85)
 
-- Массив тел во вкладке JSON не принимается (как и до SPEC 146): ввод
-  ограничен телом и документом узла.
-- Правка тела узла из ссылки или INI происхождение не меняет, поэтому такое
-  тело авторским не становится (в LxBox Edit JSON пишет в источник голое тело).
-- Тест «шаги сборки не пишут в карту тела мимо точки решения» по исходникам не
-  заведён.
+- **Правка JSON своего узла из ссылки или INI.** Свой сервер в корне и член
+  папки: `applyServerBodyJSON(node, text, ownContainer)` материализует тело
+  авторским и заменяет `origin` на `{kind: json, raw: голое тело}`; ссылка
+  или INI не хранятся. Контейнер определяет окно источника (`ownContainer`
+  в `showSourceEditWindowAt`). Перед заменой — подтверждение
+  (`ownEditDropsOrigin`). Узел подписки: происхождение сохраняется, тело не
+  авторское (`MaterializeEditedBody`), как раньше.
+- **Массив тел во вкладке JSON.** `config.IsNodeBodyArray`,
+  `config.ParseNodeBodyArray`: в источник первый элемент. Остаток массива и
+  документа — одно сообщение `NodeInputDroppedText` (оно же в форме «Add
+  server»); прежний текст с перечнем частей документа снят.
+- **Тест по исходникам.** `TestAuthoredEditStepsGoThroughDecide`
+  (`core/config/authored_decision_point_test.go`): каждый шаг описи из §3
+  доходит по графу вызовов пакета до `nodeflow.Decide` /
+  `AuthoredResult` / `RepairsFor` и не содержит `m[k] = v` и `delete(...)`.
+- **Коды авторского узла при разборе.** Разбор авторского тела уже гонит
+  санитайзер (`materializeAuthoredBody` → `AuthoredResult`, пересчёт при
+  загрузке — `sanitizeStoredNodeBody`): мягкие коды с `applied: false`, тело
+  не меняется. Закреплено кейсами `authored/soft_unknown_key_nested_transport_kept`
+  и `authored/hard_flow_invalid_removed`. Попутно `vless.flow` `on_invalid`
+  получил `core_rejects`: sing-vmess `vless.NewClient` отвечает «unsupported
+  flow», конфиг не стартует.
+- **Корпус `node_edit/`** (6 кейсов, раннер `TestContractCorpusNodeEdit` в
+  `ui/configurator/tabs`): контейнер, прежний источник, ввод вкладки JSON →
+  источник после правки, `authored`, `rest_not_kept`, коды.
+
+## 6. Не сделано
+
+- Документ узла с несколькими узлами вкладка JSON по-прежнему отвергает
+  (норма §11 п.1: первый узел, не служебный и не группа). Форма «Add server»
+  разбирает документ тем же `ParseNodeDocument`, а для импорта норма требует
+  запись на КАЖДЫЙ узел; смена разбора требует развести эти два входа.

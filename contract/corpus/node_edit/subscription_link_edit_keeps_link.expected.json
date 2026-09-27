@@ -1,0 +1,8 @@
+{
+  "origin": {
+    "kind": "uri",
+    "raw": "trojan://testpass580@example-1.com:443#own"
+  },
+  "authored": false,
+  "rest_not_kept": false
+}

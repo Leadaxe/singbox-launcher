@@ -1,0 +1,21 @@
+{
+  "origin": {
+    "kind": "json",
+    "raw": {
+      "type": "trojan",
+      "server": "example-1.com",
+      "server_port": 443,
+      "password": "testpass580",
+      "foo": "bar"
+    }
+  },
+  "authored": true,
+  "rest_not_kept": false,
+  "warnings": [
+    {
+      "code": "unknown_key",
+      "path": "foo",
+      "applied": false
+    }
+  ]
+}

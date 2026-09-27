@@ -105,17 +105,19 @@ type singboxJSONNode struct {
 	ConfigJSON []byte
 }
 
-// NodeDocumentDroppedText — сообщение (ключ locale.Tf) о содержимом документа
-// узла, которое не сохраняется: `dns`, `route`, `sections` (контракт 1.1.85).
-// Один текст на все входы документа: вкладку JSON окна источника и форму
-// «Add server».
-const NodeDocumentDroppedText = "Only the node is saved. The document's %s will not be kept: a node does not carry routing or DNS entries."
+// NodeInputDroppedText — сообщение (ключ locale.T) о несохранённом остатке
+// ввода узла: документ с `dns`/`route`/`sections` (контракт 1.1.85) или
+// массив тел больше чем из одного элемента (контракт 1.1.88). Документ и
+// массив — формы ввода, не хранения (PARSING_PRINCIPLES §11 п.1): в источник
+// уходит только тело узла, и сообщение одно на сохранение, одинаковое для
+// всех входов — вкладки JSON окна источника и формы «Add server».
+const NodeInputDroppedText = "Only the node is saved. The rest of the input is not kept."
 
-// NodeDocumentDroppedMessage — переведённое сообщение о снятых частях
-// документа. Перевод здесь, рядом с константой: проверка каталога (SPEC 111)
-// резолвит locale.Tf(const) только в пределах файла константы.
-func NodeDocumentDroppedMessage(dropped []string) string {
-	return locale.Tf(NodeDocumentDroppedText, strings.Join(dropped, ", "))
+// NodeInputDroppedMessage — переведённое сообщение о несохранённом остатке
+// ввода. Перевод здесь, рядом с константой: проверка каталога (SPEC 111)
+// резолвит locale.T(const) только в пределах файла константы.
+func NodeInputDroppedMessage() string {
+	return locale.T(NodeInputDroppedText)
 }
 
 // compactJSON сжимает документ, сохраняя порядок полей автора (json.Compact

@@ -193,3 +193,44 @@ func RenderNodeDocument(body json.RawMessage, isEndpoint bool) (string, error) {
 	}
 	return string(out), nil
 }
+
+// IsNodeBodyArray сообщает, выглядит ли текст МАССИВОМ тел узлов: JSON-массив
+// (контракт 1.1.88, PARSING_PRINCIPLES §11 п.1). Массив — форма ввода, не
+// хранения: в источник узла уходит только первый элемент.
+func IsNodeBodyArray(raw []byte) bool {
+	t := bytes.TrimSpace(raw)
+	if len(t) == 0 || t[0] != '[' {
+		return false
+	}
+	var probe []json.RawMessage
+	return json.Unmarshal(t, &probe) == nil
+}
+
+// ParseNodeBodyArray разбирает массив тел узлов: тело — ПЕРВЫЙ элемент
+// (порядок ключей автора сохранён, json.Compact), extra — сколько элементов
+// после него не сохранено; вызывающий сообщает о них пользователю одним
+// сообщением (то же, что у документа с лишним содержимым).
+//
+// Ошибка и никаких изменений, если массив пуст или первый элемент не объект
+// с непустым `type`: тот же откат, что у applyServerBodyJSON.
+func ParseNodeBodyArray(raw []byte) (body json.RawMessage, extra int, err error) {
+	var list []json.RawMessage
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return nil, 0, fmt.Errorf("array: %w", err)
+	}
+	if len(list) == 0 {
+		return nil, 0, fmt.Errorf("the array carries no node")
+	}
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, list[0]); err != nil {
+		return nil, 0, fmt.Errorf("node body: %w", err)
+	}
+	var probe map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &probe); err != nil {
+		return nil, 0, fmt.Errorf("node body: the first array element must be an object: %w", err)
+	}
+	if t, _ := probe["type"].(string); strings.TrimSpace(t) == "" {
+		return nil, 0, fmt.Errorf("the node object must have a non-empty \"type\" field")
+	}
+	return json.RawMessage(buf.Bytes()), len(list) - 1, nil
+}

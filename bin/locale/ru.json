@@ -4787,8 +4787,14 @@
   "Tag %q is already used by a Direction: the swap group will not be built until the tag is free.": {
     "value": "Тег %q уже носит Направление: группа свёртки не соберётся, пока тег не освободится."
   },
-  "Only the node is saved. The document's %s will not be kept: a node does not carry routing or DNS entries.": {
-    "value": "Сохранён только узел. %s из документа не сохранены: узел не несёт правил маршрутов и DNS."
+  "Only the node is saved. The rest of the input is not kept.": {
+    "value": "Сохранён только узел. Остальное содержимое не сохранено."
+  },
+  "Replace the source with JSON?": {
+    "value": "Заменить источник на JSON?"
+  },
+  "This node was added from a share link or a WireGuard config. Saving the JSON replaces that source with the JSON: the link or config is no longer kept, and the app stops fixing the node's settings. It will only report problems. Continue?": {
+    "value": "Узел добавлен из ссылки или конфига WireGuard. Сохранение JSON заменит этот источник на JSON: ссылка или конфиг больше не хранятся, и приложение перестаёт исправлять настройки узла. Оно будет только сообщать о проблемах. Продолжить?"
   },
   "Node saved": {
     "value": "Узел сохранён"

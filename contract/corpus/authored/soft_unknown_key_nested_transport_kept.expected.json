@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "container": "own"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-6.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-6.com"
+        },
+        "transport": {
+          "baz": true,
+          "path": "/ws",
+          "type": "ws"
+        },
+        "type": "vless",
+        "uuid": "00000000-0000-4000-8000-000000000583"
+      },
+      "kind": "outbound",
+      "label": "own-vless-ws",
+      "scheme": "vless",
+      "warnings": [
+        {
+          "applied": false,
+          "code": "unknown_key",
+          "path": "transport.baz",
+          "value": "true"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

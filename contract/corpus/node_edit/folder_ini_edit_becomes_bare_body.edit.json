@@ -1,0 +1,9 @@
+{
+  "_comment": "Член папки из INI: правка JSON заменяет источник голым телом, INI не хранится (контракт 1.1.88).",
+  "container": "folder",
+  "origin": {
+    "kind": "wg_ini",
+    "raw": "[Interface]\nPrivateKey = cGxhY2Vob2xkZXJwbGFjZWhvbGRlcnBsYWNlaG9sZGVyMDA=\nAddress = 10.0.0.2/32\n\n[Peer]\nPublicKey = cGxhY2Vob2xkZXJwbGFjZWhvbGRlcnBsYWNlaG9sZGVyMDE=\nEndpoint = example-3.com:51820\nAllowedIPs = 0.0.0.0/0\n"
+  },
+  "input": "{\"type\":\"trojan\",\"server\":\"example-1.com\",\"server_port\":443,\"password\":\"testpass580\"}"
+}

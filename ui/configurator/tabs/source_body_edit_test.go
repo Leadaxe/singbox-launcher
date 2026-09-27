@@ -89,7 +89,7 @@ func TestRegenFromRawWithoutOrigin(t *testing.T) {
 func TestApplyServerBodyJSON(t *testing.T) {
 	t.Run("битый JSON откатывается", func(t *testing.T) {
 		src := serverWithBody(wizardmodels.OriginKindURI, "vless://x")
-		if err := applyServerBodyJSON(&src.Node, "{not json"); err == nil {
+		if err := applyServerBodyJSON(&src.Node, "{not json", true); err == nil {
 			t.Fatal("битый JSON принят")
 		}
 		if string(src.Body) != workingBody {
@@ -99,7 +99,7 @@ func TestApplyServerBodyJSON(t *testing.T) {
 
 	t.Run("объект без type откатывается", func(t *testing.T) {
 		src := serverWithBody(wizardmodels.OriginKindURI, "vless://x")
-		if err := applyServerBodyJSON(&src.Node, `{"server":"a.example"}`); err == nil {
+		if err := applyServerBodyJSON(&src.Node, `{"server":"a.example"}`, true); err == nil {
 			t.Fatal("outbound без type принят — ядро на нём не стартует")
 		}
 		if string(src.Body) != workingBody {
@@ -107,10 +107,10 @@ func TestApplyServerBodyJSON(t *testing.T) {
 		}
 	})
 
-	t.Run("валидный объект принят, порядок ключей сохранён", func(t *testing.T) {
+	t.Run("узел подписки: объект принят, порядок ключей и происхождение сохранены", func(t *testing.T) {
 		src := serverWithBody(wizardmodels.OriginKindURI, "vless://x")
 		const edited = `{"type":"trojan","server":"b.example","server_port":8443,"password":"q"}`
-		if err := applyServerBodyJSON(&src.Node, edited); err != nil {
+		if err := applyServerBodyJSON(&src.Node, edited, false); err != nil {
 			t.Fatalf("валидный объект отвергнут: %v", err)
 		}
 		// Порядок ключей — это то, что написал пользователь: пересортировка
@@ -128,6 +128,56 @@ func TestApplyServerBodyJSON(t *testing.T) {
 		}
 		if src.Origin != nil && src.Origin.Raw != "vless://x" {
 			t.Errorf("исходник переписан: %q", src.Origin.Raw)
+		}
+	})
+
+	// Свой узел (сервер в корне, член папки) из ссылки или INI после правки
+	// JSON: источник — голое тело, вид json, тело авторское (контракт 1.1.88,
+	// LxBox §576).
+	for _, kind := range []string{wizardmodels.OriginKindURI, wizardmodels.OriginKindWGIni} {
+		t.Run("свой узел из "+kind+": источник становится голым телом", func(t *testing.T) {
+			src := serverWithBody(kind, "raw-source")
+			if !ownEditDropsOrigin(&src.Node, true) {
+				t.Fatal("подтверждение о потере источника не запрошено")
+			}
+			if ownEditDropsOrigin(&src.Node, false) {
+				t.Fatal("у узла подписки источник не меняется — подтверждение лишнее")
+			}
+			const edited = `{"type":"trojan","server":"b.example","server_port":8443,"password":"q","foo":1}`
+			if err := applyServerBodyJSON(&src.Node, edited, true); err != nil {
+				t.Fatalf("правка отвергнута: %v", err)
+			}
+			if src.Origin == nil || src.Origin.Kind != wizardmodels.OriginKindJSON || src.Origin.Raw != edited {
+				t.Fatalf("источник = %+v, ожидали json с голым телом", src.Origin)
+			}
+			if !src.Node.Authored() {
+				t.Error("тело своего узла после правки JSON не авторское")
+			}
+			// Мягкое правило (лишний ключ) тело не правит: код с applied:false.
+			if !strings.Contains(string(src.Body), `"foo"`) {
+				t.Errorf("реестр правит авторское тело: %s", src.Body)
+			}
+		})
+	}
+
+	t.Run("массив тел: в источник первый элемент, остаток назван", func(t *testing.T) {
+		src := serverWithBody(wizardmodels.OriginKindJSON, workingBody)
+		const arr = `[{"type":"trojan","server":"b.example","server_port":8443,"password":"q"},{"type":"trojan","server":"c.example","server_port":443,"password":"r"}]`
+		if !jsonInputDropsRest(arr) {
+			t.Error("остаток массива не назван")
+		}
+		if err := applyServerBodyJSON(&src.Node, arr, true); err != nil {
+			t.Fatalf("массив отвергнут: %v", err)
+		}
+		const first = `{"type":"trojan","server":"b.example","server_port":8443,"password":"q"}`
+		if src.Origin == nil || src.Origin.Raw != first {
+			t.Fatalf("источник = %+v, ожидали первый элемент", src.Origin)
+		}
+		if jsonInputDropsRest(`[` + first + `]`) {
+			t.Error("массив из одного тела объявлен с остатком")
+		}
+		if err := applyServerBodyJSON(&src.Node, `[]`, true); err == nil {
+			t.Error("пустой массив принят")
 		}
 	})
 }

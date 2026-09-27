@@ -215,7 +215,8 @@
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
-          "code": "flow_deprecated"
+          "code": "flow_deprecated",
+          "core_rejects": true
         },
         "default": "",
         "conflicts": [
