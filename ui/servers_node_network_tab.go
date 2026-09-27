@@ -91,15 +91,10 @@ func writtenExitNode(cfgPath, tag string) string {
 // отвечают «not available» и в другую машину не уходят.
 func tailscaleNetworkTab(ac *core.AppController, win fyne.Window, tag, cfgPath string, scope services.ProxyScope) fyne.CanvasObject {
 	box := container.NewVBox()
-	machineID := ""
-	if scope == services.ScopeRemote {
-		machineID, _, _ = GetLxdRemoteOverride()
-	}
-	// Remote без выбранной машины ни к какому ядру не привязан: пустой id в
-	// цели значил бы «выбранная сейчас», и окно поехало бы за чужим выбором.
-	bound := scope == services.ScopeLocal || machineID != ""
-	canSave := bound && ac.CanSaveTailscaleExitNode(machineID, tag)
-	cmd := tailscaleCommands{ac: ac, target: core.TailscaleTarget{Scope: scope, MachineID: machineID}}
+	// Ядро окна — то же, что у остальных секций окна узла (nodeWindowTarget).
+	target, bound := nodeWindowTarget(scope)
+	canSave := bound && ac.CanSaveTailscaleExitNode(target.MachineID, tag)
+	cmd := tailscaleCommands{ac: ac, target: target}
 
 	type snapKey struct {
 		view     tailscaleNetworkView

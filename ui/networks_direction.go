@@ -7,6 +7,7 @@
 package ui
 
 import (
+	"fmt"
 	"image/color"
 	"os"
 	"strings"
@@ -125,6 +126,7 @@ func watchNetworksDirection(ac *core.AppController, scope services.ProxyScope, o
 		lastMod  time.Time
 		lastSize int64
 		cached   []string
+		lastWhy  string
 	)
 	ticker := time.NewTicker(networksPollInterval)
 	defer ticker.Stop()
@@ -132,39 +134,54 @@ func watchNetworksDirection(ac *core.AppController, scope services.ProxyScope, o
 		if platform.IsSleeping() || ac == nil || ac.FileService == nil {
 			continue
 		}
-		onTick(networksTagsNow(ac, scope, &lastPath, &lastMod, &lastSize, &cached))
+		tags, why := networksTagsNow(ac, scope, &lastPath, &lastMod, &lastSize, &cached)
+		// Причина пишется при смене, а не каждый тик: по журналу видно,
+		// какое условие держит пункт NETWORKS скрытым.
+		if why != lastWhy {
+			lastWhy = why
+			name := "local"
+			if scope == services.ScopeRemote {
+				name = "remote"
+			}
+			debuglog.DebugLog("networks (%s): %s", name, why)
+		}
+		onTick(tags)
 	}
 }
 
-// networksTagsNow — один тик watchNetworksDirection.
-func networksTagsNow(ac *core.AppController, scope services.ProxyScope, lastPath *string, lastMod *time.Time, lastSize *int64, cached *[]string) []string {
+// networksTagsNow — один тик watchNetworksDirection: состав и причина, по
+// которой он таков (для журнала).
+func networksTagsNow(ac *core.AppController, scope services.ProxyScope, lastPath *string, lastMod *time.Time, lastSize *int64, cached *[]string) ([]string, string) {
 	// Без статуса tailnet (legacy-движок, машина не выбрана) состояние узла
 	// не узнать — псевдо-направления нет.
 	target := core.TailscaleIn(scope)
 	if !ac.TailscaleAvailable(target) {
-		return nil
+		return nil, "no tailnet status source"
 	}
 	path := effectiveNodeConfigPath(ac, scope)
 	fi, err := os.Stat(path)
 	if err != nil {
-		return nil
+		return nil, "config file is missing"
 	}
 	if path != *lastPath || !fi.ModTime().Equal(*lastMod) || fi.Size() != *lastSize {
 		fresh, rerr := config.GetNetworksNodeTagsFromConfig(path)
 		if rerr != nil {
 			debuglog.DebugLog("networks: config not read: %v", rerr)
 			if path != *lastPath {
-				return nil
+				return nil, "config not read"
 			}
 		} else {
 			*cached = fresh
 			*lastPath, *lastMod, *lastSize = path, fi.ModTime(), fi.Size()
 		}
 	}
-	if len(*cached) == 0 || !ac.TailscaleCoreRunning(target) {
-		return nil
+	if len(*cached) == 0 {
+		return nil, "no tailscale nodes without an exit in the config"
 	}
-	return *cached
+	if !ac.TailscaleCoreRunning(target) {
+		return nil, "core is not running or sent no tailnet status yet"
+	}
+	return *cached, fmt.Sprintf("%d nodes shown", len(*cached))
 }
 
 // tailscaleHasNoExit — узел Tailscale ядра области, у которого по состоянию
