@@ -613,6 +613,43 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		})
 	}
 
+	// syncCoreStatusText приводит подпись внизу панели к общему
+	// RunningState (SPEC 143). Императивные записи выше остаются для
+	// детальных сообщений (загрузка узлов, ошибка), но «ядро остановлено»
+	// больше не может застыть на экране при работающем ядре: каждое
+	// обновление UI пересчитывает эту подпись из того же источника, что и
+	// Core Status.
+	syncCoreStatusText := func(running bool) {
+		if running || panel.listStatusLabel == nil {
+			return
+		}
+		fyne.Do(func() {
+			if panel.listStatusLabel == nil {
+				return
+			}
+			stoppedLocal := locale.T("Sing-box is stopped.")
+			stoppedRemote := locale.T("The core on this machine is not running. Press Start in its row.")
+			text := stoppedLocal
+			if panel.scope == services.ScopeRemote {
+				text = stoppedRemote
+			}
+			// Не затираем содержательное сообщение о загрузке/ошибке:
+			// переписываем только «остановлено», «не запущено» и пустоту.
+			current := panel.listStatusLabel.Text
+			if current != "" && current != stoppedLocal && current != stoppedRemote &&
+				current != locale.T("Status: Not running") {
+				return
+			}
+			if current == text {
+				return
+			}
+			panel.listStatusLabel.SetText(text)
+		})
+	}
+	if ac.UIService != nil {
+		ac.UIService.SyncCoreStatusTextFunc = syncCoreStatusText
+	}
+
 	// --- Регистрация колбэков ---
 	// Панель держит их у себя (Activate переносит в UIService при выборе её
 	// вкладки), а в UIService пишет и сразу: первая построенная панель должна

@@ -57,11 +57,22 @@ type UIService struct {
 	HideAppFromDock bool
 
 	// Callbacks for UI logic
-	RefreshAPIFunc           func()
-	ResetAPIStateFunc        func()
-	UpdateCoreStatusFunc     func()
-	UpdateConfigStatusFunc   func()
-	UpdateTrayMenuFunc       func()
+	RefreshAPIFunc         func()
+	ResetAPIStateFunc      func()
+	UpdateCoreStatusFunc   func()
+	UpdateConfigStatusFunc func()
+	UpdateTrayMenuFunc     func()
+	// SyncCoreStatusTextFunc — привести текст «состояние ядра» в панели
+	// прокси к общему RunningState (SPEC 143).
+	//
+	// Подпись внизу списка узлов писалась императивно, и на успешном старте
+	// оставалась старой: UpdateUI вызывается из RunningState.Set, но сброс
+	// API пропускается, когда состояние уже «running», а в успешной ветке
+	// старта подпись никто не переписывал. Пользователь видел «Core Status
+	// Running» при «Sing-box is stopped» внизу. Теперь подпись пересчитывается
+	// на каждом обновлении из того же источника, что и Core Status.
+	// nil — никто не слушает.
+	SyncCoreStatusTextFunc   func(running bool)
 	UpdateParserProgressFunc func(progress float64, status string)
 	// StartAbortedFunc — Start вернул управление, не запустив ядро и не
 	// меняя RunningState (гейт TUN без прав, SPEC 139 §4: диалог вместо
@@ -269,6 +280,14 @@ func (ui *UIService) UpdateUI() {
 		if !ui.RunningStateIsRunning() && ui.ResetAPIStateFunc != nil {
 			debuglog.DebugLog("UpdateUI: Triggering API state reset because state is 'Down'.")
 			ui.ResetAPIStateFunc()
+		}
+
+		// Подпись состояния в панели пересчитывается всегда, из того же
+		// RunningState (SPEC 143): иначе после успешного старта внизу
+		// остаётся «Sing-box is stopped», пока не случится постороннее
+		// обновление.
+		if ui.SyncCoreStatusTextFunc != nil {
+			ui.SyncCoreStatusTextFunc(ui.RunningStateIsRunning())
 		}
 
 		if ui.UpdateTrayMenuFunc != nil {
