@@ -3,7 +3,7 @@
     "store": "system"
   },
   "dns": {
-    "cache_capacity": 16384,
+    "cache_capacity": 4000,
     "optimistic": true,
     "rules": [
       {

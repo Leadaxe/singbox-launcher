@@ -745,7 +745,7 @@ DNS-правиле — через менеджер DNS-серверов (`rule_i
 
 | Переменная | Тип | По умолчанию | Допустимо | Поле конфига |
 |---|---|---|---|---|
-| `dns_cache_capacity` | `int` | `16384` | 1024..65535 | `dns.cache_capacity` |
+| `dns_cache_capacity` | `int` | `4000` | 1024..65535 | `dns.cache_capacity` |
 | `dns_optimistic` | `bool` | `true` | | `dns.optimistic` |
 | `dns_store_cache` | `bool` | `true` | | `experimental.cache_file.store_dns` |
 

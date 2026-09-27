@@ -37,7 +37,7 @@ func dnsCacheFields(t *testing.T, vars map[string]string) (capacity, optimistic,
 // значения по умолчанию шаблона.
 func TestDNSCacheSettings_DefaultsInConfig(t *testing.T) {
 	c, o, s, _ := dnsCacheFields(t, map[string]string{"tun": "true"})
-	if c != float64(16384) || o != true || s != true {
+	if c != float64(4000) || o != true || s != true {
 		t.Fatalf("defaults: cache_capacity=%v optimistic=%v store_dns=%v", c, o, s)
 	}
 }
@@ -55,8 +55,8 @@ func TestDNSCacheSettings_CapacityOutOfBoundsNotInConfig(t *testing.T) {
 	for _, bad := range []string{"100", "1023", "65536", "65537", "1000000", "abc", ""} {
 		vars := map[string]string{VarDNSCacheCapacity: bad}
 		c, _, _, res := dnsCacheFields(t, vars)
-		if c != float64(16384) {
-			t.Fatalf("%q: cache_capacity=%v, want template default 16384", bad, c)
+		if c != float64(4000) {
+			t.Fatalf("%q: cache_capacity=%v, want template default 4000", bad, c)
 		}
 		if len(res.Validation.Warnings) == 0 {
 			t.Fatalf("%q: no validation warning", bad)
