@@ -910,8 +910,9 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			subtitleText.Color = theme.Color(theme.ColorNamePlaceHolder)
 			subtitleText.Refresh()
 			subtitleLine.Update(nil)
-			st, ok := ac.TailscaleStatus(panel.scope, info.Name)
-			word, tone := networksRowState(ac.TailscaleCoreRunning(panel.scope), st, ok)
+			target := core.TailscaleIn(panel.scope)
+			st, ok := ac.TailscaleStatus(target, info.Name)
+			word, tone := networksRowState(ac.TailscaleCoreRunning(target), st, ok)
 			delayText.Text = word
 			delayText.Color = networksToneColor(tone)
 			delayText.Refresh()

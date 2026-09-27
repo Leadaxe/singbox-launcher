@@ -7,8 +7,8 @@
 // Endpoints обязана быть актуальной без открытого окна, а NeedsLogin — то,
 // о чём хочется знать, не заглядывая внутрь (решение владельца 16.09.2026).
 //
-// Диспетчер выбирает источник по области панели (services.ProxyScope):
-// Local — бэкенд своего ядра, Remote — транспорт выбранной машины.
+// Диспетчер выбирает источник по цели (TailscaleTarget): Local — бэкенд
+// своего ядра, Remote — транспорт машины из её выбора (не из APIService).
 // Конвертер pb → доменный тип ОДИН на оба пути — локальный демон и роутер
 // обязаны давать одинаковый диагноз (тот же довод, что у chainInfosFromPB).
 //
@@ -40,63 +40,80 @@ type tailscaleSource interface {
 	TailscaleLive() bool
 }
 
-// Источник выбирается по ОБЛАСТИ панели, а не по тому, что сейчас стоит в
-// APIService: remote-override глобальный, и при подключённой машине окно узла
-// панели Local читало бы статус роутера, а команда ушла бы туда же. Область
-// Local глуха к override (только бэкенд своего ядра), Remote — только
-// транспорт выбранной машины; бэкенд своего ядра Remote не описывает.
-// Признак машины — override, а не режим бэкенда: на Windows-клиенте режим
-// classic, а машина подключена.
-func (ac *AppController) tailscaleSource(scope services.ProxyScope) (tailscaleSource, bool) {
+// TailscaleTarget — чьё ядро описывает окно или панель: своё (Local) или
+// удалённой машины. MachineID "" у Remote — машина, выбранная сейчас
+// (панель Remote); непустой — только эта машина (окно узла запоминает её при
+// открытии, и команда не уйдёт в другую, если выбор сменили).
+type TailscaleTarget struct {
+	Scope     services.ProxyScope
+	MachineID string
+}
+
+// TailscaleIn — цель области панели; у Remote — выбранная сейчас машина.
+func TailscaleIn(scope services.ProxyScope) TailscaleTarget {
+	return TailscaleTarget{Scope: scope}
+}
+
+// tailscaleSource — источник статуса цели. Local глух к remote-override:
+// только бэкенд своего ядра. Remote — транспорт машины из её ВЫБОРА
+// (UIService.LxdMachineTransportFunc), а не то, что стоит в APIService: там
+// при взгляде на вкладку Local стоит транспорт своего движка, а соединение с
+// машиной принадлежит машине, не вкладке. Признак машины — выбор, а не режим
+// бэкенда: на Windows-клиенте режим classic, а машина подключена.
+func (ac *AppController) tailscaleSource(t TailscaleTarget) (tailscaleSource, bool) {
 	if ac == nil {
 		return nil, false
 	}
-	if scope == services.ScopeRemote {
-		if ac.APIService == nil {
+	if t.Scope == services.ScopeRemote {
+		if ac.UIService == nil || ac.UIService.LxdMachineTransportFunc == nil {
 			return nil, false
 		}
-		src, ok := ac.APIService.TransportOverride().(tailscaleSource)
+		tr, ok := ac.UIService.LxdMachineTransportFunc(t.MachineID)
+		if !ok {
+			return nil, false
+		}
+		src, ok := tr.(tailscaleSource)
 		return src, ok
 	}
 	src, ok := ac.Backend().(tailscaleSource)
 	return src, ok
 }
 
-// TailscaleAvailable — умеет ли источник области отдавать статус tailnet.
+// TailscaleAvailable — умеет ли источник цели отдавать статус tailnet.
 // Только проверка типа: ленивый стрим удалённой машины не поднимается.
-func (ac *AppController) TailscaleAvailable(scope services.ProxyScope) bool {
-	_, ok := ac.tailscaleSource(scope)
+func (ac *AppController) TailscaleAvailable(t TailscaleTarget) bool {
+	_, ok := ac.tailscaleSource(t)
 	return ok
 }
 
-// TailscaleStatus — статус tailscale-endpoint'а по тегу у источника области.
+// TailscaleStatus — статус tailscale-endpoint'а по тегу у источника цели.
 // ok=false — см. tailscaleSource.
-func (ac *AppController) TailscaleStatus(scope services.ProxyScope, tag string) (services.TailscaleStatus, bool) {
-	if src, ok := ac.tailscaleSource(scope); ok {
+func (ac *AppController) TailscaleStatus(t TailscaleTarget, tag string) (services.TailscaleStatus, bool) {
+	if src, ok := ac.tailscaleSource(t); ok {
 		return src.TailscaleStatus(tag)
 	}
 	return services.TailscaleStatus{}, false
 }
 
-// TailscaleLive — жив ли стрим статуса у источника области.
-func (ac *AppController) TailscaleLive(scope services.ProxyScope) bool {
-	if src, ok := ac.tailscaleSource(scope); ok {
+// TailscaleLive — жив ли стрим статуса у источника цели.
+func (ac *AppController) TailscaleLive(t TailscaleTarget) bool {
+	if src, ok := ac.tailscaleSource(t); ok {
 		return src.TailscaleLive()
 	}
 	return false
 }
 
-// TailscaleCoreRunning — работает ли ядро области, чей статус tailnet
+// TailscaleCoreRunning — работает ли ядро цели, чей статус tailnet
 // показывается. Local — RunningState своего ядра. Remote — живость стрима
 // машины: StartedService отдаёт его только работающему ядру, а при остановке
 // или Deploy стрим рвётся вместе с инстансом (lxd_remote_transport.go,
 // runResilientStream). Отдельного опроса здоровья машины ради этого не нужно.
-func (ac *AppController) TailscaleCoreRunning(scope services.ProxyScope) bool {
+func (ac *AppController) TailscaleCoreRunning(t TailscaleTarget) bool {
 	if ac == nil {
 		return false
 	}
-	if scope == services.ScopeRemote {
-		return ac.TailscaleLive(scope)
+	if t.Scope == services.ScopeRemote {
+		return ac.TailscaleLive(t)
 	}
 	return ac.RunningState != nil && ac.RunningState.IsRunning()
 }
@@ -110,14 +127,14 @@ type tailscaleController interface {
 	TailscalePing(ctx context.Context, tag, peerIP string, onReply func(services.TailscalePingResult)) error
 }
 
-// errTailscaleNoControl — у источника области нет команд tailnet.
+// errTailscaleNoControl — у источника цели нет команд tailnet.
 var errTailscaleNoControl = errors.New("tailnet commands are not available for this core")
 
 // tailscaleControl — контроллер ТОГО ЖЕ источника, что отдаёт статус этой
 // области: команда не должна уйти в другое ядро, чем то, чьё состояние на
 // экране.
-func (ac *AppController) tailscaleControl(scope services.ProxyScope) (tailscaleController, bool) {
-	src, ok := ac.tailscaleSource(scope)
+func (ac *AppController) tailscaleControl(t TailscaleTarget) (tailscaleController, bool) {
+	src, ok := ac.tailscaleSource(t)
 	if !ok {
 		return nil, false
 	}
@@ -125,15 +142,15 @@ func (ac *AppController) tailscaleControl(scope services.ProxyScope) (tailscaleC
 	return c, ok
 }
 
-// TailscaleControlAvailable — есть ли команды tailnet у источника области.
-func (ac *AppController) TailscaleControlAvailable(scope services.ProxyScope) bool {
-	_, ok := ac.tailscaleControl(scope)
+// TailscaleControlAvailable — есть ли команды tailnet у источника цели.
+func (ac *AppController) TailscaleControlAvailable(t TailscaleTarget) bool {
+	_, ok := ac.tailscaleControl(t)
 	return ok
 }
 
 // TailscaleSetExitNode — выбор exit node на ходу; "" снимает выход.
-func (ac *AppController) TailscaleSetExitNode(scope services.ProxyScope, tag, stableID string) error {
-	c, ok := ac.tailscaleControl(scope)
+func (ac *AppController) TailscaleSetExitNode(t TailscaleTarget, tag, stableID string) error {
+	c, ok := ac.tailscaleControl(t)
 	if !ok {
 		return errTailscaleNoControl
 	}
@@ -141,8 +158,8 @@ func (ac *AppController) TailscaleSetExitNode(scope services.ProxyScope, tag, st
 }
 
 // TailscaleLogout — выход узла из аккаунта tailnet.
-func (ac *AppController) TailscaleLogout(scope services.ProxyScope, tag string) error {
-	c, ok := ac.tailscaleControl(scope)
+func (ac *AppController) TailscaleLogout(t TailscaleTarget, tag string) error {
+	c, ok := ac.tailscaleControl(t)
 	if !ok {
 		return errTailscaleNoControl
 	}
@@ -150,8 +167,8 @@ func (ac *AppController) TailscaleLogout(scope services.ProxyScope, tag string) 
 }
 
 // TailscalePing — проверка устройства tailnet, ответы в onReply.
-func (ac *AppController) TailscalePing(ctx context.Context, scope services.ProxyScope, tag, peerIP string, onReply func(services.TailscalePingResult)) error {
-	c, ok := ac.tailscaleControl(scope)
+func (ac *AppController) TailscalePing(ctx context.Context, t TailscaleTarget, tag, peerIP string, onReply func(services.TailscalePingResult)) error {
+	c, ok := ac.tailscaleControl(t)
 	if !ok {
 		return errTailscaleNoControl
 	}

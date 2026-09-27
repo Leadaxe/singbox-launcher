@@ -213,7 +213,7 @@ func renderCoreRuntimeEndpoints(box *fyne.Container, ac *core.AppController, eps
 		// У tailscale в колонке вместо пинга — слово состояния из кеша стрима
 		// (SPEC 130): «starting», «running», «needs login». Подробности — в ⓘ.
 		if ep.Node.Type == configtypes.SchemeTailscale {
-			if st, ok := ac.TailscaleStatus(scope, ep.Node.Tag); ok {
+			if st, ok := ac.TailscaleStatus(core.TailscaleIn(scope), ep.Node.Tag); ok {
 				row = coreRuntimeNodeRowWithStatus(ac, info, cfgPath, scope, "  ", tailscaleStateLabel(st.BackendState))
 			}
 		}

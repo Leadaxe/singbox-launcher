@@ -140,7 +140,8 @@ func watchNetworksDirection(ac *core.AppController, scope services.ProxyScope, o
 func networksTagsNow(ac *core.AppController, scope services.ProxyScope, lastPath *string, lastMod *time.Time, lastSize *int64, cached *[]string) []string {
 	// Без статуса tailnet (legacy-движок, машина не выбрана) состояние узла
 	// не узнать — псевдо-направления нет.
-	if !ac.TailscaleAvailable(scope) {
+	target := core.TailscaleIn(scope)
+	if !ac.TailscaleAvailable(target) {
 		return nil
 	}
 	path := effectiveNodeConfigPath(ac, scope)
@@ -160,7 +161,7 @@ func networksTagsNow(ac *core.AppController, scope services.ProxyScope, lastPath
 			*lastPath, *lastMod, *lastSize = path, fi.ModTime(), fi.Size()
 		}
 	}
-	if len(*cached) == 0 || !ac.TailscaleCoreRunning(scope) {
+	if len(*cached) == 0 || !ac.TailscaleCoreRunning(target) {
 		return nil
 	}
 	return *cached
@@ -177,9 +178,10 @@ func tailscaleHasNoExit(ac *core.AppController, scope services.ProxyScope, proxy
 	if scope == services.ScopeRemote && !strings.EqualFold(proxy.ClashType, configtypes.SchemeTailscale) {
 		return false
 	}
-	if !ac.TailscaleCoreRunning(scope) {
+	target := core.TailscaleIn(scope)
+	if !ac.TailscaleCoreRunning(target) {
 		return false
 	}
-	st, ok := ac.TailscaleStatus(scope, proxy.Name)
+	st, ok := ac.TailscaleStatus(target, proxy.Name)
 	return ok && st.BackendState == services.TailscaleStateRunning && st.ExitNode == nil
 }

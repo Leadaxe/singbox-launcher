@@ -282,7 +282,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	// Network (SPEC 148; прежде секция SPEC 130). Только у tailscale-endpoint'а
 	// и только там, где ядро отдаёт статус по gRPC.
 	var networkTab fyne.CanvasObject
-	if node.Type == configtypes.SchemeTailscale && ac.TailscaleAvailable(scope) {
+	if node.Type == configtypes.SchemeTailscale && ac.TailscaleAvailable(core.TailscaleIn(scope)) {
 		networkTab = tailscaleNetworkTab(ac, win, proxy.Name, cfgPath, scope)
 	}
 

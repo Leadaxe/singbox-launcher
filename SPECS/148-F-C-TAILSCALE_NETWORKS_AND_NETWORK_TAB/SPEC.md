@@ -41,7 +41,7 @@
   запись в `endpoints[]`, тип `tailscale`, `registry.ExitCapable` ложно (при
   нечитаемом реестре узел считается выходом, как в сборке).
 - Показ: обе панели — Local и Remote; ядро области работает
-  (`ac.TailscaleCoreRunning(scope)`), узлы есть. Пункт `NETWORKS` последним
+  (`ac.TailscaleCoreRunning(core.TailscaleIn(scope))`), узлы есть. Пункт `NETWORKS` последним
   в `groupSelect`. Опрос — `watchNetworksDirection(ac, scope, …)`
   (`ui/networks_direction.go`): раз в секунду; конфиг области —
   `effectiveNodeConfigPath` (у Remote собранный конфиг выбранной машины,
@@ -68,20 +68,28 @@
 ## 3. Вкладка Network
 
 Файл `ui/servers_node_network_tab.go`. Видна у узла типа `tailscale`, когда
-источник области отдаёт статус tailnet (`ac.TailscaleAvailable(scope)`),
-между Details и Outbound JSON — у Local и у Remote одинаково.
+источник отдаёт статус tailnet (`ac.TailscaleAvailable`), между Details и
+Outbound JSON — у Local и у Remote одинаково. Перерисовка — не чаще раза в
+секунду и только при новом снимке или смене записанного `exit_node`;
+обновление останавливается, когда окно закрыто.
 
-- **Источник по области.** Статус и команды (`core/tailscale_status.go`)
-  берутся по `services.ProxyScope` окна: Local — бэкенд своего ядра, глух к
-  remote-override; Remote — транспорт выбранной машины
-  (`LxdRemoteTransport`: `TailscaleSetExitNode`, `TailscaleLogout`,
+- **Источник по цели.** Статус и команды (`core/tailscale_status.go`)
+  берутся по `core.TailscaleTarget` (область и id машины): Local — бэкенд
+  своего ядра, глух к remote-override; Remote — транспорт машины из её
+  выбора (`UIService.LxdMachineTransportFunc`, регистрирует
+  `ui/lxd_remote_override.go:RegisterOverrideAPIHooks` →
+  `lxdOverrideTransportOrNil` / `lxdOverrideTransportForID`), а не
+  `APIService.TransportOverride()`: там при взгляде на вкладку Local стоит
+  транспорт своего движка, а канал к машине живёт до Disconnect. Команды
+  машины — `LxdRemoteTransport` (`TailscaleSetExitNode`, `TailscaleLogout`,
   `TailscalePing` в `core/services/lxd_remote_tailscale.go`, те же RPC, что
-  у локального демона). Признак машины — override, не режим бэкенда (на
-  Windows-клиенте режим classic, а машина подключена). Машина запоминается
-  при открытии окна: сменил её пользователь — вкладка показывает вид без
-  данных «Start VPN to see the network.», команды и Save choice не уходят. Перерисовка — не чаще раза в секунду и только при новом
-снимке или смене записанного `exit_node`; обновление останавливается, когда
-окно закрыто.
+  у локального демона). Признак машины — её выбор, не режим бэкенда (на
+  Windows-клиенте режим classic, а машина подключена). Панель Remote
+  (NETWORKS, «no exit») смотрит выбранную сейчас машину; окно узла
+  привязано к машине, выбранной при открытии: сменил её пользователь —
+  транспорта этой машины нет, вкладка показывает вид без данных «Start VPN
+  to see the network.», команды отвечают «not available» и в другую машину
+  не уходят.
 
 - Без данных (`tailscaleNetworkViewFor`): VPN выключен — «Start VPN to see
   the network.»; стрим не дал снимка — индикатор ожидания; снимок есть, узла

@@ -253,6 +253,24 @@ func RegisterOverrideAPIHooks(ac *core.AppController) {
 		ClearLxdRemoteOverride(ac)
 	}
 	ac.UIService.LxdOverrideStateFunc = GetLxdRemoteOverride
+	// Статус и команды tailnet машины (SPEC 148): транспорт берётся из
+	// выбора машины, а не из APIService — там при взгляде на Local стоит
+	// транспорт своего движка, а канал к машине живёт до Disconnect.
+	ac.UIService.LxdMachineTransportFunc = lxdMachineTransport
+}
+
+// lxdMachineTransport — транспорт подключённой машины: id "" — выбранной
+// сейчас, иначе только этой (lxdOverrideTransportForID).
+func lxdMachineTransport(id string) (interface{}, bool) {
+	if id == "" {
+		t := lxdOverrideTransportOrNil()
+		return t, t != nil
+	}
+	t, ok := lxdOverrideTransportForID(id)
+	if !ok {
+		return nil, false
+	}
+	return t, true
 }
 
 type overrideError string
