@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/outboundutil"
 )
 
@@ -528,6 +529,9 @@ func migrateV8SourceIdentity(src map[string]json.RawMessage, where string) error
 // migrateV8NodeSections — поле `sections` узла снимается (секции узла
 // упразднены, контракт 1.1.85; LxBox §575): v8 его не читает.
 func migrateV8NodeSections(node map[string]json.RawMessage, where string, rep *MigrationReport) error {
+	if raw, ok := node["sections"]; ok && len(raw) > 0 && string(raw) != "null" {
+		debuglog.WarnLog("state migration v7→v8: %s: node sections dropped (no longer supported)", where)
+	}
 	delete(node, "sections")
 	return nil
 }

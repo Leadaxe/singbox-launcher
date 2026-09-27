@@ -4127,6 +4127,9 @@
   "No matching nodes": {
     "value": "Нет подходящих узлов"
   },
+  "No matching nodes.": {
+    "value": "Нет подходящих узлов."
+  },
   "Loading…": {
     "value": "Загрузка…"
   },
