@@ -8711,3 +8711,30 @@ Go: `registry.RuleCoreRejects` читает путь предупреждени�
      даёт `field_missing`, Go снимает одно поле.
    - `hard_reality_short_id_invalid_removed` (18 символов): LxBox не снимает.
    Что сделать LxBox: разобрать каждое расхождение и вернуть кейс.
+
+## 90. Контракт 1.1.93 — кэш DNS: три переменные шаблона (LxBox §580)
+
+Норма — `docs/TEMPLATE_LANG.md` §6.8, реестр `registry/vars.json`
+(`dns_cache_capacity`, `dns_optimistic`, `dns_store_cache`, все
+`portable: true`). Спека LxBox: `docs/spec/tasks/580-dns-cache-settings.md`;
+лаунчер: SPEC 147.
+
+Лаунчер: переменные в `bin/wizard_template.json` (`wizard_ui: fix`, только
+вкладка DNS), поля `dns.cache_capacity`, `dns.optimistic`,
+`experimental.cache_file.store_dns`; сборка не подставляет сохранённый
+`dns_cache_capacity` вне 1024..65536 (действует default, предупреждение
+валидации); три настройки на вкладке DNS. Кнопки очистки кэша DNS в
+лаунчере нет — не добавлялась.
+
+Корпус: `template/subst/dns_cache_defaults` (состояние без переменных —
+значения по умолчанию), `template/subst/dns_cache_changed`.
+
+Открытое: верхняя граница 65536 выше отсечки int-подстановки §2.2 (65535) —
+введённое 65536 уйдёт в конфиг как 65535. Нужно слово владельца: граница
+65535 или исключение из отсечки.
+
+Что сделать LxBox:
+
+1. Синк 1.1.93; шаблон и вкладка DNS по §580.
+2. Корпус `template/subst/dns_cache_*` проходит.
+3. `portable_vars` бэкапа — три имени.

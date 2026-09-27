@@ -191,6 +191,9 @@ func (p *WizardPresenter) refreshDNSSelectsFromModel() {
 		}
 		p.guiState.DNSStrategySelect.Refresh()
 	}
+	if p.guiState.RefreshDNSCacheSettings != nil {
+		p.guiState.RefreshDNSCacheSettings()
+	}
 	wizardbusiness.SyncDNSModelToSettingsVars(p.model)
 }
 

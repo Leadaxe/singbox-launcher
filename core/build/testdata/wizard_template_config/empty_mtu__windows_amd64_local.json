@@ -3,6 +3,8 @@
     "store": "system"
   },
   "dns": {
+    "cache_capacity": 16384,
+    "optimistic": true,
     "rules": [
       {
         "rule_set": [
@@ -82,6 +84,7 @@
     "cache_file": {
       "enabled": true,
       "path": "cache.db",
+      "store_dns": true,
       "store_fakeip": true
     },
     "clash_api": {

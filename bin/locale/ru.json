@@ -4804,5 +4804,23 @@
   },
   "%s — the file carries routing or DNS entries attached to this record; they are not imported, because a node no longer carries its own entries": {
     "value": "%s — в файле к этой записи привязаны правила маршрутов или DNS; они не импортированы: у узла больше нет собственных записей"
+  },
+  "DNS cache size": {
+    "value": "Размер кэша DNS"
+  },
+  "Number of cached answers.": {
+    "value": "Число ответов в кэше."
+  },
+  "Serve stale answers": {
+    "value": "Отдавать устаревшие ответы"
+  },
+  "Answer from cache at once and refresh in the background.": {
+    "value": "Отвечать из кэша сразу и обновлять ответ в фоне."
+  },
+  "Keep DNS cache after restart": {
+    "value": "Сохранять кэш DNS после перезапуска"
+  },
+  "From %d to %d": {
+    "value": "От %d до %d"
   }
 }

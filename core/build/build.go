@@ -189,6 +189,9 @@ func BuildConfig(ctx BuildContext) (Result, error) {
 	res := Result{}
 	ctx.Target = ctx.Target.Normalized()
 
+	// Размер кэша DNS вне границ в конфиг не попадает (SPEC 147).
+	ctx.Vars = sanitizeDNSCacheVars(ctx.Vars, &res)
+
 	// Шаг 1: эффективный конфиг через GetEffectiveConfig.
 	cfg, order := effectiveConfig(ctx.Template, ctx.Vars, ctx.Target, &res)
 

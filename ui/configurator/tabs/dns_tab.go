@@ -338,6 +338,8 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		guiState.DNSStrategySelect,
 	)
 
+	cacheBlock := buildDNSCacheSettings(presenter)
+
 	// Final и default_domain_resolver — одна строка: две группы (лейбл+селект), spacer между ними.
 	// Плоский HBox с одним Spacer между четырьмя виджетами даёт селектам нулевую ширину в Fyne.
 	finalGroup := container.NewHBox(finalLabel, guiState.DNSFinalSelect)
@@ -475,6 +477,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	// границу снизу, и своя линия сразу за ней давала две подряд.
 	bottom := container.NewVBox(
 		strategyAndCacheRow,
+		cacheBlock,
 		widget.NewSeparator(),
 		rulesHeader,
 		unifiedRulesBox,

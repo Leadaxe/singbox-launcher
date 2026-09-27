@@ -112,6 +112,9 @@ type GUIState struct {
 	DNSDefaultResolverSelect *widget.Select
 	DNSStrategySelect        *widget.Select
 	RefreshDNSList           func()
+	// RefreshDNSCacheSettings перечитывает настройки кэша DNS из
+	// model.SettingsVars (SPEC 147); ставит вкладка DNS.
+	RefreshDNSCacheSettings func()
 
 	// RefreshSettingsFromModel пересобирает вкладку Settings из model.TemplateData.Vars (после LoadState / шаблона).
 	RefreshSettingsFromModel func()
