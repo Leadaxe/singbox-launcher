@@ -9,7 +9,6 @@
         "server": "example-5.com",
         "server_port": 443,
         "server_ports": [
-          "198.51.100.24:443",
           "20000:30000"
         ],
         "tls": {

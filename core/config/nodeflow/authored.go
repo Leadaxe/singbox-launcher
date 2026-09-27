@@ -112,8 +112,15 @@ func RepairsFor(scheme string, authored bool, m map[string]interface{}) (map[str
 
 // patchFromClean переносит в body значение пути path из clean; нет
 // значения в clean — путь в body снимается.
+//
+// Индекс элемента в скобках (`peers[0].port`) — отдельный сегмент; правка
+// самого элемента (`server_ports[0]`: элемент снят) переносится массивом
+// целиком — после снятия индексы остальных элементов сдвинуты.
 func patchFromClean(body, clean map[string]interface{}, path string) {
-	parts := strings.Split(path, ".")
+	parts := strings.Split(strings.NewReplacer("[", ".", "]", "").Replace(path), ".")
+	for len(parts) > 1 && isIndexPart(parts[len(parts)-1]) {
+		parts = parts[:len(parts)-1]
+	}
 	if v, ok := lookupBodyPath(clean, parts); ok {
 		setBodyPath(body, parts, deepCopyValue(v))
 		return
@@ -198,4 +205,16 @@ func deleteBodyPath(m map[string]interface{}, parts []string) {
 			deleteBodyPath(inner, parts[2:])
 		}
 	}
+}
+
+func isIndexPart(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }

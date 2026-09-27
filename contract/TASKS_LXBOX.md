@@ -8694,3 +8694,20 @@ Go: `registry.RuleCoreRejects` читает путь предупреждени�
 2. Корпус `authored/hard_*` — 26 новых кейсов, по одному на правило.
 3. `registry_gate_test.dart`: авторский узел с негодным `vless.encryption`
    теперь снимается.
+
+## 89. Контракт 1.1.92 — правка элемента массива; расхождения, найденные корпусом 1.1.91
+
+1. Go `nodeflow.patchFromClean`: путь с индексом в скобках; правка элемента
+   переносится массивом целиком. LxBox — то же в `body_edit.dart`
+   (`_patchFrom`, `ruleCoreRejects`).
+2. Кейсы 1.1.91, снятые из корпуса до разбора расхождений (признаки
+   `core_rejects` остаются):
+   - `hard_hysteria_obfs_object_flattened`, `hard_hysteria_server_ports_item_dropped`,
+     `hard_masque_*` (3): LxBox не читает такие тела sing-box JSON
+     (`protocol_unsupported`).
+   - `hard_tuic_uuid_invalid_removed`, `hard_wg_peer_allowed_ips_invalid_removed`:
+     у Go узел снят кодом `type_invalid`, у LxBox авторский узел остаётся.
+   - `hard_reality_pbk_invalid_removed`: LxBox снимает объект `reality` и
+     даёт `field_missing`, Go снимает одно поле.
+   - `hard_reality_short_id_invalid_removed` (18 символов): LxBox не снимает.
+   Что сделать LxBox: разобрать каждое расхождение и вернуть кейс.
