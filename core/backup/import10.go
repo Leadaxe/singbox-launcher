@@ -131,16 +131,6 @@ func decode10Source(in Source10, ruleGroup func(node int) bool) (decodedSource, 
 		// `fold_tag` не читается (контракт 1.1.79): это неизвестные ключи.
 		Replace: import10Replace(in),
 	}
-	// Секции узла: форма одна с состоянием, поэтому разбор — копия плюс
-	// отсев чужих видов записей (§6.2 W2.5) и — у узла, которому секции не
-	// положены вовсе — снятие поля целиком с тем же кодом.
-	sections, sw := normalizeImportedSections(in.Sections.Clone(), in.Tag)
-	warns = append(warns, sw...)
-	sections, kw := dropSectionsForForeignNode(in.Kind, sections, in.Tag)
-	warns = append(warns, kw...)
-	src.Node.Sections = sections
-	src.Node.NormalizeNodeSections()
-
 	// tag_policy — поле КОНТЕЙНЕРА. У корневого узла политики нет: финальный
 	// тег = его тег. В файле LxBox она у сервера бывает (поле стороны, BACKUP.md
 	// §2) — лаунчер её молча отбрасывает: сборка её и так не применила бы, а
@@ -159,7 +149,6 @@ func decode10Source(in Source10, ruleGroup func(node int) bool) (decodedSource, 
 		src.PendingDisabled = disabledTags10(in.Disabled)
 		return decodedSource{Kind: decodedSubscription, Src: src, FullSettings: true}, warns, true
 	case state.SourceKindFolder:
-		var memberSections []bool
 		for j, n := range in.Nodes {
 			if n.Kind == state.SourceKindAuto && ruleGroup != nil && ruleGroup(j) &&
 				(n.Group == nil || len(n.Group.Members) == 0) {
@@ -187,21 +176,13 @@ func decode10Source(in Source10, ruleGroup func(node int) bool) (decodedSource, 
 			if member.Kind != state.SourceKindAuto {
 				member.Warnings = nil
 			}
-			memberSections = append(memberSections, n.Sections != nil)
-			ms, mw := normalizeImportedSections(member.Sections, n.Tag)
-			warns = append(warns, mw...)
-			ms, mk := dropSectionsForForeignNode(n.Kind, ms, n.Tag)
-			warns = append(warns, mk...)
-			member.Sections = ms
-			member.NormalizeNodeSections()
 			src.Nodes = append(src.Nodes, member)
 		}
 		return decodedSource{
-			Kind: decodedFolder, Src: src, FileFolderID: in.ID,
-			MemberSections: memberSections, FullSettings: true,
+			Kind: decodedFolder, Src: src, FileFolderID: in.ID, FullSettings: true,
 		}, warns, true
 	case state.SourceKindServer:
-		return decodedSource{Kind: decodedServer, Src: src, Sections: in.Sections != nil, FullSettings: true}, warns, true
+		return decodedSource{Kind: decodedServer, Src: src, FullSettings: true}, warns, true
 	case state.SourceKindChain:
 		return decodedSource{Kind: decodedChain, Src: src, FullSettings: true}, warns, true
 	default:

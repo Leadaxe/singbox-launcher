@@ -1688,12 +1688,6 @@
   "Include this rule in the generated route when enabled": {
     "value": "Включить это правило в сгенерированный маршрут"
   },
-  "Route rule carried by node %q": {
-    "value": "Правило маршрута, которое несёт узел %q"
-  },
-  "node is disabled": {
-    "value": "узел выключен"
-  },
   "Drag to reorder": {
     "value": "Перетащите, чтобы изменить порядок"
   },
@@ -3287,15 +3281,6 @@
   "Read-only. Edit via preset variables (Rules tab → Edit). For custom DNS rules use the Extra rules editor below.": {
     "value": "Только чтение. Правится через переменные пресета (вкладка Rules → Изменить). Для своих DNS-правил используйте редактор ниже."
   },
-  "From node %q": {
-    "value": "Из узла %q"
-  },
-  "Read-only. This DNS server travels with the node — edit it on the node's JSON tab.": {
-    "value": "Только чтение. Этот DNS-сервер живёт вместе с узлом — правьте его на вкладке JSON узла."
-  },
-  "Read-only. This DNS rule travels with the node — edit it on the node's JSON tab.": {
-    "value": "Только чтение. Это DNS-правило живёт вместе с узлом — правьте его на вкладке JSON узла."
-  },
   "+ Add Rule": {
     "value": "+ Правило"
   },
@@ -3911,9 +3896,6 @@
   "The outbound as it will reach the config.": {
     "value": "Outbound в том виде, в каком он попадёт в конфиг."
   },
-  "The node and the config fragments it carries. @self is this node's tag.": {
-    "value": "Узел и фрагменты конфига, которые он несёт. @self — тег этого узла."
-  },
   "The sing-box outbound this node is built from — exactly what the build writes to config.json. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time.": {
     "value": "Outbound sing-box, из которого собран этот узел, — ровно то, что сборка пишет в config.json. Правьте и нажмите Apply, чтобы сохранить; «Пересобрать из исходника» вернёт его к исходному URI/JSON. Тег и detour лаунчер проставляет заново на сборке."
   },
@@ -4052,12 +4034,6 @@
   "%s — this group picks its members by a rule, which the launcher does not support; it was not imported, and links to it will not resolve": {
     "value": "%s — эта группа набирает состав по правилу, а лаунчер такие группы не поддерживает; группа не импортирована, и ссылки на неё не разрешатся"
   },
-  "%s — a node rule referenced a rule set; node sections neither declare nor reference rule sets, so the whole rule was dropped (cutting just the reference would have turned it into a match-all)": {
-    "value": "%s — правило узла ссылалось на rule set; секции узла rule set не объявляют и на них не ссылаются, поэтому правило отброшено целиком (если вырезать одну ссылку, оно ловило бы весь трафик)"
-  },
-  "%s — a node carries an entry of this kind, which node sections do not allow; the entry was dropped, the rest of the node came through": {
-    "value": "%s — узел несёт запись такого вида, какой секции узла не допускают; запись отброшена, остальная часть узла импортирована"
-  },
   "Settings are merged, not replaced: subscriptions match by address, servers by what they connect to, and anything of yours that is not in the file stays. Routing rules are the exception — they are replaced by the file.": {
     "value": "Настройки сливаются, а не заменяются: подписки сходятся по адресу, серверы — по тому, куда они подключаются, и всё ваше, чего нет в файле, остаётся. Исключение — правила маршрутизации: они замещаются файлом."
   },
@@ -4127,9 +4103,6 @@
   "Advertised routes and exit nodes stay pending until they are approved in the tailnet admin console.": {
     "value": "Анонсированные маршруты и выход в интернет не заработают, пока их не подтвердят в админке tailnet."
   },
-  "This rule belongs to node %q — edit it in that source's JSON tab.": {
-    "value": "Это правило принадлежит узлу %q — правится на вкладке JSON его источника."
-  },
   "Origin (raw JSON)": {
     "value": "Происхождение (сырой JSON)"
   },
@@ -4138,9 +4111,6 @@
   },
   "Node rule · %s": {
     "value": "Правило узла · %s"
-  },
-  "View this rule (owned by the node)": {
-    "value": "Посмотреть правило (принадлежит узлу)"
   },
   "Endpoints": {
     "value": "Endpoints"
@@ -4804,5 +4774,14 @@
   },
   "Tag %q is already used by a Direction: the swap group will not be built until the tag is free.": {
     "value": "Тег %q уже носит Направление: группа свёртки не соберётся, пока тег не освободится."
+  },
+  "Only the node is saved. The document's %s will not be kept: a node does not carry routing or DNS entries.": {
+    "value": "Сохранён только узел. %s из документа не сохранены: узел не несёт правил маршрутов и DNS."
+  },
+  "Node saved": {
+    "value": "Узел сохранён"
+  },
+  "%s — the file carries routing or DNS entries attached to this record; they are not imported, because a node no longer carries its own entries": {
+    "value": "%s — в файле к этой записи привязаны правила маршрутов или DNS; они не импортированы: у узла больше нет собственных записей"
   }
 }

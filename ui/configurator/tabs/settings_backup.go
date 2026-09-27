@@ -345,14 +345,9 @@ func warnText(w backup.Warning) string {
 		}
 		return w.Code + ": " + w.Detail + " (" + w.Reason + ")"
 	case backup.WarnBackupSectionRecordDropped:
-		// Detail несёт «тег узла: вид записи»: без тега пользователю негде
-		// искать, что именно потеряло часть своей связки. Причина у кода не
-		// одна (норма B3), и общая фраза про «вид записи» на правиле с
-		// rule_set просто врала бы — вид там как раз законный.
-		if w.Reason == backup.SectionDropRuleSet {
-			return fmt.Sprintf(locale.T("%s — a node rule referenced a rule set; node sections neither declare nor reference rule sets, so the whole rule was dropped (cutting just the reference would have turned it into a match-all)"), w.Detail)
-		}
-		return fmt.Sprintf(locale.T("%s — a node carries an entry of this kind, which node sections do not allow; the entry was dropped, the rest of the node came through"), w.Detail)
+		// Detail несёт «тег записи: sections». Секции узла упразднены
+		// (контракт 1.1.85): поле снимается у записи любого вида.
+		return fmt.Sprintf(locale.T("%s — the file carries routing or DNS entries attached to this record; they are not imported, because a node no longer carries its own entries"), w.Detail)
 	default:
 		// Сюда попадать не должно: каждый код обязан иметь свою фразу выше.
 		// Сырой код остаётся последним рубежом, чтобы новое предупреждение

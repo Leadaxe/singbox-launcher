@@ -1896,27 +1896,6 @@
       "dart": "lib/services/builder/core_chain_capability.dart (coreVersionSupportsTailscale)",
       "go": "core/config/nodeflow/gate.go:NodeCoreRefusal (узловой гейт ядра по on_core_unsupported реестра); вызов — core/config/outbound_generator.go:GenerateOutboundsFromParserConfig; теги сборки — core/core_capabilities.go:AppController.CoreBuildTags; реестр — protocols/tailscale.json body.on_core_unsupported"
     },
-    "tailscale_from_subscription": {
-      "severity": "info",
-      "params": [],
-      "title_en": "Tailscale node arrived from a subscription",
-      "title_ru": "Узел Tailscale приехал подпиской",
-      "text_en": "The subscription brought a Tailscale node. It is kept, but a subscription cannot bring the DNS server, rule and routes that make it useful — the machine identity in a tailnet lives locally; add those yourself.",
-      "text_ru": "Подписка принесла узел Tailscale. Он сохранён, но подписка не может привезти DNS-сервер, правило и маршруты, без которых он бесполезен: идентичность машины в tailnet живёт локально. Заведите их у себя.",
-      "cause_en": "The provider put a Tailscale node into the subscription body. A subscription can carry the node itself but not the settings around it: the machine's identity in a tailnet lives in local state on this computer and cannot travel with a link.",
-      "cause_ru": "Провайдер положил узел Tailscale в тело подписки. Подписка может принести сам узел, но не обвязку к нему: идентичность машины в tailnet живёт в локальном состоянии на этом компьютере и со ссылкой не переезжает.",
-      "fix_en": [
-        "Add the DNS server, the rule and the route for the tailnet yourself, or create the node locally through Add server → Tailscale — that way it gets them by default.",
-        "Nothing to do if you only use this node as a hop and do not need *.ts.net names."
-      ],
-      "fix_ru": [
-        "Заведите DNS-сервер, правило и маршрут в tailnet сами либо создайте узел локально через «Добавить сервер → Tailscale» — так он получит обвязку по умолчанию.",
-        "Если вы пользуетесь узлом только как хопом и имена *.ts.net вам не нужны, делать ничего не нужно."
-      ],
-      "desc": "Узел `tailscale` приехал ПОДПИСКОЙ. Узел законен и остаётся в составе — отсюда severity=info, а не error, — но полезен он не сам по себе: каноническую связку (DNS-сервер MagicDNS + правило на `.ts.net` + маршрут на 100.64.0.0/10 и fd7a:115c:a1e0::/48) подписка принести не может, потому что связка ссылается на финальный тег узла на ЭТОЙ машине, а идентичность машины в tailnet живёт в локальном каталоге состояния и одноразовым ключом провайдера не переносится. Связку пользователь заводит у себя (конструктор «Add server → Tailscale» или вкладка JSON); голый узел, заведённый локально, получает её по умолчанию. Молчать нельзя: узел виден в списке, а о неработающих именах `*.ts.net` пользователь узнал бы уже в бою. NODE_SECTIONS.md §6.",
-      "dart": "—",
-      "go": "core/config/subscription/parse_body.go:bodyParseState.accept"
-    },
     "ws_early_data_converted": {
       "severity": "info",
       "params": [

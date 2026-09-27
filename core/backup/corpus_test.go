@@ -128,33 +128,6 @@ type corpusExpectation struct {
 		Rules *int `json:"rules"`
 	} `json:"dns"`
 
-	// Sections — секции узлов после импорта: ТЕГ КОРНЕВОГО СЕРВЕРА → его
-	// связка (NODE_SECTIONS.md §5). Ключ — тег, а не позиция: секция
-	// принадлежит узлу, и проверять её по номеру в списке значило бы падать
-	// на любой перестановке источников.
-	//
-	// Правила узла сверяются по имени и enabled, но НЕ по номеру: номер
-	// раздаёт общая перенумерация оси (BACKUP.md §9), он зависит от того,
-	// сколько корневых правил приехало тем же файлом, и в ожидании был бы
-	// хрупкой копией арифметики импортёра. Положение узлового правила НА ОСИ
-	// проверяется списком `rules` верхнего уровня — там оно стоит среди
-	// корневых в том порядке, в каком встало.
-	//
-	// Поле необязательное: отсутствие ключа значит «не проверяем».
-	// Ключ — тег узла, причём ЛЮБОГО носителя секций, а не только корневого
-	// сервера: NODE_SECTIONS.md §1 разрешает секции свободному узлу и в
-	// корне `sources[]`, и внутри папки, у члена папки свой путь слияния, и
-	// проверять половину носителей значило бы оставить вторую без сверки.
-	Sections map[string]struct {
-		Rules []struct {
-			Name    string `json:"name"`
-			Enabled bool   `json:"enabled"`
-		} `json:"rules"`
-		// DNSServers — теги серверов связки по порядку.
-		DNSServers []string `json:"dns_servers"`
-		// DNSRules — их число (см. DNS.Rules выше).
-		DNSRules *int `json:"dns_rules"`
-	} `json:"sections"`
 	Vars     map[string]string `json:"vars"`
 	Warnings []string          `json:"warnings"`
 	// WarningReasons — уточнение причин для кодов, у которых причина
@@ -458,7 +431,6 @@ func TestBackupCorpus(t *testing.T) {
 			checkWarningReasons(t, append(parseWarns, res.Warnings...), exp)
 			checkRules(t, dst, exp)
 			checkDNS(t, dst, exp)
-			checkSections(t, dst, exp)
 			checkVars(t, dst, exp)
 			checkRouteFinal(t, dst, exp)
 			checkExtensionsDropped(t, dst, exp)
@@ -648,20 +620,6 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 	for _, r := range dst.Rules {
 		add(r)
 	}
-	for i := range dst.Sources {
-		if sec := dst.Sources[i].Node.Sections; sec != nil {
-			for _, r := range sec.Rules {
-				add(r)
-			}
-		}
-		for j := range dst.Sources[i].Nodes {
-			if sec := dst.Sources[i].Nodes[j].Sections; sec != nil {
-				for _, r := range sec.Rules {
-					add(r)
-				}
-			}
-		}
-	}
 	if len(all) != len(exp.Rules) {
 		t.Fatalf("правил на оси %d, ожидалось %d", len(all), len(exp.Rules))
 	}
@@ -781,82 +739,6 @@ func checkDNS(t *testing.T, dst *state.State, exp corpusExpectation) {
 		t.Errorf("dns.default_domain_resolver=%q, ожидалось %q",
 			dst.DNS.DefaultDomainResolver, exp.DNS.DefaultDomainResolver)
 	}
-}
-
-// checkSections — связки узлов после импорта, по тегу корневого сервера.
-func checkSections(t *testing.T, dst *state.State, exp corpusExpectation) {
-	t.Helper()
-	if exp.Sections == nil {
-		return
-	}
-	// Носители секций — ВСЕ свободные узлы: и корневые, и члены папок
-	// (NODE_SECTIONS.md §1). У члена папки собственный путь слияния, и
-	// обход одних корневых оставлял бы его DNS-связку без единой проверки,
-	// а сторожа «есть секции, которых в ожиданиях нет» — слепым к ней.
-	have := map[string]*state.NodeSections{}
-	collect := func(n *state.Node) {
-		if sec := n.Sections; sec != nil && !sec.IsEmpty() {
-			if _, dup := have[n.Tag]; dup {
-				t.Errorf("тег %q носит секции дважды — ключ связки неоднозначен", n.Tag)
-			}
-			have[n.Tag] = sec
-		}
-	}
-	for i := range dst.Sources {
-		if dst.Sources[i].Kind == state.SourceKindServer {
-			collect(&dst.Sources[i].Node)
-		}
-		for j := range dst.Sources[i].Nodes {
-			collect(&dst.Sources[i].Nodes[j])
-		}
-	}
-	for tag, want := range exp.Sections {
-		sec, ok := have[tag]
-		if !ok {
-			t.Errorf("у узла %q секций после импорта нет: есть у %v", tag, sortedKeys(have))
-			continue
-		}
-		if len(sec.Rules) != len(want.Rules) {
-			t.Errorf("%s: правил связки %d, ожидалось %d", tag, len(sec.Rules), len(want.Rules))
-		} else {
-			for i, wr := range want.Rules {
-				if sec.Rules[i].Name != wr.Name {
-					t.Errorf("%s: правило связки %d имя %q, ожидалось %q", tag, i, sec.Rules[i].Name, wr.Name)
-				}
-				if sec.Rules[i].Enabled != wr.Enabled {
-					t.Errorf("%s: правило связки %q enabled=%v, ожидалось %v",
-						tag, wr.Name, sec.Rules[i].Enabled, wr.Enabled)
-				}
-			}
-		}
-		if want.DNSServers != nil {
-			var tags []string
-			for _, s := range sec.DNSServers() {
-				tags = append(tags, s.Tag)
-			}
-			if !equalStrings(tags, want.DNSServers) {
-				t.Errorf("%s: DNS-серверы связки %v, ожидались %v", tag, tags, want.DNSServers)
-			}
-		}
-		if want.DNSRules != nil && len(sec.DNSRules()) != *want.DNSRules {
-			t.Errorf("%s: DNS-правил связки %d, ожидалось %d", tag, len(sec.DNSRules()), *want.DNSRules)
-		}
-	}
-	for tag := range have {
-		if _, ok := exp.Sections[tag]; !ok {
-			t.Errorf("у узла %q есть секции, которых в ожиданиях нет", tag)
-		}
-	}
-}
-
-// sortedKeys — имена ключей карты по алфавиту (для сообщений об ошибках).
-func sortedKeys(m map[string]*state.NodeSections) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // ruleRefs — все URL наборов srs-правила по порядку; у прочих kind — nil.

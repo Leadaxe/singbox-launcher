@@ -65,10 +65,9 @@ func decodeLegacy(b *Backup, opts ImportOptions) (*decodedFile, error) {
 		src, warns := importServer(srv)
 		out.Warnings = append(out.Warnings, warns...)
 		out.Sources = append(out.Sources, decodedSource{
-			Kind:     decodedServer,
-			Src:      src,
-			Folder:   srv.Folder,
-			Sections: srv.Sections != nil,
+			Kind:   decodedServer,
+			Src:    src,
+			Folder: srv.Folder,
 		})
 	}
 
@@ -336,15 +335,10 @@ func importServer(srv Server) (state.Source, []Warning) {
 		warns = append(warns, Warning{Code: WarnBackupSourceFlagDropped, Detail: serverLabel(srv)})
 	}
 	importSourceRef(&src, srv.SourceRef)
-	// SPEC 121: секции узла. В файле 0.12 они едут непрозрачным блоком в
-	// форме СОСТОЯНИЯ — там их писал прежний экспорт (ловушка §7.6), и такие
-	// файлы уже у пользователей на руках. Пустой набор нормализуется в nil —
-	// третьего состояния у поля нет.
+	// Секции узла упразднены (контракт 1.1.85): непустой блок 0.12-файла
+	// снимается с тем же кодом, что у формата 1.0.
 	if srv.Sections != nil {
-		sections, sw := decodeBackupSections(srv.Sections, src.Tag)
-		src.Node.Sections = sections
-		warns = append(warns, sw...)
-		src.Node.NormalizeNodeSections()
+		warns = append(warns, sectionsDroppedWarning(srv.Sections.Raw, src.Tag, string(src.Kind))...)
 	}
 	switch {
 	case len(srv.ConfigJSON) > 0:

@@ -131,10 +131,6 @@ func (s *State) MarshalV8() ([]byte, error) {
 // Rules / DNS. Легаси-ключей v6 нет ни в корне, ни внутри sources[]: их
 // читает только вход миграции, и записывать их некуда (SPEC Т1).
 func (s *State) marshalDisk() ([]byte, error) {
-	// Секции узла (SPEC 121): пустой набор — в nil, чужому виду секций не
-	// положено. Идемпотентно; дублирует нормализацию чтения, чтобы состояние,
-	// собранное в памяти (импорт бэкапа, редактор), уезжало на диск в каноне.
-	normalizeSectionsOfSources(s.Sources)
 	out := diskStateV8{
 		Meta: MetaSection{
 			Version:   SchemaVersionV8,

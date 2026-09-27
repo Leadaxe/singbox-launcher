@@ -50,7 +50,7 @@ const (
 	RuleKindSrs RuleKind = "srs"
 )
 
-// Rule — единица в state.rules[] и в sections.rules[] (одна форма для обоих).
+// Rule — единица в state.rules[].
 //
 // Сериализация (порядок полей = порядок ключей в файле):
 //

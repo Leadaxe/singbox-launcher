@@ -84,7 +84,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`ssh_user_default`](#ssh_user_default) · `info` — SSH: user root substituted
 - [`tailscale_core_unsupported`](#tailscale_core_unsupported) · `warning` — Tailscale is unavailable in this core
 - [`tailscale_default_route_advertised`](#tailscale_default_route_advertised) · `warning` — Tailscale: default route {value} removed from advertised routes
-- [`tailscale_from_subscription`](#tailscale_from_subscription) · `info` — Tailscale node arrived from a subscription
 - [`template_fragment_dropped`](#template_fragment_dropped) · `warning` — Entry of {kind} from {owner} left out
 - [`template_int_clamped`](#template_int_clamped) · `warning` — Value of {name} clamped
 - [`template_int_invalid`](#template_int_invalid) · `warning` — Variable {name} is not a number
@@ -1513,23 +1512,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - [`tailscale`](protocols/tailscale.md)
   - [`advertise_routes`](protocols/tailscale.md#body-advertise-routes) — a list item is `0.0.0.0/0`, `::/0` → item removed
-
-<a id="tailscale_from_subscription"></a>
-### tailscale_from_subscription
-
-**severity:** `info`
-
-**Tailscale node arrived from a subscription**
-
-- **What happened:** The subscription brought a Tailscale node. It is kept, but a subscription cannot bring the DNS server, rule and routes that make it useful — the machine identity in a tailnet lives locally; add those yourself.
-- **Why it happens:** The provider put a Tailscale node into the subscription body. A subscription can carry the node itself but not the settings around it: the machine's identity in a tailnet lives in local state on this computer and cannot travel with a link.
-- **What you can do:**
-  - Add the DNS server, the rule and the route for the tailnet yourself, or create the node locally through Add server → Tailscale — that way it gets them by default.
-  - Nothing to do if you only use this node as a hop and do not need *.ts.net names.
-
-**Where it comes from:**
-
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
 <a id="template_fragment_dropped"></a>
 ### template_fragment_dropped

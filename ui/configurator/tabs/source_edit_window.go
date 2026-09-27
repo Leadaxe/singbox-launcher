@@ -1941,7 +1941,7 @@ func showSourceEditWindowAt(
 		// сказать это одной внятной строкой лучше, чем двумя разными из
 		// глубины каждой ветки.
 		//
-		// SPEC 121 §5.1: исключение — ДОКУМЕНТ узла (тело + секции). У него
+		// SPEC 121 §5.1: исключение — ДОКУМЕНТ узла. У него
 		// `type` на верхнем уровне и не может быть: тип живёт у записи внутри
 		// `outbounds`/`endpoints`, и проверяет его разбор документа. У цепочки
 		// документов не бывает — там своя ветка ниже.
@@ -2030,6 +2030,14 @@ func showSourceEditWindowAt(
 		// научившаяся переносить поля Origin, тихо его отменит.
 		if dereferenceEditedSourceNode(&scratch) || hadSubURL {
 			notifyNodeDereferenced(win, scratch.NodeTagOrLabel())
+		}
+		// Контракт 1.1.85: из документа сохранён только узел — сказать, что
+		// `dns`/`route`/`sections` не сохранены.
+		if isDoc {
+			if _, dropped, derr := config.ParseNodeDocument([]byte(text)); derr == nil && len(dropped) > 0 {
+				dialog.ShowInformation(locale.T("Node saved"),
+					locale.Tf(wizardbusiness.NodeDocumentDroppedText, strings.Join(dropped, ", ")), win)
+			}
 		}
 		doRefreshJSONTab()
 	})
@@ -2122,17 +2130,6 @@ func showSourceEditWindowAt(
 				text = buf.String()
 			}
 			status := locale.T("The outbound as it will reach the config.")
-			// SPEC 121 §5.1: узел с секциями показывается ДОКУМЕНТОМ — голое
-			// тело умолчало бы о половине того, что узел добавит в конфиг, и
-			// первый же Apply снёс бы её.
-			if !scratch.Sections.IsEmpty() {
-				doc, derr := config.RenderNodeDocument(
-					scratch.Body, scratch.Sections, config.NodeBodyGoesToEndpoints(scratch.Body))
-				if derr == nil {
-					text = doc
-					status = locale.T("The node and the config fragments it carries. @self is this node's tag.")
-				}
-			}
 			setJSONText(text)
 			jsonStatus.SetText(status)
 			if sourceOriginURI(&scratch) != "" {

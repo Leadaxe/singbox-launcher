@@ -4,7 +4,7 @@
 //
 //	{
 //	  "meta":       { version: 8, schema: "sources_v8", ... },
-//	  "sources":    [ {kind, tag, enabled, ..., sections} ],  // юнион по kind
+//	  "sources":    [ {kind, tag, enabled, ...} ],  // юнион по kind
 //	  "directions": [ ... ],                                   // configtypes.Direction
 //	  "rules":      [ {kind, id?, ref?, name?, enabled, num?, refs?, vars?, body?} ],
 //	  "vars":       [ ... ],

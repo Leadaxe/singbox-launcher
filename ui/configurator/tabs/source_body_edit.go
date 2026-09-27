@@ -49,20 +49,17 @@ func applyServerBodyJSON(node *wizardmodels.Node, text string) error {
 		return fmt.Errorf("no node")
 	}
 	// SPEC 121 §5.1: вкладка принимает ДВЕ формы — прежнее тело и документ
-	// узла (тело + секции). Разбор документа живёт в core/config одной чистой
-	// функцией: её же зовут вставка источника и форма «Add server», и второй
-	// реализацией они разъехались бы на первой правке правил.
-	var (
-		bodyText string
-		sections *wizardmodels.NodeSections
-	)
+	// узла. Из документа берётся только узел (контракт 1.1.85); о
+	// несохранённом `dns`/`route`/`sections` сообщает вызывающий. Разбор
+	// документа живёт в core/config одной чистой функцией: её же зовут
+	// вставка источника и форма «Add server».
+	var bodyText string
 	if config.IsNodeDocument([]byte(text)) {
-		body, secs, err := config.ParseNodeDocument([]byte(text))
+		body, _, err := config.ParseNodeDocument([]byte(text))
 		if err != nil {
 			return err
 		}
 		bodyText = string(body)
-		sections = secs
 	} else {
 		var ob map[string]interface{}
 		if err := json.Unmarshal([]byte(text), &ob); err != nil {
@@ -76,10 +73,6 @@ func applyServerBodyJSON(node *wizardmodels.Node, text string) error {
 			return err
 		}
 		bodyText = compact.String()
-		// Прежняя форма секций не касается: пользователь правит тело, а
-		// снимать чужие фрагменты за него — не то, о чём он просил. Снять их
-		// можно, вставив документ без `dns`/`route`.
-		sections = node.Sections
 	}
 	mat, err := config.MaterializeServerNode("", json.RawMessage(bodyText))
 	if err != nil {
@@ -95,8 +88,6 @@ func applyServerBodyJSON(node *wizardmodels.Node, text string) error {
 	// прежнем теле, и к новому его приговор неприменим — узел включается
 	// обратно и проверится следующей сборкой.
 	node.RevalidateCoreVerdictAfterBodyChange(bodyBefore)
-	node.Sections = sections
-	node.NormalizeNodeSections()
 
 	// ВИД и ИСХОДНИК происхождения переживают правку тела.
 	//

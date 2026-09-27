@@ -107,30 +107,11 @@ func buildSnapshotFromState(s *state.State, l paths.Layout, subst config.VarSubs
 	}
 
 	return &build.ParsedCache{
-		Outbounds:    jsonStringsToRawMessages(result.OutboundsJSON),
-		Endpoints:    jsonStringsToRawMessages(result.EndpointsJSON),
-		Warnings:     warnings,
-		NodeOrigins:  buildNodeOrigins(result.NodeOrigins),
-		NodeSections: buildNodeSections(result.NodeSections),
+		Outbounds:   jsonStringsToRawMessages(result.OutboundsJSON),
+		Endpoints:   jsonStringsToRawMessages(result.EndpointsJSON),
+		Warnings:    warnings,
+		NodeOrigins: buildNodeOrigins(result.NodeOrigins),
 	}, result, nil
-}
-
-// buildNodeSections переводит секции узлов из формы парсера в форму сборщика
-// (SPEC 121). Два одинаковых типа в разных пакетах — та же цена, что у
-// buildNodeOrigins: core/build остаётся leaf-пакетом.
-func buildNodeSections(src []config.NodeSectionSet) []build.NodeSectionSet {
-	if len(src) == 0 {
-		return nil
-	}
-	out := make([]build.NodeSectionSet, 0, len(src))
-	for _, s := range src {
-		out = append(out, build.NodeSectionSet{
-			FinalTag: s.FinalTag,
-			Link:     build.NodeLink{FolderID: s.Link.FolderID, Tag: s.Link.Tag},
-			Sections: s.Sections,
-		})
-	}
-	return out
 }
 
 // buildNodeOrigins переводит карту происхождения узлов из формы парсера в

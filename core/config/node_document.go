@@ -1,51 +1,25 @@
-// File node_document.go — разбор ДОКУМЕНТА узла (SPEC 121 §5.1).
+// File node_document.go — разбор ДОКУМЕНТА узла (SPEC 121 §5.1, SPEC 144).
 //
 // # Что такое документ узла
 //
-// Узел с секциями нельзя показать одним outbound-объектом: DNS-сервер,
-// DNS-правило и правило маршрута живут рядом с телом, а не внутри него.
-// Поэтому вкладка JSON узла принимает вторую форму — фрагмент конфига:
+// Вкладка JSON узла принимает, кроме голого тела, фрагмент конфига:
 //
-//	{
-//	  "endpoints": [ { "type": "wireguard", "tag": "ts", … } ],
-//	  "dns":   { "servers": [ … ], "rules": [ … ] },
-//	  "route": { "rules":   [ … ] }
-//	}
+//	{ "endpoints": [ { "type": "wireguard", "tag": "ts", … } ] }
 //
-// Ровно одна запись в `outbounds[]`+`endpoints[]` становится ТЕЛОМ узла,
-// остальное — его секциями. Документ намеренно НЕ является «конфигом
-// целиком»: любой другой верхний ключ (`log`, `inbounds`, `experimental`) —
-// ошибка с перечислением, потому что принять его молча значило бы обещать
-// пользователю импорт, которого здесь нет.
+// Ровно одна запись в `outbounds[]`+`endpoints[]` становится ТЕЛОМ узла.
+// Ключи `dns`, `route` и `sections` принимаются и ОТБРАСЫВАЮТСЯ: секций у
+// узла нет (контракт 1.1.85, NODE_SECTIONS.md; LxBox §575), а вызывающий
+// сообщает пользователю, что остальное содержимое документа не сохранено.
+// Любой другой верхний ключ (`log`, `inbounds`, `experimental`) — ошибка с
+// перечислением: принять его молча значило бы обещать импорт, которого здесь
+// нет.
 //
 // # Почему это чистая функция в core/config
 //
 // Тот же разбор нужен трём входам: вкладке JSON окна источника, форме
 // «Add server» (SPEC 122) и вставке источника (`carveSingboxJSON`). Второй
-// реализацией они разъехались бы на первой же правке правил — тот самый класс
-// расхождений, который в этом проекте уже стоил трёх схем («эмиттер и парсер
-// ходят парой»). Сети и состояния здесь нет.
-//
-// # Правила, которые применяет разбор
-//
-//  1. ссылка на РЕАЛЬНЫЙ тег записи узла внутри секций переписывается в
-//     `@self` — пользователь вставляет готовый конфиг, а связка обязана
-//     пережить переименование узла;
-//  2. правило маршрута без `outbound` и без `action` получает
-//     `"outbound": "@self"`: правило секции — про этот узел, иначе оно
-//     ничего не значит;
-//  3. `rule_set` в правиле — ошибка: в v1 секции наборов правил не
-//     объявляют и на них не ссылаются, а висячая ссылка роняет конфиг целиком;
-//  4. `@var`, кроме `@self`, — ошибка: у узла нет своего словаря переменных,
-//     и на сборке подстановка оставила бы её строкой в конфиге.
-//
-// # Хранимая форма (SPEC 121 §10)
-//
-// Наружу разбор отдаёт state.NodeSections — записи ЛАУНЧЕРА (Rule вида
-// inline, DNSServer/DNSRule вида user), а не сырые фрагменты sing-box.
-// Перевод одного фрагмента в запись живёт в NodeSectionsFromSingbox и зовётся
-// отсюда, из ExtractNodeSections (целый конфиг как источник) и из
-// конструктора Tailscale: второй реализации правил перевода быть не должно.
+// реализацией они разъехались бы на первой же правке правил. Сети и
+// состояния здесь нет.
 package config
 
 import (
@@ -54,20 +28,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"singbox-launcher/core/state"
 )
 
-// NodeDocumentSelfVar — плейсхолдер «финальный тег этого узла».
-// Алиас на state.SelfPlaceholder: строка одна, объявление — рядом с типом.
-const NodeDocumentSelfVar = state.SelfPlaceholder
-
 // nodeDocTopKeys — верхние ключи, которые документ узла признаёт.
-//
-// `sections` — ХРАНИМАЯ форма (SPEC 121 §10.1): её отдаёт RenderNodeDocument,
-// и её же вкладка принимает обратно, чтобы правка `enabled`/`order_num` в
-// тексте не терялась. `dns`/`route` — sing-box-форма, которую пишет
-// пользователь, вставляя готовый конфиг.
 var nodeDocTopKeys = map[string]bool{
 	"outbounds": true,
 	"endpoints": true,
@@ -76,15 +39,9 @@ var nodeDocTopKeys = map[string]bool{
 	"sections":  true,
 }
 
-// nodeDocDNSKeys / nodeDocRouteKeys — ключи, которые разбор читает внутри
-// `dns` и `route`. Всё остальное (`final`, `strategy`,
-// `default_domain_resolver`, `auto_detect_interface`) — настройки конфига
-// ЦЕЛИКОМ, а не узла: принять их у одного узла значило бы дать ему править
-// общие поля мимо вкладок, где они живут.
-var (
-	nodeDocDNSKeys   = map[string]bool{"servers": true, "rules": true}
-	nodeDocRouteKeys = map[string]bool{"rules": true}
-)
+// nodeDocDroppedKeys — признаваемые ключи, содержимое которых не сохраняется
+// (секции узла упразднены, контракт 1.1.85). Порядок — порядок сообщения.
+var nodeDocDroppedKeys = []string{"dns", "route", "sections"}
 
 // IsNodeDocument сообщает, выглядит ли текст документом узла, а не голым
 // outbound-объектом.
@@ -109,16 +66,19 @@ func IsNodeDocument(raw []byte) bool {
 	return false
 }
 
-// ParseNodeDocument разбирает документ узла в тело и секции.
+// ParseNodeDocument разбирает документ узла в тело.
 //
 // body сохраняет порядок ключей автора байт-в-байт (json.RawMessage +
 // json.Compact, а не Unmarshal→Marshal): порядок полей тела значим — он
 // сравнивается с выводом эмиттера.
 //
+// dropped — присутствовавшие в документе ключи `dns`/`route`/`sections`,
+// содержимое которых отброшено; вызывающий сообщает о них пользователю.
+//
 // Возвращает ошибку и НИЧЕГО не меняет, если документ не годится: вызывающий
 // показывает причину и оставляет узел прежним (тот же откат, что у
 // applyServerBodyJSON).
-func ParseNodeDocument(raw []byte) (json.RawMessage, *state.NodeSections, error) {
+func ParseNodeDocument(raw []byte) (body json.RawMessage, dropped []string, err error) {
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, nil, fmt.Errorf("document: %w", err)
@@ -135,7 +95,7 @@ func ParseNodeDocument(raw []byte) (json.RawMessage, *state.NodeSections, error)
 	if len(extra) > 0 {
 		sort.Strings(extra)
 		return nil, nil, fmt.Errorf(
-			"a node document carries only outbounds/endpoints, dns and route; unexpected key(s): %s",
+			"a node document carries only outbounds/endpoints; unexpected key(s): %s",
 			strings.Join(extra, ", "))
 	}
 
@@ -148,77 +108,32 @@ func ParseNodeDocument(raw []byte) (json.RawMessage, *state.NodeSections, error)
 			"a node document must carry exactly one node in outbounds/endpoints (found %d)", len(entries))
 	}
 
-	bodyRaw := entries[0]
-	nodeTag := nodeDocTagOf(bodyRaw)
-
-	var body bytes.Buffer
-	if err := json.Compact(&body, bodyRaw); err != nil {
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, entries[0]); err != nil {
 		return nil, nil, fmt.Errorf("node body: %w", err)
 	}
 	// Проверка та же, что у прежней формы вкладки: ядро не принимает
 	// outbound без типа, и сказать это здесь дешевле, чем на sing-box check.
 	var probe map[string]interface{}
-	if err := json.Unmarshal(body.Bytes(), &probe); err != nil {
+	if err := json.Unmarshal(buf.Bytes(), &probe); err != nil {
 		return nil, nil, fmt.Errorf("node body: %w", err)
 	}
 	if t, _ := probe["type"].(string); strings.TrimSpace(t) == "" {
 		return nil, nil, fmt.Errorf("the node object must have a non-empty \"type\" field")
 	}
 
-	// Вход 2 (§10.4): секции уже в хранимой форме — их берём как есть.
-	// Смешивать её с sing-box-формой в одном документе нельзя: два разных
-	// описания одних и тех же записей молча перетёрли бы друг друга.
-	if raw, ok := doc["sections"]; ok {
-		if _, hasDNS := doc["dns"]; hasDNS {
-			return nil, nil, fmt.Errorf(`a node document carries either "sections" or "dns"/"route", not both`)
+	for _, k := range nodeDocDroppedKeys {
+		if v, ok := doc[k]; ok && !isEmptyJSONValue(v) {
+			dropped = append(dropped, k)
 		}
-		if _, hasRoute := doc["route"]; hasRoute {
-			return nil, nil, fmt.Errorf(`a node document carries either "sections" or "dns"/"route", not both`)
-		}
-		stored, err := state.ReadNodeSections(raw)
-		if err != nil {
-			return nil, nil, err
-		}
-		if stored.IsEmpty() {
-			return json.RawMessage(body.Bytes()), nil, nil
-		}
-		return json.RawMessage(body.Bytes()), stored, nil
 	}
+	return json.RawMessage(buf.Bytes()), dropped, nil
+}
 
-	var dnsServers, dnsRules, routeRules []json.RawMessage
-	if err := nodeDocSubsection(doc, "dns", nodeDocDNSKeys, func(key string, list []json.RawMessage) error {
-		switch key {
-		case "servers":
-			dnsServers = list
-		case "rules":
-			dnsRules = list
-		}
-		return nil
-	}); err != nil {
-		return nil, nil, err
-	}
-	if err := nodeDocSubsection(doc, "route", nodeDocRouteKeys, func(key string, list []json.RawMessage) error {
-		routeRules = list
-		return nil
-	}); err != nil {
-		return nil, nil, err
-	}
-
-	sections, err := state.NodeSectionsFromSingbox(state.SingboxNodeFragments{
-		NodeTag:    nodeTag,
-		DNSServers: dnsServers,
-		DNSRules:   dnsRules,
-		RouteRules: routeRules,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	if sections.IsEmpty() {
-		// Документ без секций — это просто тело, обёрнутое в конверт. Пустой
-		// набор в состоянии был бы третьим состоянием поля (nil / пусто / есть).
-		return json.RawMessage(body.Bytes()), nil, nil
-	}
-	return json.RawMessage(body.Bytes()), sections, nil
+// isEmptyJSONValue — null, пустой объект или пустой массив.
+func isEmptyJSONValue(raw json.RawMessage) bool {
+	t := string(bytes.TrimSpace(raw))
+	return t == "" || t == "null" || t == "{}" || t == "[]"
 }
 
 // nodeDocEntries — записи узла из `outbounds[]` и `endpoints[]` одним списком.
@@ -238,60 +153,6 @@ func nodeDocEntries(doc map[string]json.RawMessage) ([]json.RawMessage, error) {
 	return out, nil
 }
 
-// nodeDocSubsection разбирает `dns` / `route`: проверяет ключи внутри и отдаёт
-// каждый известный список в apply.
-func nodeDocSubsection(
-	doc map[string]json.RawMessage,
-	section string,
-	allowed map[string]bool,
-	apply func(key string, list []json.RawMessage) error,
-) error {
-	raw, ok := doc[section]
-	if !ok {
-		return nil
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		return fmt.Errorf("%s: expected an object: %w", section, err)
-	}
-	var extra []string
-	for k := range obj {
-		if !allowed[k] {
-			extra = append(extra, section+"."+k)
-		}
-	}
-	if len(extra) > 0 {
-		sort.Strings(extra)
-		return fmt.Errorf("%q carries node fragments only; unexpected key(s): %s",
-			section, strings.Join(extra, ", "))
-	}
-	for k := range allowed {
-		listRaw, has := obj[k]
-		if !has {
-			continue
-		}
-		var list []json.RawMessage
-		if err := json.Unmarshal(listRaw, &list); err != nil {
-			return fmt.Errorf("%s.%s: expected an array of objects: %w", section, k, err)
-		}
-		if err := apply(k, list); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// nodeDocTagOf — тег записи узла из документа ("" если его нет).
-func nodeDocTagOf(raw json.RawMessage) string {
-	var probe struct {
-		Tag string `json:"tag"`
-	}
-	if err := json.Unmarshal(raw, &probe); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(probe.Tag)
-}
-
 // NodeBodyGoesToEndpoints — уедет ли тело узла в `endpoints[]`, а не в
 // `outbounds[]`.
 //
@@ -308,32 +169,23 @@ func NodeBodyGoesToEndpoints(body json.RawMessage) bool {
 	return IsEndpointScheme(canonicalSchemeFromType(strings.ToLower(strings.TrimSpace(probe.Type))))
 }
 
-// RenderNodeDocument собирает документ из тела и секций узла — обратная
-// операция ParseNodeDocument для отрисовки вкладки JSON.
-//
-// Секции рисуются в ХРАНИМОЙ форме (SPEC 121 §10.4): пользователь видит ровно
-// те записи, которые лежат в состоянии, вместе с их `enabled` и `order_num`.
-// Показывать их sing-box-фрагментами значило бы прятать половину полей и
-// терять их на следующем сохранении.
+// RenderNodeDocument собирает документ из тела узла — обратная операция
+// ParseNodeDocument для отрисовки вкладки JSON.
 //
 // Секция тела выбирается той же схемой, что при эмиссии (EmitNodeJSONs): узел,
 // который уедет в `endpoints[]`, и в документе показывается там же.
-func RenderNodeDocument(body json.RawMessage, sections *state.NodeSections, isEndpoint bool) (string, error) {
+func RenderNodeDocument(body json.RawMessage, isEndpoint bool) (string, error) {
 	// json.RawMessage у тела, а не карта: MarshalIndent переиндентирует
 	// вложенный объект, не трогая порядок полей внутри него (тот же приём,
 	// что в unpackNodesDoc).
 	doc := struct {
-		Outbounds []json.RawMessage   `json:"outbounds,omitempty"`
-		Endpoints []json.RawMessage   `json:"endpoints,omitempty"`
-		Sections  *state.NodeSections `json:"sections,omitempty"`
+		Outbounds []json.RawMessage `json:"outbounds,omitempty"`
+		Endpoints []json.RawMessage `json:"endpoints,omitempty"`
 	}{}
 	if isEndpoint {
 		doc.Endpoints = []json.RawMessage{body}
 	} else {
 		doc.Outbounds = []json.RawMessage{body}
-	}
-	if !sections.IsEmpty() {
-		doc.Sections = sections
 	}
 	out, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {

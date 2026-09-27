@@ -32,10 +32,6 @@ func (m *WizardModel) slotNum(s RuleSlot) *int {
 		if s.Index >= 0 && s.Index < len(m.CustomRules) && m.CustomRules[s.Index] != nil {
 			return m.CustomRules[s.Index].Num
 		}
-	case SlotKindNodeRef:
-		if s.Index >= 0 && s.Index < len(m.NodeRuleRefs) && m.NodeRuleRefs[s.Index] != nil {
-			return m.NodeRuleRefs[s.Index].Num
-		}
 	}
 	return nil
 }
@@ -50,10 +46,6 @@ func (m *WizardModel) setSlotNum(s RuleSlot, num *int) {
 	case SlotKindCustom:
 		if s.Index >= 0 && s.Index < len(m.CustomRules) && m.CustomRules[s.Index] != nil {
 			m.CustomRules[s.Index].Num = num
-		}
-	case SlotKindNodeRef:
-		if s.Index >= 0 && s.Index < len(m.NodeRuleRefs) && m.NodeRuleRefs[s.Index] != nil {
-			m.NodeRuleRefs[s.Index].Num = num
 		}
 	}
 }
@@ -73,11 +65,6 @@ func (m *WizardModel) axisProxyRules() []corestate.Rule {
 			if s.Index >= 0 && s.Index < len(m.PresetRefs) && m.PresetRefs[s.Index] != nil {
 				r.Ref = m.PresetRefs[s.Index].Ref
 			}
-		case SlotKindNodeRef:
-			// SPEC 121: правило узла — рядовое сортируемое правило оси; тела
-			// у прокси нет и здесь не нужно (ось читает только Kind и
-			// Num), а вид inline её устраивает как и всякий не-пресет.
-			r.Kind = corestate.RuleKindInline
 		}
 		r.Num = copyNum(m.slotNum(s))
 		out = append(out, r)

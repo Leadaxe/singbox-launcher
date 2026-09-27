@@ -25,7 +25,7 @@
                                                    "default"?: ссылка}}?,
                          "subscriptions": {...}, "root_servers": [...],
                          "folders": {...}, "folder_ids": {...},
-                         "dns": {...}, "sections": {...},
+                         "dns": {...},
                          "replace_tags": {...}, "replaces": {...},
                          "extensions_dropped": true|false}
 
@@ -102,8 +102,9 @@
 - `dns.servers[].body` и скаляры `dns.strategy` / `dns.final` /
   `dns.default_domain_resolver` — тело едет «байт в байт» только у одного
   кодека; у второй стороны оно проходит через её собственный декодер.
-- `sections` ключуются тегом ЛЮБОГО носителя — и корневого узла, и члена
-  папки: у члена папки свой путь слияния.
+- ключа `sections` у ожидания нет: секции узла упразднены (контракт 1.1.85),
+  импорт снимает поле у любой записи, а потерю проверяют `warnings` и
+  `warning_reasons` (`backup_section_record_dropped` / `not_allowed`).
 
 ### Фикстура объявлений шаблона (контракт 1.0.2, D-118)
 

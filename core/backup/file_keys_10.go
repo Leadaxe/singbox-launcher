@@ -67,13 +67,17 @@ func jsonKeys(t reflect.Type) map[string]bool {
 }
 
 var (
-	root10Keys   = jsonKeys(reflect.TypeOf(Backup10{}))
-	source10Keys = jsonKeys(reflect.TypeOf(Source10{}))
+	root10Keys = jsonKeys(reflect.TypeOf(Backup10{}))
+	// `sections` у записи и у члена — известный ключ: поле снимается с
+	// собственным кодом (scanSections10), а не как неизвестное.
+	source10Keys = withKeys(jsonKeys(reflect.TypeOf(Source10{})), sectionsKeySet)
 	// node10Keys — член папки: state.Node целиком (в файле у него те же
 	// ключи, что у корневого узла, минус поля контейнера).
-	node10Keys = jsonKeys(reflect.TypeOf(state.Node{}))
-	rule10Keys = jsonKeys(reflect.TypeOf(state.Rule{}))
-	dns10Keys  = jsonKeys(reflect.TypeOf(state.DNSOptions{}))
+	node10Keys = withKeys(jsonKeys(reflect.TypeOf(state.Node{})), sectionsKeySet)
+	// sectionsKeySet — упразднённое поле секций узла (контракт 1.1.85).
+	sectionsKeySet = map[string]bool{"sections": true}
+	rule10Keys     = jsonKeys(reflect.TypeOf(state.Rule{}))
+	dns10Keys      = jsonKeys(reflect.TypeOf(state.DNSOptions{}))
 	// dnsServer10Keys и dnsRule10Keys объявлены порознь: у сервера есть
 	// `tag`, у правила — `name`/`id`, и общий список пропустил бы чужое поле
 	// в обе стороны. `vars` из общего списка сервера снят: ключ законен
@@ -81,11 +85,6 @@ var (
 	// рефлексия по типу этого не различает — его объявляет dnsServerKindKeys10.
 	dnsServer10Keys = withoutKeys(jsonKeys(reflect.TypeOf(state.DNSServer{})), "vars")
 	dnsRule10Keys   = jsonKeys(reflect.TypeOf(state.DNSRule{}))
-	// sections10Keys — секции узла: `rules` и `dns`. Внутрь записей секции
-	// обход спускается теми же списками, что у корневых, — форма одна
-	// (NODE_SECTIONS.md §1), и вторая таблица разъехалась бы с первой.
-	sections10Keys    = jsonKeys(reflect.TypeOf(state.NodeSections{}))
-	sectionsDNS10Keys = jsonKeys(reflect.TypeOf(state.NodeSectionsDNS{}))
 	// origin10Keys / detour10Keys / policy10Keys / update10Keys — вложенные
 	// объекты записи источника.
 	origin10Keys = jsonKeys(reflect.TypeOf(state.Origin{}))
@@ -218,16 +217,6 @@ func (sc *unknownScan) scanSourceBody10(where string, item map[string]json.RawMe
 	if replace, ok := rawObject(item, "replace"); ok {
 		sc.object(joinPath(where, "replace"), replace, replace10Keys)
 		sc.nested2(replace, joinPath(where, "replace"), "auto", auto10Keys)
-	}
-	if sections, ok := rawObject(item, "sections"); ok {
-		at := joinPath(where, "sections")
-		sc.object(at, sections, sections10Keys)
-		sc.array(sections, at+".rules", "rules", rule10Keys, "name", nil)
-		if dns, ok := rawObject(sections, "dns"); ok {
-			sc.object(at+".dns", dns, sectionsDNS10Keys)
-			sc.array(dns, at+".dns.servers", "servers", dnsServer10Keys, "tag", nil)
-			sc.array(dns, at+".dns.rules", "rules", dnsRule10Keys, "name", nil)
-		}
 	}
 }
 

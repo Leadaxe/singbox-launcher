@@ -184,31 +184,16 @@ func TestMigrateV7ToV8_NothingLost(t *testing.T) {
 		t.Errorf("тело user-правила: %+v", s.DNS.Rules[1].Body)
 	}
 
-	// Секции узла — та же форма, что в корне.
-	var sections *NodeSections
+	// Секции узла упразднены (контракт 1.1.85): узел с ключом `sections` в
+	// v7 читается, ключ миграция снимает.
+	found := false
 	for i := range s.Sources {
 		if s.Sources[i].Tag == "🇯🇵 Tokyo" {
-			sections = s.Sources[i].Node.Sections
+			found = true
 		}
 	}
-	if sections == nil || len(sections.Rules) != 1 {
-		t.Fatalf("секции узла потеряны: %+v", sections)
-	}
-	sr := sections.Rules[0]
-	if sr.Name != "@{self} network" || sr.Num == nil || *sr.Num != 945 {
-		t.Errorf("правило секции: %+v", sr)
-	}
-	if string(sr.Body) != `{"ip_cidr":["100.64.0.0/10"],"outbound":"@self"}` {
-		t.Errorf("тело правила секции: %s", sr.Body)
-	}
-	if len(sections.DNSServers()) != 1 || sections.DNSServers()[0].Tag != "@{self}-dns" {
-		t.Errorf("DNS-серверы секции: %+v", sections.DNSServers())
-	}
-	if sections.DNSServers()[0].Body["endpoint"] != "@self" {
-		t.Errorf("тело DNS-сервера секции: %+v", sections.DNSServers()[0].Body)
-	}
-	if len(sections.DNSRules()) != 1 || sections.DNSRules()[0].Body["server"] != "@{self}-dns" {
-		t.Errorf("DNS-правила секции: %+v", sections.DNSRules())
+	if !found {
+		t.Fatal("узел с секциями в v7 потерян миграцией")
 	}
 
 	// warp_accounts → warp без потерь.

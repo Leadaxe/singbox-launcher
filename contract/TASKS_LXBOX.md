@@ -8373,3 +8373,36 @@ code: tls_fragment_system_engine}` (warning, params `path`, `with`).
 перевести на правило п. 3; (2) код `tls_fragment_system_engine` в
 санитайзере (кейс `body/singbox/tls_fragment_system_engine`); (3) ваш
 post-step по detour может ставить код `detour_with_tls_fragment`.
+
+## 82. Контракт 1.1.85 — секции узла упразднены
+
+Источник решения — ваша спека §575
+(`docs/spec/tasks/575-remove-node-sections.md`), решение владельца
+27.09.2026. Лаунчер — SPEC 144. Норма — `docs/NODE_SECTIONS.md`.
+
+**1. Носители.** `sections` нет ни у свободного узла (любой протокол,
+включая Tailscale), ни у члена папки, ни у папки. У подписки имя
+зарезервировано: не читается и не пишется. `@self`/`@{self}` и инъекция в
+сборку отменены.
+
+**2. Бэкап.** Экспорт `sections` не пишет. Импорт снимает поле у записи
+любого вида; при хотя бы одной записи (`rules[]`, `dns.servers[]`,
+`dns.rules[]`) — `backup_section_record_dropped`, `reason: not_allowed`,
+одно на запись; пустой набор молча. Причины `kind`/`rule_set`/`unknown_key`
+отменены.
+
+**3. Разбор.** Из целого sing-box-конфига и из документа узла берутся только
+узлы; `dns`/`route`/`sections` отбрасываются, связка Tailscale по умолчанию
+не подставляется.
+
+**4. Реестр.** Код `tailscale_from_subscription` выведен. Связку tailnet
+даст пресет шаблона (§578), норма пресета — отдельной версией контракта.
+Каталог состояния Tailscale — норма без изменений (`NODE_SECTIONS.md` §2).
+
+**5. Корпус.** `backup/v10_node_sections` — новое ожидание (секции у
+сервера, члена папки и подписки; `warning_reasons` = `[not_allowed]`, ключа
+`sections` у ожидания нет); `body/singbox/whole_config_sections`,
+`tailscale_endpoint`, `tailscale_advertise_routes` — узлы без `sections`.
+
+*За LxBox:* реализация §575 по вашей спеке; раннеры корпуса — перестать
+сверять `sections` у результата разбора и у импорта бэкапа.

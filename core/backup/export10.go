@@ -186,7 +186,6 @@ func export10Source(src state.Source) (Source10, bool) {
 		Service:  node.Service,
 		Reason:   node.Reason,
 		Warnings: node.Warnings,
-		Sections: node.Sections,
 
 		ID:        src.ID,
 		Name:      src.Name,
@@ -339,7 +338,6 @@ func cloneNode(n state.Node) state.Node {
 		}
 		out.Group = &g
 	}
-	out.Sections = n.Sections.Clone()
 	return out
 }
 

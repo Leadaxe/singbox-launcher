@@ -1,17 +1,10 @@
 // File add_server_tailscale.go — вариант «Tailscale» формы Add server
 // (SPEC 122 §2.5).
 //
-// Отличие от соседних вариантов в том, что узел tailnet — не один outbound.
-// Полезен он только вместе с двумя спутниками: DNS-сервером MagicDNS
-// (`type: tailscale`, `endpoint` = этот узел) и правилом маршрута на
-// 100.64.0.0/10. Порознь их пришлось бы заводить руками на трёх вкладках, и
-// пользователь узнавал бы о пропущенном шаге по неработающим именам *.ts.net.
-//
-// Поэтому форма отдаёт ДОКУМЕНТ узла (SPEC 121 §5.1) — тело плюс секции — в
-// AddServerResult.ConfigJSON. Своего пути записи она не заводит: документ
-// разбирает тот же AppendManualConfigJSON, что и вкладка JSON окна источника
-// (ловушка emitter-parser-pairing — вторая реализация правил документа
-// разошлась бы с первой на первой же правке).
+// Форма отдаёт ДОКУМЕНТ узла (SPEC 121 §5.1) с одним endpoint в
+// AddServerResult.ConfigJSON; его разбирает тот же AppendManualConfigJSON, что
+// и вкладка JSON окна источника. Связку tailnet (маршрут, DNS) узел не несёт:
+// секции узла упразднены (контракт 1.1.85), её даёт пресет шаблона.
 package dialogs
 
 import (
@@ -24,7 +17,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config/nodeflow"
-	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/nodewarn"
 )
@@ -151,11 +143,7 @@ func (t *tailscaleFields) syncExitRole() {
 	t.exitNodeLAN.Show()
 }
 
-// tailscaleDocument собирает документ узла: endpoint плюс секции dns/route.
-//
-// Ссылки на сам узел пишутся `@self` — тем же способом, каким их пишет
-// разбор документа (SPEC 121 §5.1): тег узла переживёт переименование, а
-// связка с ним нет, если бы её записали буквальным тегом.
+// tailscaleDocument собирает документ узла: один endpoint.
 func tailscaleDocument(tag string, t *tailscaleFields) ([]byte, error) {
 	tag = strings.TrimSpace(tag)
 	if tag == "" {
@@ -213,20 +201,10 @@ func tailscaleDocument(tag string, t *tailscaleFields) ([]byte, error) {
 		endpoint["advertise_routes"] = routes
 	}
 
-	// Связка — не литерал формы: её собирает config.TailscaleBundleFragments,
-	// та же функция, которой голый узел получает связку по умолчанию на
-	// разборе и на импорте. Свой литерал здесь разошёлся бы с ними на первой
-	// же правке нормы (NODE_SECTIONS.md §6).
-	frags := corestate.TailscaleBundleFragments()
+	// Документ несёт только узел: связку tailnet (маршрут, DNS) даёт пресет
+	// шаблона, а не узел (секции узла упразднены, контракт 1.1.85).
 	doc := map[string]interface{}{
 		"endpoints": []interface{}{endpoint},
-		"dns": map[string]interface{}{
-			"servers": rawList(frags.DNSServers),
-			"rules":   rawList(frags.DNSRules),
-		},
-		"route": map[string]interface{}{
-			"rules": rawList(frags.RouteRules),
-		},
 	}
 	return json.MarshalIndent(doc, "", "  ")
 }
@@ -273,15 +251,4 @@ func putIfNotEmpty(m map[string]interface{}, key, value string) {
 	if v := strings.TrimSpace(value); v != "" {
 		m[key] = v
 	}
-}
-
-// rawList — список готовых фрагментов как элементы JSON-документа.
-// json.RawMessage маршалится телом, поэтому порядок ключей внутри фрагмента
-// остаётся тем, каким его собрала норма.
-func rawList(list []json.RawMessage) []interface{} {
-	out := make([]interface{}, 0, len(list))
-	for _, raw := range list {
-		out = append(out, raw)
-	}
-	return out
 }

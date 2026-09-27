@@ -54,33 +54,13 @@ func backupTestState() *state.State {
 	}
 	sub.SetIdentity("Happ/1.0", "7c9e6679-7425-40de-944b-e07fc1f90ae7", &send, nil)
 
-	sections := &state.NodeSections{}
-	nodeRule := state.NewInlineRule(
-		state.SelfPlaceholderBraced+" net",
-		map[string]interface{}{"ip_cidr": []interface{}{"100.64.0.0/10"}},
-		state.SelfPlaceholder)
-	nodeRule.Enabled = true
-	nodeNum := state.NodeRuleDefaultNum
-	nodeRule.Num = &nodeNum
-	sections.Rules = []state.Rule{nodeRule}
-	sections.SetDNS(
-		[]state.DNSServer{{
-			Kind: state.DNSServerKindUser, Tag: "ts-dns", Enabled: true,
-			Body: map[string]interface{}{"type": "tailscale", "endpoint": state.SelfPlaceholder},
-		}},
-		[]state.DNSRule{{
-			Kind: state.DNSRuleKindUser, Enabled: true,
-			Body: map[string]interface{}{"domain_suffix": []interface{}{".ts.net"}, "server": "ts-dns"},
-		}})
-
 	st.Sources = []state.Source{
 		sub,
 		{
 			ID: "01SRV0000000000000000000",
 			Node: state.Node{
 				Kind: state.SourceKindServer, Enabled: true, Tag: "ts-node",
-				Origin:   &state.Origin{Kind: state.OriginKindURI, Raw: "trojan://pw@1.2.3.4:443#ts-node"},
-				Sections: sections,
+				Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "trojan://pw@1.2.3.4:443#ts-node"},
 			},
 		},
 		{

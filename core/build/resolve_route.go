@@ -157,10 +157,6 @@ func ResolveRouteWithGlobals(
 	// в слайсе. Нормализация здесь же пере-засевает неотчуждаемые пресеты —
 	// именно re-seed на каждой сборке, а не флаг в state, делает их
 	// неотчуждаемыми (D-050): стёртое из state правило возвращается.
-	//
-	// SPEC 121 §10.2: правила, которые узлы носят с собой, уже дописаны в
-	// state.Rules инъекцией (MergePresetsIntoRoute) — своей ветки у них нет,
-	// они рядовые inline/srs.
 	rules := corestate.NormalizeRuleOrder(state.Rules, template.RuleOrderSpecs(td.Presets))
 
 	for _, rule := range rules {

@@ -112,7 +112,6 @@ type Source10 struct {
 	// пересчитывать нечем, её записи кладутся в состояние как есть
 	// (decode10Source).
 	Warnings []state.NodeWarning `json:"warnings,omitempty"`
-	Sections *state.NodeSections `json:"sections,omitempty"`
 
 	// ── контейнер (папка | подписка) ──
 	ID        string           `json:"id,omitempty"`

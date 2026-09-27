@@ -61,10 +61,6 @@ const (
 	// WarnAmneziaContainerChoice — в vpn://-профиле несколько контейнеров,
 	// одиночный путь взял дефолтный.
 	WarnAmneziaContainerChoice = "amnezia_container_choice"
-	// WarnTailscaleFromSubscription — узел tailnet приехал ПОДПИСКОЙ.
-	// Узел живёт, поэтому info: но связки (MagicDNS + маршрут) подписка не
-	// приносит, а идентичность машины в tailnet — местная (NODE_SECTIONS.md §6).
-	WarnTailscaleFromSubscription = "tailscale_from_subscription"
 	// СНЯТЫ (контракт 1.1.11): awg_header_invalid, awg_headers_overlap,
 	// awg3_field_invalid, awg3_header_key_invalid, awg3_padding_too_short,
 	// wg_key_invalid. Эти коды ставит РЕЕСТР, а не парсер: правила уехали в

@@ -46,7 +46,6 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/nodeflow"
 	"singbox-launcher/core/config/registry"
-	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -74,12 +73,6 @@ type OutboundGenerationResult struct {
 	// для всего конфига, поэтому он снимается, а причина едет в UI. Одна
 	// запись на пару (код, схема), в порядке первой встречи.
 	CoreSkips []CoreSkip
-
-	// NodeSections — секции узлов, ДОШЕДШИХ до эмиссии (SPEC 121), в порядке
-	// эмиссии. Собирается здесь по той же причине, что и NodeOrigins: это
-	// последнее место, где виден и узел, и его финальный тег — дальше по
-	// конвейеру от узла остаётся строка JSON.
-	NodeSections []NodeSectionSet
 
 	// EmptyDirections — Направления, чей фильтр не поймал ни одного узла
 	// (SPEC 104). Отображаемые имена, для превью и статуса: в конфиг такое
@@ -168,20 +161,6 @@ type OutboundGenerationResult struct {
 type NodeOrigin struct {
 	SourceID    string
 	SourceLabel string
-}
-
-// NodeSectionSet — секции одного узла плюс адресация (SPEC 121). Зеркалит
-// build.NodeSectionSet: core/build о core/config не знает, и общего типа у
-// них быть не может — зависимость идёт в одну сторону.
-type NodeSectionSet struct {
-	// FinalTag — тег, под которым узел уехал в конфиг.
-	FinalTag string
-	// Link — идентичность узла в состоянии ({FolderID, сырой тег}).
-	Link configtypes.NodeLink
-	// Sections — записи узла в форме хранения, ДО подстановки `@self`:
-	// финальный тег известен здесь, но подставляет его сборка — одной точкой
-	// (state.SubstituteSelf), общей с показом в UI.
-	Sections *state.NodeSections
 }
 
 // SourceExclusion — один исключённый источник и почему.
@@ -1201,9 +1180,6 @@ func GenerateOutboundsFromParserConfig(
 		}
 	}
 
-	// SPEC 121: секции узлов, ДОШЕДШИХ до эмиссии. Заполняется в том же цикле
-	// и только на удачной ветке — фрагмент без своего узла ссылался бы в никуда.
-	var nodeSections []NodeSectionSet
 	// SPEC 132: та же причина и то же место — карта «финальный тег → узел
 	// состояния» описывает ровно то, что уехало в конфиг. Узел, который
 	// эмиссия не выпустила, ядро назвать не может, и запись о нём завела бы
@@ -1230,13 +1206,6 @@ func GenerateOutboundsFromParserConfig(
 			if _, dup := nodeLinks[node.Tag]; !dup {
 				nodeLinks[node.Tag] = node.CanonicalLink
 			}
-		}
-		if decoded := state.NodeSectionsFromConfigTypes(node.Sections); decoded != nil {
-			nodeSections = append(nodeSections, NodeSectionSet{
-				FinalTag: node.Tag,
-				Link:     node.SectionsLink,
-				Sections: decoded,
-			})
 		}
 	}
 
@@ -1279,7 +1248,6 @@ func GenerateOutboundsFromParserConfig(
 		EmissionWarnings:     emissionWarnings,
 		NodeOrigins:          nodeOrigins,
 		NodeLinks:            nodeLinks,
-		NodeSections:         nodeSections,
 	}, nil
 }
 
