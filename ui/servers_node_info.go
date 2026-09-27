@@ -56,7 +56,15 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	if display := proxy.DisplayOrName(); display != proxy.Name {
 		body.Add(infoRow(locale.T("Display name"), display))
 	}
-	body.Add(infoRow(locale.T("Last delay"), formatDelay(proxy.Delay)))
+	if tailscaleHasNoExit(ac, scope, proxy.Name) {
+		// SPEC 148 §8: замер через узел без выхода неприменим.
+		l := widget.NewLabel(locale.T("This node has no exit. Check devices on the Network tab."))
+		l.Wrapping = fyne.TextWrapWord
+		l.Importance = widget.WarningImportance
+		body.Add(l)
+	} else {
+		body.Add(infoRow(locale.T("Last delay"), formatDelay(proxy.Delay)))
+	}
 
 	// Раздел «Уведомления» — ВНИЗУ окна, под всеми полями узла (дизайн
 	// владельца 18.09.2026). До этого он стоял сразу под шапкой и отодвигал
@@ -270,10 +278,12 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		addChainSection(ac, body, win, proxy.Name)
 	}
 
-	// Tailnet: состояние, вход, пиры. Только у tailscale-endpoint'а и только
-	// там, где ядро отдаёт статус по gRPC (SPEC 130, addTailscaleSection).
-	if node.Type == configtypes.SchemeTailscale {
-		addTailscaleSection(ac, body, proxy.Name)
+	// Tailnet: состояние, вход, устройства, exit node — отдельной вкладкой
+	// Network (SPEC 148; прежде секция SPEC 130). Только у tailscale-endpoint'а
+	// и только там, где ядро отдаёт статус по gRPC.
+	var networkTab fyne.CanvasObject
+	if node.Type == configtypes.SchemeTailscale && ac.TailscaleAvailable() {
+		networkTab = tailscaleNetworkTab(ac, win, proxy.Name, cfgPath, scope == services.ScopeLocal)
 	}
 
 	// WG/AWG: состояние в ядре и выключатель. Секция сама решает, рисоваться
@@ -322,8 +332,11 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem(locale.T("Details"), withScrollGutter(body)),
-		container.NewTabItem(locale.T("Outbound JSON"), jsonTab),
 	)
+	if networkTab != nil {
+		tabs.Append(container.NewTabItem(locale.T("Network"), networkTab))
+	}
+	tabs.Append(container.NewTabItem(locale.T("Outbound JSON"), jsonTab))
 
 	win.SetContent(tabs)
 	win.Resize(fyne.NewSize(620, 680))

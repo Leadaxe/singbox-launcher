@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/muhammadmuzzammil1998/jsonc"
+
+	"singbox-launcher/core/config/registry"
 )
 
 // GetSelectorGroupsFromConfig extracts selector group names from config.json
@@ -179,4 +181,48 @@ func ExperimentalCacheFileFromSection(raw json.RawMessage) (shouldRemove bool, p
 		return false, ""
 	}
 	return true, path
+}
+
+// NetworksDirectionName — название псевдо-направления NETWORKS (SPEC 148,
+// LxBox §579). Не переводится; в конфиг и в состояние не пишется.
+const NetworksDirectionName = "NETWORKS"
+
+// NetworksNodeTags — узлы псевдо-направления NETWORKS в собранном конфиге:
+// запись в `endpoints[]`, тип `tailscale`, реестр не считает узел выходом
+// (`exit_capable_when` ложно — в теле нет `exit_node`). Порядок — как в
+// конфиге. Пустой итог означает, что NETWORKS нет.
+func NetworksNodeTags(cfg map[string]interface{}) []string {
+	endpoints, _ := cfg["endpoints"].([]interface{})
+	var out []string
+	for _, e := range endpoints {
+		body, ok := e.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		typ, _ := body["type"].(string)
+		tag, _ := body["tag"].(string)
+		if typ != "tailscale" || tag == "" {
+			continue
+		}
+		// Реестр не прочитался — сборка считает узел выходом
+		// (ParsedNode.IsExitCapable), и NETWORKS обязано судить так же.
+		if reg, err := registry.Get(); err != nil || reg.ExitCapable(typ, body) {
+			continue
+		}
+		out = append(out, tag)
+	}
+	return out
+}
+
+// GetNetworksNodeTagsFromConfig — NetworksNodeTags по файлу config.json.
+func GetNetworksNodeTagsFromConfig(configPath string) ([]string, error) {
+	cleanData, err := getConfigJSON(configPath)
+	if err != nil {
+		return nil, err
+	}
+	var jsonData map[string]interface{}
+	if err := json.Unmarshal(cleanData, &jsonData); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+	return NetworksNodeTags(jsonData), nil
 }

@@ -7,6 +7,10 @@
 package core
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
 	"time"
 
 	"google.golang.org/grpc"
@@ -78,4 +82,70 @@ func (b *DaemonBackend) TailscaleStatus(tag string) (services.TailscaleStatus, b
 // TailscaleLive implements tailscaleSource.
 func (b *DaemonBackend) TailscaleLive() bool {
 	return b.tailscale.Live()
+}
+
+// tailscaleCallTimeout — дедлайн разовых вызовов (выход, снятие exit node).
+const tailscaleCallTimeout = 10 * time.Second
+
+// TailscaleSetExitNode implements tailscaleController (SPEC 148 §5):
+// выход переключается на ходу, тело узла не меняется. stableID "" снимает
+// выход.
+func (b *DaemonBackend) TailscaleSetExitNode(tag, stableID string) error {
+	client, err := b.grpcClient()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(b.ctx, tailscaleCallTimeout)
+	defer cancel()
+	if _, err := client.SetTailscaleExitNode(ctx, &daemonpb.SetTailscaleExitNodeRequest{
+		EndpointTag: tag, StableID: stableID,
+	}); err != nil {
+		return fmt.Errorf("daemon SetTailscaleExitNode: %w", err)
+	}
+	return nil
+}
+
+// TailscaleLogout implements tailscaleController (SPEC 148 §3).
+func (b *DaemonBackend) TailscaleLogout(tag string) error {
+	client, err := b.grpcClient()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(b.ctx, tailscaleCallTimeout)
+	defer cancel()
+	if _, err := client.TailscaleLogout(ctx, &daemonpb.TailscaleLogoutRequest{EndpointTag: tag}); err != nil {
+		return fmt.Errorf("daemon TailscaleLogout: %w", err)
+	}
+	return nil
+}
+
+// TailscalePing implements tailscaleController (SPEC 148 §7): каждый ответ
+// ядра отдаётся в onReply; проверка идёт до отмены ctx, до
+// services.TailscalePingMaxReplies ответов или до конца стрима.
+func (b *DaemonBackend) TailscalePing(ctx context.Context, tag, peerIP string, onReply func(services.TailscalePingResult)) error {
+	client, err := b.grpcClient()
+	if err != nil {
+		return err
+	}
+	stream, err := client.StartTailscalePing(ctx, &daemonpb.TailscalePingRequest{EndpointTag: tag, PeerIP: peerIP})
+	if err != nil {
+		return fmt.Errorf("daemon StartTailscalePing: %w", err)
+	}
+	for n := 0; n < services.TailscalePingMaxReplies; n++ {
+		resp, rerr := stream.Recv()
+		if rerr != nil {
+			if errors.Is(rerr, io.EOF) || ctx.Err() != nil {
+				return nil
+			}
+			return fmt.Errorf("daemon StartTailscalePing: %w", rerr)
+		}
+		onReply(services.TailscalePingResult{
+			LatencyMs:      resp.GetLatencyMs(),
+			IsDirect:       resp.GetIsDirect(),
+			Endpoint:       resp.GetEndpoint(),
+			DERPRegionCode: resp.GetDerpRegionCode(),
+			Error:          resp.GetError(),
+		})
+	}
+	return nil
 }

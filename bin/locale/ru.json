@@ -4157,50 +4157,14 @@
   "no state": {
     "value": "нет состояния"
   },
-  "No tailnet status for this node yet — the core has not reported it.": {
-    "value": "Статуса tailnet у узла пока нет — ядро его не сообщило."
-  },
-  "Tailnet status stream is not connected.": {
-    "value": "Поток статуса tailnet не подключён."
-  },
-  "stale, %s ago": {
-    "value": "устарел, %s назад"
-  },
   "State": {
     "value": "Состояние"
-  },
-  "Open login URL": {
-    "value": "Открыть ссылку входа"
-  },
-  "Auth": {
-    "value": "Вход"
-  },
-  "interactive": {
-    "value": "интерактивный"
   },
   "Network": {
     "value": "Сеть"
   },
-  "This node": {
-    "value": "Этот узел"
-  },
-  "none": {
-    "value": "нет"
-  },
   "online": {
     "value": "в сети"
-  },
-  "offline": {
-    "value": "не в сети"
-  },
-  "Peers (%d online / %d)": {
-    "value": "Пиры (%d в сети / %d)"
-  },
-  "No peers in this tailnet.": {
-    "value": "В этой tailnet нет пиров."
-  },
-  "exit node (in use)": {
-    "value": "выход (используется)"
   },
   "exit node": {
     "value": "выход"
@@ -4846,5 +4810,92 @@
   },
   "DNS cache cleared.": {
     "value": "Кэш DNS очищен."
+  },
+  "Copy address": {
+    "value": "Копировать адрес"
+  },
+  "Copy name": {
+    "value": "Копировать имя"
+  },
+  "Devices (%d online / %d)": {
+    "value": "Устройства (в сети %d / %d)"
+  },
+  "Done.": {
+    "value": "Готово."
+  },
+  "Key expiry": {
+    "value": "Срок ключа"
+  },
+  "Log out": {
+    "value": "Выйти"
+  },
+  "MagicDNS name": {
+    "value": "Имя MagicDNS"
+  },
+  "NETWORKS: %d nodes": {
+    "value": "NETWORKS: узлов %d"
+  },
+  "No devices in this network.": {
+    "value": "В этой сети нет устройств."
+  },
+  "None": {
+    "value": "Нет"
+  },
+  "Not saved. The choice is lost after restart.": {
+    "value": "Не записано. После перезапуска выбор пропадёт."
+  },
+  "Not saved. The node stays in the lists, but has no exit until you save the choice.": {
+    "value": "Не записано. Узел остаётся в списках, но без выхода, пока выбор не записан."
+  },
+  "Not saved. Traffic is not routed through this node until you save the choice.": {
+    "value": "Не записано. Трафик не идёт через этот узел, пока выбор не записан."
+  },
+  "Ping %s": {
+    "value": "Проверка %s"
+  },
+  "Save choice": {
+    "value": "Записать выбор"
+  },
+  "Sign in": {
+    "value": "Войти"
+  },
+  "Start VPN to see the network.": {
+    "value": "Включите VPN, чтобы увидеть сеть."
+  },
+  "The node is not in the running config.": {
+    "value": "Узла нет в работающем конфиге."
+  },
+  "The node leaves the network. If the node has an auth key, it signs in again on the next start.": {
+    "value": "Узел выйдет из сети. Если в узле записан ключ входа, при следующем запуске он войдёт снова."
+  },
+  "This device": {
+    "value": "Это устройство"
+  },
+  "This node has no exit. Check devices on the Network tab.": {
+    "value": "У узла нет выхода. Устройства сети проверяются на вкладке Network."
+  },
+  "direct": {
+    "value": "напрямую"
+  },
+  "key expired": {
+    "value": "ключ истёк"
+  },
+  "never": {
+    "value": "бессрочно"
+  },
+  "no exit": {
+    "value": "нет выхода"
+  },
+  "relay": {
+    "value": "через ретранслятор"
+  },
+  "shared": {
+    "value": "общее"
+  },
+  "sign-in needed": {
+    "value": "нужен вход"
+  },
+  "signed in with a key": {
+    "value": "вход по ключу"
   }
 }

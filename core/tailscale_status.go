@@ -17,7 +17,12 @@
 // ChainsAvailable(). Ограничение v1, записано в SPEC 130 §3.
 package core
 
-import "singbox-launcher/core/services"
+import (
+	"context"
+	"errors"
+
+	"singbox-launcher/core/services"
+)
 
 // TailscaleStatus — алиас доменного типа из services (см. довод в
 // services/tailscale_status.go: кеш и конвертер живут там из-за цикла).
@@ -72,4 +77,60 @@ func (ac *AppController) tailscaleSource() (tailscaleSource, bool) {
 	}
 	src, ok := ac.Backend().(tailscaleSource)
 	return src, ok
+}
+
+// tailscaleController — источник, умеющий команды tailnet (SPEC 148):
+// выбор exit node на ходу, выход из аккаунта, проверка устройства. Сегодня —
+// только локальный демон; удалённая машина отдаёт статус без команд.
+type tailscaleController interface {
+	TailscaleSetExitNode(tag, stableID string) error
+	TailscaleLogout(tag string) error
+	TailscalePing(ctx context.Context, tag, peerIP string, onReply func(services.TailscalePingResult)) error
+}
+
+// errTailscaleNoControl — у текущего источника нет команд tailnet.
+var errTailscaleNoControl = errors.New("tailnet commands are not available for this core")
+
+// tailscaleControl — контроллер ТОГО ЖЕ источника, что отдаёт статус:
+// команда не должна уйти в другое ядро, чем то, чьё состояние на экране.
+func (ac *AppController) tailscaleControl() (tailscaleController, bool) {
+	src, ok := ac.tailscaleSource()
+	if !ok {
+		return nil, false
+	}
+	c, ok := src.(tailscaleController)
+	return c, ok
+}
+
+// TailscaleControlAvailable — есть ли команды tailnet у текущего источника.
+func (ac *AppController) TailscaleControlAvailable() bool {
+	_, ok := ac.tailscaleControl()
+	return ok
+}
+
+// TailscaleSetExitNode — выбор exit node на ходу; "" снимает выход.
+func (ac *AppController) TailscaleSetExitNode(tag, stableID string) error {
+	c, ok := ac.tailscaleControl()
+	if !ok {
+		return errTailscaleNoControl
+	}
+	return c.TailscaleSetExitNode(tag, stableID)
+}
+
+// TailscaleLogout — выход узла из аккаунта tailnet.
+func (ac *AppController) TailscaleLogout(tag string) error {
+	c, ok := ac.tailscaleControl()
+	if !ok {
+		return errTailscaleNoControl
+	}
+	return c.TailscaleLogout(tag)
+}
+
+// TailscalePing — проверка устройства tailnet, ответы в onReply.
+func (ac *AppController) TailscalePing(ctx context.Context, tag, peerIP string, onReply func(services.TailscalePingResult)) error {
+	c, ok := ac.tailscaleControl()
+	if !ok {
+		return errTailscaleNoControl
+	}
+	return c.TailscalePing(ctx, tag, peerIP, onReply)
 }

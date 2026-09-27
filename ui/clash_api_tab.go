@@ -271,6 +271,18 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		syncServersFilterButton      func()
 		refreshServersFacets         func()
 		updatePingErrorsFilterButton func()
+
+		// --- Псевдо-направление NETWORKS (SPEC 148, LxBox §579) ---
+		//
+		// Только вид: selectedGroup и выбор группы в APIService при NETWORKS
+		// не меняются, поэтому выход трафика, трей и Debug API его не видят.
+		// networksTags — узлы NETWORKS по собранному конфигу (пусто — пункта
+		// нет); networksOption — строка пункта в дропдауне (networksOptionLabel).
+		networksTags      []string
+		networksOpen      bool
+		networksOption    string
+		setGroupOptions   func([]string)
+		applyNetworksMode func()
 	)
 
 	// --- Логика обновления и сброса ---
@@ -426,7 +438,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			}
 			// Обновляем и переменную selectorOptions, и виджет groupSelect
 			selectorOptions = snap.options
-			groupSelect.SetOptions(snap.options)
+			setGroupOptions(snap.options)
 
 			// Обновить selectedGroup если текущий выбор больше не доступен
 			currentSelected := selectedGroup
@@ -640,6 +652,9 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	// --- Вспомогательная функция для пинга ---
 	// Delay in ProxyInfo: >0 = ms, 0 = not pinged, -1 = error (so updateItem shows correct text after list refresh).
 	pingProxy := func(proxyName string, button interface{ SetText(string) }) {
+		if networksOpen {
+			return // у NETWORKS замера задержки нет
+		}
 		go func() {
 			if platform.IsSleeping() {
 				return
@@ -734,6 +749,9 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	// давало бы вечно устаревший срез (ровно та ошибка, что уже ловилась на
 	// кэшах узлов).
 	proxiesForListView := func() []api.ProxyInfo {
+		if networksOpen {
+			return networksRows(networksTags)
+		}
 		all := ac.GetProxiesList()
 		key := serversViewCacheKey{
 			total:     len(all),
@@ -881,6 +899,44 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 		switchButton := buttonsBox.Objects[1].(*widget.Button)
 
+		// NETWORKS: строка узла tailnet — без выбора и замера, на месте
+		// задержки состояние узла; нажатие открывает окно узла.
+		if networksOpen {
+			info := proxyInfo
+			nameText.Text = truncateRunes(info.Name, serversNameMaxRunes)
+			nameText.Color = theme.Color(theme.ColorNameForeground)
+			nameText.Refresh()
+			subtitleText.Text = truncateSubtitle(serversNodeSubtitle(ac, info, panel.scope))
+			subtitleText.Color = theme.Color(theme.ColorNamePlaceHolder)
+			subtitleText.Refresh()
+			subtitleLine.Update(nil)
+			st, ok := ac.TailscaleStatus(info.Name)
+			word, tone := networksRowState(ac.RunningState.IsRunning(), st, ok)
+			delayText.Text = word
+			delayText.Color = networksToneColor(tone)
+			delayText.Refresh()
+			delayBackground.FillColor = theme.Color(theme.ColorNameInputBackground)
+			delayBackground.Refresh()
+			background.FillColor = color.Transparent
+			background.Refresh()
+			switchButton.Hide()
+			delayTappable.OnTapped = nil
+			openInfo := func() {
+				showNodeInfoWindow(ac, info, effectiveNodeConfigPath(ac, panel.scope), panel.scope)
+			}
+			wrap.OnPrimary = func(fyne.KeyModifier) { openInfo() }
+			wrap.OnSecondary = func(pe *fyne.PointEvent) {
+				if ac.UIService == nil || ac.UIService.MainWindow == nil {
+					return
+				}
+				win := ac.UIService.MainWindow
+				menu := serversProxyContextMenu(ac, status, win, info, scope, nil)
+				widget.NewPopUpMenu(menu, win.Canvas()).ShowAtPosition(pe.AbsolutePosition)
+			}
+			return
+		}
+		switchButton.Show()
+
 		// canvas.Text не умеет ellipsis сам — режем по длине, иначе длинное
 		// имя растянет строку и вытолкнет кнопки за край.
 		//
@@ -916,6 +972,14 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		if hasEndpointState && endpointState.State == services.EndpointStateDisabled {
 			delayText.Text = locale.T("off")
 			delayText.Color = theme.Color(theme.ColorNamePlaceHolder)
+		}
+		// Узел Tailscale без действующего exit node: проверка запросом к
+		// внешнему адресу к нему неприменима (SPEC 148 §8) — вместо замера
+		// «no exit», клик по нему замер не запускает.
+		noExit := tailscaleHasNoExit(ac, panel.scope, proxyInfo.Name)
+		if noExit {
+			delayText.Text = locale.T("no exit")
+			delayText.Color = theme.Color(theme.ColorNameWarning)
 		}
 		delayText.Refresh()
 
@@ -978,6 +1042,9 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		delaySetter := &canvasTextSetter{text: delayText}
 		delayTappable.OnTapped = func() {
 			pingProxy(proxyNameForCallback, delaySetter)
+		}
+		if noExit {
+			delayTappable.OnTapped = nil
 		}
 
 		switchButton.OnTapped = func() {
@@ -1352,6 +1419,9 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 	// --- Функция массового пинга всех прокси ---
 	pingAllProxies := func() {
+		if networksOpen {
+			return // общий замер в NETWORKS недоступен
+		}
 		if ac.APIService == nil {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized")) // l10n-exempt: product name
 			return
@@ -1847,6 +1917,16 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		if value == "" {
 			return
 		}
+		// NETWORKS — не группа: список меняется, выбор группы остаётся.
+		if networksOption != "" && value == networksOption {
+			networksOpen = true
+			applyNetworksMode()
+			return
+		}
+		if networksOpen {
+			networksOpen = false
+			applyNetworksMode()
+		}
 		selectedGroup = value
 		if ac.APIService != nil {
 			ac.APIService.SetSelectedClashGroupIn(panel.scope, value)
@@ -1965,6 +2045,70 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		),
 	)
 	topControls := container.NewVBox(groupRow, widget.NewSeparator(), buttonsRow)
+
+	// --- NETWORKS: пункт дропдауна, режим списка, опрос состава ---
+	//
+	// Кнопки сортировки, фильтров, копирования ссылок и замера при NETWORKS
+	// скрыты: выбора и замера у псевдо-направления нет (LxBox §579 §1–2).
+	networksHidden := []fyne.CanvasObject{
+		sortByNameButton, sortNameLabel, exportShareURIsButton,
+		serversFilterBadge.Container, filterPingErrorsButton, sortByDelayButton,
+		pingAllButton, pingSettingsButton,
+	}
+	setGroupOptions = func(opts []string) {
+		networksOption = ""
+		all := opts
+		if len(networksTags) > 0 {
+			networksOption = networksOptionLabel(opts)
+			all = append(append([]string(nil), opts...), networksOption)
+		}
+		groupSelect.SetOptions(all)
+		if networksOpen && networksOption != "" {
+			suppressSelectCallback = true
+			groupSelect.SetSelected(networksOption)
+			suppressSelectCallback = false
+		}
+	}
+	applyNetworksMode = func() {
+		for _, o := range networksHidden {
+			if networksOpen {
+				o.Hide()
+			} else {
+				o.Show()
+			}
+		}
+		serversViewCacheValid = false
+		proxiesListWidget.UnselectAll()
+		proxiesListWidget.Refresh()
+		proxiesListWidget.ScrollToTop()
+		if networksOpen {
+			status.SetText(locale.Tf("NETWORKS: %d nodes", len(networksTags)))
+		}
+	}
+	if scope == services.ScopeLocal {
+		go watchNetworksDirection(ac, func(tags []string) {
+			fyne.Do(func() {
+				if !sameStrings(tags, networksTags) {
+					networksTags = tags
+					if len(tags) == 0 && networksOpen {
+						// Узлы пропали (VPN выключен, узел удалён или стал
+						// выходом) — снова виден выбранный настоящий список.
+						networksOpen = false
+						applyNetworksMode()
+					}
+					setGroupOptions(selectorOptions)
+					if !networksOpen {
+						suppressSelectCallback = true
+						groupSelect.SetSelected(selectedGroup)
+						suppressSelectCallback = false
+					}
+				}
+				if networksOpen {
+					proxiesListWidget.Refresh()
+				}
+			})
+		})
+	}
 
 	// Обертываем status label в контейнер с горизонтальной прокруткой
 	// Scroll контейнер ограничит ширину label и добавит прокрутку при необходимости
