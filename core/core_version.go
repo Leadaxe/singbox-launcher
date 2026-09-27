@@ -206,6 +206,75 @@ func CompareVersions(v1, v2 string) int {
 	return constants.CompareVersions(v1, v2)
 }
 
+// CoreVersionRelation — как установленное ядро соотносится с закреплённой
+// версией лаунчера (SPEC 143).
+type CoreVersionRelation string
+
+const (
+	// CoreVersionSame — в точности закреплённая версия.
+	CoreVersionSame CoreVersionRelation = "same"
+	// CoreVersionNewer — ядро новее закреплённого: кастомная или более
+	// поздняя сборка. Предлагать «Reinstall» нельзя — это откат рабочего ядра.
+	CoreVersionNewer CoreVersionRelation = "newer"
+	// CoreVersionOlder — ядро старее закреплённого: обновление уместно.
+	CoreVersionOlder CoreVersionRelation = "older"
+	// CoreVersionUnknown — версия не разобралась (пусто, мусор).
+	CoreVersionUnknown CoreVersionRelation = "unknown"
+)
+
+// ClassifyCoreVersion сравнивает установленную версию ядра с закреплённой.
+//
+// Раньше UI сравнивал строки на точное равенство (`installedVersion != required`)
+// и на любой кастомной сборке показывал «Reinstall v<закреплённая>»: ядро
+// 1.15.0-jiejie-masquerade.5 считалось «другой версией» наравне со старой, и
+// пользователя подталкивали заменить рабочее ядро официальным. Здесь версии
+// сравниваются по базе X.Y.Z, поэтому более новое кастомное ядро не выглядит
+// как подлежащее замене.
+func ClassifyCoreVersion(installed, required string) CoreVersionRelation {
+	inst := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(installed), "v"))
+	req := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(required), "v"))
+	if inst == "" {
+		return CoreVersionUnknown
+	}
+	if inst == req {
+		return CoreVersionSame
+	}
+	if !isParseableCoreVersion(inst) || !isParseableCoreVersion(req) {
+		// Разобрать не удалось — сравнивать нечем. «Другая», но не «старая»:
+		// безопаснее не предлагать замену неизвестного ядра.
+		return CoreVersionUnknown
+	}
+	switch c := CompareVersions(inst, req); {
+	case c > 0:
+		return CoreVersionNewer
+	case c < 0:
+		return CoreVersionOlder
+	default:
+		// База совпала, но строки разные — например, суффикс сборки.
+		return CoreVersionNewer
+	}
+}
+
+// isParseableCoreVersion — версия начинается с числовой базы X.Y.Z.
+func isParseableCoreVersion(v string) bool {
+	parts := strings.SplitN(v, "-", 2)[0]
+	segments := strings.Split(parts, ".")
+	if len(segments) < 2 {
+		return false
+	}
+	for _, s := range segments {
+		if s == "" {
+			return false
+		}
+		for i := 0; i < len(s); i++ {
+			if s[i] < '0' || s[i] > '9' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // ShowUpdatePopupIfAvailable проверяет наличие обновления лаунчера и показывает
 // попап. Сравнение всегда против `constants.AppVersion` (запущенный лаунчер) и
 // закешированной из GitHub `GetCachedLauncherVersion`. Sing-box версия здесь

@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
@@ -323,6 +324,7 @@ func (tab *CoreDashboardTab) updateVersionInfo() error {
 	go func() {
 		installedVersion, err := tab.controller.GetInstalledCoreVersion()
 		required := constants.RequiredCoreVersion
+		relation := core.ClassifyCoreVersion(installedVersion, required)
 		fyne.Do(func() {
 			tab.singboxStatusLabel.Importance = widget.MediumImportance
 			switch {
@@ -335,18 +337,32 @@ func (tab *CoreDashboardTab) updateVersionInfo() error {
 					locale.Tf("Download v%s", required),
 					-1,
 				)
-			case installedVersion != required:
-				// Стоит другая версия — нейтральная «Reinstall vX.Y.Z», без
-				// подталкивания: пользователь мог поставить вручную.
+			case relation == core.CoreVersionSame:
+				// Версия совпадает — кнопка скрыта.
+				tab.setSingboxState(installedVersion, "", -1)
+			case relation == core.CoreVersionNewer:
+				// Ядро новее закреплённого (кастомная сборка). Замена была бы
+				// откатом рабочего ядра — кнопку не подталкиваем и не
+				// называем «Reinstall».
+				tab.downloadButton.Importance = widget.LowImportance
+				tab.setSingboxState(
+					installedVersion,
+					locale.Tf("Use pinned v%s", required),
+					-1,
+				)
+			case relation == core.CoreVersionUnknown:
+				// Версия не разобралась: показываем как есть, без предложения
+				// заменить неопознанное ядро.
+				tab.downloadButton.Importance = widget.LowImportance
+				tab.setSingboxState(installedVersion, "", -1)
+			default:
+				// Ядро старее закреплённого — обновление уместно.
 				tab.downloadButton.Importance = widget.MediumImportance
 				tab.setSingboxState(
 					installedVersion,
 					locale.Tf("Reinstall v%s", required),
 					-1,
 				)
-			default:
-				// Версия совпадает — кнопка скрыта.
-				tab.setSingboxState(installedVersion, "", -1)
 			}
 		})
 	}()
