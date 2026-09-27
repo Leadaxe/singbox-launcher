@@ -258,7 +258,8 @@
               "code": { "type": "string" },
               "path": { "type": "string" },
               "value": { "type": "string" },
-              "params": { "type": "object", "additionalProperties": { "type": "string" } }
+              "params": { "type": "object", "additionalProperties": { "type": "string" } },
+              "applied": { "type": "boolean", "description": "Контракт 1.1.87: false — мягкое правило не применено к авторскому телу (PARSING_PRINCIPLES §10). Отсутствие = true; пишется только false." }
             }
           }
         },
@@ -642,7 +643,8 @@
               "code": { "type": "string" },
               "path": { "type": "string" },
               "value": { "type": "string" },
-              "params": { "type": "object", "additionalProperties": { "type": "string" } }
+              "params": { "type": "object", "additionalProperties": { "type": "string" } },
+              "applied": { "type": "boolean", "description": "Контракт 1.1.87: false — мягкое правило не применено к авторскому телу (PARSING_PRINCIPLES §10). Отсутствие = true; пишется только false." }
             }
           }
         },

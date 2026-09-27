@@ -315,7 +315,8 @@
             "normalize": "trim_lower",
             "on_invalid": {
               "action": "drop",
-              "code": "obfs_unknown"
+              "code": "obfs_unknown",
+              "core_rejects": true
             },
             "required": true,
             "desc_en": "Obfuscation algorithm.",
@@ -326,6 +327,7 @@
             "type": "string",
             "required": true,
             "code": "obfs_password_missing",
+            "core_rejects": true,
             "secret": true,
             "desc_en": "Obfuscation password.",
             "desc_ru": "Пароль обфускации.",

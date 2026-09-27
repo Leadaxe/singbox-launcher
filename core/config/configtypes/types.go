@@ -248,6 +248,10 @@ type CanonicalNode struct {
 	// SkipPresets — поле записи skip_presets (LxBox §578); у узла подписки
 	// всегда false.
 	SkipPresets bool
+	// Authored — тело авторское (контракт 1.1.87, PARSING_PRINCIPLES
+	// §10.1). Считает state (state.Node.Authored): контейнер известен
+	// только ему.
+	Authored bool
 }
 
 // CanonicalAutoGroup — провайдерская группа канона в сборочной форме.
@@ -634,6 +638,11 @@ const (
 	NodeSourceXray    = "xray"
 	NodeSourceWGConf  = "wgconf"
 	NodeSourceAmnezia = "amnezia"
+	// NodeSourceOther — вход, которому правила по входу не делают
+	// исключений (контракт 1.1.87, PARSING_PRINCIPLES §10.4): sing-box JSON
+	// узла подписки. Вход `singbox` получает ТОЛЬКО авторское тело (свой
+	// сервер или член папки с голым телом узла в источнике).
+	NodeSourceOther = "other"
 )
 
 // SchemeGroup marks a ParsedNode that is an outbound group (selector/urltest)
@@ -739,6 +748,11 @@ type ParsedNode struct {
 	// emitter — the whole point is carrying types and fields the emitter
 	// does not know about.
 	EmitRaw bool
+	// Authored — тело АВТОРСКОЕ (контракт 1.1.87, PARSING_PRINCIPLES §10.1):
+	// свой сервер в корне или член папки, не группа, источник — голое тело
+	// узла sing-box (`singbox_outbound`). Реестр на таком теле сообщает, но
+	// правит только жёсткими правилами (nodeflow.Decide).
+	Authored bool
 	// EmitBody — ГОТОВОЕ тело узла из канона v7 (state.Node.Body): сборка
 	// эмитит его как есть, только возвращая на места ключи tag и detour
 	// (SPEC 118 W4, Т5 «сборка не читает тел подписок и не зовёт парсеры»).
@@ -869,6 +883,20 @@ type Warning struct {
 	Path   string            `json:"path,omitempty"`
 	Value  string            `json:"value,omitempty"`
 	Params map[string]string `json:"params,omitempty"`
+	// Applied — применено ли правило к телу (контракт 1.1.87,
+	// PARSING_PRINCIPLES §10). nil = true; false — тело авторское, правило
+	// мягкое, тело НЕ изменено. Пишется только false.
+	Applied *bool `json:"applied,omitempty"`
+}
+
+// IsApplied — правило, давшее код, применено к телу (по умолчанию да).
+func (w Warning) IsApplied() bool { return w.Applied == nil || *w.Applied }
+
+// NotApplied — та же запись с признаком «не применено».
+func (w Warning) NotApplied() Warning {
+	f := false
+	w.Applied = &f
+	return w
 }
 
 // WarningValueMax — предел длины Warning.Value (PARSING_PRINCIPLES §6).

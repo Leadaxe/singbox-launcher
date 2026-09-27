@@ -51,15 +51,19 @@ func recountNodeWarnings(s *State) int {
 	}
 	rewritten := 0
 	for i := range s.Sources {
-		rewritten += recountOneNode(&s.Sources[i].Node)
+		rewritten += recountOneNode(&s.Sources[i].Node, s.Sources[i].Node.Authored())
+		// Член папки может быть авторским, узел подписки — никогда
+		// (контракт 1.1.87, PARSING_PRINCIPLES §10.1).
+		inFolder := s.Sources[i].Kind == SourceKindFolder
 		for j := range s.Sources[i].Nodes {
-			rewritten += recountOneNode(&s.Sources[i].Nodes[j])
+			n := &s.Sources[i].Nodes[j]
+			rewritten += recountOneNode(n, inFolder && n.Authored())
 		}
 	}
 	return rewritten
 }
 
-func recountOneNode(node *Node) int {
+func recountOneNode(node *Node, authored bool) int {
 	if node == nil || node.Kind != SourceKindServer {
 		return 0
 	}
@@ -78,7 +82,7 @@ func recountOneNode(node *Node) int {
 	if node.Origin != nil {
 		originKind = node.Origin.Kind
 	}
-	res, err := migrationHooks.SanitizeBody(SanitizeBodyRequest{Body: node.Body, OriginKind: originKind})
+	res, err := migrationHooks.SanitizeBody(SanitizeBodyRequest{Body: node.Body, OriginKind: originKind, Authored: authored})
 	if err != nil || res == nil {
 		if err != nil {
 			debuglog.WarnLog("state: node %q: warnings not recounted: %v", node.Tag, err)

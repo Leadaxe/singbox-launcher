@@ -1,0 +1,11 @@
+{
+  "rules": [],
+  "warnings": [],
+  "root_servers": ["doc-root"],
+  "folders": { "Own": ["arr-member", "bare-member"] },
+  "origin_raw": {
+    "doc-root": { "type": "trojan", "server": "example-1.com", "server_port": 443, "password": "testpass576" },
+    "Own/arr-member": { "type": "trojan", "server": "example-2.com", "server_port": 443, "password": "testpass577" },
+    "Own/bare-member": { "type": "trojan", "server": "example-4.com", "server_port": 443, "password": "testpass579" }
+  }
+}

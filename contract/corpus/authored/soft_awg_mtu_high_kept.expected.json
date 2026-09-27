@@ -1,6 +1,6 @@
 {
   "meta": {
-    "body_kind": "singbox-config"
+    "container": "own"
   },
   "nodes": [
     {
@@ -9,7 +9,7 @@
           "10.0.0.2/32"
         ],
         "jc": 10,
-        "mtu": 1280,
+        "mtu": 1420,
         "peers": [
           {
             "address": "example-3.com",
@@ -24,11 +24,12 @@
         "type": "wireguard"
       },
       "kind": "endpoint",
-      "label": "awg-ep",
+      "label": "awg-own",
       "scheme": "wireguard",
       "warnings": [
         {
-          "code": "awg_mtu_clamped",
+          "applied": false,
+          "code": "awg_mtu_high",
           "path": "mtu",
           "value": "1420"
         }

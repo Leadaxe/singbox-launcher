@@ -530,7 +530,8 @@
             "default": "/",
             "desc_en": "Request path.",
             "desc_ru": "Путь запроса.",
-            "impl": "Ведущий «/» дописывается ядром. Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c."
+            "impl": "Ведущий «/» дописывается ядром. Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c.",
+            "core_rejects": true
           },
           "method": {
             "type": "string",
@@ -573,7 +574,8 @@
             "default": "/",
             "desc_en": "WebSocket request path.",
             "desc_ru": "Путь запроса WebSocket.",
-            "impl": "Хвост «?ed=N» из Xray-ссылок в путь не пишется: он разбирается в max_early_data + early_data_header_name (issue #96). Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c."
+            "impl": "Хвост «?ed=N» из Xray-ссылок в путь не пишется: он разбирается в max_early_data + early_data_header_name (issue #96). Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c.",
+            "core_rejects": true
           },
           "headers": {
             "type": "object",
@@ -661,7 +663,8 @@
             "default": "/",
             "desc_en": "Request path.",
             "desc_ru": "Путь запроса.",
-            "impl": "option/v2ray_transport.go V2RayHTTPUpgradeOptions.Path. Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c."
+            "impl": "option/v2ray_transport.go V2RayHTTPUpgradeOptions.Path. Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c.",
+            "core_rejects": true
           },
           "headers": {
             "type": "object",
@@ -735,6 +738,7 @@
               "absent": true,
               "value": "packet-up",
               "code": "xhttp_mode_forced_packet_up",
+              "core_rejects": true,
               "when": {
                 "transport.uplink_data_placement": {
                   "in": [
@@ -933,7 +937,8 @@
                     ]
                   }
                 },
-                "code": "xhttp_param_reset"
+                "code": "xhttp_param_reset",
+                "core_rejects": true
               }
             ],
             "desc_en": "Where uplink data is carried.",

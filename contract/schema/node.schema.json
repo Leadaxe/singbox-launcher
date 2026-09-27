@@ -69,7 +69,8 @@
                   "code": { "type": "string", "description": "Код из registry/warnings.json" },
                   "path": { "type": "string", "description": "Путь поля в entry (tls.reality.short_id); нет у кодов уровня узла" },
                   "value": { "type": "string", "description": "Исходное значение до деградации, ≤64 символов; у secret-полей \"***\"" },
-                  "params": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Подстановки шаблона text_* кода" }
+                  "params": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Подстановки шаблона text_* кода" },
+                  "applied": { "type": "boolean", "default": true, "description": "Контракт 1.1.87 (LxBox §577): false — правило реестра сработало бы, но тело авторское и правило мягкое, поэтому тело НЕ изменено (PARSING_PRINCIPLES §10). Отсутствие = true. Пишется только false." }
                 }
               }
             ]

@@ -72,7 +72,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 |---|---|---|
 | GET | `/state` | Live runtime snapshot: `{running, active_proxy, selected_group, singbox_version, subs_last_updated_unix}` |
 | GET | `/proxies` | Proxy list (`[]api.ProxyInfo`) — from the current sing-box config |
-| GET | `/state/full` | The whole `state.json` (after load + migrations) |
+| GET | `/state/full` | The whole `state.json` (after load + migrations). Node `warnings[]` entries carry `applied: false` when a registry rule was reported but not applied to a hand-written node (contract 1.1.87, PARSING_PRINCIPLES §10); absent means applied |
 | GET | `/state/rules` | `{"rules":[]state.Rule}` — the SPEC 053 section |
 | GET | `/state/dns` | The whole `state.DNSOptions` section (SPEC 056) |
 | GET | `/state/dns/rules` | `{"text":"..."}` — **USER rules only**, as wizard text. Preset rules are excluded (they are toggle refs) |

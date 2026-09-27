@@ -1,0 +1,60 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "lxbox", "version": "corpus", "platform": "test" },
+  "exported_at": "2026-09-27T00:00:00Z",
+  "sources": [
+    {
+      "kind": "server",
+      "tag": "doc-root",
+      "enabled": true,
+      "origin": {
+        "kind": "json",
+        "raw": "{\"outbounds\":[{\"type\":\"trojan\",\"tag\":\"doc-root\",\"server\":\"example-1.com\",\"server_port\":443,\"password\":\"testpass576\"},{\"type\":\"direct\",\"tag\":\"direct\"}],\"route\":{\"final\":\"doc-root\"}}"
+      },
+      "body": {
+        "type": "trojan",
+        "server": "example-1.com",
+        "server_port": 443,
+        "password": "testpass576"
+      }
+    },
+    {
+      "kind": "folder",
+      "id": "01FLDNODESOURCE00000000000",
+      "name": "Own",
+      "enabled": true,
+      "nodes": [
+        {
+          "kind": "server",
+          "tag": "arr-member",
+          "enabled": true,
+          "origin": {
+            "kind": "json",
+            "raw": "[{\"type\":\"trojan\",\"tag\":\"arr-member\",\"server\":\"example-2.com\",\"server_port\":443,\"password\":\"testpass577\"},{\"type\":\"trojan\",\"tag\":\"other\",\"server\":\"example-3.com\",\"server_port\":443,\"password\":\"testpass578\"}]"
+          },
+          "body": {
+            "type": "trojan",
+            "server": "example-2.com",
+            "server_port": 443,
+            "password": "testpass577"
+          }
+        },
+        {
+          "kind": "server",
+          "tag": "bare-member",
+          "enabled": true,
+          "origin": {
+            "kind": "json",
+            "raw": "{\"type\": \"trojan\", \"server\": \"example-4.com\", \"server_port\": 443, \"password\": \"testpass579\"}"
+          },
+          "body": {
+            "type": "trojan",
+            "server": "example-4.com",
+            "server_port": 443,
+            "password": "testpass579"
+          }
+        }
+      ]
+    }
+  ]
+}

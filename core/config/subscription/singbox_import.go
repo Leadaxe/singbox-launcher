@@ -352,10 +352,11 @@ func parseSingboxEntry(entry map[string]interface{}, cfgIdx, entryIdx int) (*con
 		Server: server,
 		Port:   port,
 		Label:  tag,
-		// Вход назван явно: тело приехало в СОБСТВЕННОЙ форме ядра, и правила
-		// значений с `except_sources` обязаны это видеть (потолок MTU у
-		// AmneziaWG здесь не заменяет значение, а предупреждает о нём).
-		Source:      configtypes.NodeSourceSingbox,
+		// Вход `other`, не `singbox` (контракт 1.1.87): sing-box JSON
+		// подписки авторским телом не бывает, и исключения по входу
+		// (`except_sources`, потолок MTU у AmneziaWG) на нём не действуют.
+		// Авторское тело своего узла помечает NodeFromManualConfigJSON.
+		Source:      configtypes.NodeSourceOther,
 		Outbound:    ob,
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}

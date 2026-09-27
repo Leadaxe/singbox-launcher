@@ -69,7 +69,9 @@ const (
 func NodeSourceFromOriginKind(kind string) string {
 	switch strings.TrimSpace(kind) {
 	case OriginKindJSON:
-		return configtypes.NodeSourceSingbox
+		// Вход `singbox` — только у авторского тела (контракт 1.1.87):
+		// его назначает материализация своего узла, а не происхождение.
+		return configtypes.NodeSourceOther
 	case OriginKindURI:
 		return configtypes.NodeSourceURI
 	case OriginKindWGIni:

@@ -279,7 +279,8 @@
         },
         "default_when": {
           "absent": true,
-          "value": 100
+          "value": 100,
+          "core_rejects": true
         },
         "desc_en": "Upload bandwidth in Mbps.",
         "desc_ru": "Скорость отдачи в Мбит/с.",

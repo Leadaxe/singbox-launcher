@@ -297,7 +297,14 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 	if err != nil {
 		return nil, err
 	}
-	return applyDecoded(s, dec, opts)
+	res, err := applyDecoded(s, dec, opts)
+	if err == nil {
+		// Контракт 1.1.87 (PARSING_PRINCIPLES §11 п.2): источник своего
+		// узла — только тело узла; документ или массив из файла сводится к
+		// телу записи.
+		state.NormalizeBareBodyOrigins(s)
+	}
+	return res, err
 }
 
 // Import10 применяет бэкап формата 1.0 к состоянию.
@@ -320,7 +327,14 @@ func Import10(s *state.State, b *Backup10, opts ImportOptions) (*ImportResult, e
 	if err != nil {
 		return nil, err
 	}
-	return applyDecoded(s, dec, opts)
+	res, err := applyDecoded(s, dec, opts)
+	if err == nil {
+		// Контракт 1.1.87 (PARSING_PRINCIPLES §11 п.2): источник своего
+		// узла — только тело узла; документ или массив из файла сводится к
+		// телу записи.
+		state.NormalizeBareBodyOrigins(s)
+	}
+	return res, err
 }
 
 // ImportFile применяет разобранный файл любого читаемого формата.

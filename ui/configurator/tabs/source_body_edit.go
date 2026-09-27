@@ -74,7 +74,16 @@ func applyServerBodyJSON(node *wizardmodels.Node, text string) error {
 		}
 		bodyText = compact.String()
 	}
-	mat, err := config.MaterializeServerNode("", json.RawMessage(bodyText))
+	// Авторское тело — только у узла с JSON-происхождением или без него
+	// (контракт 1.1.87, PARSING_PRINCIPLES §10.1): правка тела узла из
+	// ссылки или INI происхождение не меняет, и реестр правит его как прежде.
+	materialize := config.MaterializeServerNode
+	if node.Origin != nil && node.Origin.Kind != wizardmodels.OriginKindJSON {
+		materialize = func(_ string, js json.RawMessage) (*config.ServerNodeMaterial, error) {
+			return config.MaterializeEditedBody(js)
+		}
+	}
+	mat, err := materialize("", json.RawMessage(bodyText))
 	if err != nil {
 		return err
 	}
@@ -107,6 +116,14 @@ func applyServerBodyJSON(node *wizardmodels.Node, text string) error {
 		// вставленного JSON и честно происходит из него.
 		node.Origin = &wizardmodels.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw}
 		return nil
+	}
+	if node.Origin.Kind == wizardmodels.OriginKindJSON && node.Origin.Raw != mat.OriginRaw {
+		// Источник JSON-узла после правки — только тело узла (контракт
+		// 1.1.87, PARSING_PRINCIPLES §11 п.1): документ из вкладки в источник
+		// не попадает. Origin пересаживается на новый экземпляр (см. ниже).
+		o := *node.Origin
+		o.Raw = mat.OriginRaw
+		node.Origin = &o
 	}
 	if node.Origin.SubURL != "" {
 		// Origin ПЕРЕСАЖИВАЕТСЯ на новый экземпляр: Node несёт *Origin, и

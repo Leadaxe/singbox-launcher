@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "container": "own"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "foo": "bar",
+        "password": "testpass123",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "bar": 1,
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "own-trojan",
+      "scheme": "trojan",
+      "warnings": [
+        {
+          "applied": false,
+          "code": "unknown_key",
+          "path": "tls.bar",
+          "value": "1"
+        },
+        {
+          "applied": false,
+          "code": "unknown_key",
+          "path": "foo",
+          "value": "bar"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

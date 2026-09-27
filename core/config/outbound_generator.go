@@ -823,7 +823,7 @@ func generateWithDetourYield(hop *ParsedNode) (string, error) {
 func yieldChainDetour(n *ParsedNode) {
 	for _, y := range yieldToBuildDetour(n) {
 		target, _ := n.Outbound[buildDetourField].(string)
-		debuglog.WarnLog("chain: %s (%s)", fmt.Sprintf(emitDetourFieldYieldText, n.Tag, y.Path, target), y.Code)
+		debuglog.WarnLog("chain: %s (%s, applied=%t)", fmt.Sprintf(emitDetourFieldYieldText, n.Tag, y.Path, target), y.Code, y.Applied)
 	}
 }
 
@@ -1348,7 +1348,7 @@ func generateRawNodeJSON(node *ParsedNode) (string, error) {
 	}
 	// Правила-починки реестра (REALITY без uTLS, random под REALITY) — и у
 	// ручного объекта: это свойство ядра, а не входа. Остальное — как есть.
-	ob, notes := nodeflow.Repairs(node.Scheme, node.Outbound)
+	ob, notes := nodeflow.RepairsFor(node.Scheme, node.Authored, node.Outbound)
 	logBuildRepairs(node.Scheme, node.Tag, notes)
 
 	var parts []string
@@ -1390,7 +1390,7 @@ func generateCanonicalBodyJSON(node *ParsedNode) (string, error) {
 	// Здесь единственное место, где сохранённое тело становится outbound'ом
 	// config.json, — значит и гейту место здесь, одной табличной проверкой
 	// по реестру вместо частной пробы на каждое поле.
-	gated, _ := gateBodyForCore(node.Scheme, node.Tag, repairBodyForBuild(node.Scheme, node.Tag, node.EmitBody))
+	gated, _ := gateBodyForCore(node.Scheme, node.Tag, repairBodyForBuild(node.Scheme, node.Tag, node.Authored, node.EmitBody))
 	return stampTagAndDetour(gated, node)
 }
 
@@ -1414,7 +1414,7 @@ func stampTagAndDetour(body []byte, node *ParsedNode) (string, error) {
 		if d, ok := node.Outbound["detour"].(string); ok {
 			if d = strings.TrimSpace(d); d != "" {
 				obj.setLast("detour", marshalJSONStringRaw(d))
-				yieldBodyToDetour(obj, node.Scheme)
+				yieldBodyToDetour(obj, node.Scheme, node.Authored)
 			}
 		}
 	}
@@ -1429,7 +1429,11 @@ func stampTagAndDetour(body []byte, node *ParsedNode) (string, error) {
 // материализованный узел эмитится из замороженного EmitBody. Поэтому
 // исполнение правила — здесь, на границе «тело → outbound», где detour и
 // встречается с телом (контракт 1.1.84).
-func yieldBodyToDetour(obj *orderedJSONObject, scheme string) {
+//
+// Снятие — через точку правки nodeflow.Decide (контракт 1.1.87): у
+// авторского тела мягкое правило (tls.fragment) поле оставляет, жёсткое
+// (listen_port WireGuard, отказ ядра) снимает.
+func yieldBodyToDetour(obj *orderedJSONObject, scheme string, authored bool) {
 	reg, err := registry.Get()
 	if err != nil {
 		return
@@ -1439,7 +1443,9 @@ func yieldBodyToDetour(obj *orderedJSONObject, scheme string) {
 		return
 	}
 	for _, y := range reg.YieldsTo(scheme, buildDetourField, m) {
-		deleteOrderedPath(obj, strings.Split(y.Path, "."))
+		if apply, _ := nodeflow.Decide(scheme, authored, nodeflow.Warning{Code: y.Code, Path: y.Path}); apply {
+			deleteOrderedPath(obj, strings.Split(y.Path, "."))
+		}
 	}
 }
 

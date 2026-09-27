@@ -231,6 +231,12 @@ type corpusExpectation struct {
 	// Поле необязательное: отсутствие ключа значит «не проверяем».
 	RootServers []string `json:"root_servers"`
 
+	// OriginRaw — источник своего узла после импорта (контракт 1.1.87,
+	// PARSING_PRINCIPLES §11 п.2): ключ — тег корневого сервера или
+	// «имя папки/тег» члена папки, значение — JSON, которому обязан быть
+	// равен origin.raw (сравнение по значению).
+	OriginRaw map[string]json.RawMessage `json:"origin_raw"`
+
 	// Directions — Направления, которые импорт обязан СОЗДАТЬ (SPEC 104,
 	// схема v1.1). Проверяется каноническая форма, а не внутренняя: она и
 	// есть предмет договорённости между приложениями.
@@ -444,6 +450,7 @@ func TestBackupCorpus(t *testing.T) {
 			checkFolders(t, dst, exp)
 			checkSubscriptions(t, dst, exp)
 			checkRootServers(t, dst, exp)
+			checkOriginRaw(t, dst, exp)
 		})
 	}
 }
@@ -1392,6 +1399,41 @@ func checkWarningReasons(t *testing.T, warns []Warning, exp corpusExpectation) {
 		sort.Strings(wantSorted)
 		if !equalStrings(got, wantSorted) {
 			t.Errorf("%s: причины %v, ожидались %v", code, got, wantSorted)
+		}
+	}
+}
+
+// checkOriginRaw — источник своих узлов после импорта: сравнение по
+// значению JSON (контракт 1.1.87, PARSING_PRINCIPLES §11 п.2).
+func checkOriginRaw(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	for key, want := range exp.OriginRaw {
+		var node *state.Node
+		for i := range dst.Sources {
+			src := &dst.Sources[i]
+			if src.Kind == state.SourceKindServer && src.NodeTagOrLabel() == key {
+				node = &src.Node
+			}
+			for j := range src.Nodes {
+				if src.Kind == state.SourceKindFolder && src.Name+"/"+src.Nodes[j].Tag == key {
+					node = &src.Nodes[j]
+				}
+			}
+		}
+		if node == nil || node.Origin == nil {
+			t.Errorf("origin_raw %q: узла с источником нет", key)
+			continue
+		}
+		var got, exp interface{}
+		if err := json.Unmarshal([]byte(node.Origin.Raw), &got); err != nil {
+			t.Errorf("origin_raw %q: источник не JSON: %v", key, err)
+			continue
+		}
+		_ = json.Unmarshal(want, &exp)
+		gb, _ := json.Marshal(got)
+		eb, _ := json.Marshal(exp)
+		if string(gb) != string(eb) {
+			t.Errorf("origin_raw %q: %s, ожидалось %s", key, gb, eb)
 		}
 	}
 }

@@ -290,6 +290,9 @@ type NodeWarning struct {
 	Path   string            `json:"path,omitempty"`
 	Value  string            `json:"value,omitempty"`
 	Params map[string]string `json:"params,omitempty"`
+	// Applied — false: мягкое правило реестра не применено к авторскому телу
+	// (контракт 1.1.87). nil = применено; пишется только false.
+	Applied *bool `json:"applied,omitempty"`
 }
 
 // IsUnsupported — узел является нематериализованной записью тела.

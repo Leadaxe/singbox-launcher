@@ -196,6 +196,7 @@ func buildCanonicalServer(cs *configtypes.CanonicalSource, cn *configtypes.Canon
 		IdentityTag: cn.Tag,
 		Service:     cn.Service,
 		SkipPresets: cn.SkipPresets,
+		Authored:    cn.Authored,
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}
 	node.Flow = canonicalString(outbound["flow"])

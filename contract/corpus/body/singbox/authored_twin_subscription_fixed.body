@@ -1,0 +1,4 @@
+# Пара к authored/soft_unknown_key_kept: тот же узел в теле ПОДПИСКИ. Узел
+# подписки авторским не бывает (PARSING_PRINCIPLES §10.1) — правила
+# применяются как прежде: лишние ключи сняты, коды без applied.
+{"outbounds":[{"type":"trojan","tag":"own-trojan","server":"example-1.com","server_port":443,"password":"testpass123","foo":"bar","tls":{"enabled":true,"server_name":"example-1.com","bar":1}}]}

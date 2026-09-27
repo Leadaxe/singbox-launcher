@@ -28,7 +28,8 @@
         "max": 65535,
         "on_invalid": {
           "action": "drop_node",
-          "code": "port_invalid"
+          "code": "port_invalid",
+          "core_rejects": true
         },
         "required": true,
         "desc_en": "Server port.",

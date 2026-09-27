@@ -48,6 +48,8 @@ type contractWarning struct {
 	Code  string `json:"code"`
 	Path  string `json:"path,omitempty"`
 	Value string `json:"value,omitempty"`
+	// Applied — false у мягкого правила на авторском теле (контракт 1.1.87).
+	Applied *bool `json:"applied,omitempty"`
 }
 
 // contractWarningValue — value для результата разбора из Warning (PARSING_PRINCIPLES §6).
@@ -192,7 +194,7 @@ func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 
 	var warnings []contractWarning
 	for _, w := range nodeWarnings {
-		warnings = append(warnings, contractWarning{Code: w.Code, Path: w.Path, Value: contractWarningValue(w)})
+		warnings = append(warnings, contractWarning{Code: w.Code, Path: w.Path, Value: contractWarningValue(w), Applied: w.Applied})
 	}
 
 	out := contractNode{

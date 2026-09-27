@@ -46,6 +46,10 @@ type Result struct {
 	// Repairs переносит те же правки на тело, которое санитайзер не ведёт.
 	Repaired       []string
 	RepairWarnings []Warning
+	// HardPaths — пути, которые правило с `core_rejects` записало МОЛЧА
+	// (default_when без кода, контракт 1.1.87): их правку авторское тело
+	// получает без кода (AuthoredResult).
+	HardPaths []string
 }
 
 // maskedValue — то, что пишется в Warning.Value вместо секрета.
@@ -577,6 +581,11 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 					delete(s.absent, path)
 					if dw.Code != "" {
 						s.warn(dw.Code, path, nil, false, map[string]string{"path": path})
+					} else if dw.CoreRejects {
+						// Тихий дефолт, без которого ядро не поднимает узел:
+						// кода нет, но авторское тело обязано его получить
+						// (контракт 1.1.87, PARSING_PRINCIPLES §10.3).
+						s.res.HardPaths = append(s.res.HardPaths, path)
 					}
 					continue
 				}

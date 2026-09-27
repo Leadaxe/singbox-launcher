@@ -233,7 +233,7 @@ func sanitizeForTest(t *testing.T, ob map[string]interface{}) map[string]interfa
 	if !ok {
 		t.Fatalf("тип %q реестр узлом не знает", mapStringValue(src, "type"))
 	}
-	body, _, drop := materializeBody(scheme, configtypes.NodeSourceSingbox, src)
+	body, _, drop := materializeBody(scheme, configtypes.NodeSourceSingbox, false, src)
 	if drop != nil {
 		t.Fatalf("конвейер отверг узел целиком: %s", dropReason(drop))
 	}

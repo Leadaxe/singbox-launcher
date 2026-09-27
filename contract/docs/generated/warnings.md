@@ -339,8 +339,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **AmneziaWG: MTU above 1280**
 
-- **What happened:** The MTU at {path} is {value}, above the 1280 this launcher recommends for AmneziaWG. The value was kept as written, because the body came in the core's own form; be aware that a too-high MTU makes an AmneziaWG tunnel connect and then carry no data.
-- **Why it happens:** AmneziaWG pads every packet, so the obfuscated packet is bigger than the plain WireGuard one the MTU was calculated for; past the path MTU the system refuses to send it ("sendmsg: message too long") instead of fragmenting. The value is kept here because a sing-box body is written in the core's own form, by hand or by the subscription, and the launcher does not silently rewrite what you wrote yourself.
+- **What happened:** The MTU at {path} is {value}, above the 1280 this launcher recommends for AmneziaWG. The value was kept as written, because the node was written by hand in the core's own form; be aware that a too-high MTU makes an AmneziaWG tunnel connect and then carry no data.
+- **Why it happens:** AmneziaWG pads every packet, so the obfuscated packet is bigger than the plain WireGuard one the MTU was calculated for; past the path MTU the system refuses to send it ("sendmsg: message too long") instead of fragmenting. The value is kept here because this node was written by hand in the core's own form, and the launcher does not silently rewrite what you wrote yourself.
 - **What you can do:**
   - Nothing to do if the tunnel carries data: your server accepts this MTU.
   - If the handshake succeeds but nothing goes through, lower the MTU to 1280 in the node body.

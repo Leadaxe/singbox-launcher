@@ -8452,3 +8452,92 @@ template/vars/expected); `corpus/template/for_each/` — **новый форма
    запись только `true`, импорт совпавшего по телу узла не сбрасывает `true`;
 6. текст пресета в вашем `wizard_template.json` против `TEMPLATE_LANG` §6.7
    (тело должно совпасть символ в символ, кроме оболочки).
+
+## 84. Контракт 1.1.87 — источник узла и авторское тело
+
+Источник решения — ваши спеки §576
+(`docs/spec/tasks/576-node-source-is-bare-body.md`) и §577
+(`docs/spec/tasks/577-authored-json-registry-reports-only.md`), решения
+владельца 27.09.2026. Лаунчер — SPEC 146. Норма — `docs/PARSING_PRINCIPLES.md`
+§10 (авторское тело) и §11 (источник узла).
+
+**1. Источник узла — только тело узла (§576, §11).** После ручной правки в
+источнике своего сервера и члена папки — голое тело узла, вид
+`singbox_outbound`; документ и массив — формы ввода (первый узел, не служебный
+и не группа / первый элемент; одно сообщение о несохранённом остатке).
+Старые записи с `singbox_config`, `singbox_config_array`,
+`singbox_outbound_array` в источнике при чтении получают тело узла записи.
+
+**2. Авторское тело (§577, §10).** Четыре условия вашей спеки без отступлений.
+Мягкое правило — код с `applied: false`, тело не меняется; жёсткие — `type`,
+узловой гейт ядра, `core_rejects`. Вход `singbox` для `except_sources` —
+только авторское тело; узел подписки — вход `other`. Уступка `detour`:
+`tls.fragment` остаётся с `applied: false`; `listen_port` WireGuard — жёсткое
+(`core_rejects`), ядро отказывает конфигу: sing-box-lx
+`protocol/wireguard/endpoint.go`, NewEndpoint, «`listen_port` is conflict with
+`detour`».
+
+**3. Атрибут `core_rejects`** (bool) стоит рядом с `code` правила, которое
+помечает (определение `coreRejects` в `registry_body.schema.json`). Помечено:
+
+- `tls.json`, у поля (код `tls_field_unsupported_naive`, фатал naive):
+  `disable_sni`, `insecure`, `alpn`, `min_version`, `max_version`,
+  `cipher_suites`, `curve_preferences`, `client_certificate`,
+  `client_certificate_path`, `client_key`, `client_key_path`, `fragment`,
+  `record_fragment`, `kernel_tx`, `kernel_rx`, `utls`, `utls.enabled`,
+  `reality`, `reality.enabled`; коды `forbidden_codes` (masque, QUIC) — мягкие;
+- `tls.json`, правила: `fragment`/`record_fragment` conflicts `tls.engine`
+  (`tls_fragment_system_engine`); `disable_sni` conflicts reality
+  (`field_conflict`); `reality.enabled` conflicts `tls.disable_sni`,
+  `tls.spoof` (`field_conflict`) и requires `tls.utls.enabled`
+  (`reality_utls_enabled`); `utls.fingerprint` on_invalid (`utls_fp_unknown`);
+  `min_version`/`max_version` on_invalid (`type_invalid`);
+  `client_certificate`/`client_key` requires (`field_requires`);
+- `dialer.json`: `server_port` on_invalid (`port_invalid`);
+- `hysteria.json`: `up_mbps` default_when (без кода — тихий дефолт, без
+  которого ядро не поднимает outbound);
+- `hysteria2.json`: `obfs.type` on_invalid (`obfs_unknown`), `obfs.password`
+  у поля (`obfs_password_missing`);
+- `vless.json`, `vmess.json`: `packet_encoding` on_invalid
+  (`packet_encoding_unknown`);
+- `wireguard.json`: `listen_port` conflicts detour (`detour_with_listen_port`),
+  `jmin` requires `jmax` (`awg_header_invalid`), `s1`–`s4` min_when
+  (`awg3_padding_too_short`), `h1`–`h4` on_invalid (`awg_header_invalid`),
+  `body.relations` `awg_headers_overlap` и `fields_order_invalid`;
+- `transports.json`: `path` у вариантов `http`, `ws`, `httpupgrade` (формат
+  `url_path`), `xhttp.mode` default_when (`xhttp_mode_forced_packet_up`),
+  `xhttp.uplink_data_placement` requires (`xhttp_param_reset`).
+
+Не помечено (прозой фатал, но правила в теле нет): пароль shadowsocks 2022
+нужной длины; mapper-правила (masque `sni`, hysteria `mport`); группы и
+цепочки авторскими не бывают.
+
+**4. Признак `applied`** у записи предупреждения: `node.schema.json`,
+`backup.schema.json`, §6. Показ — §10.5.
+
+**5. Тексты.** `awg_mtu_high` (`text_*`, `cause_*`, `desc`) и проза
+`wireguard.mtu`: слова «или подпиской» убраны.
+
+**6. Корпус.** Новый раздел `corpus/authored/<case>.body` — голое тело,
+сохранённое как свой сервер; ожидание — результат разбора с
+`meta.container: own`, сравнение СТРОГОЕ (`applied` нормативен): 4 кейса.
+`body/singbox/authored_twin_subscription_fixed` — тот же JSON узлом подписки.
+**Изменено** `body/singbox/endpoints_awg_mtu_high`: узел подписки получает 1280
+и `awg_mtu_clamped`. `backup/v10_node_source_document` — новый ключ
+ожидания `origin_raw` («тег» или «имя папки/тег» → JSON источника, сравнение
+по значению).
+
+*За LxBox после синка — сверить:*
+1. раннер `corpus/authored/` (новый раздел, формат выше) и ожидания с
+   `applied: false`;
+2. `body/singbox/endpoints_awg_mtu_high` — у вас `bodySourceOf` узла подписки
+   обязан дать вход `other`;
+3. `backup/v10_node_source_document` — ключ `origin_raw` в раннере бэкапа;
+   свод документа и массива к телу при импорте, а не только при чтении
+   хранилища;
+4. `core_rejects` в вашем гейте реестра: признак у поля (код поля, кроме
+   `forbidden_codes`) и у объекта правила; тихий `default_when` у
+   `hysteria.up_mbps` применяется и к авторскому телу;
+5. `applied` в `NodeWarning`, Debug API и в бэкапе (пишется только `false`);
+6. `detour_with_listen_port` — жёсткое, в отличие от вашей спеки §577 п.4, где
+   решение оставлено исполнителю.

@@ -72,7 +72,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 |---|---|---|
 | GET | `/state` | Снимок рантайма: `{running, active_proxy, selected_group, singbox_version, subs_last_updated_unix}` |
 | GET | `/proxies` | Список прокси (`[]api.ProxyInfo`) — из текущего sing-box config |
-| GET | `/state/full` | Полный `state.json` (после load + миграций) |
+| GET | `/state/full` | Полный `state.json` (после load + миграций). Записи `warnings[]` узла несут `applied: false`, если правило реестра сообщено, но к написанному вручную узлу не применено (контракт 1.1.87, PARSING_PRINCIPLES §10); отсутствие = применено |
 | GET | `/state/rules` | `{"rules":[]state.Rule}` — секция SPEC 053 |
 | GET | `/state/dns` | Вся секция `state.DNSOptions` (SPEC 056) |
 | GET | `/state/dns/rules` | `{"text":"..."}` — **только USER**-правила как wizard-текст. Preset-правила не включаются (они toggle-ref'ы) |

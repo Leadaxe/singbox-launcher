@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "container": "own"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "foo": "bar",
+        "password": "testpass123",
+        "server": "example-2.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-2.com"
+        },
+        "type": "naive",
+        "username": "user"
+      },
+      "kind": "outbound",
+      "label": "own-naive",
+      "scheme": "naive",
+      "warnings": [
+        {
+          "code": "tls_field_unsupported_naive",
+          "path": "tls.insecure",
+          "value": "true"
+        },
+        {
+          "code": "tls_field_unsupported_naive",
+          "path": "tls.fragment",
+          "value": "true"
+        },
+        {
+          "applied": false,
+          "code": "unknown_key",
+          "path": "foo",
+          "value": "bar"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

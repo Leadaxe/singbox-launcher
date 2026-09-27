@@ -1033,6 +1033,12 @@
   "node %q: %s removed — it cannot be combined with detour %q": {
     "value": "узел %q: %s снят — несовместим с detour %q"
   },
+  "%s (not applied)": {
+    "value": "%s (не применено)"
+  },
+  "This node was written by hand, so the app changed nothing in it. The rule below would normally apply.": {
+    "value": "Узел написан вручную, поэтому приложение ничего в нём не изменило. Обычно здесь сработало бы правило ниже."
+  },
   "group %q: member %q left the group (%s)": {
     "value": "группа %q: член %q выбыл из состава (%s)"
   },

@@ -136,6 +136,9 @@ func stateWarnings(in []configtypes.Warning) []state.NodeWarning {
 			Path:   w.Path,
 			Value:  w.Value,
 			Params: copyWarningParams(w.Params),
+			// Признак «не применено» (контракт 1.1.87) едет в state как
+			// есть: его видят карточка узла и Debug API.
+			Applied: w.Applied,
 		})
 	}
 	return out
@@ -411,6 +414,31 @@ type ServerNodeMaterial struct {
 // правке эмиттера — ровно тот класс расхождений, из-за которого
 // emitter-parser-pairing уже стоил трёх схем.
 func MaterializeServerNode(uri string, configJSON json.RawMessage) (*ServerNodeMaterial, error) {
+	return materializeServerNode(uri, configJSON, true)
+}
+
+// MaterializeEditedBody — тело из вкладки JSON у узла, чьё происхождение НЕ
+// JSON (ссылка, INI): правка тела происхождение не меняет, и тело не
+// авторское (контракт 1.1.87, PARSING_PRINCIPLES §10.1: вид источника не
+// `singbox_outbound`) — правила реестра применяются как у обычного тела.
+func MaterializeEditedBody(configJSON json.RawMessage) (*ServerNodeMaterial, error) {
+	return materializeServerNode("", configJSON, false)
+}
+
+func materializeServerNode(uri string, configJSON json.RawMessage, authored bool) (*ServerNodeMaterial, error) {
+	if len(configJSON) > 0 && !authored {
+		node, err := subscription.NodeFromManualConfigJSON(configJSON)
+		if err != nil {
+			return nil, fmt.Errorf("manual config_json: %w", err)
+		}
+		node.Authored = false
+		node.Source = configtypes.NodeSourceOther
+		body, warns, drop := materializeParsedNodeBody(node)
+		if drop != nil {
+			return nil, fmt.Errorf("manual config_json: %s", dropReason(drop))
+		}
+		return &ServerNodeMaterial{Body: body, OriginKind: state.OriginKindJSON, OriginRaw: string(configJSON), Warnings: stateWarnings(warns)}, nil
+	}
 	res, err := materializeServerForMigration(state.MigrationServerRequest{URI: uri, ConfigJSON: configJSON})
 	if err != nil {
 		return nil, err

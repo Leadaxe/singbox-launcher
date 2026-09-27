@@ -37,6 +37,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/nodeflow"
 	"singbox-launcher/core/config/registry"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
@@ -381,8 +382,13 @@ func ApplyCanonicalNodeLinks(
 			w.Params = map[string]string{"tag": n.Tag, "path": y.Path, "with": y.With, "target": target}
 			fallback := locale.Tf(emitDetourFieldYieldText, n.Tag, y.Path, target)
 			w.Text = registryWarningText(w.Code, w.Params, fallback)
+			if !y.Applied {
+				// Авторское тело, мягкое правило (контракт 1.1.87): поле
+				// осталось в теле, строка отчёта помечена.
+				w.Text = locale.Tf(emitNotAppliedMarkText, w.Text)
+			}
 			warnings = append(warnings, w)
-			debuglog.WarnLog("nodelink: %s (%s)", fallback, w.Code)
+			debuglog.WarnLog("nodelink: %s (%s, applied=%t)", fallback, w.Code, y.Applied)
 		}
 	}
 
@@ -471,12 +477,24 @@ const buildDetourField = "detour"
 const (
 	emitDetourTargetMissingText = "%d node(s) dropped: detour target %q is gone"
 	emitDetourFieldYieldText    = "node %q: %s removed — it cannot be combined with detour %q"
+	// emitNotAppliedMarkText — пометка строки отчёта сборки, чьё правило
+	// НЕ применено к авторскому телу (контракт 1.1.87).
+	emitNotAppliedMarkText = "%s (not applied)"
 )
+
+// detourYield — поле, уступающее detour, и решение точки правки
+// (nodeflow.Decide): Applied=false — тело авторское, правило мягкое, поле
+// осталось.
+type detourYield struct {
+	registry.BodyYield
+	Applied bool
+}
 
 // yieldToBuildDetour снимает с тела узла поля, которые реестр объявил
 // несовместимыми с detour (registry.Registry.YieldsTo), и возвращает их.
-// Правило — данные реестра; имён схем здесь нет.
-func yieldToBuildDetour(n *ParsedNode) []registry.BodyYield {
+// Правило — данные реестра; имён схем здесь нет. Снятие идёт через точку
+// правки nodeflow.Decide: у авторского тела мягкое правило поле не снимает.
+func yieldToBuildDetour(n *ParsedNode) []detourYield {
 	if n == nil || n.Outbound == nil {
 		return nil
 	}
@@ -484,11 +502,15 @@ func yieldToBuildDetour(n *ParsedNode) []registry.BodyYield {
 	if err != nil {
 		return nil
 	}
-	ys := reg.YieldsTo(n.Scheme, buildDetourField, n.Outbound)
-	for _, y := range ys {
-		n.Outbound = withoutBodyPath(n.Outbound, strings.Split(y.Path, "."))
+	var out []detourYield
+	for _, y := range reg.YieldsTo(n.Scheme, buildDetourField, n.Outbound) {
+		apply, _ := nodeflow.Decide(n.Scheme, n.Authored, nodeflow.Warning{Code: y.Code, Path: y.Path})
+		if apply {
+			n.Outbound = withoutBodyPath(n.Outbound, strings.Split(y.Path, "."))
+		}
+		out = append(out, detourYield{BodyYield: y, Applied: apply})
 	}
-	return ys
+	return out
 }
 
 // withoutBodyPath — тело без поля по пути. Вложенные объекты копируются по

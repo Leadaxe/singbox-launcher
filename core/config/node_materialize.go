@@ -44,7 +44,7 @@ import (
 // вход не назван. Его читают правила значений, различающие, кто сочинил
 // значение: тело в форме ядра лаунчер не переписывает молча, он
 // предупреждает (потолок MTU у AmneziaWG, решение владельца 18.09.2026).
-func materializeBody(scheme, source string, outbound map[string]interface{}) (json.RawMessage, []configtypes.Warning, *configtypes.Warning) {
+func materializeBody(scheme, source string, authored bool, outbound map[string]interface{}) (json.RawMessage, []configtypes.Warning, *configtypes.Warning) {
 	if _, known := registry.MustGet().Body(scheme); !known {
 		// Схема вне реестра — правил для неё нет, и выдумывать их конвейер
 		// не вправе. Тело едет как есть, минус managed-ключи сборки; так
@@ -52,6 +52,9 @@ func materializeBody(scheme, source string, outbound map[string]interface{}) (js
 		// вкладка JSON и существует. Кодов у такого узла тоже нет: сказать
 		// про его поля нечего.
 		return passthroughBody(outbound)
+	}
+	if authored {
+		return materializeAuthoredBody(scheme, outbound)
 	}
 	res := nodeflow.SanitizeFrom(scheme, source, outbound)
 	if res.Drop != nil {
@@ -72,6 +75,30 @@ func materializeBody(scheme, source string, outbound map[string]interface{}) (js
 			Params: map[string]string{"error": err.Error()},
 		}
 		return nil, res.Warnings, &drop
+	}
+	return stamped, res.Warnings, nil
+}
+
+// materializeAuthoredBody — тело АВТОРСКОГО узла (контракт 1.1.87,
+// PARSING_PRINCIPLES §10): тело как написано, минус `tag`/`detour`, с
+// правками только жёстких правил реестра; мягкие правила дают коды с
+// applied: false. Решение по каждому правилу — nodeflow.Decide через
+// nodeflow.AuthoredResult. Ключи — по алфавиту, `type` первым (как у
+// passthroughBody): у Go-карты порядка нет, а байты тела обязаны быть
+// стабильны от запуска к запуску.
+func materializeAuthoredBody(scheme string, outbound map[string]interface{}) (json.RawMessage, []configtypes.Warning, *configtypes.Warning) {
+	res := nodeflow.AuthoredResult(scheme, outbound, nodeflow.SanitizeFrom(scheme, configtypes.NodeSourceSingbox, outbound))
+	if res.Drop != nil {
+		return nil, res.Warnings, res.Drop
+	}
+	body, _, drop := passthroughBody(res.Clean)
+	if drop != nil {
+		return nil, res.Warnings, drop
+	}
+	stamped, err := stampBodyType(scheme, body, outbound)
+	if err != nil {
+		d := configtypes.Warning{Code: "parse_error", Params: map[string]string{"error": err.Error()}}
+		return nil, res.Warnings, &d
 	}
 	return stamped, res.Warnings, nil
 }
@@ -160,7 +187,7 @@ func materializeParsedNodeBody(node *configtypes.ParsedNode) (json.RawMessage, [
 		drop := configtypes.Warning{Code: "parse_error", Params: map[string]string{"error": "nil node"}}
 		return nil, nil, &drop
 	}
-	body, sanWarns, drop := materializeBody(node.Scheme, node.Source, outboundMapOf(node))
+	body, sanWarns, drop := materializeBody(node.Scheme, node.Source, node.Authored, outboundMapOf(node))
 	return body, mergeWarnings(node.Warnings, sanWarns), drop
 }
 
@@ -281,7 +308,11 @@ func sanitizeStoredNodeBody(req state.SanitizeBodyRequest) (*state.SanitizeBodyR
 		return &state.SanitizeBodyResult{Warnings: []state.NodeWarning{}}, nil
 	}
 
-	body, warns, drop := materializeBody(scheme, subscription.NodeSourceFromOriginKind(req.OriginKind), outbound)
+	source := subscription.NodeSourceFromOriginKind(req.OriginKind)
+	if req.Authored {
+		source = configtypes.NodeSourceSingbox
+	}
+	body, warns, drop := materializeBody(scheme, source, req.Authored, outbound)
 	res := &state.SanitizeBodyResult{Warnings: stateWarnings(warns)}
 	if res.Warnings == nil {
 		res.Warnings = []state.NodeWarning{}

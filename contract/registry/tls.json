@@ -374,10 +374,12 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "conflicts": [
           {
             "with": "tls.reality.enabled",
-            "code": "field_conflict"
+            "code": "field_conflict",
+            "core_rejects": true
           }
         ],
         "desc_en": "Do not send the SNI extension.",
@@ -402,6 +404,7 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "advisory": [
           {
             "values": [
@@ -427,6 +430,7 @@
           "masque"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "forbidden_codes": {
           "masque": "masque_tls_field_ignored"
         },
@@ -444,12 +448,14 @@
         ],
         "on_invalid": {
           "action": "drop",
-          "code": "type_invalid"
+          "code": "type_invalid",
+          "core_rejects": true
         },
         "forbidden_for": [
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "desc_en": "Minimum accepted TLS version.",
         "desc_ru": "Минимальная допустимая версия TLS.",
         "impl": "Иное значение = ошибка ParseTLSVersion. У naive — фатал старта."
@@ -464,12 +470,14 @@
         ],
         "on_invalid": {
           "action": "drop",
-          "code": "type_invalid"
+          "code": "type_invalid",
+          "core_rejects": true
         },
         "forbidden_for": [
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "desc_en": "Maximum accepted TLS version.",
         "desc_ru": "Максимальная допустимая версия TLS.",
         "impl": "Иное значение = ошибка ParseTLSVersion. У naive — фатал старта."
@@ -480,6 +488,7 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "desc_en": "Allowed TLS cipher suites.",
         "desc_ru": "Разрешённые наборы шифров TLS.",
         "impl": "Имена из tls.CipherSuites(); неизвестное имя = ошибка. Закрытого enum в ядре нет. У naive — фатал старта."
@@ -501,6 +510,7 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "desc_en": "Preferred elliptic curves / key exchange groups.",
         "desc_ru": "Предпочитаемые кривые и группы обмена ключами.",
         "impl": "Разбор нечувствителен к регистру (common/tls). У naive — фатал старта."
@@ -548,10 +558,12 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "requires": [
           {
             "path": "tls.client_key",
-            "code": "field_requires"
+            "code": "field_requires",
+            "core_rejects": true
           }
         ],
         "desc_en": "Client certificate for mTLS, PEM form.",
@@ -564,6 +576,7 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "desc_en": "Path to the client certificate file.",
         "desc_ru": "Путь к файлу клиентского сертификата.",
         "impl": "Парное с client_key_path (common/tls/std_client.go). У naive — фатал старта."
@@ -575,10 +588,12 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "requires": [
           {
             "path": "tls.client_certificate",
-            "code": "field_requires"
+            "code": "field_requires",
+            "core_rejects": true
           }
         ],
         "desc_en": "Client private key for mTLS, PEM form.",
@@ -592,6 +607,7 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "desc_en": "Path to the client private key file.",
         "desc_ru": "Путь к файлу закрытого клиентского ключа.",
         "impl": "Путь к секрету — маскируется вместе с ключом. У naive — фатал старта."
@@ -603,6 +619,7 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "conflicts": [
           {
             "with": "vhttp",
@@ -621,7 +638,8 @@
                 ]
               }
             },
-            "code": "tls_fragment_system_engine"
+            "code": "tls_fragment_system_engine",
+            "core_rejects": true
           },
           {
             "with": "detour",
@@ -649,6 +667,7 @@
           "naive"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "conflicts": [
           {
             "with": "vhttp",
@@ -667,7 +686,8 @@
                 ]
               }
             },
-            "code": "tls_fragment_system_engine"
+            "code": "tls_fragment_system_engine",
+            "core_rejects": true
           }
         ],
         "desc_en": "Split the ClientHello across TLS records.",
@@ -738,6 +758,7 @@
           "masque"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "forbidden_codes": {
           "masque": "masque_tls_field_ignored"
         },
@@ -754,6 +775,7 @@
           "masque"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "forbidden_codes": {
           "masque": "masque_tls_field_ignored"
         },
@@ -850,6 +872,7 @@
           "masque"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "forbidden_codes": {
           "hysteria": "tls_not_applicable_quic",
           "hysteria2": "tls_not_applicable_quic",
@@ -871,6 +894,7 @@
               "naive"
             ],
             "code": "tls_field_unsupported_naive",
+            "core_rejects": true,
             "desc_en": "Enable uTLS ClientHello mimicry.",
             "desc_ru": "Включить подмену ClientHello через uTLS.",
             "impl": "Обязателен при tls.reality.enabled (common/tls/reality_client.go «uTLS is required by reality client»). У naive — фатал старта (protocol/naive/outbound.go)."
@@ -899,7 +923,8 @@
             "on_invalid": {
               "action": "coerce",
               "value": "chrome",
-              "code": "utls_fp_unknown"
+              "code": "utls_fp_unknown",
+              "core_rejects": true
             },
             "default": "chrome",
             "advisory": [
@@ -951,6 +976,7 @@
           "masque"
         ],
         "code": "tls_field_unsupported_naive",
+        "core_rejects": true,
         "forbidden_codes": {
           "hysteria": "tls_not_applicable_quic",
           "hysteria2": "tls_not_applicable_quic",
@@ -974,6 +1000,7 @@
               "naive"
             ],
             "code": "tls_field_unsupported_naive",
+            "core_rejects": true,
             "conflicts": [
               {
                 "with": "tls.ech.enabled",
@@ -981,18 +1008,21 @@
               },
               {
                 "with": "tls.disable_sni",
-                "code": "field_conflict"
+                "code": "field_conflict",
+                "core_rejects": true
               },
               {
                 "with": "tls.spoof",
-                "code": "field_conflict"
+                "code": "field_conflict",
+                "core_rejects": true
               }
             ],
             "requires": [
               {
                 "path": "tls.utls.enabled",
                 "set": true,
-                "code": "reality_utls_enabled"
+                "code": "reality_utls_enabled",
+                "core_rejects": true
               }
             ],
             "desc_en": "Enable REALITY handshake camouflage.",

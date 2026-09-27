@@ -126,6 +126,8 @@ func (s *Source) canonicalProjection() *configtypes.CanonicalSource {
 			// §578: у узла подписки записи нет — skip_presets всегда ложь.
 			if s.Kind == SourceKindSubscription {
 				cn.SkipPresets = false
+			} else {
+				cn.Authored = s.Nodes[i].Authored()
 			}
 			cs.Nodes = append(cs.Nodes, cn)
 		}
@@ -136,6 +138,7 @@ func (s *Source) canonicalProjection() *configtypes.CanonicalSource {
 			return nil
 		}
 		n := canonicalNodeProjection(&s.Node)
+		n.Authored = s.Node.Authored()
 		// Тег корневого узла — тот, под которым его знает конфиг.
 		n.Tag = s.NodeTagOrLabel()
 		return &configtypes.CanonicalSource{

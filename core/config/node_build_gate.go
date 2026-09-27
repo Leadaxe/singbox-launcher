@@ -117,7 +117,11 @@ func coreVersionLabel(v string) string {
 // записано при материализации, и правило, появившееся позже (REALITY без
 // uTLS, random под REALITY), иначе доехало бы до ядра только с обновлением
 // подписки. Правок нет — тело возвращается байт-в-байт.
-func repairBodyForBuild(scheme, tag string, body []byte) []byte {
+//
+// Правки идут через точку решения nodeflow.RepairsFor (контракт 1.1.87): у
+// авторского тела применяются только жёсткие, мягкие попадают в лог с
+// пометкой not applied.
+func repairBodyForBuild(scheme, tag string, authored bool, body []byte) []byte {
 	if len(body) == 0 {
 		return body
 	}
@@ -125,8 +129,12 @@ func repairBodyForBuild(scheme, tag string, body []byte) []byte {
 	if err := json.Unmarshal(body, &m); err != nil {
 		return body
 	}
-	fixed, notes := nodeflow.Repairs(scheme, m)
+	fixed, notes := nodeflow.RepairsFor(scheme, authored, m)
 	if len(notes) == 0 {
+		return body
+	}
+	if !anyApplied(notes) {
+		logBuildRepairs(scheme, tag, notes)
 		return body
 	}
 	out, err := json.Marshal(fixed)
@@ -141,6 +149,20 @@ func repairBodyForBuild(scheme, tag string, body []byte) []byte {
 // кодов на узле нет до следующей материализации, поэтому код уходит в лог.
 func logBuildRepairs(scheme, tag string, notes []nodeflow.Warning) {
 	for _, w := range notes {
-		debuglog.InfoLog("Build: node %q (%s): %s at %s", tag, scheme, w.Code, w.Path)
+		mark := ""
+		if !w.IsApplied() {
+			mark = " (not applied)"
+		}
+		debuglog.InfoLog("Build: node %q (%s): %s at %s%s", tag, scheme, w.Code, w.Path, mark)
 	}
+}
+
+// anyApplied — хоть одна правка применена к телу.
+func anyApplied(notes []nodeflow.Warning) bool {
+	for _, w := range notes {
+		if w.IsApplied() {
+			return true
+		}
+	}
+	return false
 }
