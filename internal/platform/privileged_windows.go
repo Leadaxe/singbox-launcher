@@ -78,8 +78,9 @@ func privilegedCoreLogFile() string {
 }
 
 // OpenPrivilegedCoreLog открывает classic.log для вывода повышенного ядра
-// (SPEC 141 §8): каталог logs\ и цепочка <ProgramData>\sing-box-lxd — по
-// инварианту §6.1 (нет каталога — ErrPrivilegedLogDirMissing); > 2 МиБ —
+// (SPEC 141 §8, SPEC 150): <ProgramData>\sing-box-lxd и logs\ — по правилу
+// нашей папки §6.1 (нет каталога — ErrPrivilegedLogDirMissing); предки
+// выше (сам ProgramData, корень тома) не проверяются, как и в ядре; > 2 МиБ —
 // rename в classic.log.old (не вышло — старт не валится, ротация ждёт
 // следующего старта); файл открывается без следования ссылкам
 // (reparse point или каталог на его месте — отказ) на дозапись, и на
@@ -91,7 +92,7 @@ func OpenPrivilegedCoreLog() (*os.File, error) {
 	if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("%w: %s", ErrPrivilegedLogDirMissing, dir)
 	}
-	if err := CheckProtectedCopy(root, nil, nil); err != nil {
+	if err := checkProtectedPath(root, true); err != nil {
 		return nil, err
 	}
 	if err := checkProtectedPath(dir, true); err != nil {
