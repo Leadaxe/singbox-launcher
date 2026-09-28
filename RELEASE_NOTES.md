@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v2.3.3
+
+Хотфикс v2.3.2 для Windows: лаунчер с правами администратора больше не отказывается запускать ядро из-за прав на системную папку `C:\ProgramData`. Проверки прав повышенного старта теперь предупреждают: диалог показывает причину, риск, команду исправления и кнопку Run anyway. Подробнее: [docs/release_notes/2-3-3.md](docs/release_notes/2-3-3.md).
+
+### Highlights (EN) — v2.3.3
+
+A Windows hotfix for v2.3.2: a launcher run as administrator no longer refuses to start the core because of the permissions of the system folder `C:\ProgramData`. Permission checks of the elevated start now warn: the dialog shows the reason, the risk, a fix command and a Run anyway button. Details: [docs/release_notes/2-3-3.md](docs/release_notes/2-3-3.md).
+
 ### Выжимка (RU) — v2.3.2
 
 Патч-релиз после v2.3.1, ядро `sing-box-lx 1.14.2-lx.4` без изменений, контракт 1.1.84. **Подписки Xray:** фрагментация ClientHello в форме `finalmask.tcp` (`type: fragment`) теперь включает фрагментацию TLS узла, как старая форма `dialerProxy` → freedom; пустой `tcpSettings` и дубли `mode`/`path`/`host` в `extra` у XHTTP больше не дают пометок «неизвестное поле». **Исправлено:** узел за хопом или в цепочке больше не несёт собственную фрагментацию TLS (она отключала встроенное разбиение записей ядра и добавляла паузы); фрагментация вместе с движком TLS `apple`/`windows` больше не мешает ядру стартовать; поля, уступающие хопу (`listen_port` у WireGuard), теперь действительно снимаются в `config.json`; правило пресета без условий выпадает, а не ловит весь трафик. Принимаются ссылки `wg://`. Подробнее: [docs/release_notes/2-3-2.md](docs/release_notes/2-3-2.md).
@@ -728,6 +736,8 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.3.3** | [docs/release_notes/2-3-3.md](docs/release_notes/2-3-3.md) |
+| **v2.3.2** | [docs/release_notes/2-3-2.md](docs/release_notes/2-3-2.md) |
 | **v2.3.1** | [docs/release_notes/2-3-1.md](docs/release_notes/2-3-1.md) |
 | **v2.3.0** | [docs/release_notes/2-3-0.md](docs/release_notes/2-3-0.md) |
 | **v2.2.0** | [docs/release_notes/2-2-0.md](docs/release_notes/2-2-0.md) |
