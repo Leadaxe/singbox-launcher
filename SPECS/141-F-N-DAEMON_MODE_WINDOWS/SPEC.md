@@ -270,16 +270,23 @@ detail называет SID).
 - **Гейт** — вердикты SPEC 137 §4 (`no core`/`missing`/`unsafe`/
   `outdated`/`ok`) над набором (§6.2) и инвариантом §6.1, закрыт по
   умолчанию. Отказ — диалог SPEC 137 §5: `--service=install` (служба есть)
-  или `--service=copy`, кнопки Copy / Run as administrator / Retry / Close;
-  ядро ниже 1.14.2-lx.2 — подсказка без команды.
+  или `--service=copy`, кнопки Run as administrator / Copy / Retry / Run
+  anyway / Close; ядро ниже 1.14.2-lx.2 — подсказка без команды. Отказ
+  предупреждает, а не запрещает (SPEC 150): «Run anyway» до закрытия
+  лаунчера стартует ядро `bin\sing-box.exe`; нарушение прав у предка с
+  командой `icacls` показывается вместо copy/install.
 - **Старт** — `exec.Command(<копия>, "run", "-c", "config.json")`, `Dir` =
   `<Data>\bin` (относительные пути конфига), `PrepareCommand`. Конфиг
   пользователя под правами — принятый риск SPEC 137 §8 п. 2. Поиск DLL из
   cwd закрыт ядром (§3 п. 12) — условие релиза выполнено.
 - **Лог** — `C:\ProgramData\sing-box-lxd\logs\classic.log` (аналог
   `/Library/Logs/sing-box-lxd/classic.log`). Каталог `logs\` (там же
-  `lxd.log` демона) создают install и copy (§3 п. 8), нет его —
-  `missing`; цепочка `ProgramData\sing-box-lxd\logs` — по §6.1. Файл создаёт
+  `lxd.log` демона) создают install и copy (§3 п. 8). `<ProgramData>\sing-box-lxd`
+  и `logs\` проверяются по правилу нашей папки §6.1; предки выше
+  (`ProgramData`, корень тома) не проверяются — как в ядре. Нет каталога
+  или нарушены права — диалог «Core log folder is missing / is not
+  protected» с «Run anyway» (SPEC 150): до закрытия лаунчера вывод ядра
+  идёт в лог лаунчера, независимо от вердикта копии. Файл создаёт
   повышенный лаунчер с явным DACL: SYSTEM и Administrators — полный доступ,
   SID пользователя лаунчера — чтение. install и copy заменяют DACL на всём
   дереве `<ProgramData>\sing-box-lxd` без исключений (§3 п. 2a) и снимают
@@ -404,7 +411,9 @@ macOS (`lx.12`) новая линия проходит.
 
 ## 13. Решения (владелец, 24.09.2026)
 
-1. Гейт копии — по повышенному токену при любом конфиге (§8).
+1. Гейт копии — по повышенному токену при любом конфиге (§8). Отказ гейта
+   и проверки каталога лога — предупреждение с «Run anyway», а не запрет
+   старта (SPEC 150).
 2. `--invite-out` и у `--service=install` — одно окно UAC; ядро подтвердило
    (§3 п. 7); `client add` — для «fresh invite» (§5.1, §5.3).
 3. Bypass прокси — паритет с ядром, пусто: WinINet и так не проксирует

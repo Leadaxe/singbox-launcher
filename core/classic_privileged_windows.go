@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"fyne.io/fyne/v2"
 
@@ -25,11 +26,17 @@ import (
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
-	privilegedCopyMissingWinText     = "With administrator rights the launcher starts the sing-box core only from a protected copy in Program Files that your user account cannot modify, and there is no such copy yet."
+	privilegedCopyMissingWinText     = "With administrator rights the launcher starts the sing-box core from a protected copy in Program Files that your user account cannot modify, and there is no such copy yet."
 	privilegedCopyOutdatedWinText    = "With administrator rights the launcher starts the sing-box core from a protected copy in Program Files, and the copy does not match the launcher's current core (%s) — for example after a core update."
-	privilegedCopyUnsafeWinText      = "With administrator rights the launcher starts the sing-box core only from a protected copy, and the copy's location failed the protection check:\n%s\nIf the command below reports the same problem, fix the permissions of that path."
+	privilegedCopyUnsafeWinText      = "With administrator rights the launcher starts the sing-box core from a protected copy, and the copy's location failed the protection check:\n%s"
 	privilegedCopyServiceNoteWinText = "The daemon service is installed on this computer, so the command is its Install or update command: it refreshes the same copy and restarts the service."
 	privilegedCopyInstructionWinText = "Click Run as administrator (or run this command in PowerShell as administrator), then click Retry:"
+	privilegedSameProblemWinText     = "If the command below reports the same problem, fix the permissions of that path."
+	privilegedFixInstructionWinText  = "Run this command in PowerShell as administrator, then click Retry:"
+	privilegedCopyRiskWinText        = "Run anyway starts the launcher's own core with administrator rights: any program running under your account could replace that file and get administrator rights on the next start. The choice lasts until the launcher is closed."
+	privilegedLogMissingWinText      = "With administrator rights the core writes its log to a protected folder, and the folder is missing:\n%s"
+	privilegedLogUnsafeWinText       = "With administrator rights the core writes its log to a protected folder, and the folder failed the protection check:\n%s"
+	privilegedLogRiskWinText         = "Any program running under your account could replace the log folder and get administrator rights on the next start. Run anyway writes the core output to the launcher's own log instead; the choice lasts until the launcher is closed."
 	daemonCoreUpdatedWinText         = "The daemon service still runs the previous core. Install the new core into the service and restart it (Run as administrator):"
 	daemonUnsafeNoticeWinText        = "The daemon service runs with SYSTEM rights from a file that is not protected:\n%s\n\nAny program running as you could replace it and take over this computer. Install or update the service to move it to a protected copy of the core (Run as administrator). The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed."
 	daemonUnsafeNoticeCoreWinText    = "The daemon service runs with SYSTEM rights from a file that is not protected:\n%s\n\nAny program running as you could replace it and take over this computer. %s The VPN keeps working meanwhile; the LOCAL tab of the connection settings shows this until it is fixed."
@@ -39,80 +46,147 @@ const (
 // копию (SPEC 141 §8): гейт по токену, а не по TUN.
 func classicElevatedUsesCopy() bool { return platform.IsElevated() }
 
+// privilegedCopyRunAnyway — «Run anyway» по копии уже выбран в этой
+// сессии (SPEC 150): гейт стартует ядро лаунчера с WARN вместо диалога.
+func (ac *AppController) privilegedCopyRunAnyway() bool {
+	return ac.ProcessService != nil && ac.ProcessService.runAnywayCopy.Load()
+}
+
 // elevatedClassicStart — гейт копии и classic.log перед повышенным стартом
-// classic. Отказ гейта уже показан диалогом (errPrivilegedCopyNotReady);
-// каталога logs\ нет — тот же диалог «missing»: его создают install и copy.
+// classic. Отказ гейта уже показан диалогом (errPrivilegedCopyNotReady).
+// classic.log не открылся (нет logs\, нарушена защита) — свой диалог с
+// «Run anyway» (SPEC 150); после него — nil-файл: Start пишет вывод ядра в
+// лог лаунчера. Проверки копии и лога деградируют независимо.
 func (ac *AppController) elevatedClassicStart() (string, *os.File, error) {
 	corePath, err := ac.privilegedCoreCopyGate()
 	if err != nil {
 		return "", nil, err
 	}
 	logFile, err := platform.OpenPrivilegedCoreLog()
-	if errors.Is(err, platform.ErrPrivilegedLogDirMissing) {
-		version := ac.launcherCoreVersion()
-		command, viaService, cmdErr := privilegedCopyCommandFor(systemDaemonServiceLayout(), ac.FileService.SingboxPath, version)
-		coreHint := ""
-		if cmdErr != nil {
-			coreHint = DaemonServiceCoreHint(version)
-		}
-		debuglog.WarnLog("startSingBox: privileged start refused: %v", err)
-		ac.showPrivilegedCopyDialog(privilegedCopyCheck{State: privilegedCopyMissing, CorePath: corePath, Detail: err.Error()},
-			command, viaService, coreHint)
-		return "", nil, errPrivilegedCopyNotReady
-	}
 	if err != nil {
+		if ac.ProcessService != nil && ac.ProcessService.runAnywayLog.Load() {
+			debuglog.WarnLog("startSingBox: core log %s: %v; Run anyway was chosen in this session, the core writes to the launcher log",
+				platform.PrivilegedCoreLogPath(), err)
+			debuglog.InfoLog("startSingBox: elevated start, core %s, launcher log", corePath)
+			return corePath, nil, nil
+		}
+		debuglog.WarnLog("startSingBox: privileged start refused, core log %s: %v", platform.PrivilegedCoreLogPath(), err)
+		if errors.Is(err, platform.ErrPrivilegedLogDirMissing) || ac.hasUI() {
+			ac.showPrivilegedLogDialog(err)
+			return "", nil, errPrivilegedCopyNotReady
+		}
 		return "", nil, fmt.Errorf("core log %s: %w", platform.PrivilegedCoreLogPath(), err)
 	}
-	debuglog.InfoLog("startSingBox: elevated start from the protected copy %s, log %s", corePath, logFile.Name())
+	debuglog.InfoLog("startSingBox: elevated start, core %s, log %s", corePath, logFile.Name())
 	return corePath, logFile, nil
 }
 
-// showPrivilegedCopyDialog — отказ гейта (SPEC 141 §8): причина, команда,
-// Run as administrator / Copy the command / Retry / Close. Нет команды
-// (ядро лаунчера копию не умеет) — вместо неё coreHint, кнопка Close.
+// elevatedRefusal — содержимое диалога отказа повышенного старта.
+type elevatedRefusal struct {
+	title, reason, risk string
+	// command — copy/install (SPEC 141 §8); "" — ядро лаунчера копию не
+	// умеет, вместо команды coreHint.
+	command    string
+	viaService bool
+	coreHint   string
+	// protection — нарушение защиты звена (SPEC 150): у предка с командой
+	// icacls диалог показывает её вместо copy/install.
+	protection *platform.ProtectionError
+	// runAnyway — флаг сессии, который ставит «Run anyway».
+	runAnyway func() *atomic.Bool
+}
+
+// showPrivilegedCopyDialog — отказ гейта копии (SPEC 141 §8, SPEC 150).
 func (ac *AppController) showPrivilegedCopyDialog(c privilegedCopyCheck, command string, viaService bool, coreHint string) {
 	if !ac.hasUI() {
 		return
 	}
-	var title, reason string
+	r := elevatedRefusal{risk: locale.T(privilegedCopyRiskWinText), command: command, viaService: viaService, coreHint: coreHint,
+		runAnyway: func() *atomic.Bool { return &ac.ProcessService.runAnywayCopy }}
 	switch c.State {
 	case privilegedCopyMissing:
-		title = locale.T("Core copy for privileged start is missing")
-		reason = locale.T(privilegedCopyMissingWinText)
+		r.title = locale.T("Core copy for privileged start is missing")
+		r.reason = locale.T(privilegedCopyMissingWinText)
 	case privilegedCopyOutdated:
-		title = locale.T("Core copy for privileged start is outdated")
+		r.title = locale.T("Core copy for privileged start is outdated")
 		what := c.Detail
 		if c.CopySHA256 != c.LauncherSHA256 {
 			what = shortSHA(c.CopySHA256) + " ≠ " + shortSHA(c.LauncherSHA256)
 		}
-		reason = locale.Tf(privilegedCopyOutdatedWinText, what)
+		r.reason = locale.Tf(privilegedCopyOutdatedWinText, what)
 	default:
-		title = locale.T("Core copy for privileged start is not protected")
-		reason = locale.Tf(privilegedCopyUnsafeWinText, c.Detail)
+		r.title = locale.T("Core copy for privileged start is not protected")
+		r.reason = locale.Tf(privilegedCopyUnsafeWinText, c.Detail)
+		errors.As(c.Err, &r.protection)
 	}
-	parts := []string{reason}
-	if command == "" {
-		parts = append(parts, coreHint)
-		dialogs.ShowActions(ac.UIService.MainWindow, title, strings.Join(parts, "\n\n"), nil, locale.T("Close"))
+	ac.showElevatedRefusalDialog(r)
+}
+
+// showPrivilegedLogDialog — classic.log не открылся (SPEC 150): нет
+// каталога logs\ (его создают install и copy) или нарушена защита.
+func (ac *AppController) showPrivilegedLogDialog(logErr error) {
+	if !ac.hasUI() {
 		return
 	}
-	if viaService {
-		parts = append(parts, locale.T(privilegedCopyServiceNoteWinText))
+	version := ac.launcherCoreVersion()
+	command, viaService, cmdErr := privilegedCopyCommandFor(systemDaemonServiceLayout(), ac.FileService.SingboxPath, version)
+	r := elevatedRefusal{risk: locale.T(privilegedLogRiskWinText), command: command, viaService: viaService,
+		runAnyway: func() *atomic.Bool { return &ac.ProcessService.runAnywayLog }}
+	if cmdErr != nil {
+		r.coreHint = DaemonServiceCoreHint(version)
 	}
-	parts = append(parts, locale.T(privilegedCopyInstructionWinText), command)
-	op := ac.DaemonCopyOnly
-	if viaService {
-		op = ac.DaemonInstallOrUpdate
+	if errors.Is(logErr, platform.ErrPrivilegedLogDirMissing) {
+		r.title = locale.T("Core log folder is missing")
+		r.reason = locale.Tf(privilegedLogMissingWinText, logErr.Error())
+	} else {
+		r.title = locale.T("Core log folder is not protected")
+		r.reason = locale.Tf(privilegedLogUnsafeWinText, logErr.Error())
+		errors.As(logErr, &r.protection)
 	}
-	actions := []dialogs.Action{
-		ac.daemonOpAction(locale.T("Run as administrator"), op, nil),
-		copyCommandAction(command),
-		{Label: locale.T("Retry"), Run: func(d *dialogs.ActionsDialog) {
+	ac.showElevatedRefusalDialog(r)
+}
+
+// showElevatedRefusalDialog — причина, риск, команда исправления; кнопки
+// Run as administrator (copy/install) / Copy the command / Retry / Run
+// anyway, слева Close. Нарушение на предке с командой icacls — она вместо
+// copy/install, без Run as administrator. «Run anyway» ставит флаг сессии
+// и повторяет старт тем же путём, что Retry.
+func (ac *AppController) showElevatedRefusalDialog(r elevatedRefusal) {
+	parts := []string{r.reason, r.risk}
+	retry := dialogs.Action{Label: locale.T("Retry"), Run: func(d *dialogs.ActionsDialog) {
+		d.Hide()
+		go StartSingBoxProcess()
+	}}
+	var actions []dialogs.Action
+	switch {
+	case r.protection != nil && r.protection.Ancestor && r.protection.Fix != "":
+		parts = append(parts, locale.T(privilegedFixInstructionWinText), r.protection.Fix)
+		actions = append(actions, copyCommandAction(r.protection.Fix), retry)
+	case r.command != "":
+		if r.viaService {
+			parts = append(parts, locale.T(privilegedCopyServiceNoteWinText))
+		}
+		if r.protection != nil {
+			parts = append(parts, locale.T(privilegedSameProblemWinText))
+		}
+		parts = append(parts, locale.T(privilegedCopyInstructionWinText), r.command)
+		op := ac.DaemonCopyOnly
+		if r.viaService {
+			op = ac.DaemonInstallOrUpdate
+		}
+		actions = append(actions, ac.daemonOpAction(locale.T("Run as administrator"), op, nil), copyCommandAction(r.command), retry)
+	default:
+		parts = append(parts, r.coreHint)
+	}
+	if ac.ProcessService != nil {
+		actions = append(actions, dialogs.Action{Label: locale.T("Run anyway"), Run: func(d *dialogs.ActionsDialog) {
+			r.runAnyway().Store(true)
+			debuglog.WarnLog("startSingBox: Run anyway chosen (%s), kept until the launcher is closed", r.title)
 			d.Hide()
 			go StartSingBoxProcess()
-		}},
+		}})
 	}
-	dialogs.ShowActions(ac.UIService.MainWindow, title, strings.Join(parts, "\n\n"), actions, locale.T("Close"))
+	dialogs.ShowActions(ac.UIService.MainWindow, r.title, strings.Join(parts, "\n\n"), actions, locale.T("Close"))
 }
 
 // daemonOpAction — кнопка операции службы под runas: строка ожидания при

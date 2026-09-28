@@ -126,6 +126,12 @@ type ProcessService struct {
 	// coreLogUnknown до первого старта в сессии, coreLogUser — лог в
 	// каталоге пользователя, coreLogPrivileged — лог старта с TUN в root-owned каталоге.
 	coreLog atomic.Int32
+	// runAnywayCopy / runAnywayLog — «Run anyway» в диалоге отказа
+	// повышенного старта на Windows (SPEC 150): до закрытия лаунчера ядро
+	// берётся из bin\ (копия не прошла проверку) и/или пишет в лог
+	// лаунчера (каталог classic.log не прошёл проверку). Не сохраняются.
+	runAnywayCopy atomic.Bool
+	runAnywayLog  atomic.Bool
 }
 
 // Куда пишет вывод classic-ядро (ProcessService.coreLog).

@@ -73,6 +73,10 @@ func (ac *AppController) showPrivilegedCopyDialog(c privilegedCopyCheck, command
 // путём (TUN → AEWP, startSingBoxPrivileged), не через повышенный токен.
 func classicElevatedUsesCopy() bool { return false }
 
+// privilegedCopyRunAnyway — «Run anyway» только на Windows (SPEC 150):
+// на macOS отказ гейта копии всегда останавливает старт с TUN.
+func (ac *AppController) privilegedCopyRunAnyway() bool { return false }
+
 // elevatedClassicStart — только Windows (SPEC 141 §8).
 func (ac *AppController) elevatedClassicStart() (string, *os.File, error) {
 	return "", nil, errors.New("elevated classic start is Windows-only")

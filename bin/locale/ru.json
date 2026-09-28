@@ -4715,20 +4715,47 @@
   "Install service": {
     "value": "Установить службу"
   },
-  "With administrator rights the launcher starts the sing-box core only from a protected copy in Program Files that your user account cannot modify, and there is no such copy yet.": {
-    "value": "С правами администратора лаунчер запускает ядро sing-box только из защищённой копии в Program Files, которую ваша учётная запись не может изменить, а такой копии пока нет."
+  "With administrator rights the launcher starts the sing-box core from a protected copy in Program Files that your user account cannot modify, and there is no such copy yet.": {
+    "value": "С правами администратора лаунчер запускает ядро sing-box из защищённой копии в Program Files, которую ваша учётная запись не может изменить, а такой копии пока нет."
   },
   "With administrator rights the launcher starts the sing-box core from a protected copy in Program Files, and the copy does not match the launcher's current core (%s) — for example after a core update.": {
     "value": "С правами администратора лаунчер запускает ядро sing-box из защищённой копии в Program Files, а копия не совпадает с текущим ядром лаунчера (%s) — например, после обновления ядра."
   },
-  "With administrator rights the launcher starts the sing-box core only from a protected copy, and the copy's location failed the protection check:\n%s\nIf the command below reports the same problem, fix the permissions of that path.": {
-    "value": "С правами администратора лаунчер запускает ядро sing-box только из защищённой копии, а расположение копии не прошло проверку защиты:\n%s\nЕсли команда ниже сообщит о той же проблеме, исправьте права на этот путь."
+  "With administrator rights the launcher starts the sing-box core from a protected copy, and the copy's location failed the protection check:\n%s": {
+    "value": "С правами администратора лаунчер запускает ядро sing-box из защищённой копии, а расположение копии не прошло проверку защиты:\n%s"
   },
   "The daemon service is installed on this computer, so the command is its Install or update command: it refreshes the same copy and restarts the service.": {
     "value": "На этом компьютере установлена служба демона, поэтому команда — её «Установить или обновить»: она обновит ту же копию и перезапустит службу."
   },
   "Click Run as administrator (or run this command in PowerShell as administrator), then click Retry:": {
     "value": "Нажмите «Выполнить от имени администратора» (или выполните эту команду в PowerShell от имени администратора), затем — «Повторить»:"
+  },
+  "If the command below reports the same problem, fix the permissions of that path.": {
+    "value": "Если команда ниже сообщит о той же проблеме, исправьте права на этот путь."
+  },
+  "Run this command in PowerShell as administrator, then click Retry:": {
+    "value": "Выполните эту команду в PowerShell от имени администратора, затем нажмите «Повторить»:"
+  },
+  "Run anyway starts the launcher's own core with administrator rights: any program running under your account could replace that file and get administrator rights on the next start. The choice lasts until the launcher is closed.": {
+    "value": "«Запустить всё равно» запускает собственное ядро лаунчера с правами администратора: любая программа, работающая под вашей учётной записью, может подменить этот файл и получить права администратора при следующем запуске. Выбор действует до закрытия лаунчера."
+  },
+  "With administrator rights the core writes its log to a protected folder, and the folder is missing:\n%s": {
+    "value": "С правами администратора ядро пишет лог в защищённую папку, а этой папки нет:\n%s"
+  },
+  "With administrator rights the core writes its log to a protected folder, and the folder failed the protection check:\n%s": {
+    "value": "С правами администратора ядро пишет лог в защищённую папку, а папка не прошла проверку защиты:\n%s"
+  },
+  "Any program running under your account could replace the log folder and get administrator rights on the next start. Run anyway writes the core output to the launcher's own log instead; the choice lasts until the launcher is closed.": {
+    "value": "Любая программа, работающая под вашей учётной записью, может подменить папку лога и получить права администратора при следующем запуске. «Запустить всё равно» направит вывод ядра в собственный лог лаунчера; выбор действует до закрытия лаунчера."
+  },
+  "Core log folder is missing": {
+    "value": "Нет папки лога ядра"
+  },
+  "Core log folder is not protected": {
+    "value": "Папка лога ядра не защищена"
+  },
+  "Run anyway": {
+    "value": "Запустить всё равно"
   },
   "The daemon service still runs the previous core. Install the new core into the service and restart it (Run as administrator):": {
     "value": "Служба демона всё ещё работает на прежнем ядре. Установите новое ядро в службу и перезапустите её (от имени администратора):"

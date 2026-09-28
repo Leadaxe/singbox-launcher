@@ -224,6 +224,7 @@ const (
 	aceAccessDeniedCallback       = 0xA
 	aceAccessDeniedCallbackObject = 0xC
 	aceInheritOnly                = 0x08
+	aceInherited                  = 0x10
 
 	accessFileWriteData       = 0x00000002
 	accessFileAppendData      = 0x00000004
@@ -245,6 +246,51 @@ const (
 // ErrProtectedPathMissing — звена копии нет при целых предках: не дыра, а
 // отсутствующая копия (Stale / missing).
 var ErrProtectedPathMissing = errors.New("the protected copy is missing")
+
+// ProtectionError — нарушение инварианта §6.1 одним звеном (SPEC 150):
+// Reason — английская причина с путём и именами прав, Fix — команда
+// icacls для консоли администратора (пусто — исправляется руками: reparse
+// point, NULL DACL, неразбираемая ACE), Ancestor — звено выше нашей папки.
+type ProtectionError struct {
+	Path     string
+	Reason   string
+	Fix      string
+	Ancestor bool
+}
+
+func (e *ProtectionError) Error() string { return e.Reason }
+
+// describeFileRights — имена запрещённых прав маски (как lxd/aclcheck.go
+// ядра); у каталога биты записи — FILE_ADD_FILE / FILE_ADD_SUBDIRECTORY.
+func describeFileRights(mask uint32, directory bool) string {
+	names := []struct {
+		bit       uint32
+		file, dir string
+	}{
+		{accessGenericAll, "GENERIC_ALL", "GENERIC_ALL"},
+		{accessGenericWrite, "GENERIC_WRITE", "GENERIC_WRITE"},
+		{accessDelete, "DELETE", "DELETE"},
+		{accessWriteDAC, "WRITE_DAC", "WRITE_DAC"},
+		{accessWriteOwner, "WRITE_OWNER", "WRITE_OWNER"},
+		{accessFileDeleteChild, "FILE_DELETE_CHILD", "FILE_DELETE_CHILD"},
+		{accessFileWriteData, "FILE_WRITE_DATA", "FILE_ADD_FILE"},
+		{accessFileAppendData, "FILE_APPEND_DATA", "FILE_ADD_SUBDIRECTORY"},
+		{accessFileWriteEA, "FILE_WRITE_EA", "FILE_WRITE_EA"},
+		{accessFileWriteAttributes, "FILE_WRITE_ATTRIBUTES", "FILE_WRITE_ATTRIBUTES"},
+	}
+	var parts []string
+	for _, name := range names {
+		if mask&name.bit == 0 {
+			continue
+		}
+		if directory {
+			parts = append(parts, name.dir)
+		} else {
+			parts = append(parts, name.file)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
 
 type aclEntry struct {
 	Type  uint8
@@ -343,20 +389,24 @@ func readSecurityFacts(path string) (securityFacts, error) {
 // {SYSTEM, Administrators, TrustedInstaller}, чужому SID нельзя заменить
 // то, что ниже; каталог копии и набор — владелец SYSTEM или Administrators,
 // чужому SID нельзя писать вовсе. Reparse point, NULL DACL и
-// неразбираемые разрешающие ACE — отказ.
+// неразбираемые разрешающие ACE — отказ. Нарушение — *ProtectionError.
 func aclViolation(path string, facts securityFacts, ancestor bool) error {
+	violation := func(fix, format string, args ...any) error {
+		return &ProtectionError{Path: path, Reason: fmt.Sprintf(format, args...), Fix: fix, Ancestor: ancestor}
+	}
+	setOwner := fmt.Sprintf(`icacls "%s" /setowner *%s`, path, sidAdministrators)
 	if facts.ReparsePoint {
-		return fmt.Errorf("%s is a reparse point, must be a real file or directory", path)
+		return violation("", "%s is a reparse point, must be a real file or directory", path)
 	}
 	if ancestor {
 		if !administrativeSID(facts.Owner) {
-			return fmt.Errorf("%s: owner %s is not SYSTEM, Administrators or TrustedInstaller", path, principalName(facts.Owner))
+			return violation(setOwner, "%s: owner %s is not SYSTEM, Administrators or TrustedInstaller", path, principalName(facts.Owner))
 		}
 	} else if s := facts.Owner; s == nil || (s.String() != sidSystem && s.String() != sidAdministrators) {
-		return fmt.Errorf("%s: owner %s is not SYSTEM or Administrators", path, principalName(facts.Owner))
+		return violation(setOwner, "%s: owner %s is not SYSTEM or Administrators", path, principalName(facts.Owner))
 	}
 	if facts.NullDACL {
-		return fmt.Errorf("%s has a NULL DACL (full access for everyone)", path)
+		return violation("", "%s has a NULL DACL (full access for everyone)", path)
 	}
 	forbidden := uint32(protectedForbidden)
 	if ancestor {
@@ -371,13 +421,20 @@ func aclViolation(path string, facts securityFacts, ancestor bool) error {
 			continue
 		case aceAccessAllowed:
 		default:
-			return fmt.Errorf("%s: %s holds an access entry of type %d that cannot be evaluated", path, principalName(e.SID), e.Type)
+			return violation("", "%s: %s holds an access entry of type %d that cannot be evaluated", path, principalName(e.SID), e.Type)
 		}
 		if administrativeSID(e.SID) {
 			continue
 		}
 		if granted := e.Mask & forbidden; granted != 0 {
-			return fmt.Errorf("%s: %s is granted 0x%x, must not be writable by a non-administrative account", path, principalName(e.SID), granted)
+			// Унаследованную ACE /remove:g не снимет: сначала наследование
+			// отключается с копией записей (/inheritance:d).
+			fix := fmt.Sprintf(`icacls "%s" /remove:g *%s`, path, e.SID.String())
+			if e.Flags&aceInherited != 0 {
+				fix = fmt.Sprintf(`icacls "%s" /inheritance:d /remove:g *%s`, path, e.SID.String())
+			}
+			return violation(fix, "%s: %s is granted %s, must not be writable by a non-administrative account",
+				path, principalName(e.SID), describeFileRights(granted, facts.Directory))
 		}
 	}
 	return nil

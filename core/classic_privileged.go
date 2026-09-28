@@ -49,6 +49,9 @@ type privilegedCopyCheck struct {
 	// LauncherCore — ядро лаунчера после EvalSymlinks.
 	LauncherCore string
 	Detail       string
+	// Err — ошибка проверки цепочки владения (unsafe / missing): на Windows
+	// несёт *platform.ProtectionError с командой исправления (SPEC 150).
+	Err error
 	// CopySHA256 / LauncherSHA256 — hex sha256; пусто, если не считались.
 	CopySHA256     string
 	LauncherSHA256 string
@@ -86,6 +89,7 @@ func checkPrivilegedCoreCopy(l daemonServiceLayout, launcherCore string, hashes 
 			c.State = privilegedCopyUnsafe
 		}
 		c.Detail = err.Error()
+		c.Err = err
 		if _, lerr := os.Lstat(l.LegacyPath); l.LegacyPath != "" && lerr == nil {
 			c.Detail += fmt.Sprintf("; %s is a copy in the legacy layout of early lx.11 builds, not used: remove it (%s)",
 				l.LegacyPath, legacyCopyRemoveCommand(l.LegacyPath))
@@ -152,6 +156,12 @@ func (ac *AppController) privilegedCoreCopyGate() (string, error) {
 		return c.CorePath, nil
 	case privilegedCopyNoCore:
 		return "", errors.New(c.Detail)
+	}
+	if ac.privilegedCopyRunAnyway() {
+		// Windows, SPEC 150: «Run anyway» в этой сессии — ядро лаунчера.
+		debuglog.WarnLog("startSingBox: core copy %s: %s; Run anyway was chosen in this session, starting the launcher core %s",
+			c.State, c.Detail, ac.FileService.SingboxPath)
+		return ac.FileService.SingboxPath, nil
 	}
 	version := ac.launcherCoreVersion()
 	command, viaService, cmdErr := privilegedCopyCommandFor(l, ac.FileService.SingboxPath, version)
