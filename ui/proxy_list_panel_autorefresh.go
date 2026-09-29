@@ -241,7 +241,7 @@ func silentRefreshProxies(ac *core.AppController, scope services.ProxyScope, gro
 	if err != nil {
 		// Тихий путь — тихая ошибка: всплывать диалогом раз в пять секунд
 		// из-за моргнувшей сети нельзя. Ручной Refresh покажет её честно.
-		debuglog.WarnLog("clash_api_tab: auto-refresh failed: %v", err)
+		debuglog.WarnLog("proxy_list_panel: auto-refresh failed: %v", err)
 		return
 	}
 	fyne.Do(func() {

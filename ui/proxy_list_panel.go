@@ -79,7 +79,7 @@ type ProxyListPanel struct {
 	syncFilterGroup func(group string)
 
 	// autoRefresh — тикер тихого перечитывания списка (только Remote,
-	// см. clash_api_tab_autorefresh.go). nil на Local.
+	// см. proxy_list_panel_autorefresh.go). nil на Local.
 	autoRefresh *proxyAutoRefresh
 	// silentRefresh — обновление без побочных эффектов ручного действия
 	// (скролл, статус-строка). Дёргается тикером.
@@ -197,7 +197,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			if len(remoteGroups) > 0 {
 				defaultSelector = remoteGroups[0]
 			} else if groupsErr != nil {
-				debuglog.WarnLog("clash_api_tab: remote groups unavailable: %v", groupsErr)
+				debuglog.WarnLog("proxy_list_panel: remote groups unavailable: %v", groupsErr)
 			}
 		}
 	}
@@ -588,7 +588,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	}
 
 	onResetAPIState := func() {
-		debuglog.InfoLog("clash_api_tab: Resetting API state.")
+		debuglog.InfoLog("proxy_list_panel: Resetting API state.")
 		// SPEC 097: сменился источник — список групп берём у новой машины.
 		// Сам сброс идёт до перечитывания прокси, поэтому группы успевают
 		// обновиться раньше, чем поедет запрос за списком узлов.
@@ -1905,7 +1905,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		} else if updated, _, err := config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath); err == nil && len(updated) > 0 {
 			currentSelectorOptions = updated
 		} else if err != nil && !os.IsNotExist(err) {
-			debuglog.ErrorLog("clash_api_tab: failed to get selector groups for runtime window: %v", err)
+			debuglog.ErrorLog("proxy_list_panel: failed to get selector groups for runtime window: %v", err)
 		}
 
 		// Окно опрашивает ядро само, в фоне (core_runtime_window.go).

@@ -17,7 +17,7 @@
 //   - `OnOverrideChanged` — register listener (status badge update, tab enable,
 //     force-refresh).
 //   - `EffectiveClashAPIConfig` — single resolver consulted by every callsite
-//     in clash_api_tab.go. Returns (baseURL, token, enabled, remote).
+//     in proxy_list_panel.go. Returns (baseURL, token, enabled, remote).
 //   - `CurrentGeneration` — atomic gen counter для drop-stale в refresh-goroutine'ах
 //     (см. SPEC 064 §«Concurrency»).
 //   - `NormalizeHost` — strip scheme prefix, reject `:`/`/`/IPv6 brackets.
@@ -54,7 +54,7 @@ var (
 	// захватывают snapshot generation на старте и в `fyne.Do` callback'е проверяют:
 	// если generation сместился — drop stale, не пишут в UI.
 	//
-	// Тот же паттерн что `pingAllGeneration` в `clash_api_tab.go`.
+	// Тот же паттерн что `pingAllGeneration` в `proxy_list_panel.go`.
 	clashConfigGeneration uint64
 
 	overrideListenersMu sync.RWMutex

@@ -72,7 +72,7 @@ func collectSelectorGroups(scope services.ProxyScope, configPath string) selecto
 	} else if groupsErr != nil {
 		// Машина недоступна или ядро не запущено — список пуст, но локальные
 		// группы подставлять нельзя: это чужое ядро.
-		debuglog.WarnLog("clash_api_tab: remote groups unavailable: %v", groupsErr)
+		debuglog.WarnLog("proxy_list_panel: remote groups unavailable: %v", groupsErr)
 	}
 	return snap
 }
@@ -89,10 +89,10 @@ func logSelectorConfigErr(err error) {
 	if os.IsNotExist(err) {
 		// Cold-start: config.json ещё не существует (пользователь не нажал
 		// Save). Не повод писать ERROR.
-		debuglog.DebugLog("clash_api_tab: config.json not present yet (cold start): %v", err)
+		debuglog.DebugLog("proxy_list_panel: config.json not present yet (cold start): %v", err)
 		return
 	}
-	debuglog.ErrorLog("clash_api_tab: failed to get selector groups: %v", err)
+	debuglog.ErrorLog("proxy_list_panel: failed to get selector groups: %v", err)
 }
 
 // selectorReloader сериализует перечитывание групп одной панели.
