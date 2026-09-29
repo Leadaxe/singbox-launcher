@@ -19,6 +19,11 @@ func TestParseAddServerInput(t *testing.T) {
 		{"outbound array", `[{"type":"socks","tag":"a","server":"1.1.1.1","server_port":1080},
 		                     {"type":"http","tag":"b","server":"2.2.2.2","server_port":8080}]`, 2},
 		{"full config", `{"outbounds":[{"type":"socks","tag":"s","server":"1.1.1.1","server_port":1080}]}`, 1},
+		// Импорт — запись на КАЖДЫЙ узел документа; «первый узел» только у
+		// вкладки JSON окна узла (контракт 1.1.89).
+		{"document with several nodes", `{"outbounds":[{"type":"direct","tag":"direct"},
+		                     {"type":"socks","tag":"a","server":"1.1.1.1","server_port":1080},
+		                     {"type":"http","tag":"b","server":"2.2.2.2","server_port":8080}]}`, 2},
 		{"garbage", "not a link at all", 0},
 		{"empty", "   ", 0},
 	}
@@ -156,6 +161,7 @@ func TestManualJSONResult_MultiGoesAsText(t *testing.T) {
 	for _, body := range []string{
 		`[{"type":"socks","tag":"a","server":"1.1.1.1","server_port":1080}]`,
 		`{"outbounds":[{"type":"socks","tag":"s","server":"1.1.1.1","server_port":1080}]}`,
+		`{"outbounds":[{"type":"socks","tag":"a","server":"1.1.1.1","server_port":1080},{"type":"http","tag":"b","server":"2.2.2.2","server_port":8080}]}`,
 	} {
 		res, err := manualJSONResult(body, "")
 		if err != nil {

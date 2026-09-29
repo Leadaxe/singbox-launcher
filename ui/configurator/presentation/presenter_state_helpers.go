@@ -88,16 +88,16 @@ func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile)
 	// неотчуждаемый пресет попадал в config.json, но не показывался в списке
 	// правил — пользователь видел в конфиге правила, которых нет в UI, и не
 	// мог добраться до их настроек.
+	p.model.LatePresetsSeeded = append([]string(nil), state.LatePresetsSeeded...)
 	if p.model.TemplateData != nil {
-		state.Rules = corestate.NormalizeRuleOrder(state.Rules,
-			wizardtemplate.RuleOrderSpecs(p.model.TemplateData.Presets))
+		specs := wizardtemplate.RuleOrderSpecs(p.model.TemplateData.Presets)
+		// LxBox §578: разовый засев поздних дефолтных пресетов — до
+		// нормализации оси, чтобы новое правило сразу встало на свой номер.
+		state.Rules, p.model.LatePresetsSeeded = corestate.SeedLateDefaultRules(state.Rules, specs, state.LatePresetsSeeded)
+		state.Rules = corestate.NormalizeRuleOrder(state.Rules, specs)
 	}
 
 	p.model.PresetRefs = wizardmodels.SyncStateRulesToPresetRefs(state.Rules)
-	// SPEC 121 §10.4: строки правил, которые узлы носят с собой, приходят не
-	// из state.Rules, а из самих узлов — их дом там. Пересев обязан
-	// произойти ДО RuleOrderFromAxis: тот дописывает слоты по этому списку.
-	wizardmodels.SeedNodeRuleRefs(p.model)
 	p.model.DNSTemplateOverrides = wizardmodels.SyncStateV6ToDNSOverrides(state.DNS)
 	// SPEC 129: значения переменных шаблонных серверов — из записей.
 	p.model.DNSTemplateVars = wizardmodels.SyncStateV6ToDNSTemplateVars(state.DNS)
@@ -108,7 +108,7 @@ func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile)
 	// Порядок задаёт ось (Num), а не позиция в слайсе — сортировку и
 	// раздачу номеров в модель делает RuleOrderFromAxis (SPEC 106).
 	// Fallback на дефолтную последовательность если state v5 (нет RulesV6).
-	order := wizardmodels.RuleOrderFromAxis(state.Rules, p.model.PresetRefs, p.model.CustomRules, p.model.NodeRuleRefs)
+	order := wizardmodels.RuleOrderFromAxis(state.Rules, p.model.PresetRefs, p.model.CustomRules)
 	if len(order) == 0 {
 		wizardmodels.RebuildRuleOrder(p.model)
 	} else {
@@ -116,9 +116,6 @@ func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile)
 		// Reconcile в случае если в model.CustomRules / PresetRefs есть entries
 		// которые не попали в order (могут быть после миграции v5→v6).
 		wizardmodels.ReconcileRuleOrder(p.model)
-		// SPEC 121 §10.4: слоты правил узлов дописаны в КОНЕЦ (их номера
-		// живут не в state.Rules, а у узлов) — общая пересортировка по оси
-		// ставит их на свои места среди остальных.
 		wizardmodels.SortRuleOrderByAxis(p.model)
 	}
 	// Доразметка того, что приехало мимо оси (legacy state, дописанные

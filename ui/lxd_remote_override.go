@@ -62,11 +62,12 @@ func SetLxdRemoteOverride(ac *core.AppController, id string) error {
 	lxdOverrideActive = true
 	lxdOverrideMu.Unlock()
 
-	// Транспорт ставим в APIService: через него ходят ВСЕ proxy-операции
-	// core-слоя (AutoLoadProxies, ping, переключение узла). Без этого
-	// EffectiveProxyTransport отдавал наш gRPC только тем вызовам, что идут
-	// из UI, а список прокси грузился локальным Clash-путём — роутер работал
-	// на своём конфиге, а вкладка показывала локальные узлы.
+	// Транспорт ставим в APIService: через него ходят proxy-операции
+	// core-слоя без области (AutoLoadProxies, трей, горячие клавиши). Без
+	// этого список прокси грузился бы локальным путём — роутер работал на
+	// своём конфиге, а вкладка показывала локальные узлы. UI-вызовы с
+	// областью (EffectiveProxyTransportIn) берут машину из её выбора, а не
+	// отсюда.
 	if ac.APIService != nil {
 		ac.APIService.SetTransport(transport)
 		// Сменилась машина — прежние узлы и группа принадлежали ДРУГОМУ ядру.
@@ -96,8 +97,9 @@ func ClearLxdRemoteOverride(ac *core.AppController) {
 	//
 	// SetTransport(nil) означает «никакого транспорта», а не «транспорт
 	// локального демона», поэтому сразу возвращаем транспорт своего движка.
-	// Без этого в lxd-режиме Servers падал обратно на Clash HTTP, которого
-	// там нет вовсе: `dial 127.0.0.1:9190: connection refused`. В classic
+	// Без этого в lxd-режиме операции core-слоя (AutoLoadProxies, трей)
+	// падали бы обратно на Clash HTTP, которого там нет вовсе:
+	// `dial 127.0.0.1:9190: connection refused`. В classic
 	// RestoreOwnTransport — no-op, и путь через Clash HTTP остаётся верным.
 	if ac != nil && ac.APIService != nil {
 		if _, isRemote := ac.APIService.TransportOverride().(*services.LxdRemoteTransport); isRemote {
@@ -253,6 +255,25 @@ func RegisterOverrideAPIHooks(ac *core.AppController) {
 		ClearLxdRemoteOverride(ac)
 	}
 	ac.UIService.LxdOverrideStateFunc = GetLxdRemoteOverride
+	// Источник ядра машины для core-слоя (core.CoreTarget: tailnet SPEC 148,
+	// пулы, цепочки): транспорт берётся из выбора машины, а не из
+	// APIService — там при взгляде на Local стоит транспорт своего движка, а
+	// канал к машине живёт до Disconnect.
+	ac.UIService.LxdMachineTransportFunc = lxdMachineTransport
+}
+
+// lxdMachineTransport — транспорт подключённой машины: id "" — выбранной
+// сейчас, иначе только этой (lxdOverrideTransportForID).
+func lxdMachineTransport(id string) (interface{}, bool) {
+	if id == "" {
+		t := lxdOverrideTransportOrNil()
+		return t, t != nil
+	}
+	t, ok := lxdOverrideTransportForID(id)
+	if !ok {
+		return nil, false
+	}
+	return t, true
 }
 
 type overrideError string

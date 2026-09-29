@@ -302,6 +302,9 @@ func (v TemplateVar) GateDeps() []string {
 type ResolvedVar struct {
 	Scalar string
 	List   []string
+	// Raw — значение узла for_each (§578): тег, поле записи или поле тела
+	// любого JSON-типа. Не nil — подстановка отдаёт его копию как есть.
+	Raw interface{}
 }
 
 // GenerateSecret возвращает случайную строку из 16 символов [A-Za-z0-9].

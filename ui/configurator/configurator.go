@@ -32,6 +32,7 @@ package configurator
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image/color"
 	"strings"
@@ -86,6 +87,13 @@ func ShowConfigWizard(parent fyne.Window) {
 // Платформа берётся из записи реестра, а не из состояния: это свойство
 // машины, и второго источника правды у него быть не должно.
 func ShowConfigWizardForMachine(parent fyne.Window, machine services.RemoteDaemon) {
+	showConfigWizardFor(parent, machineTargetSpec(machine), machine.ResourceDir())
+}
+
+// machineTargetSpec — таргет профиля машины из записи реестра. Общий для
+// окна Мастера и сборки без окна (RebuildMachineConfig): второй экземпляр
+// этой раскладки разошёлся бы с первым на первой же правке.
+func machineTargetSpec(machine services.RemoteDaemon) wizardtemplate.TargetSpec {
 	tgt := machine.Target()
 	tgt.MachineID = machine.ID
 	// Два каталога, и их нельзя путать: ResourceDir уезжает в конфиг (путь
@@ -104,7 +112,90 @@ func ShowConfigWizardForMachine(parent fyne.Window, machine services.RemoteDaemo
 	// файловую систему лаунчера. Пусто, если с машиной ещё ни разу не
 	// соединялись — тогда правила с наборами собрать нельзя, о чём Save
 	// скажет явно.
-	showConfigWizardFor(parent, tgt, machine.ResourceDir())
+	return tgt
+}
+
+// restoreMachineTargetFromState — платформа профиля машины после LoadState:
+// id и каталоги из реестра (§5.8 — в файле их нет), а платформу и
+// архитектуру пользователь мог переопределить на вкладке Target — его
+// сохранённый выбор уважаем. Legacy-файлы без meta.target — реестр целиком.
+func restoreMachineTargetFromState(target wizardtemplate.TargetSpec, stateFile *wizardmodels.WizardStateFile) wizardtemplate.TargetSpec {
+	next := target.Normalized()
+	if stateFile.Target == constants.ConfigTargetRemote {
+		if s := strings.TrimSpace(stateFile.TargetPlatform); s != "" {
+			next.GOOS = s
+		}
+		if s := strings.TrimSpace(stateFile.TargetArch); s != "" {
+			next.GOARCH = s
+		}
+	}
+	return next.Normalized()
+}
+
+// RebuildMachineConfig пересобирает config.json удалённой машины из её
+// сохранённого состояния — тот же шаг, что Save Мастера этой машины
+// (WriteRemoteConfig: разбор узлов, check, запись
+// wizard_states/remote/<id>/config.json), только без окна. Нужен Save choice
+// вкладки Network у Remote (SPEC 148 §3): другой сборки конфига машины нет.
+//
+// Машине конфиг не отправляется — как и после Save Мастера, доставка
+// остаётся за Deploy config в строке машины. Возвращает путь записанного
+// файла. Блокирующая — звать из горутины.
+func RebuildMachineConfig(machineID string) (string, error) {
+	ac := core.GetController()
+	if ac == nil || ac.FileService == nil {
+		return "", errors.New(locale.T("controller not available"))
+	}
+	machine, ok, err := services.NewRemoteRegistry(ac.FileService.Layout.Data).Get(machineID)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("machine %q is not in the registry", machineID)
+	}
+	target := machineTargetSpec(machine)
+
+	templateLoader := &wizardbusiness.DefaultTemplateLoader{}
+	templateData, err := templateLoader.LoadTemplateData(ac.FileService.Layout)
+	if err != nil {
+		return "", err
+	}
+	model := wizardmodels.NewWizardModel()
+	model.TemplateData = templateData
+	model.DataDir = ac.FileService.Layout.Data
+	model.Target = target.Normalized()
+	model.ResourceDir = machine.ResourceDir()
+	model.MachineID = target.MachineIDOrEmpty()
+	// Окна нет: UpdateUI презентера без окна ничего не делает, диалоги
+	// предела и отказа ядра идут на главное окно, как у Save при закрытии.
+	presenter := wizardpresentation.NewWizardPresenter(model, &wizardpresentation.GUIState{}, templateLoader)
+	stateStore := presenter.GetStateStore()
+	if !stateStore.StateExists("") {
+		return "", fmt.Errorf("machine %q has no saved state", machineID)
+	}
+	stateFile, err := stateStore.LoadCurrentState()
+	if err != nil {
+		return "", err
+	}
+	if err := presenter.LoadState(stateFile); err != nil {
+		return "", err
+	}
+	model.Target = restoreMachineTargetFromState(target, stateFile)
+	presenter.InitializeTemplateState()
+	if len(model.DNSServers) == 0 {
+		wizardbusiness.ApplyWizardDNSTemplate(model)
+	}
+	wizardbusiness.ApplyDNSVarsFromSettingsToModel(model)
+
+	// Корень состояния tailnet — путь НА МАШИНЕ (SPEC 122), глобальный для
+	// генератора узлов. Мастер ставит его при открытии; здесь — на время
+	// сборки, с возвратом прежнего: открытое окно Мастера другой цели
+	// продолжает со своим корнем.
+	prevRoot := config.TailscaleRemoteStateDirRoot()
+	config.SetTailscaleRemoteStateDirRoot(target.TailscaleStateDir)
+	defer config.SetTailscaleRemoteStateDirRoot(prevRoot)
+
+	return presenter.WriteRemoteConfig()
 }
 
 // showConfigWizardFor — общая точка обоих входов Мастера (Local и
@@ -316,16 +407,7 @@ func buildWizardWindow(
 			// молча откатывалась бы на рапорт демона при каждом открытии.
 			// Legacy-файлы без meta.target падают обратно на реестр целиком.
 			if target.IsRemote() {
-				next := target.Normalized()
-				if stateFile.Target == constants.ConfigTargetRemote {
-					if s := strings.TrimSpace(stateFile.TargetPlatform); s != "" {
-						next.GOOS = s
-					}
-					if s := strings.TrimSpace(stateFile.TargetArch); s != "" {
-						next.GOARCH = s
-					}
-				}
-				model.Target = next.Normalized()
+				model.Target = restoreMachineTargetFromState(target, stateFile)
 			}
 		}
 	} else {
@@ -635,10 +717,10 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 	// Initialize button container
 	updateNavigationButtons(guiState, tabs, *currentTabIndex)
 
-	// Ревизии последнего показа Rules и DNS (SPEC 121 §10.4). Ноль означает
-	// «ещё не показывали»: первый заход перестраивает всегда — вкладка могла
-	// быть построена до того, как модель дочитала источники.
-	var lastRulesRevision, lastDNSRevision uint64
+	// Ревизия последнего показа DNS. Ноль означает «ещё не показывали»:
+	// первый заход перестраивает всегда — вкладка могла быть построена до
+	// того, как модель дочитала источники.
+	var lastDNSRevision uint64
 
 	// Update buttons when switching tabs
 	tabs.OnSelected = func(item *container.TabItem) {
@@ -707,32 +789,23 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 			guiState.SaveButton.Show()
 		}
 
-		// SPEC 121 §10.4: правила и DNS-записи, которые узлы носят с собой,
-		// живут в дереве источников, а не в списках вкладок. Правка узла
-		// бампает ревизию модели (через инвалидацию пула), и вкладка, чей
-		// показ старше этой ревизии, обязана перестроиться при заходе —
-		// иначе строка правила узла появлялась бы только после перезапуска.
+		// Правка источников бампает ревизию модели (через инвалидацию пула),
+		// и вкладка DNS, чей показ старше этой ревизии, перестраивается при
+		// заходе.
 		if item.Text == locale.T("DNS") && lastDNSRevision != model.Revision {
 			lastDNSRevision = model.Revision
 			if guiState.RefreshDNSList != nil {
 				guiState.RefreshDNSList()
 			}
 		}
+		// LxBox §578: серверы пресета с for_each строятся по узлам эмиссии —
+		// разбор нужен и вкладке DNS (после него список перерисуется).
+		if item.Text == locale.T("DNS") {
+			presenter.TriggerParseForPreview()
+		}
 
 		// Handle tab-specific actions
 		if item == rulesTabItem {
-			// SPEC 121 §10.4: состав строк правил, которые узлы носят с
-			// собой, — производная от источников. Пересев до пересборки
-			// вкладки: иначе строка правила, добавленного узлу на соседней
-			// вкладке, появилась бы только после перезапуска.
-			if lastRulesRevision != model.Revision {
-				lastRulesRevision = model.Revision
-				if wizardmodels.SeedNodeRuleRefs(model) {
-					wizardmodels.ReconcileRuleOrder(model)
-					wizardmodels.EnsureRuleNums(model)
-					wizardmodels.SortRuleOrderByAxis(model)
-				}
-			}
 			// Trigger async parsing to ensure outbounds are up-to-date
 			presenter.TriggerParseForPreview()
 			// Список целей у preset-строк — снимок availableOutbounds,

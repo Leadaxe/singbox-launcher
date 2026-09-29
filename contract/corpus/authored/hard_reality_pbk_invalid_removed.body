@@ -1,0 +1,6 @@
+# Авторское тело (свой сервер, источник — голое тело узла): tls.reality.public_key не 32 байта.
+# Ядро sing-box-lx отвергает такой конфиг целиком (common/tls/reality_client.go NewRealityClient: «invalid public_key»), поэтому правило
+# жёсткое (core_rejects, контракт 1.1.91) и применяется и на авторском теле:
+# код без applied:false. Снимается весь блок reality (норма tls.json, как на обычном
+# теле body/xray/vless_reality_pbk_junk): reality без ключа ядро тоже отвергает (контракт 1.1.97).
+{"type":"vless","tag":"own-vless","server":"example-5.com","server_port":443,"uuid":"00000000-0000-4000-8000-000000000591","tls":{"enabled":true,"server_name":"example-5.com","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"enabled","short_id":"0123abcd"}}}

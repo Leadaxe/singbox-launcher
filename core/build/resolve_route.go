@@ -157,16 +157,12 @@ func ResolveRouteWithGlobals(
 	// в слайсе. Нормализация здесь же пере-засевает неотчуждаемые пресеты —
 	// именно re-seed на каждой сборке, а не флаг в state, делает их
 	// неотчуждаемыми (D-050): стёртое из state правило возвращается.
-	//
-	// SPEC 121 §10.2: правила, которые узлы носят с собой, уже дописаны в
-	// state.Rules инъекцией (MergePresetsIntoRoute) — своей ветки у них нет,
-	// они рядовые inline/srs.
 	rules := corestate.NormalizeRuleOrder(state.Rules, template.RuleOrderSpecs(td.Presets))
 
 	for _, rule := range rules {
 		switch rule.Kind {
 		case corestate.RuleKindPreset:
-			resolvePresetRouteRule(&out, presetByID, rule, dataDir, emittedTags, target, globalVars, td.Vars)
+			resolvePresetRouteRule(&out, presetByID, rule, dataDir, emittedTags, target, globalVars, td.Vars, td.PresetNodes)
 		case corestate.RuleKindInline:
 			resolveInlineRouteRule(&out, rule)
 		case corestate.RuleKindSrs:
@@ -187,6 +183,7 @@ func resolvePresetRouteRule(
 	target template.TargetSpec,
 	globalVars map[string]string,
 	globalDecls []template.TemplateVar,
+	nodes []template.PresetNode,
 ) {
 	p, ok := presetByID[rule.Ref]
 	if !ok {
@@ -199,7 +196,7 @@ func resolvePresetRouteRule(
 		return
 	}
 	pb := body.(*corestate.PresetBody)
-	frags, warns, ok := ExpandPresetWithGlobals(p, pb.Vars, globalVars, globalDecls, target)
+	frags, warns, ok := ExpandPresetForNodes(p, pb.Vars, globalVars, globalDecls, target, nodes)
 	for _, w := range warns {
 		debuglog.WarnLog("route resolve: %s", w.String())
 	}
@@ -250,7 +247,12 @@ func resolvePresetRouteRule(
 	// SPEC 067 Phase 9: каждая rule из frags.RoutingRules эмитится отдельной
 	// ResolvedRouteRule (in-order).
 	for _, rr := range frags.RoutingRules {
-		cleaned := cleanDanglingRuleSetInRule(rr, emittedTags)
+		cleaned, lost := cleanDanglingRuleSetInRule(rr, emittedTags)
+		if lost && rule.Enabled {
+			// SPEC 153: наборов правила нет в конфиге (.srs не скачан) —
+			// правило выпало целиком, иначе оно ловило бы весь трафик.
+			out.Warnings = append(out.Warnings, fragmentDropped(p.ID, fragmentKindRule, "rule_set").templateWarning())
+		}
 		if cleaned == nil {
 			continue
 		}

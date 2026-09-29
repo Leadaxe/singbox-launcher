@@ -857,7 +857,7 @@ Classic-движок поднимает конфиг с TUN от root через
 (`core/classic_privileged.go`, тексты диалога — в `_darwin.go`): копия есть, проходит цепочку владения и
 совпадает с ядром лаунчера по sha256 — проверка цепочки и кэш хэшей взяты у
 классификатора SPEC 136. Только затем `platform.StartPrivilegedCore` запускает
-`/usr/bin/env -i PATH=… /bin/sh -c <постоянное тело> <пути>`: ни файла-скрипта, ни
+`/usr/bin/env -i PATH=… /bin/bash -p -c <постоянное тело> <пути>`: ни файла-скрипта, ни
 окружения лаунчера в root-шелле. Отказ гейта показывает диалог с командой
 (`internal/dialogs.ShowCommandRetry`) вместо ошибки старта, Retry идёт через
 `StartSingBoxProcess`. Авторизация живёт сессию лаунчера; `privilegedAuthReuse` в

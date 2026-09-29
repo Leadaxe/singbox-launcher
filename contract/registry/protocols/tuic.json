@@ -194,7 +194,8 @@
         "format": "uuid",
         "on_invalid": {
           "action": "drop",
-          "code": "type_invalid"
+          "code": "type_invalid",
+          "core_rejects": true
         },
         "required": true,
         "secret": true,

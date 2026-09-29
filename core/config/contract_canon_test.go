@@ -31,19 +31,7 @@ type contractNode struct {
 	Scheme string         `json:"scheme"`
 	Label  string         `json:"label,omitempty"`
 	Entry  map[string]any `json:"entry"`
-	// Sections — связка узла, извлечённая из ЦЕЛОГО sing-box-конфига
-	// (NODE_SECTIONS.md §7/§8): правила маршрута, DNS-серверы и DNS-правила,
-	// ссылающиеся на этот узел. Форма — §2 контракта, ссылки на узел уже
-	// переписаны в `@self`.
-	//
-	// Почему не `map[string]any`, а сырой JSON после канонизации: секции
-	// приезжают из парсера непрозрачным блоком, и раскладывать их в
-	// типизированную структуру раннера значило бы завести ВТОРОЙ читатель
-	// формы записей — ровно то, что запрещает NODE_SECTIONS.md §1.
-	//
-	// Отсутствует у узла без секций (обычное тело, узел не один в конфиге).
-	Sections json.RawMessage `json:"sections,omitempty"`
-	Chain    []contractNode  `json:"chain,omitempty"`
+	Chain  []contractNode `json:"chain,omitempty"`
 	// Warnings — записи деградаций результата разбора (PARSING_PRINCIPLES §6, контракт 1.1.0):
 	// {code, path?, value?}. `params` раннер пока не пишет — их ставит
 	// санитайзер реестра (W2a), до него параметров ни у одного кода нет.
@@ -60,6 +48,8 @@ type contractWarning struct {
 	Code  string `json:"code"`
 	Path  string `json:"path,omitempty"`
 	Value string `json:"value,omitempty"`
+	// Applied — false у мягкого правила на авторском теле (контракт 1.1.87).
+	Applied *bool `json:"applied,omitempty"`
 }
 
 // contractWarningValue — value для результата разбора из Warning (PARSING_PRINCIPLES §6).
@@ -204,12 +194,7 @@ func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 
 	var warnings []contractWarning
 	for _, w := range nodeWarnings {
-		warnings = append(warnings, contractWarning{Code: w.Code, Path: w.Path, Value: contractWarningValue(w)})
-	}
-
-	sections, err := canonNodeSections(node)
-	if err != nil {
-		return contractNode{}, fmt.Errorf("sections %s: %w", node.Scheme, err)
+		warnings = append(warnings, contractWarning{Code: w.Code, Path: w.Path, Value: contractWarningValue(w), Applied: w.Applied})
 	}
 
 	out := contractNode{
@@ -217,7 +202,6 @@ func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 		Scheme:   node.Scheme,
 		Label:    node.Label,
 		Entry:    canonValue(entry).(map[string]any),
-		Sections: sections,
 		Warnings: warnings,
 	}
 
@@ -229,59 +213,6 @@ func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 		out.Chain = append(out.Chain, hopNode)
 	}
 	return out, nil
-}
-
-// canonNodeSections — секции узла в форме результата разбора (NODE_SECTIONS.md §8,
-// договорённость с LxBox от 14.09.2026).
-//
-// Из записей снимаются `id` и `num`. Оба — МЕТАДАННЫЕ ОСИ принимающей
-// стороны, а не свойство тела: `num` раздаётся извлечением по порядку правил
-// узла (NodeRuleDefaultNum и дальше), а на приёмнике всё равно
-// перенумеровывается импортом; `id` лаунчер не генерирует вовсе. Оставь их в
-// ожидании — и раннер второй стороны, у которой своя нумерация, падал бы на
-// каждом кейсе с секциями, ничего содержательного при этом не проверив.
-//
-// Порядок записей сохраняется: он нормативен (правила узла встают на ось
-// подряд, и перестановка меняет маршрутизацию).
-func canonNodeSections(node *configtypes.ParsedNode) (json.RawMessage, error) {
-	if node == nil || node.Sections == nil || len(node.Sections.Raw) == 0 {
-		return nil, nil
-	}
-	var decoded map[string]any
-	if err := json.Unmarshal(node.Sections.Raw, &decoded); err != nil {
-		return nil, fmt.Errorf("разбор секций: %w", err)
-	}
-	if rules, ok := decoded["rules"].([]any); ok {
-		for _, r := range rules {
-			rec, ok := r.(map[string]any)
-			if !ok {
-				continue
-			}
-			delete(rec, "id")
-			delete(rec, "num")
-		}
-	}
-	if dns, ok := decoded["dns"].(map[string]any); ok {
-		for _, key := range []string{"servers", "rules"} {
-			list, ok := dns[key].([]any)
-			if !ok {
-				continue
-			}
-			for _, item := range list {
-				rec, ok := item.(map[string]any)
-				if !ok {
-					continue
-				}
-				delete(rec, "id")
-				delete(rec, "num")
-			}
-		}
-	}
-	raw, err := canonMarshal(canonValue(decoded))
-	if err != nil {
-		return nil, err
-	}
-	return json.RawMessage(raw), nil
 }
 
 // decodeEmittedEntry вытаскивает JSON-объект из эмитированного фрагмента

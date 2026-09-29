@@ -1,0 +1,29 @@
+{
+  "_comment": "#tpl внутри #value ветки #if.",
+  "vars": [
+    {
+      "name": "on",
+      "type": "bool"
+    },
+    {
+      "name": "name",
+      "type": "text"
+    }
+  ],
+  "config": {
+    "items": [
+      {
+        "#if": {
+          "#and": [
+            "@on"
+          ],
+          "#value": {
+            "tag": {
+              "#tpl": "@{name}-dns"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

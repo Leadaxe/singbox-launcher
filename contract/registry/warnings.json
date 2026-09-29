@@ -602,6 +602,30 @@
       "dart": "GroupMemberMissingWarning",
       "go": "на узле-группе (warnings у kind=auto, контракт 1.1.66), params count — число потерянных членов, одна запись на группу (повторная потеря на следующем шаге складывает число): импорт sing-box — core/config/subscription/singbox_groups.go:singboxGroupToNode; Xray-группа (балансировщик) — core/config/subscription/xray_json_array.go:resolveGroupMembers; дорезолв состава тела — core/config/subscription/parse_body.go:bodyParseState.finish; общий шаг — core/config/subscription/singbox_groups.go:markGroupMemberMissing; в состояние — core/config/migrate_materialize.go:canonicalNodeFromEntry. Потеря члена у Auto-группы канона на сборке (core/config/nodelink_resolve.go:resolveCanonicalGroup) — текстом отчёта сборки"
     },
+    "duplicates_collapsed": {
+      "severity": "info",
+      "params": [
+        "count",
+        "names"
+      ],
+      "title_en": "Repeats of this server in the subscription: {count}",
+      "title_ru": "Повторов этого сервера в подписке: {count}",
+      "text_en": "The subscription lists this same server again with identical settings, under the names: {names} (repeats: {count}). They are one and the same connection, so only this entry is kept.",
+      "text_ru": "В подписке этот же сервер с теми же настройками записан ещё раз под именами: {names} (повторов: {count}). Это одно и то же соединение, поэтому оставлена одна запись.",
+      "cause_en": "The provider repeats one server under several names — often different countries or brands. The address, keys and every other setting match exactly; only the label differs, so traffic through any of these entries takes the same path and leaves through the same exit.",
+      "cause_ru": "Провайдер повторяет один сервер под несколькими именами — часто разными странами или брендами. Адрес, ключи и все остальные настройки совпадают полностью, отличается только подпись, поэтому трафик через любую из этих записей идёт одним путём и выходит в одном месте.",
+      "fix_en": [
+        "Nothing to do: nothing was lost, the subscription simply has fewer distinct servers than entries.",
+        "If you need the countries named in the list, ask the provider: these names lead to the same server."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно: ничего не потерялось, просто разных серверов в подписке меньше, чем записей.",
+        "Если нужны именно эти страны, спросите провайдера: под этими именами один и тот же сервер."
+      ],
+      "desc": "Записи тела с одинаковым содержимым (подпись полной эмиссии без tag/detour, плюс путь дозвона) схлопнуты в первую (SPEC 113-A §2); код ставится на выжившую запись, чтобы пользователь видел, куда делись остальные (SPEC 154). count — число схлопнутых записей; names — их имена в порядке тела через \", \", без пустых, без повторов и без имени выжившего, не больше 10, дальше \", …\"; если называть некого — имя выжившего. В Xray-массиве то же для серверов, выброшенных правилом владения (SPEC 094 §342), кроме членов балансировщика своего элемента. Место — в конце кодов разбора, перед кодами санитайзера. Код — факт об источнике: пересчёт кодов по телу его не стирает, свежий разбор источника заменяет. Группы не схлопываются и кода не получают. Сводку источника и dropped[] схлопнутые записи не пополняют.",
+      "dart": null,
+      "go": "общий шаг — core/config/subscription/server_conn_key.go:markDuplicatesCollapsed; дедуп тела — core/config/subscription/server_conn_key.go:sourceDedup.markSurvivors (из core/config/subscription/parse_body.go:bodyParseState.finish и core/config/subscription/server_conn_key.go:DedupParsedNodes); Xray-массив — core/config/subscription/xray_json_array.go:xrayCollapse; пересчёт по телу бережёт — core/state/node_enabled.go:sourceFactWarningCodes"
+    },
     "group_member_dropped": {
       "severity": "warning",
       "params": [
@@ -1181,7 +1205,7 @@
         "Чаще всего делать ничего не нужно: 1280 — тот MTU, который рекомендует сам AmneziaWG, и туннель на нём работает.",
         "Если данные всё равно не идут, дело не в MTU — проверьте ключи и сервер."
       ],
-      "desc": "wireguard.body.mtu выше 1280 на узле с любым AWG-полем ЗАМЕНЯЕТСЯ на 1280 — правило значения реестра (max_when, контракт 1.1.5). Потолок 1280 = рекомендация AmneziaWG и минимум IPv6, с запасом под S3/S4 (1500 - 28 UDP/IP - 32 WG - 60 max S3/S4 = 1380). Решение владельца 05.09.2026 на живых узлах: экспорт Amnezia несёт 1376, данные на нём не шли, на 1280 туннель заработал (память awg-mtu-too-high). ДО контракта 1.1.5 правило жило кодом в парсере ссылки (awgMaxMTU) и потому не применялось к телу из sing-box-импорта — расхождение входов, находка №5 LEGACY_AUDIT. ИСКЛЮЧЕНИЕ по входу: на sing-box JSON тело написано в форме ядра самим человеком или подпиской, значение НЕ заменяется, и узел получает info-код awg_mtu_high (решение владельца 18.09.2026, except_sources; парность входов нарушена намеренно, DRIFT §7.23). Подстановка 1280 при ОТСУТСТВИИ mtu кода не даёт — это дефолт, а не замена.",
+      "desc": "wireguard.body.mtu выше 1280 на узле с любым AWG-полем ЗАМЕНЯЕТСЯ на 1280 — правило значения реестра (max_when, контракт 1.1.5). Потолок 1280 = рекомендация AmneziaWG и минимум IPv6, с запасом под S3/S4 (1500 - 28 UDP/IP - 32 WG - 60 max S3/S4 = 1380). Решение владельца 05.09.2026 на живых узлах: экспорт Amnezia несёт 1376, данные на нём не шли, на 1280 туннель заработал (память awg-mtu-too-high). ДО контракта 1.1.5 правило жило кодом в парсере ссылки (awgMaxMTU) и потому не применялось к телу из sing-box-импорта — расхождение входов, находка №5 LEGACY_AUDIT. ИСКЛЮЧЕНИЕ по входу: вход singbox получает только авторское тело (свой сервер или член папки, источник singbox_outbound, контракт 1.1.87, PARSING_PRINCIPLES §10) — значение НЕ заменяется, и узел получает info-код awg_mtu_high вместо awg_mtu_clamped (решение владельца 18.09.2026, except_sources; парность входов нарушена намеренно, DRIFT §7.23). Узел подписки получает вход other, и правило работает заменой. Подстановка 1280 при ОТСУТСТВИИ mtu кода не даёт — это дефолт, а не замена.",
       "dart": "awgClampMtu → по реестру (max_when), см. TASKS_LXBOX §24.14",
       "go": "правило реестра contract/registry/protocols/wireguard.json body.fields.mtu.max_when; исполнение — core/config/nodeflow/sanitize.go:sanitizer.applyMaxWhen"
     },
@@ -1193,10 +1217,10 @@
       ],
       "title_en": "AmneziaWG: MTU above 1280",
       "title_ru": "AmneziaWG: MTU выше 1280",
-      "text_en": "The MTU at {path} is {value}, above the 1280 this launcher recommends for AmneziaWG. The value was kept as written, because the body came in the core's own form; be aware that a too-high MTU makes an AmneziaWG tunnel connect and then carry no data.",
-      "text_ru": "MTU в поле {path} равен {value} — выше 1280, которые лаунчер рекомендует для AmneziaWG. Значение оставлено как записано: тело пришло в собственной форме ядра. Учтите, что при завышенном MTU туннель AmneziaWG поднимается, а данные по нему не идут.",
-      "cause_en": "AmneziaWG pads every packet, so the obfuscated packet is bigger than the plain WireGuard one the MTU was calculated for; past the path MTU the system refuses to send it (\"sendmsg: message too long\") instead of fragmenting. The value is kept here because a sing-box body is written in the core's own form, by hand or by the subscription, and the launcher does not silently rewrite what you wrote yourself.",
-      "cause_ru": "AmneziaWG набивает каждый пакет, и обфусцированный пакет больше обычного WireGuard-пакета, под который считался MTU; за пределами MTU пути система отказывается его слать («sendmsg: message too long») вместо фрагментации. Значение здесь сохраняется, потому что тело sing-box написано в собственной форме ядра — руками или подпиской, — а написанное вами лаунчер молча не переписывает.",
+      "text_en": "The MTU at {path} is {value}, above the 1280 this launcher recommends for AmneziaWG. The value was kept as written, because the node was written by hand in the core's own form; be aware that a too-high MTU makes an AmneziaWG tunnel connect and then carry no data.",
+      "text_ru": "MTU в поле {path} равен {value} — выше 1280, которые лаунчер рекомендует для AmneziaWG. Значение оставлено как записано: узел написан руками в собственной форме ядра. Учтите, что при завышенном MTU туннель AmneziaWG поднимается, а данные по нему не идут.",
+      "cause_en": "AmneziaWG pads every packet, so the obfuscated packet is bigger than the plain WireGuard one the MTU was calculated for; past the path MTU the system refuses to send it (\"sendmsg: message too long\") instead of fragmenting. The value is kept here because this node was written by hand in the core's own form, and the launcher does not silently rewrite what you wrote yourself.",
+      "cause_ru": "AmneziaWG набивает каждый пакет, и обфусцированный пакет больше обычного WireGuard-пакета, под который считался MTU; за пределами MTU пути система отказывается его слать («sendmsg: message too long») вместо фрагментации. Значение здесь сохраняется, потому что узел написан руками в собственной форме ядра, а написанное вами лаунчер молча не переписывает.",
       "fix_en": [
         "Nothing to do if the tunnel carries data: your server accepts this MTU.",
         "If the handshake succeeds but nothing goes through, lower the MTU to 1280 in the node body."
@@ -1670,19 +1694,45 @@
       "title_ru": "Запись {kind} из {owner} не включена",
       "text_en": "After variable substitution an entry of {kind} from {owner} has no {reason}, which the core requires, so it was left out of the config. The rest of {owner} is kept.",
       "text_ru": "После подстановки переменных у записи {kind} из {owner} нет {reason}, без чего ядро её не примет, поэтому она не включена в конфиг. Остальное из {owner} сохранено.",
-      "cause_en": "A variable the entry refers to has no value — a setting left empty or switched off by another setting — and the key with it was dropped. Without that key the entry is incomplete: a rule without a target, a DNS server without an address, a rule set without a source.",
-      "cause_ru": "У переменной, на которую ссылается запись, нет значения — настройка пуста или выключена другой настройкой, — и ключ с ней выпал. Без этого ключа запись неполная: правило без цели, DNS-сервер без адреса, набор правил без источника.",
+      "cause_en": "A variable the entry refers to has no value — a setting left empty or switched off by another setting — and the key with it was dropped. Without that key the entry is incomplete: a rule without a target, a DNS server without an address, a rule set without a source. Or a rule set the rule refers to is not in the config — its file is not downloaded yet — and without it the rule would apply to all traffic or all DNS queries.",
+      "cause_ru": "У переменной, на которую ссылается запись, нет значения — настройка пуста или выключена другой настройкой, — и ключ с ней выпал. Без этого ключа запись неполная: правило без цели, DNS-сервер без адреса, набор правил без источника. Либо набора правил, на который ссылается правило, нет в конфиге — его файл ещё не скачан, — и без него правило действовало бы на весь трафик или на все DNS-запросы.",
       "fix_en": [
         "Fill in the setting of {owner} the entry depends on.",
+        "If a rule set of the rule is not downloaded yet, download it and rebuild the config.",
         "If the entry is not needed, nothing has to be done: the config works without it."
       ],
       "fix_ru": [
         "Заполните настройку {owner}, от которой зависит запись.",
+        "Если набор правил ещё не скачан, скачайте его и пересоберите конфиг.",
         "Если запись не нужна, делать ничего не надо: конфиг работает без неё."
       ],
-      "desc": "Гейт валидности фрагмента после Dropped-каскада (TEMPLATE_LANG §5.1, SPEC 143 Т3): правило маршрута без outbound и action, DNS-правило без server и action, набор правил без источника (remote — url, local — path, inline — rules), DNS-сервер адресного типа без server; правило, у которого после чистки не осталось условий. owner — id пресета или тег шаблонного DNS-сервера; kind — секция конфига (route.rules, route.rule_set, dns.rules, dns.servers); reason — недостающее поле (outbound/action, server/action, url, path, rules, url/path, server, rule_set). Фрагмент, целиком снятый #if/#enable автора, кода не даёт.",
+      "desc": "Гейт валидности фрагмента после Dropped-каскада (TEMPLATE_LANG §5.1, SPEC 143 Т3): правило маршрута без outbound и action, DNS-правило без server и action, набор правил без источника (remote — url, local — path, inline — rules), DNS-сервер адресного типа без server; правило, у которого не осталось условий из-за сбоя — все ссылки rule_set висячие или хоть одна ссылка на переменную в правиле дала Dropped либо нулевое значение (правило без условий по замыслу автора не выпадает — template_rule_unconditional, контракт 1.1.100). owner — id пресета или тег шаблонного DNS-сервера; kind — секция конфига (route.rules, route.rule_set, dns.rules, dns.servers); reason — недостающее поле (outbound/action, server/action, url, path, rules, url/path, server, rule_set). Фрагмент, целиком снятый #if/#enable автора, кода не даёт. Висячий rule_set проверяется и при сборке, после отбора наборов по кэшу: набор, чей remote .srs не скачан, в route.rule_set не попадает, и правило маршрута или DNS-правило (пресета или пользовательское), у которого не осталось ни одной ссылки rule_set, выпадает целиком, что бы в нём ни осталось, — соседние поля (network, port, server) сужением до набора не являются (контракт 1.1.101, SPEC 153); owner пользовательского DNS-правила — его name или \"dns_options\".",
       "dart": "preset_expand.dart: гейты rule/dns_rule (строки 234-241, 296-301); код — задача LxBox 555 п.6",
-      "go": "core/build/preset_expand.go:fragmentDropped (константа WarnTemplateFragmentDropped; гейты isRuleUnusable, isDNSRuleUnusable, ruleSetMissingSource, dnsServerMissingAddress, isRuleEmpty, isDNSRuleEmpty) в ExpandPresetWithGlobals, expandOnePresetDNSRule; шаблонные и пресетные DNS-серверы — core/build/resolve_dns.go:ResolveDNS; в отчёт сборки — core/build/preset_merge.go:MergePresetsIntoRoute, MergePresetsIntoDNS → core/build/build.go:BuildConfig (Result.TemplateWarnings) → core/build_report_feed.go:FeedBuildReportFromTemplate (вид template_degraded)"
+      "go": "core/build/preset_expand.go:fragmentDropped (константа WarnTemplateFragmentDropped; гейты isRuleUnusable, isDNSRuleUnusable, ruleSetMissingSource, dnsServerMissingAddress, isRuleEmpty, isDNSRuleEmpty) в ExpandPresetWithGlobals, expandOnePresetDNSRule; шаблонные и пресетные DNS-серверы — core/build/resolve_dns.go:ResolveDNS; в отчёт сборки — core/build/preset_merge.go:MergePresetsIntoRoute, MergePresetsIntoDNS → core/build/build.go:BuildConfig (Result.TemplateWarnings) → core/build_report_feed.go:FeedBuildReportFromTemplate (вид template_degraded); висячий rule_set после отбора по кэшу .srs — core/build/preset_merge.go:cleanDanglingRuleSetInRule (вызов core/build/resolve_route.go:resolvePresetRouteRule), cleanDanglingDNSRule (вызов MergePresetsIntoDNS, owner — dnsRuleOwner)"
+    },
+    "template_rule_unconditional": {
+      "severity": "warning",
+      "params": [
+        "owner",
+        "kind"
+      ],
+      "title_en": "Rule from {owner} matches everything",
+      "title_ru": "Правило из {owner} совпадает со всем",
+      "text_en": "An entry of {kind} from {owner} has no match conditions, so it applies to all traffic or all DNS queries. It is included in the config as written.",
+      "text_ru": "У записи {kind} из {owner} нет ни одного условия, поэтому она действует на весь трафик или на все DNS-запросы. Запись включена в конфиг как написана.",
+      "cause_en": "The rule is written without conditions, or its conditions are inside #if branches that are all off with the current settings. No variable is missing: this is how the template is written, not a failure.",
+      "cause_ru": "Правило написано без условий, либо его условия стоят в ветках #if, которые при текущих настройках выключены. Пустых переменных нет: так написан шаблон, это не сбой.",
+      "fix_en": [
+        "If the rule should apply to everything (a bare sniff, a test rule), nothing has to be done.",
+        "Otherwise add a condition to the rule in {owner} or turn on the setting that adds one."
+      ],
+      "fix_ru": [
+        "Если правило должно действовать на всё (голый sniff, тестовое правило), делать ничего не надо.",
+        "Иначе добавьте правилу в {owner} условие или включите настройку, которая его добавляет."
+      ],
+      "desc": "Гейт «правило без условий» (TEMPLATE_LANG §5.1, SPEC 152): правило route.rules или dns.rules пресета, в котором после подстановки не осталось ни одного ключа из route_rule_conditions / dns_rule_conditions (registry/allowlists.json), идёт в конфиг как есть, если условия не снял сбой: ни одна ссылка rule_set не висячая и ни одна ссылка на переменную в правиле (@имя, вставка #tpl) не дала Dropped или нулевое значение JSON. Иначе правило выпадает с template_fragment_dropped. Правило целиком под ложным #if/#enable кода не даёт. owner — id пресета; kind — секция конфига (route.rules, dns.rules).",
+      "dart": "preset_expand.dart: гейты rule/dns_rule; код — задача LxBox §97",
+      "go": "core/build/preset_expand.go:ruleUnconditional (константа WarnTemplateRuleUnconditional; признак сбоя — substitutePresetRule, счётчик core/template/substitute_canon.go:replacementCanon) в expandPresetBody, expandOnePresetDNSRule; в отчёт сборки — core/build/preset_merge.go:MergePresetsIntoRoute, MergePresetsIntoDNS → core/build/build.go:BuildConfig (Result.TemplateWarnings) → core/build_report_feed.go:FeedBuildReportFromTemplate (вид template_degraded)"
     },
     "chain_unsupported_by_core": {
       "severity": "error",
@@ -1896,26 +1946,28 @@
       "dart": "lib/services/builder/core_chain_capability.dart (coreVersionSupportsTailscale)",
       "go": "core/config/nodeflow/gate.go:NodeCoreRefusal (узловой гейт ядра по on_core_unsupported реестра); вызов — core/config/outbound_generator.go:GenerateOutboundsFromParserConfig; теги сборки — core/core_capabilities.go:AppController.CoreBuildTags; реестр — protocols/tailscale.json body.on_core_unsupported"
     },
-    "tailscale_from_subscription": {
-      "severity": "info",
-      "params": [],
-      "title_en": "Tailscale node arrived from a subscription",
-      "title_ru": "Узел Tailscale приехал подпиской",
-      "text_en": "The subscription brought a Tailscale node. It is kept, but a subscription cannot bring the DNS server, rule and routes that make it useful — the machine identity in a tailnet lives locally; add those yourself.",
-      "text_ru": "Подписка принесла узел Tailscale. Он сохранён, но подписка не может привезти DNS-сервер, правило и маршруты, без которых он бесполезен: идентичность машины в tailnet живёт локально. Заведите их у себя.",
-      "cause_en": "The provider put a Tailscale node into the subscription body. A subscription can carry the node itself but not the settings around it: the machine's identity in a tailnet lives in local state on this computer and cannot travel with a link.",
-      "cause_ru": "Провайдер положил узел Tailscale в тело подписки. Подписка может принести сам узел, но не обвязку к нему: идентичность машины в tailnet живёт в локальном состоянии на этом компьютере и со ссылкой не переезжает.",
+    "openvpn_core_unsupported": {
+      "severity": "warning",
+      "params": [
+        "reason"
+      ],
+      "title_en": "OpenVPN is unavailable in this core",
+      "title_ru": "OpenVPN недоступен в этом ядре",
+      "text_en": "The node uses OpenVPN, which this core cannot run ({reason}). The node was excluded from the config, because the core rejects such a value and would refuse to start the whole config; the remaining nodes work.",
+      "text_ru": "Узел использует OpenVPN, который это ядро запустить не может ({reason}). Узел исключён из конфига: ядро отвергает такое значение и не запустит весь конфиг. Остальные узлы работают.",
+      "cause_en": "OpenVPN is an extension of the lx fork: it needs a core built with the with_openvpn tag, version 1.14.0-lx.10 or newer. A core without it rejects the whole config as soon as such a node appears in it.",
+      "cause_ru": "OpenVPN — расширение форка lx: нужно ядро, собранное с тегом with_openvpn, версии 1.14.0-lx.10 или новее. Ядро без него отвергает весь конфиг, как только в нём появляется такой узел.",
       "fix_en": [
-        "Add the DNS server, the rule and the route for the tailnet yourself, or create the node locally through Add server → Tailscale — that way it gets them by default.",
-        "Nothing to do if you only use this node as a hop and do not need *.ts.net names."
+        "Update the core to 1.14.0-lx.10 or newer, built with the with_openvpn tag.",
+        "Use another node until the core is updated."
       ],
       "fix_ru": [
-        "Заведите DNS-сервер, правило и маршрут в tailnet сами либо создайте узел локально через «Добавить сервер → Tailscale» — так он получит обвязку по умолчанию.",
-        "Если вы пользуетесь узлом только как хопом и имена *.ts.net вам не нужны, делать ничего не нужно."
+        "Обновите ядро до 1.14.0-lx.10 или новее, собранного с тегом with_openvpn.",
+        "Пока ядро не обновлено, пользуйтесь другим узлом."
       ],
-      "desc": "Узел `tailscale` приехал ПОДПИСКОЙ. Узел законен и остаётся в составе — отсюда severity=info, а не error, — но полезен он не сам по себе: каноническую связку (DNS-сервер MagicDNS + правило на `.ts.net` + маршрут на 100.64.0.0/10 и fd7a:115c:a1e0::/48) подписка принести не может, потому что связка ссылается на финальный тег узла на ЭТОЙ машине, а идентичность машины в tailnet живёт в локальном каталоге состояния и одноразовым ключом провайдера не переносится. Связку пользователь заводит у себя (конструктор «Add server → Tailscale» или вкладка JSON); голый узел, заведённый локально, получает её по умолчанию. Молчать нельзя: узел виден в списке, а о неработающих именах `*.ts.net` пользователь узнал бы уже в бою. NODE_SECTIONS.md §6.",
-      "dart": "—",
-      "go": "core/config/subscription/parse_body.go:bodyParseState.accept"
+      "desc": "Узел `openvpn-client` снят на сборке: ядро собрано без тега with_openvpn (нужен форк 1.14.0-lx.10 или новее). Тот же узловой гейт, что у tailscale_core_unsupported; severity=warning — конфиг собирается, остальные узлы на месте. Контракт 1.1.99.",
+      "dart": null,
+      "go": "core/config/nodeflow/gate.go:NodeCoreRefusal (узловой гейт ядра по on_core_unsupported реестра); реестр — protocols/openvpn-client.json body.on_core_unsupported"
     },
     "ws_early_data_converted": {
       "severity": "info",

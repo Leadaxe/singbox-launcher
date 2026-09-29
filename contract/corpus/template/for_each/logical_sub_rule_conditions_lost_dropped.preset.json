@@ -1,0 +1,69 @@
+{
+  "_comment": "Логическое правило: под-правила судятся гейтом «правило без условий» рекурсивно (контракт 1.1.107). Первое правило: mode or, под-правило {domain_suffix: @d} при пустой d осталось без условий — сбой, всё логическое правило выпадает с template_fragment_dropped, хотя второе под-правило живо (or с пустым под-правилом ловил бы весь трафик). Второе правило: оба под-правила с условиями — идёт в конфиг как есть (у for_each пространства имён пресета нет, ссылка rule_set в под-правиле остаётся голой).",
+  "preset": {
+    "for_each": {
+      "node_type": "tailscale",
+      "as": "n"
+    },
+    "vars": [
+      {
+        "name": "d",
+        "type": "text"
+      }
+    ],
+    "rule_set": [
+      {
+        "tag": "games",
+        "type": "inline",
+        "rules": [
+          {
+            "domain_suffix": [
+              "game.example"
+            ]
+          }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "domain_suffix": "@d"
+          },
+          {
+            "rule_set": [
+              "games"
+            ]
+          }
+        ],
+        "outbound": "@n"
+      },
+      {
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          {
+            "network": "udp"
+          },
+          {
+            "rule_set": [
+              "games"
+            ]
+          }
+        ],
+        "outbound": "@n"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts"
+      }
+    }
+  ]
+}

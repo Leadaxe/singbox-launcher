@@ -248,6 +248,7 @@
       },
       "server_ports": {
         "type": "listable_string",
+        "core_rejects": true,
         "item_pattern": "^(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0):(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{0,3}|0)$",
         "on_item_invalid": {
           "action": "drop_item",
@@ -315,7 +316,8 @@
             "normalize": "trim_lower",
             "on_invalid": {
               "action": "drop",
-              "code": "obfs_unknown"
+              "code": "obfs_unknown",
+              "core_rejects": true
             },
             "required": true,
             "desc_en": "Obfuscation algorithm.",
@@ -326,6 +328,7 @@
             "type": "string",
             "required": true,
             "code": "obfs_password_missing",
+            "core_rejects": true,
             "secret": true,
             "desc_en": "Obfuscation password.",
             "desc_ru": "Пароль обфускации.",

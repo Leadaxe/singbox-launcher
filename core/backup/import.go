@@ -184,25 +184,10 @@ const (
 	// не говорили. У цепочек и Направлений кода нет: там `label` с контракта
 	// 0.12.4 — объявленное поле LxBox, игнорируемое МОЛЧА (D-094).
 	WarnBackupLabelDropped = "backup_label_dropped"
-	// WarnBackupSectionRecordDropped — запись ЧУЖОГО ВИДА внутри секций узла
-	// (NODE_SECTIONS.md §1, D-102): у правил узла бывают только `inline` и
-	// `srs`, у его DNS-записей — только `user`.
-	//
-	// Почему вид ограничен: `preset` означал бы ссылку на шаблон, которого на
-	// принимающей машине может не быть, а `template`/`preset` у DNS — тонкие
-	// ссылки, которым у узла ссылаться не на что. Такая запись применяется в
-	// никуда, поэтому отбрасывается — но ОСТАЛЬНЫЕ записи узла живут: одна
-	// чужая строка не стоит всей связки.
-	//
-	// Код на импорте, а не в состоянии: раньше отсев делал dropForeignKinds
-	// (core/state/node_sections.go) и писал только в WarnLog — пользователь,
-	// принёсший файл, о потере не узнавал. Detail и Kind называют узел и вид
-	// отброшенной записи.
-	//
-	// Тем же кодом отбрасывается правило с `rule_set` в теле (норма B3) и
-	// поле `sections` у узла, которому оно не положено. Три причины различает
-	// поле Warning.Reason (`kind` | `rule_set` | `not_allowed`): потеря
-	// одинаково называется кодом, но объясняется пользователю по-разному.
+	// WarnBackupSectionRecordDropped — у записи файла непустое поле
+	// `sections`. Секции узла упразднены (контракт 1.1.85, NODE_SECTIONS.md):
+	// поле снимается целиком у записи любого вида, Warning.Reason —
+	// `not_allowed`. Пустой набор предупреждения не даёт.
 	WarnBackupSectionRecordDropped = "backup_section_record_dropped"
 	// WarnBackupDirectionIncludeDropped — строки `include` приехавшего
 	// Направления, которые здесь не теги Направлений (этого файла или
@@ -312,7 +297,14 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 	if err != nil {
 		return nil, err
 	}
-	return applyDecoded(s, dec, opts)
+	res, err := applyDecoded(s, dec, opts)
+	if err == nil {
+		// Контракт 1.1.87 (PARSING_PRINCIPLES §11 п.2): источник своего
+		// узла — только тело узла; документ или массив из файла сводится к
+		// телу записи.
+		state.NormalizeBareBodyOrigins(s)
+	}
+	return res, err
 }
 
 // Import10 применяет бэкап формата 1.0 к состоянию.
@@ -335,7 +327,14 @@ func Import10(s *state.State, b *Backup10, opts ImportOptions) (*ImportResult, e
 	if err != nil {
 		return nil, err
 	}
-	return applyDecoded(s, dec, opts)
+	res, err := applyDecoded(s, dec, opts)
+	if err == nil {
+		// Контракт 1.1.87 (PARSING_PRINCIPLES §11 п.2): источник своего
+		// узла — только тело узла; документ или массив из файла сводится к
+		// телу записи.
+		state.NormalizeBareBodyOrigins(s)
+	}
+	return res, err
 }
 
 // ImportFile применяет разобранный файл любого читаемого формата.
@@ -486,9 +485,8 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	res.Warnings = append(res.Warnings, recordVarWarnings(presetDrops)...)
 
 	// Ось порядка встаёт номерами файла (BACKUP.md §9 п. 7): раскладка оси у
-	// сторон одна, и номер несёт зону, которую порядок не передаёт. Правила,
-	// которые узлы носят с собой, стоят на той же оси (NODE_SECTIONS.md §5).
-	placeImportedAxis(s.Rules, merged.sectionRules(s))
+	// сторон одна, и номер несёт зону, которую порядок не передаёт.
+	placeImportedAxis(s.Rules)
 
 	if dec.RouteFinal != "" {
 		if known.empty() || known.has(dec.RouteFinal) {
@@ -664,21 +662,18 @@ func importKnownTags(opts ImportOptions, dec *decodedFile, s *state.State) []str
 //     вставал перед бывшей головой (sniff переставал быть первым), а новое
 //     правило — за бывшие перехватчики 1110+.
 //
-// Порядок файла воспроизводится: он и задан номерами, а при равных корневое
-// правило стоит раньше узлового, как у сборки (rulesWithNodeSections).
-// Импорт своего экспорта ось не трогает.
+// Порядок файла воспроизводится: он и задан номерами. Импорт своего экспорта
+// ось не трогает.
 //
 // Неразмеченным корневым (запись без num) номер раздаётся здесь: следующий за
-// максимумом размеченных — корневых и узловых, — но не ниже начала
+// максимумом размеченных, но не ниже начала
 // пользовательской зоны. Разметка на загрузке (MarkRuleOrder) дала бы им
 // номера от UserRuleNumStart вперемешку с размеченными. Файл, где не размечено
 // ни одно корневое правило (до SPEC 106), остаётся как есть: MarkRuleOrder
 // поставит пресеты на якоря шаблона, которого импорт не знает.
 //
-// SPEC 113-C §1: разметка заканчивается пересортировкой КОРНЕВОГО массива.
-// Узловые правила не пересортировываются: их порядок внутри узла задаётся
-// номерами, а сам узел в оси не участвует.
-func placeImportedAxis(rules []state.Rule, sectionRules []*state.Rule) {
+// SPEC 113-C §1: разметка заканчивается пересортировкой массива.
+func placeImportedAxis(rules []state.Rule) {
 	var (
 		last               int
 		marked, rootMarked bool
@@ -697,9 +692,6 @@ func placeImportedAxis(rules []state.Rule, sectionRules []*state.Rule) {
 			rootMarked = true
 		}
 		see(&rules[i])
-	}
-	for _, r := range sectionRules {
-		see(r)
 	}
 
 	if rootMarked {

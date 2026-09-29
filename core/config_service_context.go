@@ -81,7 +81,7 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 	ctx.Preset = build.PresetMergeContext{
 		Target:              ctx.Target,
 		Presets:             td.Presets,
-		Rules:               s.Rules,
+		Rules:               lateSeededRules(s, td),
 		DNS:                 s.DNS,
 		SrsCachedPaths:      build.CollectSrsCachedPaths(s.Rules, dataDir, ""),
 		TemplateDNSDefaults: parseTemplateDNSDefaultsFromTD(td),
@@ -235,4 +235,13 @@ func routeConfigForUpdate(s *state.State) build.RouteConfig {
 	return build.RouteConfig{
 		Rules: rules,
 	}
+}
+
+// lateSeededRules — правила состояния с разовым засевом поздних дефолтных
+// пресетов (LxBox §578) — в памяти, для сборки. Отметку о засеве сохраняет
+// визард (restorePresetRefs → CreateStateFromModel): до первого сохранения
+// сборка сеет пресет каждый раз, после — только если отметки нет.
+func lateSeededRules(s *state.State, td *template.TemplateData) []state.Rule {
+	rules, _ := state.SeedLateDefaultRules(s.Rules, template.RuleOrderSpecs(td.Presets), s.LatePresetsSeeded)
+	return rules
 }

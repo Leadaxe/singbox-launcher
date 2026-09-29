@@ -1,0 +1,9 @@
+{
+  "_comment": "Массив тел во вкладке JSON: в источник первый элемент, об остатке одно сообщение (контракт 1.1.88).",
+  "container": "own",
+  "origin": {
+    "kind": "json",
+    "raw": "{\"type\":\"trojan\",\"server\":\"example-2.com\",\"server_port\":443,\"password\":\"testpass581\"}"
+  },
+  "input": "[{\"type\":\"trojan\",\"server\":\"example-1.com\",\"server_port\":443,\"password\":\"testpass580\"},{\"type\":\"trojan\",\"server\":\"example-2.com\",\"server_port\":443,\"password\":\"testpass581\"}]"
+}

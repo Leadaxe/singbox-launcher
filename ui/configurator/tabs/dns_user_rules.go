@@ -24,7 +24,6 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
-	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
 	internaldialogs "singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
@@ -430,7 +429,7 @@ func collectAllRuleSetTags(m *wizardmodels.WizardModel) []string {
 			if tpl == nil {
 				continue
 			}
-			frags, _, ok := build.ExpandPresetWithGlobals(tpl, pr.Vars, wizardbusiness.PresetGlobalVars(m), wizardbusiness.PresetGlobalDecls(m), m.Target)
+			frags, _, ok := wizardbusiness.ExpandPresetForView(m, tpl, pr.Vars)
 			if !ok {
 				continue
 			}
@@ -492,7 +491,7 @@ func showViewAllDNSRulesDialog(presenter *wizardpresentation.WizardPresenter, pa
 			if tpl == nil {
 				continue
 			}
-			frags, _, ok := build.ExpandPresetWithGlobals(tpl, pr.Vars, wizardbusiness.PresetGlobalVars(m), wizardbusiness.PresetGlobalDecls(m), m.Target)
+			frags, _, ok := wizardbusiness.ExpandPresetForView(m, tpl, pr.Vars)
 			if !ok {
 				continue
 			}

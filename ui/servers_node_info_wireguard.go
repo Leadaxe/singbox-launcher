@@ -2,12 +2,16 @@
 // ядре и выключатель (SPEC 097/106 ядра): секция «WireGuard» окна Info,
 // статус в подзаголовке строки списка и пункт контекстного меню.
 //
-// Источник — тот же транспорт, через который панель грузит список
+// Источник списка — тот же транспорт, через который панель грузит список
 // (EffectiveProxyTransportIn по области), поэтому Local и Remote не путаются.
+// Окно Info — ядро, зафиксированное при открытии (nodeWindowTarget): у Remote
+// это машина, выбранная тогда, и после смены выбора выключатель в другую
+// машину не шлёт.
 // Ядро отдаёт endpointState только у WG/AWG — имени схемы здесь нет.
 package ui
 
 import (
+	"errors"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -189,10 +193,27 @@ func (p *ProxyListPanel) toggleEndpointFromMenu(ac *core.AppController, status *
 
 // --- окно Info -------------------------------------------------------------
 
-// addWireGuardSection добавляет секцию, если источник области отдаёт
+// endpointSourceFor — источник состояний ядра цели окна узла; ok=false в
+// classic, у машины без gRPC и у машины, которая больше не выбрана.
+func endpointSourceFor(ac *core.AppController, target core.CoreTarget) (services.EndpointSource, bool) {
+	if ac == nil {
+		return nil, false
+	}
+	tr, ok := proxyTransportFor(ac, target)
+	if !ok {
+		return nil, false
+	}
+	src, ok := tr.(services.EndpointSource)
+	return src, ok
+}
+
+// errEndpointSourceGone — ядро окна недоступно: машину сменили или отключили.
+var errEndpointSourceGone = errors.New("the core of this window is not available")
+
+// addWireGuardSection добавляет секцию, если источник ядра окна отдаёт
 // состояние для этого тега.
-func addWireGuardSection(ac *core.AppController, body *fyne.Container, win fyne.Window, tag string, scope services.ProxyScope) {
-	src, ok := endpointSourceIn(ac, scope)
+func addWireGuardSection(ac *core.AppController, target core.CoreTarget, body *fyne.Container, win fyne.Window, tag string) {
+	src, ok := endpointSourceFor(ac, target)
 	if !ok || body == nil {
 		return
 	}
@@ -209,13 +230,17 @@ func addWireGuardSection(ac *core.AppController, body *fyne.Container, win fyne.
 		if !ok {
 			return
 		}
+		source := func() (services.EndpointSource, bool) { return endpointSourceFor(ac, target) }
 		fyne.Do(func() {
-			buildWireGuardSection(src, box, win, tag, st)
+			buildWireGuardSection(source, box, win, tag, st)
 		})
 	}()
 }
 
-func buildWireGuardSection(src services.EndpointSource, box *fyne.Container, win fyne.Window, tag string, initial services.EndpointStatus) {
+// source отдаёт источник на каждый запрос, а не один раз при открытии:
+// сменилась машина — её транспорта больше нет, и команда отвечает ошибкой, а
+// не уходит в другое ядро.
+func buildWireGuardSection(source func() (services.EndpointSource, bool), box *fyne.Container, win fyne.Window, tag string, initial services.EndpointStatus) {
 	var btn *widget.Button
 	current := initial
 
@@ -242,6 +267,10 @@ func buildWireGuardSection(src services.EndpointSource, box *fyne.Container, win
 	}
 
 	reread := func() (services.EndpointStatus, bool) {
+		src, ok := source()
+		if !ok {
+			return services.EndpointStatus{}, false
+		}
 		states, err := src.EndpointStatuses()
 		if err != nil {
 			return services.EndpointStatus{}, false
@@ -255,7 +284,12 @@ func buildWireGuardSection(src services.EndpointSource, box *fyne.Container, win
 		btn.Disable()
 		errLabel.Hide()
 		go func() {
-			_, err := src.SetEndpointEnabled(tag, enable)
+			var err error
+			if src, ok := source(); ok {
+				_, err = src.SetEndpointEnabled(tag, enable)
+			} else {
+				err = errEndpointSourceGone
+			}
 			// Отказ не значит «не переключилось»: при Unavailable узел уже
 			// включён, но не проснулся. Состояние берём у ядра заново.
 			fresh, freshOK := reread()

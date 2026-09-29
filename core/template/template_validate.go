@@ -240,6 +240,15 @@ func collectPlaceholderNamesFromJSON(raw json.RawMessage) ([]string, error) {
 func walkJSONPlaceholders(v interface{}, out *[]string) {
 	switch x := v.(type) {
 	case map[string]interface{}:
+		// §578: строка #tpl — не плейсхолдер целиком; её имена — вставки @{…}.
+		if s, ok := x[tplKey].(string); ok {
+			for _, m := range tplSlot.FindAllStringSubmatch(s, -1) {
+				if name := strings.TrimSpace(m[1]); name != "" && !isRuntimeGlobalRef(name) {
+					*out = append(*out, name)
+				}
+			}
+			return
+		}
 		for _, val := range x {
 			walkJSONPlaceholders(val, out)
 		}
@@ -336,6 +345,16 @@ func validateDefaultValueIf(dv VarDefaultValue, earlierVars map[string]TemplateV
 func walkValidateIf(v interface{}, varByName map[string]TemplateVar, context string) error {
 	switch x := v.(type) {
 	case map[string]interface{}:
+		// §578: {"#tpl": "…"} — единственный ключ объекта, значение — строка.
+		if raw, has := x[tplKey]; has {
+			if len(x) != 1 {
+				return fmt.Errorf("%s: %s allows no other keys", context, tplKey)
+			}
+			if _, ok := raw.(string); !ok {
+				return fmt.Errorf("%s: %s expects a string", context, tplKey)
+			}
+			return nil
+		}
 		// Validate control-construct keys.
 		//
 		// isIfKey, а не литерал "#if": рантайм принимает суффиксные формы

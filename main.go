@@ -796,7 +796,7 @@ func main() {
 		debuglog.InfoLog("Power resume: Clash API HTTP transport reset, scheduling re-sync")
 		// Give network interfaces a couple seconds to come back, then:
 		//   - Re-test the Clash API connection (RefreshAPIFunc → onTestAPIConnection
-		//     in clash_api_tab.go — this also reloads the proxies list).
+		//     in proxy_list_panel.go — this also reloads the proxies list).
 		//   - Trigger the auto-ping-after-connect hook if sing-box is running,
 		//     so latency numbers get refreshed instead of staying stuck at
 		//     pre-sleep values.
@@ -825,7 +825,7 @@ func main() {
 					}
 					debuglog.DebugLog("Power resume: triggering post-resume auto-ping")
 					// AutoPingAfterConnectFunc already wraps pingAllProxies
-					// in fyne.Do internally (clash_api_tab.go registers it
+					// in fyne.Do internally (proxy_list_panel.go registers it
 					// that way), but double-wrapping is a harmless no-op if
 					// we're already on the UI thread and cheap insurance
 					// otherwise.

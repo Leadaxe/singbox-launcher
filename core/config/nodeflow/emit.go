@@ -26,6 +26,18 @@ func Emit(scheme string, clean map[string]interface{}) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("nodeflow: схема %q неизвестна реестру", scheme)
 	}
+	if body.FieldsUnchecked {
+		// Тело без описания полей (контракт 1.1.99) — как есть, ключи по
+		// алфавиту, без экранирования HTML (writeJSON).
+		if clean == nil {
+			clean = map[string]interface{}{}
+		}
+		var buf bytes.Buffer
+		if err := writeJSON(&buf, clean); err != nil {
+			return nil, err
+		}
+		return buf.Bytes(), nil
+	}
 	var buf bytes.Buffer
 	if err := emitObject(&buf, body.Order, body.Fields, clean); err != nil {
 		return nil, err

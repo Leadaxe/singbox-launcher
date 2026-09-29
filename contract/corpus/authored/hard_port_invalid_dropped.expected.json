@@ -1,0 +1,15 @@
+{
+  "dropped": [
+    {
+      "code": "port_invalid",
+      "index": 0,
+      "reason": "emit_error",
+      "ref": "own-bad-port"
+    }
+  ],
+  "meta": {
+    "container": "own"
+  },
+  "nodes": [],
+  "v": 1
+}

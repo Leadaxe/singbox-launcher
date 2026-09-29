@@ -1,0 +1,9 @@
+{
+  "_comment": "Документ узла с dns: в источник тело узла, об остатке то же сообщение, что у массива.",
+  "container": "own",
+  "origin": {
+    "kind": "json",
+    "raw": "{\"type\":\"trojan\",\"server\":\"example-2.com\",\"server_port\":443,\"password\":\"testpass581\"}"
+  },
+  "input": "{\"outbounds\": [{\"type\": \"trojan\", \"server\": \"example-1.com\", \"server_port\": 443, \"password\": \"testpass580\"}], \"dns\": {\"servers\": [{\"type\": \"local\", \"tag\": \"d\"}]}}"
+}

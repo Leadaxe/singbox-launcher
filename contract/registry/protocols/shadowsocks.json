@@ -152,7 +152,8 @@
         "impl": "json-тег без omitempty; enum = 18 методов ядра (sing-shadowsocks2 v0.2.1 method_registry, DRIFT §9.3), неизвестное значение = ошибка CreateMethod на весь конфиг → drop_node ss_method_invalid. Решение D-122 (18.09.2026): девять stream-шифров (shadowstream) ядро принимает — узел живёт, получает info-код ss_method_legacy (advisory). До этого оба клиента дропали такие узлы.",
         "on_invalid": {
           "action": "drop_node",
-          "code": "ss_method_invalid"
+          "code": "ss_method_invalid",
+          "core_rejects": true
         },
         "advisory": [
           {

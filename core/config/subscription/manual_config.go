@@ -70,6 +70,10 @@ func NodeFromManualConfigJSON(raw []byte) (*configtypes.ParsedNode, error) {
 		Outbound:    ob,
 		SourceIndex: configtypes.UnsetSourceIndex,
 		EmitRaw:     true,
+		// Ручной объект — тело своего сервера или члена папки: авторское
+		// (контракт 1.1.87, PARSING_PRINCIPLES §10.1), вход `singbox`.
+		Source:   configtypes.NodeSourceSingbox,
+		Authored: true,
 	}
 	node.Flow = mapString(ob, "flow")
 	return node, nil

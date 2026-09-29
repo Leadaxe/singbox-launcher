@@ -103,6 +103,9 @@ type Source10 struct {
 	// внутри папки бывают, и там едет state.Node целиком.
 	Service bool   `json:"service,omitempty"`
 	Reason  string `json:"reason,omitempty"`
+	// SkipPresets — поле записи skip_presets (LxBox §578, контракт 1.1.86):
+	// свой сервер и член папки; пишется только true.
+	SkipPresets bool `json:"skip_presets,omitempty"`
 	// Warnings — коды деградаций узла (контракт 1.1.0, SPEC 131). Пишутся,
 	// чтобы ⚠ переехало «как было»; ЧИТАЮТСЯ, но в состояние не кладутся:
 	// данные производные и при переносе не авторитетны (PARSING_PRINCIPLES §6) —
@@ -112,7 +115,6 @@ type Source10 struct {
 	// пересчитывать нечем, её записи кладутся в состояние как есть
 	// (decode10Source).
 	Warnings []state.NodeWarning `json:"warnings,omitempty"`
-	Sections *state.NodeSections `json:"sections,omitempty"`
 
 	// ── контейнер (папка | подписка) ──
 	ID        string           `json:"id,omitempty"`

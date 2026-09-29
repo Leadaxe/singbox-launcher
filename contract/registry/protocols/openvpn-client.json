@@ -1,0 +1,63 @@
+{
+  "v": 1,
+  "scheme": "openvpn-client",
+  "kind": "endpoint",
+  "singbox_type": "openvpn-client",
+  "aliases": [],
+  "sources": [
+    "singbox"
+  ],
+  "extension": null,
+  "note": "Endpoint форка (sing-box-lx protocol/openvpn, include/openvpn.go): узел живёт в endpoints[], не в outbounds[]. Ядро регистрирует тип только при теге сборки with_openvpn (форк с 1.14.0-lx.10); на ядре без тега узел снимается на сборке с warning openvpn_core_unsupported, иначе один такой узел валит sing-box check для ВСЕГО конфига. Решение владельца 28.09.2026 (контракт 1.1.99): тип ИЗВЕСТЕН, но поля не описаны и не проверяются (`body.fields_unchecked`) — тело уходит в ядро как написано, без правил и без unknown_key. URI-формы, разбора .ovpn и формы добавления нет: узел приходит только как sing-box JSON (своя запись, документ, подписка).",
+  "uri": null,
+  "emit": {
+    "share_uri": false,
+    "note": "Share-URI не эмитится — URI-формы у схемы нет. Тело эмитится как есть, ключи по алфавиту (fields_unchecked)."
+  },
+  "refs": {
+    "go": [
+      "core/config/nodeflow/sanitize.go:SanitizeFromKind (ветка FieldsUnchecked)",
+      "core/config/nodeflow/emit.go:Emit (ветка FieldsUnchecked)",
+      "core/config/endpoint_schemes.go:IsEndpointScheme"
+    ],
+    "dart": [
+      "lib/models/node_spec.dart (узел известного типа без своей модели)"
+    ]
+  },
+  "body": {
+    "core": "1.14.2-lx.6",
+    "order": [],
+    "fields": {},
+    "fields_unchecked": true,
+    "lx_only": true,
+    "min_core": "1.14.0-lx.10",
+    "build_tag": "with_openvpn",
+    "on_core_unsupported": { "action": "drop_node", "code": "openvpn_core_unsupported" },
+    "note": "Поля не описаны сознательно (решение владельца 28.09.2026): правил и проверок значений нет, тело — как написано. Снимаются только tag и type — их пишет сборка."
+  },
+  "mappers": {
+    "singbox": {
+      "detect": {
+        "json": {
+          "value_in": {
+            "type": [
+              "openvpn-client"
+            ]
+          }
+        }
+      },
+      "body_source": "singbox",
+      "forms": [
+        {
+          "id": "endpoint",
+          "detect": {
+            "default": true
+          },
+          "space": "json",
+          "level": "endpoint"
+        }
+      ],
+      "params": {}
+    }
+  }
+}

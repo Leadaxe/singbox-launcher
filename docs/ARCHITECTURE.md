@@ -1013,7 +1013,7 @@ above did not.
 | **Full callback → event retirement** — wire `ConfigBuilt`/`StateChanged` subscriptions in the Core dashboard; retire `UpdateCoreStatusFunc`/`UpdateConfigStatusFunc`; make `VpnStateChanged` single-mechanism. | ADR-070-3 | **Needs GUI runtime verification.** UI status refresh is timing-sensitive (`fyne.Do` dispatch, dirty-marker styling); swapping the delivery mechanism must be observed live. Publishers are already in place so this is low-code-risk but high-verification-cost. |
 | **`JSONBuilder` full adoption** — migrate every protocol field generator in `GenerateNodeJSON` / selector generation onto `JSONBuilder` (insertion-order-safe), behind golden tests. | ADR-070-5 | **Partially done.** The builder exists and is used; finishing the migration is incremental and golden-test-guarded, but not blocking. |
 | ~~**Transport/TLS unification** — merge `uriTransportFromQuery` + `xrayTransportFromStreamSettings` into one `TransportSpec` builder, and the three TLS builders into one `TLSSpec` builder.~~ | ADR-070-6 | **No longer deferred — removed by SPEC 133.** Both hand-written paths are gone: the URI input and the Xray input are led by the same registry table through `core/config/linkmap`, so there is nothing left to merge. The round-trip risk the row describes is now covered by two runners — a byte-for-byte snapshot of the link and `parse(emit(body)) == body` over the whole corpus. |
-| **UI view decomposition** — `clash_api_tab.go` (1701 LOC, still the largest despite the `_helpers`/`_render`/`_autorefresh` peels) → state+handlers; `add_rule_dialog.go` (1154 LOC) → editor-state/tabs/process-picker; `outbounds_configurator/edit_dialog.go` (1095 LOC) → edit-state/form-builder/template-resolver. | (supports ADR-070-1) | **Needs GUI runtime verification + ordered after dual-state.** These closures capture large mutable UI state; extracting it safely is best done once dual-state is gone, with live click-through verification. |
+| **UI view decomposition** — `proxy_list_panel.go` (1701 LOC, still the largest despite the `_helpers`/`_render`/`_autorefresh` peels) → state+handlers; `add_rule_dialog.go` (1154 LOC) → editor-state/tabs/process-picker; `outbounds_configurator/edit_dialog.go` (1095 LOC) → edit-state/form-builder/template-resolver. | (supports ADR-070-1) | **Needs GUI runtime verification + ordered after dual-state.** These closures capture large mutable UI state; extracting it safely is best done once dual-state is gone, with live click-through verification. |
 | **`config_service.go` decomposition** — the file split is **done** (1066 → 538 LOC, with `config_service_context.go` + `config_service_subscriptions.go` peeled off); what remains is promoting those to real `SubscriptionFetcher` / `ConfigContextBuilder` seams and splitting `UpdateConfigFromSubscriptions` itself. | (supports ADR-070-5) | **High concurrency risk.** Must preserve `SubscriptionMu` boundaries across new service seams; needs the existing `refresh_meta`/`update` tests plus runtime verification of auto-update + manual-update races. |
 | **CI import-graph check** enforcing L*n* → L*≤n*. | ADR-070-1 | **Planned tooling**, not yet built; would lock in the layer model and catch V1/V2-style regressions. |
 
@@ -1069,6 +1069,25 @@ selected remote machine), never from a global "backend mode" flag. A global
 override is what made the remote connection drag the Local tab onto an empty
 base URL (fixed in `fe575b6`): resolvers must ask for the scope's transport, and
 the gRPC gate must consult the remote override rather than the backend mode.
+
+**Scope, not the visible tab.** `APIService` holds one transport slot
+(`SetTransport` / `TransportOverride`) whose content follows the main window's
+tab: the own engine's transport on Local (`RestoreOwnTransport`), the selected
+machine's on Remote (`ReapplyLxdRemoteTransport`). Only scope-less core
+operations read it (`wireTransport`: auto-load of the list, tray, hotkeys) — so
+while Remote is on screen with a machine connected, they go to that machine.
+Everything that has a scope reads its source directly:
+- `ui.EffectiveProxyTransportIn(ScopeLocal)` → `core.LocalProxyTransport()`:
+  the own backend's gRPC transport in daemon mode, the own core's Clash HTTP in
+  classic. A machine's transport never reaches Local.
+- `ScopeRemote` → the selected machine from its selection, then the own daemon
+  transport, then the Clash override (SPEC 064), then the own Clash API.
+- Core readers of pools, chains and tailnet take a `core.CoreTarget`
+  (scope + machine id): Local reads the own backend, Remote reads the machine
+  through `UIService.LxdMachineTransportFunc`. A node window fixes its target
+  when opened (`nodeWindowTarget`): opened from Remote it stays bound to the
+  machine selected then, and after the selection changes its commands answer
+  "not available" instead of going to another machine.
 
 ### 11.3 Target and role are independent axes (SPEC 097)
 
@@ -1132,7 +1151,7 @@ absolute path. The launcher never copies the core and never runs sudo itself.
 (`core/classic_privileged.go`, dialog texts in `_darwin.go`): the copy must exist, pass the ownership chain
 and match the launcher core by sha256 — the chain check and the hash cache are the
 SPEC 136 classifier's. Only then `platform.StartPrivilegedCore` runs
-`/usr/bin/env -i PATH=… /bin/sh -c <constant body> <paths>`: no script file, no
+`/usr/bin/env -i PATH=… /bin/bash -p -c <constant body> <paths>`: no script file, no
 launcher environment in the root shell. A refused gate shows a command dialog
 (`internal/dialogs.ShowCommandRetry`) instead of a startup error, and Retry goes
 through `StartSingBoxProcess`. The authorization lives for the launcher session;

@@ -530,7 +530,8 @@
             "default": "/",
             "desc_en": "Request path.",
             "desc_ru": "Путь запроса.",
-            "impl": "Ведущий «/» дописывается ядром. Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c."
+            "impl": "Ведущий «/» дописывается ядром. Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c.",
+            "core_rejects": true
           },
           "method": {
             "type": "string",
@@ -573,7 +574,8 @@
             "default": "/",
             "desc_en": "WebSocket request path.",
             "desc_ru": "Путь запроса WebSocket.",
-            "impl": "Хвост «?ed=N» из Xray-ссылок в путь не пишется: он разбирается в max_early_data + early_data_header_name (issue #96). Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c."
+            "impl": "Хвост «?ed=N» из Xray-ссылок в путь не пишется: он разбирается в max_early_data + early_data_header_name (issue #96). Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c.",
+            "core_rejects": true
           },
           "headers": {
             "type": "object",
@@ -661,7 +663,8 @@
             "default": "/",
             "desc_en": "Request path.",
             "desc_ru": "Путь запроса.",
-            "impl": "option/v2ray_transport.go V2RayHTTPUpgradeOptions.Path. Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c."
+            "impl": "option/v2ray_transport.go V2RayHTTPUpgradeOptions.Path. Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c.",
+            "core_rejects": true
           },
           "headers": {
             "type": "object",
@@ -735,6 +738,7 @@
               "absent": true,
               "value": "packet-up",
               "code": "xhttp_mode_forced_packet_up",
+              "core_rejects": true,
               "when": {
                 "transport.uplink_data_placement": {
                   "in": [
@@ -781,7 +785,6 @@
             "fields": {
               "max_concurrency": {
                 "type": "string",
-                "default": "1-1",
                 "conflicts": [
                   {
                     "with": "transport.xmux.max_connections",
@@ -794,9 +797,10 @@
               },
               "max_connections": {
                 "type": "string",
+                "default": "3",
                 "desc_en": "Number of parallel connections, as a range.",
                 "desc_ru": "Число параллельных соединений, диапазоном.",
-                "impl": "XmuxRange. Взаимоисключающе с max_concurrency (option/v2ray_xhttp.go)."
+                "impl": "XmuxRange. Взаимоисключающе с max_concurrency (option/v2ray_xhttp.go). Дефолт «3» — с ядра 1.14.2-lx.6 (Xray-core 18e2839); ядра до lx.6 без секции ставили max_concurrency=1-1, соединение на поток."
               },
               "c_max_reuse_times": {
                 "type": "string",
@@ -831,7 +835,7 @@
             "min_core": "1.13.13-lx.1",
             "desc_en": "Connection multiplexing for XHTTP.",
             "desc_ru": "Мультиплексирование соединений XHTTP.",
-            "impl": "option/v2ray_xhttp_xmux_range.go. Всё-или-ничего: секции нет ИЛИ она пуста → дефолты max_concurrency=1-1, h_max_request_times=600-900, h_max_reusable_secs=1800-3000; задано хоть одно поле → остальные становятся 0 (без лимита). Атрибут описывает ПОВЕДЕНИЕ ЯДРА и действия санитайзера не влечёт: дописывать дефолты соседей нельзя — частичная секция обязана доехать до ядра как есть, иначе у живого узла меняются пределы (SPEC 131 DRIFT §7). nil ≠ выключено — XMUX включён всегда."
+            "impl": "option/v2ray_xhttp_xmux_range.go. Всё-или-ничего: секции нет ИЛИ она пуста → дефолты max_connections=3 (с ядра 1.14.2-lx.6; прежде max_concurrency=1-1, соединение на поток), h_max_request_times=600-900, h_max_reusable_secs=1800-3000; задано хоть одно поле → остальные становятся 0 (без лимита). Атрибут описывает ПОВЕДЕНИЕ ЯДРА и действия санитайзера не влечёт: дописывать дефолты соседей нельзя — частичная секция обязана доехать до ядра как есть, иначе у живого узла меняются пределы (SPEC 131 DRIFT §7). nil ≠ выключено — XMUX включён всегда."
           },
           "session_placement": {
             "type": "enum",
@@ -844,7 +848,8 @@
             ],
             "on_invalid": {
               "action": "drop",
-              "code": "xhttp_param_reset"
+              "code": "xhttp_param_reset",
+              "core_rejects": true
             },
             "default": "path",
             "desc_en": "Where the session id is carried.",
@@ -869,7 +874,8 @@
             ],
             "on_invalid": {
               "action": "drop",
-              "code": "xhttp_param_reset"
+              "code": "xhttp_param_reset",
+              "core_rejects": true
             },
             "default": "path",
             "desc_en": "Where the packet sequence number is carried.",
@@ -933,7 +939,8 @@
                     ]
                   }
                 },
-                "code": "xhttp_param_reset"
+                "code": "xhttp_param_reset",
+                "core_rejects": true
               }
             ],
             "desc_en": "Where uplink data is carried.",
@@ -992,7 +999,8 @@
             ],
             "on_invalid": {
               "action": "drop",
-              "code": "xhttp_param_reset"
+              "code": "xhttp_param_reset",
+              "core_rejects": true
             },
             "default": "queryInHeader",
             "desc_en": "Where the padding is carried.",
@@ -1008,7 +1016,8 @@
             ],
             "on_invalid": {
               "action": "drop",
-              "code": "xhttp_param_reset"
+              "code": "xhttp_param_reset",
+              "core_rejects": true
             },
             "default": "repeat-x",
             "desc_en": "How the padding content is generated.",

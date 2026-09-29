@@ -1,0 +1,5 @@
+# Авторское тело (свой сервер, источник — голое тело узла): naive.quic_congestion_control вне набора.
+# Ядро sing-box-lx отвергает такой конфиг целиком (protocol/naive/outbound.go NewOutbound: «unknown quic congestion control»), поэтому правило
+# жёсткое (core_rejects, контракт 1.1.91) и применяется и на авторском теле:
+# код без applied:false.
+{"type":"naive","tag":"own-naive","server":"example-5.com","server_port":443,"username":"user","password":"testpass123","quic":true,"quic_congestion_control":"vegas","tls":{"enabled":true,"server_name":"example-5.com"}}

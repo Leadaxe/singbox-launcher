@@ -198,7 +198,7 @@ func TestSpec127UIStateRoundTripV8(t *testing.T) {
 		t.Errorf("наборов у srs после перезагрузки %d, ожидалось 2 — репорт 1.5.5", n)
 	}
 	// Ось: номера доехали до модели обратно (без этого drag «откатывается»).
-	gotOrder := wizardmodels.RuleOrderFromAxis(back.Rules, gotPresets, customRules, nil)
+	gotOrder := wizardmodels.RuleOrderFromAxis(back.Rules, gotPresets, customRules)
 	if len(gotOrder) != 3 {
 		t.Fatalf("слотов после перезагрузки %d, ожидалось 3", len(gotOrder))
 	}

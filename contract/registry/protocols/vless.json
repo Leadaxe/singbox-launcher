@@ -215,7 +215,8 @@
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
-          "code": "flow_deprecated"
+          "code": "flow_deprecated",
+          "core_rejects": true
         },
         "default": "",
         "conflicts": [
@@ -242,7 +243,8 @@
         "min_core": "1.14.0-lx.18",
         "on_invalid": {
           "action": "drop_node",
-          "code": "vless_encryption_invalid"
+          "code": "vless_encryption_invalid",
+          "core_rejects": true
         },
         "desc_en": "Post-quantum encryption layer.",
         "desc_ru": "Постквантовый слой шифрования.",
@@ -265,7 +267,8 @@
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
-          "code": "packet_encoding_unknown"
+          "code": "packet_encoding_unknown",
+          "core_rejects": true
         },
         "default": "xudp",
         "tristate": true,
@@ -634,9 +637,9 @@
           "proxySettings"
         ],
         "nested_quiet": [
-        "streamSettings.sockopt"
-      ],
-      "impl": "Ключи УРОВНЯ ДОКУМЕНТА, полем узла не являющиеся: бухгалтерия элемента (protocol — по нему элемент и опознан, tag/remarks — имя, которое читает сборка документа) ПЛЮС контейнеры, чьи листья читают записи таблицы. Без контейнеров каждый узел получал бы json_field_unknown на ключ, который секция читает своими записями. Список дословно равен списку LxBox — общий, не наш. РОЛЬ КОНТЕЙНЕРОВ ДВОЙНАЯ с 1.1.52: на верхнем уровне они молчат, а ВНУТРЬ них идёт обход вложенных ключей — прежде всё, что лежало в `settings.*`/`streamSettings.*` и не названо ни одним `source`, терялось АБСОЛЮТНО МОЛЧА (аудит outbound-параметров Xray-core 24.09.2026, §0). `nested_quiet` объявляет поддеревья, молчащие ЦЕЛИКОМ: `sockopt` читается записями dialerProxy/tcpKeepAlive*, а полей у него у Xray десятки (tcpMptcp, tcpFastOpen, mark, interface, tcpNoDelay) — все серверные либо неприменимые на клиенте, и код на каждом узле с sockopt был бы шумом, а не сведением."
+          "streamSettings.sockopt"
+        ],
+        "impl": "Ключи УРОВНЯ ДОКУМЕНТА, полем узла не являющиеся: бухгалтерия элемента (protocol — по нему элемент и опознан, tag/remarks — имя, которое читает сборка документа) ПЛЮС контейнеры, чьи листья читают записи таблицы. Без контейнеров каждый узел получал бы json_field_unknown на ключ, который секция читает своими записями. Список дословно равен списку LxBox — общий, не наш. РОЛЬ КОНТЕЙНЕРОВ ДВОЙНАЯ с 1.1.52: на верхнем уровне они молчат, а ВНУТРЬ них идёт обход вложенных ключей — прежде всё, что лежало в `settings.*`/`streamSettings.*` и не названо ни одним `source`, терялось АБСОЛЮТНО МОЛЧА (аудит outbound-параметров Xray-core 24.09.2026, §0). `nested_quiet` объявляет поддеревья, молчащие ЦЕЛИКОМ: `sockopt` читается записями dialerProxy/tcpKeepAlive*, а полей у него у Xray десятки (tcpMptcp, tcpFastOpen, mark, interface, tcpNoDelay) — все серверные либо неприменимые на клиенте, и код на каждом узле с sockopt был бы шумом, а не сведением."
       },
       "emit": null
     },

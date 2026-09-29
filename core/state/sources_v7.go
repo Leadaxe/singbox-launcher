@@ -241,6 +241,11 @@ type Node struct {
 	// предлагается в выборе Направлений. В конфиг он попадает как всякий
 	// другой — иначе detour на него повис бы.
 	Service bool `json:"service,omitempty"`
+	// SkipPresets — LxBox §578, контракт 1.1.86: пресеты с for_each не
+	// обслуживают этот узел (@<as>.skip_presets). Носитель — свой сервер в
+	// корне и член папки; у узла подписки поле не ставится и не читается.
+	// Хранится только true (omitempty): отсутствие равно false.
+	SkipPresets bool `json:"skip_presets,omitempty"`
 	// Reason — unsupported only: почему запись не разобралась. Текст
 	// парсера (английский, как и прочие per-record деградации): он же едет
 	// в диагностику fetch, и переводить его на месте значило бы завести две
@@ -268,15 +273,6 @@ type Node struct {
 	// Порядок = порядок обхода разбора (Л14), дубли по (Code, Path) сняты.
 	// SchemaVersion полем не двигается: оно аддитивное.
 	Warnings []NodeWarning `json:"warnings,omitempty"`
-	// Sections — фрагмент состояния, который узел носит с собой (SPEC 121
-	// §10): route-правила и DNS-записи в формате лаунчера. nil = секций нет
-	// (подавляющее большинство узлов). См. node_sections.go.
-	//
-	// Только kind=server: у подписочных узлов свободы нет
-	// (features/sources.md §Свобода), у цепочек, Auto и unsupported секций не
-	// бывает по построению. Поле обнуляется у остальных видов при чтении
-	// состояния (NormalizeNodeSections).
-	Sections *NodeSections `json:"sections,omitempty"`
 }
 
 // NodeWarning — запись деградации узла в состоянии (PARSING_PRINCIPLES §6, контракт
@@ -294,6 +290,9 @@ type NodeWarning struct {
 	Path   string            `json:"path,omitempty"`
 	Value  string            `json:"value,omitempty"`
 	Params map[string]string `json:"params,omitempty"`
+	// Applied — false: мягкое правило реестра не применено к авторскому телу
+	// (контракт 1.1.87). nil = применено; пишется только false.
+	Applied *bool `json:"applied,omitempty"`
 }
 
 // IsUnsupported — узел является нематериализованной записью тела.
@@ -655,12 +654,6 @@ func normalizeNodeShape(n *Node, name string) []string {
 		drop("reason")
 		n.Reason = ""
 	}
-	// Секции узла (SPEC 121) — только у kind=server. Пустой набор нормализуется
-	// в nil здесь же, чтобы у поля не было третьего состояния.
-	if n.Kind != SourceKindServer && n.Sections != nil {
-		drop("sections")
-	}
-	n.NormalizeNodeSections()
 	switch n.Kind {
 	case SourceKindServer:
 		if len(n.Hops) > 0 {

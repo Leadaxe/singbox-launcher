@@ -24,59 +24,7 @@
       },
       "kind": "endpoint",
       "label": "home-wg",
-      "scheme": "wireguard",
-      "sections": {
-        "dns": {
-          "rules": [
-            {
-              "body": {
-                "domain_suffix": [
-                  ".home.example-1.com"
-                ],
-                "server": "@{self}-home-dns"
-              },
-              "enabled": true,
-              "kind": "user"
-            }
-          ],
-          "servers": [
-            {
-              "body": {
-                "detour": "@self",
-                "server": "10.10.0.1",
-                "type": "udp"
-              },
-              "enabled": true,
-              "kind": "user",
-              "tag": "@{self}-home-dns"
-            }
-          ]
-        },
-        "rules": [
-          {
-            "body": {
-              "ip_cidr": [
-                "10.10.0.0/16"
-              ],
-              "outbound": "@self"
-            },
-            "enabled": true,
-            "kind": "inline",
-            "name": "@{self}"
-          },
-          {
-            "body": {
-              "domain": [
-                "mail.home.example-1.com"
-              ],
-              "outbound": "@self"
-            },
-            "enabled": true,
-            "kind": "inline",
-            "name": "Home mail"
-          }
-        ]
-      }
+      "scheme": "wireguard"
     }
   ],
   "v": 1

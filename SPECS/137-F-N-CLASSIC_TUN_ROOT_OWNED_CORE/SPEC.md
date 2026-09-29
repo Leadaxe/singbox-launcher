@@ -68,7 +68,7 @@ Linux и Windows этой задачей не затрагиваются (§8).
 
 | Действие | Вызов AEWP |
 |---|---|
-| Старт TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/sh -c '<тело>' start-singbox-privileged <Data>/bin <копия> config.json /Library/Logs/sing-box-lxd 0 <uid лаунчера> 2097152` |
+| Старт TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/bash -p -c '<тело>' start-singbox-privileged <Data>/bin <копия> config.json /Library/Logs/sing-box-lxd 0 <uid лаунчера> 2097152 0` (шелл и последний аргумент — SPEC 151) |
 | Stop / рестарт | `/bin/kill -TERM <PID шелла> [<PID ядра>]` |
 | «Sing-Box already running» → Kill, Diagnostics → Kill | `/usr/bin/pkill -TERM -f 'sing-box run\|sing-box-lxd run\|start-singbox-privileged'` |
 | Снятие галки TUN | — (без root, §3.2) |
@@ -78,10 +78,13 @@ Linux и Windows этой задачей не затрагиваются (§8).
 Аргументы: `$1` каталог bin, `$2` копия ядра, `$3` имя конфига, `$4` каталог
 лога, `$5` владелец каталога лога (uid, в проде `0`), `$6` uid пользователя
 лаунчера (`os.Getuid()`) — владелец файла лога, `$7` порог ротации (байт, как у
-лога в каталоге пользователя — 2 МиБ).
+лога в каталоге пользователя — 2 МиБ), `$8` uid, под которым обязан работать
+шелл (в проде `0`; SPEC 151). Шелл — `/bin/bash -p`.
 
 ```sh
 umask 022
+w="$(/usr/bin/id -u)"
+if [ "$w" != "$8" ]; then echo "refused: the start shell runs as uid $w (real uid $(/usr/bin/id -ru)), not $8"; exit 1; fi
 d="$4"
 f="$d/classic.log"
 u="$6"
@@ -99,7 +102,7 @@ if [ -e "$f" ] || [ -L "$f" ]; then
   /bin/chmod 0600 "$f" && /usr/sbin/chown "$u:$g" "$f" || { …; exit 1; }
   if [ "$(/usr/bin/stat -f %z "$f")" -gt "$7" ]; then /bin/mv -f "$f" "$f.old" || { …; exit 1; }; fi
 fi
-: >>"$f" || { …; exit 1; }
+m="$( { : >>"$f"; } 2>&1 )" || { echo "refused: cannot open $f: ${m##*: }"; exit 1; }
 /bin/chmod 0600 "$f" && /usr/sbin/chown "$u:$g" "$f" || { …; exit 1; }
 cd "$1" || { echo "refused: cannot enter $1"; exit 1; }
 echo $$

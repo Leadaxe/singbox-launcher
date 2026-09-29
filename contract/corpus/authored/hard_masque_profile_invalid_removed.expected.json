@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "container": "own"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-5.com",
+        "server_port": 443,
+        "type": "masque",
+        "uri": "https://example-5.com/.well-known/masque/ip/*/*/"
+      },
+      "kind": "outbound",
+      "label": "own-masque",
+      "scheme": "masque",
+      "warnings": [
+        {
+          "code": "type_invalid",
+          "path": "profile",
+          "value": "bogus"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

@@ -42,6 +42,10 @@ type TailscalePeer struct {
 	LastSeen       time.Time
 	Expired        bool
 	StableID       string
+	// KeyExpiry — срок ключа устройства; нулевое время — срока нет.
+	KeyExpiry time.Time
+	// ShareeNode — устройство чужой tailnet, расшаренное в эту.
+	ShareeNode bool
 }
 
 // TailscaleUserGroup — пиры одного пользователя tailnet.
@@ -55,6 +59,9 @@ type TailscaleUserGroup struct {
 type TailscaleStatus struct {
 	EndpointTag  string
 	BackendState string
+	// StateText — текст состояния ядра; UI берёт его только для значения
+	// BackendState, которого лаунчер не знает (SPEC 148 §2).
+	StateText string
 	// AuthURL — ссылка входа; непуста только при NeedsLogin у узла без
 	// auth_key. Сегодня видна только в логе ядра, на роутере — нигде.
 	AuthURL        string
@@ -99,6 +106,7 @@ func TailscaleStatusesFromPB(upd *daemonpb.TailscaleStatusUpdate, at time.Time) 
 		st := TailscaleStatus{
 			EndpointTag:    ep.GetEndpointTag(),
 			BackendState:   ep.GetBackendState(),
+			StateText:      ep.GetStateText(),
 			AuthURL:        ep.GetAuthURL(),
 			NetworkName:    ep.GetNetworkName(),
 			MagicDNSSuffix: ep.GetMagicDNSSuffix(),
@@ -142,10 +150,14 @@ func tailscalePeerFromPB(p *daemonpb.TailscalePeer) *TailscalePeer {
 		TxBytes:        p.GetTxBytes(),
 		Expired:        p.GetExpired(),
 		StableID:       p.GetStableID(),
+		ShareeNode:     p.GetShareeNode(),
 	}
 	// LastSeen — unix-секунды; ноль = ядро не знает, оставляем нулевое время.
 	if ls := p.GetLastSeen(); ls > 0 {
 		peer.LastSeen = time.Unix(ls, 0)
+	}
+	if ke := p.GetKeyExpiry(); ke > 0 {
+		peer.KeyExpiry = time.Unix(ke, 0)
 	}
 	return peer
 }

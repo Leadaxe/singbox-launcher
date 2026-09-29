@@ -87,8 +87,15 @@ type UIService struct {
 	LxdOverrideConnectFunc    func(id string) error
 	LxdOverrideDisconnectFunc func()
 	LxdOverrideStateFunc      func() (id, name string, active bool)
-	FocusOpenChildWindows     func()                                     // Focus one of wizard child windows (View, Outbound Edit, rule dialog) when user clicks wizard
-	ShowUpdatePopupFunc       func(currentVersion, latestVersion string) // Called to show update popup
+	// LxdMachineTransportFunc — транспорт подключённой машины из её выбора,
+	// а не из APIService (там при взгляде на Local стоит транспорт своего
+	// движка): machineID "" — выбранная сейчас машина, иначе только она.
+	// ok=false — машина не подключена. Регистрируется UI-слоем
+	// (RegisterOverrideAPIHooks); значение — *services.LxdRemoteTransport
+	// (interface{}, чтобы uiservice не зависел от services).
+	LxdMachineTransportFunc func(machineID string) (interface{}, bool)
+	FocusOpenChildWindows   func()                                     // Focus one of wizard child windows (View, Outbound Edit, rule dialog) when user clicks wizard
+	ShowUpdatePopupFunc     func(currentVersion, latestVersion string) // Called to show update popup
 
 	// Dependencies (passed from AppController)
 	RunningStateIsRunning func() bool

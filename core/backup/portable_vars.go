@@ -10,8 +10,11 @@ package backup
 // portableVars — множество имён, переносимых между приложениями.
 var portableVars = map[string]struct{}{
 	"auto_detect_interface":       {},
+	"dns_cache_capacity":          {}, // SPEC 147, контракт 1.1.93
 	"dns_default_domain_resolver": {},
 	"dns_final":                   {},
+	"dns_optimistic":              {}, // SPEC 147, контракт 1.1.93
+	"dns_store_cache":             {}, // SPEC 147, контракт 1.1.93
 	"dns_strategy":                {},
 	"ipv6_enabled":                {},
 	"log_level":                   {},

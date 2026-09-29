@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "container": "own",
+    "extension": "desktop"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "down_mbps": 50,
+        "server": "example-5.com",
+        "server_port": 443,
+        "server_ports": [
+          "20000:30000"
+        ],
+        "tls": {
+          "enabled": true,
+          "server_name": "example-5.com"
+        },
+        "type": "hysteria",
+        "up_mbps": 10
+      },
+      "kind": "outbound",
+      "label": "own-hy",
+      "scheme": "hysteria",
+      "warnings": [
+        {
+          "code": "hysteria_server_ports_item_invalid",
+          "path": "server_ports[0]",
+          "value": "198.51.100.24:443"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

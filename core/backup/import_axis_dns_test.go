@@ -61,8 +61,7 @@ func dnsServersTagged(s *state.State, tag string) int {
 
 // Импорт своего файла в пустое состояние и в состояние с другой осью.
 //
-// Ось: системная голова (0), якоря шаблона (950, 955) и правило узла (945)
-// остаются в зоне ниже 1000, дырка пользовательской зоны не схлопывается,
+// Ось: системная голова (0) и якоря шаблона (950, 955) остаются в зоне ниже 1000, дырка пользовательской зоны не схлопывается,
 // перехватчики (1120, 1130) остаются перехватчиками, неразмеченное правило
 // встаёт в хвост. Сборка ставит голову и якоря ПЕРЕД route.rules шаблона —
 // сплошная нумерация с 1000 уводила их за шаблонные правила, и sniff переставал
@@ -84,7 +83,7 @@ func TestImportKeepsAxisZonesAndFileDNSDuplicates(t *testing.T) {
 			Body: map[string]interface{}{"type": "udp", "server": "192.0.2.53"}}
 	}
 
-	src := stateWithSections(t, "ts-dns", 945)
+	src := state.New()
 	unmarked := axisInline("unmarked", 0)
 	unmarked.Num = nil
 	src.Rules = []state.Rule{
@@ -110,10 +109,6 @@ func TestImportKeepsAxisZonesAndFileDNSDuplicates(t *testing.T) {
 		t.Helper()
 		if got := axisOf(s.Rules); !equalStrings(got, wantAxis) {
 			t.Errorf("%s: ось %v, ожидалась %v", stage, got, wantAxis)
-		}
-		sec := nodeSectionsOf(t, s)
-		if sec == nil || len(sec.Rules) != 1 || sec.Rules[0].Num == nil || *sec.Rules[0].Num != 945 {
-			t.Errorf("%s: правило узла ушло со своего места 945: %+v", stage, sec)
 		}
 	}
 

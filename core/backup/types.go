@@ -251,22 +251,15 @@ type Server struct {
 	Folder            string `json:"folder,omitempty"`
 	Enabled           *bool  `json:"enabled,omitempty"`
 	ExcludeFromGlobal bool   `json:"exclude_from_global,omitempty"`
-	// Sections — фрагменты конфига, которые узел носит с собой (SPEC 121).
-	// Поле ЛАУНЧЕРА (BACKUP.md §2, «Поддержка: launcher»): LxBox игнорирует
-	// его молча и по возможности провозит.
+	// Sections — секции узла из dev-сборок 0.12 (BACKUP.md §11). Секции
+	// упразднены (контракт 1.1.85): непустой блок снимается с
+	// backup_section_record_dropped, в состояние не попадает.
 	Sections *ServerSections `json:"sections,omitempty"`
 	SourceRef
 }
 
-// ServerSections — секции узла в бэкапе (SPEC 121 §10.5).
-//
-// Форма та же, что на диске: записи правил и DNS лаунчера со своими `enabled`
-// и `order_num`. Своего типа у бэкапа нет намеренно — переименование полей
-// завело бы вторую схему одних и тех же данных и потребовало бы держать её в
-// согласии с первой.
-//
-// Тело едет непрозрачным блоком: разбирает его state, а не контракт. Так
-// незнакомое поле DNS-сервера (`endpoint` у tailscale) переживает round-trip.
+// ServerSections — блок `sections` записи 0.12, непрозрачный: его читают
+// только ради счёта записей (sectionsRecordCount).
 type ServerSections struct {
 	// Raw — объект `sections` как он лежит в файле.
 	Raw json.RawMessage

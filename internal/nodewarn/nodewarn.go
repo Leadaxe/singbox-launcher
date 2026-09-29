@@ -81,6 +81,11 @@ const (
 	SeverityInfo = "info"
 )
 
+// notAppliedBodyText — «что произошло» у записи с applied: false (контракт
+// 1.1.87, PARSING_PRINCIPLES §10.5): текст реестра утверждает, что поле
+// изменено, а у авторского тела приложение ничего не меняло.
+const notAppliedBodyText = "This node was written by hand, so the app changed nothing in it. The rule below would normally apply."
+
 // rank — вес уровня для сортировки: меньше = важнее.
 //
 // Неизвестный уровень (код есть в состоянии, но не в реестре, либо реестр не
@@ -170,6 +175,11 @@ func Describe(in []state.NodeWarning) []Text {
 			if cause, fixes, ok := reg.WarningAdvice(w.Code, lang); ok {
 				t.Cause, t.Fixes = cause, fixes
 			}
+		}
+		// Правило не применено к авторскому телу (контракт 1.1.87): заголовок,
+		// причина и решения — из реестра, «что произошло» — общая строка.
+		if w.Applied != nil && !*w.Applied {
+			t.Body = locale.T(notAppliedBodyText)
 		}
 		if t.Title == "" {
 			t.Title = w.Code
@@ -390,7 +400,7 @@ func FromParsed(in []configtypes.Warning) []state.NodeWarning {
 	}
 	out := make([]state.NodeWarning, 0, len(in))
 	for _, w := range in {
-		nw := state.NodeWarning{Code: w.Code, Path: w.Path, Value: w.Value}
+		nw := state.NodeWarning{Code: w.Code, Path: w.Path, Value: w.Value, Applied: w.Applied}
 		if len(w.Params) > 0 {
 			// Копия карты: общая карта у двух записей означала бы правку
 			// одной через другую.

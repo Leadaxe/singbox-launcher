@@ -1,0 +1,9 @@
+{
+  "_comment": "Массив из одного тела у члена папки: в источник этот элемент, сообщения нет.",
+  "container": "folder",
+  "origin": {
+    "kind": "json",
+    "raw": "{\"type\":\"trojan\",\"server\":\"example-2.com\",\"server_port\":443,\"password\":\"testpass581\"}"
+  },
+  "input": "[{\"type\":\"trojan\",\"server\":\"example-1.com\",\"server_port\":443,\"password\":\"testpass580\"}]"
+}

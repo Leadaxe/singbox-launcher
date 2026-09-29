@@ -1,0 +1,35 @@
+{
+  "_comment": "Отсутствующее поле тела: ключ и элемент массива снимаются, #tpl с пустой вставкой снимается целиком; вложенный путь читается.",
+  "preset": {
+    "for_each": {
+      "node_type": "tailscale",
+      "as": "n"
+    },
+    "rules": [
+      {
+        "domain": [
+          "@n.body.missing",
+          "x.example"
+        ],
+        "outbound": "@n",
+        "auth_user": "@n.body.missing",
+        "comment": {
+          "#tpl": "@{n.body.missing}-x"
+        },
+        "network": "@n.body.nested.proto"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "nested": {
+          "proto": "tcp"
+        }
+      }
+    }
+  ]
+}

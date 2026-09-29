@@ -152,23 +152,8 @@ func mergeDisabledMarks(dst *state.Source, incoming []string) {
 	sort.Strings(dst.PendingDisabled)
 }
 
-// applyImportedSections накладывает секции файла на УЖЕ ЛЕЖАЩИЙ узел.
-//
-// Поля в файле нет → локальные секции остаются: молчание файла не значит
-// «сотри». Поле есть → замещает целиком, включая пустой набор (пользователь
-// снял секции на другой машине, и «слить» тут нечего — фрагменты не имеют
-// ключа, по которому их можно было бы сопоставить поштучно).
-func applyImportedSections(node *state.Node, sec *state.NodeSections, present bool) {
-	if node == nil || !present {
-		return
-	}
-	node.Sections = sec
-	node.NormalizeNodeSections()
-}
-
 // folderNodeWithBody — индекс УЖЕ ЛЕЖАЩЕГО в этой папке того же узла; -1,
-// если его нет. Индекс, а не bool: при совпадении на найденный узел
-// накладываются секции файла (SPEC 121).
+// если его нет.
 //
 // Дедуп в пределах ОДНОЙ папки, а не по всему состоянию: один и тот же сервер
 // в двух разных папках — законная раскладка (одна «рабочая», другая
@@ -439,8 +424,6 @@ func (a nodeAddr) resolve(s *state.State) *state.Node {
 // этим файлом (их секции участвуют в перенумерации оси), как переехали id
 // контейнеров и куда легли узлы файла (по ним переписываются ссылки).
 type mergedInfo struct {
-	// nodes — узлы состояния, которые этот импорт принёс или обновил.
-	nodes []nodeAddr
 	// folderIDs — карта «id контейнера в файле → id здесь»: папки и
 	// подписки. Совпавший контейнер держит СВОЙ id, новый — id из файла или
 	// свежий ULID при коллизии, поэтому ссылки файла обязаны переехать.
@@ -538,25 +521,6 @@ func (l *landings) member(fileContainer, fileTag, fileFinal string, here state.N
 	if added && here.Tag != fileTag {
 		l.renamed[here] = true
 	}
-}
-
-// sectionRules — правила, которые приехавшие узлы носят с собой.
-//
-// Указатели, потому что перенумерация ставит номера в тех самых записях,
-// которые уже лежат в состоянии: копия здесь означала бы, что ось пересчитана
-// и выброшена. Берутся они в самом конце, когда s.Sources больше не растёт.
-func (m *mergedInfo) sectionRules(s *state.State) []*state.Rule {
-	var out []*state.Rule
-	for _, addr := range m.nodes {
-		n := addr.resolve(s)
-		if n == nil || n.Sections == nil {
-			continue
-		}
-		for i := range n.Sections.Rules {
-			out = append(out, &n.Sections.Rules[i])
-		}
-	}
-	return out
 }
 
 // rewriteLinks переписывает ссылки, приехавшие файлом, с адресов ФАЙЛА на
@@ -846,7 +810,7 @@ func mergeSubscriptionItem(s *state.State, item decodedSource, byURL map[string]
 // Тег у одиночного узла — локальное имя, и один и тот же сервер,
 // переименованный на другой машине, обязан узнаться, иначе каждый импорт
 // плодил бы его копию. Совпавшее тело — пропуск БЕЗ warning: это не потеря, а
-// «у тебя уже есть». Секции файла при этом сильнее локальных (SPEC 121).
+// «у тебя уже есть».
 //
 // Имя папки (item.Folder) сравнивается КАК ЕСТЬ — без подрезки и с учётом
 // регистра: «DE» и «de » — две разные папки.
@@ -858,11 +822,11 @@ func mergeServerItem(s *state.State, item decodedSource, rootBodies map[string]i
 	if item.Folder == "" {
 		key := nodeBodyKey(&incoming.Node)
 		if at, dup := rootBodies[key]; key != "" && dup {
-			// Узел уже есть. Тело у него то же, но секции файла сильнее
-			// локальных — иначе связка, ради которой бэкап и делали,
-			// пропала бы «пропуском без warning».
-			applyImportedSections(&s.Sources[at].Node, incoming.Node.Sections, item.Sections)
-			info.nodes = append(info.nodes, nodeAddr{src: at, node: -1})
+			// Узел уже есть: тело то же. skip_presets из файла — только true:
+			// отсутствие поля неотличимо от false и своё не сбрасывает (§578).
+			if incoming.SkipPresets {
+				s.Sources[at].SkipPresets = true
+			}
 			info.landedRoot(fileTag, fileID, s.Sources[at].NodeTagOrLabel(), item.FullSettings)
 			cnt.SkippedServers++
 			return
@@ -878,7 +842,6 @@ func mergeServerItem(s *state.State, item decodedSource, rootBodies map[string]i
 		if key != "" {
 			rootBodies[key] = at
 		}
-		info.nodes = append(info.nodes, nodeAddr{src: at, node: -1})
 		info.linked = append(info.linked, linkedNode{at: nodeAddr{src: at, node: -1}})
 		info.landedRoot(fileTag, fileID, s.Sources[at].NodeTagOrLabel(), item.FullSettings)
 		cnt.AddedServers++
@@ -886,7 +849,7 @@ func mergeServerItem(s *state.State, item decodedSource, rootBodies map[string]i
 	}
 
 	folder := ensureFolderAt(s, item.Folder, folderAt, cnt)
-	here, added := addFolderMember(s, folder, incoming.Node, item.Sections, "", cnt, info)
+	here, added := addFolderMember(s, folder, incoming.Node, "", cnt, info)
 	// Член папки 0.x: в файле у папки нет ни записи, ни id, и ссылки файла
 	// адресуют сам сервер — id записи (`detour_node_source_id`) или сырым
 	// тегом (строковые позиции цепочек).
@@ -959,10 +922,9 @@ func mergeFolderItem(s *state.State, item decodedSource, folderAt *folderIndex, 
 	if item.FileFolderID != "" {
 		info.folderIDs[item.FileFolderID] = s.Sources[at].ID
 	}
-	for i, n := range item.Src.Nodes {
-		present := i < len(item.MemberSections) && item.MemberSections[i]
+	for _, n := range item.Src.Nodes {
 		fileTag := n.Tag
-		here, added := addFolderMember(s, at, n, present, item.FileFolderID, cnt, info)
+		here, added := addFolderMember(s, at, n, item.FileFolderID, cnt, info)
 		if here.Tag == "" {
 			continue
 		}
@@ -1008,11 +970,12 @@ func ensureFolderAt(s *state.State, name string, folderAt *folderIndex, cnt *mer
 // стоящего узла), и признак «добавлен»: по ним ссылки файла идут за членом,
 // которого слияние переименовало (NODE_LINK.md §7.2). fileContainer — id папки
 // в файле (1.0), им ключуются члены групп без folder_id.
-func addFolderMember(s *state.State, folderAt int, node state.Node, sectionsPresent bool, fileContainer string, cnt *mergeCounters, info *mergedInfo) (state.NodeLink, bool) {
+func addFolderMember(s *state.State, folderAt int, node state.Node, fileContainer string, cnt *mergeCounters, info *mergedInfo) (state.NodeLink, bool) {
 	folder := &s.Sources[folderAt]
 	if hit := folderNodeWithBody(folder, &node); hit >= 0 {
-		applyImportedSections(&folder.Nodes[hit], node.Sections, sectionsPresent)
-		info.nodes = append(info.nodes, nodeAddr{src: folderAt, node: hit})
+		if node.SkipPresets {
+			folder.Nodes[hit].SkipPresets = true // §578: только true
+		}
 		cnt.SkippedServers++
 		return state.NodeLink{FolderID: folder.ID, Tag: folder.Nodes[hit].Tag}, false
 	}
@@ -1023,7 +986,6 @@ func addFolderMember(s *state.State, folderAt int, node state.Node, sectionsPres
 	node.Tag = uniqueTag(taken, node.Tag)
 	folder.Nodes = append(folder.Nodes, node)
 	at := len(folder.Nodes) - 1
-	info.nodes = append(info.nodes, nodeAddr{src: folderAt, node: at})
 	info.linked = append(info.linked, linkedNode{at: nodeAddr{src: folderAt, node: at}, fileContainer: fileContainer})
 	cnt.AddedServers++
 	return state.NodeLink{FolderID: folder.ID, Tag: node.Tag}, true

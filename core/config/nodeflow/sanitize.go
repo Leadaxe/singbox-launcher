@@ -46,6 +46,10 @@ type Result struct {
 	// Repairs переносит те же правки на тело, которое санитайзер не ведёт.
 	Repaired       []string
 	RepairWarnings []Warning
+	// HardPaths — пути, которые правило с `core_rejects` записало МОЛЧА
+	// (default_when без кода, контракт 1.1.87): их правку авторское тело
+	// получает без кода (AuthoredResult).
+	HardPaths []string
 }
 
 // maskedValue — то, что пишется в Warning.Value вместо секрета.
@@ -210,6 +214,19 @@ func SanitizeFromKind(scheme, source, kind string, m map[string]interface{}) Res
 				Params: map[string]string{"scheme": scheme},
 			},
 		}
+	}
+	if body.FieldsUnchecked {
+		// Поля схемы не описаны (контракт 1.1.99, `fields_unchecked`): тело
+		// едет в ядро как написано — без правил и без unknown_key. Снимаются
+		// только ключи, которые пишет сама сборка (tag, type).
+		clean := make(map[string]interface{}, len(m))
+		for k, v := range m {
+			if buildManagedKeys[k] {
+				continue
+			}
+			clean[k] = deepCopyValue(v)
+		}
+		return Result{Clean: clean}
 	}
 	s := &sanitizer{reg: reg, scheme: scheme, source: source, kind: kind, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}, absent: map[string]bool{}, dropped: map[string]bool{}, building: map[string]map[string]interface{}{}}
 	s.cleanRoot = map[string]interface{}{}
@@ -577,6 +594,11 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 					delete(s.absent, path)
 					if dw.Code != "" {
 						s.warn(dw.Code, path, nil, false, map[string]string{"path": path})
+					} else if dw.CoreRejects {
+						// Тихий дефолт, без которого ядро не поднимает узел:
+						// кода нет, но авторское тело обязано его получить
+						// (контракт 1.1.87, PARSING_PRINCIPLES §10.3).
+						s.res.HardPaths = append(s.res.HardPaths, path)
 					}
 					continue
 				}

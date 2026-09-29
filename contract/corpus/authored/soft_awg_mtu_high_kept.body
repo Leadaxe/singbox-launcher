@@ -1,0 +1,5 @@
+# Авторское тело AmneziaWG с mtu=1420: вход `singbox` есть только у
+# авторского тела (PARSING_PRINCIPLES §10.4), значение сохраняется, код
+# awg_mtu_high с applied:false. Узел подписки с тем же телом получает 1280 и
+# awg_mtu_clamped (body/singbox/endpoints_awg_mtu_high).
+{"type":"wireguard","tag":"awg-own","mtu":1420,"address":["10.0.0.2/32"],"private_key":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=","jc":10,"peers":[{"address":"example-3.com","port":51820,"public_key":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=","allowed_ips":["0.0.0.0/0"]}]}

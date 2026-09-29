@@ -103,13 +103,6 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 		state.TargetPlatform = tgt.GOOS
 		state.TargetArch = tgt.GOARCH
 	}
-	// SPEC 121 §10.4: у оси один порядок на всех, и ленивый сдвиг при драге
-	// мог задеть соседей любого происхождения — правила узлов в том числе.
-	// Раскладываем номера и тумблеры по домам ДО снятия копии источников:
-	// корневые правила уедут ниже в state.Rules, узловые пишутся обратно в
-	// свой узел. Без этого прохода перетаскивание жило бы до первой
-	// перезагрузки.
-	wizardmodels.SyncNodeRuleRefsToSources(p.model)
 	state.Sources = append([]wizardmodels.Source(nil), p.model.Sources...)
 	if len(p.model.GlobalOutbounds) > 0 {
 		state.Directions = append([]configtypes.Direction(nil), p.model.GlobalOutbounds...)
@@ -117,6 +110,7 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 		state.Directions = []configtypes.Direction{}
 	}
 	state.WarpAccounts = p.model.WarpAccounts
+	state.LatePresetsSeeded = append([]string(nil), p.model.LatePresetsSeeded...)
 
 	// Извлекаем config_params из модели
 	state.ConfigParams = p.extractConfigParams()

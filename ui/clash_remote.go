@@ -17,7 +17,7 @@
 //   - `OnOverrideChanged` — register listener (status badge update, tab enable,
 //     force-refresh).
 //   - `EffectiveClashAPIConfig` — single resolver consulted by every callsite
-//     in clash_api_tab.go. Returns (baseURL, token, enabled, remote).
+//     in proxy_list_panel.go. Returns (baseURL, token, enabled, remote).
 //   - `CurrentGeneration` — atomic gen counter для drop-stale в refresh-goroutine'ах
 //     (см. SPEC 064 §«Concurrency»).
 //   - `NormalizeHost` — strip scheme prefix, reject `:`/`/`/IPv6 brackets.
@@ -54,7 +54,7 @@ var (
 	// захватывают snapshot generation на старте и в `fyne.Do` callback'е проверяют:
 	// если generation сместился — drop stale, не пишут в UI.
 	//
-	// Тот же паттерн что `pingAllGeneration` в `clash_api_tab.go`.
+	// Тот же паттерн что `pingAllGeneration` в `proxy_list_panel.go`.
 	clashConfigGeneration uint64
 
 	overrideListenersMu sync.RWMutex
@@ -197,9 +197,8 @@ func EffectiveClashAPIConfigIn(ac *core.AppController, scope services.ProxyScope
 	return base, tok, en, false
 }
 
-// EffectiveProxyTransport — транспорт proxy-операций для Servers-tab.
-// Приоритет: явный remote-override (диагностический путь SPEC 064) →
-// транспорт активного бэкенда (daemon-режим, gRPC) → локальный Clash API.
+// EffectiveProxyTransport — транспорт proxy-операций панели Remote
+// (EffectiveProxyTransportIn с ScopeRemote).
 //
 // Всегда возвращает готовый транспорт: при выключенном clash_api это
 // ClashTransport с пустым baseURL — запрос завершится той же ошибкой
@@ -208,31 +207,31 @@ func EffectiveProxyTransport(ac *core.AppController) services.ProxyTransport {
 	return EffectiveProxyTransportIn(ac, services.ScopeRemote)
 }
 
-// EffectiveProxyTransportIn — транспорт для конкретной области.
-// ScopeLocal никогда не уезжает на remote-override: локальная панель управляет
-// локальным ядром даже при подключённой удалённой машине.
+// EffectiveProxyTransportIn — транспорт для конкретной области. Оба пути
+// читают источники напрямую, а не APIService.TransportOverride(): его
+// содержимое меняется по вкладкам главного окна (на Local — свой движок, на
+// Remote — выбранная машина), и вызов с чужой вкладки получал бы чужое ядро.
+//
+// ScopeLocal — всегда своё ядро (core.LocalProxyTransport): транспорт
+// удалённой машины сюда не попадает никогда.
+//
+// ScopeRemote, по приоритету:
+//  1. выбранная машина lxd (SPEC 097) — из её выбора. Выше Clash-override:
+//     у remote-конфига Clash API нет by design, и откат на HTTP-путь дал бы
+//     гарантированно нерабочее подключение;
+//  2. gRPC-транспорт своего бэкенда (daemon-режим). Выше Clash-override:
+//     override — диагностический путь classic-режима (SPEC 064), в daemon он
+//     только увёл бы proxy-операции с gRPC на чужой Clash-адрес;
+//  3. Clash-override (SPEC 064);
+//  4. Clash API своего ядра по config.json.
 func EffectiveProxyTransportIn(ac *core.AppController, scope services.ProxyScope) services.ProxyTransport {
 	if scope == services.ScopeLocal {
-		if ac != nil && ac.APIService != nil {
-			if t := ac.APIService.TransportOverride(); t != nil {
-				return t
-			}
-		}
-		baseURL, token, _, _ := EffectiveClashAPIConfigIn(ac, services.ScopeLocal)
-		return services.NewClashTransport(baseURL, token)
+		return ac.LocalProxyTransport()
 	}
-	// Daemon-режим (gRPC-транспорт) имеет приоритет над remote-override:
-	// override — диагностический путь classic-режима (SPEC 064), в daemon он
-	// только увёл бы proxy-операции с gRPC на чужой Clash-адрес.
-	if ac != nil && ac.APIService != nil {
-		if t := ac.APIService.TransportOverride(); t != nil {
-			return t
-		}
-	}
-	// SPEC 097: выбран удалённый демон lxd — говорим с ним по gRPC.
-	// Выше Clash-override: у remote-конфига Clash API нет by design, и
-	// откат на HTTP-путь дал бы гарантированно нерабочее подключение.
 	if t := lxdOverrideTransportOrNil(); t != nil {
+		return t
+	}
+	if t, ok := ac.OwnDaemonTransport(); ok {
 		return t
 	}
 	if ov, ok := GetRemoteOverride(); ok {
@@ -240,6 +239,39 @@ func EffectiveProxyTransportIn(ac *core.AppController, scope services.ProxyScope
 	}
 	baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
 	return services.NewClashTransport(baseURL, token)
+}
+
+// nodeWindowTarget — ядро, которое описывает окно узла, открытое из области
+// scope. У Remote окно привязано к машине, выбранной при открытии (как
+// вкладка Network): её id в цели, и после смены выбора команды окна в другую
+// машину не уходят — отвечают «not available». Remote без выбранной машины
+// ни к какому ядру не привязан: пустой id значил бы «выбранная сейчас», и
+// окно поехало бы за чужим выбором; bound=false.
+func nodeWindowTarget(scope services.ProxyScope) (target core.CoreTarget, bound bool) {
+	if scope != services.ScopeRemote {
+		return core.CoreIn(scope), true
+	}
+	id, _, ok := GetLxdRemoteOverride()
+	if !ok || id == "" {
+		return core.CoreTarget{Scope: services.ScopeRemote}, false
+	}
+	return core.CoreTarget{Scope: services.ScopeRemote, MachineID: id}, true
+}
+
+// proxyTransportFor — транспорт ядра цели окна узла. Local — своё ядро;
+// Remote с машиной — только эта машина (ok=false, если выбор сменили).
+func proxyTransportFor(ac *core.AppController, t core.CoreTarget) (services.ProxyTransport, bool) {
+	if t.Scope != services.ScopeRemote {
+		return EffectiveProxyTransportIn(ac, t.Scope), true
+	}
+	if t.MachineID == "" {
+		return nil, false
+	}
+	tr, ok := lxdOverrideTransportForID(t.MachineID)
+	if !ok {
+		return nil, false
+	}
+	return tr, true
 }
 
 // NormalizeHost — приводит юзер-ввод к чистому hostname'у.

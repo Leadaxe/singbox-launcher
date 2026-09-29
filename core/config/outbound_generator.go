@@ -46,7 +46,6 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/nodeflow"
 	"singbox-launcher/core/config/registry"
-	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -74,12 +73,6 @@ type OutboundGenerationResult struct {
 	// для всего конфига, поэтому он снимается, а причина едет в UI. Одна
 	// запись на пару (код, схема), в порядке первой встречи.
 	CoreSkips []CoreSkip
-
-	// NodeSections — секции узлов, ДОШЕДШИХ до эмиссии (SPEC 121), в порядке
-	// эмиссии. Собирается здесь по той же причине, что и NodeOrigins: это
-	// последнее место, где виден и узел, и его финальный тег — дальше по
-	// конвейеру от узла остаётся строка JSON.
-	NodeSections []NodeSectionSet
 
 	// EmptyDirections — Направления, чей фильтр не поймал ни одного узла
 	// (SPEC 104). Отображаемые имена, для превью и статуса: в конфиг такое
@@ -147,6 +140,8 @@ type OutboundGenerationResult struct {
 	// пользователю ИСТОЧНИК, у которого сломался переход. Селекторы и
 	// Направления сюда не попадают — у них источника нет.
 	NodeOrigins map[string]NodeOrigin
+	// SkipPresetsTags — финальные теги узлов с skip_presets=true (LxBox §578).
+	SkipPresetsTags map[string]bool
 
 	// NodeLinks — финальный тег узла → его идентичность в состоянии
 	// ({FolderID, сырой тег}), SPEC 132.
@@ -168,20 +163,6 @@ type OutboundGenerationResult struct {
 type NodeOrigin struct {
 	SourceID    string
 	SourceLabel string
-}
-
-// NodeSectionSet — секции одного узла плюс адресация (SPEC 121). Зеркалит
-// build.NodeSectionSet: core/build о core/config не знает, и общего типа у
-// них быть не может — зависимость идёт в одну сторону.
-type NodeSectionSet struct {
-	// FinalTag — тег, под которым узел уехал в конфиг.
-	FinalTag string
-	// Link — идентичность узла в состоянии ({FolderID, сырой тег}).
-	Link configtypes.NodeLink
-	// Sections — записи узла в форме хранения, ДО подстановки `@self`:
-	// финальный тег известен здесь, но подставляет его сборка — одной точкой
-	// (state.SubstituteSelf), общей с показом в UI.
-	Sections *state.NodeSections
 }
 
 // SourceExclusion — один исключённый источник и почему.
@@ -842,7 +823,7 @@ func generateWithDetourYield(hop *ParsedNode) (string, error) {
 func yieldChainDetour(n *ParsedNode) {
 	for _, y := range yieldToBuildDetour(n) {
 		target, _ := n.Outbound[buildDetourField].(string)
-		debuglog.WarnLog("chain: %s (%s)", fmt.Sprintf(emitDetourFieldYieldText, n.Tag, y.Path, target), y.Code)
+		debuglog.WarnLog("chain: %s (%s, applied=%t)", fmt.Sprintf(emitDetourFieldYieldText, n.Tag, y.Path, target), y.Code, y.Applied)
 	}
 }
 
@@ -1201,14 +1182,20 @@ func GenerateOutboundsFromParserConfig(
 		}
 	}
 
-	// SPEC 121: секции узлов, ДОШЕДШИХ до эмиссии. Заполняется в том же цикле
-	// и только на удачной ветке — фрагмент без своего узла ссылался бы в никуда.
-	var nodeSections []NodeSectionSet
 	// SPEC 132: та же причина и то же место — карта «финальный тег → узел
 	// состояния» описывает ровно то, что уехало в конфиг. Узел, который
 	// эмиссия не выпустила, ядро назвать не может, и запись о нём завела бы
 	// сопоставление на узел, которого в конфиге нет.
 	nodeLinks := make(map[string]configtypes.NodeLink, len(allNodes))
+	var skipPresets map[string]bool
+	for _, node := range allNodes {
+		if node != nil && node.SkipPresets && node.Tag != "" {
+			if skipPresets == nil {
+				skipPresets = make(map[string]bool)
+			}
+			skipPresets[node.Tag] = true
+		}
+	}
 	for _, node := range allNodes {
 		outJSONs, epJSON, err := EmitNodeJSONs(node)
 		if err != nil {
@@ -1230,13 +1217,6 @@ func GenerateOutboundsFromParserConfig(
 			if _, dup := nodeLinks[node.Tag]; !dup {
 				nodeLinks[node.Tag] = node.CanonicalLink
 			}
-		}
-		if decoded := state.NodeSectionsFromConfigTypes(node.Sections); decoded != nil {
-			nodeSections = append(nodeSections, NodeSectionSet{
-				FinalTag: node.Tag,
-				Link:     node.SectionsLink,
-				Sections: decoded,
-			})
 		}
 	}
 
@@ -1278,8 +1258,8 @@ func GenerateOutboundsFromParserConfig(
 		ParseFailedSources:   parseFailedSources,
 		EmissionWarnings:     emissionWarnings,
 		NodeOrigins:          nodeOrigins,
+		SkipPresetsTags:      skipPresets,
 		NodeLinks:            nodeLinks,
-		NodeSections:         nodeSections,
 	}, nil
 }
 
@@ -1368,7 +1348,7 @@ func generateRawNodeJSON(node *ParsedNode) (string, error) {
 	}
 	// Правила-починки реестра (REALITY без uTLS, random под REALITY) — и у
 	// ручного объекта: это свойство ядра, а не входа. Остальное — как есть.
-	ob, notes := nodeflow.Repairs(node.Scheme, node.Outbound)
+	ob, notes := nodeflow.RepairsFor(node.Scheme, node.Authored, node.Outbound)
 	logBuildRepairs(node.Scheme, node.Tag, notes)
 
 	var parts []string
@@ -1410,7 +1390,7 @@ func generateCanonicalBodyJSON(node *ParsedNode) (string, error) {
 	// Здесь единственное место, где сохранённое тело становится outbound'ом
 	// config.json, — значит и гейту место здесь, одной табличной проверкой
 	// по реестру вместо частной пробы на каждое поле.
-	gated, _ := gateBodyForCore(node.Scheme, node.Tag, repairBodyForBuild(node.Scheme, node.Tag, node.EmitBody))
+	gated, _ := gateBodyForCore(node.Scheme, node.Tag, repairBodyForBuild(node.Scheme, node.Tag, node.Authored, node.EmitBody))
 	return stampTagAndDetour(gated, node)
 }
 
@@ -1434,7 +1414,7 @@ func stampTagAndDetour(body []byte, node *ParsedNode) (string, error) {
 		if d, ok := node.Outbound["detour"].(string); ok {
 			if d = strings.TrimSpace(d); d != "" {
 				obj.setLast("detour", marshalJSONStringRaw(d))
-				yieldBodyToDetour(obj, node.Scheme)
+				yieldBodyToDetour(obj, node.Scheme, node.Authored)
 			}
 		}
 	}
@@ -1449,7 +1429,11 @@ func stampTagAndDetour(body []byte, node *ParsedNode) (string, error) {
 // материализованный узел эмитится из замороженного EmitBody. Поэтому
 // исполнение правила — здесь, на границе «тело → outbound», где detour и
 // встречается с телом (контракт 1.1.84).
-func yieldBodyToDetour(obj *orderedJSONObject, scheme string) {
+//
+// Снятие — через точку правки nodeflow.Decide (контракт 1.1.87): у
+// авторского тела мягкое правило (tls.fragment) поле оставляет, жёсткое
+// (listen_port WireGuard, отказ ядра) снимает.
+func yieldBodyToDetour(obj *orderedJSONObject, scheme string, authored bool) {
 	reg, err := registry.Get()
 	if err != nil {
 		return
@@ -1459,7 +1443,9 @@ func yieldBodyToDetour(obj *orderedJSONObject, scheme string) {
 		return
 	}
 	for _, y := range reg.YieldsTo(scheme, buildDetourField, m) {
-		deleteOrderedPath(obj, strings.Split(y.Path, "."))
+		if apply, _ := nodeflow.Decide(scheme, authored, nodeflow.Warning{Code: y.Code, Path: y.Path}); apply {
+			deleteOrderedPath(obj, strings.Split(y.Path, "."))
+		}
 	}
 }
 

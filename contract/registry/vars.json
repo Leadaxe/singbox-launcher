@@ -38,6 +38,24 @@
       "in": "both",
       "note": "route.default_domain_resolver — символическая ссылка на тег DNS-сервера, та же политика, что dns_final"
     },
+    "dns_cache_capacity": {
+      "type": "int",
+      "portable": true,
+      "in": "both",
+      "note": "dns.cache_capacity — число записей кэша DNS (контракт 1.1.93, LxBox §580, TEMPLATE_LANG §6.8). default 4000, допустимо 1024..65535; значение вне границ не сохраняется и в конфиг не уходит (действует default)."
+    },
+    "dns_optimistic": {
+      "type": "bool",
+      "portable": true,
+      "in": "both",
+      "note": "dns.optimistic — устаревший ответ отдаётся сразу, запись обновляется в фоне (контракт 1.1.93, TEMPLATE_LANG §6.8). default true; подставляется bool, объектная форма ядра не используется."
+    },
+    "dns_store_cache": {
+      "type": "bool",
+      "portable": true,
+      "in": "both",
+      "note": "experimental.cache_file.store_dns — кэш DNS в cache.db переживает перезапуск (контракт 1.1.93, TEMPLATE_LANG §6.8). default true."
+    },
     "dns_google_udp_outbound": {
       "type": "outbound",
       "portable": false,

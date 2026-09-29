@@ -189,6 +189,9 @@ func BuildConfig(ctx BuildContext) (Result, error) {
 	res := Result{}
 	ctx.Target = ctx.Target.Normalized()
 
+	// Размер кэша DNS вне границ в конфиг не попадает (SPEC 147).
+	ctx.Vars = sanitizeDNSCacheVars(ctx.Vars, &res)
+
 	// Шаг 1: эффективный конфиг через GetEffectiveConfig.
 	cfg, order := effectiveConfig(ctx.Template, ctx.Vars, ctx.Target, &res)
 
@@ -310,14 +313,6 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 		ctx.Cache, excluded = sanitizeOutboundGraph(ctx.Cache, finalOutboundTags)
 	}
 
-	// SPEC 121: секции узлов доезжают до слияния через PresetMergeContext, и
-	// снимаются с кэша ЗДЕСЬ — после санитайзера, чтобы фрагменты выброшенного
-	// узла в конфиг не попали. Вызывающие это поле не заполняют: у них кэш
-	// ещё не очищен, и они бы врали.
-	if ctx.Cache != nil {
-		ctx.Preset.NodeSections = ctx.Cache.NodeSections
-	}
-
 	// SPEC 118 (Р-DNS-2): множество тегов, реально уезжающих в
 	// `route.rule_set` — ДО обхода секций. Секция dns собирается раньше
 	// route, а её чистка висячих `rule_set`-ссылок судит именно по этому
@@ -325,6 +320,9 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 	// было неполным и снимало живые ссылки (DNS-правило теряло ограничение
 	// и начинало матчить всё). Считается и для preview: чистка работает там
 	// так же, и неполное множество врало бы и в превью.
+	// LxBox §578: узлы для for_each — здесь состав окончателен (граф-санитайзер
+	// уже снял узлы с висячими ссылками) и финальные теги назначены.
+	ctx.Preset.PresetNodes = CollectPresetNodes(ctx.Cache, order)
 	ctx.Preset.EmittedRuleSetTags = CollectEmittedRouteRuleSetTags(cfg["route"], ctx.Route, ctx.Preset)
 
 	// SPEC 129 Н10: секция dns собирается ПЕРВОЙ, независимо от порядка
@@ -564,4 +562,50 @@ func splitEntryComment(entry string) (prefix, jsonPart string) {
 		}
 		rest = rest[nl+1:]
 	}
+}
+
+// CollectPresetNodes — узлы конфига для раскрытия for_each (LxBox §578) в
+// порядке секций шаблона: тег, тело и skip_presets записи. Выключенные узлы и
+// снятые гейтами в кэш не попадают — и сюда тоже. Экспортирована для
+// визарда: превью и строки пресетов строят список этой же функцией
+// (SPEC 145 §7).
+func CollectPresetNodes(c *ParsedCache, order []string) []template.PresetNode {
+	if c == nil {
+		return nil
+	}
+	var out []template.PresetNode
+	add := func(entries []json.RawMessage) {
+		for _, e := range entries {
+			_, jsonPart := splitEntryComment(string(e))
+			dec := json.NewDecoder(strings.NewReader(jsonPart))
+			dec.UseNumber()
+			var body map[string]interface{}
+			if err := dec.Decode(&body); err != nil || body == nil {
+				continue
+			}
+			tag, _ := body["tag"].(string)
+			if tag == "" {
+				continue
+			}
+			out = append(out, template.PresetNode{Tag: tag, Body: body, SkipPresets: c.SkipPresets[tag]})
+		}
+	}
+	endpointsFirst := false
+	for _, k := range order {
+		if k == "endpoints" {
+			endpointsFirst = true
+			break
+		}
+		if k == "outbounds" {
+			break
+		}
+	}
+	if endpointsFirst {
+		add(c.Endpoints)
+		add(c.Outbounds)
+	} else {
+		add(c.Outbounds)
+		add(c.Endpoints)
+	}
+	return out
 }

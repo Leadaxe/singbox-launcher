@@ -415,7 +415,8 @@
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
-          "code": "packet_encoding_unknown"
+          "code": "packet_encoding_unknown",
+          "core_rejects": true
         },
         "default": "",
         "desc_en": "How UDP packets are encapsulated.",

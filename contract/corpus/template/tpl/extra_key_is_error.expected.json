@@ -1,0 +1,9 @@
+{
+  "load": "reject",
+  "config": {
+    "keep": "k"
+  },
+  "warnings": [
+    "template_unknown_directive"
+  ]
+}

@@ -4,7 +4,7 @@
 //
 //	{
 //	  "meta":       { version: 8, schema: "sources_v8", ... },
-//	  "sources":    [ {kind, tag, enabled, ..., sections} ],  // юнион по kind
+//	  "sources":    [ {kind, tag, enabled, ...} ],  // юнион по kind
 //	  "directions": [ ... ],                                   // configtypes.Direction
 //	  "rules":      [ {kind, id?, ref?, name?, enabled, num?, refs?, vars?, body?} ],
 //	  "vars":       [ ... ],
@@ -20,6 +20,7 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -57,6 +58,7 @@ func parseV8(data []byte) (*State, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("state: parse v8 json: %w", err)
 	}
+	logDroppedNodeSections(data)
 	// Плоская идентичность подписки из v8 dev-сборки волны 1 — в identity
 	// (disk_v8_flat_identity.go).
 	liftFlatSubscriptionIdentity(data, raw.Sources)
@@ -82,6 +84,7 @@ func parseV8(data []byte) (*State, error) {
 		Target:             raw.Meta.Target,
 		TargetPlatform:     raw.Meta.TargetPlatform,
 		TargetArch:         raw.Meta.TargetArch,
+		LatePresetsSeeded:  raw.Meta.LatePresetsSeeded,
 		Sources:            raw.Sources,
 		Directions:         raw.Directions,
 		Vars:               raw.Vars,
@@ -103,4 +106,34 @@ func parseV8(data []byte) (*State, error) {
 	syncLegacyFromCanonical(s)
 	normalizeNilSlices(s)
 	return s, nil
+}
+
+// logDroppedNodeSections — у v8-файла, записанного до контракта 1.1.85, у
+// узлов может остаться поле `sections`. Секции узла упразднены (SPEC 144,
+// LxBox §575): разбор их не читает, а в журнал ложится строка на запись.
+func logDroppedNodeSections(data []byte) {
+	if !bytes.Contains(data, []byte(`"sections"`)) {
+		return
+	}
+	type rec struct {
+		Tag      string          `json:"tag"`
+		Sections json.RawMessage `json:"sections"`
+		Nodes    []rec           `json:"nodes"`
+	}
+	var doc struct {
+		Sources []rec `json:"sources"`
+	}
+	if json.Unmarshal(data, &doc) != nil {
+		return
+	}
+	for i, src := range doc.Sources {
+		if len(src.Sections) > 0 && string(src.Sections) != "null" {
+			debuglog.WarnLog("state v8: sources[%d] %q: node sections dropped (no longer supported)", i, src.Tag)
+		}
+		for j, n := range src.Nodes {
+			if len(n.Sections) > 0 && string(n.Sections) != "null" {
+				debuglog.WarnLog("state v8: sources[%d].nodes[%d] %q: node sections dropped (no longer supported)", i, j, n.Tag)
+			}
+		}
+	}
 }

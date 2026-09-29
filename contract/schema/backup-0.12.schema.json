@@ -239,7 +239,7 @@
           "sections": {
             "type": "object",
             "additionalProperties": false,
-            "description": "Фрагмент конфига, который узел носит с собой (SPEC 121, D-101/D-102): route-правила и DNS-записи, живущие и умирающие вместе с ним. Форма — КОРНЕВАЯ форма бэкапа: sections.rules[] = элемент properties.rules.items (виды inline|srs, свои enabled и num на общей оси), sections.dns.servers[]/rules[] = $defs/dnsRef вида user (тело в value). Тела (match, value) контракт не типизирует намеренно. Плейсхолдер \"@self\" целой строкой и \"@{self}\" внутри строки означает финальный тег этого узла и хранится как есть. В rules[] бэкапа эти правила НЕ едут — их дом здесь. Норма: docs/NODE_SECTIONS.md. Поддержка: launcher сейчас, обе после реализации LxBox (0.13.0).",
+            "description": "Фрагмент конфига, который узел носит с собой (SPEC 121, D-101/D-102): route-правила и DNS-записи, живущие и умирающие вместе с ним. Форма — КОРНЕВАЯ форма бэкапа: sections.rules[] = элемент properties.rules.items (виды inline|srs, свои enabled и num на общей оси), sections.dns.servers[]/rules[] = $defs/dnsRef вида user (тело в value). Тела (match, value) контракт не типизирует намеренно. Плейсхолдер \"@self\" целой строкой и \"@{self}\" внутри строки означает финальный тег этого узла и хранится как есть. В rules[] бэкапа эти правила НЕ едут — их дом здесь. Норма: docs/NODE_SECTIONS.md. Поддержка: launcher сейчас, обе после реализации LxBox (0.13.0). С контракта 1.1.85 секции узла упразднены: читатель снимает непустой блок с backup_section_record_dropped (reason not_allowed).",
             "properties": {
               "rules": {
                 "type": "array",

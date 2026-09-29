@@ -81,6 +81,11 @@ type WizardModel struct {
 	// вместо новой регистрации, поэтому MASQUE H2/H3 ложатся на один ключ.
 	WarpAccounts *corestate.WarpAccountsSection
 
+	// LatePresetsSeeded — отметки разового засева поздних дефолтных пресетов
+	// (LxBox §578): читаются из состояния, дополняются при загрузке и
+	// сохраняются обратно — удалённый пользователем пресет не возвращается.
+	LatePresetsSeeded []string
+
 	// SourceURLs — текст в поле "Subscription URL or Direct Links" (ввод для кнопки Add); не используется для замены Proxies
 	SourceURLs string
 
@@ -92,6 +97,10 @@ type WizardModel struct {
 	// Карту строит ParseAndPreview; цикл страховки на Final / remote-Save
 	// выключает по ней, а не угадывает тег-политику.
 	NodeLinks map[string]corestate.NodeLink
+	// GeneratedSkipPresets — финальные теги узлов со skip_presets=true с
+	// последней эмиссии (LxBox §578, SPEC 145 §7). Кэш превью несёт их так же,
+	// как кэш боевой сборки: иначе превью обслуживало бы исключённый узел.
+	GeneratedSkipPresets map[string]bool
 
 	// Template данные
 	TemplateData *wizardtemplate.TemplateData
@@ -115,17 +124,6 @@ type WizardModel struct {
 	// state.Rules; на Load восстанавливаются из state.Rules.
 	// Каждый элемент — {Ref, Enabled, Vars}.
 	PresetRefs []*PresetRefState
-
-	// NodeRuleRefs — строки правил, которые узлы носят с собой (SPEC 121
-	// §10.4): по одной на запись `sections.rules[]`. Хранятся третьим списком
-	// рядом с PresetRefs/CustomRules по тем же причинам: у слота своя модель,
-	// а общий порядок держит RuleOrder.
-	//
-	// Список ПРОИЗВОДНЫЙ от Sources: он пересевается (SeedNodeRuleRefs) при
-	// загрузке и после каждой правки узла — пользователю принадлежат только
-	// позиция и тумблер, а не существование строки. Сами записи живут у узла,
-	// строка держит на них обратный указатель {Link, Index}.
-	NodeRuleRefs []*NodeRuleRef
 
 	// DNSTemplateOverrides — overrides для template-defined DNS-серверов.
 	// Map tag → enabled. Только tag'и где юзер изменил default_enabled.

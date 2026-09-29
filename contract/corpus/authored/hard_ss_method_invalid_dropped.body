@@ -1,0 +1,5 @@
+# Авторское тело (свой сервер, источник — голое тело узла): метод shadowsocks вне набора ядра.
+# Ядро sing-box-lx отвергает такой конфиг целиком (protocol/shadowsocks/outbound.go NewOutbound → sing-shadowsocks2 CreateMethod), поэтому правило
+# жёсткое (core_rejects, контракт 1.1.91) и применяется и на авторском теле:
+# код без applied:false.
+{"type":"shadowsocks","tag":"own-ss","server":"example-5.com","server_port":8388,"method":"aes-512-gcm","password":"testpass123"}

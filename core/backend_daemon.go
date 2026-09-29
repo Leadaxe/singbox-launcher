@@ -193,6 +193,16 @@ func (b *DaemonBackend) reinstallTransport() {
 	}
 }
 
+// ownProxyTransport — gRPC-транспорт этого бэкенда, тот же, что ставит
+// reinstallTransport. Читается напрямую, а не из APIService: там может стоять
+// транспорт удалённой машины (см. AppController.LocalProxyTransport).
+func (b *DaemonBackend) ownProxyTransport() services.ProxyTransport {
+	if b.transport == nil {
+		return nil
+	}
+	return b.transport
+}
+
 // diagnoseReachError превращает сырую ошибку связи с демоном в понятный
 // пользователю совет (английский) и реализует «лаунчер следует за демоном»:
 // режимом канала владеет демон (tls в его daemon.json), клиент лишь

@@ -1,0 +1,9 @@
+{
+  "_comment": "Узел подписки из ссылки: правка JSON источник не меняет, тело не авторское (подписки норма §11 не затрагивает).",
+  "container": "subscription",
+  "origin": {
+    "kind": "uri",
+    "raw": "trojan://testpass580@example-1.com:443#own"
+  },
+  "input": "{\"type\":\"trojan\",\"server\":\"example-1.com\",\"server_port\":443,\"password\":\"testpass580\"}"
+}

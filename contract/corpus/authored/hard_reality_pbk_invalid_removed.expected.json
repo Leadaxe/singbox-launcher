@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "container": "own"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-5.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-5.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "vless",
+        "uuid": "00000000-0000-4000-8000-000000000591"
+      },
+      "kind": "outbound",
+      "label": "own-vless",
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "reality_pbk_invalid",
+          "path": "tls.reality.public_key",
+          "value": "enabled"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

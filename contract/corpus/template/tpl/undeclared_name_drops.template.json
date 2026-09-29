@@ -1,0 +1,19 @@
+{
+  "_comment": "Необъявленное имя во вставке: значение снимается целиком, template_var_undeclared.",
+  "vars": [
+    {
+      "name": "name",
+      "type": "text"
+    },
+    {
+      "name": "zone",
+      "type": "text"
+    }
+  ],
+  "config": {
+    "server": {
+      "#tpl": "@{nosuch}-dns"
+    },
+    "keep": "k"
+  }
+}

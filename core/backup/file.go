@@ -178,7 +178,7 @@ func Parse(data []byte) (*File, []Warning, error) {
 		}
 		b.ruleGroups = ruleOnlyGroups10(data)
 		return &File{Format: FileFormat10, V10: b},
-			append(typeWarns, scanUnknown10(data)...), nil
+			append(append(typeWarns, scanUnknown10(data)...), scanSections10(data)...), nil
 	default:
 		return nil, nil, fmt.Errorf("backup format v%d is newer than supported v%d — update the app",
 			head.LxBackup, FormatVersion10)
@@ -398,13 +398,6 @@ var (
 		"node_tag": true, "enabled": true, "exclude_from_global": true,
 		"folder": true, "sections": true,
 	})
-	// serverSectionsKeys — секции узла (SPEC 121 §10.5). Внутрь записей
-	// сканер не спускается намеренно: их поля — тела sing-box плюс служебные
-	// kind/enabled/order_num, и их набор ведёт схема состояния, а не таблица
-	// бэкапа.
-	serverSectionsKeys = map[string]bool{
-		"rules": true, "dns": true,
-	}
 	chainKeys = mergeKeys(sourceRefKeys, map[string]bool{
 		"id": true, "tag": true, "label": true, "enabled": true,
 		"chain": true, "exclude_from_global": true,
@@ -513,11 +506,9 @@ func scanUnknown(data []byte) []Warning {
 		// две таблицы для одной сущности разъехались бы.
 		sc.array(item, where+".outbounds", "outbounds", directionKeys, "tag", sc.scanDirectionBody)
 	})
-	sc.array(root, "servers", "servers", serverKeys, "label", func(where string, item map[string]json.RawMessage) {
-		// SPEC 121: секции узла — свой уровень ключей; внутрь фрагментов
-		// обход не спускается (это тела sing-box, не поля бэкапа).
-		sc.nested2(item, where, "sections", serverSectionsKeys)
-	})
+	// `sections` у servers[] снимается целиком (контракт 1.1.85), внутрь
+	// обход не спускается.
+	sc.array(root, "servers", "servers", serverKeys, "label", nil)
 	sc.array(root, "chains", "chains", chainKeys, "tag", func(where string, item map[string]json.RawMessage) {
 		sc.nested2(item, where, "chain", chainBodyKeys)
 	})

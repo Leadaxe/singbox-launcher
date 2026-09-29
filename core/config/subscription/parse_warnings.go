@@ -61,10 +61,6 @@ const (
 	// WarnAmneziaContainerChoice — в vpn://-профиле несколько контейнеров,
 	// одиночный путь взял дефолтный.
 	WarnAmneziaContainerChoice = "amnezia_container_choice"
-	// WarnTailscaleFromSubscription — узел tailnet приехал ПОДПИСКОЙ.
-	// Узел живёт, поэтому info: но связки (MagicDNS + маршрут) подписка не
-	// приносит, а идентичность машины в tailnet — местная (NODE_SECTIONS.md §6).
-	WarnTailscaleFromSubscription = "tailscale_from_subscription"
 	// СНЯТЫ (контракт 1.1.11): awg_header_invalid, awg_headers_overlap,
 	// awg3_field_invalid, awg3_header_key_invalid, awg3_padding_too_short,
 	// wg_key_invalid. Эти коды ставит РЕЕСТР, а не парсер: правила уехали в
@@ -133,6 +129,10 @@ const (
 	// WarnGroupMemberMissing — часть членов группы не разрешилась; группа
 	// живёт без них, код на узле-группе с числом потерянных.
 	WarnGroupMemberMissing = "group_member_missing"
+	// WarnDuplicatesCollapsed — в этот узел схлопнуты записи тела с тем же
+	// содержимым под другими именами (SPEC 154); код на выжившем с числом и
+	// именами схлопнутых.
+	WarnDuplicatesCollapsed = "duplicates_collapsed"
 	// WarnMaxNodesExceeded — тело длиннее капа узлов: хвост отброшен. Код
 	// уровня ПОДПИСКИ (FetchWarning), а не узла.
 	WarnMaxNodesExceeded = "max_nodes_exceeded"

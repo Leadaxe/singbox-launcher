@@ -220,32 +220,12 @@ func richState10() *state.State {
 	// она была local-only, и слияние её не применяло по этой причине.
 	s.Sources[0].RelaysInDirections = true
 
-	// Узел с секциями: связка, которую 0.12 выразить не мог вовсе.
-	sectionRule := state.NewInlineRule(
-		state.SelfPlaceholderBraced+" network",
-		map[string]interface{}{"ip_cidr": []interface{}{"100.64.0.0/10"}},
-		state.SelfPlaceholder,
-	)
-	sectionRule.Enabled = true
-	sectionNum := state.NodeRuleDefaultNum
-	sectionRule.Num = &sectionNum
-	sections := &state.NodeSections{Rules: []state.Rule{sectionRule}}
-	sections.SetDNS(
-		[]state.DNSServer{{
-			Kind: state.DNSServerKindUser, Tag: "ts-dns", Enabled: true,
-			Body: map[string]interface{}{"type": "tailscale", "endpoint": state.SelfPlaceholder},
-		}},
-		[]state.DNSRule{{
-			Kind: state.DNSRuleKindUser, Enabled: true,
-			Body: map[string]interface{}{"domain_suffix": []interface{}{".ts.net"}, "server": "ts-dns"},
-		}},
-	)
+	// Одиночный сервер в корне.
 	s.Sources = append(s.Sources, state.Source{
 		ID: "01TS00000000000000000000",
 		Node: state.Node{
 			Kind: state.SourceKindServer, Enabled: true, Tag: "ts-node",
-			Origin:   &state.Origin{Kind: state.OriginKindURI, Raw: "trojan://pw@1.2.3.4:443#ts-node"},
-			Sections: sections,
+			Origin: &state.Origin{Kind: state.OriginKindURI, Raw: "trojan://pw@1.2.3.4:443#ts-node"},
 		},
 	})
 
@@ -374,9 +354,6 @@ func TestExport10IsPureFunctionOfState(t *testing.T) {
 	for i := range s.Sources {
 		if s.Sources[i].Kind == state.SourceKindFolder && len(s.Sources[i].Nodes) > 0 {
 			s.Sources[i].Nodes[0].Tag = "changed"
-		}
-		if s.Sources[i].Node.Sections != nil && len(s.Sources[i].Node.Sections.Rules) > 0 {
-			s.Sources[i].Node.Sections.Rules[0].Name = "changed"
 		}
 		if len(s.Sources[i].Node.Body) > 0 {
 			s.Sources[i].Node.Body[0] = ' '
@@ -657,20 +634,6 @@ func assertStateEquivalent10(t *testing.T, want, got *state.State) {
 			}
 			if w.Replace.Mode != g.Replace.Mode {
 				t.Errorf("sources[%d] (%s): режим свёртки %q → %q", i, w.Kind, w.Replace.Mode, g.Replace.Mode)
-			}
-		}
-		if (w.Node.Sections == nil) != (g.Node.Sections == nil) {
-			t.Errorf("sources[%d] (%s): секции узла %v → %v", i, w.Kind, w.Node.Sections != nil, g.Node.Sections != nil)
-		}
-		if w.Node.Sections != nil && g.Node.Sections != nil {
-			if len(w.Node.Sections.Rules) != len(g.Node.Sections.Rules) {
-				t.Errorf("sources[%d]: правил секции %d → %d", i, len(w.Node.Sections.Rules), len(g.Node.Sections.Rules))
-			}
-			if len(w.Node.Sections.DNSServers()) != len(g.Node.Sections.DNSServers()) ||
-				len(w.Node.Sections.DNSRules()) != len(g.Node.Sections.DNSRules()) {
-				t.Errorf("sources[%d]: DNS секции %d/%d → %d/%d", i,
-					len(w.Node.Sections.DNSServers()), len(w.Node.Sections.DNSRules()),
-					len(g.Node.Sections.DNSServers()), len(g.Node.Sections.DNSRules()))
 			}
 		}
 		// Адресный хоп обязан указывать в СУЩЕСТВУЮЩУЮ здесь папку: ссылка,

@@ -44,6 +44,11 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 
 	nodes := wizardbusiness.LoadConfigNodes(cfgPath)
 	node := nodes.Lookup(proxy.Name)
+	// Ядро окна фиксируется при открытии: Local — своё, Remote — машина,
+	// выбранная сейчас. Смена вкладки или машины окно не переводит. Remote
+	// без машины (bound=false) ни к какому ядру не привязан — живых секций
+	// (пул, цепочка, WireGuard) у такого окна нет.
+	target, bound := nodeWindowTarget(scope)
 
 	win := fyne.CurrentApp().NewWindow(
 		locale.Tf("Node: %s", proxy.DisplayOrName()))
@@ -56,7 +61,15 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	if display := proxy.DisplayOrName(); display != proxy.Name {
 		body.Add(infoRow(locale.T("Display name"), display))
 	}
-	body.Add(infoRow(locale.T("Last delay"), formatDelay(proxy.Delay)))
+	if tailscaleHasNoExit(ac, scope, proxy) {
+		// SPEC 148 §8: замер через узел без выхода неприменим.
+		l := widget.NewLabel(locale.T("This node has no exit. Check devices on the Network tab."))
+		l.Wrapping = fyne.TextWrapWord
+		l.Importance = widget.WarningImportance
+		body.Add(l)
+	} else {
+		body.Add(infoRow(locale.T("Last delay"), formatDelay(proxy.Delay)))
+	}
 
 	// Раздел «Уведомления» — ВНИЗУ окна, под всеми полями узла (дизайн
 	// владельца 18.09.2026). До этого он стоял сразу под шапкой и отодвигал
@@ -158,7 +171,11 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		}
 		applyMemberDelays(ac.GetProxiesList())
 		go func(group string) {
-			list, _, err := EffectiveProxyTransport(ac).GroupProxies(group)
+			tr, ok := proxyTransportFor(ac, target)
+			if !ok {
+				return
+			}
+			list, _, err := tr.GroupProxies(group)
 			if err != nil || len(list) == 0 {
 				return
 			}
@@ -188,7 +205,8 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		// Живая подписка: ядро пушит смену выбора по событию, поэтому окно
 		// отражает перевыбор само. Разовый снимок «замёрз» бы — у least_test
 		// перевыбор случается по результатам url-теста в любой момент.
-		if sub, ok := EffectiveProxyTransport(ac).(groupSelectionSource); ok {
+		windowTransport, _ := proxyTransportFor(ac, target)
+		if sub, ok := windowTransport.(groupSelectionSource); ok {
 			if cancel, err := sub.SubscribeGroupSelection(proxy.Name, func(selected string) {
 				fyne.Do(func() { markSelected(selected) })
 			}); err == nil {
@@ -199,7 +217,11 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		} else {
 			// Транспорт без подписки (Clash HTTP) — разовый снимок.
 			go func(group string) {
-				_, now, err := EffectiveProxyTransport(ac).GroupProxies(group)
+				tr, ok := proxyTransportFor(ac, target)
+				if !ok {
+					return
+				}
+				_, now, err := tr.GroupProxies(group)
 				if err != nil || strings.TrimSpace(now) == "" {
 					return
 				}
@@ -223,11 +245,11 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		// СОЗДАЁМ секцию. Пустой ответ (в т.ч. Unimplemented без
 		// with_lx_command) не рисует ничего — про пул не говорим там, где
 		// балансировки нет.
-		if node.Type == "urltest" && ac.DaemonPoolAvailable() {
+		if node.Type == "urltest" && bound && ac.DaemonPoolAvailable(target) {
 			poolBox := container.NewVBox()
 			body.Add(poolBox)
 			go func(group string) {
-				slots, err := ac.DaemonPoolSlots(group)
+				slots, err := ac.DaemonPoolSlots(target, group)
 				fyne.Do(func() {
 					switch {
 					case err != nil || len(slots) == 0:
@@ -266,20 +288,22 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 
 	// Цепочка: позиции и послойный замер. Только у outbound'а типа chain и
 	// только там, где ядро отвечает по gRPC (см. addChainSection).
-	if node.Type == configtypes.ChainOutboundType {
-		addChainSection(ac, body, win, proxy.Name)
+	if bound && node.Type == configtypes.ChainOutboundType {
+		addChainSection(ac, target, body, win, proxy.Name)
 	}
 
-	// Tailnet: состояние, вход, пиры. Только у tailscale-endpoint'а и только
-	// там, где ядро отдаёт статус по gRPC (SPEC 130, addTailscaleSection).
-	if node.Type == configtypes.SchemeTailscale {
-		addTailscaleSection(ac, body, proxy.Name)
+	// Tailnet: состояние, вход, устройства, exit node — отдельной вкладкой
+	// Network (SPEC 148; прежде секция SPEC 130). Только у tailscale-endpoint'а
+	// и только там, где ядро отдаёт статус по gRPC.
+	var networkTab fyne.CanvasObject
+	if node.Type == configtypes.SchemeTailscale && ac.TailscaleAvailable(core.TailscaleIn(scope)) {
+		networkTab = tailscaleNetworkTab(ac, win, proxy.Name, cfgPath, scope)
 	}
 
 	// WG/AWG: состояние в ядре и выключатель. Секция сама решает, рисоваться
 	// ли, — по ответу ядра (addWireGuardSection).
-	if !node.IsGroup() {
-		addWireGuardSection(ac, body, win, proxy.Name, scope)
+	if bound && !node.IsGroup() {
+		addWireGuardSection(ac, target, body, win, proxy.Name)
 	}
 
 	// TLS-подробности отдельной секцией: их много и они длинные.
@@ -322,8 +346,11 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem(locale.T("Details"), withScrollGutter(body)),
-		container.NewTabItem(locale.T("Outbound JSON"), jsonTab),
 	)
+	if networkTab != nil {
+		tabs.Append(container.NewTabItem(locale.T("Network"), networkTab))
+	}
+	tabs.Append(container.NewTabItem(locale.T("Outbound JSON"), jsonTab))
 
 	win.SetContent(tabs)
 	win.Resize(fyne.NewSize(620, 680))

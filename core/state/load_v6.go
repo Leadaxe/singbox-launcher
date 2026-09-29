@@ -226,7 +226,7 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 				Enabled:          r.Enabled,
 				SelectedOutbound: ib.Outbound,
 				HasOutbound:      true,
-				Rule:             cloneMap(ib.Match),
+				Rule:             cloneJSONMap(ib.Match),
 			}
 			// Restore outbound в Rule для legacy build-pipeline (он ожидает rule.outbound).
 			if cr.Rule == nil {
@@ -302,15 +302,3 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 //
 // Если UI код всё ещё ожидает state.DNSOptions — он использует legacy v5 path
 // (для backward-compat с v5 файлами). В v6 path `state.DNSOptions` остаётся nil.
-
-// cloneMap — shallow copy of map[string]interface{} for safe legacy view generation.
-func cloneMap(in map[string]interface{}) map[string]interface{} {
-	if in == nil {
-		return nil
-	}
-	out := make(map[string]interface{}, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}

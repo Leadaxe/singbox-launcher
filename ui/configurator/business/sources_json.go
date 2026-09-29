@@ -13,8 +13,9 @@ import (
 	"fmt"
 	"strings"
 
+	"singbox-launcher/internal/locale"
+
 	"singbox-launcher/core/config"
-	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
@@ -49,14 +50,7 @@ func carveSingboxJSON(input string) (nodes []singboxJSONNode, isJSON bool, err e
 		if cerr != nil {
 			return nil, true, cerr
 		}
-		// NODE_SECTIONS.md §6: одиночный узел tailnet приезжает голым — своих
-		// записей рядом с ним в документе нет вовсе, — и получает
-		// каноническую связку. Иначе tailnet поднялся бы без MagicDNS и без
-		// маршрута, а сказал бы об этом только молчащий `*.ts.net`.
 		out := singboxJSONNode{Label: node.Tag, ConfigJSON: compact}
-		if node.Scheme == config.SchemeTailscale {
-			out.Sections = defaultTailscaleSectionsConfigTypes()
-		}
 		return []singboxJSONNode{out}, true, nil
 
 	case subscription.BodyKindSingboxOutboundArray,
@@ -96,10 +90,7 @@ func carveSingboxJSONMulti(body string, kind subscription.BodyKind) ([]singboxJS
 			debuglog.WarnLog("Parser: skipping pasted outbound %q: %v", n.Tag, merr)
 			continue
 		}
-		// SPEC 121: секции узла едут вместе с телом. Правило извлечения
-		// (ровно один узел в конфиге) проверил импорт — здесь их только
-		// передают дальше.
-		nodes = append(nodes, singboxJSONNode{Label: n.Tag, ConfigJSON: raw, Sections: n.Sections})
+		nodes = append(nodes, singboxJSONNode{Label: n.Tag, ConfigJSON: raw})
 	}
 	if len(nodes) == 0 {
 		return nil, true, fmt.Errorf("no outbounds found")
@@ -112,9 +103,21 @@ func carveSingboxJSONMulti(body string, kind subscription.BodyKind) ([]singboxJS
 type singboxJSONNode struct {
 	Label      string
 	ConfigJSON []byte
-	// Sections — фрагменты конфига, которые узел носит с собой (SPEC 121).
-	// nil у подавляющего большинства узлов.
-	Sections *configtypes.NodeSections
+}
+
+// NodeInputDroppedText — сообщение (ключ locale.T) о несохранённом остатке
+// ввода узла: документ с `dns`/`route`/`sections` (контракт 1.1.85) или
+// массив тел больше чем из одного элемента (контракт 1.1.88). Документ и
+// массив — формы ввода, не хранения (PARSING_PRINCIPLES §11 п.1): в источник
+// уходит только тело узла, и сообщение одно на сохранение, одинаковое для
+// всех входов — вкладки JSON окна источника и формы «Add server».
+const NodeInputDroppedText = "Only the node is saved. The rest of the input is not kept."
+
+// NodeInputDroppedMessage — переведённое сообщение о несохранённом остатке
+// ввода. Перевод здесь, рядом с константой: проверка каталога (SPEC 111)
+// резолвит locale.T(const) только в пределах файла константы.
+func NodeInputDroppedMessage() string {
+	return locale.T(NodeInputDroppedText)
 }
 
 // compactJSON сжимает документ, сохраняя порядок полей автора (json.Compact
@@ -132,31 +135,27 @@ func compactJSON(s string) ([]byte, error) {
 // повторный разбор, а здесь важно сохранить объект ровно таким, каким его
 // набрал человек — включая поля, которых наш парсер не знает.
 //
-// SPEC 121 §5.1: принимается и ДОКУМЕНТ узла (тело + секции) — тем же
-// разбором, что на вкладке JSON окна источника. Второй реализацией правил
-// документа эти два входа разъехались бы на первой же правке.
+// SPEC 121 §5.1: принимается и ДОКУМЕНТ узла — тем же разбором, что на
+// вкладке JSON окна источника. Из документа берётся только узел: `dns`,
+// `route` и `sections` отбрасываются (секции узла упразднены, контракт
+// 1.1.85); сообщает об этом вызывающий (ManualDocDroppedKeys).
 func AppendManualConfigJSON(ctx UIUpdater, body []byte, label string) error {
 	var (
-		compact  []byte
-		sections *corestate.NodeSections
-		nodeTag  string
+		compact []byte
+		nodeTag string
 	)
 	if config.IsNodeDocument(body) {
-		parsedBody, secs, err := config.ParseNodeDocument(body)
+		parsedBody, dropped, err := config.ParseNodeDocument(body)
 		if err != nil {
 			return err
 		}
+		if len(dropped) > 0 {
+			debuglog.InfoLog("AppendManualConfigJSON: node document: %s not saved (a node carries no config sections)",
+				strings.Join(dropped, ", "))
+		}
 		compact = parsedBody
-		sections = secs
 		if n, nerr := subscription.NodeFromManualConfigJSON(parsedBody); nerr == nil {
 			nodeTag = n.Tag
-			// NODE_SECTIONS.md §6: голый узел tailnet — тот, чей документ не
-			// принёс ни одной записи, — получает КАНОНИЧЕСКУЮ связку. Это путь
-			// РОЖДЕНИЯ узла; на правке тела (вкладка JSON) подстановки нет
-			// намеренно, иначе снять связку документом без `dns`/`route` было
-			// бы нельзя.
-			sections = corestate.ApplyTailscaleDefaultSections(
-				n.Scheme == config.SchemeTailscale, sections)
 		}
 	} else {
 		node, err := subscription.NodeFromManualConfigJSON(body)
@@ -193,7 +192,6 @@ func AppendManualConfigJSON(ctx UIUpdater, body []byte, label string) error {
 			Body:     mat.Body,
 			Origin:   &corestate.Origin{Kind: mat.OriginKind, Raw: mat.OriginRaw},
 			Warnings: mat.Warnings,
-			Sections: sections,
 		},
 		ID:    corestate.MakeULID(),
 		Label: label,
@@ -219,20 +217,4 @@ func RelabelLastSources(ctx UIUpdater, before int, label string) {
 	model.Sources[len(model.Sources)-1].Label = label
 	model.BumpRevision()
 	ctx.RefreshOutboundsConfiguratorList()
-}
-
-// defaultTailscaleSectionsConfigTypes — каноническая связка tailnet в
-// сборочной форме. Норма одна на все входы (state.DefaultTailscaleSections),
-// здесь только смена формы.
-func defaultTailscaleSectionsConfigTypes() *configtypes.NodeSections {
-	sections := corestate.DefaultTailscaleSections()
-	if sections.IsEmpty() {
-		return nil
-	}
-	raw, err := json.Marshal(sections)
-	if err != nil {
-		debuglog.WarnLog("Parser: default tailscale sections not serializable: %v", err)
-		return nil
-	}
-	return &configtypes.NodeSections{Raw: raw}
 }

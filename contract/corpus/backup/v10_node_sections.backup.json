@@ -83,6 +83,18 @@
       }
     },
     {
+      "kind": "server",
+      "tag": "bare-srv",
+      "enabled": true,
+      "body": {
+        "type": "trojan",
+        "server": "192.0.2.20",
+        "server_port": 443,
+        "password": "pw"
+      },
+      "sections": {}
+    },
+    {
       "kind": "folder",
       "id": "01FLDSEC0000000000000AA",
       "name": "Carriers",
@@ -139,6 +151,28 @@
           }
         }
       ]
+    },
+    {
+      "kind": "subscription",
+      "id": "01KSUB0000000000000000000A",
+      "name": "Provider",
+      "enabled": true,
+      "url": "https://example-1.com/sub",
+      "sections": {
+        "rules": [
+          {
+            "kind": "inline",
+            "name": "sub rule",
+            "enabled": true,
+            "body": {
+              "domain_suffix": [
+                ".sub.example-1.com"
+              ],
+              "outbound": "direct"
+            }
+          }
+        ]
+      }
     }
   ],
   "rules": [

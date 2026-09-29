@@ -131,6 +131,29 @@ func SubstituteVarsInJSONCanon(data []byte, vars []TemplateVar, resolved map[str
 // template_unknown_directive {key}, template_int_* {name, value}), без дублей
 // по паре (код, параметры). Порядок не нормирован: обход объекта идёт по map.
 func SubstituteVarsInJSONCanonWarnings(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) (json.RawMessage, []TemplateWarning, error) {
+	return substituteCanon(data, vars, resolved, target, nil)
+}
+
+// substituteCanon — общий канонический обход; dynPrefixes — пространства имён
+// узла for_each (§578), объявленные целиком.
+func substituteCanon(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec, dynPrefixes []string) (json.RawMessage, []TemplateWarning, error) {
+	ctx, err := substituteCanonCtx(data, vars, resolved, target, dynPrefixes)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ctx.out, ctx.warnings, nil
+}
+
+// canonResult — итог обхода: дерево и накопленное контекстом.
+type canonResult struct {
+	out       json.RawMessage
+	warnings  []TemplateWarning
+	emptyRefs int
+}
+
+// substituteCanonCtx — сам обход; кроме дерева и warning'ов отдаёт счётчик
+// ссылок без значения (canonCtx.emptyRefs).
+func substituteCanonCtx(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec, dynPrefixes []string) (*canonResult, error) {
 	varTypes := make(map[string]string, len(vars))
 	declared := make(map[string]bool, len(vars))
 	for _, v := range vars {
@@ -145,10 +168,10 @@ func SubstituteVarsInJSONCanonWarnings(data []byte, vars []TemplateVar, resolved
 	dec.UseNumber()
 	var root interface{}
 	if err := dec.Decode(&root); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	ctx := &canonCtx{varTypes: varTypes, declared: declared, resolved: resolved, target: target}
+	ctx := &canonCtx{varTypes: varTypes, declared: declared, resolved: resolved, target: target, dynPrefixes: dynPrefixes}
 	substituteWalkCanon(&root, ctx)
 	// Dropped на самом верху дерева означает пустой конфиг — вырожденный
 	// случай, отдаём пустой объект вместо sentinel'а наружу.
@@ -157,7 +180,10 @@ func SubstituteVarsInJSONCanonWarnings(data []byte, vars []TemplateVar, resolved
 	}
 
 	out, err := json.Marshal(root)
-	return out, ctx.warnings, err
+	if err != nil {
+		return nil, err
+	}
+	return &canonResult{out: out, warnings: ctx.warnings, emptyRefs: ctx.emptyRefs}, nil
 }
 
 // enableKey — ключ гейта существования узла (SPEC 107, D-065/D-066).

@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/outboundutil"
 )
 
@@ -525,39 +526,13 @@ func migrateV8SourceIdentity(src map[string]json.RawMessage, where string) error
 	return nil
 }
 
-// migrateV8NodeSections — `sections` одного узла теми же функциями, что корень:
-// `sections.rules[]` как `rules[]`, `sections.dns.*` как `dns.*` (SPEC 127 §3).
+// migrateV8NodeSections — поле `sections` узла снимается (секции узла
+// упразднены, контракт 1.1.85; LxBox §575): v8 его не читает.
 func migrateV8NodeSections(node map[string]json.RawMessage, where string, rep *MigrationReport) error {
-	raw, ok := node["sections"]
-	if !ok {
-		return nil
+	if raw, ok := node["sections"]; ok && len(raw) > 0 && string(raw) != "null" {
+		debuglog.WarnLog("state migration v7→v8: %s: node sections dropped (no longer supported)", where)
 	}
-	if len(bytes.TrimSpace(raw)) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-		return nil
-	}
-	var sections map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &sections); err != nil {
-		return fmt.Errorf("state: migrate v7→v8 %s.sections: %w", where, err)
-	}
-	if rules, ok := sections["rules"]; ok {
-		out, err := migrateV8Rules(rules, where+".sections.rules", rep)
-		if err != nil {
-			return err
-		}
-		sections["rules"] = out
-	}
-	if dns, ok := sections["dns"]; ok {
-		out, err := migrateV8DNS(dns, where+".sections.dns", rep)
-		if err != nil {
-			return err
-		}
-		sections["dns"] = out
-	}
-	out, err := json.Marshal(sections)
-	if err != nil {
-		return err
-	}
-	node["sections"] = out
+	delete(node, "sections")
 	return nil
 }
 

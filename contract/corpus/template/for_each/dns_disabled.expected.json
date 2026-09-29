@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {
+      "preferred_by": [
+        "home-ts"
+      ],
+      "outbound": "home-ts"
+    }
+  ],
+  "dns_servers": [],
+  "dns_rules": [],
+  "warnings": []
+}

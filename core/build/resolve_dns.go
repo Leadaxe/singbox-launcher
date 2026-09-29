@@ -113,6 +113,10 @@ type ResolvedDNSRule struct {
 	PresetID    string
 	PresetLabel string
 
+	// Name — только для Source=user: необязательное имя правила из
+	// состояния (owner предупреждения о выпавшем правиле, SPEC 153).
+	Name string
+
 	// Active — прошёл if/if_or.
 	Active bool
 
@@ -306,11 +310,37 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 				})
 			}
 
+			// 3a'. §578: серверы пресета с for_each — по одному набору на
+			// узел, теги без пространства пресета (`<тег узла>-dns`).
+			if p.ForEach != nil {
+				frags, ws, ok := ExpandPresetForNodes(p, pb.Vars, templateVars, td.Vars, target, td.PresetNodes)
+				if ok && frags != nil {
+					for _, w := range ws {
+						if w.Params["kind"] == fragmentKindDNSServer {
+							out.Warnings = append(out.Warnings, w.templateWarning())
+						}
+					}
+					for _, body := range frags.DNSServers {
+						tag, _ := body["tag"].(string)
+						out.Servers = append(out.Servers, ResolvedDNSServer{
+							Tag:         tag,
+							LocalTag:    tag,
+							Body:        stripDNSWizardOnlyFields(body),
+							Source:      DNSSourcePreset,
+							PresetID:    p.ID,
+							PresetLabel: p.DisplayLabel(),
+							Active:      true,
+							Enabled:     statePresetServerEnabled(state, tag, true),
+						})
+					}
+				}
+			}
+
 			// 3b. dns rules (один или несколько на preset, SPEC 085.1) —
 			// буферизуем список в карту; порядок эмиссии решается в Pass 4 по
 			// state.DNS.Rules (один toggle Ref=<id> покрывает весь список).
 			if p.PresetHasDNSRule() {
-				bodies, warns := substitutePresetDNSRules(p, presetVars, target, templateVars, td.Vars)
+				bodies, warns := substitutePresetDNSRules(p, presetVars, target, templateVars, td.Vars, td.PresetNodes)
 				if statePresetRuleEnabled(state, p.ID, true) {
 					out.Warnings = append(out.Warnings, warns...)
 				}
@@ -396,6 +426,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 				out.Rules = append(out.Rules, ResolvedDNSRule{
 					Body:    body,
 					Source:  DNSSourceUser,
+					Name:    r.Name,
 					Active:  true,
 					Enabled: r.Enabled,
 				})
@@ -592,7 +623,7 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []templa
 	}
 	// SPEC 143: канонический обходчик — объявленное имя без значения
 	// выбрасывает ключ, сервер без адреса снимает гейт у вызывающего.
-	substituted, warns, ok := substitutePresetBody(body, presetVars, globalDecls, varsMap, target)
+	substituted, warns, ok := substitutePresetBody(body, presetVars, globalDecls, varsMap, target, nil)
 	if !ok {
 		return body, nil
 	}
@@ -667,11 +698,11 @@ func substituteTemplateDNSServer(
 // + plural DNSRules, SPEC 085.1) через ExpandPreset, в порядке эмиссии. Пустой
 // список, если у пресета нет активных DNS-правил. Второй возврат —
 // предупреждения раскрытия с кодами реестра (для отчёта сборки).
-func substitutePresetDNSRules(p *template.Preset, varsMap map[string]string, target template.TargetSpec, globalVars map[string]string, globalDecls []template.TemplateVar) ([]map[string]interface{}, []template.TemplateWarning) {
+func substitutePresetDNSRules(p *template.Preset, varsMap map[string]string, target template.TargetSpec, globalVars map[string]string, globalDecls []template.TemplateVar, nodes []template.PresetNode) ([]map[string]interface{}, []template.TemplateWarning) {
 	if p == nil {
 		return nil, nil
 	}
-	frags, warns, ok := ExpandPresetWithGlobals(p, varsMap, globalVars, globalDecls, target)
+	frags, warns, ok := ExpandPresetForNodes(p, varsMap, globalVars, globalDecls, target, nodes)
 	if !ok || frags == nil {
 		return nil, nil
 	}

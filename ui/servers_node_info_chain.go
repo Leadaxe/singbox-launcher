@@ -96,20 +96,23 @@ func (r *chainRows) setGeneral(text string) {
 // Как секция пула: сперва спрашиваем ядро и лишь при непустом ответе создаём
 // содержимое. Цепочка, которой в рантайме нет (переименовали, не пересобрали
 // конфиг), не должна оставлять в окне пустой заголовок.
-func addChainSection(ac *core.AppController, body *fyne.Container, win fyne.Window, tag string) {
-	if ac == nil || body == nil || !ac.ChainsAvailable() {
+//
+// target — ядро окна (nodeWindowTarget): замеры и тумблеры уходят только в
+// него, а не в то ядро, чья вкладка сейчас на экране главного окна.
+func addChainSection(ac *core.AppController, target core.CoreTarget, body *fyne.Container, win fyne.Window, tag string) {
+	if ac == nil || body == nil || !ac.ChainsAvailable(target) {
 		return
 	}
 	chainBox := container.NewVBox()
 	body.Add(chainBox)
 
 	go func(chainTag string) {
-		info, ok := ac.ChainFor(chainTag)
+		info, ok := ac.ChainFor(target, chainTag)
 		if !ok || len(info.Positions) == 0 {
 			return
 		}
 		fyne.Do(func() {
-			buildChainSection(ac, chainBox, win, info)
+			buildChainSection(ac, target, chainBox, win, info)
 			chainBox.Refresh()
 		})
 	}(tag)
@@ -127,7 +130,7 @@ func newChainErrLabel() *widget.Label {
 }
 
 // buildChainSection рисует позиции и кнопку замера.
-func buildChainSection(ac *core.AppController, box *fyne.Container, win fyne.Window, info core.ChainInfo) {
+func buildChainSection(ac *core.AppController, target core.CoreTarget, box *fyne.Container, win fyne.Window, info core.ChainInfo) {
 	box.Add(widget.NewSeparator())
 	box.Add(sectionHeader(locale.Tf("Chain positions (%d)", len(info.Positions))))
 
@@ -157,7 +160,7 @@ func buildChainSection(ac *core.AppController, box *fyne.Container, win fyne.Win
 
 		rows.posErr[i] = newChainErrLabel()
 
-		rows.toggle[i] = newChainPositionToggle(ac, info.Tag, i, &applying, rows, func(fresh core.ChainInfo) {
+		rows.toggle[i] = newChainPositionToggle(ac, target, info.Tag, i, &applying, rows, func(fresh core.ChainInfo) {
 			// Перерисовываем ВСЮ секцию, а не одну строку: маршрут общий,
 			// и выключенный хоп меняет то, во что резолвятся соседние
 			// позиции (группа выше могла держать выбор через него).
@@ -195,10 +198,10 @@ func buildChainSection(ac *core.AppController, box *fyne.Container, win fyne.Win
 				// а именно смена пути без перезапуска и есть то, ради чего
 				// цепочку ведут через группу.
 				cur := info
-				if fresh, ok := ac.ChainFor(info.Tag); ok && len(fresh.Positions) > 0 {
+				if fresh, ok := ac.ChainFor(target, info.Tag); ok && len(fresh.Positions) > 0 {
 					cur = fresh
 				}
-				results := probeChainLayers(ac, cur)
+				results := probeChainLayers(ac, target, cur)
 				fyne.Do(func() {
 					// Замеры раскладываем ПЕРЕД составом: ошибка пробы
 					// свежее last_error звена, и заполнять пустые строки
@@ -224,6 +227,7 @@ func buildChainSection(ac *core.AppController, box *fyne.Container, win fyne.Win
 // приняло, галочка обязана вернуться, а не соврать.
 func newChainPositionToggle(
 	ac *core.AppController,
+	target core.CoreTarget,
 	chainTag string,
 	pos int,
 	applying *bool,
@@ -246,10 +250,10 @@ func newChainPositionToggle(
 		rows.clearDelays()
 
 		go func() {
-			warmupErr, err := ac.SetChainPositionEnabled(chainTag, pos, enabled)
+			warmupErr, err := ac.SetChainPositionEnabled(target, chainTag, pos, enabled)
 			// Состояние перечитываем здесь же, в фоне: ChainFor — это RPC к
 			// ядру, и его дедлайн в UI-потоке подвесил бы окно целиком.
-			fresh, ok := ac.ChainFor(chainTag)
+			fresh, ok := ac.ChainFor(target, chainTag)
 			fyne.Do(func() {
 				defer check.Enable()
 				switch {
@@ -401,7 +405,7 @@ func chainCloneStateText(state string) string {
 // Именно последовательно: позиция i недостижима иначе как через i-1, и
 // параллельный прогон поднимал бы туннели одновременно, искажая замеры друг
 // друга.
-func probeChainLayers(ac *core.AppController, info core.ChainInfo) []chainLayerResult {
+func probeChainLayers(ac *core.AppController, target core.CoreTarget, info core.ChainInfo) []chainLayerResult {
 	results := make([]chainLayerResult, len(info.Positions))
 	for run := 0; run < chainProbeWarmUpRuns; run++ {
 		for i, pos := range info.Positions {
@@ -412,7 +416,7 @@ func probeChainLayers(ac *core.AppController, info core.ChainInfo) []chainLayerR
 				results[i] = chainLayerResult{Skipped: true}
 				continue
 			}
-			delay, coreErr, err := ac.ProbeChainLayer(info.Tag, i)
+			delay, coreErr, err := ac.ProbeChainLayer(target, info.Tag, i)
 			if err != nil {
 				debuglog.WarnLog("chain probe: %s#%d: %v", info.Tag, i, err)
 				results[i] = chainLayerResult{Transport: err.Error()}

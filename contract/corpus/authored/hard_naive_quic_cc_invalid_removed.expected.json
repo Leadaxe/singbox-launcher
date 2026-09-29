@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "container": "own"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "password": "testpass123",
+        "quic": true,
+        "server": "example-5.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-5.com"
+        },
+        "type": "naive",
+        "username": "user"
+      },
+      "kind": "outbound",
+      "label": "own-naive",
+      "scheme": "naive",
+      "warnings": [
+        {
+          "code": "type_invalid",
+          "path": "quic_congestion_control",
+          "value": "vegas"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

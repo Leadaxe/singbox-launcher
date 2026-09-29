@@ -1,0 +1,43 @@
+{
+  "_comment": "Правило маршрута без условий по замыслу автора идёт в конфиг как есть с template_rule_unconditional (контракт 1.1.100): голый sniff и правило, условие которого стоит в ложной ветке #if (сбоя нет, пустых переменных нет).",
+  "preset": {
+    "for_each": {
+      "node_type": "tailscale",
+      "as": "n"
+    },
+    "vars": [
+      {
+        "name": "flag_a",
+        "type": "bool",
+        "default_value": "false"
+      }
+    ],
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "#if": {
+          "#and": [
+            "@flag_a"
+          ],
+          "#value": {
+            "domain": [
+              "x.example"
+            ]
+          }
+        },
+        "outbound": "@n"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts"
+      }
+    }
+  ]
+}

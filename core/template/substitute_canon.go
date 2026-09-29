@@ -11,6 +11,7 @@ package template
 // strict-обходчики удалены вместе с коллапсом ["@name"] в скаляр.
 
 import (
+	"encoding/json"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,6 +37,14 @@ type canonCtx struct {
 	target   TargetSpec
 	warnings []TemplateWarning
 	seen     map[string]bool
+	// dynPrefixes — пространства имён узла for_each (§578): имя `<as>` и
+	// всякое `<as>.…` считаются объявленными.
+	dynPrefixes []string
+	// emptyRefs — сколько ссылок на имя дали Dropped или нулевое значение
+	// JSON либо назвали необъявленное имя (SPEC 152, контракт 1.1.103): по
+	// нему сборка отличает правило, которое сломал сбой, от правила без
+	// условий по замыслу.
+	emptyRefs int
 }
 
 // warn добавляет warning без дублей по паре (код, параметры): одна и та же
@@ -103,6 +112,11 @@ const (
 func substituteWalkCanon(v *interface{}, ctx *canonCtx) {
 	switch x := (*v).(type) {
 	case map[string]interface{}:
+		// §578: составная строка {"#tpl": "…"} — значение целиком.
+		if _, has := x[tplKey]; has {
+			*v = evalTplCanon(x, ctx)
+			return
+		}
 		// SPEC 107: #enable — ПЕРВЫМ, до #if и до обхода детей. При false узел
 		// исчезает целиком и внутри ничего не вычисляется (ни подстановок, ни
 		// warning'ов). Обязательно ДО ветки warnUnknownDirective ниже: иначе
@@ -218,8 +232,44 @@ func substituteWalkCanon(v *interface{}, ctx *canonCtx) {
 	}
 }
 
-// replacementCanon возвращает значение для плейсхолдера "@name" по канону §5.2.
+// replacementCanon возвращает значение для плейсхолдера "@name" по канону §5.2
+// и считает ссылки, не давшие значения (Dropped или нулевое значение JSON).
 func replacementCanon(name string, ctx *canonCtx) interface{} {
+	v := replacementCanonValue(name, ctx)
+	if isEmptyRefValue(v) {
+		ctx.emptyRefs++
+	}
+	return v
+}
+
+// isEmptyRefValue — подстановка не дала значения: Dropped или нулевое
+// значение JSON (null, "", [], {}, false, 0) — тот же список, что у
+// ключа-условия без значения (TEMPLATE_LANG §5.1).
+func isEmptyRefValue(v interface{}) bool {
+	switch x := v.(type) {
+	case nil, droppedValue:
+		return true
+	case string:
+		return strings.TrimSpace(x) == ""
+	case []interface{}:
+		return len(x) == 0
+	case map[string]interface{}:
+		return len(x) == 0
+	case bool:
+		return !x
+	case int:
+		return x == 0
+	case float64:
+		return x == 0
+	case json.Number:
+		f, err := x.Float64()
+		return err == nil && f == 0
+	}
+	return false
+}
+
+// replacementCanonValue — само значение плейсхолдера "@name" (§5.2).
+func replacementCanonValue(name string, ctx *canonCtx) interface{} {
 	// @runtime.* — не переменные шаблона, а globals таргета (desktop-расширение
 	// §7.2); резолв тот же, что в предикатах.
 	if isRuntimeGlobalRef(name) {
@@ -229,22 +279,31 @@ func replacementCanon(name string, ctx *canonCtx) interface{} {
 		// Неизвестное поле после @runtime. — как необъявленное имя: плейсхолдер
 		// остаётся, warning с полным именем (§5.2).
 		ctx.warnUndeclared(name)
+		ctx.emptyRefs++
 		return "@" + name
 	}
 
 	r, ok := ctx.resolved[name]
 	if !ok {
-		if !ctx.declared[name] {
+		if !ctx.isDeclared(name) {
 			// Имя не объявлено — опечатка автора шаблона. Плейсхолдер остаётся
 			// видимым: пустая строка спрятала бы ошибку, а падение сборки
 			// превратило бы опечатку в отказ всего конфига (§5.2).
+			//
+			// Для правила это сбой (контракт 1.1.103): правило без условий
+			// с `"outbound": "@опечатка"` иначе ушло бы в конфиг и перехватило
+			// весь трафик в несуществующий outbound.
 			ctx.warnUndeclared(name)
+			ctx.emptyRefs++
 			return "@" + name
 		}
 		// Объявлена, но значения нет — штатная optional-var, Dropped-каскад.
 		return droppedValue{}
 	}
 
+	if r.Raw != nil {
+		return deepCopyRaw(r.Raw)
+	}
 	typ := ctx.varTypes[name]
 	if typ == "text_list" {
 		out := make([]interface{}, len(r.List))
@@ -439,7 +498,7 @@ func (c *canonCtx) noteVarRef(ref string) {
 	if name == "" || isRuntimeGlobalRef(name) {
 		return
 	}
-	if !c.declared[name] {
+	if !c.isDeclared(name) {
 		c.warnUndeclared(name)
 	}
 }

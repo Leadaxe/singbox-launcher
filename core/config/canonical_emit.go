@@ -195,19 +195,13 @@ func buildCanonicalServer(cs *configtypes.CanonicalSource, cn *configtypes.Canon
 		EmitBody:    cn.Body,
 		IdentityTag: cn.Tag,
 		Service:     cn.Service,
+		SkipPresets: cn.SkipPresets,
+		Authored:    cn.Authored,
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}
 	node.Flow = canonicalString(outbound["flow"])
-	// SPEC 132: обратный путь «финальный тег → узел состояния». Ставится
-	// ВСЕГДА, в отличие от SectionsLink (тот едет только с секциями).
+	// SPEC 132: обратный путь «финальный тег → узел состояния».
 	node.CanonicalLink = configtypes.NodeLink{FolderID: cs.FolderID, Tag: cn.Tag}
-	// Секции узла (SPEC 121): едут до эмиссии сырыми. Ссылка на узел —
-	// {FolderID контейнера, СЫРОЙ тег}: именно ею адресует якорь правил, и
-	// финальный тег для этого не годится (он зависит от тег-политики).
-	if !cn.Sections.IsEmpty() {
-		node.Sections = cn.Sections
-		node.SectionsLink = configtypes.NodeLink{FolderID: cs.FolderID, Tag: cn.Tag}
-	}
 	applyCanonicalDisplay(node, cn)
 	node.Tag = applyEmissionTagMachine(node, cs, cn, num, tagCounts)
 	return node, nil

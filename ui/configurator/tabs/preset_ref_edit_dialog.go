@@ -135,7 +135,7 @@ func showEditPresetRefDialog(
 	jsonRichText.Wrapping = fyne.TextWrapWord
 
 	refreshJSON := func() {
-		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(tplPreset, working, model.Target, wizardbusiness.PresetGlobalVars(model), wizardbusiness.PresetGlobalDecls(model)) + "\n```")
+		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(model, tplPreset, working) + "\n```")
 	}
 
 	refreshVisibility := func() {
@@ -421,7 +421,11 @@ func showEditPresetRefDialog(
 //
 // globalDecls — объявления переменных шаблона (SPEC 143 Т2): пустая глобаль
 // даёт Dropped ключа, а не литерал "@name" в превью.
-func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]string, target wizardtemplate.TargetSpec, globalVars map[string]string, globalDecls []wizardtemplate.TemplateVar) string {
+//
+// Пресет с `for_each` (SPEC 145 §7) раскрывается по узлам, отобранным тем же
+// отбором, что у сборки (wizardbusiness.ExpandPresetForView); подходящих узлов
+// нет — одна строка-пояснение вместо пустых фрагментов.
+func buildPresetJSONPreview(model *wizardmodels.WizardModel, tpl *wizardtemplate.Preset, working map[string]string) string {
 	// Build effective varsMap (working + defaults).
 	vars := make(map[string]string, len(tpl.Vars))
 	for _, v := range tpl.Vars {
@@ -431,7 +435,10 @@ func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]strin
 			vars[v.Name] = v.Default
 		}
 	}
-	frags, warns, ok := build.ExpandPresetWithGlobals(tpl, vars, globalVars, globalDecls, target)
+	if tpl.ForEach != nil && len(wizardbusiness.PresetServedTags(model, tpl, vars)) == 0 {
+		return "// " + locale.T("No matching nodes.")
+	}
+	frags, warns, ok := wizardbusiness.ExpandPresetForView(model, tpl, vars)
 	if !ok {
 		return "// preset expansion failed:\n// " + warningsAsText(warns)
 	}

@@ -42,7 +42,7 @@ func pipelineFromURI(t *testing.T, uri string) pipelineNode {
 // (см. materializeBody).
 func pipelineFromOutbound(t *testing.T, scheme, source string, outbound map[string]interface{}) pipelineNode {
 	t.Helper()
-	body, warns, drop := materializeBody(scheme, source, outbound)
+	body, warns, drop := materializeBody(scheme, source, false, outbound)
 	if drop != nil {
 		t.Fatalf("узел отбракован конвейером: %s", dropReason(drop))
 	}
@@ -416,21 +416,26 @@ func TestPipelineAWGMTUExceptionSurvivesStateReload(t *testing.T) {
 	cases := []struct {
 		name       string
 		originKind string
+		authored   bool
 		wantRewrit bool
 		wantCode   string
 	}{
-		// Узел из sing-box JSON: тело остаётся байт в байт, код — info.
-		{"origin=json", state.OriginKindJSON, false, "awg_mtu_high"},
+		// Авторское тело (свой узел, голое тело sing-box, контракт
+		// 1.1.87): тело остаётся байт в байт, код — info.
+		{"origin=json authored", state.OriginKindJSON, true, false, "awg_mtu_high"},
+		// sing-box JSON подписки авторским не бывает: вход `other`,
+		// значение заменяется (PARSING_PRINCIPLES §10.4).
+		{"origin=json", state.OriginKindJSON, false, true, "awg_mtu_clamped"},
 		// Узел из ссылки: значение заменяется, тело переписывается.
-		{"origin=uri", state.OriginKindURI, true, "awg_mtu_clamped"},
+		{"origin=uri", state.OriginKindURI, false, true, "awg_mtu_clamped"},
 		// .conf — ссылка того же рода.
-		{"origin=wg_ini", state.OriginKindWGIni, true, "awg_mtu_clamped"},
+		{"origin=wg_ini", state.OriginKindWGIni, false, true, "awg_mtu_clamped"},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			res, err := sanitizeStoredNodeBody(state.SanitizeBodyRequest{
-				Body: stored, OriginKind: c.originKind,
+				Body: stored, OriginKind: c.originKind, Authored: c.authored,
 			})
 			if err != nil {
 				t.Fatalf("пересчёт кодов: %v", err)

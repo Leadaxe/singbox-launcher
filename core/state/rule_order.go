@@ -44,15 +44,6 @@ const (
 	// Всё, что ВЫШЕ этой границы, — свободная территория: правило вправе встать
 	// между шаблонными якорями (950/960) или над ними.
 	MinSortableRuleNum = 1
-
-	// NodeRuleDefaultNum — стартовая позиция правила, которое узел носит с
-	// собой (SPEC 121 §10.1).
-	//
-	// 945 — перед шаблонным якорем private-ips (950): правила узла адресуют
-	// его собственные подсети (tailnet 100.64.0.0/10, сети за пиром
-	// WireGuard), и общее правило про приватные адреса не должно
-	// перехватывать их раньше. Дальше пользователь двигает строку сам.
-	NodeRuleDefaultNum = 945
 )
 
 // RuleOrderSpec — то, что ось знает о правиле из шаблона: стартовый номер и
@@ -420,4 +411,61 @@ func placeRuleAt(rules []Rule, movedIdx int, want int, sortable func(Rule) bool)
 
 	w := want
 	rules[movedIdx].Num = &w
+}
+
+// LateDefaultPresetIDs — пресеты шаблона, включённые по умолчанию и
+// появившиеся после того, как у пользователя уже было состояние (LxBox §578,
+// `kLateDefaultPresetIds`). Список только растёт.
+var LateDefaultPresetIDs = []string{"tailscale"}
+
+// SeedLateDefaultRules — разовый засев поздних дефолтных пресетов.
+//
+// Каждый id из LateDefaultPresetIDs, которого ещё нет в seeded и который
+// шаблон объявляет (specs), отмечается пройденным; если шаблон объявляет его
+// включённым по умолчанию и правила с таким ref нет, правило добавляется
+// включённым на номер шаблона. Пройденный id больше не добавляется: пресет,
+// удалённый пользователем, не возвращается — при условии, что отметка
+// сохранена в состоянии (State.LatePresetsSeeded). id, которого нет в
+// шаблоне, не отмечается: засев случится, когда шаблон его получит.
+//
+// Возвращает правила и новый список отметок (seeded плюс отмеченные сейчас).
+// Входной слайс правил не мутируется.
+func SeedLateDefaultRules(rules []Rule, specs map[string]RuleOrderSpec, seeded []string) ([]Rule, []string) {
+	done := make(map[string]bool, len(seeded))
+	for _, id := range seeded {
+		done[id] = true
+	}
+	present := make(map[string]bool, len(rules))
+	for _, r := range rules {
+		if r.Kind == RuleKindPreset {
+			present[r.Ref] = true
+		}
+	}
+	out := rules
+	marks := seeded
+	copied := false
+	for _, id := range LateDefaultPresetIDs {
+		if done[id] {
+			continue
+		}
+		spec, ok := specs[id]
+		if !ok {
+			continue
+		}
+		marks = append(append([]string(nil), marks...), id)
+		done[id] = true
+		if !spec.DefaultEnabled || present[id] {
+			continue
+		}
+		if !copied {
+			out = append(make([]Rule, 0, len(rules)+1), rules...)
+			copied = true
+		}
+		num := spec.Num
+		r := NewPresetRule(id, nil)
+		r.Enabled = true
+		r.Num = &num
+		out = append(out, r)
+	}
+	return out, marks
 }

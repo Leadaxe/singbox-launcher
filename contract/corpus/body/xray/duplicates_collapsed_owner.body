@@ -1,0 +1,207 @@
+# Xray-массив: сервер a записан страной «Австрия», страной «Германия» и
+# членом пула «Авто» (контракт 1.1.102, SPEC 154). Правило владения (§342)
+# отдаёт сервер первой одиночной стране; «Германия» уходит в names
+# выжившего, член пула — нет: пул ссылается на сервер, а не называет его.
+[
+  {
+    "remarks": "Авто",
+    "outbounds": [
+      {
+        "tag": "bridge",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "a.example.com",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000001-0000-4000-8000-000000000000",
+                  "encryption": "none",
+                  "flow": "xtls-rprx-vision"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "serverName": "www.example.org",
+            "publicKey": "Lx2TnXgn4YbYp6h6rVr3m2DkQnq1Yl7yY0pYf0bR3X0",
+            "shortId": "ab12",
+            "fingerprint": "chrome"
+          }
+        }
+      },
+      {
+        "tag": "bridge-2",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "b.example.com",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000002-0000-4000-8000-000000000000",
+                  "encryption": "none",
+                  "flow": "xtls-rprx-vision"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "serverName": "www.example.org",
+            "publicKey": "Lx2TnXgn4YbYp6h6rVr3m2DkQnq1Yl7yY0pYf0bR3X0",
+            "shortId": "ab12",
+            "fingerprint": "chrome"
+          }
+        }
+      },
+      {
+        "tag": "direct",
+        "protocol": "freedom"
+      }
+    ],
+    "routing": {
+      "balancers": [
+        {
+          "tag": "Balancer",
+          "selector": [
+            "bridge"
+          ],
+          "strategy": {
+            "type": "leastLoad"
+          }
+        }
+      ],
+      "rules": [
+        {
+          "type": "field",
+          "network": "tcp,udp",
+          "balancerTag": "Balancer"
+        }
+      ]
+    }
+  },
+  {
+    "remarks": "🇦🇹 Австрия",
+    "outbounds": [
+      {
+        "tag": "proxy",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "a.example.com",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000001-0000-4000-8000-000000000000",
+                  "encryption": "none",
+                  "flow": "xtls-rprx-vision"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "serverName": "www.example.org",
+            "publicKey": "Lx2TnXgn4YbYp6h6rVr3m2DkQnq1Yl7yY0pYf0bR3X0",
+            "shortId": "ab12",
+            "fingerprint": "chrome"
+          }
+        }
+      },
+      {
+        "tag": "direct",
+        "protocol": "freedom"
+      }
+    ]
+  },
+  {
+    "remarks": "🇵🇱 Польша",
+    "outbounds": [
+      {
+        "tag": "proxy",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "b.example.com",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000002-0000-4000-8000-000000000000",
+                  "encryption": "none",
+                  "flow": "xtls-rprx-vision"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "serverName": "www.example.org",
+            "publicKey": "Lx2TnXgn4YbYp6h6rVr3m2DkQnq1Yl7yY0pYf0bR3X0",
+            "shortId": "ab12",
+            "fingerprint": "chrome"
+          }
+        }
+      },
+      {
+        "tag": "direct",
+        "protocol": "freedom"
+      }
+    ]
+  },
+  {
+    "remarks": "🇩🇪 Германия",
+    "outbounds": [
+      {
+        "tag": "proxy",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "a.example.com",
+              "port": 443,
+              "users": [
+                {
+                  "id": "00000001-0000-4000-8000-000000000000",
+                  "encryption": "none",
+                  "flow": "xtls-rprx-vision"
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "serverName": "www.example.org",
+            "publicKey": "Lx2TnXgn4YbYp6h6rVr3m2DkQnq1Yl7yY0pYf0bR3X0",
+            "shortId": "ab12",
+            "fingerprint": "chrome"
+          }
+        }
+      },
+      {
+        "tag": "direct",
+        "protocol": "freedom"
+      }
+    ]
+  }
+]

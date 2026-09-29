@@ -1,0 +1,5 @@
+# Авторское тело (свой сервер, источник — голое тело узла): header_protection_key не 32 байта.
+# Ядро sing-box-lx отвергает такой конфиг целиком (transport/wireguard/device_awg.go awgHeaderProtectionKeyHex из NewEndpoint), поэтому правило
+# жёсткое (core_rejects, контракт 1.1.91) и применяется и на авторском теле:
+# код без applied:false.
+{"type":"wireguard","tag":"own-wg","address":["10.0.0.2/32"],"private_key":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=","peers":[{"address":"example-3.com","port":51820,"public_key":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=","allowed_ips":["0.0.0.0/0"]}],"header_protection_key":"c2hvcnQ=","s1":16,"s2":16,"s3":16,"s4":16}

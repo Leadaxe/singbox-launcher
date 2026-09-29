@@ -1,0 +1,12 @@
+{
+  "_comment": "§6.8: три переменные кэша DNS; изменённые значения (контракт 1.1.93, LxBox §580)",
+  "vars": [
+    {"name": "dns_cache_capacity", "type": "int", "default_value": "4000"},
+    {"name": "dns_optimistic", "type": "bool", "default_value": "true"},
+    {"name": "dns_store_cache", "type": "bool", "default_value": "true"}
+  ],
+  "config": {
+    "dns": {"cache_capacity": "@dns_cache_capacity", "optimistic": "@dns_optimistic"},
+    "experimental": {"cache_file": {"enabled": true, "path": "cache.db", "store_fakeip": true, "store_dns": "@dns_store_cache"}}
+  }
+}

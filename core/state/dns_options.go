@@ -72,7 +72,7 @@ const (
 	DNSRuleKindUser DNSRuleKind = "user"
 )
 
-// DNSServer — запись в state.dns.servers[] и в sections.dns.servers[].
+// DNSServer — запись в state.dns.servers[].
 //
 // Сериализация — обычные struct-теги (порядок полей = порядок ключей файла):
 // метаданные снаружи, тело sing-box в `body` (только kind=user).
@@ -106,7 +106,7 @@ type DNSServer struct {
 	Body map[string]interface{} `json:"body,omitempty"`
 }
 
-// DNSRule — запись в state.dns.rules[] и в sections.dns.rules[].
+// DNSRule — запись в state.dns.rules[].
 type DNSRule struct {
 	Kind DNSRuleKind `json:"kind"`
 

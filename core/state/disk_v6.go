@@ -107,4 +107,7 @@ type MetaSection struct {
 	// только при Target="remote"; для local платформа всегда runtime'а.
 	TargetPlatform string `json:"target_platform,omitempty"`
 	TargetArch     string `json:"target_arch,omitempty"`
+	// LatePresetsSeeded — id поздних дефолтных пресетов, уже засеянных
+	// (LxBox §578, SeedLateDefaultRules). Пустой список не пишется.
+	LatePresetsSeeded []string `json:"late_presets_seeded,omitempty"`
 }

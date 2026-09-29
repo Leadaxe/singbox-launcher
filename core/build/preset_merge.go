@@ -86,28 +86,37 @@ func convertPresetRuleSetRemoteToLocal(rs map[string]interface{}, dataDir paths.
 }
 
 // cleanDanglingRuleSetInRule — для rule с `rule_set` ссылкой удаляет имена
-// которых нет в emittedTags. Если после уборки массив пуст или строка ссылается
-// на отсутствующий tag — rule отбрасывается (возвращает nil), если есть хоть
-// один валидный ref — оставляет.
+// которых нет в emittedTags. Висячее имя рядом с живыми просто убирается:
+// список наборов сужается, правило остаётся.
 //
 // Используется когда remote rule_set не скачан и пропущен — соответствующая
 // ссылка в rule.rule_set должна исчезнуть, чтобы sing-box не упал на unknown tag.
-func cleanDanglingRuleSetInRule(rule map[string]interface{}, emittedTags map[string]bool) map[string]interface{} {
+//
+// Если висячими оказались ВСЕ ссылки, правило отбрасывается целиком (nil) и
+// второй результат — true, что бы в нём ни осталось (SPEC 153, TEMPLATE_LANG
+// §5.1): соседние поля (`network`, `port`) сужением до набора не являются, и
+// `{"rule_set": "games", "network": ["tcp", "udp"]}` без набора ловило бы
+// весь TCP/UDP. Вызывающий сообщает о выпадении кодом
+// template_fragment_dropped.
+func cleanDanglingRuleSetInRule(rule map[string]interface{}, emittedTags map[string]bool) (map[string]interface{}, bool) {
 	if rule == nil {
-		return nil
-	}
-	ref, ok := rule["rule_set"]
-	if !ok {
-		return rule // нет rule_set → ничего убирать
+		return nil, false
 	}
 	out := make(map[string]interface{}, len(rule))
 	for k, v := range rule {
 		out[k] = v
 	}
+	if pruneSubRuleSetRefs(out, emittedTags) {
+		return nil, true
+	}
+	ref, ok := out["rule_set"]
+	if !ok {
+		return out, false // нет rule_set → ничего убирать
+	}
 	switch v := ref.(type) {
 	case string:
 		if !emittedTags[v] {
-			delete(out, "rule_set")
+			return nil, true
 		}
 	case []interface{}:
 		kept := make([]interface{}, 0, len(v))
@@ -117,6 +126,9 @@ func cleanDanglingRuleSetInRule(rule map[string]interface{}, emittedTags map[str
 			}
 		}
 		if len(kept) == 0 {
+			if len(v) > 0 {
+				return nil, true
+			}
 			delete(out, "rule_set")
 		} else {
 			out["rule_set"] = kept
@@ -139,9 +151,75 @@ func cleanDanglingRuleSetInRule(rule map[string]interface{}, emittedTags map[str
 		hasMatchFields = true
 	}
 	if !hasMatchFields {
-		return nil
+		return nil, false
 	}
-	return out
+	return out, false
+}
+
+// pruneSubRuleSetRefs чистит висячие ссылки rule_set в под-правилах
+// логического правила (контракт 1.1.107): имя рядом с живыми убирается, а
+// под-правило, у которого висячими оказались ВСЕ ссылки, снимает всё правило
+// (true) — снятое условие под-правила расширило бы совпадение так же, как у
+// правила верхнего уровня. Под-правила переписываются копиями: тело правила
+// приходит из общего результата раскрытия.
+func pruneSubRuleSetRefs(out map[string]interface{}, validTags map[string]bool) bool {
+	subs, ok := out[logicalSubRulesKey].([]interface{})
+	if !ok {
+		return false
+	}
+	cleaned := make([]interface{}, 0, len(subs))
+	for _, sub := range subs {
+		sm, ok := sub.(map[string]interface{})
+		if !ok {
+			cleaned = append(cleaned, sub)
+			continue
+		}
+		c := make(map[string]interface{}, len(sm))
+		for k, v := range sm {
+			c[k] = v
+		}
+		if pruneSubRuleSetRefs(c, validTags) {
+			return true
+		}
+		switch v := c["rule_set"].(type) {
+		case string:
+			if v != "" && !validTags[v] {
+				return true
+			}
+		case []interface{}:
+			kept := make([]interface{}, 0, len(v))
+			for _, x := range v {
+				if s, ok := x.(string); ok && validTags[s] {
+					kept = append(kept, s)
+				}
+			}
+			if len(kept) == 0 {
+				if len(v) > 0 {
+					return true
+				}
+				delete(c, "rule_set")
+			} else {
+				c["rule_set"] = kept
+			}
+		}
+		cleaned = append(cleaned, c)
+	}
+	out[logicalSubRulesKey] = cleaned
+	return false
+}
+
+// hasRuleSetRef — правило или одно из его под-правил ссылается на rule_set.
+func hasRuleSetRef(m map[string]interface{}) bool {
+	if _, has := m["rule_set"]; has {
+		return true
+	}
+	subs, _ := m[logicalSubRulesKey].([]interface{})
+	for _, sub := range subs {
+		if sm, ok := sub.(map[string]interface{}); ok && hasRuleSetRef(sm) {
+			return true
+		}
+	}
+	return false
 }
 
 // SRSTagFromURL — content-addressed SRS tag, shared with the configurator UI
@@ -206,20 +284,15 @@ type PresetMergeContext struct {
 	// шаблонный тег; боевой путь обязан передавать поле.
 	EmittedRuleSetTags map[string]bool
 
-	// NodeSections (SPEC 121 §10.2) — секции узлов, ДОШЕДШИХ до эмиссии, в
-	// порядке эмиссии. Их записи ДОПИСЫВАЮТСЯ к спискам временного state перед
-	// резолвом: route-правила к Rules (с последующей сортировкой по оси),
-	// DNS-серверы и DNS-правила — в конец своих списков.
-	//
-	// Узел, не попавший в конфиг (выключен, отброшен санитайзером), сюда не
-	// входит: секции живут и умирают вместе с узлом, и запись без своего узла
-	// ссылалась бы в никуда.
-	NodeSections []NodeSectionSet
-
 	// templateWarnings — накопитель предупреждений раскрытия пресетов и
 	// DNS-серверов (SPEC 143): заполняет BuildConfig, пишут MergePresetsInto*.
 	// nil — вызывающий отчёт не собирает, предупреждения остаются в логе.
 	templateWarnings *[]template.TemplateWarning
+
+	// PresetNodes — узлы конфига для for_each (LxBox §578): финальные теги,
+	// тела и skip_presets. Заполняет BuildConfig после граф-санитайзера —
+	// состав узлов окончателен. nil — пресеты с for_each пусты.
+	PresetNodes []template.PresetNode
 }
 
 // noteTemplateWarnings дописывает предупреждения в накопитель сборки.
@@ -228,63 +301,6 @@ func (c PresetMergeContext) noteTemplateWarnings(ws []template.TemplateWarning) 
 		return
 	}
 	*c.templateWarnings = append(*c.templateWarnings, ws...)
-}
-
-// rulesWithNodeSections — правила состояния плюс правила узлов, в порядке оси.
-//
-// Инъекция (SPEC 121 §10.2): записи узлов после `SubstituteSelf`
-// конкатенируются к state.Rules и весь список пересортировывается по оси.
-// Дальше работает существующий резолв — узловых веток в нём нет.
-func (c PresetMergeContext) rulesWithNodeSections() []state.Rule {
-	if len(c.NodeSections) == 0 {
-		return c.Rules
-	}
-	out := c.Rules
-	injected := false
-	for i := range c.NodeSections {
-		add := c.NodeSections[i].RulesWithSelf()
-		if len(add) == 0 {
-			continue
-		}
-		if !injected {
-			// Копия перед первой дописью: c.Rules принадлежит состоянию, и
-			// append мог бы писать в его массив.
-			out = append(append([]state.Rule(nil), c.Rules...), add...)
-			injected = true
-			continue
-		}
-		out = append(out, add...)
-	}
-	if !injected {
-		return c.Rules
-	}
-	return state.SortRulesByNum(out)
-}
-
-// dnsWithNodeSections — DNS состояния плюс DNS-записи узлов.
-//
-// Узловые записи встают В КОНЕЦ своих списков: оси порядка у DNS нет
-// (CODEMAP §10 п. 9), позиция в списке — единственное, чем порядок задаётся, и
-// ставить узловые раньше пользовательских значило бы менять сложившуюся
-// раскладку конфига.
-func (c PresetMergeContext) dnsWithNodeSections() state.DNSOptions {
-	if len(c.NodeSections) == 0 {
-		return c.DNS
-	}
-	out := c.DNS
-	var servers []state.DNSServer
-	var rules []state.DNSRule
-	for i := range c.NodeSections {
-		servers = append(servers, c.NodeSections[i].DNSServersWithSelf()...)
-		rules = append(rules, c.NodeSections[i].DNSRulesWithSelf()...)
-	}
-	if len(servers) > 0 {
-		out.Servers = append(append([]state.DNSServer(nil), c.DNS.Servers...), servers...)
-	}
-	if len(rules) > 0 {
-		out.Rules = append(append([]state.DNSRule(nil), c.DNS.Rules...), rules...)
-	}
-	return out
 }
 
 // globalVarValues — глобальные переменные для тела пресета: сохранённые
@@ -296,29 +312,6 @@ func (c PresetMergeContext) dnsWithNodeSections() state.DNSOptions {
 // и получали `inbound: []` (template.VarValuesFor).
 func (c PresetMergeContext) globalVarValues() map[string]string {
 	return template.VarValuesFor(c.TemplateVars, c.GlobalVars, nil, c.Target)
-}
-
-// hasNodeRouteRules — есть ли среди дошедших до эмиссии узлов хоть один с
-// правилами маршрута. Гард раннего выхода MergePresetsIntoRoute.
-func (c PresetMergeContext) hasNodeRouteRules() bool {
-	for i := range c.NodeSections {
-		if c.NodeSections[i].Sections.HasRules() {
-			return true
-		}
-	}
-	return false
-}
-
-// hasNodeDNSFragments — есть ли DNS-серверы или DNS-правила у узлов.
-// Гард раннего выхода MergePresetsIntoDNS.
-func (c PresetMergeContext) hasNodeDNSFragments() bool {
-	for i := range c.NodeSections {
-		ns := c.NodeSections[i].Sections
-		if len(ns.DNSServers()) > 0 || len(ns.DNSRules()) > 0 {
-			return true
-		}
-	}
-	return false
 }
 
 // hasNonSortablePreset — есть ли в шаблоне неотчуждаемый пресет, который
@@ -345,10 +338,7 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 	// SPEC 106: пустой список правил больше не повод выйти сразу — в шаблоне
 	// могут быть неотчуждаемые пресеты, которые обязан вернуть re-seed
 	// (D-050). Выходим, только если и правил нет, и сеять нечего.
-	// SPEC 121: секции узлов — третья причина зайти внутрь. Без этого
-	// условия узел с правилами в состоянии без единого пресета и правила
-	// отдавал бы пустой route.
-	if !hasAnyV6Rule(ctx.Rules) && !hasNonSortablePreset(ctx.Presets) && !ctx.hasNodeRouteRules() {
+	if !hasAnyV6Rule(ctx.Rules) && !hasNonSortablePreset(ctx.Presets) {
 		return routeRaw, nil
 	}
 
@@ -360,10 +350,8 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 	rules, _ := route["rules"].([]interface{})
 	ruleSets, _ := route["rule_set"].([]interface{})
 
-	// SPEC 121 §10.2: правила узлов дописываются к правилам состояния ДО
-	// резолва — дальше они рядовые inline/srs, и узловых веток в конвейере нет.
-	st := &state.State{Rules: ctx.rulesWithNodeSections(), DNS: ctx.dnsWithNodeSections()}
-	tdVal := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars}
+	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
+	tdVal := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars, PresetNodes: ctx.PresetNodes}
 	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())
 	ctx.noteTemplateWarnings(resolved.Warnings)
 
@@ -438,14 +426,12 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 //
 // Если ResolveDNS вернёт пустой результат И в template dns nothing — noop.
 //
-// Dangling rule_set refs в kind=user dns rules чистятся через
-// cleanDanglingDNSRule.
+// Dangling rule_set refs в dns rules (kind=user и пресетных, SPEC 153)
+// чистятся через cleanDanglingDNSRule.
 func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.RawMessage, error) {
 	// ResolveDNS — единая точка резолва. Принимает state-like контекст
 	// (RulesV6 + DNS), строит ResolvedDNS на лету.
-	// SPEC 121 §10.2: DNS-записи узлов дописываются к спискам состояния ДО
-	// резолва — дальше они рядовые записи вида user.
-	st := &state.State{Rules: ctx.rulesWithNodeSections(), DNS: ctx.dnsWithNodeSections()}
+	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	tdVal := templateLikeFromCtx(ctx)
 	// GlobalVars, а не nil (SPEC 109): третий параметр — ЗНАЧЕНИЯ переменных.
 	// С nil подстановка в теле DNS-сервера всегда брала бы дефолт шаблона, и
@@ -454,9 +440,7 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	resolved := ResolveDNS(st, &tdVal, ctx.globalVarValues(), ctx.Target)
 	ctx.noteTemplateWarnings(resolved.Warnings)
 
-	// SPEC 121: DNS-фрагменты узлов — ещё одна причина зайти внутрь.
-	if len(resolved.Servers) == 0 && len(resolved.Rules) == 0 && !hasAnyV6Rule(ctx.Rules) &&
-		!ctx.hasNodeDNSFragments() {
+	if len(resolved.Servers) == 0 && len(resolved.Rules) == 0 && !hasAnyV6Rule(ctx.Rules) {
 		return dnsRaw, nil
 	}
 
@@ -497,7 +481,7 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 		}
 	}
 
-	// Множество валидных rule_set-тегов для dangling-cleanup в DNS user rules.
+	// Множество валидных rule_set-тегов для dangling-cleanup в DNS rules.
 	// Боевой путь передаёт его готовым (посчитано по ВСЕМ источникам
 	// route.rule_set до обхода секций). Без него — вырожденный режим: то же
 	// перечисление, но без вклада шаблонной route-секции, которая тут
@@ -507,22 +491,31 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 		emittedRuleSetTags = CollectEmittedRouteRuleSetTags(nil, RouteConfig{}, ctx)
 	}
 
-	// Emit rules: Active && Enabled. User → dangling cleanup; preset → as is.
+	// Emit rules: Active && Enabled. Висячие ссылки rule_set чистятся у
+	// правил обоих источников: набор пресета, чей .srs не скачан, из
+	// route.rule_set выпадает (resolve_route.go), а его DNS-правило ссылалось
+	// бы на неизвестный тег — ядро не стартует (SPEC 153).
+	var dropped []template.TemplateWarning
 	for _, dr := range resolved.Rules {
 		if !dr.Active || !dr.Enabled {
 			continue
 		}
-		switch dr.Source {
-		case DNSSourcePreset:
+		// Правило пресета без rule_set едет как есть: его гейты уже прошли
+		// при раскрытии (SPEC 152 — action-правило без условий законно).
+		if dr.Source == DNSSourcePreset && !hasRuleSetRef(dr.Body) {
 			dnsRules = append(dnsRules, dr.Body)
-		case DNSSourceUser:
-			cleaned := cleanDanglingDNSRule(dr.Body, emittedRuleSetTags)
-			if cleaned == nil {
-				continue
-			}
-			dnsRules = append(dnsRules, cleaned)
+			continue
 		}
+		cleaned, lost := cleanDanglingDNSRule(dr.Body, emittedRuleSetTags)
+		if lost {
+			dropped = append(dropped, fragmentDropped(dnsRuleOwner(dr), fragmentKindDNSRule, "rule_set").templateWarning())
+		}
+		if cleaned == nil {
+			continue
+		}
+		dnsRules = append(dnsRules, cleaned)
 	}
+	ctx.noteTemplateWarnings(dropped)
 
 	// SPEC 109: состав DNS-группы чистится ПОСЛЕ сборки всего списка —
 	// только здесь известно, что реально уехало в конфиг.
@@ -573,6 +566,7 @@ func templateLikeFromCtx(ctx PresetMergeContext) template.TemplateData {
 		DNSOptionsRaw: raw,
 		Vars:          ctx.TemplateVars,
 		DNSServerVars: ctx.DNSServerVars,
+		PresetNodes:   ctx.PresetNodes,
 	}
 	return td
 }
@@ -643,8 +637,10 @@ func CollectEmittedRouteRuleSetTags(routeRaw json.RawMessage, routeCfg RouteConf
 
 	// (3) Единый резолв правил состояния — тот же вызов, что и в
 	// MergePresetsIntoRoute, с теми же фильтрами эмиссии.
-	st := &state.State{Rules: ctx.rulesWithNodeSections(), DNS: ctx.dnsWithNodeSections()}
-	tdVal := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars}
+	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
+	// PresetNodes — как в MergePresetsIntoRoute: наборы пресета for_each
+	// раскрываются по узлам, без них множество было бы неполным (SPEC 153).
+	tdVal := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars, PresetNodes: ctx.PresetNodes}
 	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())
 	for _, rs := range resolved.RuleSets {
 		if rs.Skipped || !rs.Enabled {
@@ -660,31 +656,40 @@ func CollectEmittedRouteRuleSetTags(routeRaw json.RawMessage, routeCfg RouteConf
 
 // cleanDanglingDNSRule — для DNS rule entry: проверяет `rule_set` ссылки
 // против validTags. Возвращает clean copy или nil (если rule станет пустым
-// после очистки и его надо drop'нуть).
+// после очистки и его надо drop'нуть); второй результат — true, когда правило
+// выпало из-за того, что висячими оказались ВСЕ его ссылки rule_set.
 //
 // Семантика (зеркало cleanDanglingRuleSetInRule для route):
 //   - rule БЕЗ `rule_set` ссылки → keep (server-only rule валидно)
 //   - `rule_set` string ∈ validTags → keep
-//   - `rule_set` string ∉ validTags → удалить ключ; keep rule если остался
-//     хотя бы один match-источник (server, domain*, ip_cidr, port, и т.п.)
-//   - `rule_set` массив → filter dangling; пустой → удалить ключ
+//   - `rule_set` string ∉ validTags → drop entry целиком, lost
+//   - `rule_set` массив → filter dangling; не осталось ни одной → drop
+//     entry целиком, lost
 //   - rule без match-источников → drop entry целиком
 //
+// Правило, потерявшее все наборы, выпадает, что бы в нём ни осталось (SPEC
+// 153): `server` и соседние условия сужением до набора не являются, и
+// `{"rule_set": "x", "server": "y"}` без набора `x` отправляло бы в `y` все
+// запросы.
+//
 // Pure: новый map, оригинал не мутируется.
-func cleanDanglingDNSRule(rule map[string]interface{}, validTags map[string]bool) map[string]interface{} {
+func cleanDanglingDNSRule(rule map[string]interface{}, validTags map[string]bool) (map[string]interface{}, bool) {
 	if rule == nil {
-		return nil
+		return nil, false
 	}
 	out := make(map[string]interface{}, len(rule))
 	for k, v := range rule {
 		out[k] = v
+	}
+	if pruneSubRuleSetRefs(out, validTags) {
+		return nil, true
 	}
 
 	if ref, has := out["rule_set"]; has {
 		switch v := ref.(type) {
 		case string:
 			if v != "" && !validTags[v] {
-				delete(out, "rule_set")
+				return nil, true
 			}
 		case []interface{}:
 			kept := make([]interface{}, 0, len(v))
@@ -694,6 +699,9 @@ func cleanDanglingDNSRule(rule map[string]interface{}, validTags map[string]bool
 				}
 			}
 			if len(kept) == 0 {
+				if len(v) > 0 {
+					return nil, true
+				}
 				delete(out, "rule_set")
 			} else {
 				out["rule_set"] = kept
@@ -713,9 +721,22 @@ func cleanDanglingDNSRule(rule map[string]interface{}, validTags map[string]bool
 		}
 	}
 	if !hasMatch {
-		return nil
+		return nil, false
 	}
-	return out
+	return out, false
+}
+
+// dnsRuleOwner — owner предупреждения о выпавшем DNS-правиле: id пресета,
+// имя пользовательского правила или "dns_options" (раздел состояния, где
+// лежат пользовательские DNS-правила), когда имени нет.
+func dnsRuleOwner(dr ResolvedDNSRule) string {
+	if dr.Source == DNSSourcePreset {
+		return dr.PresetID
+	}
+	if dr.Name != "" {
+		return dr.Name
+	}
+	return "dns_options"
 }
 
 // CollectSrsCachedPaths — собирает map[StableRuleID]→абсолютные пути к скачанным

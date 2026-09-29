@@ -3,6 +3,8 @@
     "store": "system"
   },
   "dns": {
+    "cache_capacity": 4000,
+    "optimistic": true,
     "rules": [
       {
         "rule_set": [
@@ -82,6 +84,7 @@
     "cache_file": {
       "enabled": true,
       "path": "cache.db",
+      "store_dns": true,
       "store_fakeip": true
     },
     "clash_api": {
@@ -257,8 +260,9 @@
     "rules": [
       {
         "action": "sniff",
-        "inbound": [
-          "tun-in"
+        "network": [
+          "tcp",
+          "udp"
         ],
         "timeout": "1s"
       },
@@ -268,8 +272,9 @@
       },
       {
         "action": "resolve",
-        "inbound": [
-          "tun-in"
+        "network": [
+          "tcp",
+          "udp"
         ]
       },
       {
@@ -321,13 +326,6 @@
           "tcp",
           "udp"
         ],
-        "outbound": "direct-out"
-      },
-      {
-        "network": [
-          "tcp",
-          "udp"
-        ],
         "outbound": "proxy-out",
         "rule_set": "ai-services:ai-services"
       },
@@ -345,13 +343,6 @@
           "russian:ru-domains",
           "russian:ru-services"
         ]
-      },
-      {
-        "network": [
-          "tcp",
-          "udp"
-        ],
-        "outbound": "proxy-out"
       },
       {
         "outbound": "proxy-out",

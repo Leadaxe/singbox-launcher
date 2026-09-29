@@ -1,0 +1,104 @@
+{
+  "_comment": "Два узла: тело повторяется в порядке узлов; узел другого типа между ними не обслуживается.",
+  "preset": {
+    "for_each": {
+      "node_type": "tailscale",
+      "as": "node",
+      "filter": {
+        "#not": "@node.skip_presets"
+      }
+    },
+    "vars": [
+      {
+        "name": "dns_enable",
+        "type": "bool",
+        "default_value": "true"
+      }
+    ],
+    "rules": [
+      {
+        "#if": {
+          "#and": [
+            "@dns_enable"
+          ],
+          "#value": {
+            "preferred_by": [
+              "@node"
+            ],
+            "action": "resolve",
+            "server": {
+              "#tpl": "@{node}-dns"
+            }
+          }
+        }
+      },
+      {
+        "preferred_by": [
+          "@node"
+        ],
+        "outbound": "@node"
+      }
+    ],
+    "dns_servers": [
+      {
+        "#if": {
+          "#and": [
+            "@dns_enable"
+          ],
+          "#value": {
+            "type": "tailscale",
+            "tag": {
+              "#tpl": "@{node}-dns"
+            },
+            "endpoint": "@node",
+            "description": "MagicDNS of the tailnet"
+          }
+        }
+      }
+    ],
+    "dns_rules": [
+      {
+        "#if": {
+          "#and": [
+            "@dns_enable"
+          ],
+          "#value": {
+            "preferred_by": [
+              {
+                "#tpl": "@{node}-dns"
+              }
+            ],
+            "server": {
+              "#tpl": "@{node}-dns"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    },
+    {
+      "tag": "wg1",
+      "body": {
+        "type": "wireguard",
+        "tag": "wg1"
+      }
+    },
+    {
+      "tag": "work-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "work-ts",
+        "hostname": "work-ts-host"
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "rules": [
+    {
+      "preferred_by": [
+        "work-ts"
+      ],
+      "action": "resolve",
+      "server": "work-ts-dns"
+    },
+    {
+      "preferred_by": [
+        "work-ts"
+      ],
+      "outbound": "work-ts"
+    }
+  ],
+  "dns_servers": [
+    {
+      "type": "tailscale",
+      "tag": "work-ts-dns",
+      "endpoint": "work-ts",
+      "description": "MagicDNS of the tailnet"
+    }
+  ],
+  "dns_rules": [
+    {
+      "preferred_by": [
+        "work-ts-dns"
+      ],
+      "server": "work-ts-dns"
+    }
+  ],
+  "warnings": []
+}

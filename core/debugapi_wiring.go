@@ -90,7 +90,7 @@ func (f *debugAPIFacade) StopSingBox() error {
 }
 
 func (f *debugAPIFacade) PingAllProxies() error {
-	// The pingAllProxies implementation is a closure inside clash_api_tab.go
+	// The pingAllProxies implementation is a closure inside proxy_list_panel.go
 	// — we expose it via the same UIService hook the power-resume path uses.
 	if f.ac.UIService == nil || f.ac.UIService.AutoPingAfterConnectFunc == nil {
 		return nil

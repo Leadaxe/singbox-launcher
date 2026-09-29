@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "container": "own"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.0.0.2/32"
+        ],
+        "ip": "dns",
+        "jc": 4,
+        "jmax": 50,
+        "jmin": 10,
+        "peers": [
+          {
+            "address": "example-3.com",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "port": 51820,
+            "public_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA="
+          }
+        ],
+        "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "own-wg",
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "awg3_field_invalid",
+          "path": "id",
+          "value": "bad domain!"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

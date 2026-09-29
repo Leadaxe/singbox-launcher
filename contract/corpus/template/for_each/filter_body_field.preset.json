@@ -1,0 +1,38 @@
+{
+  "_comment": "filter по полю тела: #notEmpty на отсутствующем поле ложен.",
+  "preset": {
+    "for_each": {
+      "node_type": "tailscale",
+      "as": "n",
+      "filter": {
+        "@n.body.auth_key": "#notEmpty"
+      }
+    },
+    "rules": [
+      {
+        "preferred_by": [
+          "@n"
+        ],
+        "outbound": "@n"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    },
+    {
+      "tag": "work-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "work-ts",
+        "auth_key": "k"
+      }
+    }
+  ]
+}

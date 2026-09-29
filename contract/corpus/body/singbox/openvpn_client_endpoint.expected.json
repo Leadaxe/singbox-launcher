@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "data_ciphers": [
+          "AES-256-GCM"
+        ],
+        "mode": "tls",
+        "network": "udp",
+        "password": "pass",
+        "servers": [
+          {
+            "server": "vpn.example.com",
+            "server_port": 1194
+          }
+        ],
+        "tls": {
+          "enabled": true,
+          "server_name": "vpn.example.com"
+        },
+        "type": "openvpn-client",
+        "username": "user",
+        "x_future_key": 1
+      },
+      "kind": "endpoint",
+      "label": "ovpn-office",
+      "scheme": "openvpn-client"
+    }
+  ],
+  "v": 1
+}

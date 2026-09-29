@@ -1,0 +1,5 @@
+# Авторское тело naive с полями TLS, которые ядро у naive отвергает стартом
+# всего конфига (`core_rejects` у поля в tls.json): правка ЖЁСТКАЯ и
+# применяется — fragment и insecure сняты, коды без applied. Мягкий лишний
+# ключ `foo` остаётся с applied:false.
+{"type":"naive","tag":"own-naive","server":"example-2.com","server_port":443,"username":"user","password":"testpass123","foo":"bar","tls":{"enabled":true,"server_name":"example-2.com","fragment":true,"insecure":true}}

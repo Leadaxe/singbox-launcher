@@ -9,7 +9,7 @@
           "10.0.0.2/32"
         ],
         "jc": 10,
-        "mtu": 1420,
+        "mtu": 1280,
         "peers": [
           {
             "address": "example-3.com",
@@ -28,7 +28,7 @@
       "scheme": "wireguard",
       "warnings": [
         {
-          "code": "awg_mtu_high",
+          "code": "awg_mtu_clamped",
           "path": "mtu",
           "value": "1420"
         }

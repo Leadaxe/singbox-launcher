@@ -52,7 +52,11 @@ func renderPresetBundledDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.W
 	}
 	// Build shadow state из model для передачи в ResolveDNS.
 	shadowState := buildShadowStateForResolve(m)
-	resolved := build.ResolveDNS(shadowState, m.TemplateData, gatherTemplateVars(m), m.Target)
+	// LxBox §578: серверы пресета с for_each раскрываются по узлам — тем же
+	// списком, что превью (SPEC 145 §7). Копия: TemplateData модели общая.
+	td := *m.TemplateData
+	td.PresetNodes = wizardbusiness.PresetNodesForView(m)
+	resolved := build.ResolveDNS(shadowState, &td, gatherTemplateVars(m), m.Target)
 
 	presetByID := make(map[string]*wizardtemplate.Preset, len(m.TemplateData.Presets))
 	for i := range m.TemplateData.Presets {
@@ -96,78 +100,16 @@ func renderPresetBundledDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.W
 			helpLabel.Wrapping = fyne.TextWrapWord
 			showJSONReadOnlyDialog(parentWindow, "DNS server details", header, helpLabel, body)
 		}
+		// Сервер пресета с for_each выключателя не имеет: сборка читает его
+		// состояние по тегу без пространства пресета, а запись визарда
+		// (<preset_id>:<тег>) до неё не доходит. Чекбокс показал бы
+		// выключение, которого в конфиге не будет.
+		if tplCopy.ForEach != nil {
+			onToggle = nil
+		}
 		rows = append(rows, buildPresetBundledDNSRowFromResolved(tplCopy, srvCopy, onToggle, onView))
 	}
 	return rows
-}
-
-// renderNodeSectionDNSRows — read-only строки DNS-серверов, которые узлы носят
-// с собой (SPEC 121 §5.3).
-//
-// Дописываются В КОНЕЦ того же списка серверов, что и bundled-серверы
-// пресетов: отдельная секция под три строки только разрывала бы список, а
-// подпись `🔗 <узел>:<локальный тег>` и так говорит, откуда сервер.
-//
-// Тумблера нет: сервер живёт и умирает вместе с узлом, и «выключить» его можно
-// только выключив узел. Правки нет по той же причине — тело правится на
-// вкладке JSON узла.
-func renderNodeSectionDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.Window) []fyne.CanvasObject {
-	servers, _ := wizardbusiness.NodeSectionDNSForModel(m)
-	if len(servers) == 0 {
-		return nil
-	}
-	rows := make([]fyne.CanvasObject, 0, len(servers))
-	for _, srv := range servers {
-		srvCopy := srv
-		rows = append(rows, buildNodeSectionDNSServerRow(srvCopy, func() {
-			body, _ := jsonPrettyMarshal(srvCopy.Body)
-			header := widget.NewLabelWithStyle(
-				"🔗  "+locale.Tf("From node %q", srvCopy.FinalTag),
-				fyne.TextAlignLeading, fyne.TextStyle{Bold: true},
-			)
-			helpLabel := widget.NewLabelWithStyle(
-				locale.T("Read-only. This DNS server travels with the node — edit it on the node's JSON tab."),
-				fyne.TextAlignLeading, fyne.TextStyle{Italic: true},
-			)
-			helpLabel.Wrapping = fyne.TextWrapWord
-			showJSONReadOnlyDialog(parentWindow, "DNS server details", header, helpLabel, body)
-		}))
-	}
-	return rows
-}
-
-// buildNodeSectionDNSServerRow — одна строка DNS-сервера узла.
-func buildNodeSectionDNSServerRow(srv wizardbusiness.NodeSectionDNSServer, onView func()) fyne.CanvasObject {
-	// Тег сервера — уже с подставленным плейсхолдером (SPEC 121 §10.4):
-	// показывается ровно то, что уедет в конфиг. Имя узла рядом — чтобы было
-	// видно, чей это сервер.
-	local := srv.LocalTag
-	if local == "" {
-		local = "?"
-	}
-	titleLabel := ttwidget.NewLabel("🔗 " + local + " · " + srv.FinalTag)
-	titleLabel.Truncation = fyne.TextTruncateClip
-
-	tipParts := []string{}
-	if typ, ok := srv.Body["type"].(string); ok && typ != "" {
-		tipParts = append(tipParts, typ)
-	}
-	if s, ok := srv.Body["server"].(string); ok && s != "" {
-		tipParts = append(tipParts, s)
-	}
-	titleLabel.SetToolTip(joinSep(tipParts, " · "))
-
-	var row *fynewidget.HoverRow
-	rowGetter := func() *fynewidget.HoverRow { return row }
-
-	viewBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("View"), theme.SearchIcon(), onView, rowGetter)
-	viewBtn.Importance = widget.LowImportance
-	right := container.NewHBox(viewBtn, components.NewScrollGutter())
-
-	rowInner := container.NewBorder(nil, nil, nil, right, titleLabel)
-	row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
-	row.WireTooltipLabelHover(titleLabel)
-	return row
 }
 
 // buildShadowStateForResolve — конструирует временный state.State из model для
@@ -355,7 +297,7 @@ func buildPresetBundledDNSRowFromResolved(
 			onToggle(checked)
 		}
 	}
-	if !srv.Active {
+	if !srv.Active || onToggle == nil {
 		cwc.Check.Disable()
 	}
 

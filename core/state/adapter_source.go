@@ -14,10 +14,7 @@
 package state
 
 import (
-	"encoding/json"
-
 	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/internal/debuglog"
 )
 
 // ToProxySourceV4 — конвертит Source (v7) в сборочную configtypes.ProxySource.
@@ -125,7 +122,14 @@ func (s *Source) canonicalProjection() *configtypes.CanonicalSource {
 			if s.Nodes[i].IsUnsupported() {
 				continue
 			}
-			cs.Nodes = append(cs.Nodes, canonicalNodeProjection(&s.Nodes[i]))
+			cn := canonicalNodeProjection(&s.Nodes[i])
+			// §578: у узла подписки записи нет — skip_presets всегда ложь.
+			if s.Kind == SourceKindSubscription {
+				cn.SkipPresets = false
+			} else {
+				cn.Authored = s.Nodes[i].Authored()
+			}
+			cs.Nodes = append(cs.Nodes, cn)
 		}
 		return cs
 
@@ -134,6 +138,7 @@ func (s *Source) canonicalProjection() *configtypes.CanonicalSource {
 			return nil
 		}
 		n := canonicalNodeProjection(&s.Node)
+		n.Authored = s.Node.Authored()
 		// Тег корневого узла — тот, под которым его знает конфиг.
 		n.Tag = s.NodeTagOrLabel()
 		return &configtypes.CanonicalSource{
@@ -168,15 +173,8 @@ func canonicalNodeProjection(n *Node) configtypes.CanonicalNode {
 		Body:    n.Body,
 		Detour:  canonicalLink(n.Detour),
 		Service: n.Service,
-	}
-	// Секции (SPEC 121) — только у server: у остальных видов поле снято ещё
-	// нормализацией формы, но проекция не полагается на это молча.
-	if n.Kind == SourceKindServer && !n.Sections.IsEmpty() {
-		if raw, err := json.Marshal(n.Sections); err == nil {
-			out.Sections = &configtypes.NodeSections{Raw: raw}
-		} else {
-			debuglog.WarnLog("canonical projection: node %q sections cannot be encoded (%v) — node goes without them", n.Tag, err)
-		}
+
+		SkipPresets: n.SkipPresets,
 	}
 	if n.Origin != nil {
 		out.OriginKind = n.Origin.Kind
@@ -280,26 +278,4 @@ func (s *Source) announceMessage() string {
 		return ""
 	}
 	return s.Meta.ProviderAnnounce.AnnounceMessage()
-}
-
-// NodeSectionsFromConfigTypes — обратная проекция секций (SPEC 121):
-// сборочная форма → канон v7.
-//
-// Нужна пути «вставленный конфиг → узел»: секции достаёт парсер
-// (core/config/subscription), а хранит их состояние, и два зеркальных типа
-// в разных пакетах — цена того, что core/config/configtypes про core/state не
-// знает (зависимость идёт в другую сторону).
-func NodeSectionsFromConfigTypes(ns *configtypes.NodeSections) *NodeSections {
-	if ns.IsEmpty() {
-		return nil
-	}
-	var out NodeSections
-	if err := json.Unmarshal(ns.Raw, &out); err != nil {
-		debuglog.WarnLog("node sections: cannot read sections coming from the parser (%v) — node goes without them", err)
-		return nil
-	}
-	if out.IsEmpty() {
-		return nil
-	}
-	return &out
 }

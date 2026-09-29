@@ -1,0 +1,20 @@
+{
+  "_comment": "Объект с #tpl и другим ключом — ошибка шаблона: загрузка отвергает; толерантный прогон снимает значение с template_unknown_directive.",
+  "vars": [
+    {
+      "name": "name",
+      "type": "text"
+    },
+    {
+      "name": "zone",
+      "type": "text"
+    }
+  ],
+  "config": {
+    "server": {
+      "#tpl": "@{name}-dns",
+      "type": "udp"
+    },
+    "keep": "k"
+  }
+}

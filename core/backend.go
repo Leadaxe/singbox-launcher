@@ -96,8 +96,10 @@ func (ac *AppController) setBackend(b CoreBackend) {
 // Нужен UI-слою при возврате к локальному ядру: снятие удалённого override'а —
 // это `SetTransport(nil)`, то есть «никакого транспорта», а не «транспорт
 // локального демона». В daemon-режиме своё ядро говорит по gRPC, и без этого
-// вызова Servers падал обратно на Clash HTTP, которого в lxd-режиме нет
-// вовсе — пользователь получал `dial 127.0.0.1:9190: connection refused`.
+// вызова операции core-слоя без области (AutoLoadProxies, трей, горячие
+// клавиши) падали бы обратно на Clash HTTP, которого в lxd-режиме нет
+// вовсе — `dial 127.0.0.1:9190: connection refused`. Панели и окна узлов
+// с областью от APIService не зависят (LocalProxyTransport, CoreTarget).
 //
 // В classic-режиме no-op: там своего transport-override нет, и путь через
 // Clash HTTP как раз правильный.
@@ -291,17 +293,95 @@ func (ac *AppController) DaemonDNSQuerySource() any {
 	return src.dnsQuerySourceAny()
 }
 
-// DaemonPoolAvailable — текущий источник отдаёт пул балансировщика.
+// CoreTarget — чьё ядро описывает панель или окно: своё (Local) или
+// удалённой машины. MachineID "" у Remote — машина, выбранная сейчас
+// (панель Remote); непустой — только эта машина (окно узла запоминает её при
+// открытии, и команда не уйдёт в другую, если выбор сменили).
+type CoreTarget struct {
+	Scope     services.ProxyScope
+	MachineID string
+}
+
+// CoreIn — цель области панели; у Remote — выбранная сейчас машина.
+func CoreIn(scope services.ProxyScope) CoreTarget {
+	return CoreTarget{Scope: scope}
+}
+
+// machineTransport — транспорт удалённой машины цели из её ВЫБОРА
+// (UIService.LxdMachineTransportFunc), а не то, что стоит в APIService: там
+// содержимое меняется по вкладкам главного окна, а соединение с машиной
+// принадлежит машине, не вкладке. ok=false — цель не Remote или машина не
+// подключена (у непустого MachineID — не подключена именно она).
+func (ac *AppController) machineTransport(t CoreTarget) (interface{}, bool) {
+	if ac == nil || t.Scope != services.ScopeRemote {
+		return nil, false
+	}
+	if ac.UIService == nil || ac.UIService.LxdMachineTransportFunc == nil {
+		return nil, false
+	}
+	return ac.UIService.LxdMachineTransportFunc(t.MachineID)
+}
+
+// ownTransportSource — бэкенд со своим proxy-транспортом (DaemonBackend).
+type ownTransportSource interface {
+	ownProxyTransport() services.ProxyTransport
+}
+
+// LocalProxyTransport — транспорт proxy-операций СВОЕГО ядра, независимо от
+// того, что сейчас стоит в APIService. В daemon-режиме — gRPC-транспорт
+// своего бэкенда (тот же, что ставит RestoreOwnTransport), в classic — Clash
+// HTTP своего ядра. Транспорт удалённой машины сюда не попадает никогда:
+// APIService держит его, пока на экране вкладка Remote, и чтение оттуда
+// уводило команды панели Local и её окон на роутер.
 //
-// SPEC 097: сначала смотрим на активный транспорт, потом на бэкенд. Пул —
-// свойство ЯДРА, за которым мы сейчас наблюдаем: при выбранной удалённой
-// машине это её ядро, а `ac.Backend()` описывает локальное. Без этого окно
-// узла удалённой машины не показывало активного участника urltest-группы.
-func (ac *AppController) DaemonPoolAvailable() bool {
-	if ac.APIService != nil {
-		if _, ok := ac.APIService.TransportOverride().(remotePoolSource); ok {
-			return true
+// Всегда возвращает готовый транспорт: при выключенном clash_api это
+// ClashTransport с пустым baseURL — запрос завершится ошибкой соединения.
+func (ac *AppController) LocalProxyTransport() services.ProxyTransport {
+	if ac == nil {
+		return services.NewClashTransport("", "")
+	}
+	if src, ok := ac.Backend().(ownTransportSource); ok {
+		if t := src.ownProxyTransport(); t != nil {
+			return t
 		}
+	}
+	if base, tok, ok := ac.DaemonClashEndpoint(); ok {
+		return services.NewClashTransport(base, tok)
+	}
+	if ac.APIService == nil {
+		return services.NewClashTransport("", "")
+	}
+	base, tok, _ := ac.APIService.GetClashAPIConfig()
+	return services.NewClashTransport(base, tok)
+}
+
+// OwnDaemonTransport — gRPC-транспорт своего бэкенда; ok=false в classic.
+func (ac *AppController) OwnDaemonTransport() (services.ProxyTransport, bool) {
+	if ac == nil {
+		return nil, false
+	}
+	src, ok := ac.Backend().(ownTransportSource)
+	if !ok {
+		return nil, false
+	}
+	t := src.ownProxyTransport()
+	return t, t != nil
+}
+
+// DaemonPoolAvailable — источник цели отдаёт пул балансировщика.
+//
+// Пул — свойство ЯДРА цели: у Remote это ядро машины из её выбора, у Local —
+// бэкенд своего ядра (`ac.Backend()`). Выбор по цели, а не по содержимому
+// APIService: окно узла, открытое из Local, не должно показывать пул роутера
+// оттого, что главное окно переключили на Remote.
+func (ac *AppController) DaemonPoolAvailable(t CoreTarget) bool {
+	if t.Scope == services.ScopeRemote {
+		tr, ok := ac.machineTransport(t)
+		if !ok {
+			return false
+		}
+		_, ok = tr.(remotePoolSource)
+		return ok
 	}
 	_, ok := ac.Backend().(poolSource)
 	return ok
@@ -313,20 +393,23 @@ type remotePoolSource interface {
 	PoolSlots(group string) ([]services.PoolSlot, error)
 }
 
-// DaemonPoolSlots возвращает слоты пула выбранной группы у текущего источника.
-func (ac *AppController) DaemonPoolSlots(group string) ([]PoolSlotInfo, error) {
-	if ac.APIService != nil {
-		if src, ok := ac.APIService.TransportOverride().(remotePoolSource); ok {
-			slots, err := src.PoolSlots(group)
-			if err != nil {
-				return nil, err
-			}
-			out := make([]PoolSlotInfo, 0, len(slots))
-			for _, s := range slots {
-				out = append(out, PoolSlotInfo{Slot: s.Slot, Tag: s.Tag, Delay: s.Delay})
-			}
-			return out, nil
+// DaemonPoolSlots возвращает слоты пула выбранной группы у источника цели.
+func (ac *AppController) DaemonPoolSlots(t CoreTarget, group string) ([]PoolSlotInfo, error) {
+	if t.Scope == services.ScopeRemote {
+		tr, _ := ac.machineTransport(t)
+		src, ok := tr.(remotePoolSource)
+		if !ok {
+			return nil, fmt.Errorf("pool source is not available for this machine")
 		}
+		slots, err := src.PoolSlots(group)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]PoolSlotInfo, 0, len(slots))
+		for _, s := range slots {
+			out = append(out, PoolSlotInfo{Slot: s.Slot, Tag: s.Tag, Delay: s.Delay})
+		}
+		return out, nil
 	}
 	src, ok := ac.Backend().(poolSource)
 	if !ok {
@@ -342,47 +425,63 @@ type remoteChainSource interface {
 	SetPositionEnabled(chainTag string, pos int, enabled bool) (string, error)
 }
 
-// ChainsAvailable — доступно ли состояние цепочек у текущего источника.
+// remoteChainSourceFor — источник цепочек машины цели; ok=false у Local и у
+// машины, которая не подключена (или не умеет цепочки).
+func (ac *AppController) remoteChainSourceFor(t CoreTarget) (remoteChainSource, bool) {
+	tr, ok := ac.machineTransport(t)
+	if !ok {
+		return nil, false
+	}
+	src, ok := tr.(remoteChainSource)
+	return src, ok
+}
+
+// errNoMachineChains — у Remote-цели нет подключённой машины с цепочками.
+var errNoMachineChains = errors.New("chain state is not available for this machine")
+
+// ChainsAvailable — доступно ли состояние цепочек у источника цели (выбор
+// источника — как у DaemonPoolAvailable).
 //
 // Только gRPC-пути: служебные теги позиций (`<chain>#<i>`) намеренно не
 // попадают в Clash API, поэтому classic-режим послойную пробу не потянет —
 // и обещать её в UI там нельзя.
-func (ac *AppController) ChainsAvailable() bool {
-	if ac.APIService != nil {
-		if _, ok := ac.APIService.TransportOverride().(remoteChainSource); ok {
-			return true
-		}
+func (ac *AppController) ChainsAvailable(t CoreTarget) bool {
+	if t.Scope == services.ScopeRemote {
+		_, ok := ac.remoteChainSourceFor(t)
+		return ok
 	}
 	_, ok := ac.Backend().(chainSource)
 	return ok
 }
 
-// Chains возвращает состояние цепочек текущего источника.
-func (ac *AppController) Chains() ([]ChainInfo, error) {
-	if ac.APIService != nil {
-		if src, ok := ac.APIService.TransportOverride().(remoteChainSource); ok {
-			chains, err := src.Chains()
-			if err != nil {
-				return nil, err
-			}
-			out := make([]ChainInfo, 0, len(chains))
-			for _, c := range chains {
-				positions := make([]ChainPositionInfo, 0, len(c.Positions))
-				for _, p := range c.Positions {
-					positions = append(positions, ChainPositionInfo{
-						Tag:         p.Tag,
-						Now:         p.Now,
-						IsGroup:     p.IsGroup,
-						Transparent: p.Transparent,
-						Disabled:    p.Disabled,
-						CloneState:  p.CloneState,
-						LastError:   p.LastError,
-					})
-				}
-				out = append(out, ChainInfo{Tag: c.Tag, Positions: positions})
-			}
-			return out, nil
+// Chains возвращает состояние цепочек источника цели.
+func (ac *AppController) Chains(t CoreTarget) ([]ChainInfo, error) {
+	if t.Scope == services.ScopeRemote {
+		src, ok := ac.remoteChainSourceFor(t)
+		if !ok {
+			return nil, errNoMachineChains
 		}
+		chains, err := src.Chains()
+		if err != nil {
+			return nil, err
+		}
+		out := make([]ChainInfo, 0, len(chains))
+		for _, c := range chains {
+			positions := make([]ChainPositionInfo, 0, len(c.Positions))
+			for _, p := range c.Positions {
+				positions = append(positions, ChainPositionInfo{
+					Tag:         p.Tag,
+					Now:         p.Now,
+					IsGroup:     p.IsGroup,
+					Transparent: p.Transparent,
+					Disabled:    p.Disabled,
+					CloneState:  p.CloneState,
+					LastError:   p.LastError,
+				})
+			}
+			out = append(out, ChainInfo{Tag: c.Tag, Positions: positions})
+		}
+		return out, nil
 	}
 	src, ok := ac.Backend().(chainSource)
 	if !ok {
@@ -393,8 +492,8 @@ func (ac *AppController) Chains() ([]ChainInfo, error) {
 
 // ChainFor возвращает цепочку по тегу. ok=false — такой цепочки в работающем
 // ядре нет (её могли переименовать или ещё не пересобрать конфиг).
-func (ac *AppController) ChainFor(tag string) (ChainInfo, bool) {
-	chains, err := ac.Chains()
+func (ac *AppController) ChainFor(t CoreTarget, tag string) (ChainInfo, bool) {
+	chains, err := ac.Chains(t)
 	if err != nil {
 		return ChainInfo{}, false
 	}
@@ -410,11 +509,13 @@ func (ac *AppController) ChainFor(tag string) (ChainInfo, bool) {
 //
 // pos < 0 — сама цепочка целиком (тег без `#i`): её замер включает то, чего
 // нет ни в одном префиксе, — выбор звена и обвязку самого outbound'а.
-func (ac *AppController) ProbeChainLayer(chainTag string, pos int) (int64, string, error) {
-	if ac.APIService != nil {
-		if src, ok := ac.APIService.TransportOverride().(remoteChainSource); ok {
-			return src.ProbeLayer(chainTag, pos)
+func (ac *AppController) ProbeChainLayer(t CoreTarget, chainTag string, pos int) (int64, string, error) {
+	if t.Scope == services.ScopeRemote {
+		src, ok := ac.remoteChainSourceFor(t)
+		if !ok {
+			return 0, "", errNoMachineChains
 		}
+		return src.ProbeLayer(chainTag, pos)
 	}
 	src, ok := ac.Backend().(chainSource)
 	if !ok {
@@ -437,18 +538,20 @@ var ErrChainToggleUnsupported = errors.New("core does not support chain position
 // звено на включённой позиции не удалось. Ядро отдаёт это данными, а не
 // статус-ошибкой, потому что тумблер выражает волю пользователя, а
 // здоровье узла — отдельный факт; UI обязан показать оба.
-func (ac *AppController) SetChainPositionEnabled(chainTag string, pos int, enabled bool) (string, error) {
-	if ac.APIService != nil {
-		if src, ok := ac.APIService.TransportOverride().(remoteChainSource); ok {
-			warmup, err := src.SetPositionEnabled(chainTag, pos, enabled)
-			// services не может импортировать core (граф замкнулся бы), и
-			// «старое ядро» приезжает оттуда своим значением ошибки.
-			// Сводим к одному, чтобы UI проверял один errors.Is.
-			if errors.Is(err, services.ErrChainToggleUnsupported) {
-				return warmup, ErrChainToggleUnsupported
-			}
-			return warmup, err
+func (ac *AppController) SetChainPositionEnabled(t CoreTarget, chainTag string, pos int, enabled bool) (string, error) {
+	if t.Scope == services.ScopeRemote {
+		src, ok := ac.remoteChainSourceFor(t)
+		if !ok {
+			return "", errNoMachineChains
 		}
+		warmup, err := src.SetPositionEnabled(chainTag, pos, enabled)
+		// services не может импортировать core (граф замкнулся бы), и
+		// «старое ядро» приезжает оттуда своим значением ошибки.
+		// Сводим к одному, чтобы UI проверял один errors.Is.
+		if errors.Is(err, services.ErrChainToggleUnsupported) {
+			return warmup, ErrChainToggleUnsupported
+		}
+		return warmup, err
 	}
 	src, ok := ac.Backend().(chainSource)
 	if !ok {

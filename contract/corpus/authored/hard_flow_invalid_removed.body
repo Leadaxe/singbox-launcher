@@ -1,0 +1,7 @@
+# Авторское тело (свой сервер, источник — голое тело узла): flow вне набора
+# ядра ('' и xtls-rprx-vision) — жёсткое правило: sing-vmess vless.NewClient
+# отвечает «unsupported flow», и не стартует весь конфиг (core_rejects,
+# контракт 1.1.88). Поле снимается и на авторском теле, код flow_deprecated
+# без applied:false. Код появляется при РАЗБОРЕ, а не только на сборке
+# (LxBox §577 раздел 6).
+{"type":"vless","tag":"own-vless","server":"example-5.com","server_port":443,"uuid":"00000000-0000-4000-8000-000000000582","flow":"xtls-rprx-direct","tls":{"enabled":true,"server_name":"example-5.com"}}

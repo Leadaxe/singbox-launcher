@@ -145,10 +145,10 @@ func TestDNSRuleSetRefsSurviveWhenTagIsEmitted(t *testing.T) {
 	if kept["ghost-set"] {
 		t.Errorf("чистка отключена: висячая ссылка ghost-set дошла до конфига; dns.rules=%v", cfg.DNS.Rules)
 	}
-	// Висячее правило теряет `rule_set`, но остаётся по `server` — ровно
-	// одно правило без rule_set. Больше — значит сняли лишнее.
-	if rulesWithoutRuleSet != 1 {
-		t.Errorf("ожидалось ровно одно DNS-правило без rule_set (вычищенный ghost-set), получено %d; dns.rules=%v",
+	// Висячее правило выпадает целиком (SPEC 153): по одному `server` оно
+	// отправляло бы в direct_dns все запросы. Правил без rule_set нет.
+	if rulesWithoutRuleSet != 0 {
+		t.Errorf("DNS-правило без rule_set в конфиге (вычищенный ghost-set остался по server), получено %d; dns.rules=%v",
 			rulesWithoutRuleSet, cfg.DNS.Rules)
 	}
 }

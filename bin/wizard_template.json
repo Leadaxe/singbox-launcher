@@ -360,7 +360,7 @@
    "type": "enum",
    "wizard_ui": "edit",
    "title": "Route resolve strategy",
-   "tooltip": "Resolution strategy for route rules with action resolve on tun-in and proxy-in (sing-box: prefer_ipv4, prefer_ipv6, ipv4_only, ipv6_only).",
+   "tooltip": "Resolution strategy for the route rule with action resolve, applied to connections from every inbound and endpoint (sing-box: prefer_ipv4, prefer_ipv6, ipv4_only, ipv6_only).",
    "default_value": "ipv4_only",
    "options": [
     "prefer_ipv4",
@@ -601,6 +601,32 @@
    "default_value": "direct_dns_resolver"
   },
   {
+   "name": "dns_cache_capacity",
+   "type": "int",
+   "wizard_ui": "fix",
+   "title": "DNS cache size",
+   "tooltip": "Number of cached answers.",
+   "comment": "DNS tab only: config.dns.cache_capacity (entries, 1024..65535; the core raises lower values to 1024).",
+   "default_value": "4000"
+  },
+  {
+   "name": "dns_optimistic",
+   "type": "bool",
+   "wizard_ui": "fix",
+   "title": "Serve stale answers",
+   "tooltip": "Answer from cache at once and refresh in the background.",
+   "comment": "DNS tab only: config.dns.optimistic.",
+   "default_value": "true"
+  },
+  {
+   "name": "dns_store_cache",
+   "type": "bool",
+   "wizard_ui": "fix",
+   "title": "Keep DNS cache after restart",
+   "comment": "DNS tab only: config.experimental.cache_file.store_dns.",
+   "default_value": "true"
+  },
+  {
    "name": "route_final",
    "type": "text",
    "wizard_ui": "hidden",
@@ -621,7 +647,9 @@
    "servers": [],
    "rules": [],
    "final": "@dns_final",
-   "strategy": "@dns_strategy"
+   "strategy": "@dns_strategy",
+   "cache_capacity": "@dns_cache_capacity",
+   "optimistic": "@dns_optimistic"
   },
   "inbounds": [],
   "endpoints": [],
@@ -681,7 +709,8 @@
    "cache_file": {
     "enabled": true,
     "path": "cache.db",
-    "store_fakeip": true
+    "store_fakeip": true,
+    "store_dns": "@dns_store_cache"
    }
   }
  },
@@ -1029,23 +1058,9 @@
        "@sniff_enabled"
       ],
       "#value": {
-       "inbound": [
-        {
-         "#if": {
-          "#and": [
-           "@tun"
-          ],
-          "#value": "tun-in"
-         }
-        },
-        {
-         "#if": {
-          "#and": [
-           "@enable_proxy_in"
-          ],
-          "#value": "proxy-in"
-         }
-        }
+       "network": [
+        "tcp",
+        "udp"
        ],
        "action": "sniff",
        "timeout": "@sniff_timeout"
@@ -1069,23 +1084,9 @@
        "@resolve_enabled"
       ],
       "#value": {
-       "inbound": [
-        {
-         "#if": {
-          "#and": [
-           "@tun"
-          ],
-          "#value": "tun-in"
-         }
-        },
-        {
-         "#if": {
-          "#and": [
-           "@enable_proxy_in"
-          ],
-          "#value": "proxy-in"
-         }
-        }
+       "network": [
+        "tcp",
+        "udp"
        ],
        "action": "resolve",
        "strategy": "@resolve_strategy"
@@ -1093,6 +1094,89 @@
      }
     }
    ]
+  },
+  {
+   "id": "tailscale",
+   "label": "Tailscale networks",
+   "description": "Route each tailnet through its Tailscale node and resolve its names with the node's own DNS.",
+   "default_enabled": true,
+   "for_each": {
+    "node_type": "tailscale",
+    "as": "node",
+    "filter": {
+     "#not": "@node.skip_presets"
+    }
+   },
+   "vars": [
+    {
+     "name": "dns_enable",
+     "type": "bool",
+     "default": "true",
+     "title": "DNS",
+     "tooltip": "Resolve tailnet names with the node's own DNS."
+    }
+   ],
+   "rules": [
+    {
+     "#if": {
+      "#and": [
+       "@dns_enable"
+      ],
+      "#value": {
+       "preferred_by": [
+        "@node"
+       ],
+       "action": "resolve",
+       "server": {
+        "#tpl": "@{node}-dns"
+       }
+      }
+     }
+    },
+    {
+     "preferred_by": [
+      "@node"
+     ],
+     "outbound": "@node"
+    }
+   ],
+   "dns_servers": [
+    {
+     "#if": {
+      "#and": [
+       "@dns_enable"
+      ],
+      "#value": {
+       "type": "tailscale",
+       "tag": {
+        "#tpl": "@{node}-dns"
+       },
+       "endpoint": "@node",
+       "description": "MagicDNS of the tailnet"
+      }
+     }
+    }
+   ],
+   "dns_rules": [
+    {
+     "#if": {
+      "#and": [
+       "@dns_enable"
+      ],
+      "#value": {
+       "preferred_by": [
+        {
+          "#tpl": "@{node}-dns"
+        }
+       ],
+       "server": {
+        "#tpl": "@{node}-dns"
+       }
+      }
+     }
+    }
+   ],
+   "num": 945
   },
   {
    "id": "private-ips",

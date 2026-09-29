@@ -4,6 +4,7 @@
   "presets": {
     "block-ads": {"in": "both", "label": "Block Ads", "note": "Один и тот же geosite-category-ads-all.srs; desktop даёт выбор действия var out (default reject), mobile — фиксированный action:reject. Ссылка переносима"},
     "ru-inside": {"in": "both", "label": "Russia-only services", "note": "Один и тот же geosite-ru-available-only-inside.srs; desktop дефолтит out='ru VPN 🇷🇺' и несёт outbounds add/update (desktop-расширение), mobile дефолтит direct-out + var force_ipv4. Ссылка переносима, локальные vars различаются"},
+    "tailscale": {"in": "both", "label": "Tailscale networks", "note": "Контракт 1.1.86, LxBox §578: пресет с for_each по узлам type=tailscale; тело одинаковое на обеих сторонах (TEMPLATE_LANG §6.7), оболочка в диалекте стороны. Теги без пространства пресета (<тег узла>-dns). Ссылка переносима"},
     "bittorrent": {"in": "both", "label": "BitTorrent", "note": "protocol=bittorrent → выбранный outbound; семантика идентична (имя var расходится: out vs outbound — как N1 для preset-vars)"},
     "fakeip": {"in": "both", "label": "FakeIP", "note": "FakeIP DNS + блок HTTPS/SVCB (var force у обоих); desktop даёт vars inet4_range/inet6_range, mobile — dns_enable/rule_enable c on_change (mobile-расширение). Ссылка переносима"},
 

@@ -84,6 +84,14 @@ func Load(path string) (*State, error) {
 	// санитайзер переписал хотя бы одно тело: коды производные и считаются
 	// заново на каждой загрузке, а лишняя перезапись файла означала бы
 	// «изменилось тело» у всех узлов разом (Л3).
+	// Контракт 1.1.87 (PARSING_PRINCIPLES §11 п.2): документ или массив в
+	// источнике своего узла → тело узла. До пересчёта кодов: от вида
+	// источника зависит, авторское ли тело.
+	if n := NormalizeBareBodyOrigins(s); n > 0 {
+		if err := s.Save(path); err != nil {
+			debuglog.WarnLog("state: %d node sources reduced to the node body, not persisted: %v", n, err)
+		}
+	}
 	if n := recountNodeWarnings(s); n > 0 {
 		if err := s.Save(path); err != nil {
 			debuglog.WarnLog("state: sanitizer rewrote %d node bodies, not persisted: %v", n, err)
@@ -127,6 +135,7 @@ func Parse(data []byte) (*State, error) {
 		return nil, err
 	}
 	rewriteLegacyMasqueURIs(s)
+	NormalizeBareBodyOrigins(s)
 	recountNodeWarnings(s)
 	return s, nil
 }

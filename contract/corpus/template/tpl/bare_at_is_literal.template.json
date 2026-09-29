@@ -1,0 +1,18 @@
+{
+  "_comment": "@имя без скобок внутри строки #tpl — литерал.",
+  "vars": [
+    {
+      "name": "name",
+      "type": "text"
+    },
+    {
+      "name": "zone",
+      "type": "text"
+    }
+  ],
+  "config": {
+    "x": {
+      "#tpl": "@name and @{name}"
+    }
+  }
+}

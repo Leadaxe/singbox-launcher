@@ -1,0 +1,15 @@
+{
+  "rules": [
+    {
+      "action": "sniff"
+    },
+    {
+      "outbound": "home-ts"
+    }
+  ],
+  "dns_servers": [],
+  "dns_rules": [],
+  "warnings": [
+    "template_rule_unconditional"
+  ]
+}

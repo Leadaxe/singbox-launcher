@@ -280,7 +280,9 @@ func BuildRemoteConfig(model *wizardmodels.WizardModel) (string, error) {
 // (legacy []string format с `\t`-префиксом и trailing `,`) в build.ParsedCache.
 // Используется только preview-путём (Save не строит config из этих полей).
 func inMemoryCacheFromModel(model *wizardmodels.WizardModel) *build.ParsedCache {
-	pc := &build.ParsedCache{}
+	// LxBox §578: skip_presets — как у кэша боевой сборки (rebuild_snapshot),
+	// иначе превью раскрыло бы for_each и на исключённый узел.
+	pc := &build.ParsedCache{SkipPresets: model.GeneratedSkipPresets}
 	for _, s := range model.GeneratedOutbounds {
 		cleaned := strings.TrimSpace(strings.TrimRight(s, ",\n\r\t "))
 		if cleaned == "" {
@@ -295,14 +297,6 @@ func inMemoryCacheFromModel(model *wizardmodels.WizardModel) *build.ParsedCache 
 		}
 		pc.Endpoints = append(pc.Endpoints, json.RawMessage(cleaned))
 	}
-	// SPEC 121: третий производитель ParsedCache. Без секций превью показывало
-	// бы конфиг без узловых фрагментов — то самое расхождение превью и боевой
-	// сборки, ради которого превью и живёт на общем конвейере.
-	//
-	// Узлы берутся не из GeneratedOutbounds (там уже готовые строки без
-	// ссылки на источник), а из состава модели — с финальным тегом от той же
-	// тег-машины, что у сборки.
-	pc.NodeSections = NodeSectionSetsFromModel(model)
 	return pc
 }
 

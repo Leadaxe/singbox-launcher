@@ -1,0 +1,18 @@
+{
+  "_comment": "Две вставки в одной строке.",
+  "vars": [
+    {
+      "name": "name",
+      "type": "text"
+    },
+    {
+      "name": "zone",
+      "type": "text"
+    }
+  ],
+  "config": {
+    "host": {
+      "#tpl": "@{name}.@{zone}.example"
+    }
+  }
+}

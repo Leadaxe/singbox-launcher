@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "container": "own",
+    "extension": "desktop"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "down_mbps": 50,
+        "obfs": "testpass123",
+        "server": "example-5.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-5.com"
+        },
+        "type": "hysteria",
+        "up_mbps": 10
+      },
+      "kind": "outbound",
+      "label": "own-hy",
+      "scheme": "hysteria",
+      "warnings": [
+        {
+          "code": "obfs_object_flattened",
+          "path": "obfs",
+          "value": "***"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

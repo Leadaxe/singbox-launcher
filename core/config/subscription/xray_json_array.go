@@ -112,6 +112,9 @@ func parseNodesFromXrayJSONArrayFull(
 	memberServers := make(map[*configtypes.ParsedNode][]string)
 	// finalTagByServer — итоговый тег выжившего сервера.
 	finalTagByServer := make(map[string]string)
+	// collapse — имена узлов, выброшенных владением, для кода на выжившем
+	// (SPEC 154).
+	collapse := newXrayCollapse()
 
 	var out []*configtypes.ParsedNode
 	var rejectedRecords []jsonRejectedRecord
@@ -123,7 +126,8 @@ func parseNodesFromXrayJSONArrayFull(
 			continue
 		}
 		rememberGroupMemberServers(nodes, memberServers)
-		kept := filterByServerOwner(nodes, i, owner, seen, finalTagByServer)
+		collapse.poolMembers = poolMemberServers(nodes, memberServers)
+		kept := filterByServerOwner(nodes, i, owner, seen, finalTagByServer, collapse)
 		// Позиции отбраковок элемент считал по СВОЕМУ черновому списку, а
 		// владение только что выбросило из него часть узлов. Пересчитываем на
 		// выживших — иначе неразобранная запись встала бы в составе не на своё
@@ -142,6 +146,9 @@ func parseNodesFromXrayJSONArrayFull(
 	// Делается ДО резолва состава групп: тот работает по серверным ключам и
 	// подставит уже итоговые теги.
 	simplifySoloElementTags(out, finalTagByServer)
+	// Имя выжившего сравнивается с именами схлопнутых уже ИТОГОВОЕ — после
+	// упрощения тегов.
+	collapse.markSurvivors()
 
 	// Состав групп резолвится ПОСЛЕ всех элементов: член мог достаться
 	// элементу, который ещё не разобран.
@@ -411,6 +418,7 @@ func filterByServerOwner(
 	owner map[string]int,
 	seen map[string]struct{},
 	finalTagByServer map[string]string,
+	collapse *xrayCollapse,
 ) []*configtypes.ParsedNode {
 	if owner == nil {
 		return nodes
@@ -441,17 +449,85 @@ func filterByServerOwner(
 		if ownerIdx, ok := owner[key]; ok && ownerIdx != elemIndex {
 			debuglog.DebugLog("Parser: Xray element %d: %q belongs to element %d — dropped here",
 				elemIndex, node.Tag, ownerIdx)
+			collapse.dropped(key, node.Tag)
 			continue
 		}
 		if _, dup := seen[key]; dup {
+			collapse.dropped(key, node.Tag)
 			continue
 		}
 		seen[key] = struct{}{}
 		finalTagByServer[key] = node.Tag
+		collapse.kept(key, node)
 		kept = append(kept, node)
 	}
 
 	return kept
+}
+
+// xrayCollapse — имена узлов, которые правило владения выбросило как повтор
+// сервера, по ключу сервера (SPEC 154 §3 п. 4). Выживший получает их кодом
+// duplicates_collapsed — та же норма, что у дедупа записей тела.
+//
+// Члены балансировщика СВОЕГО элемента не считаются: пул ссылается на сервер,
+// а не называет его заново, и его технические теги («Авто bridge-2») человеку
+// ничего не скажут. Их набор на текущий элемент — poolMembers.
+type xrayCollapse struct {
+	names       map[string][]string
+	survivor    map[string]*configtypes.ParsedNode
+	poolMembers map[string]struct{}
+}
+
+func newXrayCollapse() *xrayCollapse {
+	return &xrayCollapse{
+		names:    make(map[string][]string),
+		survivor: make(map[string]*configtypes.ParsedNode),
+	}
+}
+
+func (c *xrayCollapse) dropped(key, name string) {
+	if c == nil {
+		return
+	}
+	if _, pool := c.poolMembers[key]; pool {
+		return
+	}
+	c.names[key] = append(c.names[key], name)
+}
+
+func (c *xrayCollapse) kept(key string, node *configtypes.ParsedNode) {
+	if c == nil {
+		return
+	}
+	c.survivor[key] = node
+}
+
+func (c *xrayCollapse) markSurvivors() {
+	if c == nil {
+		return
+	}
+	for key, names := range c.names {
+		if node := c.survivor[key]; node != nil {
+			markDuplicatesCollapsed(node, node.Tag, names)
+		}
+	}
+}
+
+// poolMemberServers — ключи серверов, которые перечисляют группы элемента.
+func poolMemberServers(
+	nodes []*configtypes.ParsedNode,
+	memberServers map[*configtypes.ParsedNode][]string,
+) map[string]struct{} {
+	out := make(map[string]struct{})
+	for _, n := range nodes {
+		if n == nil || n.Scheme != configtypes.SchemeGroup {
+			continue
+		}
+		for _, key := range memberServers[n] {
+			out[key] = struct{}{}
+		}
+	}
+	return out
 }
 
 // xrayServerKey — ключ «та же запись» ВНУТРИ разбора Xray-массива.
@@ -616,6 +692,10 @@ func parseXrayJSONArrayElementNodes(
 		rejected = &ParseFailureReasons{}
 	}
 
+	// Подписи, занятые в элементе: чистое имя remarks — за группой пула.
+	poolLabels := map[string]struct{}{remarksRaw: {}}
+	elementTags := make(map[string]struct{}, len(payload))
+
 	for idx, ob := range payload {
 		label := remarksRaw
 		if label == "" {
@@ -623,6 +703,20 @@ func parseXrayJSONArrayElementNodes(
 		}
 		if label == "" {
 			label = fmt.Sprintf("xray-%d", elemIndex)
+		}
+		// §322, контракты 1.1.105/1.1.106: чистое имя из remarks у пула
+		// занимает группа, серверу пула к нему приписывается его тег — иначе
+		// в списке две одинаковые подписи (сервер и группа), и выбор
+		// путается. Подпись, уже занятая в элементе (запись без tag или tag
+		// повторён), получает номер записи в пуле с 1.
+		if hasBalancer && remarksRaw != "" {
+			if tag := strings.TrimSpace(xrayMapString(ob, "tag")); tag != "" {
+				label = remarksRaw + " " + tag
+			}
+			if _, taken := poolLabels[label]; taken {
+				label = fmt.Sprintf("%s %d", label, idx+1)
+			}
+			poolLabels[label] = struct{}{}
 		}
 
 		node, err := xrayNodeFromOutboundInDoc(ob, outboundsRaw, label)
@@ -663,6 +757,13 @@ func parseXrayJSONArrayElementNodes(
 		}
 
 		node.Tag = xrayElementNodeTag(base, ob, idx, single)
+		// Повторённый в элементе tag (Xray такого не допускает, но подписка
+		// может) дал бы два узла с одним тегом, и группа пула потеряла бы
+		// члена: номер записи в пуле с 1, как у подписи.
+		if _, taken := elementTags[node.Tag]; taken {
+			node.Tag = fmt.Sprintf("%s %d", node.Tag, idx+1)
+		}
+		elementTags[node.Tag] = struct{}{}
 		if node.Outbound != nil {
 			node.Outbound["tag"] = node.Tag
 		}
@@ -696,6 +797,9 @@ func parseXrayJSONArrayElementNodes(
 		}
 
 		out = append(out, node)
+		if hasBalancer && !xrayBalancerSelects(root, xrayMapString(ob, "tag")) {
+			continue
+		}
 		memberTags = append(memberTags, node.Tag)
 	}
 

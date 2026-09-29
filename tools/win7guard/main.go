@@ -104,7 +104,7 @@ func main() {
 		}
 
 		// Имена, объявленные в пакете, перекрывают builtin: такой вызов
-		// собирается и go1.20 (см. slicesContains в ui/clash_api_tab_helpers.go).
+		// собирается и go1.20 (см. slicesContains в ui/proxy_list_panel_helpers.go).
 		declared := declaredNames(parsed)
 		for _, file := range parsed {
 			findings = append(findings, inspect(fset, file, declared)...)
@@ -127,7 +127,7 @@ func main() {
 		fmt.Printf("❌ Win7 (go1.20) forbidden construct: %s at %s:%d\n", f.what, f.pos.Filename, f.pos.Line)
 	}
 	fmt.Println("   The Win7 build uses the Go 1.20 toolchain (go.win7.mod).")
-	fmt.Println("   Allowed alternatives: a local helper (see ui/clash_api_tab_helpers.go:42),")
+	fmt.Println("   Allowed alternatives: a local helper (see ui/proxy_list_panel_helpers.go:42),")
 	fmt.Println("   or a build-tagged twin (see core/debugapi/pathparam_legacy.go).")
 	os.Exit(1)
 }

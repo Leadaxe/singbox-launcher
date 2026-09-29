@@ -14,3 +14,18 @@ func TestSplitTailscaleList(t *testing.T) {
 		}
 	}
 }
+
+// Пустой тег даёт знак по умолчанию, как в LxBox; свой тег не трогается.
+func TestTailscaleTag_Default(t *testing.T) {
+	cases := map[string]string{
+		"":          "\U0001F578\uFE0F tailscale",
+		"   ":       "\U0001F578\uFE0F tailscale",
+		" home ":    "home",
+		"🇩🇪 berlin": "🇩🇪 berlin",
+	}
+	for in, want := range cases {
+		if got := tailscaleTag(in); got != want {
+			t.Errorf("tailscaleTag(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

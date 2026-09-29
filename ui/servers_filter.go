@@ -485,7 +485,7 @@ func visibleProxiesAfterNameSort(
 //
 // Сравнимый тип (все поля — значения): панель сверяет его оператором `==`,
 // без аллокаций, на каждую строку списка. Что в него входит и почему — см.
-// proxiesForListView в clash_api_tab.go.
+// proxiesForListView в proxy_list_panel.go.
 type serversViewCacheKey struct {
 	total     int
 	filterRev uint64

@@ -69,7 +69,9 @@ const (
 func NodeSourceFromOriginKind(kind string) string {
 	switch strings.TrimSpace(kind) {
 	case OriginKindJSON:
-		return configtypes.NodeSourceSingbox
+		// Вход `singbox` — только у авторского тела (контракт 1.1.87):
+		// его назначает материализация своего узла, а не происхождение.
+		return configtypes.NodeSourceOther
 	case OriginKindURI:
 		return configtypes.NodeSourceURI
 	case OriginKindWGIni:
@@ -673,20 +675,6 @@ func (st *bodyParseState) accept(node *configtypes.ParsedNode, originKind, origi
 		return
 	}
 
-	// NODE_SECTIONS.md §6: узел tailnet из ПОДПИСКИ — info, а не отказ.
-	//
-	// Узел приезжает, но полезен он не сам по себе: идентичность машины в
-	// tailnet живёт в каталоге состояния ЭТОЙ машины, ключ провайдера
-	// одноразовый, а связку (MagicDNS + маршрут на подсети tailnet) подписка
-	// не приносит — её у узла подписки нет и быть не может, потому что она
-	// ссылается на финальный тег, которого у провайдера нет. Молчать здесь
-	// нельзя: пользователь увидел бы узел в списке и узнал бы о неработающих
-	// именах `*.ts.net` уже в бою. Отказывать — тоже: узел законен, а
-	// связку он получает у себя.
-	if node.Scheme == configtypes.SchemeTailscale {
-		node.AddWarning(WarnTailscaleFromSubscription)
-	}
-
 	// ВХОД узла проставляется здесь, из того же origin.kind, который поедет в
 	// state. Это не удобство, а инвариант: правила значений с `except_sources`
 	// (потолок MTU у AmneziaWG) читают вход и на разборе, и на пересчёте кодов
@@ -866,6 +854,7 @@ func (st *bodyParseState) finish() {
 	}
 	st.res.Entries = kept
 
+	st.dedup.markSurvivors()
 	st.dedup.logSummary("(body)")
 	debuglog.DebugLog("ParseSubscriptionBody: %d entr(ies), truncated=%v, %d warning(s)",
 		len(st.res.Entries), st.res.Truncated, len(st.res.Warnings))

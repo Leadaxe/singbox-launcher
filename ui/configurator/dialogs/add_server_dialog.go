@@ -45,6 +45,7 @@ import (
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/nodewarn"
 	"singbox-launcher/ui/components"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
@@ -410,15 +411,19 @@ func (f *addServerForm) paramsContent() fyne.CanvasObject {
 func (f *addServerForm) buildJSONTab() {
 	f.jsonView = widget.NewMultiLineEntry()
 	f.jsonView.Wrapping = fyne.TextWrapOff
-	f.jsonView.OnChanged = func(string) {
+	f.jsonView.OnChanged = func(text string) {
 		// Программная синхронизация — не правка человека.
 		if f.syncing {
 			return
 		}
-		if !f.jsonDirty {
-			f.jsonDirty = true
-			f.jsonStatus.SetText(locale.T(addServerJSONDirtyText))
+		f.jsonDirty = true
+		// Документ узла с `dns`/`route`/`sections`: сохранится только узел
+		// (секции узла упразднены, контракт 1.1.85) — сказать это до Add.
+		if dropped := manualDocDroppedKeys(text); len(dropped) > 0 {
+			f.jsonStatus.SetText(wizardbusiness.NodeInputDroppedMessage())
+			return
 		}
+		f.jsonStatus.SetText(locale.T(addServerJSONDirtyText))
 	}
 	f.jsonStatus = widget.NewLabel(locale.T(addServerJSONHintText))
 	f.jsonStatus.Wrapping = fyne.TextWrapWord
@@ -486,10 +491,8 @@ func (f *addServerForm) refreshJSON() {
 
 // previewJSON строит превью через ту же эмиссию, что и реальная сборка.
 func (f *addServerForm) previewJSON() (string, string) {
-	// SPEC 122: у Tailscale превью — не outbound, а ДОКУМЕНТ узла: тело
-	// вместе с DNS-сервером и правилом маршрута, которые с ним поедут.
-	// Показывается он через тот же RenderNodeDocument, которым документ
-	// рисует вкладка JSON окна источника.
+	// SPEC 122: у Tailscale превью — ДОКУМЕНТ узла, тот же RenderNodeDocument,
+	// которым документ рисует вкладка JSON окна источника.
 	if f.mode == modeTailscale {
 		return f.previewTailscaleDocument()
 	}
@@ -537,11 +540,11 @@ func (f *addServerForm) previewTailscaleDocument() (string, string) {
 	if err != nil {
 		return "", err.Error()
 	}
-	body, sections, perr := config.ParseNodeDocument(raw)
+	body, _, perr := config.ParseNodeDocument(raw)
 	if perr != nil {
 		return "", perr.Error()
 	}
-	text, rerr := config.RenderNodeDocument(body, sections, config.NodeBodyGoesToEndpoints(body))
+	text, rerr := config.RenderNodeDocument(body, config.NodeBodyGoesToEndpoints(body))
 	if rerr != nil {
 		return "", rerr.Error()
 	}
@@ -627,10 +630,7 @@ func (f *addServerForm) result() (AddServerResult, error) {
 		if derr != nil {
 			return AddServerResult{}, derr
 		}
-		if label == "" {
-			label = tailscaleDefaultTag
-		}
-		return AddServerResult{ConfigJSON: doc, Label: label}, nil
+		return AddServerResult{ConfigJSON: doc, Label: tailscaleTag(label)}, nil
 	}
 
 	if f.mode == modeSource {
@@ -659,15 +659,14 @@ func manualJSONResult(raw, label string) (AddServerResult, error) {
 		return AddServerResult{}, fmt.Errorf("%s", locale.T("JSON is empty"))
 	}
 	if strings.HasPrefix(body, "{") {
-		// SPEC 121/122: документ узла (тело + секции) — законная форма
-		// ручной правки; его разберёт AppendManualConfigJSON тем же
-		// ParseNodeDocument. Проверка здесь только на разбираемость, чтобы
-		// ошибка называлась на кнопке Add, а не ниже по течению.
+		// SPEC 121/122: документ узла с `dns`/`route`/`sections` — законная
+		// форма ручной правки; его разберёт AppendManualConfigJSON тем же
+		// ParseNodeDocument и возьмёт только узел (контракт 1.1.85).
+		// Проверка здесь только на разбираемость, чтобы ошибка называлась на
+		// кнопке Add, а не ниже по течению.
 		//
-		// Условие — НЕСЁТ ЛИ документ секции, а не «похож ли на документ»:
-		// голый `{"outbounds":[…]}` формально документ тоже, но это давняя
-		// многоузловая форма, и её по-прежнему разбирает общий путь Add
-		// (ниже). Секции же общий путь потерял бы молча.
+		// Голый `{"outbounds":[…]}` формально документ тоже, но это давняя
+		// многоузловая форма, и её по-прежнему разбирает общий путь Add.
 		if config.IsNodeDocument([]byte(body)) && manualDocCarriesSections(body) {
 			if _, _, err := config.ParseNodeDocument([]byte(body)); err != nil {
 				return AddServerResult{}, err
@@ -697,13 +696,10 @@ func manualJSONResult(raw, label string) (AddServerResult, error) {
 	return AddServerResult{Text: body, Label: label}, nil
 }
 
-// manualDocCarriesSections — есть ли в документе секции узла.
-//
-// Три формы, все три считаются документом с секциями: `sections` — хранимая
-// форма, которую рисует превью (SPEC 121 §10.4), `dns`/`route` —
-// sing-box-форма, которую пользователь вставляет готовым конфигом. Голый
-// `{"outbounds":[…]}` секций не несёт и остаётся давней многоузловой формой:
-// её по-прежнему разбирает общий путь Add.
+// manualDocCarriesSections — есть ли в документе ключ `sections`, `dns` или
+// `route`. Такой документ разбирается как документ ОДНОГО узла (остальное
+// отбрасывается); голый `{"outbounds":[…]}` остаётся давней многоузловой
+// формой: её по-прежнему разбирает общий путь Add.
 func manualDocCarriesSections(body string) bool {
 	var probe map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(body), &probe); err != nil {
@@ -715,6 +711,21 @@ func manualDocCarriesSections(body string) bool {
 		}
 	}
 	return false
+}
+
+// manualDocDroppedKeys — ключи документа узла, содержимое которых не будет
+// сохранено (`dns`, `route`, `sections` с непустым значением); nil, если текст
+// не документ узла или не разбирается.
+func manualDocDroppedKeys(text string) []string {
+	body := strings.TrimSpace(text)
+	if !strings.HasPrefix(body, "{") || !config.IsNodeDocument([]byte(body)) {
+		return nil
+	}
+	_, dropped, err := config.ParseNodeDocument([]byte(body))
+	if err != nil {
+		return nil
+	}
+	return dropped
 }
 
 // buildURI собирает share-URI из полей формы.

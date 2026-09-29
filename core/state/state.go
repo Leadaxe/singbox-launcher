@@ -78,6 +78,10 @@ type State struct {
 	TargetPlatform string
 	TargetArch     string
 
+	// LatePresetsSeeded — id поздних дефолтных пресетов, уже засеянных
+	// (LxBox §578, SeedLateDefaultRules); meta.late_presets_seeded.
+	LatePresetsSeeded []string
+
 	// === Legacy proxies-view (UI / dashboard / parser callsite'ы) ===
 
 	// ParserConfig — proxies (sources) + global outbounds в legacy-форме

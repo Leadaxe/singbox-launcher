@@ -30,7 +30,10 @@ corpus/
 │     singbox-JSON, xray-массив, wgconf (INI), vpn://
 ├── emit/                       # entry → share-URI + cross-emit (Фаза 2)
 ├── template/                   # шаблон + vars → итоговый JSON (Фаза 3)
-└── backup/                     # экспорт ↔ импорт LX Backup (Фаза 4)
+├── backup/                     # экспорт ↔ импорт LX Backup (Фаза 4)
+├── authored/<case>.body        # авторское тело своего сервера (1.1.87)
+└── node_edit/<case>.edit.json  # правка JSON узла → источник (1.1.88,
+      формат — TASKS_LXBOX §85)
 ```
 
 ## Формат файла кейса

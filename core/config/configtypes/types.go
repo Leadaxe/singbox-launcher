@@ -245,26 +245,13 @@ type CanonicalNode struct {
 	// Service — узел служебный (релей BYPASS, SPEC 120): в конфиг идёт, в
 	// пользовательский выбор — нет.
 	Service bool
-	// Sections — фрагмент состояния, который узел носит с собой (SPEC 121
-	// §10). nil у всех видов, кроме server, и у подавляющего большинства
-	// серверов.
-	Sections *NodeSections
-}
-
-// NodeSections — секции узла в сборочной форме.
-//
-// Тело НЕПРОЗРАЧНО (сериализованный state.NodeSections): configtypes —
-// leaf-пакет и core/state импортировать не может, а второе зеркало записей
-// правил и DNS разошлось бы с оригиналом на первой же правке. Пакеты, которым
-// нужны сами записи (core/build, core/state), разбирают этот блок обратно.
-type NodeSections struct {
-	// Raw — объект `sections` в форме хранения (SPEC 121 §10.1).
-	Raw json.RawMessage
-}
-
-// IsEmpty — набор не несёт ни одной записи.
-func (ns *NodeSections) IsEmpty() bool {
-	return ns == nil || len(ns.Raw) == 0
+	// SkipPresets — поле записи skip_presets (LxBox §578); у узла подписки
+	// всегда false.
+	SkipPresets bool
+	// Authored — тело авторское (контракт 1.1.87, PARSING_PRINCIPLES
+	// §10.1). Считает state (state.Node.Authored): контейнер известен
+	// только ему.
+	Authored bool
 }
 
 // CanonicalAutoGroup — провайдерская группа канона в сборочной форме.
@@ -651,6 +638,11 @@ const (
 	NodeSourceXray    = "xray"
 	NodeSourceWGConf  = "wgconf"
 	NodeSourceAmnezia = "amnezia"
+	// NodeSourceOther — вход, которому правила по входу не делают
+	// исключений (контракт 1.1.87, PARSING_PRINCIPLES §10.4): sing-box JSON
+	// узла подписки. Вход `singbox` получает ТОЛЬКО авторское тело (свой
+	// сервер или член папки с голым телом узла в источнике).
+	NodeSourceOther = "other"
 )
 
 // SchemeGroup marks a ParsedNode that is an outbound group (selector/urltest)
@@ -738,6 +730,9 @@ type ParsedNode struct {
 	// показал его шестерёнкой, а выбор Направлений не предлагал.
 	// В конфиг попадает как всякий другой — detour на него иначе повис бы.
 	Service bool
+	// SkipPresets — поле записи skip_presets (LxBox §578): пресеты с
+	// for_each узел не обслуживают.
+	SkipPresets bool
 	// Chain is the ordered detour path from the nearest hop outwards
 	// (SPEC 094 B1). Empty means the node dials directly.
 	//
@@ -753,6 +748,11 @@ type ParsedNode struct {
 	// emitter — the whole point is carrying types and fields the emitter
 	// does not know about.
 	EmitRaw bool
+	// Authored — тело АВТОРСКОЕ (контракт 1.1.87, PARSING_PRINCIPLES §10.1):
+	// свой сервер в корне или член папки, не группа, источник — голое тело
+	// узла sing-box (`singbox_outbound`). Реестр на таком теле сообщает, но
+	// правит только жёсткими правилами (nodeflow.Decide).
+	Authored bool
 	// EmitBody — ГОТОВОЕ тело узла из канона v7 (state.Node.Body): сборка
 	// эмитит его как есть, только возвращая на места ключи tag и detour
 	// (SPEC 118 W4, Т5 «сборка не читает тел подписок и не зовёт парсеры»).
@@ -768,14 +768,6 @@ type ParsedNode struct {
 	// CanonicalDetour — личный detour узла из канона v7 (NodeLink).
 	// Резолвится единым резолвом на проходе 2; в body не запекается.
 	CanonicalDetour *NodeLink
-	// Sections — секции узла (SPEC 121), сырые: доезжают до эмиссии, где по
-	// финальному тегу собирается NodeSectionSet сборочного кэша.
-	Sections *NodeSections
-	// SectionsLink — идентичность узла в состоянии ({FolderID, Tag} канона),
-	// по которой записи секций находят свой узел. Заполняется вместе с
-	// Sections; финальный тег для этого не годится — он зависит от
-	// тег-политики контейнера.
-	SectionsLink NodeLink
 	// CanonicalLink — та же идентичность, но у КАЖДОГО узла канона, а не
 	// только у носителя секций (SPEC 132).
 	//
@@ -891,6 +883,20 @@ type Warning struct {
 	Path   string            `json:"path,omitempty"`
 	Value  string            `json:"value,omitempty"`
 	Params map[string]string `json:"params,omitempty"`
+	// Applied — применено ли правило к телу (контракт 1.1.87,
+	// PARSING_PRINCIPLES §10). nil = true; false — тело авторское, правило
+	// мягкое, тело НЕ изменено. Пишется только false.
+	Applied *bool `json:"applied,omitempty"`
+}
+
+// IsApplied — правило, давшее код, применено к телу (по умолчанию да).
+func (w Warning) IsApplied() bool { return w.Applied == nil || *w.Applied }
+
+// NotApplied — та же запись с признаком «не применено».
+func (w Warning) NotApplied() Warning {
+	f := false
+	w.Applied = &f
+	return w
 }
 
 // WarningValueMax — предел длины Warning.Value (PARSING_PRINCIPLES §6).

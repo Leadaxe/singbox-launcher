@@ -1,0 +1,3 @@
+# Авторское тело с server_port вне 1..65535: ядро отвергает весь конфиг,
+# on_invalid drop_node с `core_rejects` — узел снимается и у авторского тела.
+{"type":"trojan","tag":"own-bad-port","server":"example-3.com","server_port":70000,"password":"testpass123"}

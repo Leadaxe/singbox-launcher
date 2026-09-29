@@ -209,7 +209,8 @@
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
-          "code": "type_invalid"
+          "code": "type_invalid",
+          "core_rejects": true
         },
         "default": "",
         "desc_en": "QUIC congestion control algorithm.",

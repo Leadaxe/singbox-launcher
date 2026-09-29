@@ -42,7 +42,7 @@ sing-box), тогда всё будет проще и отлаживать, и �
 выносится в метаданные — это исключение, потому что тег и имя одно и то же,
 он уникален и уникальным делается на лету часто».
 Метаданные — `kind`, `id`, `tag`|`name`, `enabled`, `num`, `refs`, `origin`,
-`sections`, local-only расширения стороны (`dns{}`, `resolve{}` у LxBox).
+local-only расширения стороны (`dns{}`, `resolve{}` у LxBox).
 `body` — ровно тот объект, который уходит в конфиг (без `tag`: единственное
 исключение, тег — метаданные),
 ключи sing-box (snake_case), никаких переизобретённых имён и никакого
@@ -68,7 +68,7 @@ sing-box), тогда всё будет проще и отлаживать, и �
 | id | `id` (корень) | `id` (uuid) | `id` | `id` |
 | включён | `enabled` | `enabled` | `enabled` | `enabled` |
 | detour | `detour{folder_id,tag}` | `detour` только у члена папки (`detour_policy` — политика КОНТЕЙНЕРА, local-only, не узла) | `detour_tag`, `detour_node_*` | `detour{folder_id?, tag}` — только про узел; политика контейнера остаётся полем стороны |
-| секции | `sections` | (новое, в форме контракта) | `sections` | `sections` (§2) |
+| секции | упразднены | упразднены | `sections` (dev-сборки; снимается импортом) | упразднены (контракт 1.1.85, §2) |
 
 Узел из share-URI: `body` — разобранный outbound, `origin.raw` — ссылка.
 Строковое тело у LxBox исчезает: тело всегда объект, ссылка — в `origin`.
@@ -127,33 +127,12 @@ srs: `{ "kind": "srs", "name": "…", "enabled": true, "num": 1010, "refs": ["ht
 шаблонного — `{ "kind": "template", "tag": "google_udp", "enabled": true, "vars": { "outbound": "vpn-1" } }` (нормы `vars` — `TEMPLATE_LANG.md` §6.4).
 Целевая запись DNS-правила: `{ "kind": "user", "name": "…", "enabled": true, "body": { "domain_suffix": […], "server": "my-doh" } }`.
 
-## 2. Секции узла в целевой форме
+## 2. Секции узла — упразднены
 
-```json
-"sections": {
-  "rules": [
-    { "kind": "inline", "name": "@{self} network", "enabled": true, "num": 945,
-      "body": { "domain_suffix": [".ts.net"],
-                "ip_cidr": ["100.64.0.0/10", "fd7a:115c:a1e0::/48"],
-                "outbound": "@self" } }
-  ],
-  "dns": {
-    "servers": [ { "kind": "user", "tag": "@{self}-dns", "enabled": true,
-                   "body": { "type": "tailscale", "endpoint": "@self" } } ],
-    "rules":   [ { "kind": "user", "enabled": true,
-                   "body": { "domain_suffix": [".ts.net"], "server": "@{self}-dns" } } ]
-  }
-}
-```
-
-Это **одна** форма записи для `state.json`, `lxbox_settings.json` и файла
-бэкапа. Речь о форме записи, а не о месте хранения: кэш узлов подписки каждая
-сторона держит где ей удобно.
-Семантика — `NODE_SECTIONS.md` (плейсхолдер, инъекция, слияние,
-перенумерация) без изменений; поменялись только имена полей записей: `num` и
-`body` целиком у правила, `tag`+`body` у DNS-записей, вместо
-`order_num`/`match`/`value`/`name`. Эта форма — действующая норма
-`NODE_SECTIONS.md` §1.
+До контракта 1.1.85 узел носил поле `sections` (правила маршрута и
+DNS-записи в корневой форме §1). С 1.1.85 секций у узла нет, имя `sections`
+зарезервировано только у подписки; импорт снимает поле у записи любого вида
+(`NODE_SECTIONS.md`). Форма корневых записей §1 от этого не меняется.
 
 ## 3. Цена
 

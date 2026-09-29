@@ -198,8 +198,14 @@ type Field struct {
 	// — узел не пострадал, и код там info. Ключ — имя схемы из forbidden_for;
 	// схема без записи берёт общий `code`.
 	ForbiddenCodes map[string]string `json:"forbidden_codes"`
-	Conflicts      []Relation        `json:"conflicts"`
-	Requires       []Relation        `json:"requires"`
+	// CoreRejects — признак отказа ядра у правил поля без своего объекта
+	// (тип, values, format, pattern, required, forbidden_for с кодом Code),
+	// контракт 1.1.87: нарушение роняет старт всего конфига, правило жёсткое
+	// и применяется и к авторскому телу. Правила со своим объектом
+	// (on_invalid, conflicts…) несут признак сами.
+	CoreRejects bool       `json:"core_rejects"`
+	Conflicts   []Relation `json:"conflicts"`
+	Requires    []Relation `json:"requires"`
 
 	// Гейты сборки.
 	MinCore  string `json:"min_core"`
@@ -273,11 +279,12 @@ func IsRangeValue(v interface{}) bool {
 // скалярных членов объекта, так `{type}` доезжает до текста), не объект — с
 // `type_invalid`, как у поля без on_invalid.
 type OnInvalid struct {
-	Action   string      `json:"action"`
-	Value    interface{} `json:"value"`
-	Code     string      `json:"code"`
-	Key      string      `json:"key"`
-	ElseCode string      `json:"else_code"`
+	Action      string      `json:"action"`
+	Value       interface{} `json:"value"`
+	Code        string      `json:"code"`
+	Key         string      `json:"key"`
+	ElseCode    string      `json:"else_code"`
+	CoreRejects bool        `json:"core_rejects"`
 }
 
 // OnItemInvalid — что делать с ЭЛЕМЕНТОМ списка, не прошедшим `item_pattern`.
@@ -320,10 +327,11 @@ type Advisory struct {
 // вообще применяется (у wireguard.mtu дефолт 1280 — только для AmneziaWG,
 // plain WG обходится дефолтом ядра и поля не получает вовсе).
 type DefaultWhen struct {
-	Absent bool        `json:"absent"`
-	Value  interface{} `json:"value"`
-	Code   string      `json:"code"`
-	When   *Condition  `json:"when"`
+	Absent      bool        `json:"absent"`
+	Value       interface{} `json:"value"`
+	Code        string      `json:"code"`
+	When        *Condition  `json:"when"`
+	CoreRejects bool        `json:"core_rejects"`
 }
 
 // MaxWhen — условный потолок значения (см. Field.MaxWhen).
@@ -343,6 +351,7 @@ type MaxWhen struct {
 	// wgconf|amnezia).
 	ExceptSources []string `json:"except_sources"`
 	NoteCode      string   `json:"note_code"`
+	CoreRejects   bool     `json:"core_rejects"`
 }
 
 // MinWhen — условный минимум значения (см. Field.MinWhen).
@@ -361,6 +370,7 @@ type MinWhen struct {
 	Action       string     `json:"action"`
 	AbsentIsZero bool       `json:"absent_is_zero"`
 	When         *Condition `json:"when"`
+	CoreRejects  bool       `json:"core_rejects"`
 }
 
 // CoerceWhen — условная замена значения (см. Field.CoerceWhen).
@@ -370,10 +380,11 @@ type MinWhen struct {
 // выбирает при старте ядра один из пяти отпечатков, и два из них без
 // гибридного шара. Отличие от `advisory`: значение меняется.
 type CoerceWhen struct {
-	Values []interface{} `json:"values"`
-	Value  interface{}   `json:"value"`
-	Code   string        `json:"code"`
-	When   *Condition    `json:"when"`
+	Values      []interface{} `json:"values"`
+	Value       interface{}   `json:"value"`
+	Code        string        `json:"code"`
+	When        *Condition    `json:"when"`
+	CoreRejects bool          `json:"core_rejects"`
 }
 
 // OnHopRequired — действие у ключа каталога `strip` цепочки, когда тело хопа
@@ -486,6 +497,8 @@ type Relation struct {
 	// обычным снятием.
 	Set  interface{} `json:"set"`
 	Code string      `json:"code"`
+	// CoreRejects — признак отказа ядра (контракт 1.1.87): связь жёсткая.
+	CoreRejects bool `json:"core_rejects"`
 }
 
 // section — секция body/common одного файла реестра, как она лежит на диске.
@@ -503,6 +516,10 @@ type section struct {
 	// узла, контракт 1.1.60): поля и формы диапазона ссылаются на него
 	// атрибутом `level`.
 	Levels []string `json:"levels"`
+	// FieldsUnchecked — поля тела не описаны и не проверяются (контракт
+	// 1.1.99): тело узла уходит в ядро как написано, без unknown_key и без
+	// правил. `fields` у такой секции пустой.
+	FieldsUnchecked bool `json:"fields_unchecked"`
 	// ExitCapableWhen — условие, при котором узел схемы годится ВЫХОДОМ В
 	// ИНТЕРНЕТ, то есть кандидатом в состав Направления (контракт 1.1.63).
 	// Без атрибута — годится всегда.
@@ -556,6 +573,8 @@ type Relation2 struct {
 	DescEn   string    `json:"desc_en"`
 	DescRu   string    `json:"desc_ru"`
 	Impl     string    `json:"impl"`
+	// CoreRejects — признак отказа ядра (контракт 1.1.87): связь жёсткая.
+	CoreRejects bool `json:"core_rejects"`
 }
 
 // file — файл реестра: секции body/common разбираются структурами, всё
@@ -601,6 +620,8 @@ type BodySchema struct {
 	OnCoreUnsupported *OnCoreUnsupported
 	// Levels — словарь уровней расширения по возрастанию (см. section).
 	Levels []string
+	// FieldsUnchecked — тело не проверяется и едет как написано (см. section).
+	FieldsUnchecked bool
 	// ExitCapableWhen — условие «узел годится выходом» (см. section).
 	ExitCapableWhen *Condition
 }
@@ -671,8 +692,8 @@ type Registry struct {
 // нового файла — осознанным (линтер реестра держит тот же список).
 var protocolFiles = []string{
 	"anytls", "chain", "http", "hysteria", "hysteria2", "masque",
-	"naive", "shadowsocks", "socks", "ssh", "tailscale", "trojan", "tuic",
-	"vless", "vmess", "wireguard",
+	"naive", "openvpn-client", "shadowsocks", "socks", "ssh", "tailscale",
+	"trojan", "tuic", "vless", "vmess", "wireguard",
 }
 
 var (
@@ -870,6 +891,7 @@ func resolveSection(scheme string, sec *section, subs map[string]*section) (*Bod
 		BuildTag:          sec.BuildTag,
 		OnCoreUnsupported: sec.OnCoreUnsupported,
 		Levels:            sec.Levels,
+		FieldsUnchecked:   sec.FieldsUnchecked,
 		ExitCapableWhen:   sec.ExitCapableWhen,
 	}
 	for _, name := range sec.Order {
@@ -1820,4 +1842,150 @@ func (r *Registry) Allowlist(name string) []string {
 	out := make([]string, len(l))
 	copy(out, l)
 	return out
+}
+
+// RuleCoreRejects — жёсткое ли правило, давшее код code на пути path тела
+// схемы scheme (контракт 1.1.87, PARSING_PRINCIPLES §10.3): у правила или
+// связи реестра стоит `core_rejects`, то есть нарушение роняет старт всего
+// конфига. Правило без признака мягкое: на авторском теле оно только
+// сообщает.
+//
+// Путь судится по телу без сегмента варианта ("transport.path"): поле ищется
+// во всех вариантах объекта, индексы массивов пропускаются.
+func (r *Registry) RuleCoreRejects(scheme, code, path string) bool {
+	if code == "" {
+		return false
+	}
+	b, ok := r.bodies[scheme]
+	if !ok {
+		return false
+	}
+	for i := range b.Relations {
+		rel := &b.Relations[i]
+		if !rel.CoreRejects || rel.Code != code {
+			continue
+		}
+		if path == "" {
+			return true
+		}
+		for _, p := range rel.Paths {
+			if p == path {
+				return true
+			}
+		}
+	}
+	if path == "" {
+		return false
+	}
+	// Путь предупреждения пишет индекс элемента в скобках (`peers[0].port`,
+	// `server_ports[1]`); поля реестра индекса не знают — скобки становятся
+	// отдельным сегментом, который fieldsAtBodyPath пропускает.
+	fieldPath := strings.NewReplacer("[", ".", "]", "").Replace(path)
+	for _, f := range fieldsAtBodyPath(b.Fields, strings.Split(fieldPath, ".")) {
+		if f.ruleCoreRejects(code) {
+			return true
+		}
+	}
+	return false
+}
+
+// fieldsAtBodyPath — поля по пути тела: вариантный объект даёт по кандидату
+// на каждый вариант, в котором есть следующий сегмент.
+func fieldsAtBodyPath(fields map[string]*Field, parts []string) []*Field {
+	if len(parts) == 0 || fields == nil {
+		return nil
+	}
+	f := fields[parts[0]]
+	if f == nil {
+		return nil
+	}
+	rest := parts[1:]
+	for len(rest) > 0 && isIndexSegment(rest[0]) {
+		rest = rest[1:]
+	}
+	if len(rest) == 0 {
+		return []*Field{f}
+	}
+	var out []*Field
+	next := f.Fields
+	if next == nil && f.Items != nil {
+		next = f.Items.Fields
+	}
+	out = append(out, fieldsAtBodyPath(next, rest)...)
+	for _, v := range f.Variants {
+		if v != nil {
+			out = append(out, fieldsAtBodyPath(v.Fields, rest)...)
+		}
+	}
+	return out
+}
+
+func isIndexSegment(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// ruleCoreRejects — жёсткое ли правило поля с кодом code. Код правила со
+// своим объектом решает признак этого объекта; код из forbidden_codes —
+// мягкий; остальное (тип, values, format, pattern, required, forbidden_for)
+// — признак самого поля.
+func (f *Field) ruleCoreRejects(code string) bool {
+	own, hard := false, false
+	see := func(c string, flag bool) {
+		if c != "" && c == code {
+			own = true
+			if flag {
+				hard = true
+			}
+		}
+	}
+	if f.OnInvalid != nil {
+		see(f.OnInvalid.Code, f.OnInvalid.CoreRejects)
+		see(f.OnInvalid.ElseCode, f.OnInvalid.CoreRejects)
+	}
+	if f.DefaultWhen != nil {
+		see(f.DefaultWhen.Code, f.DefaultWhen.CoreRejects)
+	}
+	if f.MaxWhen != nil {
+		see(f.MaxWhen.Code, f.MaxWhen.CoreRejects)
+		see(f.MaxWhen.NoteCode, false)
+	}
+	if f.MinWhen != nil {
+		see(f.MinWhen.Code, f.MinWhen.CoreRejects)
+	}
+	if f.CoerceWhen != nil {
+		see(f.CoerceWhen.Code, f.CoerceWhen.CoreRejects)
+	}
+	for i := range f.Conflicts {
+		see(f.Conflicts[i].Code, f.Conflicts[i].CoreRejects)
+	}
+	for i := range f.Requires {
+		see(f.Requires[i].Code, f.Requires[i].CoreRejects)
+	}
+	if hard {
+		return true
+	}
+	if own {
+		return false
+	}
+	for _, c := range f.ForbiddenCodes {
+		if c == code {
+			return false
+		}
+	}
+	return f.CoreRejects
+}
+
+// DefaultWhenCoreRejects — тихий дефолт поля (default_when без кода) с
+// признаком отказа ядра: без него ядро не поднимает узел, поэтому дефолт
+// материализуется и в авторском теле.
+func (f *Field) DefaultWhenCoreRejects() bool {
+	return f != nil && f.DefaultWhen != nil && f.DefaultWhen.CoreRejects
 }

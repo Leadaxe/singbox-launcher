@@ -33,47 +33,6 @@
           }
         }
       ],
-      "sections": {
-        "rules": [
-          {
-            "kind": "inline",
-            "name": "@{self} network",
-            "enabled": true,
-            "num": 945,
-            "body": {
-              "ip_cidr": [
-                "100.64.0.0/10"
-              ],
-              "outbound": "@self"
-            }
-          }
-        ],
-        "dns": {
-          "servers": [
-            {
-              "kind": "user",
-              "tag": "@{self}-dns",
-              "enabled": true,
-              "body": {
-                "endpoint": "@self",
-                "type": "tailscale"
-              }
-            }
-          ],
-          "rules": [
-            {
-              "kind": "user",
-              "enabled": true,
-              "body": {
-                "domain_suffix": [
-                  ".ts.net"
-                ],
-                "server": "@{self}-dns"
-              }
-            }
-          ]
-        }
-      },
       "id": "01J00000000000000000000SRV"
     },
     {

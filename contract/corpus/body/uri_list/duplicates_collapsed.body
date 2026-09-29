@@ -1,0 +1,9 @@
+# Один сервер под несколькими именами (контракт 1.1.102, SPEC 154).
+# Повторы схлопываются в первую запись; выживший несёт duplicates_collapsed:
+# count — сколько записей схлопнуто, names — их имена без повтора и без
+# имени выжившего; повтор под тем же именем — names = имя выжившего.
+vless://00000001-0000-4000-8000-000000000000@a.example.com:443?type=tcp&security=reality&pbk=Lx2TnXgn4YbYp6h6rVr3m2DkQnq1Yl7yY0pYf0bR3X0&fp=chrome&sni=www.example.org&sid=ab12&flow=xtls-rprx-vision#%F0%9F%87%A6%F0%9F%87%B9%20%D0%90%D0%B2%D1%81%D1%82%D1%80%D0%B8%D1%8F
+vless://00000002-0000-4000-8000-000000000000@b.example.com:443?type=tcp&security=reality&pbk=Lx2TnXgn4YbYp6h6rVr3m2DkQnq1Yl7yY0pYf0bR3X0&fp=chrome&sni=www.example.org&sid=ab12&flow=xtls-rprx-vision#%F0%9F%87%B5%F0%9F%87%B1%20%D0%9F%D0%BE%D0%BB%D1%8C%D1%88%D0%B0
+vless://00000001-0000-4000-8000-000000000000@a.example.com:443?type=tcp&security=reality&pbk=Lx2TnXgn4YbYp6h6rVr3m2DkQnq1Yl7yY0pYf0bR3X0&fp=chrome&sni=www.example.org&sid=ab12&flow=xtls-rprx-vision#%F0%9F%87%A9%F0%9F%87%AA%20%D0%93%D0%B5%D1%80%D0%BC%D0%B0%D0%BD%D0%B8%D1%8F
+vless://00000002-0000-4000-8000-000000000000@b.example.com:443?type=tcp&security=reality&pbk=Lx2TnXgn4YbYp6h6rVr3m2DkQnq1Yl7yY0pYf0bR3X0&fp=chrome&sni=www.example.org&sid=ab12&flow=xtls-rprx-vision#%F0%9F%87%B5%F0%9F%87%B1%20%D0%9F%D0%BE%D0%BB%D1%8C%D1%88%D0%B0
+vless://00000001-0000-4000-8000-000000000000@a.example.com:443?type=tcp&security=reality&pbk=Lx2TnXgn4YbYp6h6rVr3m2DkQnq1Yl7yY0pYf0bR3X0&fp=chrome&sni=www.example.org&sid=ab12&flow=xtls-rprx-vision#%F0%9F%87%B7%F0%9F%87%BA%20%D0%A0%D0%BE%D1%81%D1%81%D0%B8%D1%8F

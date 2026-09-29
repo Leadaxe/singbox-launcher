@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "domain": [
+        "home-ts-host"
+      ],
+      "outbound": "home-ts",
+      "comment": "host home-ts-host via home-ts"
+    }
+  ],
+  "dns_servers": [],
+  "dns_rules": [],
+  "warnings": []
+}

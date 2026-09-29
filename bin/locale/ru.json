@@ -1033,6 +1033,12 @@
   "node %q: %s removed — it cannot be combined with detour %q": {
     "value": "узел %q: %s снят — несовместим с detour %q"
   },
+  "%s (not applied)": {
+    "value": "%s (не применено)"
+  },
+  "This node was written by hand, so the app changed nothing in it. The rule below would normally apply.": {
+    "value": "Узел написан вручную, поэтому приложение ничего в нём не изменило. Обычно здесь сработало бы правило ниже."
+  },
   "group %q: member %q left the group (%s)": {
     "value": "группа %q: член %q выбыл из состава (%s)"
   },
@@ -1687,12 +1693,6 @@
   },
   "Include this rule in the generated route when enabled": {
     "value": "Включить это правило в сгенерированный маршрут"
-  },
-  "Route rule carried by node %q": {
-    "value": "Правило маршрута, которое несёт узел %q"
-  },
-  "node is disabled": {
-    "value": "узел выключен"
   },
   "Drag to reorder": {
     "value": "Перетащите, чтобы изменить порядок"
@@ -3287,15 +3287,6 @@
   "Read-only. Edit via preset variables (Rules tab → Edit). For custom DNS rules use the Extra rules editor below.": {
     "value": "Только чтение. Правится через переменные пресета (вкладка Rules → Изменить). Для своих DNS-правил используйте редактор ниже."
   },
-  "From node %q": {
-    "value": "Из узла %q"
-  },
-  "Read-only. This DNS server travels with the node — edit it on the node's JSON tab.": {
-    "value": "Только чтение. Этот DNS-сервер живёт вместе с узлом — правьте его на вкладке JSON узла."
-  },
-  "Read-only. This DNS rule travels with the node — edit it on the node's JSON tab.": {
-    "value": "Только чтение. Это DNS-правило живёт вместе с узлом — правьте его на вкладке JSON узла."
-  },
   "+ Add Rule": {
     "value": "+ Правило"
   },
@@ -3911,9 +3902,6 @@
   "The outbound as it will reach the config.": {
     "value": "Outbound в том виде, в каком он попадёт в конфиг."
   },
-  "The node and the config fragments it carries. @self is this node's tag.": {
-    "value": "Узел и фрагменты конфига, которые он несёт. @self — тег этого узла."
-  },
   "The sing-box outbound this node is built from — exactly what the build writes to config.json. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time.": {
     "value": "Outbound sing-box, из которого собран этот узел, — ровно то, что сборка пишет в config.json. Правьте и нажмите Apply, чтобы сохранить; «Пересобрать из исходника» вернёт его к исходному URI/JSON. Тег и detour лаунчер проставляет заново на сборке."
   },
@@ -4052,12 +4040,6 @@
   "%s — this group picks its members by a rule, which the launcher does not support; it was not imported, and links to it will not resolve": {
     "value": "%s — эта группа набирает состав по правилу, а лаунчер такие группы не поддерживает; группа не импортирована, и ссылки на неё не разрешатся"
   },
-  "%s — a node rule referenced a rule set; node sections neither declare nor reference rule sets, so the whole rule was dropped (cutting just the reference would have turned it into a match-all)": {
-    "value": "%s — правило узла ссылалось на rule set; секции узла rule set не объявляют и на них не ссылаются, поэтому правило отброшено целиком (если вырезать одну ссылку, оно ловило бы весь трафик)"
-  },
-  "%s — a node carries an entry of this kind, which node sections do not allow; the entry was dropped, the rest of the node came through": {
-    "value": "%s — узел несёт запись такого вида, какой секции узла не допускают; запись отброшена, остальная часть узла импортирована"
-  },
   "Settings are merged, not replaced: subscriptions match by address, servers by what they connect to, and anything of yours that is not in the file stays. Routing rules are the exception — they are replaced by the file.": {
     "value": "Настройки сливаются, а не заменяются: подписки сходятся по адресу, серверы — по тому, куда они подключаются, и всё ваше, чего нет в файле, остаётся. Исключение — правила маршрутизации: они замещаются файлом."
   },
@@ -4127,23 +4109,26 @@
   "Advertised routes and exit nodes stay pending until they are approved in the tailnet admin console.": {
     "value": "Анонсированные маршруты и выход в интернет не заработают, пока их не подтвердят в админке tailnet."
   },
-  "This rule belongs to node %q — edit it in that source's JSON tab.": {
-    "value": "Это правило принадлежит узлу %q — правится на вкладке JSON его источника."
-  },
   "Origin (raw JSON)": {
     "value": "Происхождение (сырой JSON)"
   },
   "A manual config_json is set — the origin above is ignored at build time (see the JSON tab). Regen from raw rebuilds the node from it.": {
     "value": "Задан ручной config_json — происхождение выше при сборке игнорируется (см. вкладку JSON). «Regen from raw» пересобирает узел из него."
   },
-  "Node rule · %s": {
-    "value": "Правило узла · %s"
-  },
-  "View this rule (owned by the node)": {
-    "value": "Посмотреть правило (принадлежит узлу)"
-  },
   "Endpoints": {
     "value": "Endpoints"
+  },
+  "Skip presets": {
+    "value": "Не применять пресеты"
+  },
+  "Presets will not add routing or DNS rules for this node.": {
+    "value": "Пресеты не добавят для этого узла правил маршрутизации и DNS."
+  },
+  "No matching nodes": {
+    "value": "Нет подходящих узлов"
+  },
+  "No matching nodes.": {
+    "value": "Нет подходящих узлов."
   },
   "Loading…": {
     "value": "Загрузка…"
@@ -4172,50 +4157,14 @@
   "no state": {
     "value": "нет состояния"
   },
-  "No tailnet status for this node yet — the core has not reported it.": {
-    "value": "Статуса tailnet у узла пока нет — ядро его не сообщило."
-  },
-  "Tailnet status stream is not connected.": {
-    "value": "Поток статуса tailnet не подключён."
-  },
-  "stale, %s ago": {
-    "value": "устарел, %s назад"
-  },
   "State": {
     "value": "Состояние"
-  },
-  "Open login URL": {
-    "value": "Открыть ссылку входа"
-  },
-  "Auth": {
-    "value": "Вход"
-  },
-  "interactive": {
-    "value": "интерактивный"
   },
   "Network": {
     "value": "Сеть"
   },
-  "This node": {
-    "value": "Этот узел"
-  },
-  "none": {
-    "value": "нет"
-  },
   "online": {
     "value": "в сети"
-  },
-  "offline": {
-    "value": "не в сети"
-  },
-  "Peers (%d online / %d)": {
-    "value": "Пиры (%d в сети / %d)"
-  },
-  "No peers in this tailnet.": {
-    "value": "В этой tailnet нет пиров."
-  },
-  "exit node (in use)": {
-    "value": "выход (используется)"
   },
   "exit node": {
     "value": "выход"
@@ -4831,5 +4780,149 @@
   },
   "Tag %q is already used by a Direction: the swap group will not be built until the tag is free.": {
     "value": "Тег %q уже носит Направление: группа свёртки не соберётся, пока тег не освободится."
+  },
+  "Only the node is saved. The rest of the input is not kept.": {
+    "value": "Сохранён только узел. Остальное содержимое не сохранено."
+  },
+  "Replace the source with JSON?": {
+    "value": "Заменить источник на JSON?"
+  },
+  "This node was added from a share link or a WireGuard config. Saving the JSON replaces that source with the JSON: the link or config is no longer kept, and the app stops fixing the node's settings. It will only report problems. Continue?": {
+    "value": "Узел добавлен из ссылки или конфига WireGuard. Сохранение JSON заменит этот источник на JSON: ссылка или конфиг больше не хранятся, и приложение перестаёт исправлять настройки узла. Оно будет только сообщать о проблемах. Продолжить?"
+  },
+  "Node saved": {
+    "value": "Узел сохранён"
+  },
+  "%s — the file carries routing or DNS entries attached to this record; they are not imported, because a node no longer carries its own entries": {
+    "value": "%s — в файле к этой записи привязаны правила маршрутов или DNS; они не импортированы: у узла больше нет собственных записей"
+  },
+  "DNS cache size": {
+    "value": "Размер кэша DNS"
+  },
+  "Number of cached answers.": {
+    "value": "Число ответов в кэше."
+  },
+  "Serve stale answers": {
+    "value": "Отдавать устаревшие ответы"
+  },
+  "Answer from cache at once and refresh in the background.": {
+    "value": "Отвечать из кэша сразу и обновлять ответ в фоне."
+  },
+  "Keep DNS cache after restart": {
+    "value": "Сохранять кэш DNS после перезапуска"
+  },
+  "From %d to %d": {
+    "value": "От %d до %d"
+  },
+  "Clear DNS cache": {
+    "value": "Очистить кэш DNS"
+  },
+  "Clear DNS cache?": {
+    "value": "Очистить кэш DNS?"
+  },
+  "Drops cached answers of the running core, including those kept after restart.": {
+    "value": "Сбрасывает кэшированные ответы работающего ядра, включая сохранённые между запусками."
+  },
+  "Cached DNS answers are dropped, including those kept in cache.db. The connection stays up.": {
+    "value": "Кэшированные ответы DNS будут удалены, включая сохранённые в cache.db. Соединение не прерывается."
+  },
+  "DNS cache can be cleared only while the core is running.": {
+    "value": "Кэш DNS можно очистить только при работающем ядре."
+  },
+  "Clearing the DNS cache needs the Clash API, which is off in this config.": {
+    "value": "Для очистки кэша DNS нужен Clash API, а в этом конфиге он выключен."
+  },
+  "Could not clear DNS cache: %s": {
+    "value": "Не удалось очистить кэш DNS: %s"
+  },
+  "DNS cache cleared.": {
+    "value": "Кэш DNS очищен."
+  },
+  "Copy address": {
+    "value": "Копировать адрес"
+  },
+  "Copy name": {
+    "value": "Копировать имя"
+  },
+  "Devices (%d online / %d)": {
+    "value": "Устройства (в сети %d / %d)"
+  },
+  "Done.": {
+    "value": "Готово."
+  },
+  "Key expiry": {
+    "value": "Срок ключа"
+  },
+  "Log out": {
+    "value": "Выйти"
+  },
+  "MagicDNS name": {
+    "value": "Имя MagicDNS"
+  },
+  "NETWORKS: %d nodes": {
+    "value": "NETWORKS: узлов %d"
+  },
+  "No devices in this network.": {
+    "value": "В этой сети нет устройств."
+  },
+  "None": {
+    "value": "Нет"
+  },
+  "Not saved. The choice is lost after restart.": {
+    "value": "Не записано. После перезапуска выбор пропадёт."
+  },
+  "Not saved. The node stays in the lists, but has no exit until you save the choice.": {
+    "value": "Не записано. Узел остаётся в списках, но без выхода, пока выбор не записан."
+  },
+  "Not saved. Traffic is not routed through this node until you save the choice.": {
+    "value": "Не записано. Трафик не идёт через этот узел, пока выбор не записан."
+  },
+  "Ping %s": {
+    "value": "Проверка %s"
+  },
+  "Save choice": {
+    "value": "Записать выбор"
+  },
+  "Sign in": {
+    "value": "Войти"
+  },
+  "Start VPN to see the network.": {
+    "value": "Включите VPN, чтобы увидеть сеть."
+  },
+  "The node is not in the running config.": {
+    "value": "Узла нет в работающем конфиге."
+  },
+  "The node leaves the network. If the node has an auth key, it signs in again on the next start.": {
+    "value": "Узел выйдет из сети. Если в узле записан ключ входа, при следующем запуске он войдёт снова."
+  },
+  "This device": {
+    "value": "Это устройство"
+  },
+  "This node has no exit. Check devices on the Network tab.": {
+    "value": "У узла нет выхода. Устройства сети проверяются на вкладке Network."
+  },
+  "direct": {
+    "value": "напрямую"
+  },
+  "key expired": {
+    "value": "ключ истёк"
+  },
+  "never": {
+    "value": "бессрочно"
+  },
+  "no exit": {
+    "value": "нет выхода"
+  },
+  "relay": {
+    "value": "через ретранслятор"
+  },
+  "shared": {
+    "value": "общее"
+  },
+  "sign-in needed": {
+    "value": "нужен вход"
+  },
+  "signed in with a key": {
+    "value": "вход по ключу"
   }
 }

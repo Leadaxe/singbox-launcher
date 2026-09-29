@@ -1,0 +1,5 @@
+# Авторское тело (свой сервер, источник — голое тело узла): tuic.uuid не UUID.
+# Ядро sing-box-lx отвергает такой конфиг целиком (protocol/tuic/outbound.go NewOutbound: «invalid uuid»), поэтому правило
+# жёсткое (core_rejects, контракт 1.1.91) и применяется и на авторском теле:
+# код без applied:false.
+{"type":"tuic","tag":"own-tuic","server":"example-5.com","server_port":443,"uuid":"not-a-uuid","password":"testpass123","tls":{"enabled":true,"server_name":"example-5.com"}}

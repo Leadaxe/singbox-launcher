@@ -227,58 +227,24 @@ func TestExport10EntityKeysAreDeclared(t *testing.T) {
 	}
 }
 
-// Секции узла: закрытое множество ключей (единственное место схемы 1.0, где
-// additionalProperties:false), и записи внутри — В КОРНЕВОЙ форме.
-//
-// Ровно это и есть «одно пространство имён»: узловое правило отличается от
-// корневого только тем, где оно лежит. Второй набор ключей у тех же
-// сущностей был бы возвратом к маппингу, ради сноса которого и затеян 1.0.
-func TestExport10SectionsUseRootRecordForm(t *testing.T) {
+// Экспорт 1.0 не пишет `sections` ни у одной записи (контракт 1.1.85: секции
+// узла упразднены) — ни у записи sources[], ни у члена nodes[].
+func TestExport10WritesNoSections(t *testing.T) {
 	doc := export10Sample(t)
 	var sources []map[string]json.RawMessage
 	if err := json.Unmarshal(doc["sources"], &sources); err != nil {
 		t.Fatalf("sources: %v", err)
 	}
-	var sections struct {
-		Rules []map[string]json.RawMessage `json:"rules"`
-		DNS   struct {
-			Servers []map[string]json.RawMessage `json:"servers"`
-			Rules   []map[string]json.RawMessage `json:"rules"`
-		} `json:"dns"`
-	}
-	found := false
-	for _, rec := range sources {
-		raw, ok := rec["sections"]
-		if !ok {
-			continue
+	for i, rec := range sources {
+		if _, ok := rec["sections"]; ok {
+			t.Errorf("sources[%d] несёт sections", i)
 		}
-		found = true
-		if err := json.Unmarshal(raw, &sections); err != nil {
-			t.Fatalf("sections: %v", err)
-		}
-	}
-	if !found {
-		t.Fatal("в образце нет узла с секциями — тест бессмыслен")
-	}
-	if len(sections.Rules) == 0 || len(sections.DNS.Servers) == 0 || len(sections.DNS.Rules) == 0 {
-		t.Fatalf("секции образца неполны: %+v", sections)
-	}
-	// Форма 0.12 (match/outbound у правила, name/value у DNS) внутри секций
-	// означала бы, что «одно пространство имён» не доехало.
-	for _, rec := range sections.Rules {
-		for _, forbidden := range []string{"match", "outbound"} {
-			if _, ok := rec[forbidden]; ok {
-				t.Errorf("правило секции несёт ключ формы 0.12 %q", forbidden)
-			}
-		}
-		if _, ok := rec["body"]; !ok {
-			t.Errorf("у правила секции нет body: %v", rec)
-		}
-	}
-	for _, rec := range append(sections.DNS.Servers, sections.DNS.Rules...) {
-		for _, forbidden := range []string{"name", "value"} {
-			if _, ok := rec[forbidden]; ok {
-				t.Errorf("DNS-запись секции несёт ключ формы 0.12 %q", forbidden)
+		var nodes []map[string]json.RawMessage
+		if raw, ok := rec["nodes"]; ok && json.Unmarshal(raw, &nodes) == nil {
+			for j, n := range nodes {
+				if _, ok := n["sections"]; ok {
+					t.Errorf("sources[%d].nodes[%d] несёт sections", i, j)
+				}
 			}
 		}
 	}

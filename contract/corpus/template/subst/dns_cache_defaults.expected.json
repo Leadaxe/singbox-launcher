@@ -1,0 +1,1 @@
+{"config": {"dns": {"cache_capacity": 4000, "optimistic": true}, "experimental": {"cache_file": {"enabled": true, "path": "cache.db", "store_fakeip": true, "store_dns": true}}}, "warnings": []}

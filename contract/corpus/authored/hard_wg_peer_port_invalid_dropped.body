@@ -1,0 +1,5 @@
+# Авторское тело (свой сервер, источник — голое тело узла): peers[].port вне 1..65535.
+# Ядро sing-box-lx отвергает такой конфиг целиком (разбор option.WireGuardPeer: port — uint16), поэтому правило
+# жёсткое (core_rejects, контракт 1.1.91) и применяется и на авторском теле:
+# код без applied:false.
+{"type":"wireguard","tag":"own-wg","address":["10.0.0.2/32"],"private_key":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=","peers":[{"address":"example-3.com","port":70000,"public_key":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=","allowed_ips":["0.0.0.0/0"]}]}

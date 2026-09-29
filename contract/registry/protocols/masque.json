@@ -233,7 +233,8 @@
         "normalize": "trim_lower",
         "on_invalid": {
           "action": "drop",
-          "code": "type_invalid"
+          "code": "type_invalid",
+          "core_rejects": true
         },
         "default": "cloudflare",
         "desc_en": "MASQUE server profile.",
@@ -265,7 +266,8 @@
         "format": "base64",
         "on_invalid": {
           "action": "drop_node",
-          "code": "field_missing"
+          "code": "field_missing",
+          "core_rejects": true
         },
         "secret": true,
         "requires": [
@@ -283,7 +285,8 @@
         "format": "base64",
         "on_invalid": {
           "action": "drop_node",
-          "code": "field_missing"
+          "code": "field_missing",
+          "core_rejects": true
         },
         "requires": [
           {

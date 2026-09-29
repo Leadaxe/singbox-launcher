@@ -246,10 +246,10 @@ Discriminator: `type` — `http`, `ws`, `quic`, `grpc`, `httpupgrade`, `xhttp`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only
 - <a id="body-xhttp-xmux-max-concurrency"></a>**`xhttp.xmux.max_concurrency`** — Concurrent streams per connection, as a range.
   - Type: string
-  - Default: `1-1`
   - Conflicts with: `transport.xmux.max_connections`
 - <a id="body-xhttp-xmux-max-connections"></a>**`xhttp.xmux.max_connections`** — Number of parallel connections, as a range.
   - Type: string
+  - Default: `3`
 - <a id="body-xhttp-xmux-c-max-reuse-times"></a>**`xhttp.xmux.c_max_reuse_times`** — How many times a connection is reused.
   - Type: string
 - <a id="body-xhttp-xmux-h-max-request-times"></a>**`xhttp.xmux.h_max_request_times`** — Requests served by one HTTP connection.

@@ -682,6 +682,11 @@ func showSourceEditWindowAt(
 	// остаётся одной, а различие сводится к тому, ОТКУДА взят буфер и КУДА
 	// он вернётся.
 	editingNode := strings.TrimSpace(nodeLink.Tag) != ""
+	// ownContainer — узел свой: свободный сервер в корне или член папки, не
+	// узел подписки (PARSING_PRINCIPLES §10.1, условие контейнера). Правка
+	// JSON такого узла делает тело авторским (контракт 1.1.88).
+	ownContainer := (!editingNode && m.Sources[sourceIndex].Kind == wizardmodels.SourceKindServer) ||
+		(editingNode && m.Sources[sourceIndex].Kind == wizardmodels.SourceKindFolder)
 	var scratch wizardmodels.Source
 	if editingNode {
 		node := wizardbusiness.NodeByLink(m, nodeLink)
@@ -1321,6 +1326,11 @@ func showSourceEditWindowAt(
 			settingsContent.Add(nodeTagEntry)
 			settingsContent.Add(widget.NewSeparator())
 			detourBlock()
+			// LxBox §578: исключение узла из пресетов с for_each.
+			if blk := skipPresetsBlock(m, nodeLink, &scratch.Node); blk != nil {
+				settingsContent.Add(widget.NewSeparator())
+				settingsContent.Add(blk)
+			}
 			if awgVisibleFor() {
 				settingsContent.Add(widget.NewSeparator())
 				awgUI.load(&scratch.Node)
@@ -1941,12 +1951,15 @@ func showSourceEditWindowAt(
 		// сказать это одной внятной строкой лучше, чем двумя разными из
 		// глубины каждой ветки.
 		//
-		// SPEC 121 §5.1: исключение — ДОКУМЕНТ узла (тело + секции). У него
+		// SPEC 121 §5.1: исключение — ДОКУМЕНТ узла. У него
 		// `type` на верхнем уровне и не может быть: тип живёт у записи внутри
 		// `outbounds`/`endpoints`, и проверяет его разбор документа. У цепочки
 		// документов не бывает — там своя ветка ниже.
 		isDoc := !isChainSource && config.IsNodeDocument([]byte(text))
-		if !isDoc {
+		// Контракт 1.1.88: массив тел — тоже форма ввода; в источник уходит
+		// первый элемент, его `type` проверяет разбор массива.
+		isArray := !isChainSource && !isDoc && config.IsNodeBodyArray([]byte(text))
+		if !isDoc && !isArray {
 			var ob map[string]interface{}
 			if err := json.Unmarshal([]byte(text), &ob); err != nil {
 				dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
@@ -2013,25 +2026,53 @@ func showSourceEditWindowAt(
 		// узла подписки, и она разыменовывает узел. Признак снимается ДО
 		// материализации: та пересаживает Origin целиком, и после неё узнать,
 		// была ли связь, уже негде.
-		hadSubURL := scratch.Origin != nil && scratch.Origin.SubURL != ""
-		if err := applyServerBodyJSON(&scratch.Node, text); err != nil {
-			// Документ отвергается СВОЕЙ причиной («лишний ключ», «два узла»):
-			// обёртка «Invalid JSON» врала бы — JSON как раз валиден.
-			if isDoc {
-				dialog.ShowError(errors.New(locale.Tf("Node document rejected: %s", err.Error())), win)
-			} else {
-				dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
+		apply := func() {
+			hadSubURL := scratch.Origin != nil && scratch.Origin.SubURL != ""
+			droppedOrigin := ownEditDropsOrigin(&scratch.Node, ownContainer)
+			if err := applyServerBodyJSON(&scratch.Node, text, ownContainer); err != nil {
+				// Документ отвергается СВОЕЙ причиной («лишний ключ», «два узла»):
+				// обёртка «Invalid JSON» врала бы — JSON как раз валиден.
+				if isDoc {
+					dialog.ShowError(errors.New(locale.Tf("Node document rejected: %s", err.Error())), win)
+				} else {
+					dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
+				}
+				return
 			}
+			// Разыменование делает ОБЩАЯ точка (business.DereferenceNodeOrigin), а
+			// не «Origin без subUrl» побочкой материализации: правило Д5 обязано
+			// быть выполнено явно, иначе первая же правка материализатора,
+			// научившаяся переносить поля Origin, тихо его отменит.
+			if dereferenceEditedSourceNode(&scratch) || hadSubURL {
+				notifyNodeDereferenced(win, scratch.NodeTagOrLabel())
+			}
+			// Документ и массив — формы ввода (контракт 1.1.88): сохранено
+			// только тело узла, об остатке — одно сообщение на сохранение.
+			if (isDoc || isArray) && jsonInputDropsRest(text) {
+				dialog.ShowInformation(locale.T("Node saved"),
+					wizardbusiness.NodeInputDroppedMessage(), win)
+			}
+			if droppedOrigin {
+				// Источник сменился со ссылки/INI на JSON: форма источника
+				// показывает уже другой вид.
+				rebuildSettingsLayout()
+			}
+			doRefreshJSONTab()
+		}
+		// Свой узел из ссылки или INI после правки JSON теряет исходник и
+		// становится авторским (контракт 1.1.88, LxBox §576): спросить до.
+		if ownEditDropsOrigin(&scratch.Node, ownContainer) {
+			dialog.ShowConfirm(
+				locale.T("Replace the source with JSON?"),
+				locale.T("This node was added from a share link or a WireGuard config. Saving the JSON replaces that source with the JSON: the link or config is no longer kept, and the app stops fixing the node's settings. It will only report problems. Continue?"),
+				func(ok bool) {
+					if ok {
+						apply()
+					}
+				}, win)
 			return
 		}
-		// Разыменование делает ОБЩАЯ точка (business.DereferenceNodeOrigin), а
-		// не «Origin без subUrl» побочкой материализации: правило Д5 обязано
-		// быть выполнено явно, иначе первая же правка материализатора,
-		// научившаяся переносить поля Origin, тихо его отменит.
-		if dereferenceEditedSourceNode(&scratch) || hadSubURL {
-			notifyNodeDereferenced(win, scratch.NodeTagOrLabel())
-		}
-		doRefreshJSONTab()
+		apply()
 	})
 	// «Regen from raw» (SPEC 118 Т8): тело пересоздаётся из origin.raw.
 	// Неразбираемый raw = ошибка и ОТКАТ — узел не портится.
@@ -2122,17 +2163,6 @@ func showSourceEditWindowAt(
 				text = buf.String()
 			}
 			status := locale.T("The outbound as it will reach the config.")
-			// SPEC 121 §5.1: узел с секциями показывается ДОКУМЕНТОМ — голое
-			// тело умолчало бы о половине того, что узел добавит в конфиг, и
-			// первый же Apply снёс бы её.
-			if !scratch.Sections.IsEmpty() {
-				doc, derr := config.RenderNodeDocument(
-					scratch.Body, scratch.Sections, config.NodeBodyGoesToEndpoints(scratch.Body))
-				if derr == nil {
-					text = doc
-					status = locale.T("The node and the config fragments it carries. @self is this node's tag.")
-				}
-			}
 			setJSONText(text)
 			jsonStatus.SetText(status)
 			if sourceOriginURI(&scratch) != "" {

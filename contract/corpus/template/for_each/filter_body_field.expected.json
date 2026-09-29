@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {
+      "preferred_by": [
+        "work-ts"
+      ],
+      "outbound": "work-ts"
+    }
+  ],
+  "dns_servers": [],
+  "dns_rules": [],
+  "warnings": []
+}
