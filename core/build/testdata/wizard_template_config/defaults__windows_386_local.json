@@ -327,13 +327,6 @@
           "tcp",
           "udp"
         ],
-        "outbound": "direct-out"
-      },
-      {
-        "network": [
-          "tcp",
-          "udp"
-        ],
         "outbound": "proxy-out",
         "rule_set": "ai-services:ai-services"
       },
@@ -351,13 +344,6 @@
           "russian:ru-domains",
           "russian:ru-services"
         ]
-      },
-      {
-        "network": [
-          "tcp",
-          "udp"
-        ],
-        "outbound": "proxy-out"
       },
       {
         "outbound": "proxy-out",

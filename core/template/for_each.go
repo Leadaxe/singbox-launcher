@@ -168,6 +168,7 @@ func evalTplCanon(x map[string]interface{}, ctx *canonCtx) interface{} {
 		return text
 	})
 	if dropped {
+		ctx.emptyRefs++
 		return droppedValue{}
 	}
 	return out
@@ -241,10 +242,17 @@ func deepCopyRaw(v interface{}) interface{} {
 }
 
 // SubstituteVarsInJSONCanonScoped — канонический обход с пространством узла
-// `for_each` (nil — как SubstituteVarsInJSONCanonWarnings).
-func SubstituteVarsInJSONCanonScoped(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec, node *NodeScope) (json.RawMessage, []TemplateWarning, error) {
+// `for_each` (nil — без пространства узла). emptyRef — хоть одна ссылка на
+// имя (`@имя`, вставка `#tpl`) не дала значения: Dropped или нулевое значение
+// JSON. Сборка пресета по нему отличает правило, условия которого пропали из-за
+// пустой переменной, от правила без условий по замыслу автора (SPEC 152).
+func SubstituteVarsInJSONCanonScoped(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec, node *NodeScope) (out json.RawMessage, warnings []TemplateWarning, emptyRef bool, err error) {
 	if node == nil {
-		return SubstituteVarsInJSONCanonWarnings(data, vars, resolved, target)
+		ctx, err := substituteCanonCtx(data, vars, resolved, target, nil)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		return ctx.out, ctx.warnings, ctx.emptyRefs > 0, nil
 	}
 	merged := make(map[string]ResolvedVar, len(resolved)+len(node.Resolved))
 	for k, v := range resolved {
@@ -257,5 +265,9 @@ func SubstituteVarsInJSONCanonScoped(data []byte, vars []TemplateVar, resolved m
 	for name, typ := range node.Types {
 		decls = append(decls, TemplateVar{Name: name, Type: typ})
 	}
-	return substituteCanon(data, decls, merged, target, []string{node.As})
+	ctx, err := substituteCanonCtx(data, decls, merged, target, []string{node.As})
+	if err != nil {
+		return nil, nil, false, err
+	}
+	return ctx.out, ctx.warnings, ctx.emptyRefs > 0, nil
 }

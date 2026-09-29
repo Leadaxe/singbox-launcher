@@ -113,6 +113,10 @@ type ResolvedDNSRule struct {
 	PresetID    string
 	PresetLabel string
 
+	// Name — только для Source=user: необязательное имя правила из
+	// состояния (owner предупреждения о выпавшем правиле, SPEC 153).
+	Name string
+
 	// Active — прошёл if/if_or.
 	Active bool
 
@@ -422,6 +426,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 				out.Rules = append(out.Rules, ResolvedDNSRule{
 					Body:    body,
 					Source:  DNSSourceUser,
+					Name:    r.Name,
 					Active:  true,
 					Enabled: r.Enabled,
 				})

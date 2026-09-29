@@ -1,0 +1,13 @@
+{
+  "rules": [],
+  "dns_servers": [],
+  "dns_rules": [
+    {
+      "action": "predefined",
+      "rcode": "NOERROR"
+    }
+  ],
+  "warnings": [
+    "template_rule_unconditional"
+  ]
+}

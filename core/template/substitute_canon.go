@@ -11,6 +11,7 @@ package template
 // strict-обходчики удалены вместе с коллапсом ["@name"] в скаляр.
 
 import (
+	"encoding/json"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,6 +40,10 @@ type canonCtx struct {
 	// dynPrefixes — пространства имён узла for_each (§578): имя `<as>` и
 	// всякое `<as>.…` считаются объявленными.
 	dynPrefixes []string
+	// emptyRefs — сколько ссылок на имя дали Dropped или нулевое значение
+	// JSON (SPEC 152): по нему сборка отличает правило, условия которого
+	// пропали из-за пустой переменной, от правила без условий по замыслу.
+	emptyRefs int
 }
 
 // warn добавляет warning без дублей по паре (код, параметры): одна и та же
@@ -226,8 +231,44 @@ func substituteWalkCanon(v *interface{}, ctx *canonCtx) {
 	}
 }
 
-// replacementCanon возвращает значение для плейсхолдера "@name" по канону §5.2.
+// replacementCanon возвращает значение для плейсхолдера "@name" по канону §5.2
+// и считает ссылки, не давшие значения (Dropped или нулевое значение JSON).
 func replacementCanon(name string, ctx *canonCtx) interface{} {
+	v := replacementCanonValue(name, ctx)
+	if isEmptyRefValue(v) {
+		ctx.emptyRefs++
+	}
+	return v
+}
+
+// isEmptyRefValue — подстановка не дала значения: Dropped или нулевое
+// значение JSON (null, "", [], {}, false, 0) — тот же список, что у
+// ключа-условия без значения (TEMPLATE_LANG §5.1).
+func isEmptyRefValue(v interface{}) bool {
+	switch x := v.(type) {
+	case nil, droppedValue:
+		return true
+	case string:
+		return strings.TrimSpace(x) == ""
+	case []interface{}:
+		return len(x) == 0
+	case map[string]interface{}:
+		return len(x) == 0
+	case bool:
+		return !x
+	case int:
+		return x == 0
+	case float64:
+		return x == 0
+	case json.Number:
+		f, err := x.Float64()
+		return err == nil && f == 0
+	}
+	return false
+}
+
+// replacementCanonValue — само значение плейсхолдера "@name" (§5.2).
+func replacementCanonValue(name string, ctx *canonCtx) interface{} {
 	// @runtime.* — не переменные шаблона, а globals таргета (desktop-расширение
 	// §7.2); резолв тот же, что в предикатах.
 	if isRuntimeGlobalRef(name) {

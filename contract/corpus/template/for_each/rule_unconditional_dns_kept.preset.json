@@ -1,0 +1,24 @@
+{
+  "_comment": "DNS-правило без условий по замыслу автора (action без условий) идёт в конфиг как есть с template_rule_unconditional (контракт 1.1.100).",
+  "preset": {
+    "for_each": {
+      "node_type": "tailscale",
+      "as": "n"
+    },
+    "dns_rules": [
+      {
+        "action": "predefined",
+        "rcode": "NOERROR"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts"
+      }
+    }
+  ]
+}

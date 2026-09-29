@@ -247,7 +247,12 @@ func resolvePresetRouteRule(
 	// SPEC 067 Phase 9: каждая rule из frags.RoutingRules эмитится отдельной
 	// ResolvedRouteRule (in-order).
 	for _, rr := range frags.RoutingRules {
-		cleaned := cleanDanglingRuleSetInRule(rr, emittedTags)
+		cleaned, lost := cleanDanglingRuleSetInRule(rr, emittedTags)
+		if lost && rule.Enabled {
+			// SPEC 153: наборов правила нет в конфиге (.srs не скачан) —
+			// правило выпало целиком, иначе оно ловило бы весь трафик.
+			out.Warnings = append(out.Warnings, fragmentDropped(p.ID, fragmentKindRule, "rule_set").templateWarning())
+		}
 		if cleaned == nil {
 			continue
 		}
