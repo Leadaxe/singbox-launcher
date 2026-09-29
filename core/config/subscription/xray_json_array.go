@@ -692,6 +692,10 @@ func parseXrayJSONArrayElementNodes(
 		rejected = &ParseFailureReasons{}
 	}
 
+	// Подписи, занятые в элементе: чистое имя remarks — за группой пула.
+	poolLabels := map[string]struct{}{remarksRaw: {}}
+	elementTags := make(map[string]struct{}, len(payload))
+
 	for idx, ob := range payload {
 		label := remarksRaw
 		if label == "" {
@@ -700,13 +704,19 @@ func parseXrayJSONArrayElementNodes(
 		if label == "" {
 			label = fmt.Sprintf("xray-%d", elemIndex)
 		}
-		// §322, контракт 1.1.105: чистое имя из remarks у пула занимает
-		// группа, серверу пула к нему приписывается его тег — иначе в списке
-		// две одинаковые подписи (сервер и группа), и выбор путается.
+		// §322, контракты 1.1.105/1.1.106: чистое имя из remarks у пула
+		// занимает группа, серверу пула к нему приписывается его тег — иначе
+		// в списке две одинаковые подписи (сервер и группа), и выбор
+		// путается. Подпись, уже занятая в элементе (запись без tag или tag
+		// повторён), получает номер записи в пуле с 1.
 		if hasBalancer && remarksRaw != "" {
 			if tag := strings.TrimSpace(xrayMapString(ob, "tag")); tag != "" {
 				label = remarksRaw + " " + tag
 			}
+			if _, taken := poolLabels[label]; taken {
+				label = fmt.Sprintf("%s %d", label, idx+1)
+			}
+			poolLabels[label] = struct{}{}
 		}
 
 		node, err := xrayNodeFromOutboundInDoc(ob, outboundsRaw, label)
@@ -747,6 +757,13 @@ func parseXrayJSONArrayElementNodes(
 		}
 
 		node.Tag = xrayElementNodeTag(base, ob, idx, single)
+		// Повторённый в элементе tag (Xray такого не допускает, но подписка
+		// может) дал бы два узла с одним тегом, и группа пула потеряла бы
+		// члена: номер записи в пуле с 1, как у подписи.
+		if _, taken := elementTags[node.Tag]; taken {
+			node.Tag = fmt.Sprintf("%s %d", node.Tag, idx+1)
+		}
+		elementTags[node.Tag] = struct{}{}
 		if node.Outbound != nil {
 			node.Outbound["tag"] = node.Tag
 		}

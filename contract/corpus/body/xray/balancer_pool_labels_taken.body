@@ -1,0 +1,5 @@
+# Пул Xray, где подпись «remarks + tag» занята (контракт 1.1.106, §102):
+# две записи с одним tag «p» (в Xray теги уникальны — экзотика) и запись
+# без tag. Чистое имя «pool» у группы; вторая «pool p» → «pool p 2», запись
+# без tag → «pool 3» (номер записи в пуле с 1).
+[{"remarks": "pool", "outbounds": [{"tag": "p", "protocol": "vless", "settings": {"vnext": [{"address": "a.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555"}]}]}, "streamSettings": {"network": "tcp", "security": "none"}}, {"tag": "p", "protocol": "vless", "settings": {"vnext": [{"address": "b.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555"}]}]}, "streamSettings": {"network": "tcp", "security": "none"}}, {"protocol": "vless", "settings": {"vnext": [{"address": "c.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555"}]}]}, "streamSettings": {"network": "tcp", "security": "none"}}], "routing": {"balancers": [{"tag": "pool", "selector": ["p"], "strategy": {"type": "leastPing"}}]}}]
