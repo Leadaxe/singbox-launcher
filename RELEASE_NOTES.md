@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v2.3.4
+
+Патч после v2.3.3, ядро `sing-box-lx 1.14.2-lx.11` (было 1.14.2-lx.4), контракт 1.1.107. **Tailscale:** маршрут в tailnet и MagicDNS даёт новый пресет «Tailscale networks» вместо собственных секций узла; узлы без `exit_node` видны в группе NETWORKS на вкладке Servers; новая вкладка Network в окне узла — вход и выход, устройства сети с Ping, выбор exit node; правила по доменам работают для клиентов этой машины как exit node (#139). **DNS:** настройки кэша (размер, ответ из устаревшего кэша, сохранение после перезапуска) и кнопка «Clear DNS cache». **Узлы:** написанный вручную sing-box JSON уходит в ядро как написан; принимаются узлы OpenVPN в виде JSON; повторы одного сервера в подписке видны пометкой на узле; пул Xray-балансировщика собирается по `selector`. **Правила шаблона:** правило с не скачанным набором правил или с вложенным правилом без условий больше не отправляет весь трафик в свой outbound. **Исправлено:** classic TUN без службы на macOS снова стартует (#138); окно узла с панели Local всегда говорит с локальным ядром. Подробнее: [docs/release_notes/2-3-4.md](docs/release_notes/2-3-4.md).
+
+### Highlights (EN) — v2.3.4
+
+A patch after v2.3.3, core `sing-box-lx 1.14.2-lx.11` (was 1.14.2-lx.4), contract 1.1.107. **Tailscale:** the tailnet route and MagicDNS come from the new "Tailscale networks" preset instead of per-node sections; nodes without `exit_node` show up in a NETWORKS group on the Servers tab; a new Network tab in the node window offers sign-in and log-out, the network's devices with Ping and the exit node choice; domain rules work for clients using this machine as an exit node (#139). **DNS:** cache settings (size, serve stale answers, keep after restart) and a "Clear DNS cache" button. **Nodes:** hand-written sing-box JSON goes to the core as written; OpenVPN nodes are accepted as JSON; repeats of one server in a subscription are shown as a note on the node; an Xray balancer pool is built by its `selector`. **Template rules:** a rule with a rule set not yet downloaded, or with a logical sub-rule that lost its conditions, no longer sends all traffic to its outbound. **Fixed:** classic TUN without the service starts again on macOS (#138); a node window opened from the Local panel always talks to the local core. Details: [docs/release_notes/2-3-4.md](docs/release_notes/2-3-4.md).
+
 ### Выжимка (RU) — v2.3.3
 
 Хотфикс v2.3.2 для Windows: лаунчер с правами администратора больше не отказывается запускать ядро из-за прав на системную папку `C:\ProgramData`. Проверки прав повышенного старта теперь предупреждают: диалог показывает причину, риск, команду исправления и кнопку Run anyway. Подробнее: [docs/release_notes/2-3-3.md](docs/release_notes/2-3-3.md).
@@ -736,6 +744,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.3.4** | [docs/release_notes/2-3-4.md](docs/release_notes/2-3-4.md) |
 | **v2.3.3** | [docs/release_notes/2-3-3.md](docs/release_notes/2-3-3.md) |
 | **v2.3.2** | [docs/release_notes/2-3-2.md](docs/release_notes/2-3-2.md) |
 | **v2.3.1** | [docs/release_notes/2-3-1.md](docs/release_notes/2-3-1.md) |
