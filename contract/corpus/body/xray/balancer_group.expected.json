@@ -11,14 +11,14 @@
         "uuid": "11111111-2222-3333-4444-555555555555"
       },
       "kind": "outbound",
-      "label": "bal",
+      "label": "bal proxy",
       "scheme": "vless"
     },
     {
       "entry": {
         "interval": "30s",
         "outbounds": [
-          "bal"
+          "bal proxy"
         ],
         "type": "urltest",
         "url": "http://example.com"

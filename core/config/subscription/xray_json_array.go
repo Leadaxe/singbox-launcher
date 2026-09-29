@@ -700,6 +700,14 @@ func parseXrayJSONArrayElementNodes(
 		if label == "" {
 			label = fmt.Sprintf("xray-%d", elemIndex)
 		}
+		// §322, контракт 1.1.105: чистое имя из remarks у пула занимает
+		// группа, серверу пула к нему приписывается его тег — иначе в списке
+		// две одинаковые подписи (сервер и группа), и выбор путается.
+		if hasBalancer && remarksRaw != "" {
+			if tag := strings.TrimSpace(xrayMapString(ob, "tag")); tag != "" {
+				label = remarksRaw + " " + tag
+			}
+		}
 
 		node, err := xrayNodeFromOutboundInDoc(ob, outboundsRaw, label)
 		if err != nil {
