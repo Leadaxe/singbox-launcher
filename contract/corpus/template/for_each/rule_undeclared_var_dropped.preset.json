@@ -1,0 +1,27 @@
+{
+  "_comment": "Правило без условий ссылается на необъявленное имя: опечатка автора — сбой, правило выпадает с template_fragment_dropped вместе с template_var_undeclared, а не уходит в конфиг и не перехватывает весь трафик в несуществующий outbound (контракт 1.1.103).",
+  "preset": {
+    "for_each": {
+      "node_type": "tailscale",
+      "as": "n"
+    },
+    "rules": [
+      {
+        "outbound": "@nonexistent"
+      },
+      {
+        "ip_is_private": true,
+        "outbound": "@n"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts"
+      }
+    }
+  ]
+}

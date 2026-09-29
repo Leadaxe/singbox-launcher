@@ -23,6 +23,7 @@
 - A subscription often lists one server many times under different names — different countries or even brands with the same address and keys. The app has always kept one node per server; now that node shows a note with the number of repeats and their names, so it is clear that nothing was lost: for example, a subscription of 114 entries that holds only 5 distinct servers.
 
 ### Technical / Internal
+- Contract 1.1.103: a preset rule that refers to an undeclared variable counts as broken by a failure — a rule without conditions is dropped instead of sending all traffic to an outbound named after the typo.
 - Contract 1.1.102: registry code `duplicates_collapsed` (info) on the node that repeats of the same server collapsed into, with their count and names (SPEC 154).
 - Security documents: `SECURITY.md` (how to report a vulnerability) and `docs/SECURITY_MODEL.md` (what runs with higher rights, rules for privileged code, accepted risks).
 - Contract 1.1.87: registry attribute `core_rejects`, warning flag `applied`, bare-body node source (SPEC 146).

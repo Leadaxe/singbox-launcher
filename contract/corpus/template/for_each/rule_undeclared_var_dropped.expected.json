@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "ip_is_private": true,
+      "outbound": "home-ts"
+    }
+  ],
+  "dns_servers": [],
+  "dns_rules": [],
+  "warnings": [
+    "template_var_undeclared",
+    "template_fragment_dropped"
+  ]
+}
