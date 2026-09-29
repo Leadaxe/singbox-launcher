@@ -267,8 +267,9 @@
     "rules": [
       {
         "action": "sniff",
-        "inbound": [
-          "tun-in"
+        "network": [
+          "tcp",
+          "udp"
         ],
         "timeout": "1s"
       },
@@ -278,8 +279,9 @@
       },
       {
         "action": "resolve",
-        "inbound": [
-          "tun-in"
+        "network": [
+          "tcp",
+          "udp"
         ],
         "strategy": "ipv4_only"
       },
