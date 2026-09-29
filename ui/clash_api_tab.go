@@ -2078,6 +2078,12 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				o.Show()
 			}
 		}
+		// Show/Hide ребёнка не перекладывает родителей: без явного Refresh
+		// Border держит высоту верха от прошлого режима, и вернувшийся ряд
+		// кнопок рисуется поверх первой строки списка.
+		if panel.Content != nil {
+			panel.Content.Refresh()
+		}
 		serversViewCacheValid = false
 		proxiesListWidget.UnselectAll()
 		proxiesListWidget.Refresh()
