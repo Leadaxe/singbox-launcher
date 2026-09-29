@@ -282,6 +282,42 @@ func corpusJSONText(v interface{}) string {
 	return string(out)
 }
 
+// corpusGroupMembersByLabel называет членов групп результата разбора по
+// `label` узлов (PARSING_PRINCIPLES §5, контракт 1.1.104): эмиттер группы
+// пишет в `outbounds`/`default` теги сборки, а тегов в контракте нет — у
+// Xray-массива тег узла это слаг remarks («🇦🇹-Австрия»), а label — сами
+// remarks. Член, которого нет среди узлов тела (group_member_missing),
+// остаётся как записан в источнике.
+func corpusGroupMembersByLabel(parsed []*configtypes.ParsedNode, out []contractNode) {
+	labelByTag := make(map[string]string, len(parsed))
+	for _, n := range parsed {
+		if n != nil && n.Tag != "" && n.Label != "" {
+			labelByTag[n.Tag] = n.Label
+		}
+	}
+	rename := func(v any) any {
+		if s, ok := v.(string); ok {
+			if label, ok := labelByTag[s]; ok {
+				return label
+			}
+		}
+		return v
+	}
+	for _, cn := range out {
+		if cn.Kind != "group" || cn.Entry == nil {
+			continue
+		}
+		if members, ok := cn.Entry["outbounds"].([]any); ok {
+			for i := range members {
+				members[i] = rename(members[i])
+			}
+		}
+		if def, ok := cn.Entry["default"]; ok {
+			cn.Entry["default"] = rename(def)
+		}
+	}
+}
+
 // corpusElementRef — чем элемент нарезки называет себя в `ref` отбраковки.
 func corpusElementRef(el linkmap.SourceElement) string {
 	if m, ok := el.Value.(map[string]interface{}); ok {
@@ -378,6 +414,7 @@ func TestContractCorpusBody(t *testing.T) {
 				}
 				env.Nodes = append(env.Nodes, cn)
 			}
+			corpusGroupMembersByLabel(nodes, env.Nodes)
 			env.Dropped = append(env.Dropped, drops...)
 			corpusDropIndexes(t, body, env.Dropped)
 			requireDropCodes(t, env)

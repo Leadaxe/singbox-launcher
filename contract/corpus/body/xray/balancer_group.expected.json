@@ -18,7 +18,7 @@
       "entry": {
         "interval": "30s",
         "outbounds": [
-          "bal proxy"
+          "bal"
         ],
         "type": "urltest",
         "url": "http://example.com"
