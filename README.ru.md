@@ -413,6 +413,7 @@ build\test_windows.bat   # Windows
 - **[SPECS/](SPECS/)** — 90+ спецификаций фич (HWID protocol, traffic profiler, debug API, preset bundles, state-as-template-diff, atomic writes, typed event bus, daemon-режим ядра, удалённые машины, …).
 - **[docs/API.md](docs/API.md)** — референс Debug API с curl-рецептами.
 - **[docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md)** — daemon-режим ядра, сопряжение, управление удалёнными машинами.
+- **[docs/SECURITY_MODEL.ru.md](docs/SECURITY_MODEL.ru.md)** — что исполняется с высокими правами и по каким правилам; как сообщить об уязвимости — [SECURITY.md](SECURITY.md).
 - **[docs/WIZARD_TEMPLATE.ru.md](docs/WIZARD_TEMPLATE.ru.md)** — справочник по синтаксису `wizard_template.json` (для VPN-провайдеров, поставляющих собственный шаблон).
 - **[contract/docs/generated/index.md](contract/docs/generated/index.md)** — справочник полей по схемам, генерируется из общего реестра: параметры ссылки, поля тела и [коды деградации](contract/docs/generated/warnings.md) на узле.
 - **[docs/Protocols.ru.md](docs/Protocols.ru.md)** — обвязка лаунчера вокруг узла: теги сборки, JSON-массивы Xray, share URI и входные формы, которые не являются ссылками.

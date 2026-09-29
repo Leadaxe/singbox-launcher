@@ -408,6 +408,7 @@ To run GUI tests locally, set `TEST_PACKAGE` manually inside the script or invok
 - **[SPECS/](SPECS/)** — 90+ feature specs (HWID protocol, traffic profiler, debug API, preset bundles, state-as-template-diff, atomic writes, typed event bus, daemon core engine, remote machines, …).
 - **[docs/API.md](docs/API.md)** — Debug API reference with a curl cookbook.
 - **[docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md)** — daemon core engine, pairing, and remote-machine management.
+- **[docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md)** — what runs with higher rights and by which rules; how to report a vulnerability — [SECURITY.md](SECURITY.md).
 - **[docs/WIZARD_TEMPLATE.md](docs/WIZARD_TEMPLATE.md)** — `wizard_template.json` syntax reference for VPN providers shipping a custom template.
 - **[contract/docs/generated/index.md](contract/docs/generated/index.md)** — the per-scheme field reference, generated from the shared registry: link parameters, body fields and the [degradation codes](contract/docs/generated/warnings.md) a node can carry.
 - **[docs/Protocols.md](docs/Protocols.md)** — the launcher-side machinery around a node: build tags, Xray JSON arrays, share URIs, and the input forms that are not links.

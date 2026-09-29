@@ -19,6 +19,7 @@
 - macOS classic TUN without the service did not start since 2.1.0 (#138, SPEC 151): the start failed with `cannot open …/classic.log`, or with `configure tun interface: Connect: operation not permitted` once the file existed. The privileged start shell lost root because its environment is cleared. The shell is now `/bin/bash -p` and checks that it runs as root before it touches the log; a refusal names both uids, and a refusal to open `classic.log` carries the system reason.
 
 ### Technical / Internal
+- Security documents: `SECURITY.md` (how to report a vulnerability) and `docs/SECURITY_MODEL.md` (what runs with higher rights, rules for privileged code, accepted risks).
 - Contract 1.1.87: registry attribute `core_rejects`, warning flag `applied`, bare-body node source (SPEC 146).
 - Contract 1.1.88: an invalid VLESS `flow` is removed even on a hand-written node (the core refuses to start with it); new corpus section `node_edit`; a source test keeps build steps that change a node body behind the single decision point.
 - Contract 1.1.89: node document with several nodes in the node JSON tab keeps the first node; import still creates one record per node.
@@ -47,6 +48,7 @@
 - Classic TUN без службы на macOS не стартовал с версии 2.1.0 (#138, SPEC 151): старт падал с `cannot open …/classic.log`, а при готовом файле — с `configure tun interface: Connect: operation not permitted`. Шелл привилегированного старта терял root из-за очищенного окружения. Теперь шелл — `/bin/bash -p`, до работы с логом он проверяет, что запущен под root; отказ называет оба uid, а отказ открыть `classic.log` — системную причину.
 
 ### Техническое / Внутреннее
+- Документы по безопасности: `SECURITY.md` (как сообщить об уязвимости) и `docs/SECURITY_MODEL.ru.md` (что исполняется с высокими правами, правила для привилегированного кода, принятые риски).
 - Контракт 1.1.87: атрибут реестра `core_rejects`, признак предупреждения `applied`, источник узла — голое тело (SPEC 146).
 - Контракт 1.1.88: недопустимый `flow` VLESS снимается и у узла, написанного вручную (ядро с ним не стартует); новый раздел корпуса `node_edit`; тест по исходникам держит шаги сборки, меняющие тело узла, за единой точкой решения.
 - Контракт 1.1.89: документ с несколькими узлами во вкладке JSON узла сохраняет первый узел; импорт по-прежнему создаёт запись на каждый узел.
