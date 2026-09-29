@@ -63,6 +63,28 @@ func isAuthoritativeWarning(code string) bool {
 	return false
 }
 
+// WarnDuplicatesCollapsed — код «в этот узел схлопнуты записи подписки с тем
+// же содержимым» (contract/registry/warnings.json, severity info, SPEC 154).
+// Строкой по той же причине, что WarnCoreRejected.
+const WarnDuplicatesCollapsed = "duplicates_collapsed"
+
+// sourceFactWarningCodes — коды о ЗАПИСИ В ИСТОЧНИКЕ, а не о теле узла: их
+// ставит разбор всей подписки, и пересчёт по одному телу их не воспроизведёт.
+//
+// Пересчёт их бережёт, как авторитетные, с одним отличием: свежий набор,
+// который такой код принёс (разбор источника заново), побеждает прежнюю
+// запись — сведение о составе подписки стареет вместе с ней.
+var sourceFactWarningCodes = []string{WarnDuplicatesCollapsed}
+
+func isSourceFactWarning(code string) bool {
+	for _, c := range sourceFactWarningCodes {
+		if c == code {
+			return true
+		}
+	}
+	return false
+}
+
 // hasDerivedWarnings — по списку узла видно, что производные коды УЖЕ
 // считали.
 //
@@ -74,7 +96,7 @@ func hasDerivedWarnings(warns []NodeWarning) bool {
 		return false
 	}
 	for _, w := range warns {
-		if !isAuthoritativeWarning(w.Code) {
+		if !isAuthoritativeWarning(w.Code) && !isSourceFactWarning(w.Code) {
 			return true
 		}
 	}
@@ -204,7 +226,8 @@ func (n *Node) SetNodeEnabled(enabled bool) bool {
 }
 
 // ReplaceDerivedWarnings замещает ПРОИЗВОДНЫЕ коды узла новым набором,
-// сохраняя авторитетные записи.
+// сохраняя авторитетные записи и факты об источнике (sourceFactWarningCodes),
+// которых свежий набор не принёс.
 //
 // Одно место-правило на все шесть точек пересчёта (шапка файла). Вызывать
 // вместо `node.Warnings = fresh`.
@@ -222,6 +245,10 @@ func (n *Node) ReplaceDerivedWarnings(fresh []NodeWarning) {
 	var keep []NodeWarning
 	for _, w := range n.Warnings {
 		if isAuthoritativeWarning(w.Code) {
+			keep = append(keep, w)
+			continue
+		}
+		if isSourceFactWarning(w.Code) && !hasWarningCode(fresh, w.Code) {
 			keep = append(keep, w)
 		}
 	}
@@ -241,6 +268,15 @@ func (n *Node) ReplaceDerivedWarnings(fresh []NodeWarning) {
 		out = append(out, w)
 	}
 	n.Warnings = out
+}
+
+func hasWarningCode(warns []NodeWarning, code string) bool {
+	for _, w := range warns {
+		if w.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 // CarryCoreVerdict переносит вердикт ядра со СТАРОГО узла на свежий при

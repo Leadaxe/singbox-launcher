@@ -8,6 +8,7 @@
 package subscription
 
 import (
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
@@ -78,12 +79,23 @@ type sourceDedup struct {
 	// удалялась целиком.
 	collapsedInto map[string]string
 	dropped       int
+	// first — подпись → узел первой записи; firstName — его исходный тег на
+	// момент приёма (сырой тег потом может стать «X-2»); aliases — имена
+	// записей, схлопнутых в него, в порядке тела; survivors — выжившие в
+	// порядке первого схлопывания (SPEC 154: код duplicates_collapsed).
+	first     map[string]*configtypes.ParsedNode
+	firstName map[*configtypes.ParsedNode]string
+	aliases   map[*configtypes.ParsedNode][]string
+	survivors []*configtypes.ParsedNode
 }
 
 func newSourceDedup() *sourceDedup {
 	return &sourceDedup{
 		seen:          make(map[string]string),
 		collapsedInto: make(map[string]string),
+		first:         make(map[string]*configtypes.ParsedNode),
+		firstName:     make(map[*configtypes.ParsedNode]string),
+		aliases:       make(map[*configtypes.ParsedNode][]string),
 	}
 }
 
@@ -106,10 +118,75 @@ func (d *sourceDedup) accept(node *configtypes.ParsedNode) bool {
 		if d.collapsedInto != nil && node.Tag != "" {
 			d.collapsedInto[node.Tag] = firstTag
 		}
+		if survivor := d.first[key]; survivor != nil && d.aliases != nil {
+			if _, known := d.aliases[survivor]; !known {
+				d.survivors = append(d.survivors, survivor)
+			}
+			d.aliases[survivor] = append(d.aliases[survivor], node.Tag)
+		}
 		return false
 	}
 	d.seen[key] = node.Tag
+	if d.first != nil {
+		d.first[key] = node
+		d.firstName[node] = node.Tag
+	}
 	return true
+}
+
+// markSurvivors вешает duplicates_collapsed на каждый узел, в который что-то
+// схлопнулось.
+func (d *sourceDedup) markSurvivors() {
+	if d == nil {
+		return
+	}
+	for _, survivor := range d.survivors {
+		markDuplicatesCollapsed(survivor, d.firstName[survivor], d.aliases[survivor])
+	}
+}
+
+// maxCollapsedNames — сколько имён схлопнутых записей называет код; дальше
+// «…», полное число — в count. У провайдера один сервер бывает записан под
+// двадцатью с лишним именами, и абзац из них в карточке узла не читается.
+const maxCollapsedNames = 10
+
+// markDuplicatesCollapsed ставит узлу код duplicates_collapsed (SPEC 154 §3):
+// count — сколько записей схлопнуто в узел, names — их имена без пустых,
+// без повторов и без имени самого узла. Если называть некого (все дубли под
+// тем же именем), names — имя узла.
+//
+// Общий шаг для обоих путей схлопывания: дедупа записей тела и владения
+// сервером в Xray-массиве.
+func markDuplicatesCollapsed(node *configtypes.ParsedNode, ownName string, collapsed []string) {
+	if node == nil || len(collapsed) == 0 {
+		return
+	}
+	ownName = strings.TrimSpace(ownName)
+	seen := map[string]struct{}{ownName: {}}
+	var names []string
+	for _, name := range collapsed {
+		name = strings.TrimSpace(name)
+		if _, dup := seen[name]; dup {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		names = []string{ownName}
+	}
+	list := names
+	if len(list) > maxCollapsedNames {
+		list = list[:maxCollapsedNames]
+	}
+	joined := strings.Join(list, ", ")
+	if len(names) > maxCollapsedNames {
+		joined += ", …"
+	}
+	node.AddWarningWithParams(WarnDuplicatesCollapsed, map[string]string{
+		"count": strconv.Itoa(len(collapsed)),
+		"names": joined,
+	})
 }
 
 // collapsedTags — карта «тег выброшенного дубля → тег выжившего» в ИСХОДНЫХ
@@ -159,6 +236,7 @@ func DedupParsedNodes(nodes []*configtypes.ParsedNode) []*configtypes.ParsedNode
 		}
 		kept = append(kept, n)
 	}
+	d.markSurvivors()
 	// Схлопнутый член группы перепривязывается на выжившую копию (SPEC 113-A
 	// §4). Без этого превью показывало бы группу, ссылающуюся в пустоту, или
 	// вовсе теряло её — а боевой разбор группу сохраняет.

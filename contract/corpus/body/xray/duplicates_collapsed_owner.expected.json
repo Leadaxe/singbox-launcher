@@ -1,0 +1,77 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "interval": "3m",
+        "outbounds": [
+          "🇦🇹-Австрия",
+          "🇵🇱-Польша"
+        ],
+        "type": "urltest",
+        "url": "https://www.gstatic.com/generate_204"
+      },
+      "kind": "group",
+      "label": "Авто",
+      "scheme": "group"
+    },
+    {
+      "entry": {
+        "flow": "xtls-rprx-vision",
+        "server": "a.example.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "reality": {
+            "enabled": true,
+            "public_key": "Lx2TnXgn4YbYp6h6rVr3m2DkQnq1Yl7yY0pYf0bR3X0",
+            "short_id": "ab12"
+          },
+          "server_name": "www.example.org",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "vless",
+        "uuid": "00000001-0000-4000-8000-000000000000"
+      },
+      "kind": "outbound",
+      "label": "🇦🇹 Австрия",
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "duplicates_collapsed"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "flow": "xtls-rprx-vision",
+        "server": "b.example.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "reality": {
+            "enabled": true,
+            "public_key": "Lx2TnXgn4YbYp6h6rVr3m2DkQnq1Yl7yY0pYf0bR3X0",
+            "short_id": "ab12"
+          },
+          "server_name": "www.example.org",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "vless",
+        "uuid": "00000002-0000-4000-8000-000000000000"
+      },
+      "kind": "outbound",
+      "label": "🇵🇱 Польша",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

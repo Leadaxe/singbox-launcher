@@ -854,6 +854,7 @@ func (st *bodyParseState) finish() {
 	}
 	st.res.Entries = kept
 
+	st.dedup.markSurvivors()
 	st.dedup.logSummary("(body)")
 	debuglog.DebugLog("ParseSubscriptionBody: %d entr(ies), truncated=%v, %d warning(s)",
 		len(st.res.Entries), st.res.Truncated, len(st.res.Warnings))

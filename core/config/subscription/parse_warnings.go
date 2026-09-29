@@ -129,6 +129,10 @@ const (
 	// WarnGroupMemberMissing — часть членов группы не разрешилась; группа
 	// живёт без них, код на узле-группе с числом потерянных.
 	WarnGroupMemberMissing = "group_member_missing"
+	// WarnDuplicatesCollapsed — в этот узел схлопнуты записи тела с тем же
+	// содержимым под другими именами (SPEC 154); код на выжившем с числом и
+	// именами схлопнутых.
+	WarnDuplicatesCollapsed = "duplicates_collapsed"
 	// WarnMaxNodesExceeded — тело длиннее капа узлов: хвост отброшен. Код
 	// уровня ПОДПИСКИ (FetchWarning), а не узла.
 	WarnMaxNodesExceeded = "max_nodes_exceeded"

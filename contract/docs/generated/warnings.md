@@ -37,6 +37,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`detour_with_tls_fragment`](#detour_with_tls_fragment) · `info` — {tag}: TLS fragmentation removed for the hop
 - [`dialer_proxy_unusable`](#dialer_proxy_unusable) · `error` — Preceding proxy {target} is unusable
 - [`direction_filter_matched_nothing`](#direction_filter_matched_nothing) · `warning` — Direction {direction}: filter matched no nodes
+- [`duplicates_collapsed`](#duplicates_collapsed) · `info` — Repeats of this server in the subscription: {count}
 - [`ech_ignored`](#ech_ignored) · `info` — ECH from the link removed
 - [`field_conflict`](#field_conflict) · `warning` — Field {path} removed: conflicts with {with}
 - [`field_missing`](#field_missing) · `error` — Required field {field} is missing
@@ -605,6 +606,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **Why it happens:** The filter no longer matches the node names — typically the provider renamed its servers, or the filter was written for another subscription.
 - **What you can do:**
   - Check the node filter of the direction against the current node names.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="duplicates_collapsed"></a>
+### duplicates_collapsed
+
+**severity:** `info` · **params:** `count`, `names`
+
+**Repeats of this server in the subscription: {count}**
+
+- **What happened:** The subscription lists this same server again with identical settings, under the names: {names} (repeats: {count}). They are one and the same connection, so only this entry is kept.
+- **Why it happens:** The provider repeats one server under several names — often different countries or brands. The address, keys and every other setting match exactly; only the label differs, so traffic through any of these entries takes the same path and leaves through the same exit.
+- **What you can do:**
+  - Nothing to do: nothing was lost, the subscription simply has fewer distinct servers than entries.
+  - If you need the countries named in the list, ask the provider: these names lead to the same server.
 
 **Where it comes from:**
 

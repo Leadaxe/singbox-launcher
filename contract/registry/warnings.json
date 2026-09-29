@@ -602,6 +602,30 @@
       "dart": "GroupMemberMissingWarning",
       "go": "на узле-группе (warnings у kind=auto, контракт 1.1.66), params count — число потерянных членов, одна запись на группу (повторная потеря на следующем шаге складывает число): импорт sing-box — core/config/subscription/singbox_groups.go:singboxGroupToNode; Xray-группа (балансировщик) — core/config/subscription/xray_json_array.go:resolveGroupMembers; дорезолв состава тела — core/config/subscription/parse_body.go:bodyParseState.finish; общий шаг — core/config/subscription/singbox_groups.go:markGroupMemberMissing; в состояние — core/config/migrate_materialize.go:canonicalNodeFromEntry. Потеря члена у Auto-группы канона на сборке (core/config/nodelink_resolve.go:resolveCanonicalGroup) — текстом отчёта сборки"
     },
+    "duplicates_collapsed": {
+      "severity": "info",
+      "params": [
+        "count",
+        "names"
+      ],
+      "title_en": "Repeats of this server in the subscription: {count}",
+      "title_ru": "Повторов этого сервера в подписке: {count}",
+      "text_en": "The subscription lists this same server again with identical settings, under the names: {names} (repeats: {count}). They are one and the same connection, so only this entry is kept.",
+      "text_ru": "В подписке этот же сервер с теми же настройками записан ещё раз под именами: {names} (повторов: {count}). Это одно и то же соединение, поэтому оставлена одна запись.",
+      "cause_en": "The provider repeats one server under several names — often different countries or brands. The address, keys and every other setting match exactly; only the label differs, so traffic through any of these entries takes the same path and leaves through the same exit.",
+      "cause_ru": "Провайдер повторяет один сервер под несколькими именами — часто разными странами или брендами. Адрес, ключи и все остальные настройки совпадают полностью, отличается только подпись, поэтому трафик через любую из этих записей идёт одним путём и выходит в одном месте.",
+      "fix_en": [
+        "Nothing to do: nothing was lost, the subscription simply has fewer distinct servers than entries.",
+        "If you need the countries named in the list, ask the provider: these names lead to the same server."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно: ничего не потерялось, просто разных серверов в подписке меньше, чем записей.",
+        "Если нужны именно эти страны, спросите провайдера: под этими именами один и тот же сервер."
+      ],
+      "desc": "Записи тела с одинаковым содержимым (подпись полной эмиссии без tag/detour, плюс путь дозвона) схлопнуты в первую (SPEC 113-A §2); код ставится на выжившую запись, чтобы пользователь видел, куда делись остальные (SPEC 154). count — число схлопнутых записей; names — их имена в порядке тела через \", \", без пустых, без повторов и без имени выжившего, не больше 10, дальше \", …\"; если называть некого — имя выжившего. В Xray-массиве то же для серверов, выброшенных правилом владения (SPEC 094 §342), кроме членов балансировщика своего элемента. Место — в конце кодов разбора, перед кодами санитайзера. Код — факт об источнике: пересчёт кодов по телу его не стирает, свежий разбор источника заменяет. Группы не схлопываются и кода не получают. Сводку источника и dropped[] схлопнутые записи не пополняют.",
+      "dart": null,
+      "go": "общий шаг — core/config/subscription/server_conn_key.go:markDuplicatesCollapsed; дедуп тела — core/config/subscription/server_conn_key.go:sourceDedup.markSurvivors (из core/config/subscription/parse_body.go:bodyParseState.finish и core/config/subscription/server_conn_key.go:DedupParsedNodes); Xray-массив — core/config/subscription/xray_json_array.go:xrayCollapse; пересчёт по телу бережёт — core/state/node_enabled.go:sourceFactWarningCodes"
+    },
     "group_member_dropped": {
       "severity": "warning",
       "params": [
