@@ -1,0 +1,42 @@
+{
+  "_comment": "Условия правил сняла пустая переменная (поле тела узла отсутствует, текстовая переменная пресета без значения): правило маршрута и DNS-правило без условий выпадают с template_fragment_dropped, а не матчат всё (контракт 1.1.100).",
+  "preset": {
+    "for_each": {
+      "node_type": "tailscale",
+      "as": "n"
+    },
+    "vars": [
+      {
+        "name": "text_a",
+        "type": "text"
+      }
+    ],
+    "rules": [
+      {
+        "domain": [
+          "@n.body.missing"
+        ],
+        "outbound": "@n"
+      },
+      {
+        "domain_suffix": "@text_a",
+        "outbound": "@n"
+      }
+    ],
+    "dns_rules": [
+      {
+        "domain_suffix": "@text_a",
+        "server": "@n"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts"
+      }
+    }
+  ]
+}

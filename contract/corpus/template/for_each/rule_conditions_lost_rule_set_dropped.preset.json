@@ -1,0 +1,32 @@
+{
+  "_comment": "Все ссылки rule_set висячие (набора нет): правило маршрута и DNS-правило выпадают с template_fragment_dropped, а не матчат всё (контракт 1.1.82, 1.1.100).",
+  "preset": {
+    "for_each": {
+      "node_type": "tailscale",
+      "as": "n"
+    },
+    "rules": [
+      {
+        "rule_set": [
+          "absent"
+        ],
+        "outbound": "@n"
+      }
+    ],
+    "dns_rules": [
+      {
+        "rule_set": "absent",
+        "server": "@n"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts"
+      }
+    }
+  ]
+}

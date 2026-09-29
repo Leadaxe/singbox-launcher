@@ -269,17 +269,17 @@
     "rules": [
       {
         "action": "sniff",
-        "inbound": [
-          "tun-in",
-          "proxy-in"
+        "network": [
+          "tcp",
+          "udp"
         ],
         "timeout": "300ms"
       },
       {
         "action": "resolve",
-        "inbound": [
-          "tun-in",
-          "proxy-in"
+        "network": [
+          "tcp",
+          "udp"
         ],
         "strategy": "ipv4_only"
       },
@@ -332,13 +332,6 @@
           "tcp",
           "udp"
         ],
-        "outbound": "direct-out"
-      },
-      {
-        "network": [
-          "tcp",
-          "udp"
-        ],
         "outbound": "proxy-out",
         "rule_set": "ai-services:ai-services"
       },
@@ -356,13 +349,6 @@
           "russian:ru-domains",
           "russian:ru-services"
         ]
-      },
-      {
-        "network": [
-          "tcp",
-          "udp"
-        ],
-        "outbound": "proxy-out"
       },
       {
         "outbound": "proxy-out",

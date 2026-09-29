@@ -123,6 +123,24 @@ func fragmentDropped(owner, kind, reason string) ExpandWarning {
 	}
 }
 
+// WarnTemplateRuleUnconditional — правило пресета (route.rules или
+// dns.rules) без единого поля-условия включено в конфиг: так его написал
+// автор (или его #if вычислился в пустоту), и оно совпадает со всем трафиком
+// или всеми запросами (SPEC 152). Параметры: owner — id пресета, kind —
+// секция конфига.
+const WarnTemplateRuleUnconditional = "template_rule_unconditional"
+
+// ruleUnconditional — предупреждение о правиле без условий, оставленном в
+// конфиге.
+func ruleUnconditional(owner, kind string) ExpandWarning {
+	return ExpandWarning{
+		PresetID: owner,
+		Message:  fmt.Sprintf("%s entry has no conditions and matches everything", kind),
+		Code:     WarnTemplateRuleUnconditional,
+		Params:   map[string]string{"owner": owner, "kind": kind},
+	}
+}
+
 // substitutionWarnings — предупреждения канонического обходчика в форме
 // ExpandWarning: один канал для всего, что пресет сообщает сборке.
 func substitutionWarnings(presetID string, ws []template.TemplateWarning) []ExpandWarning {
@@ -409,7 +427,7 @@ func expandPresetBody(preset *template.Preset, varsMap map[string]string, global
 				Message: fmt.Sprintf("deep copy rules[%d]: %v", idx, err)})
 			continue
 		}
-		substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target, scope)
+		substituted, subWarns, emptyRef, ok := substitutePresetRule(raw, preset.Vars, globalDecls, varsMap, target, scope)
 		warnings = append(warnings, substitutionWarnings(preset.ID, subWarns)...)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{PresetID: preset.ID,
@@ -428,7 +446,9 @@ func expandPresetBody(preset *template.Preset, varsMap map[string]string, global
 			m = outboundutil.ApplyOutboundToRule(m, outbound)
 		}
 		// Гейты после Dropped-каскада (§5.1): без цели правило ядру не
-		// нужно, без условий — матчило бы весь трафик.
+		// нужно. Без условий оно матчит весь трафик: выпадает, если условия
+		// снял сбой (висячий rule_set, пустая переменная), и идёт в конфиг с
+		// предупреждением, если так написал автор (SPEC 152).
 		switch {
 		case len(m) == 0:
 			// Всё правило — ветка #if с ложным условием: его выключил автор
@@ -437,8 +457,13 @@ func expandPresetBody(preset *template.Preset, varsMap map[string]string, global
 				Message: fmt.Sprintf("rules[%d] is empty after #if — skipped", idx)})
 		case isRuleUnusable(m):
 			warnings = append(warnings, fragmentDropped(preset.ID, fragmentKindRule, "outbound/action"))
-		case ruleSetLost, isRuleEmpty(m, emittedTags):
+		case ruleSetLost:
 			warnings = append(warnings, fragmentDropped(preset.ID, fragmentKindRule, "rule_set"))
+		case isRuleEmpty(m, emittedTags) && emptyRef:
+			warnings = append(warnings, fragmentDropped(preset.ID, fragmentKindRule, "rule_set"))
+		case isRuleEmpty(m, emittedTags):
+			warnings = append(warnings, ruleUnconditional(preset.ID, fragmentKindRule))
+			frags.RoutingRules = append(frags.RoutingRules, m)
 		default:
 			frags.RoutingRules = append(frags.RoutingRules, m)
 		}
@@ -638,27 +663,35 @@ func extractIfFromMap(m map[string]interface{}) (ifList, ifOrList []string) {
 //
 // target — для @runtime.* globals (SPEC 067, SPEC 097).
 func substitutePresetBody(raw interface{}, presetVars []template.PresetVar, globalDecls []template.TemplateVar, varsMap map[string]string, target template.TargetSpec, scope *template.NodeScope) (interface{}, []template.TemplateWarning, bool) {
+	out, warns, _, ok := substitutePresetRule(raw, presetVars, globalDecls, varsMap, target, scope)
+	return out, warns, ok
+}
+
+// substitutePresetRule — substitutePresetBody для правила: emptyRef — хоть
+// одна ссылка на переменную в правиле не дала значения (Dropped или нулевое
+// значение JSON). По нему гейт «правило без условий» отличает сбой от
+// замысла автора (SPEC 152).
+func substitutePresetRule(raw interface{}, presetVars []template.PresetVar, globalDecls []template.TemplateVar, varsMap map[string]string, target template.TargetSpec, scope *template.NodeScope) (result interface{}, warns []template.TemplateWarning, emptyRef bool, ok bool) {
 	if raw == nil {
-		return nil, nil, true
+		return nil, nil, false, true
 	}
 	data, err := json.Marshal(raw)
 	if err != nil {
-		return nil, nil, false
+		return nil, nil, false, false
 	}
 	decls, resolved := presetSubstitutionScope(presetVars, globalDecls, varsMap)
-	out, warns, err := template.SubstituteVarsInJSONCanonScoped(data, decls, resolved, target, scope)
+	out, warns, emptyRef, err := template.SubstituteVarsInJSONCanonScoped(data, decls, resolved, target, scope)
 	if err != nil {
-		return nil, nil, false
+		return nil, nil, false, false
 	}
 	// Decode back via UseNumber to preserve int precision (обходчик внутри
 	// читает так же).
 	dec := json.NewDecoder(bytes.NewReader(out))
 	dec.UseNumber()
-	var result interface{}
 	if err := dec.Decode(&result); err != nil {
-		return nil, nil, false
+		return nil, nil, false, false
 	}
-	return result, warns, true
+	return result, warns, emptyRef, true
 }
 
 // presetVarsToTemplateVars — converts PresetVar list to TemplateVar list,
@@ -969,7 +1002,7 @@ func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{},
 		*warnings = append(*warnings, ExpandWarning{PresetID: preset.ID, Message: fmt.Sprintf("deep copy dns_rule: %v", err)})
 		return nil, false
 	}
-	substituted, subWarns, ok := substitutePresetBody(raw, preset.Vars, globalDecls, varsMap, target, scope)
+	substituted, subWarns, emptyRef, ok := substitutePresetRule(raw, preset.Vars, globalDecls, varsMap, target, scope)
 	*warnings = append(*warnings, substitutionWarnings(preset.ID, subWarns)...)
 	if !ok {
 		*warnings = append(*warnings, ExpandWarning{PresetID: preset.ID, Message: "substitution in dns_rule failed — rule dropped"})
@@ -997,14 +1030,19 @@ func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{},
 		return nil, false
 	}
 	// Гейты после Dropped-каскада (§5.1): без сервера и action правило
-	// ядру не нужно, без условий — перехватывало бы все запросы.
+	// ядру не нужно. Без условий оно перехватывает все запросы: выпадает,
+	// если условия снял сбой, и остаётся с предупреждением, если так
+	// написал автор (SPEC 152).
 	if isDNSRuleUnusable(m) {
 		*warnings = append(*warnings, fragmentDropped(preset.ID, fragmentKindDNSRule, "server/action"))
 		return nil, false
 	}
-	if ruleSetLost || isDNSRuleEmpty(m, emittedTags) {
+	if ruleSetLost || (emptyRef && isDNSRuleEmpty(m, emittedTags)) {
 		*warnings = append(*warnings, fragmentDropped(preset.ID, fragmentKindDNSRule, "rule_set"))
 		return nil, false
+	}
+	if isDNSRuleEmpty(m, emittedTags) {
+		*warnings = append(*warnings, ruleUnconditional(preset.ID, fragmentKindDNSRule))
 	}
 	return m, true
 }

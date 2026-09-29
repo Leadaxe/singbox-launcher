@@ -360,7 +360,7 @@
    "type": "enum",
    "wizard_ui": "edit",
    "title": "Route resolve strategy",
-   "tooltip": "Resolution strategy for route rules with action resolve on tun-in and proxy-in (sing-box: prefer_ipv4, prefer_ipv6, ipv4_only, ipv6_only).",
+   "tooltip": "Resolution strategy for the route rule with action resolve, applied to connections from every inbound and endpoint (sing-box: prefer_ipv4, prefer_ipv6, ipv4_only, ipv6_only).",
    "default_value": "ipv4_only",
    "options": [
     "prefer_ipv4",
@@ -1058,23 +1058,9 @@
        "@sniff_enabled"
       ],
       "#value": {
-       "inbound": [
-        {
-         "#if": {
-          "#and": [
-           "@tun"
-          ],
-          "#value": "tun-in"
-         }
-        },
-        {
-         "#if": {
-          "#and": [
-           "@enable_proxy_in"
-          ],
-          "#value": "proxy-in"
-         }
-        }
+       "network": [
+        "tcp",
+        "udp"
        ],
        "action": "sniff",
        "timeout": "@sniff_timeout"
@@ -1098,23 +1084,9 @@
        "@resolve_enabled"
       ],
       "#value": {
-       "inbound": [
-        {
-         "#if": {
-          "#and": [
-           "@tun"
-          ],
-          "#value": "tun-in"
-         }
-        },
-        {
-         "#if": {
-          "#and": [
-           "@enable_proxy_in"
-          ],
-          "#value": "proxy-in"
-         }
-        }
+       "network": [
+        "tcp",
+        "udp"
        ],
        "action": "resolve",
        "strategy": "@resolve_strategy"

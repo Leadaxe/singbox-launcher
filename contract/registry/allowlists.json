@@ -137,7 +137,7 @@
         "rule_set",
         "rules"
       ],
-      "note": "Поля-условия правила route.rules: зеркало RawDefaultRule ядра (option/rule.go) без invert, плюс rules логического правила. Гейт «правило без условий» (template_fragment_dropped, TEMPLATE_LANG §5.1): правило, в котором после подстановки и Dropped-каскада не осталось ни одного ключа из этого списка, выпадает — иначе оно матчило бы весь трафик. Всё прочее (outbound, action и опции действий, invert, rule_set_ip_cidr_match_source, служебные if/if_or) условием не считается. Белый список, а не список служебных ключей: новая опция действия не превращает правило-перехватчик в «правило с условием». Сверять с option/rule.go ядра, не по памяти. Контракт 1.1.81."
+      "note": "Поля-условия правила route.rules: зеркало RawDefaultRule ядра (option/rule.go) без invert, плюс rules логического правила. Гейт «правило без условий» (TEMPLATE_LANG §5.1): правило, в котором после подстановки и Dropped-каскада не осталось ни одного ключа из этого списка, матчит весь трафик. Если условия снял сбой (все ссылки rule_set висячие или хоть одна ссылка на переменную в правиле дала Dropped либо нулевое значение), оно выпадает с template_fragment_dropped; если так написал автор (голый action, условия только в ложных ветках #if), идёт в конфиг как есть с template_rule_unconditional (контракт 1.1.100). Всё прочее (outbound, action и опции действий, invert, rule_set_ip_cidr_match_source, служебные if/if_or) условием не считается. Белый список, а не список служебных ключей: новая опция действия не превращает правило-перехватчик в «правило с условием». Сверять с option/rule.go ядра, не по памяти. Контракт 1.1.81."
     },
     "dns_rule_conditions": {
       "values": [
@@ -193,7 +193,7 @@
         "response_ns",
         "response_extra"
       ],
-      "note": "Поля-условия правила dns.rules: зеркало RawDefaultDNSRule ядра (option/rule_dns.go) без invert и модификаторов (match_response, rule_set_ip_cidr_match_source, rule_set_ip_cidr_accept_empty), плюс rules логического правила. outbound здесь — условие (исходящий, от имени которого идёт запрос), а не цель. Тот же гейт, что у route_rule_conditions: DNS-правило без единого ключа из списка после Dropped выпадает, в том числе с action. Контракт 1.1.81."
+      "note": "Поля-условия правила dns.rules: зеркало RawDefaultDNSRule ядра (option/rule_dns.go) без invert и модификаторов (match_response, rule_set_ip_cidr_match_source, rule_set_ip_cidr_accept_empty), плюс rules логического правила. outbound здесь — условие (исходящий, от имени которого идёт запрос), а не цель. Тот же гейт, что у route_rule_conditions: DNS-правило без единого ключа из списка перехватывает все запросы; выпадает с template_fragment_dropped, если условия снял сбой (висячий rule_set, пустая переменная), и идёт в конфиг с template_rule_unconditional, если так написал автор (в том числе action-правило без условий). Контракт 1.1.81, 1.1.100."
     }
   }
 }
