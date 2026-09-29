@@ -797,6 +797,9 @@ func parseXrayJSONArrayElementNodes(
 		}
 
 		out = append(out, node)
+		if hasBalancer && !xrayBalancerSelects(root, xrayMapString(ob, "tag")) {
+			continue
+		}
 		memberTags = append(memberTags, node.Tag)
 	}
 

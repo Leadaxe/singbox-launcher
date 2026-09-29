@@ -1,0 +1,24 @@
+{
+  "rules": [
+    {
+      "type": "logical",
+      "mode": "and",
+      "rules": [
+        {
+          "network": "udp"
+        },
+        {
+          "rule_set": [
+            "games"
+          ]
+        }
+      ],
+      "outbound": "home-ts"
+    }
+  ],
+  "dns_servers": [],
+  "dns_rules": [],
+  "warnings": [
+    "template_fragment_dropped"
+  ]
+}

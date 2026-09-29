@@ -815,14 +815,26 @@ func rewriteRuleSetRefs(m map[string]interface{}, presetID string, validTags map
 		}
 		return presetID + TagSeparator + tag
 	}
+	// Под-правила логического правила несут свои ссылки rule_set: их
+	// переписывают тем же ходом, и висячие ВСЕ ссылки под-правила снимают
+	// всё правило (контракт 1.1.107) — снятое условие под-правила расширило
+	// бы совпадение так же, как у правила верхнего уровня.
+	lost := false
+	if subs, ok := m[logicalSubRulesKey].([]interface{}); ok {
+		for _, sub := range subs {
+			if sm, ok := sub.(map[string]interface{}); ok && rewriteRuleSetRefs(sm, presetID, validTags) {
+				lost = true
+			}
+		}
+	}
 	ref, ok := m["rule_set"]
 	if !ok {
-		return false
+		return lost
 	}
 	switch v := ref.(type) {
 	case string:
 		if v == "" {
-			return false
+			return lost
 		}
 		if validTags[v] {
 			m["rule_set"] = ns(v)
@@ -830,6 +842,7 @@ func rewriteRuleSetRefs(m map[string]interface{}, presetID string, validTags map
 			delete(m, "rule_set")
 			return true
 		}
+		return lost
 	case []interface{}:
 		out := make([]interface{}, 0, len(v))
 		for _, x := range v {
@@ -846,10 +859,10 @@ func rewriteRuleSetRefs(m map[string]interface{}, presetID string, validTags map
 			m["rule_set"] = out
 		} else {
 			delete(m, "rule_set")
-			return len(v) > 0
+			return lost || len(v) > 0
 		}
 	}
-	return false
+	return lost
 }
 
 // Имена списков полей-условий в реестре (allowlists.json). Набор условий —
@@ -859,17 +872,39 @@ const (
 	dnsRuleConditionsList   = "dns_rule_conditions"
 )
 
+// logicalSubRulesKey — ключ под-правил логического правила (route и DNS).
+const logicalSubRulesKey = "rules"
+
 // isRuleEmpty — правило маршрута без единого поля-условия (реестр,
 // route_rule_conditions): после Dropped-каскада оно матчило бы весь трафик.
+// Под-правила логического правила судятся тем же гейтом рекурсивно
+// (контракт 1.1.107): под-правило без условий делает «без условий» всё
+// правило, при and и при or одинаково.
 func isRuleEmpty(m map[string]interface{}, _ map[string]bool) bool {
-	return !hasRuleCondition(m, routeRuleConditionsList)
+	return hasUnconditionalPart(m, routeRuleConditionsList)
 }
 
 // isDNSRuleEmpty — DNS-правило без единого поля-условия (реестр,
 // dns_rule_conditions). action условием не считается: action-правило без
 // условий перехватило бы все запросы так же, как правило с server.
+// Под-правила — рекурсивно, как у isRuleEmpty.
 func isDNSRuleEmpty(m map[string]interface{}, _ map[string]bool) bool {
-	return !hasRuleCondition(m, dnsRuleConditionsList)
+	return hasUnconditionalPart(m, dnsRuleConditionsList)
+}
+
+// hasUnconditionalPart — у правила или у одного из его под-правил (на любой
+// глубине) не осталось ни одного поля-условия.
+func hasUnconditionalPart(m map[string]interface{}, list string) bool {
+	if !hasRuleCondition(m, list) {
+		return true
+	}
+	subs, _ := m[logicalSubRulesKey].([]interface{})
+	for _, sub := range subs {
+		if sm, ok := sub.(map[string]interface{}); ok && hasUnconditionalPart(sm, list) {
+			return true
+		}
+	}
+	return false
 }
 
 // hasRuleCondition — в правиле есть хоть одно поле из списка условий

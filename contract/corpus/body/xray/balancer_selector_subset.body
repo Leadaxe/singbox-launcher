@@ -1,0 +1,5 @@
+# Пул Xray берётся по selector балансировщика (контракт 1.1.107): селектор
+# матчит tag записи префиксом в границах элемента. «px-1» и «px-2» выбраны
+# префиксом «px» — члены группы «pool»; «other» селектор не выбирает — узел
+# элемента, но не член группы. Подписи всех серверов пула — remarks + tag.
+[{"remarks": "pool", "outbounds": [{"tag": "px-1", "protocol": "vless", "settings": {"vnext": [{"address": "a.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555"}]}]}, "streamSettings": {"network": "tcp", "security": "none"}}, {"tag": "px-2", "protocol": "vless", "settings": {"vnext": [{"address": "b.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555"}]}]}, "streamSettings": {"network": "tcp", "security": "none"}}, {"tag": "other", "protocol": "vless", "settings": {"vnext": [{"address": "c.example", "port": 443, "users": [{"id": "11111111-2222-3333-4444-555555555555"}]}]}, "streamSettings": {"network": "tcp", "security": "none"}}], "routing": {"balancers": [{"tag": "pool", "selector": ["px"], "strategy": {"type": "leastPing"}}]}}]

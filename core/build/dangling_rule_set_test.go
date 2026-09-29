@@ -17,7 +17,8 @@ import (
 // целиком, что бы в нём ни осталось, — иначе соседние поля (`network`,
 // `server`) расширяли бы правило до всего трафика (SPEC 153). Частично
 // уцелевший список наборов правило сохраняет. Route и DNS, пресеты и
-// пользовательские правила; выпадение — template_fragment_dropped.
+// пользовательские правила, под-правила логического правила (1.1.107);
+// выпадение — template_fragment_dropped.
 func TestDanglingRuleSetDropsRule(t *testing.T) {
 	t.Run("wizard_template", func(t *testing.T) {
 		raw, err := os.ReadFile(filepath.Join("..", "..", "bin", "wizard_template.json"))
@@ -59,11 +60,14 @@ func TestDanglingRuleSetDropsRule(t *testing.T) {
 			],
 			"rules": [
 				{"rule_set": "rem", "network": ["tcp", "udp"], "outbound": "direct-out"},
-				{"rule_set": ["inl", "rem"], "network": ["tcp", "udp"], "outbound": "direct-out"}
+				{"rule_set": ["inl", "rem"], "network": ["tcp", "udp"], "outbound": "direct-out"},
+				{"type": "logical", "mode": "or", "rules": [{"rule_set": "rem"}, {"domain": ["b.example"]}], "outbound": "direct-out"},
+				{"type": "logical", "mode": "and", "rules": [{"rule_set": ["inl", "rem"]}, {"network": "udp"}], "outbound": "direct-out"}
 			],
 			"dns_rules": [
 				{"rule_set": "rem", "server": "remote"},
-				{"rule_set": ["inl", "rem"], "server": "remote"}
+				{"rule_set": ["inl", "rem"], "server": "remote"},
+				{"type": "logical", "mode": "or", "rules": [{"rule_set": "rem"}, {"domain": ["b.example"]}], "server": "remote"}
 			]
 		}`)
 		var p template.Preset
@@ -96,7 +100,11 @@ func TestDanglingRuleSetDropsRule(t *testing.T) {
 		}
 		_ = json.Unmarshal(route, &r)
 		gotRoute, _ := json.Marshal(r.Rules)
-		wantRoute := `[{"network":["tcp","udp"],"outbound":"direct-out","rule_set":["p:inl"]}]`
+		// Под-правила логического правила (контракт 1.1.107): под-правило
+		// без единой живой ссылки снимает всё правило, частично уцелевший
+		// список сужается.
+		wantRoute := `[{"network":["tcp","udp"],"outbound":"direct-out","rule_set":["p:inl"]},` +
+			`{"mode":"and","outbound":"direct-out","rules":[{"rule_set":["p:inl"]},{"network":"udp"}],"type":"logical"}]`
 		if string(gotRoute) != wantRoute {
 			t.Errorf("route.rules:\n got  %s\n want %s", gotRoute, wantRoute)
 		}

@@ -31,11 +31,11 @@ const xrayBalancerDefaultInterval = "3m"
 // Возвращает nil, если балансировщика нет или его состав пуст: пустой urltest
 // роняет старт ядра.
 //
-// memberTags — итоговые теги узлов этого элемента в порядке появления.
-// Состав берётся по ним, а не по `selector`: селектор Xray матчит теги
-// ПРЕФИКСОМ в границах своего конфига, и тот же тег `proxy` встречается ещё в
-// трёх десятках соседних элементов — общий матчинг растащил бы в пул всё
-// подряд.
+// memberTags — итоговые теги узлов этого элемента, выбранных `selector`
+// (xrayBalancerSelects), в порядке появления. Селектор матчится только по
+// записям своего элемента: он действует в границах своего конфига, и тот же
+// тег `proxy` встречается ещё в трёх десятках соседних элементов — общий
+// матчинг растащил бы в пул всё подряд.
 func xrayBalancerFromElement(
 	root map[string]interface{},
 	remarks string,
@@ -109,6 +109,37 @@ func xrayFirstBalancer(root map[string]interface{}) (map[string]interface{}, boo
 		return nil, false
 	}
 	return b, true
+}
+
+// xrayBalancerSelects — выбирает ли `selector` балансировщика запись с этим
+// tag (контракт 1.1.107): автор подписки явно указал пул, сервер вне его —
+// самостоятельный узел элемента, а не член группы. Селектор Xray матчит тег
+// ПРЕФИКСОМ; матчинг идёт по записям своего элемента (см.
+// xrayBalancerFromElement — почему не по всему документу). Запись без tag
+// селектор назвать не может, её не выбросить: она член пула. Селектора нет
+// или он пуст — пул весь элемент.
+func xrayBalancerSelects(root map[string]interface{}, tag string) bool {
+	balancer, ok := xrayFirstBalancer(root)
+	if !ok {
+		return true
+	}
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return true
+	}
+	selector, _ := balancer["selector"].([]interface{})
+	named := false
+	for _, x := range selector {
+		prefix, _ := x.(string)
+		if prefix = strings.TrimSpace(prefix); prefix == "" {
+			continue
+		}
+		named = true
+		if strings.HasPrefix(tag, prefix) {
+			return true
+		}
+	}
+	return !named
 }
 
 // xrayBalancerURL достаёт цель проверки из burstObservatory.pingConfig.

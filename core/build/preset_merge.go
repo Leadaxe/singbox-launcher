@@ -102,13 +102,16 @@ func cleanDanglingRuleSetInRule(rule map[string]interface{}, emittedTags map[str
 	if rule == nil {
 		return nil, false
 	}
-	ref, ok := rule["rule_set"]
-	if !ok {
-		return rule, false // нет rule_set → ничего убирать
-	}
 	out := make(map[string]interface{}, len(rule))
 	for k, v := range rule {
 		out[k] = v
+	}
+	if pruneSubRuleSetRefs(out, emittedTags) {
+		return nil, true
+	}
+	ref, ok := out["rule_set"]
+	if !ok {
+		return out, false // нет rule_set → ничего убирать
 	}
 	switch v := ref.(type) {
 	case string:
@@ -151,6 +154,72 @@ func cleanDanglingRuleSetInRule(rule map[string]interface{}, emittedTags map[str
 		return nil, false
 	}
 	return out, false
+}
+
+// pruneSubRuleSetRefs чистит висячие ссылки rule_set в под-правилах
+// логического правила (контракт 1.1.107): имя рядом с живыми убирается, а
+// под-правило, у которого висячими оказались ВСЕ ссылки, снимает всё правило
+// (true) — снятое условие под-правила расширило бы совпадение так же, как у
+// правила верхнего уровня. Под-правила переписываются копиями: тело правила
+// приходит из общего результата раскрытия.
+func pruneSubRuleSetRefs(out map[string]interface{}, validTags map[string]bool) bool {
+	subs, ok := out[logicalSubRulesKey].([]interface{})
+	if !ok {
+		return false
+	}
+	cleaned := make([]interface{}, 0, len(subs))
+	for _, sub := range subs {
+		sm, ok := sub.(map[string]interface{})
+		if !ok {
+			cleaned = append(cleaned, sub)
+			continue
+		}
+		c := make(map[string]interface{}, len(sm))
+		for k, v := range sm {
+			c[k] = v
+		}
+		if pruneSubRuleSetRefs(c, validTags) {
+			return true
+		}
+		switch v := c["rule_set"].(type) {
+		case string:
+			if v != "" && !validTags[v] {
+				return true
+			}
+		case []interface{}:
+			kept := make([]interface{}, 0, len(v))
+			for _, x := range v {
+				if s, ok := x.(string); ok && validTags[s] {
+					kept = append(kept, s)
+				}
+			}
+			if len(kept) == 0 {
+				if len(v) > 0 {
+					return true
+				}
+				delete(c, "rule_set")
+			} else {
+				c["rule_set"] = kept
+			}
+		}
+		cleaned = append(cleaned, c)
+	}
+	out[logicalSubRulesKey] = cleaned
+	return false
+}
+
+// hasRuleSetRef — правило или одно из его под-правил ссылается на rule_set.
+func hasRuleSetRef(m map[string]interface{}) bool {
+	if _, has := m["rule_set"]; has {
+		return true
+	}
+	subs, _ := m[logicalSubRulesKey].([]interface{})
+	for _, sub := range subs {
+		if sm, ok := sub.(map[string]interface{}); ok && hasRuleSetRef(sm) {
+			return true
+		}
+	}
+	return false
 }
 
 // SRSTagFromURL — content-addressed SRS tag, shared with the configurator UI
@@ -433,7 +502,7 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 		}
 		// Правило пресета без rule_set едет как есть: его гейты уже прошли
 		// при раскрытии (SPEC 152 — action-правило без условий законно).
-		if _, has := dr.Body["rule_set"]; dr.Source == DNSSourcePreset && !has {
+		if dr.Source == DNSSourcePreset && !hasRuleSetRef(dr.Body) {
 			dnsRules = append(dnsRules, dr.Body)
 			continue
 		}
@@ -611,6 +680,9 @@ func cleanDanglingDNSRule(rule map[string]interface{}, validTags map[string]bool
 	out := make(map[string]interface{}, len(rule))
 	for k, v := range rule {
 		out[k] = v
+	}
+	if pruneSubRuleSetRefs(out, validTags) {
+		return nil, true
 	}
 
 	if ref, has := out["rule_set"]; has {

@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "a.example",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "pool px-1",
+      "scheme": "vless"
+    },
+    {
+      "entry": {
+        "server": "b.example",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "pool px-2",
+      "scheme": "vless"
+    },
+    {
+      "entry": {
+        "server": "c.example",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "pool other",
+      "scheme": "vless"
+    },
+    {
+      "entry": {
+        "interval": "3m",
+        "outbounds": [
+          "pool px-1",
+          "pool px-2"
+        ],
+        "type": "urltest",
+        "url": "https://www.gstatic.com/generate_204"
+      },
+      "kind": "group",
+      "label": "pool",
+      "scheme": "group"
+    }
+  ],
+  "v": 1
+}
