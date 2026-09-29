@@ -145,7 +145,7 @@ folder, the app bundle or `PATH`:
 
 | Action | What root runs |
 |---|---|
-| Start with TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/sh -c '<constant body>' start-singbox-privileged <data>/bin <copy> config.json /Library/Logs/sing-box-lxd 0 <your uid> 2097152` |
+| Start with TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/bash -p -c '<constant body>' start-singbox-privileged <data>/bin <copy> config.json /Library/Logs/sing-box-lxd 0 <your uid> 2097152 0` |
 | Stop / restart | `/bin/kill -TERM <shell pid> <core pid>` |
 | Kill in "Sing-Box already running" and in Diagnostics | `/usr/bin/pkill -TERM -f 'sing-box run\|start-singbox-privileged'` |
 | Turning TUN off in the wizard | nothing — the launcher removes the leftovers itself |

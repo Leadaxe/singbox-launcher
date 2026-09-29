@@ -113,14 +113,23 @@ func IsPrivilegedCoreProcessName(name string) bool {
 // путям — копия ядра (путь передаёт core) и системные утилиты. Ничего из
 // каталога данных, бандла или PATH.
 const (
-	privilegedEnvTool   = "/usr/bin/env"
-	privilegedShell     = "/bin/sh"
-	privilegedKillTool  = "/bin/kill"
-	privilegedPkillTool = "/usr/bin/pkill"
+	privilegedEnvTool = "/usr/bin/env"
+	// privilegedShell — bash по имени, а не /bin/sh: тот запускает шелл,
+	// выбранный в /private/var/select/sh, а флаг privilegedShellKeepUID
+	// понимает не каждый (dash — нет).
+	privilegedShell = "/bin/bash"
+	// privilegedShellKeepUID — AEWP отдаёт инструменту euid 0 при real uid
+	// пользователя, а bash при euid != uid сбрасывает euid к uid. От сброса
+	// его удерживает переменная `_BASH_IMPLICIT_DASH_PEE=-p`, которую AEWP
+	// кладёт в окружение, но `env -i` стирает её вместе с остальным: тело
+	// и ядро работали без root (issue #138). Флаг делает то же явно.
+	privilegedShellKeepUID = "-p"
+	privilegedKillTool     = "/bin/kill"
+	privilegedPkillTool    = "/usr/bin/pkill"
 	// privilegedSafePath — единственная переменная окружения root-шелла.
 	// AEWP передаёт инструменту окружение лаунчера, а его задаёт
-	// пользователь: PATH решал бы, какой `rm` запустит root, а /bin/sh
-	// (bash) подхватывает функции из `BASH_FUNC_<имя>%%` и подменил бы ими
+	// пользователь: PATH решал бы, какой `rm` запустит root, а bash
+	// подхватывает функции из `BASH_FUNC_<имя>%%` и подменил бы ими
 	// даже `echo` постоянного тела. `env -i` отрезает всё это.
 	privilegedSafePath = "PATH=/usr/bin:/bin:/usr/sbin:/sbin"
 )
@@ -167,19 +176,25 @@ const privilegedAuthReuse = true
 // константа, пути приходят позиционными аргументами — $1 каталог bin,
 // $2 копия ядра, $3 имя конфига, $4 каталог лога, $5 ожидаемый владелец
 // каталога лога (uid; 0 в проде), $6 uid пользователя лаунчера — владелец
-// файла лога, $7 порог ротации в байтах.
+// файла лога, $7 порог ротации в байтах, $8 uid, под которым обязан работать
+// шелл (0 в проде).
 //
-// До первого PID тело готовит лог, ничего не следуя по симлинкам: $6 —
+// Первым делом тело сверяет свой euid с $8: шелл без root не откроет лог и
+// запустит ядро без прав на TUN, поэтому отказ называет оба uid (issue
+// #138). До первого PID тело готовит лог, ничего не следуя по симлинкам: $6 —
 // только цифры, не меньше 501, пользователь существует (`/usr/bin/id`);
 // каталог не симлинк, создаётся и проверяется как каталог владельца $5,
 // 0755; файл, если есть, — обычный файл этого пользователя или root,
 // отдаётся пользователю (0600), больше порога — уезжает в .old с тем же
-// владельцем; новый файл — тоже пользователю, 0600. Отказ — строка
+// владельцем; новый файл — тоже пользователю, 0600, а если он не открылся,
+// отказ несёт причину от системы. Отказ — строка
 // «refused: <причина>» вместо PID (её читает RunWithPrivileges), и ядро не
 // стартует. Затем первые две строки stdout — PID шелла и PID ядра; stdout
 // шелла уходит в лог, шелл ждёт ядро, и его выход — выход ядра
 // (WaitForPrivilegedExit).
 const privilegedStartBody = `umask 022
+w="$(/usr/bin/id -u)"
+if [ "$w" != "$8" ]; then echo "refused: the start shell runs as uid $w (real uid $(/usr/bin/id -ru)), not $8"; exit 1; fi
 d="$4"
 f="$d/` + privilegedLogName + `"
 u="$6"
@@ -197,7 +212,7 @@ if [ -e "$f" ] || [ -L "$f" ]; then
   /bin/chmod 0600 "$f" && /usr/sbin/chown "$u:$g" "$f" || { echo "refused: cannot hand $f to uid $u"; exit 1; }
   if [ "$(/usr/bin/stat -f %z "$f")" -gt "$7" ]; then /bin/mv -f "$f" "$f.old" || { echo "refused: cannot rotate $f"; exit 1; }; fi
 fi
-: >>"$f" || { echo "refused: cannot open $f"; exit 1; }
+m="$( { : >>"$f"; } 2>&1 )" || { echo "refused: cannot open $f: ${m##*: }"; exit 1; }
 /bin/chmod 0600 "$f" && /usr/sbin/chown "$u:$g" "$f" || { echo "refused: cannot hand $f to uid $u"; exit 1; }
 cd "$1" || { echo "refused: cannot enter $1"; exit 1; }
 echo $$
@@ -262,17 +277,18 @@ func RunWithPrivileges(toolPath string, args []string) (scriptPID, singboxPID in
 }
 
 // PrivilegedStartArgs — инструмент и argv AEWP для старта ядра corePath с
-// TUN (SPEC 137 §3): `/usr/bin/env -i PATH=… /bin/sh -c <тело> <имя>
+// TUN (SPEC 137 §3): `/usr/bin/env -i PATH=… /bin/bash -p -c <тело> <имя>
 // <bin> <ядро> <конфиг> <каталог лога> <владелец каталога> <uid
-// пользователя> <порог>`. env заменяет себя шеллом через exec — PID для
-// Wait4 тот же. Каталог лога и его владелец — параметры ради теста тела без
-// root; прод — StartPrivilegedCore.
-func PrivilegedStartArgs(corePath, binDir, configName, logDir string, logDirOwnerUID, userUID int, rotateBytes int64) (tool string, args []string) {
+// пользователя> <порог> <uid шелла>`. env заменяет себя шеллом через exec —
+// PID для Wait4 тот же. Каталог лога, его владелец и uid шелла — параметры
+// ради теста тела без root; прод — StartPrivilegedCore.
+func PrivilegedStartArgs(corePath, binDir, configName, logDir string, logDirOwnerUID, userUID int, rotateBytes int64, shellUID int) (tool string, args []string) {
 	return privilegedEnvTool, []string{
 		"-i", privilegedSafePath,
-		privilegedShell, "-c", privilegedStartBody,
+		privilegedShell, privilegedShellKeepUID, "-c", privilegedStartBody,
 		PrivilegedStartName, binDir, corePath, configName,
 		logDir, strconv.Itoa(logDirOwnerUID), strconv.Itoa(userUID), strconv.FormatInt(rotateBytes, 10),
+		strconv.Itoa(shellUID),
 	}
 }
 
@@ -282,7 +298,7 @@ func PrivilegedStartArgs(corePath, binDir, configName, logDir string, logDirOwne
 // 0600, SPEC 137.1). Возвращает PID
 // шелла-обёртки и PID ядра; отказ тела — ошибка с его причиной.
 func StartPrivilegedCore(corePath, binDir, configName string) (shellPID, corePID int, err error) {
-	tool, args := PrivilegedStartArgs(corePath, binDir, configName, PrivilegedLogDir, 0, os.Getuid(), privilegedLogRotateBytes)
+	tool, args := PrivilegedStartArgs(corePath, binDir, configName, PrivilegedLogDir, 0, os.Getuid(), privilegedLogRotateBytes, 0)
 	return RunWithPrivileges(tool, args)
 }
 

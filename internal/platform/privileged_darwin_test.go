@@ -23,7 +23,8 @@ import (
 // пользователя 0600 (и .old — 0600) и выходит только после ядра. Отказ с
 // причиной вместо PID, ядро не стартует: uid пользователя не число, меньше
 // 501 или без учётной записи; симлинк на месте каталога или файла лога;
-// чужой владелец каталога.
+// чужой владелец каталога; шелл под другим uid, чем ждёт тело (issue #138:
+// в проде — шелл без root).
 func TestPrivilegedStartCommand(t *testing.T) {
 	if out, err := exec.Command(privilegedShell, "-n", "-c", privilegedStartBody).CombinedOutput(); err != nil {
 		t.Fatalf("sh -n: %v (%s)", err, out)
@@ -77,9 +78,9 @@ func TestPrivilegedStartCommand(t *testing.T) {
 	// (проверка валидации в теле).
 	run := func(t *testing.T, dirOwnerUID int, userUID string) (string, *exec.Cmd) {
 		t.Helper()
-		tool, args := PrivilegedStartArgs(core, binDir, "config.json", logDir, dirOwnerUID, uid, rotate)
+		tool, args := PrivilegedStartArgs(core, binDir, "config.json", logDir, dirOwnerUID, uid, rotate, uid)
 		if userUID != "" {
-			args[11] = userUID
+			args[12] = userUID
 		}
 		cmd := exec.Command(tool, args...)
 		cmd.Env = append(os.Environ(),
@@ -92,12 +93,20 @@ func TestPrivilegedStartCommand(t *testing.T) {
 		return string(out), cmd
 	}
 
-	tool, args := PrivilegedStartArgs(core, binDir, "config.json", logDir, 0, uid, rotate)
-	if tool != privilegedEnvTool || len(args) != 13 || args[0] != "-i" || args[1] != privilegedSafePath ||
-		args[2] != privilegedShell || args[3] != "-c" || args[4] != privilegedStartBody || args[5] != PrivilegedStartName ||
-		args[6] != binDir || args[7] != core || args[8] != "config.json" || args[9] != logDir ||
-		args[10] != "0" || args[11] != strconv.Itoa(uid) || args[12] != strconv.Itoa(rotate) {
+	tool, args := PrivilegedStartArgs(core, binDir, "config.json", logDir, 0, uid, rotate, 0)
+	if tool != privilegedEnvTool || len(args) != 15 || args[0] != "-i" || args[1] != privilegedSafePath ||
+		args[2] != privilegedShell || args[3] != "-p" || args[4] != "-c" || args[5] != privilegedStartBody ||
+		args[6] != PrivilegedStartName || args[7] != binDir || args[8] != core || args[9] != "config.json" ||
+		args[10] != logDir || args[11] != "0" || args[12] != strconv.Itoa(uid) || args[13] != strconv.Itoa(rotate) ||
+		args[14] != "0" {
 		t.Fatalf("unexpected command: %s %q", tool, args)
+	}
+
+	// Прод-argv без root — случай issue #138: тело ждёт euid 0, отказ
+	// называет uid шелла.
+	if out, _ := exec.Command(tool, args...).Output(); !strings.HasPrefix(string(out),
+		"refused: the start shell runs as uid "+strconv.Itoa(uid)+" (real uid "+strconv.Itoa(uid)+"), not 0") {
+		t.Fatalf("shell without root: %q", out)
 	}
 
 	// Отказы по uid пользователя: не число, системный, несуществующий.

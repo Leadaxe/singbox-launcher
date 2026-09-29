@@ -142,7 +142,7 @@ launchd запускает службу от root. Прежние ядра за�
 
 | Действие | Что запускает root |
 |---|---|
-| Старт с TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/sh -c '<постоянное тело>' start-singbox-privileged <data>/bin <копия> config.json /Library/Logs/sing-box-lxd 0 <ваш uid> 2097152` |
+| Старт с TUN | `/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/bash -p -c '<постоянное тело>' start-singbox-privileged <data>/bin <копия> config.json /Library/Logs/sing-box-lxd 0 <ваш uid> 2097152 0` |
 | Stop / рестарт | `/bin/kill -TERM <pid шелла> <pid ядра>` |
 | Kill в «Sing-Box already running» и в Diagnostics | `/usr/bin/pkill -TERM -f 'sing-box run\|start-singbox-privileged'` |
 | Снятие TUN в визарде | ничего — остатки лаунчер удаляет сам |

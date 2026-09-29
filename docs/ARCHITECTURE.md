@@ -1151,7 +1151,7 @@ absolute path. The launcher never copies the core and never runs sudo itself.
 (`core/classic_privileged.go`, dialog texts in `_darwin.go`): the copy must exist, pass the ownership chain
 and match the launcher core by sha256 — the chain check and the hash cache are the
 SPEC 136 classifier's. Only then `platform.StartPrivilegedCore` runs
-`/usr/bin/env -i PATH=… /bin/sh -c <constant body> <paths>`: no script file, no
+`/usr/bin/env -i PATH=… /bin/bash -p -c <constant body> <paths>`: no script file, no
 launcher environment in the root shell. A refused gate shows a command dialog
 (`internal/dialogs.ShowCommandRetry`) instead of a startup error, and Retry goes
 through `StartSingBoxProcess`. The authorization lives for the launcher session;
