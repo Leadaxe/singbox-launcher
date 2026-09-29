@@ -399,6 +399,13 @@ func TestBackupExportEnvelope(t *testing.T) {
 	if err := json.Unmarshal(plain, &b); err != nil {
 		t.Fatalf("тело без конверта не JSON: %v", err)
 	}
+	// Два экспорта — два момента: exported_at пишется с точностью до
+	// секунды и на границе секунды расходится (CI Windows, run 36598147726).
+	for _, doc := range []any{a, b} {
+		if m, ok := doc.(map[string]any); ok {
+			delete(m, "exported_at")
+		}
+	}
 	if !jsonEqualAPI(a, b) {
 		t.Error("файл в конверте отличается от файла в теле")
 	}
