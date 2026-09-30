@@ -308,7 +308,7 @@ Moving from a portable copy to the installer: in the old copy switch off **Setti
 curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash
 ```
 
-Installs to `/Applications/`, removes quarantine attributes, fixes permissions, ensures compatibility with Apple Silicon and recent macOS. For a specific version:
+Installs to `/Applications/`, removes quarantine attributes, fixes permissions, ensures compatibility with Apple Silicon and recent macOS. It puts the core into the data folder and the template into the bundle, so the first start downloads nothing. At the end it offers to create the protected core copy for TUN: TUN is the system-wide VPN mode, the core needs root, and the launcher starts only the copy at `/Library/PrivilegedHelperTools/sing-box-lxd` with root (one administrator password prompt; if you skip it, the launcher asks on the first TUN start). If the Mac clock is far behind, downloads fail with `curl: (60) … certificate is not yet valid` — turn on automatic date and time. For a specific version:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- v1.1.0

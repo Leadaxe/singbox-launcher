@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 echo "--------------------------------------------------------------"
 echo " "
-echo "Singbox-launcher MacOS Installer Script (0.4)"
+echo "Singbox-launcher MacOS Installer Script (0.5)"
 echo "Project url: https://github.com/Leadaxe/singbox-launcher/"
 echo " "
 echo "--------------------------------------------------------------"
@@ -31,9 +31,31 @@ else
   fi
 fi
 
+# curl_hint — пояснение к коду выхода curl. 60 (сертификат) на живой сети
+# почти всегда значит сбитые часы Mac: сертификаты GitHub для него «ещё не
+# действительны» — без подсказки это выглядит как «версии не существует».
+curl_hint() {
+  case "$1" in
+    60)
+      echo "TLS certificate check failed. Check the Mac date and time: now it is $(date '+%Y-%m-%d %H:%M')."
+      echo "If it is wrong, turn on System Settings > General > Date & Time > Set time and date automatically,"
+      echo "or run: sudo sntp -sS time.apple.com"
+      ;;
+    6|7|28|35)
+      echo "Cannot reach GitHub (curl error $1). Check the network or try with VPN."
+      ;;
+  esac
+}
+
 if [[ -z "$VERSION" ]]; then
   echo "Detecting latest version..."
-  VERSION="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+  latest_json=""
+  rc=0
+  latest_json="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest")" || rc=$?
+  if (( rc != 0 )); then
+    curl_hint "$rc"
+  fi
+  VERSION="$(printf '%s' "$latest_json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
   if [[ -z "$VERSION" ]]; then
     echo "Error: Could not detect latest version. Please specify version manually."
     echo "Usage: $0 [version] [auto|catalina]"
@@ -53,8 +75,19 @@ INSTALL_DIR="/Applications"
 APP_NAME="singbox-launcher.app"
 BIN_REL="Contents/MacOS/singbox-launcher"
 
+# Пользователь, для которого ставим. Под `sudo bash` HOME может оказаться
+# домашним каталогом root — данные лаунчера должны лечь к тому, кто вызвал.
+TARGET_USER="${SUDO_USER:-$(id -un)}"
+TARGET_HOME="$(eval echo "~${TARGET_USER}")"
+# Папка данных лаунчера из .app (SPEC 135): ядро ищется сначала здесь и
+# только потом в бандле, поэтому скачанное ядро кладётся сюда.
+DATA_BIN="${TARGET_HOME}/Library/Application Support/singbox-launcher/bin"
+# Защищённая копия ядра для старта с TUN (SPEC 137) и plist службы демона.
+CORE_COPY="/Library/PrivilegedHelperTools/sing-box-lxd"
+DAEMON_PLIST="/Library/LaunchDaemons/com.leadaxe.sing-box-lxd.plist"
+
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing: $1"; exit 1; }; }
-need curl; need unzip; need xattr; need chmod; need open; need mktemp; need find; need sw_vers; need grep; need sed; need tar; need uname
+need curl; need unzip; need xattr; need chmod; need open; need mktemp; need find; need sw_vers; need grep; need sed; need tar; need uname; need shasum; need id
 
 # Check write permissions to /Applications
 if [[ ! -w "$INSTALL_DIR" ]]; then
@@ -104,8 +137,11 @@ trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$INSTALL_DIR"
 
 echo "Downloading ${ASSET}..."
-if ! curl -fL "$URL" -o "$tmp/$ASSET"; then
+rc=0
+curl -fL "$URL" -o "$tmp/$ASSET" || rc=$?
+if (( rc != 0 )); then
   echo "Error: Failed to download ${ASSET}"
+  curl_hint "$rc"
   echo "The version ${VERSION} may not exist or the asset is not available."
   echo "Please check available releases at: https://github.com/${REPO}/releases"
   exit 1
@@ -179,14 +215,18 @@ fi
 echo "Installing..."
 cp -R "$app_path" "$target"
 
-# Ядро и шаблон ЭТОГО релиза — сразу в bin/, чтобы первый запуск не ходил
+# Ядро и шаблон ЭТОГО релиза — сразу на место, чтобы первый запуск не ходил
 # в сеть. Версия ядра берётся из констант кода на теге релиза (то, что
-# лаунчер и так потребовал бы), шаблон — из того же тега. Маркер
-# wizard_template.version говорит лаунчеру, что шаблон свежий, и он не сносит
-# его при первом запуске новой версии. Всё best-effort: не вышло — лаунчер
-# докачает сам, как раньше.
+# лаунчер и так потребовал бы), шаблон — из того же тега. Всё best-effort:
+# не вышло — лаунчер докачает сам, как раньше.
+#
+# Ядро — в папку данных: там его ищет лаунчер в первую очередь, и старое
+# ядро оттуда перекрыло бы новое в бандле. Шаблон — в bin/ бандла вместе с
+# маркером wizard_template.version: это поставляемый шаблон, который после
+# обновления лаунчера побеждает скачанный прошлой версией.
 bin_dir="$target/Contents/MacOS/bin"
 mkdir -p "$bin_dir"
+core_installed=""
 raw_base="https://raw.githubusercontent.com/${REPO}/${VERSION}"
 core_ver="$(curl -fsSL "${raw_base}/internal/constants/constants.go" 2>/dev/null | sed -n 's/.*RequiredCoreVersion = "\([^"]*\)".*/\1/p' | head -n 1 || true)"
 arch="$(uname -m)"
@@ -201,9 +241,17 @@ if [[ -n "$core_ver" && -n "$core_suffix" ]]; then
   if curl -fsSL "$core_url" -o "$tmp/core.tgz" && tar -xzf "$tmp/core.tgz" -C "$tmp" 2>/dev/null; then
     core_bin="$(find "$tmp" -maxdepth 2 -type f -name sing-box | head -n 1 || true)"
     if [[ -n "$core_bin" ]]; then
-      cp "$core_bin" "$bin_dir/sing-box"
-      chmod +x "$bin_dir/sing-box"
-      echo "Core installed: bin/sing-box ${core_ver}"
+      mkdir -p "$DATA_BIN"
+      # Через временный файл и mv: запущенное ядро держит старый образ и не
+      # мешает замене.
+      cp "$core_bin" "$DATA_BIN/.sing-box.new"
+      chmod 755 "$DATA_BIN/.sing-box.new"
+      mv -f "$DATA_BIN/.sing-box.new" "$DATA_BIN/sing-box"
+      if [[ "$(id -u)" == "0" && "$TARGET_USER" != "root" ]]; then
+        chown -R "$TARGET_USER" "${TARGET_HOME}/Library/Application Support/singbox-launcher"
+      fi
+      core_installed="$DATA_BIN/sing-box"
+      echo "Core installed: $core_installed ${core_ver}"
     else
       echo "Warning: sing-box not found in the core archive — the launcher will download it on first start"
     fi
@@ -223,11 +271,13 @@ else
 fi
 
 # Restore user data (automatically, no questions). --ignore-existing: файлы
-# из нового архива всегда важнее одноимённых старых.
+# из нового архива всегда важнее одноимённых старых. Старое ядро не
+# возвращается: при переезде данных из бандла (установка до v2.3) лаунчер
+# перенёс бы его в папку данных поверх только что скачанного.
 if [[ -d "$data_backup/bin" || -d "$data_backup/logs" ]]; then
   echo "Restoring user data..."
   if command -v rsync >/dev/null 2>&1; then
-    [[ -d "$data_backup/bin" ]] && rsync -a --ignore-existing "$data_backup/bin/" "$target/Contents/MacOS/bin/"
+    [[ -d "$data_backup/bin" ]] && rsync -a --ignore-existing --exclude '/sing-box' "$data_backup/bin/" "$target/Contents/MacOS/bin/"
     [[ -d "$data_backup/logs" ]] && rsync -a --ignore-existing "$data_backup/logs/" "$target/Contents/MacOS/logs/"
   else
     # rsync есть на всех поддерживаемых macOS; fallback на случай урезанных
@@ -252,6 +302,54 @@ fi
 chmod +x "$target/$BIN_REL"
 
 echo "Installed: $target"
+
+# Защищённая копия ядра для TUN. TUN — режим системного VPN: ядру нужны
+# права root, и лаунчер запускает от root только копию, которой владеет
+# root, — ядро в папке пользователя может подменить любая его программа.
+# Копию делает само ядро; при установленной службе демона её обновляет
+# команда установки службы. Спрашиваем только из терминала: под пайпом
+# `curl | bash` ответ читается с /dev/tty.
+if [[ -n "$core_installed" ]]; then
+  copy_args="lxd --service=copy"
+  if [[ -e "$DAEMON_PLIST" ]]; then
+    copy_args="lxd --service=install"
+  fi
+  copy_cmd="sudo '$core_installed' $copy_args"
+  new_sum="$(shasum -a 256 "$core_installed" | awk '{print $1}')"
+  old_sum="$(shasum -a 256 "$CORE_COPY" 2>/dev/null | awk '{print $1}' || true)"
+  if [[ -n "$old_sum" && "$old_sum" == "$new_sum" ]]; then
+    echo "TUN core copy is up to date: $CORE_COPY"
+  else
+    echo ""
+    echo "TUN mode is a system-wide VPN: the core needs root to create the"
+    echo "network interface and routes. For safety the launcher starts it with"
+    echo "root only from a root-owned copy: $CORE_COPY"
+    if [[ -n "$old_sum" ]]; then
+      echo "The existing copy is outdated and must be updated for TUN to work."
+    fi
+    echo "Proxy mode without TUN works without this copy."
+    answer=""
+    if ( : </dev/tty ) 2>/dev/null; then
+      printf "Create the TUN core copy now? It asks for the administrator password. [y/N] "
+      read -r answer </dev/tty || answer=""
+    fi
+    case "$answer" in
+      y|Y|yes|YES)
+        if [[ "$(id -u)" == "0" ]]; then
+          "$core_installed" $copy_args && echo "TUN core copy created: $CORE_COPY" \
+            || echo "Warning: could not create the TUN core copy. Run later: $copy_cmd"
+        else
+          sudo "$core_installed" $copy_args && echo "TUN core copy created: $CORE_COPY" \
+            || echo "Warning: could not create the TUN core copy. Run later: $copy_cmd"
+        fi
+        ;;
+      *)
+        echo "Skipped. The launcher asks for it on the first TUN start, or run:"
+        echo "  $copy_cmd"
+        ;;
+    esac
+  fi
+fi
 echo "Opening Finder..."
 open "$INSTALL_DIR"
 
