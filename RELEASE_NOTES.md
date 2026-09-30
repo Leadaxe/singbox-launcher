@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v2.3.5
+
+Патч после v2.3.4, ядро `sing-box-lx 1.14.2-lx.11` без изменений, контракт 1.1.108. **Установка на macOS (скрипт 0.5):** ядро кладётся в папку данных, где лаунчер v2.3+ ищет его первым, — раньше старое ядро оттуда перекрывало свежее; при обновлении с установки до v2.3 старое ядро больше не переносится; в конце скрипт предлагает одной командой `sudo` создать защищённую копию ядра для TUN. Под `sudo bash` данные теперь достаются вызвавшему пользователю, а не root; сбой скачивания из-за сбитых часов Mac распознаётся и объясняется. **Первый запуск:** уведомление на чистой установке стало приветствием «Welcome» вместо пугающего «Данные предыдущей версии не найдены». Подробнее: [docs/release_notes/2-3-5.md](docs/release_notes/2-3-5.md).
+
+### Highlights (EN) — v2.3.5
+
+A patch after v2.3.4, core `sing-box-lx 1.14.2-lx.11` unchanged, contract 1.1.108. **macOS install (script 0.5):** the core now goes to the data folder, where a v2.3+ launcher looks first — before, an older core there shadowed the fresh one; upgrading from a pre-2.3 install no longer carries the old core over; at the end the script offers to create the root-owned core copy for TUN with one `sudo`. Under `sudo bash` the data now belongs to the user who invoked it rather than root, and a download failing because of a Mac clock far behind is recognised and explained. **First start:** the notice on a clean install is now a "Welcome" message instead of the alarming "No previous data found". Details: [docs/release_notes/2-3-5.md](docs/release_notes/2-3-5.md).
+
 ### Выжимка (RU) — v2.3.4
 
 Патч после v2.3.3, ядро `sing-box-lx 1.14.2-lx.11` (было 1.14.2-lx.4), контракт 1.1.107. **Tailscale:** маршрут в tailnet и MagicDNS даёт новый пресет «Tailscale networks» вместо собственных секций узла; узлы без `exit_node` видны в группе NETWORKS на вкладке Servers; новая вкладка Network в окне узла — вход и выход, устройства сети с Ping, выбор exit node; правила по доменам работают для клиентов этой машины как exit node (#139). **DNS:** настройки кэша (размер, ответ из устаревшего кэша, сохранение после перезапуска) и кнопка «Clear DNS cache». **Узлы:** написанный вручную sing-box JSON уходит в ядро как написан; принимаются узлы OpenVPN в виде JSON; повторы одного сервера в подписке видны пометкой на узле; пул Xray-балансировщика собирается по `selector`. **Правила шаблона:** правило с не скачанным набором правил или с вложенным правилом без условий больше не отправляет весь трафик в свой outbound. **Исправлено:** classic TUN без службы на macOS снова стартует (#138); окно узла с панели Local всегда говорит с локальным ядром. Подробнее: [docs/release_notes/2-3-4.md](docs/release_notes/2-3-4.md).
