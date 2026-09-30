@@ -6,7 +6,7 @@ A shared registry sub-schema (`contract/registry/transports.json`): its fields a
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
-Core the schema was checked against: `1.14.1-lx.4`
+Core the schema was checked against: `1.14.2-lx.11`
 
 ## Link parameters
 

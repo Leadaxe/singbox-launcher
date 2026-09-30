@@ -1932,17 +1932,17 @@
       "title_ru": "Tailscale недоступен в этом ядре",
       "text_en": "The node uses Tailscale, which this core cannot run ({reason}). The node was excluded from the config, because the core rejects such a value and would refuse to start the whole config; the remaining nodes work.",
       "text_ru": "Узел использует Tailscale, который это ядро запустить не может ({reason}). Узел исключён из конфига: ядро отвергает такое значение и не запустит весь конфиг. Остальные узлы работают.",
-      "cause_en": "Tailscale is an extension of the lx fork: it needs a core built with the with_tailscale tag, version 1.14.0-lx.31 or newer. An older core rejects the whole config as soon as such a node appears in it.",
-      "cause_ru": "Tailscale — расширение форка lx: нужно ядро, собранное с тегом with_tailscale, версии 1.14.0-lx.31 или новее. Ядро постарше отвергает весь конфиг, как только в нём появляется такой узел.",
+      "cause_en": "Tailscale is an extension of the lx fork: it needs a core built with the with_tailscale tag. A core without the tag rejects the whole config as soon as such a node appears in it.",
+      "cause_ru": "Tailscale — расширение форка lx: нужно ядро, собранное с тегом with_tailscale. Ядро без этого тега отвергает весь конфиг, как только в нём появляется такой узел.",
       "fix_en": [
-        "Update the core to 1.14.0-lx.31 or newer, built with the with_tailscale tag.",
+        "Update the core to an lx fork build that includes the with_tailscale tag.",
         "Use another node until the core is updated."
       ],
       "fix_ru": [
-        "Обновите ядро до 1.14.0-lx.31 или новее, собранного с тегом with_tailscale.",
+        "Обновите ядро до сборки форка lx с тегом with_tailscale.",
         "Пока ядро не обновлено, пользуйтесь другим узлом."
       ],
-      "desc": "Узел `tailscale` снят на сборке: ядро собрано без тега with_tailscale (нужен форк 1.14.0-lx.31 или новее). Не пометка на живом узле, а его выброс — но severity=warning, а не error: конфиг СОБИРАЕТСЯ, остальные узлы на месте, и причина приезжает пользователю строкой отчёта сборки (BuildReportCoreUnsupported). Без выброса один такой узел завалил бы `sing-box check` для ВСЕГО конфига. SPEC 122 §2.2. Код общий для обеих сторон: LxBox с релиза v2.23.2 применяет Tailscale полноценно (libbox форка собран с `with_tailscale` + `ts_omit_*`, D-103, ядро 1.14.0-lx.38), и тот же гейт по версии ядра у него свой.",
+      "desc": "Узел `tailscale` снят на сборке: ядро собрано без тега with_tailscale (гейт — по тегу сборки, не по версии: body.build_tag, TASKS_LXBOX §56). Не пометка на живом узле, а его выброс — но severity=warning, а не error: конфиг СОБИРАЕТСЯ, остальные узлы на месте, и причина приезжает пользователю строкой отчёта сборки (BuildReportCoreUnsupported). Без выброса один такой узел завалил бы `sing-box check` для ВСЕГО конфига. SPEC 122 §2.2. Код общий для обеих сторон: LxBox с релиза v2.23.2 применяет Tailscale полноценно (libbox форка собран с `with_tailscale` + `ts_omit_*`, D-103, ядро 1.14.0-lx.38), и тот же гейт по тегу сборки у него свой.",
       "dart": "lib/services/builder/core_chain_capability.dart (coreVersionSupportsTailscale)",
       "go": "core/config/nodeflow/gate.go:NodeCoreRefusal (узловой гейт ядра по on_core_unsupported реестра); вызов — core/config/outbound_generator.go:GenerateOutboundsFromParserConfig; теги сборки — core/core_capabilities.go:AppController.CoreBuildTags; реестр — protocols/tailscale.json body.on_core_unsupported"
     },

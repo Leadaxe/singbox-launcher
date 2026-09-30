@@ -25,7 +25,7 @@
     ]
   },
   "body": {
-    "core": "1.14.2-lx.6",
+    "core": "1.14.2-lx.11",
     "order": [],
     "fields": {},
     "fields_unchecked": true,

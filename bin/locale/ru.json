@@ -4364,11 +4364,11 @@
   "Network cleanup: ghost wintun adapters and orphan firewall rules": {
     "value": "Сетевая очистка: призрачные адаптеры wintun и осиротевшие правила файрвола"
   },
-  "No data from a previous launcher version was found in the data folder. If you had settings and subscriptions, restore them from an LX Backup (Settings → Backup). Data folder:": {
-    "value": "В папке данных не найдено данных предыдущей версии лаунчера. Если у вас были настройки и подписки, восстановите их из LX Backup (Settings → Backup). Папка данных:"
+  "Settings and subscriptions are kept in the data folder below. If you used an earlier version of the launcher and your subscriptions are missing, restore them from an LX Backup (Settings → Backup). Data folder:": {
+    "value": "Настройки и подписки хранятся в папке данных ниже. Если вы пользовались более ранней версией лаунчера и подписки пропали, восстановите их из LX Backup (Settings → Backup). Папка данных:"
   },
-  "No previous data found": {
-    "value": "Данные предыдущей версии не найдены"
+  "Welcome": {
+    "value": "Добро пожаловать"
   },
   "Not found: the core will be downloaded to this path": {
     "value": "Не найдено: ядро будет скачано по этому пути"

@@ -90,8 +90,8 @@ func firstRunNoticeDue(fsvc *services.FileService, s locale.Settings) bool {
 // whenWindowVisible). Флаг ставится сразу после показа.
 func scheduleFirstRunNotice(controller *core.AppController, data paths.DataDir, inTray bool) {
 	whenWindowVisible(controller, inTray, func(win fyne.Window) {
-		dialog.ShowInformation(locale.T("No previous data found"),
-			locale.T("No data from a previous launcher version was found in the data folder. If you had settings and subscriptions, restore them from an LX Backup (Settings → Backup). Data folder:")+
+		dialog.ShowInformation(locale.T("Welcome"),
+			locale.T("Settings and subscriptions are kept in the data folder below. If you used an earlier version of the launcher and your subscriptions are missing, restore them from an LX Backup (Settings → Backup). Data folder:")+
 				"\n"+string(data), win)
 		if err := locale.MarkFirstRunNoticeShown(data.Bin()); err != nil {
 			debuglog.WarnLog("first-run notice: persist flag: %v", err)

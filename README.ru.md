@@ -316,7 +316,7 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Контроли при�
 curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash
 ```
 
-Устанавливает в `/Applications/`, снимает quarantine, чинит permissions, обеспечивает совместимость с Apple Silicon и свежими macOS. Для конкретной версии:
+Устанавливает в `/Applications/`, снимает quarantine, чинит permissions, обеспечивает совместимость с Apple Silicon и свежими macOS. Ядро кладёт в папку данных, шаблон — в бандл, так что первый запуск ничего не качает. В конце предлагает создать защищённую копию ядра для TUN: TUN — режим системного VPN, ядру нужны права root, и от root лаунчер запускает только копию в `/Library/PrivilegedHelperTools/sing-box-lxd` (один запрос пароля администратора; можно отказаться — тогда лаунчер попросит её при первом старте с TUN). Если часы Mac сильно отстают, скачивание падает с `curl: (60) … certificate is not yet valid` — включите автоматическую установку времени. Для конкретной версии:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- v1.1.0

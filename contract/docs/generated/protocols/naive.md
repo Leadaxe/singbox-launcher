@@ -6,7 +6,7 @@
 
 `naive` — an outbound, sing-box type `naive`. Accepted from: share link, sing-box JSON.
 
-<sub>Schema checked against core `1.14.1-lx.4` · the link fragment (`#…`) is the node `label`</sub>
+<sub>Schema checked against core `1.14.2-lx.11` · the link fragment (`#…`) is the node `label`</sub>
 
 | Field | Value |
 |---|---|
@@ -15,7 +15,7 @@
 | `kind` | `outbound` |
 | `aliases` | — |
 | `sources` | `uri`, `singbox` |
-| Core the schema was checked against | `1.14.1-lx.4` |
+| Core the schema was checked against | `1.14.2-lx.11` |
 | Core requirement | build tag `with_naive_outbound`; on a core that lacks it the node is dropped at build: `naive_unavailable` |
 | URI fragment | `label` |
 

@@ -9090,3 +9090,14 @@ outbound (запись без `tag` остаётся с `remarks`). Две од�
 Кейс `body/xray/balancer_selector_subset`: `px-1`, `px-2`, `other` при `selector: ["px"]` → группа `pool` = `["pool px-1", "pool px-2"]`, `pool other` — отдельный узел.
 
 Что сделать LxBox: переделать §571 под п. 1; сверить матчинг `selector` (префикс, пустой селектор = весь элемент) с п. 2; пройти оба кейса.
+
+## 105. Контракт 1.1.108 — устаревшие тексты реестра (ваш аудит 591)
+
+Только текст, поведение кода не менялось, корпус тот же.
+
+1. `protocols/naive.json`: `emit.note` и `impl` userinfo переписаны — схема эмита одна у обеих сторон, `mappers.uri.emit.form_from` (`naive+quic` при `quic:true`, иначе `naive+https`), у вас с §480 W7. Про порт 443 — как было.
+2. `protocols/tailscale.json`: `refs.dart` → `lib/models/tailscale_bundle.dart`, «инъекция секций узла» снята; в `note` гейт описан по тегу сборки `with_tailscale` (`body.build_tag`), а не по версии.
+3. `body.core` всех схем → `1.14.2-lx.11`. Трактовка — «тег ядра, по которому последний раз сверен список полей», не пин и не минимум (граница ядра — `min_core`/`build_tag`); описание в `schema/registry_body.schema.json` уточнено. Сверка: `git diff v1.14.1-lx.4 v1.14.2-lx.11 -- option/` форка — JSON-поля узлов не менялись. Единственная смена семантики — `masque.idle_timeout` с 1.14.1-lx.13: ключа нет — действует глобальный `lx.masque.idle_timeout`; явный `0` или отрицательное — выключено для узла. Текст поля поправлен.
+4. `warnings.json`, `tailscale_core_unsupported`: cause/remediation/desc — про тег `with_tailscale`, без версии `1.14.0-lx.31`.
+
+Что сделать LxBox: синк контракта обычным порядком; проверить, что ваш эмит MASQUE не пишет `idle_timeout: 0` там, где ключа у узла нет (иначе глобальный `lx.masque.idle_timeout` не сработает).

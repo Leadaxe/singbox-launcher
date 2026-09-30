@@ -6,7 +6,7 @@
 
 `wireguard` — an endpoint (a tunnel interface, not a plain outbound), sing-box type `wireguard`. Also written as `wg`, `awg`, `amneziawg`. Accepted from: share link, sing-box JSON, WireGuard .conf, AmneziaWG .conf, Xray JSON.
 
-<sub>Schema checked against core `1.14.1-lx.4` · the link fragment (`#…`) is the node `label`</sub>
+<sub>Schema checked against core `1.14.2-lx.11` · the link fragment (`#…`) is the node `label`</sub>
 
 | Field | Value |
 |---|---|
@@ -15,7 +15,7 @@
 | `kind` | `endpoint` |
 | `aliases` | `wg`, `awg`, `amneziawg` |
 | `sources` | `uri`, `singbox`, `wgconf`, `amnezia`, `xray` |
-| Core the schema was checked against | `1.14.1-lx.4` |
+| Core the schema was checked against | `1.14.2-lx.11` |
 | Protocol levels (node label, ascending) | `awg`, `awg1.5`, `awg2`, `awg3`, `awg3.1` |
 | Field order | must not decrease: `jmin`, `jmax`; otherwise all of them are removed: `fields_order_invalid` |
 | URI fragment | `label` |
