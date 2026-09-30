@@ -6,7 +6,7 @@
 
 `tuic` — an outbound, sing-box type `tuic`. Accepted from: share link, sing-box JSON.
 
-<sub>Schema checked against core `1.14.1-lx.4` · the link fragment (`#…`) is the node `label`</sub>
+<sub>Schema checked against core `1.14.2-lx.11` · the link fragment (`#…`) is the node `label`</sub>
 
 | Field | Value |
 |---|---|
@@ -14,7 +14,7 @@
 | `singbox_type` | `tuic` |
 | `kind` | `outbound` |
 | `sources` | `uri`, `singbox` |
-| Core the schema was checked against | `1.14.1-lx.4` |
+| Core the schema was checked against | `1.14.2-lx.11` |
 | URI fragment | `label` |
 
 ## How to read this page

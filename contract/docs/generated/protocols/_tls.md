@@ -6,7 +6,7 @@ A shared registry sub-schema (`contract/registry/tls.json`): its fields are subs
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
-Core the schema was checked against: `1.14.1-lx.4`
+Core the schema was checked against: `1.14.2-lx.11`
 
 **The whole block is dropped entirely and silently when `enabled` is `false`** — that is how the core reads it ("not configured", not "configured and switched off"). The block is then absent for every presence check, including its own nested blocks.
 

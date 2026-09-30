@@ -6,7 +6,7 @@ A shared registry sub-schema (`contract/registry/dialer.json`): its fields are s
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
-Core the schema was checked against: `1.14.1-lx.4`
+Core the schema was checked against: `1.14.2-lx.11`
 
 ## Common fields
 

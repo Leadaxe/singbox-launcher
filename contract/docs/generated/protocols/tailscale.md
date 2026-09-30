@@ -6,7 +6,7 @@
 
 `tailscale` — an endpoint (a tunnel interface, not a plain outbound), sing-box type `tailscale`. Accepted from: sing-box JSON.
 
-<sub>Schema checked against core `1.14.1-lx.4`</sub>
+<sub>Schema checked against core `1.14.2-lx.11`</sub>
 
 | Field | Value |
 |---|---|
@@ -14,7 +14,7 @@
 | `singbox_type` | `tailscale` |
 | `kind` | `endpoint` |
 | `sources` | `singbox` |
-| Core the schema was checked against | `1.14.1-lx.4` |
+| Core the schema was checked against | `1.14.2-lx.11` |
 | Core requirement | build tag `with_tailscale`; on a core that lacks it the node is dropped at build: `tailscale_core_unsupported` |
 | Exit to the internet (Direction pools) | only when any of `exit_node` is set |
 

@@ -6,7 +6,7 @@
 
 `openvpn-client` — an endpoint (a tunnel interface, not a plain outbound), sing-box type `openvpn-client`. Accepted from: sing-box JSON.
 
-<sub>Schema checked against core `1.14.2-lx.6`</sub>
+<sub>Schema checked against core `1.14.2-lx.11`</sub>
 
 | Field | Value |
 |---|---|
@@ -14,7 +14,7 @@
 | `singbox_type` | `openvpn-client` |
 | `kind` | `endpoint` |
 | `sources` | `singbox` |
-| Core the schema was checked against | `1.14.2-lx.6` |
+| Core the schema was checked against | `1.14.2-lx.11` |
 | Core requirement | core ≥ `1.14.0-lx.10`, build tag `with_openvpn`; on a core that lacks it the node is dropped at build: `openvpn_core_unsupported` |
 
 ## How to read this page

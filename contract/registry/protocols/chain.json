@@ -5,7 +5,7 @@
   "singbox_type": "chain",
   "note": "Цепочка узлов форка (option/chain_lx.go, SPEC 075). Не имеет ни ServerOptions, ни TLS: адрес и шифрование берутся у хопов. Цепочка — МАРШРУТ, а не Направление (память chain-is-a-source). Файл заведён в W1 SPEC 131 только ради секции body; секции uri/policy у схемы нет — тело рождается в форме, а не из ссылки.",
   "body": {
-    "core": "1.14.1-lx.4",
+    "core": "1.14.2-lx.11",
     "order": ["outbounds", "idle_timeout", "strip_evasion", "strip", "rewrite", "interrupt_exist_connections", "__dialer"],
     "fields": {
       "outbounds": {

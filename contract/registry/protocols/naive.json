@@ -21,7 +21,7 @@
       "meaning": "user:password",
       "desc_en": "user:password of the account.",
       "desc_ru": "user:password учётной записи.",
-      "impl": "user:pass → username+password. ОДИНОЧНЫЙ USERINFO БЕЗ ДВОЕТОЧИЯ — ЭТО PASSWORD (naive+https://secret@host → password=secret, username пуст): конвенция DuckSoft, та же что у hysteria2. РАЗРЫВ ЗАКРЫТ (DRIFT §7.3, вариант А, решение владельца 18.09.2026, дата синхронизации с LxBox снята владельцем 18.09.2026): прежде Go клал значение в username, тогда как его же эмиттер share-URI пишет пароль в user-слот — ссылка, отданная Go, читалась Go же «наоборот», а кросс-эмит с Dart не сходился. Кейс корпуса — uri/naive/password_only_userinfo. naive+quic — §9.B1: Dart добавляет (сейчас naive+quic парсит только Go; транспорт запоминается как quic:true + quic_congestion_control:bbr). Dart toUriNaive опускает порт 443 (каноничная форма DuckSoft) и всегда пишет naive+https."
+      "impl": "user:pass → username+password. ОДИНОЧНЫЙ USERINFO БЕЗ ДВОЕТОЧИЯ — ЭТО PASSWORD (naive+https://secret@host → password=secret, username пуст): конвенция DuckSoft, та же что у hysteria2. РАЗРЫВ ЗАКРЫТ (DRIFT §7.3, вариант А, решение владельца 18.09.2026, дата синхронизации с LxBox снята владельцем 18.09.2026): прежде Go клал значение в username, тогда как его же эмиттер share-URI пишет пароль в user-слот — ссылка, отданная Go, читалась Go же «наоборот», а кросс-эмит с Dart не сходился. Кейс корпуса — uri/naive/password_only_userinfo. naive+quic читают и пишут обе стороны общим движком (§9.B1 закрыт, у LxBox — §480 W7): транспорт запоминается как quic:true + quic_congestion_control:bbr, схема эмита — mappers.uri.emit.form_from. Dart опускает порт 443 (каноничная форма DuckSoft)."
     },
     "query": {
       "extra-headers": {
@@ -47,7 +47,7 @@
     "param_order": [
       "extra-headers"
     ],
-    "note": "Схема при эмите: Go — naive+quic при quic:true, иначе naive+https; Dart — всегда naive+https (нет quic, §9.B1). Dart опускает порт 443, Go пишет всегда."
+    "note": "Схема при эмите — mappers.uri.emit.form_from, одна у обеих сторон (общий движок эмита, у LxBox с §480 W7): naive+quic при quic:true, иначе naive+https. Dart опускает порт 443, Go пишет всегда."
   },
   "mapper": [
     {
@@ -82,7 +82,7 @@
     ]
   },
   "body": {
-    "core": "1.14.1-lx.4",
+    "core": "1.14.2-lx.11",
     "order": [
       "server",
       "server_port",

@@ -6,7 +6,7 @@
 
 `hysteria` — an outbound, sing-box type `hysteria`. Also written as `hy`. Accepted from: share link, sing-box JSON, Xray JSON. Supported by the desktop launcher only.
 
-<sub>Schema checked against core `1.14.1-lx.4` · the link fragment (`#…`) is the node `label`</sub>
+<sub>Schema checked against core `1.14.2-lx.11` · the link fragment (`#…`) is the node `label`</sub>
 
 | Field | Value |
 |---|---|
@@ -16,7 +16,7 @@
 | `aliases` | `hy` |
 | `sources` | `uri`, `singbox`, `xray` |
 | `extension` | `desktop` |
-| Core the schema was checked against | `1.14.1-lx.4` |
+| Core the schema was checked against | `1.14.2-lx.11` |
 | URI fragment | `label` |
 
 ## How to read this page

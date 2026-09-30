@@ -1523,9 +1523,9 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Tailscale is unavailable in this core**
 
 - **What happened:** The node uses Tailscale, which this core cannot run ({reason}). The node was excluded from the config, because the core rejects such a value and would refuse to start the whole config; the remaining nodes work.
-- **Why it happens:** Tailscale is an extension of the lx fork: it needs a core built with the with_tailscale tag, version 1.14.0-lx.31 or newer. An older core rejects the whole config as soon as such a node appears in it.
+- **Why it happens:** Tailscale is an extension of the lx fork: it needs a core built with the with_tailscale tag. A core without the tag rejects the whole config as soon as such a node appears in it.
 - **What you can do:**
-  - Update the core to 1.14.0-lx.31 or newer, built with the with_tailscale tag.
+  - Update the core to an lx fork build that includes the with_tailscale tag.
   - Use another node until the core is updated.
 
 **Where it comes from:**
