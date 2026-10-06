@@ -244,3 +244,15 @@ func (l tightSubtitleLayout) Layout(objects []fyne.CanvasObject, size fyne.Size)
 		first = false
 	}
 }
+
+// ErrorIconCell — крестик цветом ошибки темы для раздела «Уведомления».
+//
+// Иконка, а не ErrorMark: глифа «✖» U+2716 во встроенных шрифтах Fyne нет,
+// macOS берёт его из цветного эмодзи-шрифта, и Importance Label'а его не
+// красит. Размер — как у InfoIconAccentCell: знаки уровней в шапке стоят рядом.
+func ErrorIconCell() fyne.CanvasObject {
+	return container.NewGridWrap(
+		fyne.NewSize(InfoIconSize+2, InfoIconSize+2),
+		widget.NewIcon(theme.NewColoredResource(theme.CancelIcon(), theme.ColorNameError)),
+	)
+}

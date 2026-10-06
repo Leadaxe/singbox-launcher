@@ -1,0 +1,6 @@
+# ВХОДЯЩИЙ ПИР (контракт 1.1.109): у пира НЕТ address/port — к узлу
+# подключаются, а не он. Узел слушает listen_port, ядро ставит пиру endpoint
+# только при годном адресе, и через такой узел ходят в интернет. Прежде
+# peers[].address и peers[].port были required, и рабочий серверный узел
+# получал два field_missing.
+{"endpoints":[{"type":"wireguard","tag":"wg-incoming","address":["10.99.2.1/32"],"listen_port":51822,"private_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","peers":[{"allowed_ips":["0.0.0.0/0"],"public_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="}]}]}

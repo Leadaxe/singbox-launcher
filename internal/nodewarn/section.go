@@ -136,13 +136,13 @@ func Section(in []state.NodeWarning) fyne.CanvasObject {
 
 	// Порядок групп — ТОТ ЖЕ, что в тултипе и в счётчиках шапки: человек,
 	// пришедший сюда по знаку из списка, читает уровни в одном порядке везде.
-	if group := levelGroup(errs, ErrorsGroupTitleText, ErrorMark, widget.DangerImportance); group != nil {
+	if group := levelGroup(errs, ErrorsGroupTitleText, "", ErrorIconCell(), widget.DangerImportance); group != nil {
 		items = append(items, group)
 	}
-	if group := levelGroup(warns, WarningsGroupTitleText, WarnMark, widget.WarningImportance); group != nil {
+	if group := levelGroup(warns, WarningsGroupTitleText, WarnMark, nil, widget.WarningImportance); group != nil {
 		items = append(items, group)
 	}
-	if group := levelGroup(infos, InfoGroupTitleText, "", widget.MediumImportance); group != nil {
+	if group := levelGroup(infos, InfoGroupTitleText, "", InfoIconAccentCell(), widget.MediumImportance); group != nil {
 		items = append(items, group)
 	}
 	return container.NewVBox(items...)
@@ -167,7 +167,12 @@ func sectionHeader(errs, warns, infos int) fyne.CanvasObject {
 
 	counters := make([]fyne.CanvasObject, 0, 3)
 	if errs > 0 {
-		counters = append(counters, levelCounter(ErrorMark, errs, widget.DangerImportance))
+		// Знак — иконка, а не глиф: «✖» U+2716 во встроенных шрифтах Fyne
+		// нет, macOS подбирает его из цветного эмодзи-шрифта, и цвет Label'а
+		// к нему не применяется — крестик выходил серым рядом с красной цифрой.
+		counters = append(counters,
+			container.NewCenter(ErrorIconCell()),
+			levelCounter("", errs, widget.DangerImportance))
 	}
 	if warns > 0 {
 		counters = append(counters, levelCounter(WarnMark, warns, widget.WarningImportance))
@@ -208,9 +213,9 @@ func levelCounter(mark string, n int, imp widget.Importance) *widget.Label {
 //
 // nil на пустом списке: пустой подзаголовок обещал бы строки, которых нет.
 //
-// mark пустой у info — его заголовок получает иконку слева, ту же, что в
-// подстроке строки узла и в счётчике шапки.
-func levelGroup(texts []Text, titleKey, mark string, imp widget.Importance) fyne.CanvasObject {
+// mark пустой у info и error — их заголовок получает иконку icon слева, ту
+// же, что в счётчике шапки.
+func levelGroup(texts []Text, titleKey, mark string, icon fyne.CanvasObject, imp widget.Importance) fyne.CanvasObject {
 	if len(texts) == 0 {
 		return nil
 	}
@@ -224,9 +229,9 @@ func levelGroup(texts []Text, titleKey, mark string, imp widget.Importance) fyne
 	head.Importance = imp
 
 	var headCell fyne.CanvasObject = head
-	if mark == "" {
+	if icon != nil {
 		headCell = container.NewBorder(nil, nil,
-			container.NewCenter(InfoIconAccentCell()), nil, head)
+			container.NewCenter(icon), nil, head)
 	}
 
 	// Строки собираются в срез и отдаются КОНСТРУКТОРУ, а не добавляются

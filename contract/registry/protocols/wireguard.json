@@ -1997,10 +1997,9 @@
                 "action": "drop_node",
                 "code": "field_missing"
               },
-              "required": true,
               "desc_en": "Peer endpoint address.",
               "desc_ru": "Адрес точки подключения пира.",
-              "impl": "option/wireguard.go WireGuardPeer.Address."
+              "impl": "option/wireguard.go WireGuardPeer.Address. НЕобязателен (контракт 1.1.109): пир без адреса подключается К НАМ — узел слушает listen_port, а ядро ставит пиру endpoint только при годном адресе (transport/wireguard/endpoint.go NewEndpoint); через такой узел ходят в интернет. Прежний required давал field_missing на рабочем серверном узле. Ссылка и .conf адрес по-прежнему требуют на своём входе (mappers.*.params peer_address / endpoint)."
             },
             "port": {
               "type": "uint16",
@@ -2012,10 +2011,9 @@
                 "code": "port_invalid",
                 "core_rejects": true
               },
-              "required": true,
               "desc_en": "Peer endpoint port.",
               "desc_ru": "Порт точки подключения пира.",
-              "impl": "option/wireguard.go WireGuardPeer.Port."
+              "impl": "option/wireguard.go WireGuardPeer.Port. НЕобязателен вместе с address (контракт 1.1.109): у входящего пира нет ни адреса, ни порта. «Порт обязателен при адресе» связью requires не выразить — внутри элемента массива сосед по пути с индексом не ищется; на входах ссылки и .conf порт и так материализуется 51820."
             },
             "public_key": {
               "type": "string",

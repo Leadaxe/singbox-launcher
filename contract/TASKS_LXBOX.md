@@ -9101,3 +9101,11 @@ outbound (запись без `tag` остаётся с `remarks`). Две од�
 4. `warnings.json`, `tailscale_core_unsupported`: cause/remediation/desc — про тег `with_tailscale`, без версии `1.14.0-lx.31`.
 
 Что сделать LxBox: синк контракта обычным порядком; проверить, что ваш эмит MASQUE не пишет `idle_timeout: 0` там, где ключа у узла нет (иначе глобальный `lx.masque.idle_timeout` не сработает).
+
+## 106. Контракт 1.1.109 — входящий пир WireGuard
+
+`protocols/wireguard.json`: у `body.fields.peers.items.fields.address` и `.port` снят `required`. Пир без адреса и порта — входящий: к узлу подключаются, узел слушает `listen_port`, ядро ставит пиру endpoint только при годном адресе (`transport/wireguard/endpoint.go`), и через такой узел ходят в интернет. Прежде тело sing-box такого узла получало два `field_missing` (а по норме и выпадало). Входы ссылки и `.conf` не менялись: адрес там обязателен, порт по умолчанию 51820.
+
+Корпус +1: `body/singbox/endpoints_wg_incoming_peer` — узел живой, кодов нет.
+
+Что сделать LxBox: синк контракта; проверить, что ваш эмит/форма узла WG не требует адрес пира сверх реестра и что ссылка из такого узла не строится с пустым хостом.
