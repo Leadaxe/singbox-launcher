@@ -12,6 +12,7 @@ package ui
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -22,6 +23,7 @@ import (
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -152,8 +154,10 @@ func endpointStatesEqual(a, b map[string]services.EndpointStatus) bool {
 	if len(a) != len(b) {
 		return false
 	}
+	// Пиры списку не нужны: подзаголовок строки показывает только состояние.
 	for k, v := range a {
-		if b[k] != v {
+		w, ok := b[k]
+		if !ok || w.State != v.State || w.IdleSince != v.IdleSince {
 			return false
 		}
 	}
@@ -256,8 +260,11 @@ func buildWireGuardSection(source func() (services.EndpointSource, bool), box *f
 	btn = widget.NewButton("", nil)
 	stateRow, stateEntry := infoRowEntry(locale.T("State"), "", btn)
 
+	peers := newWireGuardPeerRows()
+
 	apply := func(st services.EndpointStatus) {
 		current = st
+		peers.update(st.Peers, time.Now())
 		stateEntry.SetText(endpointStateText(st))
 		if st.State == services.EndpointStateDisabled {
 			btn.SetText(locale.T("Enable"))
@@ -312,6 +319,7 @@ func buildWireGuardSection(source func() (services.EndpointSource, bool), box *f
 	box.Add(stateRow)
 	box.Add(note)
 	box.Add(errLabel)
+	box.Add(peers.box)
 	apply(initial)
 	box.Refresh()
 
@@ -342,4 +350,91 @@ func buildWireGuardSection(source func() (services.EndpointSource, bool), box *f
 			})
 		}
 	}()
+}
+
+// --- окно Info: пиры --------------------------------------------------------
+
+// wgPeerSessionWindow — сколько живёт ключ сессии WG (reject_after_time):
+// хендшейк моложе — пир на связи.
+const wgPeerSessionWindow = 180 * time.Second
+
+// wireGuardPeerRows — строки пиров секции «WireGuard». Строка = короткий ключ
+// и Entry со значением (адрес можно выделить и скопировать). Ряды
+// пересобираются только при смене набора ключей, иначе текст меняется на
+// месте и выделение не слетает.
+type wireGuardPeerRows struct {
+	box     *fyne.Container
+	keys    []string
+	entries map[string]*widget.Entry
+	// prevRx — rx прошлого опроса: рост rx при старом хендшейке = на связи.
+	prevRx map[string]int64
+}
+
+func newWireGuardPeerRows() *wireGuardPeerRows {
+	return &wireGuardPeerRows{box: container.NewVBox(), entries: map[string]*widget.Entry{}, prevRx: map[string]int64{}}
+}
+
+func (r *wireGuardPeerRows) update(peers []services.EndpointPeer, now time.Time) {
+	keys := make([]string, 0, len(peers))
+	for _, p := range peers {
+		keys = append(keys, p.PublicKey)
+	}
+	if strings.Join(keys, "\n") != strings.Join(r.keys, "\n") {
+		r.keys = keys
+		r.entries = map[string]*widget.Entry{}
+		r.box.Objects = nil
+		if len(peers) > 0 {
+			r.box.Add(sectionHeader(locale.T("Peers")))
+		}
+		for _, p := range peers {
+			row, entry := infoRowEntry(shortPeerKey(p.PublicKey), "", nil)
+			r.entries[p.PublicKey] = entry
+			r.box.Add(row)
+		}
+		r.box.Refresh()
+	}
+	rx := make(map[string]int64, len(peers))
+	for _, p := range peers {
+		prev, seen := r.prevRx[p.PublicKey]
+		// Счётчики обнуляются при пересборке устройства: меньшее значение —
+		// новая база, а не рост.
+		grew := seen && p.RxBytes > prev
+		rx[p.PublicKey] = p.RxBytes
+		if e := r.entries[p.PublicKey]; e != nil {
+			e.SetText(wireGuardPeerText(p, now, grew))
+		}
+	}
+	r.prevRx = rx
+}
+
+// wireGuardPeerText — «127.0.0.1:56793 · online 40s · ↓244 B ↑238 B». Адрес
+// без хендшейка не показываем: ядро хранит его и после ухода пира.
+func wireGuardPeerText(p services.EndpointPeer, now time.Time, rxGrew bool) string {
+	parts := make([]string, 0, 3)
+	if p.LastHandshake.IsZero() {
+		parts = append(parts, locale.T("no handshake yet"))
+	} else {
+		if p.Endpoint != "" {
+			parts = append(parts, p.Endpoint)
+		}
+		age := now.Sub(p.LastHandshake)
+		if age < 0 {
+			age = 0
+		}
+		if age <= wgPeerSessionWindow || rxGrew {
+			parts = append(parts, locale.Tf("online, handshake %s ago", humanAge(age)))
+		} else {
+			parts = append(parts, locale.Tf("no session, last handshake %s ago", humanAge(age)))
+		}
+	}
+	parts = append(parts, "↓"+paths.FormatBytes(p.RxBytes)+" ↑"+paths.FormatBytes(p.TxBytes))
+	return strings.Join(parts, " · ")
+}
+
+// shortPeerKey — «RIpg…A1Eo»: ключ с вырезанной серединой.
+func shortPeerKey(key string) string {
+	if len(key) <= 10 {
+		return key
+	}
+	return key[:4] + "…" + key[len(key)-4:]
 }

@@ -687,6 +687,20 @@ type EndpointStatus struct {
 	State string
 	// IdleSince — сколько прошло с последнего dial через узел.
 	IdleSince time.Duration
+	// Peers — пиры устройства (ядро с SPEC 114 ядра); старое ядро — пусто.
+	Peers []EndpointPeer
+}
+
+// EndpointPeer — состояние одного пира WG/AWG. Вывода «подключён» ядро не
+// делает: порог считает UI по возрасту хендшейка и росту rx.
+type EndpointPeer struct {
+	PublicKey string
+	// Endpoint — последний известный ip:port; остаётся после ухода пира.
+	Endpoint string
+	// LastHandshake — нулевое время, если хендшейка не было.
+	LastHandshake time.Time
+	// RxBytes/TxBytes обнуляются при пересборке устройства.
+	RxBytes, TxBytes int64
 }
 
 // ErrEndpointToggleUnsupported — ядро старше 1.14.2-lx.4, SetEndpointEnabled
@@ -714,10 +728,23 @@ func EndpointStatusesRPC(ctx context.Context, client daemonpb.StartedServiceClie
 		if o.GetEndpointState() == "" {
 			continue
 		}
-		out[o.GetTag()] = EndpointStatus{
+		st := EndpointStatus{
 			State:     o.GetEndpointState(),
 			IdleSince: time.Duration(o.GetIdleSinceSeconds()) * time.Second,
 		}
+		for _, p := range o.GetPeers() {
+			peer := EndpointPeer{
+				PublicKey: p.GetPublicKey(),
+				Endpoint:  p.GetEndpoint(),
+				RxBytes:   p.GetRxBytes(),
+				TxBytes:   p.GetTxBytes(),
+			}
+			if hs := p.GetLastHandshakeUnix(); hs > 0 {
+				peer.LastHandshake = time.Unix(hs, 0)
+			}
+			st.Peers = append(st.Peers, peer)
+		}
+		out[o.GetTag()] = st
 	}
 	return out, nil
 }

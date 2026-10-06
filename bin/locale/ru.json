@@ -4924,5 +4924,17 @@
   },
   "signed in with a key": {
     "value": "вход по ключу"
+  },
+  "Peers": {
+    "value": "Пиры"
+  },
+  "no handshake yet": {
+    "value": "хендшейка ещё не было"
+  },
+  "online, handshake %s ago": {
+    "value": "на связи, хендшейк %s назад"
+  },
+  "no session, last handshake %s ago": {
+    "value": "нет сессии, последний хендшейк %s назад"
   }
 }
