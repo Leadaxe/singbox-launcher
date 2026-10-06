@@ -282,11 +282,8 @@ func ShowEditDialog(
 		}
 	}
 	rawJSONBytes, _ := json.MarshalIndent(initialConfig, "", "  ")
-	rawEntry := widget.NewMultiLineEntry()
-	rawEntry.SetText(string(rawJSONBytes))
-	rawEntry.Wrapping = fyne.TextWrapOff
-	rawEntry.SetMinRowsVisible(16)
-	rawScroll := container.NewScroll(rawEntry)
+	rawEntry := fynewidget.NewJSONEditor(string(rawJSONBytes))
+	rawScroll := container.NewScroll(rawEntry.Object())
 	rawScroll.SetMinSize(fyne.NewSize(400, 360))
 
 	// Raw documentation button (opens ParserConfig.md "Секция outbounds")
@@ -378,7 +375,7 @@ func ShowEditDialog(
 	buildConfigForPreview := func(requireTag bool) (*config.Direction, error) {
 		if editSource == "raw" {
 			var cfg config.Direction
-			if err := json.Unmarshal([]byte(rawEntry.Text), &cfg); err != nil {
+			if err := json.Unmarshal([]byte(rawEntry.Text()), &cfg); err != nil {
 				return nil, fmt.Errorf("%s: %w", locale.T("invalid JSON"), err)
 			}
 			if strings.TrimSpace(cfg.Tag) == "" {
@@ -574,7 +571,7 @@ func ShowEditDialog(
 		// the form path.
 		if editSource == "raw" {
 			var cfg config.Direction
-			if err := json.Unmarshal([]byte(rawEntry.Text), &cfg); err != nil {
+			if err := json.Unmarshal([]byte(rawEntry.Text()), &cfg); err != nil {
 				dialog.ShowError(fmt.Errorf("%s: %w", locale.T("invalid JSON"), err), dialogWin)
 				return
 			}
@@ -840,7 +837,7 @@ func ShowEditDialog(
 	// applies updates → получаем full merged view для populate.
 	syncRawToForm := func() {
 		var cfg config.Direction
-		if err := json.Unmarshal([]byte(rawEntry.Text), &cfg); err != nil {
+		if err := json.Unmarshal([]byte(rawEntry.Text()), &cfg); err != nil {
 			return // invalid JSON: leave form as is
 		}
 		if strings.TrimSpace(cfg.Tag) == "" {

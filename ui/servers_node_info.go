@@ -330,10 +330,11 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 
 	// JSON — отдельной вкладкой: он длинный и на общей странице оттеснял бы
 	// разобранные поля вниз, ради которых окно и открывают.
+	// fynewidget.NewJSONView: подсветка, номера строк, свёртка и выделение
+	// мышью в свежих сборках; на Win7 — прежний Entry. Кнопка «Copy JSON»
+	// забирает тело целиком без выделения.
 	jsonText := prettyNodeJSON(node.Raw)
-	jsonEntry := widget.NewMultiLineEntry()
-	jsonEntry.SetText(jsonText)
-	jsonEntry.Wrapping = fyne.TextWrapOff
+	jsonView := fynewidget.NewJSONView(jsonText)
 
 	jsonTab := container.NewBorder(
 		nil,
@@ -341,7 +342,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 			setClipboard(jsonText)
 		}),
 		nil, nil,
-		jsonEntry,
+		jsonView,
 	)
 
 	tabs := container.NewAppTabs(
