@@ -9,12 +9,32 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// NewJSONView returns a multi-line Entry with the text, no wrapping.
-func NewJSONView(text string) fyne.CanvasObject {
-	e := widget.NewMultiLineEntry()
-	e.SetText(text)
-	e.Wrapping = fyne.TextWrapOff
-	return e
+// NewJSONView returns a multi-line Entry with the text, no wrapping. It is
+// read-only the way the source window always did it: OnChanged rolls any
+// input back to the last set text (Disable() is not an option — on macOS
+// disabled text renders in the background color).
+func NewJSONView(text string) JSONView {
+	v := &entryView{e: widget.NewMultiLineEntry()}
+	v.e.Wrapping = fyne.TextWrapOff
+	v.e.OnChanged = func(s string) {
+		if s != v.last {
+			v.e.SetText(v.last)
+		}
+	}
+	v.SetText(text)
+	return v
+}
+
+type entryView struct {
+	e    *widget.Entry
+	last string
+}
+
+func (v *entryView) Object() fyne.CanvasObject { return v.e }
+
+func (v *entryView) SetText(s string) {
+	v.last = s
+	v.e.SetText(s)
 }
 
 // NewJSONEditor returns an editable multi-line Entry, no wrapping.

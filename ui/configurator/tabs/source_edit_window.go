@@ -1905,21 +1905,27 @@ func showSourceEditWindowAt(
 	//     перезатёр бы первый же сетевой refresh.
 	isServerSource := view.isServer
 
-	jsonEntry := widget.NewMultiLineEntry()
-	jsonEntry.Wrapping = fyne.TextWrapOff
-	// Read-only для подписки: OnChanged откатывает любой ввод к последнему
-	// установленному тексту (Disable() нельзя — на macOS disabled-текст
-	// рендерится цветом фона, см. Overview raw body).
+	// Сервер и цепочка — редактор (fynewidget.JSONEditor), у них есть
+	// Apply; подписка и папка — read-only просмотр (fynewidget.JSONView) с
+	// выделением и копированием. Оба — pretty-view в свежих сборках, Entry
+	// на Win7.
 	lastSetJSON := ""
+	var jsonEditor fynewidget.JSONEditor
+	var jsonViewer fynewidget.JSONView
+	var jsonArea fyne.CanvasObject
+	if isServerSource || isChainSource {
+		jsonEditor = fynewidget.NewJSONEditor("")
+		jsonArea = jsonEditor.Object()
+	} else {
+		jsonViewer = fynewidget.NewJSONView("")
+		jsonArea = jsonViewer.Object()
+	}
 	setJSONText := func(s string) {
 		lastSetJSON = s
-		jsonEntry.SetText(s)
-	}
-	if !isServerSource {
-		jsonEntry.OnChanged = func(s string) {
-			if s != lastSetJSON {
-				jsonEntry.SetText(lastSetJSON)
-			}
+		if jsonEditor != nil {
+			jsonEditor.SetText(s)
+		} else {
+			jsonViewer.SetText(s)
 		}
 	}
 	// Gutter внутри скролла — тот же приём, что у Settings.
@@ -1927,7 +1933,7 @@ func showSourceEditWindowAt(
 		components.NewScrollGutter(),
 		container.NewStack(
 			canvas.NewRectangle(color.Transparent),
-			jsonEntry,
+			jsonArea,
 		)))
 	jsonScroll.SetMinSize(fyne.NewSize(0, sourceEditJSONScrollMinH))
 
@@ -1941,7 +1947,7 @@ func showSourceEditWindowAt(
 	var doRefreshJSONTab func()
 
 	jsonApplyBtn := widget.NewButton(locale.T("Apply JSON"), func() {
-		text := strings.TrimSpace(jsonEntry.Text)
+		text := strings.TrimSpace(jsonEditor.Text())
 		if text == "" {
 			dialog.ShowError(errors.New(locale.T("JSON is empty.")), win)
 			return
@@ -2227,7 +2233,7 @@ func showSourceEditWindowAt(
 	}
 
 	refreshJSONTab := func() {
-		if (isServerSource || isChainSource) && jsonEntry.Text != lastSetJSON {
+		if jsonEditor != nil && jsonEditor.Text() != lastSetJSON {
 			return // незаApplied ручные правки — не затирать автообновлением
 		}
 		doRefreshJSONTab()

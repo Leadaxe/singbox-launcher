@@ -342,7 +342,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 			setClipboard(jsonText)
 		}),
 		nil, nil,
-		jsonView,
+		jsonView.Object(),
 	)
 
 	tabs := container.NewAppTabs(

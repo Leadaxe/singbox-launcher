@@ -12,10 +12,16 @@
 // the import.
 //
 // Callers never touch the concrete widget: they get a [JSONEditor] (editable
-// tabs) or a bare canvas object (read-only tabs) and work with text only.
+// tabs) or a [JSONView] (read-only tabs) and work with text only.
 package fynewidget
 
 import "fyne.io/fyne/v2"
+
+// JSONView is a read-only JSON text area whose text can be replaced.
+type JSONView interface {
+	Object() fyne.CanvasObject
+	SetText(string)
+}
 
 // JSONEditor is an editable JSON text area.
 //

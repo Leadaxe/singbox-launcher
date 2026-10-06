@@ -4,7 +4,7 @@
 
 ## EN
 ### Highlights
-- JSON tabs of the node windows (node info "Outbound JSON", Add server "JSON", outbound editor "JSON") now use a real JSON editor: syntax highlighting, line numbers, folding, search (Ctrl/Cmd+F), mouse selection and copy. Windows 7 builds keep the plain text field.
+- JSON tabs of the node windows (node info "Outbound JSON", Add server "JSON", outbound editor "JSON", source window "JSON") now use a real JSON editor: syntax highlighting, line numbers, folding, search (Ctrl/Cmd+F), mouse selection and copy. Windows 7 builds keep the plain text field.
 -
 
 ### Technical / Internal
@@ -13,7 +13,7 @@
 
 ## RU
 ### Основное
-- JSON-вкладки окон узла («Outbound JSON» в сведениях, «JSON» в добавлении сервера и в редакторе outbound) переведены на настоящий JSON-редактор: подсветка синтаксиса, номера строк, свёртка, поиск (Ctrl/Cmd+F), выделение мышью и копирование. Сборки для Windows 7 остаются с обычным текстовым полем.
+- JSON-вкладки окон узла («Outbound JSON» в сведениях, «JSON» в добавлении сервера, в редакторе outbound и в окне источника) переведены на настоящий JSON-редактор: подсветка синтаксиса, номера строк, свёртка, поиск (Ctrl/Cmd+F), выделение мышью и копирование. Сборки для Windows 7 остаются с обычным текстовым полем.
 -
 
 ### Техническое / Внутреннее

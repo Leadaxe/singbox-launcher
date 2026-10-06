@@ -19,9 +19,17 @@ import (
 
 // NewJSONView returns a read-only JSON view with highlighting, line numbers,
 // folding and mouse selection (Ctrl/Cmd+C and the context menu copy).
-func NewJSONView(text string) fyne.CanvasObject {
-	return prettyview.NewWithData([]byte(text), prettyview.FormatJSON, prettyview.WithLineNumbers())
+func NewJSONView(text string) JSONView {
+	return &prettyView{pv: prettyview.NewWithData([]byte(text), prettyview.FormatJSON, prettyview.WithLineNumbers())}
 }
+
+type prettyView struct {
+	pv *prettyview.PrettyView
+}
+
+func (v *prettyView) Object() fyne.CanvasObject { return v.pv }
+
+func (v *prettyView) SetText(s string) { v.pv.SetText(s) }
 
 // NewJSONEditor returns an editable JSON area with live highlighting.
 func NewJSONEditor(text string) JSONEditor {
