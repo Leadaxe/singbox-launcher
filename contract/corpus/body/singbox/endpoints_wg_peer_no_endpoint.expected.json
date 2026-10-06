@@ -1,0 +1,15 @@
+{
+  "dropped": [
+    {
+      "code": "field_missing",
+      "index": 0,
+      "reason": "emit_error",
+      "ref": "wg-dead"
+    }
+  ],
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [],
+  "v": 1
+}

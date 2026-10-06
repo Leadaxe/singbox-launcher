@@ -1,0 +1,5 @@
+# Авторское тело WireGuard: у пира нет address/port, у узла нет listen_port
+# (контракт 1.1.110). Правило мягкое — узел остаётся как написан, ошибка
+# field_missing на peers[0].address с applied:false. Узел подписки с тем же
+# телом выпадает (body/singbox/endpoints_wg_peer_no_endpoint).
+{"type":"wireguard","tag":"wg-own-dead","address":["10.99.2.1/32"],"private_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","peers":[{"allowed_ips":["0.0.0.0/0"],"public_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="}]}

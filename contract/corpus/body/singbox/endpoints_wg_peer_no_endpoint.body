@@ -1,0 +1,6 @@
+# МЁРТВЫЙ ПИР (контракт 1.1.110): у пира нет address/port, у узла нет
+# listen_port — рукопожатие не начнёт никто: мы не знаем, куда стучаться, а к
+# нам не постучат (порт случайный). Ядро такой конфиг принимает, но узел
+# молчит, поэтому у подписки field_missing на peers[0].address, пир снимается,
+# узел без пиров выпадает. Пара: endpoints_wg_incoming_peer (listen_port есть).
+{"endpoints":[{"type":"wireguard","tag":"wg-dead","address":["10.99.2.1/32"],"private_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","peers":[{"allowed_ips":["0.0.0.0/0"],"public_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="}]}]}

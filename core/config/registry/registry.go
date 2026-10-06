@@ -123,6 +123,9 @@ type Field struct {
 
 	// Поведение.
 	Required     bool        `json:"required"`
+	// RequiredUnless — когда обязательность отсутствующего поля снимается
+	// (контракт 1.1.110). Без него required безусловен.
+	RequiredUnless *RequiredUnless `json:"required_unless"`
 	Secret       bool        `json:"secret"`
 	Tristate     bool        `json:"tristate"`
 	AllOrNothing bool        `json:"all_or_nothing"`
@@ -468,6 +471,22 @@ func (c *Condition) UnmarshalJSON(data []byte) error {
 		}
 	}
 	return nil
+}
+
+// RequiredUnless — условия, снимающие обязательность отсутствующего поля
+// (контракт 1.1.110).
+//
+// Обязательность снимается, если задан любой путь из Set (от корня тела) или
+// в том же объекте НЕ задан любой сосед из Absent (имя поля без префикса —
+// сосед по элементу массива, путь с индексом связям недоступен). Code — код,
+// которым сказать о снятии (без него снятие молчит).
+//
+// Пир WireGuard: адрес не нужен при listen_port (к узлу подключаются), а
+// порт — без адреса (некуда подключаться).
+type RequiredUnless struct {
+	Set    []string `json:"set"`
+	Absent []string `json:"absent"`
+	Code   string   `json:"code"`
 }
 
 // Relation — связь поля с другим полем (conflicts / requires / advisory.when).

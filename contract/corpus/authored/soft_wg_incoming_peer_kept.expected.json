@@ -1,6 +1,6 @@
 {
   "meta": {
-    "body_kind": "singbox-config"
+    "container": "own"
   },
   "nodes": [
     {
@@ -21,7 +21,7 @@
         "type": "wireguard"
       },
       "kind": "endpoint",
-      "label": "wg-incoming",
+      "label": "wg-own-in",
       "scheme": "wireguard",
       "warnings": [
         {

@@ -203,9 +203,11 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Required: the node is dropped without it
 - <a id="body-peers-address"></a>**`peers.address`** — Peer endpoint address.
   - Type: string, format `host`
+  - Required: the node is dropped without it
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
 - <a id="body-peers-port"></a>**`peers.port`** — Peer endpoint port.
   - Type: uint16, format `port`, `1–65535`
+  - Required: the node is dropped without it
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
 - <a id="body-peers-public-key"></a>**`peers.public_key`** — Peer public key.
   - Type: string, format `base64_32`, normalized: `base64_std`

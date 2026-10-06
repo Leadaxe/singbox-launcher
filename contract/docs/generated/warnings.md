@@ -110,6 +110,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`vless_encryption_invalid`](#vless_encryption_invalid) · `error` — VLESS encryption string is malformed
 - [`vmess_security_unknown`](#vmess_security_unknown) · `warning` — VMess: unknown cipher replaced with auto
 - [`wg_key_invalid`](#wg_key_invalid) · `error` — WireGuard: invalid key
+- [`wg_peer_incoming`](#wg_peer_incoming) · `info` — Waits for an incoming connection
 - [`wgconf_dns_ignored`](#wgconf_dns_ignored) · `info` — WireGuard: DNS from the configuration not applied
 - [`wgconf_extra_peer_dropped`](#wgconf_extra_peer_dropped) · `warning` — WireGuard: extra [Peer] sections dropped
 - [`wgconf_param_unknown`](#wgconf_param_unknown) · `info` — WireGuard: unknown key {query_name}
@@ -2072,6 +2073,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`peers.pre_shared_key`](protocols/wireguard.md#body-peers-pre-shared-key) — the value does not fit the field → node dropped
   - [`peers.public_key`](protocols/wireguard.md#body-peers-public-key) — the value does not fit the field → node dropped
   - [`private_key`](protocols/wireguard.md#body-private-key) — the value does not fit the field → node dropped
+
+<a id="wg_peer_incoming"></a>
+### wg_peer_incoming
+
+**severity:** `info`
+
+**Waits for an incoming connection**
+
+- **What happened:** The WireGuard peer has no address: the node does not connect anywhere itself, it waits for the peer to connect to its listen port. Traffic goes through the node only while that peer is connected.
+- **Why it happens:** This is a server-side WireGuard: the other device dials in (a phone, a router at home), and the node only listens.
+- **What you can do:**
+  - Nothing to do if this is intended.
+  - If the node seems dead, check that the peer is online and can reach this machine on the listen port.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
 <a id="wgconf_dns_ignored"></a>
 ### wgconf_dns_ignored

@@ -9109,3 +9109,17 @@ outbound (запись без `tag` остаётся с `remarks`). Две од�
 Корпус +1: `body/singbox/endpoints_wg_incoming_peer` — узел живой, кодов нет.
 
 Что сделать LxBox: синк контракта; проверить, что ваш эмит/форма узла WG не требует адрес пира сверх реестра и что ссылка из такого узла не строится с пустым хостом.
+
+## 107. Контракт 1.1.110 — `required_unless`; входящий и мёртвый пир WireGuard
+
+Уточнение §106 (решение владельца 07.10.2026): «необязательный адрес» был слишком мягким — узел без адреса пира и без `listen_port` мёртв (рукопожатие не начнёт никто), а входящий узел заслуживает пояснения.
+
+1. Новый атрибут поля `required_unless {set, absent, code}` — PARSING_PRINCIPLES §6.3, `schema/registry_body.schema.json`. Обязательность отсутствующего поля снимается, если задан путь из `set` (от корня тела) или в том же объекте НЕ задан сосед из `absent` (по имени, без индекса). `code` ставится на путь поля при снятии.
+2. `protocols/wireguard.json`: `peers[].address` — `required`, `required_unless {set: [listen_port], code: wg_peer_incoming}`; `peers[].port` — `required`, `required_unless {absent: [address]}`.
+3. Новый код `wg_peer_incoming` (info, без params): узел ждёт входящего подключения; тело не меняется.
+4. Нет ни адреса, ни `listen_port` → `field_missing` на `peers[0].address`: у подписки пир снимается и узел выпадает, у авторского тела — мягко, узел остаётся с `applied: false`.
+5. Авторское тело: info-код, у которого значение по пути одинаково в сыром и чистом теле, идёт без `applied: false` (§6.3).
+
+Корпус: `body/singbox/endpoints_wg_incoming_peer` (теперь с `wg_peer_incoming`), новые `body/singbox/endpoints_wg_peer_no_endpoint`, `authored/soft_wg_peer_no_endpoint_kept`, `authored/soft_wg_incoming_peer_kept`.
+
+Что сделать LxBox: реализовать `required_unless` в санитайзере общим примитивом (не веткой WireGuard), текст `wg_peer_incoming`, правило п. 5 для авторских тел; синк корпуса.

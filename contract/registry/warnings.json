@@ -75,6 +75,27 @@
       "dart": "UnsupportedProtocolWarning",
       "go": "core/config/subscription/xray_json_array.go:parseXrayJSONArrayElementNodes (Xray-протокол вне списка — core/config/subscription/xray_protocols.go:xrayNodeFromOutbound, код отказа даёт core/config/subscription/json_body_rejects.go:rejectCodeOf); core/config/nodeflow/sanitize.go:SanitizeFromKind (у схемы нет body реестра). Вход sing-box JSON тип вне реестра отбраковывает БЕЗ кода: core/config/subscription/singbox_import.go:parseSingboxEntry возвращает простую ошибку"
     },
+    "wg_peer_incoming": {
+      "severity": "info",
+      "params": [],
+      "title_en": "Waits for an incoming connection",
+      "title_ru": "Ждёт входящего подключения",
+      "text_en": "The WireGuard peer has no address: the node does not connect anywhere itself, it waits for the peer to connect to its listen port. Traffic goes through the node only while that peer is connected.",
+      "text_ru": "У пира WireGuard нет адреса: узел сам никуда не подключается, а ждёт, пока пир подключится к его порту (listen_port). Трафик идёт через узел, только пока этот пир подключён.",
+      "cause_en": "This is a server-side WireGuard: the other device dials in (a phone, a router at home), and the node only listens.",
+      "cause_ru": "Это WireGuard со стороны сервера: подключается другое устройство (телефон, домашний роутер), а узел только слушает.",
+      "fix_en": [
+        "Nothing to do if this is intended.",
+        "If the node seems dead, check that the peer is online and can reach this machine on the listen port."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно, если так задумано.",
+        "Если узел молчит — проверьте, что пир включён и достаёт до этой машины по порту listen_port."
+      ],
+      "desc": "Пир без address/port при заданном listen_port — входящий: обязательность адреса снята required_unless (контракт 1.1.110). Тело не меняется, код только сообщает.",
+      "dart": "код — задача LxBox §106",
+      "go": "правило реестра contract/registry/protocols/wireguard.json body.fields.peers.items.fields.address.required_unless; исполнение — core/config/nodeflow/sanitize.go:sanitizer.requiredLifted"
+    },
     "field_missing": {
       "severity": "error",
       "params": [

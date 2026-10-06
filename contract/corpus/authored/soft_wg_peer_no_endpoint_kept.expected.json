@@ -1,6 +1,6 @@
 {
   "meta": {
-    "body_kind": "singbox-config"
+    "container": "own"
   },
   "nodes": [
     {
@@ -8,7 +8,6 @@
         "address": [
           "10.99.2.1/32"
         ],
-        "listen_port": 51822,
         "peers": [
           {
             "allowed_ips": [
@@ -21,11 +20,12 @@
         "type": "wireguard"
       },
       "kind": "endpoint",
-      "label": "wg-incoming",
+      "label": "wg-own-dead",
       "scheme": "wireguard",
       "warnings": [
         {
-          "code": "wg_peer_incoming",
+          "applied": false,
+          "code": "field_missing",
           "path": "peers[0].address"
         }
       ]

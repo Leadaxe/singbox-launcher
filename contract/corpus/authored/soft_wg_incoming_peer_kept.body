@@ -1,0 +1,5 @@
+# Авторское тело WireGuard со входящим пиром (контракт 1.1.110): у пира нет
+# address/port, у узла listen_port. Код wg_peer_incoming (info) тело не
+# меняет, поэтому приходит БЕЗ applied:false — «приложение ничего не меняло»
+# про правило, которому менять нечего, было бы неправдой.
+{"type":"wireguard","tag":"wg-own-in","address":["10.99.2.1/32"],"listen_port":51822,"private_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","peers":[{"allowed_ips":["0.0.0.0/0"],"public_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="}]}

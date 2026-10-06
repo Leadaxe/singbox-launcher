@@ -502,6 +502,56 @@ func (s *sanitizer) warningFor(path string) *Warning {
 	return nil
 }
 
+// requiredLifted — снимает ли `required_unless` обязательность
+// отсутствующего поля path (контракт 1.1.110).
+//
+// Set — пути от корня тела; Absent — соседи по тому же объекту: их ищем в
+// уже собранной чистой карте out, а не обойдённых ещё — в исходной src
+// (поле, снятое своим правилом, для связи отсутствует). Снятие с кодом
+// говорит о себе этим кодом.
+func (s *sanitizer) requiredLifted(path string, f *registry.Field, out, src map[string]interface{}) bool {
+	ru := f.RequiredUnless
+	if ru == nil {
+		return false
+	}
+	lifted := false
+	for _, p := range ru.Set {
+		if s.lookupNonEmpty(p) {
+			lifted = true
+			break
+		}
+	}
+	if !lifted {
+		prefix := ""
+		if i := strings.LastIndex(path, "."); i >= 0 {
+			prefix = path[:i]
+		}
+		for _, name := range ru.Absent {
+			if !s.siblingPresent(prefix, name, out, src) {
+				lifted = true
+				break
+			}
+		}
+	}
+	if lifted && ru.Code != "" {
+		s.warn(ru.Code, path, nil, false, map[string]string{"path": path})
+	}
+	return lifted
+}
+
+// siblingPresent — задан ли сосед name в объекте prefix: в чистой карте, если
+// его уже обошли, иначе в исходной (и не снят своим правилом).
+func (s *sanitizer) siblingPresent(prefix, name string, out, src map[string]interface{}) bool {
+	if v, ok := out[name]; ok {
+		return !isEmptyValue(v)
+	}
+	if s.gone(joinPath(prefix, name)) {
+		return false
+	}
+	v, ok := src[name]
+	return ok && !isEmptyValue(v)
+}
+
 // requiredFailedQuiet — то же для поля, которое УЖЕ получило код от правила
 // значения: отметка ставится, второй код — нет.
 func (s *sanitizer) requiredFailedQuiet(path, code string) {
@@ -603,7 +653,7 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 					continue
 				}
 			}
-			if f.Required {
+			if f.Required && !s.requiredLifted(path, f, out, src) {
 				s.requiredFailed(path, codeOr(f.Code, "field_missing"))
 			}
 			continue

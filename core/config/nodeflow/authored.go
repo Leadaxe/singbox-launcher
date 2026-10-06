@@ -12,6 +12,7 @@ package nodeflow
 // код с признаком applied: false.
 
 import (
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -65,6 +66,14 @@ func AuthoredResult(scheme string, raw map[string]interface{}, res Result) Resul
 		apply, w2 := Decide(scheme, true, w)
 		if apply && w.Path != "" {
 			patchFromClean(body, res.Clean, w.Path)
+		}
+		if !apply && w.Path != "" && isInfoCode(w.Code) && samePathValue(raw, res.Clean, w.Path) {
+			// Info-код, по пути которого тело не меняется (только сообщает,
+			// как о входящем пире WireGuard): «не применено» значило бы, что
+			// приложение что-то не сделало, — а делать было нечего. Только
+			// info: у error/warning отсутствие поля в обоих телах — это и
+			// есть несделанная правка (узел или блок был бы снят).
+			w2 = w
 		}
 		out.Warnings = append(out.Warnings, w2)
 	}
@@ -144,6 +153,28 @@ func patchFromClean(body, clean map[string]interface{}, path string) {
 		return
 	}
 	deleteBodyPath(body, parts)
+}
+
+// isInfoCode — объявлен ли код в реестре уровнем info.
+func isInfoCode(code string) bool {
+	reg, err := registry.Get()
+	if err != nil {
+		return false
+	}
+	e, ok := reg.Warning(code)
+	return ok && e.Severity == "info"
+}
+
+// samePathValue — одинаково ли значение пути path (индексы в скобках) в
+// сыром теле и в чистом: оба отсутствуют или оба равны.
+func samePathValue(raw, clean map[string]interface{}, path string) bool {
+	parts := strings.Split(strings.NewReplacer("[", ".", "]", "").Replace(path), ".")
+	a, aok := lookupBodyPath(raw, parts)
+	b, bok := lookupBodyPath(clean, parts)
+	if aok != bok {
+		return false
+	}
+	return !aok || reflect.DeepEqual(a, b)
 }
 
 func lookupBodyPath(v interface{}, parts []string) (interface{}, bool) {
