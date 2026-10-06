@@ -20,7 +20,7 @@
 //
 //   - у узла БЕЗ проблем (все коды info) подстрока держит обычный состав, и
 //     иконка встаёт ПЕРЕД ним: она комментирует эту строку целиком;
-//   - у узла с error/warning подстрока уже занята («✖/⚠ заголовок +N»), и
+//   - у узла с error/warning подстрока уже занята («❌/⚠ заголовок +N»), и
 //     иконка уходит в КОНЕЦ: спорить с главным знаком за начало строки она не
 //     вправе — сперва «что не так», потом «и ещё есть что знать».
 //
@@ -160,7 +160,7 @@ func infoIconSides(in []state.NodeWarning) (lead, trail bool) {
 	if !HasInfo(in) {
 		return false, false
 	}
-	// Подстрока занята «✖/⚠ заголовок +N» — знак уходит в конец: спорить с
+	// Подстрока занята «❌/⚠ заголовок +N» — знак уходит в конец: спорить с
 	// главным знаком за начало строки info не вправе.
 	if HasProblems(in) {
 		return false, true
@@ -243,16 +243,4 @@ func (l tightSubtitleLayout) Layout(objects []fyne.CanvasObject, size fyne.Size)
 		x += m.Width
 		first = false
 	}
-}
-
-// ErrorIconCell — крестик цветом ошибки темы для раздела «Уведомления».
-//
-// Иконка, а не ErrorMark: глифа «✖» U+2716 во встроенных шрифтах Fyne нет,
-// macOS берёт его из цветного эмодзи-шрифта, и Importance Label'а его не
-// красит. Размер — как у InfoIconAccentCell: знаки уровней в шапке стоят рядом.
-func ErrorIconCell() fyne.CanvasObject {
-	return container.NewGridWrap(
-		fyne.NewSize(InfoIconSize+2, InfoIconSize+2),
-		widget.NewIcon(theme.NewColoredResource(theme.CancelIcon(), theme.ColorNameError)),
-	)
 }

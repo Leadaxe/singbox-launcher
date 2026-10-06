@@ -143,7 +143,7 @@ func TestSeverityLevelsDrivePresentation(t *testing.T) {
 			// Иконка info в ПОДСТРОКЕ: есть ли она и с какой стороны текста.
 			// Проверяется ВЫБОР МЕСТА, а не вёрстка: правило «начало
 			// подстроки принадлежит старшему уровню» — то же, по которому
-			// Subtitle ставит ✖/⚠, и разъехаться им нельзя.
+			// Subtitle ставит ❌/⚠, и разъехаться им нельзя.
 			lead, trail := infoIconSides(c.in)
 			wantLead := c.info && c.mark == ""
 			wantTrail := c.info && c.mark != ""

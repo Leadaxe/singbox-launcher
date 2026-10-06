@@ -962,7 +962,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		subtitleText.Refresh()
 
 		// Иконка info — во второй строке: перед составом у здорового узла, в
-		// конце у узла с деградацией (там начало строки занято ✖/⚠).
+		// конце у узла с деградацией (там начало строки занято ❌/⚠).
 		subtitleLine.Update(nodeWarns)
 
 		// Замер — цветное число на нейтральной подложке; клик по нему
