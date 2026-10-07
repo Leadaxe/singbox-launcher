@@ -934,9 +934,6 @@
   "Ping test URL": {
     "value": "URL пинг-теста"
   },
-  "Custom URL:": {
-    "value": "Свой URL:"
-  },
   "Parallel requests (ping all):": {
     "value": "Параллельных запросов (массовый ping):"
   },
@@ -2385,12 +2382,6 @@
   },
   "Last delay": {
     "value": "Последний замер"
-  },
-  "Section": {
-    "value": "Секция"
-  },
-  "Security": {
-    "value": "Защита"
   },
   "Detour": {
     "value": "Цепочка (detour)"
@@ -4148,14 +4139,8 @@
   "no state": {
     "value": "нет состояния"
   },
-  "State": {
-    "value": "Состояние"
-  },
   "Network": {
     "value": "Сеть"
-  },
-  "online": {
-    "value": "в сети"
   },
   "exit node": {
     "value": "выход"
@@ -4834,9 +4819,6 @@
   },
   "Copy name": {
     "value": "Копировать имя"
-  },
-  "Devices (%d online / %d)": {
-    "value": "Устройства (в сети %d / %d)"
   },
   "Done.": {
     "value": "Готово."
