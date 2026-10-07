@@ -4936,5 +4936,50 @@
   },
   "Copy public key": {
     "value": "Копировать публичный ключ"
+  },
+  "Diagnostics": {
+    "value": "Диагностика"
+  },
+  "Diagnostics needs the daemon mode or a remote machine.": {
+    "value": "Диагностике нужен режим демона или удалённая машина."
+  },
+  "This is a group — it has no connection of its own. Check its members.": {
+    "value": "Это группа — своего соединения у неё нет. Проверьте её участников."
+  },
+  "Check": {
+    "value": "Проверка"
+  },
+  "Request is sent through this node": {
+    "value": "запрос идёт через этот узел"
+  },
+  "Run": {
+    "value": "Запустить"
+  },
+  "Running…": {
+    "value": "Выполняется…"
+  },
+  "Response": {
+    "value": "Ответ"
+  },
+  "through this node in the running core": {
+    "value": "через этот узел в работающем ядре"
+  },
+  "(empty response)": {
+    "value": "(пустой ответ)"
+  },
+  "Response was longer and got cut off.": {
+    "value": "Ответ был длиннее и обрезан."
+  },
+  "Connected to %s from inside the tunnel": {
+    "value": "Подключение к %s изнутри туннеля"
+  },
+  "Devices": {
+    "value": "Устройства"
+  },
+  "%d online / %d": {
+    "value": "%d в сети / %d"
+  },
+  "Copy MagicDNS name": {
+    "value": "Копировать имя MagicDNS"
   }
 }

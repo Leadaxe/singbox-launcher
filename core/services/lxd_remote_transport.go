@@ -766,6 +766,73 @@ func SetEndpointEnabledRPC(ctx context.Context, client daemonpb.StartedServiceCl
 	return resp.GetState(), nil
 }
 
+// URLViaOutboundResult — ответ GET через узел (вкладка Diagnostics окна узла).
+// Не-2xx — результат, а не сбой; Error — запрос не дошёл.
+type URLViaOutboundResult struct {
+	Status     int
+	Body       []byte
+	Truncated  bool
+	RemoteAddr string
+	Elapsed    time.Duration
+	Error      string
+}
+
+// URLViaOutboundSource — транспорт, умеющий сделать GET через узел работающего
+// ядра (gRPC GetURLViaOutbound: локальный демон или удалённая машина; у Clash
+// API этого нет).
+type URLViaOutboundSource interface {
+	GetURLViaOutbound(tag, url string) (URLViaOutboundResult, error)
+}
+
+// URLViaOutboundTimeout и URLViaOutboundMaxBytes — бюджет запроса и потолок
+// тела, как у LxBox.
+const (
+	URLViaOutboundTimeout  = 10 * time.Second
+	URLViaOutboundMaxBytes = 64 << 10
+)
+
+// ErrURLViaOutboundUnsupported — ядро не знает GetURLViaOutbound.
+var ErrURLViaOutboundUnsupported = errors.New("core does not support requests through a node — update the core")
+
+// GetURLViaOutboundRPC — GET через узел tag. Активный selector не меняется.
+func GetURLViaOutboundRPC(ctx context.Context, client daemonpb.StartedServiceClient, tag, url string) (URLViaOutboundResult, error) {
+	resp, err := client.GetURLViaOutbound(ctx, &daemonpb.GetURLViaOutboundRequest{
+		OutboundTag: tag,
+		Link:        url,
+		Timeout:     uint32(URLViaOutboundTimeout / time.Millisecond),
+		MaxBytes:    URLViaOutboundMaxBytes,
+	})
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			if st.Code() == codes.Unimplemented {
+				return URLViaOutboundResult{}, ErrURLViaOutboundUnsupported
+			}
+			return URLViaOutboundResult{}, errors.New(st.Message())
+		}
+		return URLViaOutboundResult{}, err
+	}
+	return URLViaOutboundResult{
+		Status:     int(resp.GetHttpStatus()),
+		Body:       resp.GetBody(),
+		Truncated:  resp.GetTruncated(),
+		RemoteAddr: resp.GetRemoteAddr(),
+		Elapsed:    time.Duration(resp.GetElapsedMs()) * time.Millisecond,
+		Error:      resp.GetError(),
+	}, nil
+}
+
+// GetURLViaOutbound — GET через узел УДАЛЁННОГО ядра.
+func (t *LxdRemoteTransport) GetURLViaOutbound(tag, url string) (URLViaOutboundResult, error) {
+	client, _, cancel, err := t.rpc()
+	if err != nil {
+		return URLViaOutboundResult{}, err
+	}
+	cancel()
+	ctx, longCancel := context.WithTimeout(context.Background(), URLViaOutboundTimeout+5*time.Second)
+	defer longCancel()
+	return GetURLViaOutboundRPC(ctx, client, tag, url)
+}
+
 // EndpointStatuses — состояния WG/AWG-узлов УДАЛЁННОГО ядра.
 func (t *LxdRemoteTransport) EndpointStatuses() (map[string]EndpointStatus, error) {
 	client, ctx, cancel, err := t.rpc()

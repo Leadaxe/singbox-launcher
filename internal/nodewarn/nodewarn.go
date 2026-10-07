@@ -433,3 +433,16 @@ func FieldsStripped(in []state.NodeWarning) (fields, nodeLevel int) {
 	}
 	return fields, nodeLevel
 }
+
+// TopSeverity — самый важный уровень среди уведомлений узла: error, warning
+// или пусто (только info либо ничего). Для точки на ярлыке вкладки.
+func TopSeverity(in []state.NodeWarning) string {
+	errs, warns, _ := byLevel(Describe(in))
+	switch {
+	case len(errs) > 0:
+		return SeverityError
+	case len(warns) > 0:
+		return SeverityWarning
+	}
+	return ""
+}

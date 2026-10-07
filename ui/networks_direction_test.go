@@ -89,16 +89,13 @@ func TestTailscaleDeviceDetails(t *testing.T) {
 		LastSeen: now.Add(-2 * time.Hour), Expired: true, ShareeNode: true, ExitNodeOption: true,
 	}
 	got := tailscaleDeviceDetails(p, now)
-	for _, frag := range []string{"nas.tail.ts.net", "100.64.0.7", "linux", "last seen", "key expired", "shared", "exit node"} {
+	for _, frag := range []string{"linux", "last seen", "key expired", "shared", "exit node"} {
 		if !strings.Contains(got, frag) {
 			t.Errorf("нет %q в %q", frag, got)
 		}
 	}
-	if strings.Contains(got, "online") {
-		t.Errorf("устройство не в сети: %q", got)
-	}
 	p.Online = true
-	if got := tailscaleDeviceDetails(p, now); !strings.Contains(got, "online") || strings.Contains(got, "last seen") {
+	if got := tailscaleDeviceDetails(p, now); strings.Contains(got, "last seen") {
 		t.Errorf("в сети: %q", got)
 	}
 }

@@ -21,6 +21,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
@@ -64,6 +65,18 @@ func endpointStateLabel(state string) string {
 		return locale.T("disabled")
 	}
 	return state
+}
+
+// endpointStateMark — отметка состояния, как у пиров: ● зелёная — работает,
+// ● красная — выключен вручную, ○ серая — спит, освобождён, не собран.
+func endpointStateMark(state string) (string, widget.Importance) {
+	switch state {
+	case services.EndpointStateUp:
+		return "●", widget.SuccessImportance
+	case services.EndpointStateDisabled:
+		return "●", widget.DangerImportance
+	}
+	return "○", widget.LowImportance
 }
 
 func endpointStateText(st services.EndpointStatus) string {
@@ -248,7 +261,7 @@ func addWireGuardSection(ac *core.AppController, target core.CoreTarget, body *f
 // сменилась машина — её транспорта больше нет, и команда отвечает ошибкой, а
 // не уходит в другое ядро.
 func buildWireGuardSection(source func() (services.EndpointSource, bool), box *fyne.Container, win fyne.Window, tag string, initial services.EndpointStatus) {
-	var btn *widget.Button
+	var btn *ttwidget.Button
 	current := initial
 
 	errLabel := widget.NewLabel("")
@@ -256,19 +269,26 @@ func buildWireGuardSection(source func() (services.EndpointSource, bool), box *f
 	errLabel.Importance = widget.DangerImportance
 	errLabel.Hide()
 
-	note := widget.NewLabel(locale.T("Until the core restarts or the config is applied."))
-	note.Wrapping = fyne.TextWrapWord
-	note.Importance = widget.LowImportance
-
-	btn = widget.NewButton("", nil)
-	stateRow, stateEntry := infoRowEntry(locale.T("State"), "", btn)
+	// Выключатель — в заголовке секции; что он действует до рестарта ядра
+	// или применения конфига, говорит тултип.
+	btn = ttwidget.NewButton("", nil)
+	btn.SetToolTip(locale.T("Until the core restarts or the config is applied."))
+	stateMark := widget.NewLabel("")
+	stateText := widget.NewLabel("")
+	stateText.Truncation = fyne.TextTruncateEllipsis
 
 	peers := newWireGuardPeerRows(win)
 
 	apply := func(st services.EndpointStatus) {
 		current = st
 		peers.update(st.Peers, time.Now())
-		stateEntry.SetText(endpointStateText(st))
+		mark, imp := endpointStateMark(st.State)
+		if stateMark.Importance != imp {
+			stateMark.Importance = imp
+			stateMark.Refresh()
+		}
+		stateMark.SetText(mark)
+		stateText.SetText(endpointStateText(st))
 		if st.State == services.EndpointStateDisabled {
 			btn.SetText(locale.T("Enable"))
 		} else {
@@ -318,9 +338,9 @@ func buildWireGuardSection(source func() (services.EndpointSource, bool), box *f
 	}
 
 	box.Add(widget.NewSeparator())
-	box.Add(sectionHeader(locale.T("WireGuard")))
-	box.Add(stateRow)
-	box.Add(note)
+	// Одна строка: заголовок, состояние, выключатель.
+	box.Add(container.NewBorder(nil, nil,
+		container.NewHBox(sectionHeader(locale.T("WireGuard")), stateMark), btn, stateText))
 	box.Add(errLabel)
 	box.Add(peers.box)
 	apply(initial)
@@ -395,7 +415,8 @@ func (r *wireGuardPeerRows) update(peers []services.EndpointPeer, now time.Time)
 		r.rows = map[string]*wireGuardPeerRow{}
 		r.box.Objects = nil
 		if len(peers) > 0 {
-			r.box.Add(sectionHeader(locale.T("Peers")))
+			// Подпись, а не заголовок: пиры — часть секции WireGuard.
+			r.box.Add(infoKeyCell(locale.T("Peers")))
 		}
 		for _, p := range peers {
 			row, obj := r.newRow(p.PublicKey)
@@ -481,12 +502,7 @@ func (r *wireGuardPeerRows) newRow(key string) (*wireGuardPeerRow, fyne.CanvasOb
 	})
 	more.Importance = widget.LowImportance
 
-	gap := func(w float32) fyne.CanvasObject {
-		g := canvas.NewRectangle(color.Transparent)
-		g.SetMinSize(fyne.NewSize(w, 0))
-		return g
-	}
-	fields := container.NewHBox(row.mark, row.addr, gap(12), row.age, gap(12), row.rx, row.tx)
+	fields := container.NewHBox(row.mark, row.addr, rowGap(12), row.age, rowGap(12), row.rx, row.tx)
 	return row, container.NewBorder(nil, nil, nil, container.NewHBox(keyLabel, more), fields)
 }
 
@@ -504,4 +520,11 @@ func shortPeerKey(key string) string {
 		return key
 	}
 	return key[:4] + "…" + key[len(key)-4:]
+}
+
+// rowGap — прозрачный отступ между полями строки (пиры, устройства tailnet).
+func rowGap(w float32) fyne.CanvasObject {
+	g := canvas.NewRectangle(color.Transparent)
+	g.SetMinSize(fyne.NewSize(w, 0))
+	return g
 }

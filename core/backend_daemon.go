@@ -885,6 +885,17 @@ func (t *daemonProxyTransport) SetEndpointEnabled(tag string, enabled bool) (str
 	return services.SetEndpointEnabledRPC(ctx, client, tag, enabled)
 }
 
+// GetURLViaOutbound implements services.URLViaOutboundSource.
+func (t *daemonProxyTransport) GetURLViaOutbound(tag, url string) (services.URLViaOutboundResult, error) {
+	client, err := t.b.grpcClient()
+	if err != nil {
+		return services.URLViaOutboundResult{}, err
+	}
+	ctx, cancel := context.WithTimeout(t.b.ctx, services.URLViaOutboundTimeout+5*time.Second)
+	defer cancel()
+	return services.GetURLViaOutboundRPC(ctx, client, tag, url)
+}
+
 // GroupProxies implements services.ProxyTransport через GetGroups.
 func (t *daemonProxyTransport) GroupProxies(group string) ([]api.ProxyInfo, string, error) {
 	client, ctx, cancel, err := t.rpc()
