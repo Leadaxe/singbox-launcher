@@ -65,6 +65,7 @@ const (
 	codeChainHopMissing            = "chain_hop_missing"
 	codeChainNestedPosition        = "chain_nested_position"
 	codeChainCycleThroughDirection = "chain_cycle_through_direction"
+	codeNodeDetourThroughGroup     = "node_detour_through_group"
 	codeReplaceTagConflict         = "replace_tag_conflict"
 	codeReplaceGroupEmpty          = "replace_group_empty"
 )

@@ -233,17 +233,22 @@ type ChainCycle struct {
 
 // DetourCycle — узел, не вошедший в состав группы, через которую ходит
 // своим detour (SPEC 077 follow-up).
+//
+// SourceIndex — источник узла (UnsetSourceIndex у узла без источника): отчёт
+// сборки адресует запись источнику, и строка Sources встаёт с пометкой у
+// того, чей detour замкнул кольцо.
 type DetourCycle struct {
-	Node  string
-	Group string
+	Node        string
+	Group       string
+	SourceIndex int
 }
 
 // appendDetourCycles — фильтр цикла узел→группа плюс накопление
 // предупреждений.
 func appendDetourCycles(acc []DetourCycle, nodes []*ParsedNode, groupTag string) ([]*ParsedNode, []DetourCycle) {
 	kept, dropped := dropNodesDetouringThroughGroup(nodes, groupTag)
-	for _, tag := range dropped {
-		acc = append(acc, DetourCycle{Node: tag, Group: groupTag})
+	for _, n := range dropped {
+		acc = append(acc, DetourCycle{Node: n.Tag, Group: groupTag, SourceIndex: n.SourceIndex})
 	}
 	return kept, acc
 }

@@ -60,6 +60,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`naive_extra_headers_invalid`](#naive_extra_headers_invalid) · `info` — naive: header {entry} discarded
 - [`naive_padding_ignored`](#naive_padding_ignored) · `info` — naive: padding parameter ignored
 - [`naive_unavailable`](#naive_unavailable) · `error` — naive is unavailable in this build
+- [`node_detour_through_group`](#node_detour_through_group) · `warning` — {count} node(s) left out of {group}
 - [`obfs_object_flattened`](#obfs_object_flattened) · `info` — Obfuscation password taken from an object
 - [`obfs_password_missing`](#obfs_password_missing) · `warning` — Obfuscation removed: no password
 - [`obfs_unknown`](#obfs_unknown) · `warning` — Unknown obfuscation removed
@@ -1083,6 +1084,24 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Update the application to a version that ships libcronet with the core.
   - Use another node from this subscription while naive is unavailable.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="node_detour_through_group"></a>
+### node_detour_through_group
+
+**severity:** `warning` · **params:** `group`, `count`, `tags`
+
+**{count} node(s) left out of {group}**
+
+- **What happened:** Group {group} did not take {count} node(s) of this source into its members ({tags}), because they dial through this very group. Otherwise the core would reject the whole config: a group that contains a node routed through itself is a dependency loop.
+- **Why it happens:** The source (or the node itself) is routed through {group} by its detour, and {group} picks its members by a filter that matches these nodes. A node cannot be both a member of a group and dial through it.
+- **What you can do:**
+  - Nothing to do if the group works as you meant it to: the nodes keep working and still dial through it.
+  - If the nodes have to be in this group, remove the detour to this group from their source.
+  - If the nodes have to dial through this group, narrow the group's filter so it does not match them.
 
 **Where it comes from:**
 

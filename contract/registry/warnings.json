@@ -1921,6 +1921,33 @@
       "dart": "services/builder/chain_nodes.dart (T9) + screens/chain_edit/chain_form_validation.dart",
       "go": "EmissionWarning.Code в отчёт сборки (адресат — Направление): core/config/chain_cycle.go:chainCycleWarnings; цепочку из состава снимает core/config/chain_cycle.go:dropChainsThroughDirection"
     },
+    "node_detour_through_group": {
+      "severity": "warning",
+      "params": [
+        "group",
+        "count",
+        "tags"
+      ],
+      "title_en": "{count} node(s) left out of {group}",
+      "title_ru": "Не вошло в {group}: узлов — {count}",
+      "text_en": "Group {group} did not take {count} node(s) of this source into its members ({tags}), because they dial through this very group. Otherwise the core would reject the whole config: a group that contains a node routed through itself is a dependency loop.",
+      "text_ru": "Группа {group} не взяла в состав узлы этого источника ({tags}; всего {count}), потому что они ходят через эту же группу. Иначе ядро отвергло бы весь конфиг: группа, содержащая узел, который ведётся через неё же, — кольцо зависимостей.",
+      "cause_en": "The source (or the node itself) is routed through {group} by its detour, and {group} picks its members by a filter that matches these nodes. A node cannot be both a member of a group and dial through it.",
+      "cause_ru": "Источник (или сам узел) ведётся через {group} своим detour, а {group} набирает состав фильтром, под который эти узлы попадают. Узел не может одновременно входить в группу и ходить через неё.",
+      "fix_en": [
+        "Nothing to do if the group works as you meant it to: the nodes keep working and still dial through it.",
+        "If the nodes have to be in this group, remove the detour to this group from their source.",
+        "If the nodes have to dial through this group, narrow the group's filter so it does not match them."
+      ],
+      "fix_ru": [
+        "Если группа работает так, как вы задумали, делать ничего не нужно: узлы работают и по-прежнему ходят через неё.",
+        "Если узлы обязаны быть в этой группе, снимите у их источника detour на эту группу.",
+        "Если узлы обязаны ходить через эту группу, сузьте её фильтр, чтобы он их не ловил."
+      ],
+      "desc": "Группа (Направление или группа свёртки папки) не взяла в состав узлы, которые своим detour ходят через эту же группу (SPEC 077 follow-up). Ядро на таком кольце отвергает ВЕСЬ конфиг (`dependency[X] not found for outbound[Y]`), и сообщение указывает не на тот узел, который трогал пользователь. Кольцо рвётся по членству, а не по переходу: узел остаётся в конфиге и ходит через свой detour (снять detour молча значило бы отправить трафик напрямую мимо заданной границы, SPEC 113-B). Одна запись на пару (источник, группа): detour чаще всего задан у источника целиком, и подписка на полсотни узлов дала бы полсотни одинаковых строк. Адресат — источник узла (строка Sources с пометкой); у узла без источника — запись без адреса. Живой случай: подписка Liberty с detour на «Jump server» и фильтр (🔥|🗽) у самого «Jump server» — в Мастере читалось как «фильтр не сработал».",
+      "dart": "services/builder/ (состав групп) — код в отчёт сборки, если ваша сборка тоже рвёт кольцо узел→группа по членству",
+      "go": "EmissionWarning.Code в отчёт сборки (адресат — источник, DirectionTag — группа): core/config/detour_group_cycle.go:detourCycleWarnings; узел из состава снимает core/config/detour_group_cycle.go:dropNodesDetouringThroughGroup"
+    },
     "direction_filter_matched_nothing": {
       "severity": "warning",
       "params": [
