@@ -687,7 +687,8 @@ type EndpointStatus struct {
 	State string
 	// IdleSince — сколько прошло с последнего dial через узел.
 	IdleSince time.Duration
-	// Peers — пиры устройства (ядро с SPEC 114 ядра); старое ядро — пусто.
+	// Peers — пиры устройства; только у EndpointStatus (GetWireGuardStatus),
+	// список EndpointStatuses их не несёт.
 	Peers []EndpointPeer
 }
 
@@ -713,6 +714,9 @@ type EndpointSource interface {
 	// EndpointStatuses — состояния всех WG/AWG-узлов по тегу. Узлы других
 	// типов и ядро без endpointState в карту не попадают.
 	EndpointStatuses() (map[string]EndpointStatus, error)
+	// EndpointStatus — состояние и пиры одного узла; ok=false — тега нет или
+	// это не WG/AWG.
+	EndpointStatus(tag string) (EndpointStatus, bool, error)
 	// SetEndpointEnabled возвращает состояние узла после вызова.
 	SetEndpointEnabled(tag string, enabled bool) (string, error)
 }
@@ -728,25 +732,53 @@ func EndpointStatusesRPC(ctx context.Context, client daemonpb.StartedServiceClie
 		if o.GetEndpointState() == "" {
 			continue
 		}
-		st := EndpointStatus{
+		out[o.GetTag()] = EndpointStatus{
 			State:     o.GetEndpointState(),
 			IdleSince: time.Duration(o.GetIdleSinceSeconds()) * time.Second,
 		}
-		for _, p := range o.GetPeers() {
-			peer := EndpointPeer{
-				PublicKey: p.GetPublicKey(),
-				Endpoint:  p.GetEndpoint(),
-				RxBytes:   p.GetRxBytes(),
-				TxBytes:   p.GetTxBytes(),
-			}
-			if hs := p.GetLastHandshakeUnix(); hs > 0 {
-				peer.LastHandshake = time.Unix(hs, 0)
-			}
-			st.Peers = append(st.Peers, peer)
-		}
-		out[o.GetTag()] = st
 	}
 	return out, nil
+}
+
+// EndpointStatusRPC — состояние и пиры одного WG/AWG-узла (GetWireGuardStatus,
+// SPEC 114 ядра). ok=false — тега нет или это не WG/AWG. Ядро без этого RPC
+// (≤ 1.14.2-lx.12-rc.1) — состояние из GetOutbounds, без пиров.
+func EndpointStatusRPC(ctx context.Context, client daemonpb.StartedServiceClient, tag string) (EndpointStatus, bool, error) {
+	resp, err := client.GetWireGuardStatus(ctx, &daemonpb.WireGuardStatusRequest{Tag: tag})
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			switch st.Code() {
+			case codes.Unimplemented:
+				states, err := EndpointStatusesRPC(ctx, client)
+				if err != nil {
+					return EndpointStatus{}, false, err
+				}
+				s, ok := states[tag]
+				return s, ok, nil
+			case codes.NotFound, codes.InvalidArgument:
+				return EndpointStatus{}, false, nil
+			}
+			return EndpointStatus{}, false, errors.New(st.Message())
+		}
+		return EndpointStatus{}, false, err
+	}
+	out := EndpointStatus{
+		State:     resp.GetEndpointState(),
+		IdleSince: time.Duration(resp.GetIdleSinceSeconds()) * time.Second,
+	}
+	for _, p := range resp.GetPeers() {
+		peer := EndpointPeer{
+			PublicKey: p.GetPublicKey(),
+			Endpoint:  p.GetEndpoint(),
+			RxBytes:   p.GetRxBytes(),
+			TxBytes:   p.GetTxBytes(),
+		}
+		if hs := p.GetLastHandshakeUnix(); hs > 0 {
+			peer.LastHandshake = time.Unix(hs, 0)
+		}
+		out.Peers = append(out.Peers, peer)
+	}
+	return out, true, nil
 }
 
 // SetEndpointEnabledRPC включает/выключает WG/AWG-узел и возвращает его
@@ -841,6 +873,16 @@ func (t *LxdRemoteTransport) EndpointStatuses() (map[string]EndpointStatus, erro
 	}
 	defer cancel()
 	return EndpointStatusesRPC(ctx, client)
+}
+
+// EndpointStatus — состояние и пиры WG/AWG-узла УДАЛЁННОГО ядра.
+func (t *LxdRemoteTransport) EndpointStatus(tag string) (EndpointStatus, bool, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return EndpointStatus{}, false, err
+	}
+	defer cancel()
+	return EndpointStatusRPC(ctx, client, tag)
 }
 
 // SetEndpointEnabled — выключатель WG/AWG-узла на УДАЛЁННОМ ядре. Бюджет как

@@ -241,12 +241,11 @@ func addWireGuardSection(ac *core.AppController, target core.CoreTarget, body *f
 	body.Add(box)
 
 	go func() {
-		states, err := src.EndpointStatuses()
+		st, ok, err := src.EndpointStatus(tag)
 		if err != nil {
-			debuglog.WarnLog("node info: endpoint states: %v", err)
+			debuglog.WarnLog("node info: endpoint state: %v", err)
 			return
 		}
-		st, ok := states[tag]
 		if !ok {
 			return
 		}
@@ -301,11 +300,10 @@ func buildWireGuardSection(source func() (services.EndpointSource, bool), box *f
 		if !ok {
 			return services.EndpointStatus{}, false
 		}
-		states, err := src.EndpointStatuses()
+		st, ok, err := src.EndpointStatus(tag)
 		if err != nil {
 			return services.EndpointStatus{}, false
 		}
-		st, ok := states[tag]
 		return st, ok
 	}
 

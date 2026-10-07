@@ -872,6 +872,16 @@ func (t *daemonProxyTransport) EndpointStatuses() (map[string]services.EndpointS
 	return services.EndpointStatusesRPC(ctx, client)
 }
 
+// EndpointStatus implements services.EndpointSource через GetWireGuardStatus.
+func (t *daemonProxyTransport) EndpointStatus(tag string) (services.EndpointStatus, bool, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return services.EndpointStatus{}, false, err
+	}
+	defer cancel()
+	return services.EndpointStatusRPC(ctx, client, tag)
+}
+
 // SetEndpointEnabled implements services.EndpointSource через lx-RPC
 // SetEndpointEnabled (SPEC 106 ядра). Бюджет как у пробы: включение будит
 // устройство.
