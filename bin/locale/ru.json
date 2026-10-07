@@ -4931,10 +4931,10 @@
   "no handshake yet": {
     "value": "хендшейка ещё не было"
   },
-  "online, handshake %s ago": {
-    "value": "на связи, хендшейк %s назад"
+  "%s ago": {
+    "value": "%s назад"
   },
-  "no session, last handshake %s ago": {
-    "value": "нет сессии, последний хендшейк %s назад"
+  "Copy public key": {
+    "value": "Копировать публичный ключ"
   }
 }
