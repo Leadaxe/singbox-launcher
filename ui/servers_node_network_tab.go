@@ -429,7 +429,7 @@ func tailscaleDeviceConnection(p services.TailscalePeer, now time.Time) string {
 //	●  GL-MT2500   100.104.79.7   linux · exit node        ⋯
 //	   direct 31.184.97.44:41641
 //
-// Вторая строка держит высоту и пустой, чтобы список не «дышал», когда у
+// Подстрока держит высоту и пустой, чтобы список не «дышал», когда у
 // устройства появляется путь. Меню — Copy name, Copy MagicDNS name, Copy
 // address, Ping.
 func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer, haveCtrl bool) fyne.CanvasObject {
@@ -448,9 +448,6 @@ func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p se
 	details := widget.NewLabel(tailscaleDeviceDetails(p))
 	details.Importance = widget.LowImportance
 	details.Truncation = fyne.TextTruncateEllipsis
-	conn := widget.NewLabel(tailscaleDeviceConnection(p, time.Now()))
-	conn.Importance = widget.LowImportance
-	conn.Truncation = fyne.TextTruncateEllipsis
 	dns := strings.TrimSuffix(p.DNSName, ".")
 
 	var more *widget.Button
@@ -476,9 +473,8 @@ func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p se
 	more.Importance = widget.LowImportance
 	left := container.NewHBox(mark, name, rowGap(12), ip, rowGap(12))
 	top := container.NewBorder(nil, nil, left, more, details)
-	// Вторая строка начинается под именем: отступ = знак + зазор HBox.
-	bottom := container.NewBorder(nil, nil, rowGap(mark.MinSize().Width+theme.Padding()), nil, conn)
-	return container.NewVBox(top, bottom)
+	// Подстрока начинается под именем: отступ = знак + зазор HBox.
+	return tailscaleDeviceLines(top, tailscaleDeviceConnection(p, time.Now()), mark.MinSize().Width+theme.Padding())
 }
 
 // tailscalePingLine — одна строка результата проверки (§7).

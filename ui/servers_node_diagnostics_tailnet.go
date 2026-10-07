@@ -196,11 +196,7 @@ func tailnetPeerRow(p services.TailscalePeer, now time.Time) fyne.CanvasObject {
 	details := widget.NewLabel(tailscaleDeviceDetails(p))
 	details.Importance = widget.LowImportance
 	details.Truncation = fyne.TextTruncateEllipsis
-	conn := widget.NewLabel(tailnetPeerDetails(p, now))
-	conn.Importance = widget.LowImportance
-	conn.Truncation = fyne.TextTruncateEllipsis
 	left := container.NewHBox(mark, name, rowGap(12), ip, rowGap(12))
 	top := container.NewBorder(nil, nil, left, nil, details)
-	bottom := container.NewBorder(nil, nil, rowGap(mark.MinSize().Width+theme.Padding()), nil, conn)
-	return container.NewVBox(top, bottom)
+	return tailscaleDeviceLines(top, tailnetPeerDetails(p, now), mark.MinSize().Width+theme.Padding())
 }

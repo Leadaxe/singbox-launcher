@@ -8,9 +8,26 @@ import (
 	"strings"
 	"time"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
+
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/locale"
 )
+
+// tailscaleDeviceLines — устройство в две строки, как узел в списке серверов:
+// верх — виджеты строки (точка, имя, адрес, ОС), низ — подстрока «как
+// подключено» тем же canvas.Text, что подзаголовок списка (serversSubtitle*),
+// без собственных отступов: Label в верхней строке уже несёт внутренний
+// отступ снизу, поэтому зазор 0. indent — начало подстроки под именем.
+func tailscaleDeviceLines(top fyne.CanvasObject, conn string, indent float32) fyne.CanvasObject {
+	sub := canvas.NewText(truncateSubtitle(conn), theme.Color(theme.ColorNamePlaceHolder))
+	sub.TextSize = serversSubtitleTextSize
+	line := container.NewBorder(nil, nil, rowGap(indent), nil, sub)
+	return container.New(tightVBoxLayout{gap: 0}, top, line)
+}
 
 // tailscaleStateLabel — слово состояния для UI по BackendState ядра.
 //
