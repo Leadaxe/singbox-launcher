@@ -260,7 +260,8 @@ func serversNodeSubtitle(ac *core.AppController, proxyInfo api.ProxyInfo, scope 
 // Tailscale транспорт один и тот же, и единственное, что отличает узлы
 // друг от друга в списке, — через чей выход идёт трафик:
 //
-//	tailscale ‣ gl-mt2500   — выход через машину tailnet;
+//	tailscale ‣ gl-mt2500 · direct 31.184.97.44:41641 — выход через машину
+//	                        tailnet и путь до неё (SPEC 158);
 //	tailscale·exit node     — сам узел анонсируется выходом;
 //	tailscale               — выхода нет (трафик только в tailnet).
 //
@@ -268,16 +269,19 @@ func serversNodeSubtitle(ac *core.AppController, proxyInfo api.ProxyInfo, scope 
 // СЕЙЧАС; без статуса (ядро не запущено, снимка нет) — из `exit_node`
 // собранного конфига, то есть то, что будет после запуска. Разделитель тот
 // же, что у группы перед выбранным узлом: смысл тот же — «идёт через».
+// Путь (direct / peer relay / relay <регион>) — из того же снимка потока,
+// только у живого выхода; пока ядро выходу не писало, пути нет и хвоста нет.
 func tailscaleSubtitle(ac *core.AppController, node *wizardbusiness.ConfigNode, tag string, scope services.ProxyScope, base string) string {
 	if adv, _ := node.Raw["advertise_exit_node"].(bool); adv {
 		return base + "·" + locale.T("exit node")
 	}
-	exit := ""
+	exit, path := "", ""
 	if st, ok := ac.TailscaleStatus(core.TailscaleIn(scope), tag); ok && st.ExitNode != nil {
 		exit = st.ExitNode.HostName
 		if exit == "" && len(st.ExitNode.TailscaleIPs) > 0 {
 			exit = st.ExitNode.TailscaleIPs[0]
 		}
+		path = tailscalePathText(*st.ExitNode)
 	}
 	if exit == "" {
 		written, _ := node.Raw["exit_node"].(string)
@@ -285,6 +289,9 @@ func tailscaleSubtitle(ac *core.AppController, node *wizardbusiness.ConfigNode, 
 	}
 	if exit == "" {
 		return base
+	}
+	if path != "" {
+		exit += " · " + path
 	}
 	return base + " " + groupNowSeparator + " " + exit
 }

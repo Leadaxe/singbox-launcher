@@ -4,7 +4,7 @@
 
 - `core/services/tailscale_status.go`: `TailscalePeerPath` (`""`/`direct`/`peer_relay`/`derp`), поля `Path`, `Endpoint`, `PeerRelay`, `DERPRegionCode`, `LastHandshake` у `TailscalePeer`, `Health` у `TailscaleStatus`; конвертер одного endpoint'а `TailscaleEndpointStatusFromPB` вынесен из цикла потока и общий с унарным вызовом; `TailscaleStatusRPC` (NotFound / InvalidArgument / FailedPrecondition → ok=false, Unimplemented → `ErrTailscalePathUnsupported`); неизвестный enum ядра → путь пуст.
 - `TailscaleStatusNow(tag)` у `DaemonBackend` и `LxdRemoteTransport`; в `tailscaleController` и у `AppController` — команда уходит в то же ядро, чей статус на экране.
-- Network: `tailscaleDeviceDetails` дописывает путь из снимка потока.
+- Network: `tailscaleDeviceDetails` дописывает путь из снимка потока; подзаголовок узла в списке серверов — тот же путь после выхода (`tailscale ‣ gl-mt2500 · direct ip:port`), просьба владельца по скриншоту 07.10.
 - Diagnostics: новая секция «Tailnet» (`ui/servers_node_diagnostics_tailnet.go`): опрос раз в 3 с, пока окно открыто; перерисовка только при смене строк; `health` жёлтым, Exit node с путём и возрастом хендшейка, устройства с путём, счётчик без трафика; старое ядро — одна строка и остановка опроса.
 - Переводы, release notes, SPECS/README.
 
