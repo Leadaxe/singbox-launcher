@@ -671,6 +671,30 @@
       "dart": null,
       "go": "запись отчёта сборки (EmissionWarning.Code): core/config/nodelink_resolve.go:resolveCanonicalGroup → core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks"
     },
+    "group_default_dropped": {
+      "severity": "info",
+      "params": [
+        "tag",
+        "default"
+      ],
+      "title_en": "Group {tag}: default {default} dropped",
+      "title_ru": "Группа {tag}: умолчание {default} снято",
+      "text_en": "The default server {default} of group {tag} is not among the group's members when the config was built, so the default was dropped: the core refuses the whole config with such a default. The group starts on its first member instead.",
+      "text_ru": "Сервер по умолчанию {default} группы {tag} при сборке конфига не входит в её состав, поэтому умолчание снято: ядро с таким умолчанием отвергает весь конфиг. Группа стартует с первого члена.",
+      "cause_en": "The node chosen as the default disappeared from its subscription after an update, was renamed or deleted, was turned off, or was itself excluded from the config — so it is no longer a member of the group.",
+      "cause_ru": "Узел, выбранный по умолчанию, пропал из подписки после обновления, был переименован или удалён, выключен либо сам исключён из конфига — и больше не входит в группу.",
+      "fix_en": [
+        "Nothing to do if starting on the first member suits you.",
+        "Otherwise pick another default in the group settings, or bring the node back."
+      ],
+      "fix_ru": [
+        "Если старт с первого члена устраивает, делать ничего не нужно.",
+        "Иначе выберите другое умолчание в настройках группы или верните узел."
+      ],
+      "desc": "Контракт 1.1.112. Умолчание selector-группы (default) не разрешилось в члена её состава на СБОРКЕ — ссылки нет, цель выключена или отброшена, либо выбыла из состава (group_member_dropped); ключ default не эмитится. Запись отчёта сборки, одна на группу. У urltest default не эмитится вовсе и кода не даёт (форма канона).",
+      "dart": null,
+      "go": "запись отчёта сборки (EmissionWarning.Code): core/config/nodelink_resolve.go:resolveCanonicalGroup → core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks"
+    },
     "reality_pbk_invalid": {
       "severity": "warning",
       "params": [

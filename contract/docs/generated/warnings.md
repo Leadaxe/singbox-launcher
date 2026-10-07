@@ -45,6 +45,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`fields_order_invalid`](#fields_order_invalid) · `warning` — {a} is greater than {b}
 - [`flow_deprecated`](#flow_deprecated) · `info` — Obsolete flow removed
 - [`form_unrecognized`](#form_unrecognized) · `error` — Entry could not be read
+- [`group_default_dropped`](#group_default_dropped) · `info` — Group {tag}: default {default} dropped
 - [`group_empty`](#group_empty) · `warning` — Group {tag} left without members
 - [`group_member_dropped`](#group_member_dropped) · `warning` — Group {tag}: {member} left the group
 - [`group_member_missing`](#group_member_missing) · `warning` — {count} group members not imported
@@ -821,6 +822,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Copy the link again from the provider's page — a truncated link is the usual cause.
   - Ask the provider to fix the entry in the subscription.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="group_default_dropped"></a>
+### group_default_dropped
+
+**severity:** `info` · **params:** `tag`, `default`
+
+**Group {tag}: default {default} dropped**
+
+- **What happened:** The default server {default} of group {tag} is not among the group's members when the config was built, so the default was dropped: the core refuses the whole config with such a default. The group starts on its first member instead.
+- **Why it happens:** The node chosen as the default disappeared from its subscription after an update, was renamed or deleted, was turned off, or was itself excluded from the config — so it is no longer a member of the group.
+- **What you can do:**
+  - Nothing to do if starting on the first member suits you.
+  - Otherwise pick another default in the group settings, or bring the node back.
 
 **Where it comes from:**
 

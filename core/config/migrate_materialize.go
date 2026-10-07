@@ -79,8 +79,7 @@ func materializeSubscriptionForMigration(req state.MigrationSubRequest) (*state.
 			continue
 		}
 		// Финальный тег считается ДО правок узла и без записи в node.Tag:
-		// {$tag} в политике читает сырой провайдерский тег — ровно как в
-		// старом applyURINodeTags/applyTagsToSingboxNode.
+		// {$tag} в политике читает сырой провайдерский тег.
 		finalTag := subscription.ApplyLegacyTagMachine(e.Node, req.TagPrefix, req.TagPostfix, req.TagMask, e.Num, req.TagCounts)
 
 		node, convErr := canonicalNodeFromEntry(req.SubID, e)

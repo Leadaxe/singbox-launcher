@@ -708,9 +708,16 @@ func resolveCanonicalGroup(n *ParsedNode, targets *NodeLinkTargets, dropped map[
 				return warnings
 			}
 		}
-		text := locale.Tf(emitGroupDefaultDroppedText, n.Tag, def.Tag)
-		warnings = append(warnings, EmissionWarning{Text: text})
-		debuglog.WarnLog("nodelink: %s", text)
+		fallback := locale.Tf(emitGroupDefaultDroppedText, n.Tag, def.Tag)
+		w := EmissionWarning{
+			Code:   codeGroupDefaultDropped,
+			Params: map[string]string{"tag": n.Tag, "default": def.Tag},
+		}
+		if w.Text = registryWarningText(w.Code, w.Params, ""); w.Text == "" {
+			w.Text = fallback
+		}
+		warnings = append(warnings, w)
+		debuglog.WarnLog("nodelink: %s", fallback)
 	}
 	return warnings
 }

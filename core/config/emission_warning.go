@@ -59,6 +59,7 @@ const (
 	codeSourceDetourCycle          = "source_detour_cycle"
 	codeGroupEmpty                 = "group_empty"
 	codeGroupMemberDropped         = "group_member_dropped"
+	codeGroupDefaultDropped        = "group_default_dropped"
 	codeChainUnsupportedByCore     = "chain_unsupported_by_core"
 	codeChainInvalid               = "chain_invalid"
 	codeChainHopMissing            = "chain_hop_missing"
