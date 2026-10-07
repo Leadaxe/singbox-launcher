@@ -89,7 +89,7 @@ func tailnetLines(st services.TailscaleStatus, ok bool, err error, now time.Time
 }
 
 // tailnetPeersWithPath — устройства, к которым путь выбран, в порядке
-// вкладки Network.
+// вкладки Network; выход в список не входит — у него своя строка выше.
 func tailnetPeersWithPath(st services.TailscaleStatus) []services.TailscalePeer {
 	var all []services.TailscalePeer
 	for _, g := range st.UserGroups {
@@ -97,9 +97,13 @@ func tailnetPeersWithPath(st services.TailscaleStatus) []services.TailscalePeer 
 	}
 	var out []services.TailscalePeer
 	for _, p := range services.SortDevices(all) {
-		if p.Path != services.TailscalePathNone {
-			out = append(out, p)
+		if p.Path == services.TailscalePathNone {
+			continue
 		}
+		if st.ExitNode != nil && p.StableID != "" && p.StableID == st.ExitNode.StableID {
+			continue
+		}
+		out = append(out, p)
 	}
 	return out
 }
@@ -161,6 +165,9 @@ func buildTailnetSection(box *fyne.Container, st services.TailscaleStatus, ok bo
 		for _, p := range peers[1:] {
 			box.Add(container.NewBorder(nil, nil, infoKeyCell(""), nil, tailnetPeerRow(p, now)))
 		}
+	}
+	if st.ExitNode != nil {
+		total--
 	}
 	if rest := total - len(peers); rest > 0 {
 		box.Add(container.NewBorder(nil, nil, infoKeyCell(""), nil, diagnosticsCaption(locale.Tf("%d devices without traffic", rest))))
