@@ -368,9 +368,9 @@ func groupModeLabel(node *wizardbusiness.ConfigNode) (icon, mode string) {
 		// простой и читается на кегле подзаголовка.
 		//
 		// НЕ «🔀» U+1F500: мелкий рисунок из переплетённых стрелок на 10pt
-		// схлопывался в неразличимое пятно. НЕ «⚡» U+26A1: глиф в
-		// EmojiOneColor пустой — символ не рисуется вовсе, ни с
-		// вариационным селектором U+FE0F, ни без него.
+		// схлопывался в неразличимое пятно. НЕ «⚡» U+26A1: не рисуется
+		// вовсе — узкий глиф режет баг прямоугольника в go-text/render,
+		// см. tailscalePathGlyphDirect в servers_node_info_tailscale.go.
 		return "\U00002B50", locale.T("balanced")
 	case "failover":
 		// Удержание (ядро SPEC 116): группа держится за выбранный узел до

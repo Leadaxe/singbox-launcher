@@ -76,7 +76,7 @@ func previewGroupSubtitleCounted(node *config.ParsedNode, alive int) string {
 		case "round_robin":
 			// «⭐» U+2B50 — подобрана в каталоге глифов: «🔀» на кегле
 			// подзаголовка не читался, а «⚡» U+26A1 не рисуется вовсе
-			// (пустой глиф в EmojiOneColor).
+			// (баг прямоугольника в go-text/render, см. ui/servers_node_info_tailscale.go).
 			icon, mode = "\U00002B50", locale.T("balanced")
 		case "failover":
 			// «📌» U+1F4CC — см. servers_node_subtitle.go.

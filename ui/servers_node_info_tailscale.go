@@ -63,16 +63,24 @@ func tailscalePeerLine(p services.TailscalePeer) string {
 }
 
 // tailscalePathGlyphDirect / tailscalePathGlyphRelay — знак перед путём:
-// «⚡» — пакеты ходят прямо между узлами, «☁» — через посредника (DERP или
+// «📶» — пакеты ходят прямо между узлами, «☁» — через посредника (DERP или
 // peer relay). Эмодзи: текстовые стрелки ↝/↪ шрифт либо не знает, либо
 // рисует цветным глифом EmojiOne, так что честнее сразу взять картинку.
+//
+// НЕ «⚡» U+26A1: картинка в EmojiOneColor есть, но go-text/render v0.2.1
+// (drawSVG) собирает прямоугольник вывода как image.Rect(XBearing, -YBearing,
+// pixWidth, pixHeight) — размер подставлен вместо второго угла. Узкий глиф с
+// большим левым отступом (молния: отступ 297, ширина 406 из 1000) сжимается до
+// нескольких пустых столбцов и не рисуется вовсе; широкие (☁, ❌, 📶) задевает
+// только обрезкой края. В upstream main то же самое. Выбирать знаки, чей
+// рисунок занимает почти весь em-квадрат.
 const (
-	tailscalePathGlyphDirect = "⚡"
+	tailscalePathGlyphDirect = "📶"
 	tailscalePathGlyphRelay  = "☁"
 )
 
 // tailscalePathText — путь пира словами (SPEC 158, таблица CONSUMERS ядра):
-// «⚡ direct 1.2.3.4:41641», «☁ peer relay», «☁ relay fra»; пусто — узел ни
+// «📶 direct 1.2.3.4:41641», «☁ peer relay», «☁ relay fra»; пусто — узел ни
 // разу не слал пиру, путь не выбран. Домашний регион при direct не пишем: в
 // строке устройства он только шум, а в Diagnostics код виден в строке relay.
 func tailscalePathText(p services.TailscalePeer) string {
