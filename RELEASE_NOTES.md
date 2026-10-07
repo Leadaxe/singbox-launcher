@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v2.3.6
+
+Патч после v2.3.5, ядро `sing-box-lx 1.14.2-lx.12` (было 1.14.2-lx.11), контракт 1.1.113. **Tailscale:** видно, как достижимо каждое устройство (direct / peer relay / DERP), путь до выхода — в подзаголовке узла, живая секция «Tailnet» на Diagnostics, блок настроек Tailscale (выход, exit node, локальная сеть) в окне узла. **WireGuard/AWG:** пиры в окне узла с адресом, хендшейком и трафиком; серверный узел WG больше не ругается на пустой адрес пира. **Окно узла:** новый вид без рамок, вкладка Diagnostics как в LxBox (GET через узел). **Автогруппы:** режим «держаться до отказа» (`failover`). **Мастер:** отчёт сборки объясняет узлы, не взятые в группу из-за detour, у предупреждений карточка «что / почему / что делать». **JSON:** настоящий редактор с подсветкой, свёрткой и поиском во всех JSON-полях. **Исправлено:** после сна больше не копятся окна «Ошибка» — ошибки идут в журнал; на macOS загрузка подписки больше не падает с `malformed HTTP response`; окно Мастера снова сжимается. Подробнее: [docs/release_notes/2-3-6.md](docs/release_notes/2-3-6.md).
+
+### Highlights (EN) — v2.3.6
+
+A patch after v2.3.5, core `sing-box-lx 1.14.2-lx.12` (was 1.14.2-lx.11), contract 1.1.113. **Tailscale:** how each device is reached (direct / peer relay / DERP), the path to the exit in the node subtitle, a live "Tailnet" section on Diagnostics, a Tailscale settings block (exit, exit node, local network) in the node window. **WireGuard/AWG:** peers in the node window with address, handshake and traffic; a WG server node no longer complains about an empty peer address. **Node window:** a borderless look, a Diagnostics tab as in LxBox (GET through the node). **Auto-select groups:** a "hold until it fails" mode (`failover`). **Wizard:** the build report explains nodes left out of a group because of their detour; warnings get a "what / why / what to do" card. **JSON:** a real editor with highlighting, folding and search in every JSON field. **Fixed:** no more piles of error dialogs after sleep — errors go to a journal; on macOS subscription fetch no longer fails with `malformed HTTP response`; the wizard window shrinks again. Details: [docs/release_notes/2-3-6.md](docs/release_notes/2-3-6.md).
+
 ### Выжимка (RU) — v2.3.5
 
 Патч после v2.3.4, ядро `sing-box-lx 1.14.2-lx.11` без изменений, контракт 1.1.108. **Установка на macOS (скрипт 0.5):** ядро кладётся в папку данных, где лаунчер v2.3+ ищет его первым, — раньше старое ядро оттуда перекрывало свежее; при обновлении с установки до v2.3 старое ядро больше не переносится; в конце скрипт предлагает одной командой `sudo` создать защищённую копию ядра для TUN. Под `sudo bash` данные теперь достаются вызвавшему пользователю, а не root; сбой скачивания из-за сбитых часов Mac распознаётся и объясняется. **Первый запуск:** уведомление на чистой установке стало приветствием «Welcome» вместо пугающего «Данные предыдущей версии не найдены». Подробнее: [docs/release_notes/2-3-5.md](docs/release_notes/2-3-5.md).
@@ -752,6 +760,8 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.3.6** | [docs/release_notes/2-3-6.md](docs/release_notes/2-3-6.md) |
+| **v2.3.5** | [docs/release_notes/2-3-5.md](docs/release_notes/2-3-5.md) |
 | **v2.3.4** | [docs/release_notes/2-3-4.md](docs/release_notes/2-3-4.md) |
 | **v2.3.3** | [docs/release_notes/2-3-3.md](docs/release_notes/2-3-3.md) |
 | **v2.3.2** | [docs/release_notes/2-3-2.md](docs/release_notes/2-3-2.md) |
