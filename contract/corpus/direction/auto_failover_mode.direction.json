@@ -1,0 +1,21 @@
+{
+  "_": "failover (ядро SPEC 116) эмитит mode без balancer; tolerance в режиме не действует и в тело двойника не уходит, даже если задан у Направления.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "auto": {
+        "mode": "failover",
+        "tolerance": 50,
+        "interval": "15m"
+      }
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

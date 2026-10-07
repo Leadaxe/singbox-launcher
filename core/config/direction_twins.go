@@ -146,10 +146,17 @@ func buildTwin(parent configtypes.Direction, twinTag string, tmplAutoOptions map
 	if a.InterruptExistConnections != nil {
 		options["interrupt_exist_connections"] = *a.InterruptExistConnections
 	}
-
 	// SPEC 088: round_robin — это тот же wire-тип urltest плюс `mode` и
 	// `balancer{}`. При least_test не пишем ничего: конфиг остаётся
 	// бит-в-бит апстримным.
+	// SPEC 116 ядра: failover — тот же urltest с `mode`, без balancer.
+	// `tolerance` там не действует (переключений «по скорости» нет), а
+	// ненулевое значение даёт предупреждение ядра при старте — шаблон же
+	// кладёт @urltest_tolerance всегда, поэтому ключ снимаем здесь.
+	if a.Mode == configtypes.AutoModeFailover {
+		options["mode"] = configtypes.AutoModeFailover
+		delete(options, "tolerance")
+	}
 	if a.Mode == configtypes.AutoModeRoundRobin {
 		options["mode"] = configtypes.AutoModeRoundRobin
 		sticky := a.StickyHash

@@ -78,6 +78,9 @@ func previewGroupSubtitleCounted(node *config.ParsedNode, alive int) string {
 			// подзаголовка не читался, а «⚡» U+26A1 не рисуется вовсе
 			// (пустой глиф в EmojiOneColor).
 			icon, mode = "\U00002B50", locale.T("balanced")
+		case "failover":
+			// «📌» U+1F4CC — см. servers_node_subtitle.go.
+			icon, mode = "\U0001F4CC", locale.T("held")
 		case "least_test", "":
 			icon, mode = "\U0001F6A9", locale.T("fastest")
 		default:

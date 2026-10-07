@@ -345,7 +345,7 @@ func ShowEditDialog(
 	// нужна вкладке «Группа» свёрнутой подписки, и вторая её реализация
 	// разъехалась бы с этой на первой же правке.
 	autoModeLabel := ttwidget.NewLabel(locale.T("Auto-select mode"))
-	autoModeLabel.SetToolTip(locale.T("How the paired auto group picks a node: the single fastest one, or a rotating pool of the fastest."))
+	autoModeLabel.SetToolTip(locale.T("How the paired auto group picks a node: the single fastest one, a rotating pool of the fastest, or the fastest at the moment of choice held until it fails (only that node is probed, others sleep; a manual group test re-probes everyone and re-picks the fastest)."))
 
 	autoForm := autogroupform.New(autogroupform.Choices{
 		Interval:  autogroupform.VarChoices{Labels: intervalLabels, LabelToValue: intervalLabelToValue},

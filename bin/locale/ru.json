@@ -1987,9 +1987,6 @@
   "spread across a pool": {
     "value": "распределять по пулу"
   },
-  "How the paired auto group picks a node: the single fastest one, or a rotating pool of the fastest.": {
-    "value": "Как парная автогруппа выбирает узел: один самый быстрый или ротация по пулу самых быстрых."
-  },
   "Invert: keep nodes that do NOT match": {
     "value": "Инверсия: оставить узлы, которые НЕ совпали"
   },
@@ -5015,18 +5012,6 @@
   "%s: no connection": {
     "value": "%s: нет связи"
   },
-  "Passive check": {
-    "value": "Пассивная проверка"
-  },
-  "on": {
-    "value": "вкл"
-  },
-  "Not applied while pool tolerance is above 0: the core probes every node as usual.": {
-    "value": "Не действует при допуске пула больше 0: ядро проверяет каждый узел как обычно."
-  },
-  "A fresh successful connection through a node counts as proof it is alive, and its URL probe is skipped until the next interval. Saves probe traffic and radio wake-ups; latency figures in the list may go stale.": {
-    "value": "Свежее успешное соединение через узел считается доказательством его живости, и URL-проба узла пропускается до следующего интервала. Экономит пробный трафик и пробуждения радио; цифры задержки в списке могут устаревать."
-  },
   "Tailnet": {
     "value": "Tailnet"
   },
@@ -5050,5 +5035,14 @@
   },
   "The node is not running in the core.": {
     "value": "Узел не запущен в ядре."
+  },
+  "hold until it fails": {
+    "value": "держаться до отказа"
+  },
+  "held": {
+    "value": "удержание"
+  },
+  "How the paired auto group picks a node: the single fastest one, a rotating pool of the fastest, or the fastest at the moment of choice held until it fails (only that node is probed, others sleep; a manual group test re-probes everyone and re-picks the fastest).": {
+    "value": "Как парная автогруппа выбирает узел: один самый быстрый, ротация по пулу самых быстрых или самый быстрый на момент выбора с удержанием до отказа (пробуется только он, остальные спят; ручной тест группы меряет всех и перевыбирает самого быстрого)."
   }
 }

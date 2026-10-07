@@ -365,6 +365,14 @@ func groupModeLabel(node *wizardbusiness.ConfigNode) (icon, mode string) {
 		// EmojiOneColor пустой — символ не рисуется вовсе, ни с
 		// вариационным селектором U+FE0F, ни без него.
 		return "\U00002B50", locale.T("balanced")
+	case "failover":
+		// Удержание (ядро SPEC 116): группа держится за выбранный узел до
+		// его отказа, пробуется только он.
+		//
+		// «📌» U+1F4CC — кнопка-булавка: «приколот к узлу». Глиф не
+		// проверялся в каталоге (вкладка 🔤) — если на кегле подзаголовка
+		// не читается, заменить из каталога.
+		return "\U0001F4CC", locale.T("held")
 	case "least_test", "":
 		// Умолчание urltest — один самый быстрый по замерам.
 		return "\U0001F6A9", locale.T("fastest")

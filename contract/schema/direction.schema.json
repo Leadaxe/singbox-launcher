@@ -82,10 +82,11 @@
         "mode": {
           "enum": [
             "least_test",
-            "round_robin"
+            "round_robin",
+            "failover"
           ],
           "default": "least_test",
-          "description": "least_test — один самый быстрый узел (апстрим). round_robin — ротация по пулу; только он эмитит balancer."
+          "description": "least_test — один самый быстрый узел (апстрим). round_robin — ротация по пулу; только он эмитит balancer. failover (ядро SPEC 116) — самый быстрый на момент выбора, удерживается до своего отказа, пробуется только он; tolerance не действует и в тело не эмитится, balancer — ошибка старта ядра."
         },
         "url": {
           "type": "string",

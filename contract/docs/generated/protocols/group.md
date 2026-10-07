@@ -58,7 +58,7 @@ Everything a link of this scheme can carry. **Maps to** points at the body field
   - Maps to: `outbounds`
 - <a id="link-proto-mode"></a>**`mode`** — How the group picks the outbound.
   - Supported by LxBox only
-  - Type: enum: `least_test`, `round_robin` · Default: `least_test`
+  - Type: enum: `least_test`, `round_robin`, `failover` · Default: `least_test`
 - <a id="link-proto-url"></a>**`url`** — URL probed by urltest.
   - Supported by LxBox only
   - Type: string · Default: `https://cp.cloudflare.com/generate_204`
