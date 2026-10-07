@@ -133,7 +133,7 @@ func buildTailnetSection(box *fyne.Container, st services.TailscaleStatus, ok bo
 	}
 	switch {
 	case errors.Is(err, services.ErrTailscalePathUnsupported):
-		note(locale.T("This core does not report peer paths (needs sing-box-lx 1.14.2-lx.12-rc.2)."), widget.LowImportance)
+		note(locale.T("This core does not report peer paths (needs sing-box-lx 1.14.2-lx.12)."), widget.LowImportance)
 		return
 	case err != nil:
 		l := newChainErrLabel()

@@ -5009,8 +5009,8 @@
   "%d devices without traffic": {
     "value": "устройств без трафика: %d"
   },
-  "This core does not report peer paths (needs sing-box-lx 1.14.2-lx.12-rc.2).": {
-    "value": "Это ядро не сообщает путь до пиров (нужен sing-box-lx 1.14.2-lx.12-rc.2)."
+  "This core does not report peer paths (needs sing-box-lx 1.14.2-lx.12).": {
+    "value": "Это ядро не сообщает путь до пиров (нужен sing-box-lx 1.14.2-lx.12)."
   },
   "The node is not running in the core.": {
     "value": "Узел не запущен в ядре."
