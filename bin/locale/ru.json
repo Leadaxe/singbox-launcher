@@ -4925,6 +4925,12 @@
   "signed in with a key": {
     "value": "вход по ключу"
   },
+  "machine name or tailnet IP of the exit node — empty: no exit node": {
+    "value": "имя машины или tailnet-IP выходного узла — пусто: без выхода"
+  },
+  "Using an exit node sends this node's traffic through another machine of the tailnet; advertising makes this node the exit for others. The two roles exclude each other. Advertising stays pending until it is approved in the tailnet admin console. The Network tab of the node window lists the exit nodes that are online now.": {
+    "value": "Выходной узел отправляет трафик этого узла через другую машину tailnet; анонс делает выходом сам этот узел. Две роли исключают друг друга. Анонс ждёт одобрения в админке tailnet. Вкладка Network окна узла показывает, какие выходы сейчас в сети."
+  },
   "Peers": {
     "value": "Пиры"
   },
@@ -4981,5 +4987,44 @@
   },
   "Copy MagicDNS name": {
     "value": "Копировать имя MagicDNS"
+  },
+  "Errors (%d)": {
+    "value": "Ошибки (%d)"
+  },
+  "since %s": {
+    "value": "с %s"
+  },
+  "No errors recorded.": {
+    "value": "Ошибок нет."
+  },
+  "Copy all": {
+    "value": "Копировать всё"
+  },
+  "Clear": {
+    "value": "Очистить"
+  },
+  "Clash API only": {
+    "value": "Только Clash API"
+  },
+  "gRPC and daemon only": {
+    "value": "Только gRPC и демон"
+  },
+  "Show these errors": {
+    "value": "Показать эти ошибки"
+  },
+  "%s: no connection": {
+    "value": "%s: нет связи"
+  },
+  "Passive check": {
+    "value": "Пассивная проверка"
+  },
+  "on": {
+    "value": "вкл"
+  },
+  "Not applied while pool tolerance is above 0: the core probes every node as usual.": {
+    "value": "Не действует при допуске пула больше 0: ядро проверяет каждый узел как обычно."
+  },
+  "A fresh successful connection through a node counts as proof it is alive, and its URL probe is skipped until the next interval. Saves probe traffic and radio wake-ups; latency figures in the list may go stale.": {
+    "value": "Свежее успешное соединение через узел считается доказательством его живости, и URL-проба узла пропускается до следующего интервала. Экономит пробный трафик и пробуждения радио; цифры задержки в списке могут устаревать."
   }
 }
