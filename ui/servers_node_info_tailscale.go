@@ -45,6 +45,28 @@ func tailscalePeerLine(p services.TailscalePeer) string {
 	return strings.Join(parts, " · ")
 }
 
+// tailscalePathText — путь пира словами (SPEC 158, таблица CONSUMERS ядра):
+// «direct 1.2.3.4:41641», «peer relay», «relay fra»; пусто — узел ни разу не
+// слал пиру, путь не выбран. Домашний регион при direct не пишем: в строке
+// устройства он только шум, а в Diagnostics код виден в строке relay.
+func tailscalePathText(p services.TailscalePeer) string {
+	switch p.Path {
+	case services.TailscalePathDirect:
+		if p.Endpoint != "" {
+			return locale.T("direct") + " " + p.Endpoint
+		}
+		return locale.T("direct")
+	case services.TailscalePathPeerRelay:
+		return locale.T("peer relay")
+	case services.TailscalePathDERP:
+		if p.DERPRegionCode != "" {
+			return locale.T("relay") + " " + p.DERPRegionCode
+		}
+		return locale.T("relay")
+	}
+	return ""
+}
+
 // humanAge — «5m», «2h», «3d»: возраст снимка и last seen.
 func humanAge(d time.Duration) string {
 	switch {

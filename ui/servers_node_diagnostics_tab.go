@@ -63,6 +63,11 @@ func nodeDiagnosticsTab(ac *core.AppController, target core.CoreTarget, bound bo
 	if bound && node.Type == configtypes.ChainOutboundType {
 		addChainSection(ac, target, body, win, proxy.Name)
 	}
+	// Tailnet: путь пиров и предупреждения ядра по запросу (SPEC 158) —
+	// показывается и у узла без выхода: именно там и ищут причину.
+	if bound && node.Type == configtypes.SchemeTailscale {
+		addTailnetSection(ac, target, body, win, proxy.Name)
+	}
 
 	note := func(text string, imp widget.Importance) {
 		l := widget.NewLabel(text)

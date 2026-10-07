@@ -113,6 +113,17 @@ func (t *LxdRemoteTransport) TailscaleSetExitNode(tag, stableID string) error {
 	return nil
 }
 
+// TailscaleStatusNow — свежий статус endpoint'а удалённого ядра по запросу
+// (GetTailscaleStatus, SPEC 115 ядра; реализует core.tailscaleController).
+func (t *LxdRemoteTransport) TailscaleStatusNow(tag string) (TailscaleStatus, bool, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return TailscaleStatus{}, false, err
+	}
+	defer cancel()
+	return TailscaleStatusRPC(ctx, client, tag)
+}
+
 // TailscaleLogout — выход узла удалённого ядра из аккаунта tailnet.
 func (t *LxdRemoteTransport) TailscaleLogout(tag string) error {
 	client, ctx, cancel, err := t.rpc()

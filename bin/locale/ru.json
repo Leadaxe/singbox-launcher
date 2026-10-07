@@ -5026,5 +5026,29 @@
   },
   "A fresh successful connection through a node counts as proof it is alive, and its URL probe is skipped until the next interval. Saves probe traffic and radio wake-ups; latency figures in the list may go stale.": {
     "value": "Свежее успешное соединение через узел считается доказательством его живости, и URL-проба узла пропускается до следующего интервала. Экономит пробный трафик и пробуждения радио; цифры задержки в списке могут устаревать."
+  },
+  "Tailnet": {
+    "value": "Tailnet"
+  },
+  "live status, refreshed every %d s": {
+    "value": "живой статус, обновляется каждые %d с"
+  },
+  "peer relay": {
+    "value": "через peer relay"
+  },
+  "no handshake": {
+    "value": "хендшейка не было"
+  },
+  "handshake %s ago": {
+    "value": "хендшейк %s назад"
+  },
+  "%d devices without traffic": {
+    "value": "устройств без трафика: %d"
+  },
+  "This core does not report peer paths (needs sing-box-lx 1.14.2-lx.12-rc.2).": {
+    "value": "Это ядро не сообщает путь до пиров (нужен sing-box-lx 1.14.2-lx.12-rc.2)."
+  },
+  "The node is not running in the core.": {
+    "value": "Узел не запущен в ядре."
   }
 }

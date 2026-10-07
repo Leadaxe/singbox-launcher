@@ -390,8 +390,8 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 	}
 }
 
-// tailscaleDeviceDetails — хвост строки устройства (§6): ОС и отметки. Имя и
-// адрес стоят в строке отдельными полями, «в сети» показывает точка.
+// tailscaleDeviceDetails — хвост строки устройства (§6): ОС, отметки и путь.
+// Имя и адрес стоят в строке отдельными полями, «в сети» показывает точка.
 func tailscaleDeviceDetails(p services.TailscalePeer, now time.Time) string {
 	parts := make([]string, 0, 5)
 	if p.OS != "" {
@@ -408,6 +408,11 @@ func tailscaleDeviceDetails(p services.TailscalePeer, now time.Time) string {
 	}
 	if p.ExitNodeOption {
 		parts = append(parts, locale.T("exit node"))
+	}
+	// Путь из снимка потока (SPEC 158): правда на момент последнего события,
+	// живой — на вкладке Diagnostics.
+	if path := tailscalePathText(p); path != "" {
+		parts = append(parts, path)
 	}
 	return strings.Join(parts, " · ")
 }

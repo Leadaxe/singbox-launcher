@@ -110,9 +110,15 @@ func (ac *AppController) TailscaleCoreRunning(t TailscaleTarget) bool {
 }
 
 // tailscaleController — источник, умеющий команды tailnet (SPEC 148):
-// выбор exit node на ходу, выход из аккаунта, проверка устройства. Умеют оба
-// gRPC-пути: локальный демон и транспорт удалённой машины.
+// выбор exit node на ходу, выход из аккаунта, проверка устройства, свежий
+// статус по запросу (SPEC 158). Умеют оба gRPC-пути: локальный демон и
+// транспорт удалённой машины.
 type tailscaleController interface {
+	// TailscaleStatusNow — статус на момент вызова (GetTailscaleStatus),
+	// а не кеш потока: путь пиров direct/relay живёт только здесь.
+	// ok=false без ошибки — тега нет или endpoint не запущен;
+	// services.ErrTailscalePathUnsupported — ядро без этого RPC.
+	TailscaleStatusNow(tag string) (services.TailscaleStatus, bool, error)
 	TailscaleSetExitNode(tag, stableID string) error
 	TailscaleLogout(tag string) error
 	TailscalePing(ctx context.Context, tag, peerIP string, onReply func(services.TailscalePingResult)) error
@@ -137,6 +143,16 @@ func (ac *AppController) tailscaleControl(t TailscaleTarget) (tailscaleControlle
 func (ac *AppController) TailscaleControlAvailable(t TailscaleTarget) bool {
 	_, ok := ac.tailscaleControl(t)
 	return ok
+}
+
+// TailscaleStatusNow — свежий статус endpoint'а у ядра цели (SPEC 158);
+// errTailscaleNoControl — у источника нет запросных RPC.
+func (ac *AppController) TailscaleStatusNow(t TailscaleTarget, tag string) (services.TailscaleStatus, bool, error) {
+	c, ok := ac.tailscaleControl(t)
+	if !ok {
+		return services.TailscaleStatus{}, false, errTailscaleNoControl
+	}
+	return c.TailscaleStatusNow(tag)
 }
 
 // TailscaleSetExitNode — выбор exit node на ходу; "" снимает выход.

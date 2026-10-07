@@ -105,6 +105,19 @@ func (b *DaemonBackend) TailscaleSetExitNode(tag, stableID string) error {
 	return nil
 }
 
+// TailscaleStatusNow implements tailscaleController (SPEC 158): свежий
+// статус endpoint'а по запросу (GetTailscaleStatus, SPEC 115 ядра) — путь
+// пиров на момент вызова, в отличие от кеша потока.
+func (b *DaemonBackend) TailscaleStatusNow(tag string) (services.TailscaleStatus, bool, error) {
+	client, err := b.grpcClient()
+	if err != nil {
+		return services.TailscaleStatus{}, false, err
+	}
+	ctx, cancel := context.WithTimeout(b.ctx, tailscaleCallTimeout)
+	defer cancel()
+	return services.TailscaleStatusRPC(ctx, client, tag)
+}
+
 // TailscaleLogout implements tailscaleController (SPEC 148 §3).
 func (b *DaemonBackend) TailscaleLogout(tag string) error {
 	client, err := b.grpcClient()
