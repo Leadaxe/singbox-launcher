@@ -49,6 +49,7 @@ package nodewarn
 
 import (
 	"strconv"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -239,7 +240,7 @@ func levelGroup(texts []Text, titleKey, mark string, imp widget.Importance) fyne
 	for _, t := range texts {
 		// Всё СВЁРНУТО (`Open` по умолчанию false): раздел сперва отвечает
 		// «что случилось», списком, и только по клику — «почему и что делать».
-		items = append(items, widget.NewAccordionItem(accordionTitle(t), detail(t)))
+		items = append(items, widget.NewAccordionItem(accordionTitle(t), Detail(t)))
 	}
 	acc := widget.NewAccordion(items...)
 	// MultiOpen: уведомления независимы, и раскрытие второго не имеет права
@@ -276,8 +277,12 @@ func truncateRunes(s string, max int) string {
 	return string(runes[:max-1]) + "…"
 }
 
-// detail — содержимое развёрнутой строки: что случилось, почему так бывает,
+// Detail — содержимое развёрнутой строки: что случилось, почему так бывает,
 // что можно сделать, ссылка на документацию.
+//
+// Экспортировано для отчёта сборки Мастера: его строки несут те же коды
+// реестра, и карточка «что / почему / что делать» обязана выглядеть там так
+// же, как в окне узла, — это один и тот же код, прочитанный в другом месте.
 //
 // Порядок — тот же, что в сгенерированной документации контракта: человек,
 // нажавший «Подробности», не должен переучиваться, попав на страницу кода.
@@ -285,7 +290,7 @@ func truncateRunes(s string, max int) string {
 // Между блоками ПУСТЫХ строк нет: `container.NewVBox` и так кладёт
 // theme.Padding, а абзацный отступ сверх него растягивал бы три строки текста
 // на пол-экрана — ровно то, от чего уходит свёрнутый по умолчанию аккордеон.
-func detail(t Text) fyne.CanvasObject {
+func Detail(t Text) fyne.CanvasObject {
 	rows := make([]fyne.CanvasObject, 0, 8)
 
 	// Путь поля — ПЕРВОЙ строкой, приглушённо: он отвечает на «где», и в
@@ -314,6 +319,40 @@ func detail(t Text) fyne.CanvasObject {
 		rows = append(rows, container.NewHBox(btn, layout.NewSpacer()))
 	}
 	return container.NewVBox(rows...)
+}
+
+// PlainText — та же карточка одним текстом, для буфера обмена: заголовок,
+// что случилось, причина, решения. Совпадает с показанным по составу — копия,
+// отличающаяся от экрана, бесполезна в переписке с поддержкой.
+func PlainText(t Text) string {
+	var sb strings.Builder
+	sb.WriteString(t.Title)
+	if t.Path != "" {
+		sb.WriteString("\n")
+		sb.WriteString(t.Path)
+	}
+	sb.WriteString("\n")
+	sb.WriteString(locale.T(WhatHappenedLabelText))
+	sb.WriteString(" ")
+	sb.WriteString(t.Body)
+	if t.Cause != "" {
+		sb.WriteString("\n")
+		sb.WriteString(locale.T(CauseLabelText))
+		sb.WriteString(" ")
+		sb.WriteString(t.Cause)
+	}
+	if len(t.Fixes) > 0 {
+		sb.WriteString("\n")
+		sb.WriteString(locale.T(FixLabelText))
+		for _, f := range t.Fixes {
+			if f == "" {
+				continue
+			}
+			sb.WriteString("\n• ")
+			sb.WriteString(f)
+		}
+	}
+	return sb.String()
 }
 
 // caption — приглушённая подпись блока внутри уведомления.

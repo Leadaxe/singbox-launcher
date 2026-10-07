@@ -14,7 +14,9 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/registry"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 )
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
@@ -72,9 +74,37 @@ func saveButtonVisible(st finalBuildState, reportReadyFor func(config.BuildGener
 
 // finalReportLine — одна строка отчёта: текст плюс источник, к которому она
 // относится (пусто — переходить некуда).
+//
+// Entry — сама запись: по её коду реестра строится карточка «что / почему /
+// что делать» (finalReportDetail), текст строки для неё — не замена, а
+// сводка.
 type finalReportLine struct {
 	Text     string
 	SourceID string
+	Entry    config.BuildReportEntry
+}
+
+// finalReportDetail — карточка подробностей строки отчёта в терминах
+// nodewarn.Text: у записи с кодом реестра — заголовок, объяснение, причина и
+// решения по коду; у записи без кода — одна строка отчёта как тело.
+//
+// Та же функция описания, что у уведомлений узла: один код — одна карточка,
+// где бы он ни встретился.
+func finalReportDetail(l finalReportLine) nodewarn.Text {
+	if code := strings.TrimSpace(l.Entry.Code); code != "" {
+		texts := nodewarn.Describe([]state.NodeWarning{{Code: code, Params: l.Entry.Params}})
+		if len(texts) == 1 && texts[0].Title != code {
+			t := texts[0]
+			// Реестр говорит о классе события, строка отчёта — о конкретном
+			// адресате (источник, число узлов): без неё карточка «{count}
+			// узлов не вошли» не сказала бы, чьи это узлы.
+			if t.Body != l.Text {
+				t.Body = l.Text + "\n\n" + t.Body
+			}
+			return t
+		}
+	}
+	return nodewarn.Text{Title: locale.T("Details"), Body: l.Text, Severity: nodewarn.SeverityWarning}
 }
 
 // finalReportLines разворачивает отчёт в строки для показа.
@@ -117,6 +147,7 @@ func finalReportLines(entries []config.BuildReportEntry) []finalReportLine {
 		out = append(out, finalReportLine{
 			Text:     finalReportEntryText(e),
 			SourceID: e.SourceID,
+			Entry:    e,
 		})
 	}
 	return out
