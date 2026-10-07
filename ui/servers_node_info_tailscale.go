@@ -63,15 +63,15 @@ func tailscalePeerLine(p services.TailscalePeer) string {
 }
 
 // tailscalePathGlyphDirect / tailscalePathGlyphRelay — знак перед путём:
-// «⇄» — пакеты ходят прямо между узлами, «↝» — через посредника (DERP или
+// «⇄» — пакеты ходят прямо между узлами, «↪» — через посредника (DERP или
 // peer relay). Текстовые стрелки, не эмодзи: цвет берут у строки.
 const (
 	tailscalePathGlyphDirect = "⇄"
-	tailscalePathGlyphRelay  = "↝"
+	tailscalePathGlyphRelay  = "↪"
 )
 
 // tailscalePathText — путь пира словами (SPEC 158, таблица CONSUMERS ядра):
-// «⇄ direct 1.2.3.4:41641», «↝ peer relay», «↝ relay fra»; пусто — узел ни
+// «⇄ direct 1.2.3.4:41641», «↪ peer relay», «↪ relay fra»; пусто — узел ни
 // разу не слал пиру, путь не выбран. Домашний регион при direct не пишем: в
 // строке устройства он только шум, а в Diagnostics код виден в строке relay.
 func tailscalePathText(p services.TailscalePeer) string {
