@@ -346,14 +346,11 @@ func importServer(srv Server) (state.Source, []Warning) {
 		src.Origin = &state.Origin{Kind: state.OriginKindJSON, Raw: string(srv.ConfigJSON)}
 	case strings.TrimSpace(srv.URI) != "":
 		// Вид определяется ФОРМОЙ текста: в поле `uri` контракта едет и
-		// ссылка, и блок wg-quick (контракт общий с LxBox, третьего ключа в
-		// нём нет). Записать блоку kind=uri значило бы потерять вид на первом
-		// же Save — узел перестал бы пересобираться из исходника провайдера.
-		kind := state.OriginKindURI
-		if len(subscription.WGConfBlocksOf(srv.URI)) > 0 {
-			kind = state.OriginKindWGIni
-		}
-		src.Origin = &state.Origin{Kind: kind, Raw: srv.URI}
+		// ссылка, и блок wg-quick, и JSON узла (контракт общий с LxBox,
+		// третьего ключа в нём нет). Записать блоку или объекту kind=uri
+		// значило бы потерять вид на первом же Save — узел перестал бы
+		// пересобираться из своего исходника.
+		src.Origin = &state.Origin{Kind: subscription.OriginKindOfText(srv.URI), Raw: srv.URI}
 	}
 	return src, warns
 }

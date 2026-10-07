@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"net"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/nodewarn"
@@ -246,7 +248,60 @@ func serversNodeSubtitle(ac *core.AppController, proxyInfo api.ProxyInfo, scope 
 	if warn := nodewarn.Subtitle(nodeWarningsFor(ac, proxyInfo.Name, scope)); warn != "" {
 		return warn
 	}
-	return strings.Join(node.SubtitleParts(), "·")
+	base := strings.Join(node.SubtitleParts(), "·")
+	if strings.EqualFold(node.Type, configtypes.SchemeTailscale) {
+		return tailscaleSubtitle(ac, node, proxyInfo.Name, scope, base)
+	}
+	return base
+}
+
+// tailscaleSubtitle — подзаголовок узла Tailscale: роль узла в tailnet
+// (SPEC 157). У обычного узла подзаголовок описывает транспорт, а у
+// Tailscale транспорт один и тот же, и единственное, что отличает узлы
+// друг от друга в списке, — через чей выход идёт трафик:
+//
+//	tailscale ‣ gl-mt2500   — выход через машину tailnet;
+//	tailscale·exit node     — сам узел анонсируется выходом;
+//	tailscale               — выхода нет (трафик только в tailnet).
+//
+// Выход берётся с живого статуса ядра — он говорит, через кого трафик идёт
+// СЕЙЧАС; без статуса (ядро не запущено, снимка нет) — из `exit_node`
+// собранного конфига, то есть то, что будет после запуска. Разделитель тот
+// же, что у группы перед выбранным узлом: смысл тот же — «идёт через».
+func tailscaleSubtitle(ac *core.AppController, node *wizardbusiness.ConfigNode, tag string, scope services.ProxyScope, base string) string {
+	if adv, _ := node.Raw["advertise_exit_node"].(bool); adv {
+		return base + "·" + locale.T("exit node")
+	}
+	exit := ""
+	if st, ok := ac.TailscaleStatus(core.TailscaleIn(scope), tag); ok && st.ExitNode != nil {
+		exit = st.ExitNode.HostName
+		if exit == "" && len(st.ExitNode.TailscaleIPs) > 0 {
+			exit = st.ExitNode.TailscaleIPs[0]
+		}
+	}
+	if exit == "" {
+		written, _ := node.Raw["exit_node"].(string)
+		exit = tailscaleExitShortName(written)
+	}
+	if exit == "" {
+		return base
+	}
+	return base + " " + groupNowSeparator + " " + exit
+}
+
+// tailscaleExitShortName — имя выхода для подзаголовка: у MagicDNS-имени
+// (`gl-mt2500.tail-net.ts.net`) — первая метка, она и есть имя машины;
+// IP-адрес остаётся как есть. Полное имя не влезает в подзаголовок и
+// обрезалось бы многоточием ровно там, где хвост одинаков у всех машин.
+func tailscaleExitShortName(exit string) string {
+	exit = strings.TrimSpace(exit)
+	if exit == "" || net.ParseIP(exit) != nil {
+		return exit
+	}
+	if i := strings.IndexByte(exit, '.'); i > 0 {
+		return exit[:i]
+	}
+	return exit
 }
 
 // groupSubtitle описывает группу: режим, размер пула и текущий выбор.

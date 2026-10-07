@@ -222,6 +222,20 @@ func canonicalNodeFromEntry(subID string, e *subscription.ParsedBodyEntry) (stat
 // парсера: раз пользователь сохранил ручной JSON, URI намеренно
 // игнорируется).
 func materializeServerForMigration(req state.MigrationServerRequest) (*state.MigrationServerResult, error) {
+	// JSON в поле происхождения — не ссылка: текст, который правили руками в
+	// поле Origin (или принесли в `uri` legacy-бэкапа), читается по своей
+	// ФОРМЕ, а не по тому, под каким видом его записали. Иначе объект
+	// уходил в разбор ссылки и падал на «not a link: no scheme» — так и
+	// ломался узел Tailscale с правленым происхождением. Документ узла и
+	// массив тел сводятся к первому телу (контракт 1.1.87/1.1.88: источник
+	// JSON-узла — только тело).
+	if len(req.ConfigJSON) == 0 && subscription.IsJSONOriginText(req.URI) {
+		body, err := nodeBodyOfJSONOriginText([]byte(strings.TrimSpace(req.URI)))
+		if err != nil {
+			return nil, err
+		}
+		req.ConfigJSON = body
+	}
 	if len(req.ConfigJSON) > 0 {
 		node, err := subscription.NodeFromManualConfigJSON(req.ConfigJSON)
 		if err != nil {
@@ -449,6 +463,22 @@ func materializeServerNode(uri string, configJSON json.RawMessage, authored bool
 		OriginRaw:  res.OriginRaw,
 		Warnings:   res.Warnings,
 	}, nil
+}
+
+// nodeBodyOfJSONOriginText — тело узла из JSON-текста происхождения:
+// документ узла → первый узел, массив тел → первый элемент, иначе сам
+// объект. Об отброшенном остатке здесь не сообщается: это путь
+// материализации, а не формы; форма предупреждает сама (jsonInputDropsRest).
+func nodeBodyOfJSONOriginText(raw []byte) (json.RawMessage, error) {
+	switch {
+	case IsNodeDocument(raw):
+		body, _, err := ParseNodeDocumentFirstNode(raw)
+		return body, err
+	case IsNodeBodyArray(raw):
+		body, _, err := ParseNodeBodyArray(raw)
+		return body, err
+	}
+	return json.RawMessage(raw), nil
 }
 
 // VPNLinkNodeMaterial — один узел профиля `vpn://`: тег (метка, которую узлу

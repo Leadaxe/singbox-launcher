@@ -25,6 +25,7 @@ import (
 	"fmt"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/subscription"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -206,12 +207,21 @@ func regenServerBodyFromRawText(node *wizardmodels.Node, raw string) error {
 	if raw == "" {
 		return fmt.Errorf("origin is empty")
 	}
+	// Ветка — по ФОРМЕ текста, а не по хранимому виду: вид мог отстать от
+	// текста (JSON, записанный как `uri` правкой поля Origin до SPEC 157), и
+	// судить по нему значило бы разбирать объект как ссылку. Документ узла и
+	// массив тел принимаются так же, как на вкладке JSON — в источник уходит
+	// только тело (контракт 1.1.87/1.1.88).
 	var (
 		mat *config.ServerNodeMaterial
 		err error
 	)
-	if node.Origin.Kind == wizardmodels.OriginKindJSON {
-		mat, err = config.MaterializeServerNode("", json.RawMessage(raw))
+	if subscription.IsJSONOriginText(raw) {
+		var body string
+		if body, err = nodeBodyFromJSONInput(raw); err != nil {
+			return err
+		}
+		mat, err = config.MaterializeServerNode("", json.RawMessage(body))
 	} else {
 		mat, err = config.MaterializeServerNode(raw, nil)
 	}

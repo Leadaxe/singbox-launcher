@@ -48,6 +48,7 @@ func IsBareNodeBody(raw string) bool {
 // `singbox_config_array`, `singbox_outbound_array`), получают в источник
 // ТЕЛО узла этой записи (контракт 1.1.87, PARSING_PRINCIPLES §11 п.2; LxBox
 // §576). Тело, уходившее в ядро, не меняется — меняется только обёртка.
+// Туда же — JSON, записанный видом `uri` (SPEC 157): вид становится `json`.
 //
 // Возвращает число переписанных записей: вызывающему нужно знать, стоит ли
 // сохранять файл.
@@ -75,12 +76,24 @@ func NormalizeBareBodyOrigins(s *State) int {
 }
 
 func normalizeBareBodyOrigin(node *Node) bool {
-	if node == nil || node.Kind != SourceKindServer || node.Origin == nil || node.Origin.Kind != OriginKindJSON || len(node.Body) == 0 {
+	if node == nil || node.Kind != SourceKindServer || node.Origin == nil || len(node.Body) == 0 {
 		return false
 	}
 	raw := strings.TrimSpace(node.Origin.Raw)
+	changed := false
+	// JSON, записанный видом `uri` (поле Origin до SPEC 157 знало только
+	// ссылку и wg-quick), — источник `json`: вид отвечает ФОРМЕ текста. Без
+	// этого Regen разбирал объект как ссылку, вкладка JSON спрашивала про
+	// «замену ссылки», а тело не считалось авторским.
+	if node.Origin.Kind == OriginKindURI && isJSONObjectOrArray(raw) {
+		node.Origin.Kind = OriginKindJSON
+		changed = true
+	}
+	if node.Origin.Kind != OriginKindJSON {
+		return changed
+	}
 	if IsBareNodeBody(raw) || !isNodeDocumentOrArray(raw) {
-		return false
+		return changed
 	}
 	var body interface{}
 	if err := json.Unmarshal(node.Body, &body); err != nil {
@@ -92,6 +105,16 @@ func normalizeBareBodyOrigin(node *Node) bool {
 	}
 	node.Origin.Raw = string(pretty)
 	return true
+}
+
+// isJSONObjectOrArray — текст есть валидный JSON-объект или массив. Ссылка
+// и блок wg-quick так не начинаются; разбирать текст как узел здесь не
+// нужно — вид говорит лишь, КАК его читать.
+func isJSONObjectOrArray(raw string) bool {
+	if raw == "" || (raw[0] != '{' && raw[0] != '[') {
+		return false
+	}
+	return json.Valid([]byte(raw))
 }
 
 // isNodeDocumentOrArray — текст является документом sing-box (объект с

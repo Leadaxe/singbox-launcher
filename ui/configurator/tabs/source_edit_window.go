@@ -156,14 +156,11 @@ func setSourceOriginURI(p *wizardmodels.Source, uri string) {
 		return
 	}
 	// Вид определяется ФОРМОЙ текста, а не прибит к "uri": в это же поле
-	// вставляют блок wg-quick (SPEC 119), и записать ему kind=uri значило бы
-	// потерять вид происхождения на первом же Save — узел перестал бы
-	// пересобираться из конфига провайдера.
-	kind := wizardmodels.OriginKindURI
-	if len(subscription.WGConfBlocksOf(uri)) > 0 {
-		kind = wizardmodels.OriginKindWGIni
-	}
-	p.Origin = &wizardmodels.Origin{Kind: kind, Raw: uri}
+	// вставляют блок wg-quick (SPEC 119) и JSON узла (SPEC 157), и записать
+	// им kind=uri значило бы потерять вид происхождения на первом же Save —
+	// узел перестал бы пересобираться из своего исходника, а Regen разбирал
+	// бы объект как ссылку и падал на «no scheme».
+	p.Origin = &wizardmodels.Origin{Kind: subscription.OriginKindOfText(uri), Raw: uri}
 }
 
 // uriEntryMinHeightFor — минимальная высота поля происхождения.
@@ -765,6 +762,8 @@ func showSourceEditWindowAt(
 	// refreshAWGAfterRegen — перечитывание блока обфускации после пересборки
 	// тела. Как и вкладка JSON, блок строится ниже кнопки Regen.
 	var refreshAWGAfterRegen func()
+	// refreshTailscaleAfterRegen — то же для блока роли Tailscale (SPEC 157).
+	var refreshTailscaleAfterRegen func()
 	var originBtnRow *fyne.Container
 	var setOriginMode func(editing bool)
 
@@ -1192,8 +1191,16 @@ func showSourceEditWindowAt(
 		if refreshAWGAfterRegen != nil {
 			refreshAWGAfterRegen()
 		}
+		if refreshTailscaleAfterRegen != nil {
+			refreshTailscaleAfterRegen()
+		}
 		originTextAtOpen = raw
 		setOriginMode(false)
+		// Вид происхождения мог смениться (ссылка → JSON): подпись поля и
+		// пометка «origin ignored at build time» считаются при раскладке.
+		if rebuildSettingsAfterDetour != nil {
+			rebuildSettingsAfterDetour()
+		}
 	})
 	originRegenBtn.Importance = widget.HighImportance
 
@@ -1249,6 +1256,29 @@ func showSourceEditWindowAt(
 	})
 	awgUI.load(&scratch.Node)
 	refreshAWGAfterRegen = func() { awgUI.load(&scratch.Node) }
+	// Блок роли Tailscale (source_tailscale_edit.go, SPEC 157). В отличие от
+	// обфускации detour ему не мешает: выход в tailnet — свойство самого
+	// узла, а не его транспорта.
+	tsUI := newTailscaleBlock(func() *wizardmodels.Node { return &scratch.Node }, win, func() {
+		if refreshJSONAfterOriginRegen != nil {
+			refreshJSONAfterOriginRegen()
+		}
+		// У узла с источником-телом блок правит и источник: поле Origin
+		// обязано показать его новый текст, иначе Edit → Regen вернул бы
+		// прежнюю роль. Только в режиме чтения — набранное в режиме правки
+		// не трогаем.
+		if !originEditing {
+			if raw := sourceOriginURI(&scratch); raw != uriEntry.Text {
+				uriEntry.OnChanged = nil
+				uriEntry.SetText(raw)
+				originTextAtOpen = raw
+				setOriginMode(false)
+			}
+		}
+		presenter.MarkAsChanged()
+	})
+	tsUI.load(&scratch.Node)
+	refreshTailscaleAfterRegen = func() { tsUI.load(&scratch.Node) }
 	clearAWGAfterDetour = func() {
 		if !awgEditableNode(&scratch.Node) {
 			return
@@ -1330,6 +1360,11 @@ func showSourceEditWindowAt(
 			if blk := skipPresetsBlock(m, nodeLink, &scratch.Node); blk != nil {
 				settingsContent.Add(widget.NewSeparator())
 				settingsContent.Add(blk)
+			}
+			if tailscaleEditableNode(&scratch.Node) {
+				settingsContent.Add(widget.NewSeparator())
+				tsUI.load(&scratch.Node)
+				settingsContent.Add(tsUI.content)
 			}
 			if awgVisibleFor() {
 				settingsContent.Add(widget.NewSeparator())
@@ -2034,7 +2069,6 @@ func showSourceEditWindowAt(
 		// была ли связь, уже негде.
 		apply := func() {
 			hadSubURL := scratch.Origin != nil && scratch.Origin.SubURL != ""
-			droppedOrigin := ownEditDropsOrigin(&scratch.Node, ownContainer)
 			if err := applyServerBodyJSON(&scratch.Node, text, ownContainer); err != nil {
 				// Документ отвергается СВОЕЙ причиной («лишний ключ», «два узла»):
 				// обёртка «Invalid JSON» врала бы — JSON как раз валиден.
@@ -2058,11 +2092,11 @@ func showSourceEditWindowAt(
 				dialog.ShowInformation(locale.T("Node saved"),
 					wizardbusiness.NodeInputDroppedMessage(), win)
 			}
-			if droppedOrigin {
-				// Источник сменился со ссылки/INI на JSON: форма источника
-				// показывает уже другой вид.
-				rebuildSettingsLayout()
-			}
+			// Раскладка пересобирается всегда: источник мог смениться со
+			// ссылки/INI на JSON (другая подпись поля), а блоки, читающие
+			// тело (обфускация, роль Tailscale), обязаны показать то, что в
+			// узле после правки.
+			rebuildSettingsLayout()
 			doRefreshJSONTab()
 		}
 		// Свой узел из ссылки или INI после правки JSON теряет исходник и
