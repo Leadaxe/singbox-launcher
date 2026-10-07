@@ -207,15 +207,11 @@ func showJSONReadOnlyDialog(parent fyne.Window, title string, header, helpLabel 
 		return
 	}
 
-	// Entry, а не RichText: read-only значит «нельзя ПРАВИТЬ», а не «нельзя
+	// JSONView, а не RichText: read-only значит «нельзя ПРАВИТЬ», а не «нельзя
 	// прочитать». У RichText нет ни выделения, ни копирования — тело
 	// сервера нельзя было ни забрать себе, ни показать кому-то.
-	// OnChanged пустой: правки никуда не уходят, тело живёт в шаблоне и
-	// пересобирается на каждой сборке.
-	jsonEntry := widget.NewMultiLineEntry()
-	jsonEntry.Wrapping = fyne.TextWrapOff
-	jsonEntry.SetText(jsonBody)
-	jsonEntry.OnChanged = func(string) {}
+	// Править нечего: тело живёт в шаблоне и пересобирается на каждой сборке.
+	jsonEntry := fynewidget.NewJSONView(jsonBody)
 
 	copyBtn := widget.NewButtonWithIcon(locale.T("Copy JSON"), theme.ContentCopyIcon(), func() {
 		if parent != nil {
@@ -228,7 +224,7 @@ func showJSONReadOnlyDialog(parent fyne.Window, title string, header, helpLabel 
 		container.NewVBox(header, helpLabel),
 		container.NewHBox(copyBtn, layout.NewSpacer()),
 		nil, nil,
-		container.NewScroll(jsonEntry),
+		container.NewScroll(jsonEntry.Object()),
 	)
 	d := dialog.NewCustom(title, "Close", content, parent)
 	// Выше прежних 440: тело группы с девятью участниками в них не

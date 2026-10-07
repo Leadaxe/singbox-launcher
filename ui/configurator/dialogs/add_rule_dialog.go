@@ -147,10 +147,8 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	pathPatternsLabel := widget.NewLabel(locale.T("Path patterns (one per line):"))
 
 	// Custom JSON field (initialised early so it can be loaded when editing)
-	customEntry := widget.NewMultiLineEntry()
-	customEntry.SetPlaceHolder(locale.T("Custom JSON (e.g., {})"))
-	customEntry.SetText("{}")
-	customScroll := container.NewScroll(customEntry)
+	customEntry := fynewidget.NewJSONEditor("{}")
+	customScroll := container.NewScroll(customEntry.Object())
 	customSizeRect := canvas.NewRectangle(color.Transparent)
 	customSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
 	customContainer := container.NewStack(customSizeRect, customScroll)
@@ -170,9 +168,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	srsLabelRow := container.NewHBox(srsURLsLabel, layout.NewSpacer(), srsHintButton)
 
 	// Raw tab: JSON правила (синхронизация с формой при переключении вкладок)
-	rawTabEntry := widget.NewMultiLineEntry()
-	rawTabEntry.SetPlaceHolder(locale.T("{\"ip_cidr\": [], \"outbound\": \"proxy-out\"}"))
-	rawTabEntry.Wrapping = fyne.TextWrapWord
+	rawTabEntry := fynewidget.NewJSONEditor("")
 
 	// Process-name helpers are now top-level pure funcs (see bottom of file):
 	// normalizeProcName / sortProcessStrings / dedupeProcessStrings.
@@ -467,7 +463,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	var dialogWindow fyne.Window
 
 	parseCustomJSON := func() (map[string]interface{}, error) {
-		trimmed := strings.TrimSpace(customEntry.Text)
+		trimmed := strings.TrimSpace(customEntry.Text())
 		if trimmed == "" {
 			return nil, errors.New(locale.T("Custom JSON is empty"))
 		}
@@ -646,7 +642,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		case wizardmodels.RuleTypeSRS:
 			return len(ParseLines(strings.TrimSpace(srsURLsEntry.Text), false)) > 0
 		case wizardmodels.RuleTypeRaw:
-			return strings.TrimSpace(customEntry.Text) != ""
+			return strings.TrimSpace(customEntry.Text()) != ""
 		default:
 			if domainModeSelect.Selected == locale.T("Regex") {
 				re := strings.TrimSpace(domainRegexEntry.Text)
@@ -737,7 +733,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		}
 
 		if activeTabIsRaw {
-			trimmed := strings.TrimSpace(rawTabEntry.Text)
+			trimmed := strings.TrimSpace(rawTabEntry.Text())
 			if trimmed == "" {
 				dialog.ShowError(errors.New(locale.T("Raw JSON is empty")), dialogWindow)
 				return
@@ -996,7 +992,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	)
 
 	formScroll := components.WrapInScrollWithGutter(inputContainer)
-	rawScroll := components.WrapInScrollWithGutter(rawTabEntry)
+	rawScroll := components.WrapInScrollWithGutter(rawTabEntry.Object())
 	formTabItem := container.NewTabItem(locale.T("Form"), formScroll)
 	rawTabItem := container.NewTabItem(locale.T("JSON"), rawScroll)
 	tabs := container.NewAppTabs(formTabItem, rawTabItem)
@@ -1013,7 +1009,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		}
 	}
 	syncRawToForm := func() {
-		trimmed := strings.TrimSpace(rawTabEntry.Text)
+		trimmed := strings.TrimSpace(rawTabEntry.Text())
 		if trimmed == "" {
 			dialog.ShowError(errors.New(locale.T("Raw JSON is empty")), dialogWindow)
 			tabs.Select(rawTabItem)

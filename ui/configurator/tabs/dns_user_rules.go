@@ -224,8 +224,7 @@ func showEditUserDNSRuleDialog(
 	updateSectionVisibility()
 
 	// === JSON tab ===
-	jsonEntry := widget.NewMultiLineEntry()
-	jsonEntry.Wrapping = fyne.TextWrapWord
+	jsonEntry := fynewidget.NewJSONEditor("")
 	refreshJSON := func() {
 		updateFromForm(working, currentRuleType(), ruleSetSelect, domainSuffixEntry, domainEntry, keywordEntry, ipCIDREntry, serverSelect)
 		b, _ := json.MarshalIndent(working, "", "  ")
@@ -234,7 +233,7 @@ func showEditUserDNSRuleDialog(
 	refreshJSON()
 
 	formTab := container.NewTabItem(locale.T("Form"), container.NewScroll(container.NewPadded(formContent)))
-	jsonTab := container.NewTabItem(locale.T("JSON"), container.NewScroll(container.NewPadded(jsonEntry)))
+	jsonTab := container.NewTabItem(locale.T("JSON"), container.NewScroll(container.NewPadded(jsonEntry.Object())))
 	tabs := container.NewAppTabs(formTab, jsonTab)
 	tabs.OnSelected = func(t *container.TabItem) {
 		if t == jsonTab {
@@ -259,7 +258,7 @@ func showEditUserDNSRuleDialog(
 		// его JSON. Иначе — собираем из form.
 		var finalRule map[string]interface{}
 		if tabs.Selected() == jsonTab {
-			if err := json.Unmarshal([]byte(jsonEntry.Text), &finalRule); err != nil {
+			if err := json.Unmarshal([]byte(jsonEntry.Text()), &finalRule); err != nil {
 				dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Invalid JSON"), err), editWin)
 				return
 			}

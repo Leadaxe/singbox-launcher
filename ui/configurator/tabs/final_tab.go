@@ -463,27 +463,17 @@ func showConfigWindow(text string) {
 	}
 	w := app.NewWindow(locale.T("Generated config.json"))
 
-	entry := widget.NewMultiLineEntry()
-	entry.Wrapping = fyne.TextWrapOff
-	entry.SetText(text)
 	// Только для чтения: править собранный конфиг здесь бессмысленно — он
 	// пересобирается из состояния при каждой сборке. Но выделение и
-	// копирование остаются, ради них поле и взято вместо Label.
-	// Ввод ОТКАТЫВАЕТСЯ, а не игнорируется молча: пустой хэндлер оставлял
-	// напечатанное на экране, и «правка» выглядела принятой, хотя никуда
-	// не шла (паттерн jsonEntry в source_edit_window.go).
-	entry.OnChanged = func(s string) {
-		if s != text {
-			entry.SetText(text)
-		}
-	}
+	// копирование остаются, ради них просмотрщик и взят вместо Label.
+	entry := fynewidget.NewJSONView(text)
 
 	closeBtn := widget.NewButton(locale.T("Cancel"), func() { w.Close() })
 	w.SetContent(container.NewBorder(
 		nil,
 		container.NewHBox(layout.NewSpacer(), closeBtn),
 		nil, nil,
-		container.NewVScroll(entry),
+		container.NewVScroll(entry.Object()),
 	))
 	w.Resize(fyne.NewSize(820, 640))
 	fynewidget.CenterOnScreen(w)
