@@ -1774,9 +1774,6 @@
   "Path patterns (one per line):": {
     "value": "Шаблоны путей (по одному на строку):"
   },
-  "Custom JSON (e.g., {})": {
-    "value": "Произвольный JSON (напр., {})"
-  },
   "Custom JSON:": {
     "value": "Произвольный JSON:"
   },
@@ -1785,9 +1782,6 @@
   },
   "SRS URLs (one per line):": {
     "value": "URL SRS-файлов (по одному на строку):"
-  },
-  "{\"ip_cidr\": [], \"outbound\": \"proxy-out\"}": {
-    "value": "{\"ip_cidr\": [], \"outbound\": \"proxy-out\"}"
   },
   "IP Addresses (CIDR)": {
     "value": "IP-адреса (CIDR)"
