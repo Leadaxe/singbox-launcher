@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 
 	"singbox-launcher/core/debugapi"
 )
@@ -32,6 +33,71 @@ type uiWindowInfo struct {
 	Content    string          `json:"content"`
 	Focused    string          `json:"focused,omitempty"`
 	Overlays   []uiOverlayInfo `json:"overlays"`
+	// MinSize — минимум содержимого канвы: ниже него окно не сжимается.
+	MinSize [2]int `json:"min_size"`
+	// MinTree — кто этот минимум складывает: поддерево узлов, чья
+	// минимальная высота не меньше uiMinTreeThreshold (остальные опущены —
+	// иначе снимок Мастера был бы на тысячи строк).
+	MinTree *uiMinNode `json:"min_tree,omitempty"`
+}
+
+// uiMinNode — узел дерева минимальных размеров (триаж «окно не сжимается»:
+// AppTabs берёт максимум по всем вкладкам, и держатель минимума может
+// лежать на невидимой вкладке).
+type uiMinNode struct {
+	Type     string       `json:"type"`
+	Hidden   bool         `json:"hidden,omitempty"`
+	Size     [2]int       `json:"size"`
+	Min      [2]int       `json:"min"`
+	Children []*uiMinNode `json:"children,omitempty"`
+}
+
+// uiMinTreeThreshold — минимальная высота узла, с которой он попадает в
+// дерево; uiMinTreeDepth — предел глубины обхода.
+const (
+	uiMinTreeThreshold float32 = 60
+	uiMinTreeDepth             = 16
+)
+
+// uiMinTree — обход известных контейнеров: *fyne.Container, Scroll, AppTabs,
+// Split. Прочие виджеты — листья: их внутренности доступны только через
+// внутренний кэш рендереров, а для поиска держателя минимума хватает
+// контейнерного уровня.
+func uiMinTree(o fyne.CanvasObject, depth int) *uiMinNode {
+	if o == nil {
+		return nil
+	}
+	min := o.MinSize()
+	if min.Height < uiMinTreeThreshold && depth > 0 {
+		return nil
+	}
+	n := &uiMinNode{Type: fmt.Sprintf("%T", o), Hidden: !o.Visible(), Size: sizeOf(o.Size()), Min: sizeOf(min)}
+	if depth >= uiMinTreeDepth {
+		return n
+	}
+	var kids []fyne.CanvasObject
+	switch v := o.(type) {
+	case *fyne.Container:
+		kids = v.Objects
+	case *container.Scroll:
+		kids = []fyne.CanvasObject{v.Content}
+	case *container.AppTabs:
+		for _, it := range v.Items {
+			kids = append(kids, it.Content)
+		}
+	case *container.DocTabs:
+		for _, it := range v.Items {
+			kids = append(kids, it.Content)
+		}
+	case *container.Split:
+		kids = []fyne.CanvasObject{v.Leading, v.Trailing}
+	}
+	for _, k := range kids {
+		if child := uiMinTree(k, depth+1); child != nil {
+			n.Children = append(n.Children, child)
+		}
+	}
+	return n
 }
 
 // onMain выполняет fn на главной горутине с таймаутом.
@@ -64,6 +130,8 @@ func (fyneUIInspector) Snapshot() (any, error) {
 			info := uiWindowInfo{Title: w.Title(), CanvasSize: sizeOf(c.Size()), Overlays: []uiOverlayInfo{}}
 			if c.Content() != nil {
 				info.Content = fmt.Sprintf("%T", c.Content())
+				info.MinSize = sizeOf(c.Content().MinSize())
+				info.MinTree = uiMinTree(c.Content(), 0)
 			}
 			if f := c.Focused(); f != nil {
 				info.Focused = fmt.Sprintf("%T", f)

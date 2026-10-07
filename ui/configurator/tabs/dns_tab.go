@@ -313,8 +313,9 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	rulesScroll := container.NewScroll(guiState.DNSRulesEntry)
 	rulesScroll.Direction = container.ScrollBoth
 	rulesHeight := canvas.NewRectangle(color.Transparent)
-	// Тоже доля окна — см. serversScroll выше.
-	rulesHeight.SetMinSize(adaptiveScrollSize(guiState, 0.26, 170))
+	// Константа, а не доля окна: доля считалась от высоты окна на момент
+	// создания и держала минимум всего Мастера (см. wizardTabScrollMinHeight).
+	rulesHeight.SetMinSize(fyne.NewSize(0, wizardTabScrollMinHeight))
 	rulesBlock := container.NewStack(rulesHeight, rulesScroll)
 
 	rulesLabel := widget.NewLabel(locale.T("Rules (JSON object with \"rules\" array)"))
@@ -485,12 +486,18 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		widget.NewSeparator(),
 		finalAndResolverRow,
 	)
-	return container.NewBorder(
+	// Снаружи — VScroll: Scroll отдаёт содержимому max(его минимум, размер
+	// окна), поэтому на высоком окне Border по-прежнему растягивает список
+	// серверов, а минимум вкладки перестаёт быть минимумом всего Мастера.
+	// Без него нижний блок (кэш, список правил без прокрутки, кнопки,
+	// строка Final) плюс список серверов давали ~650pt, AppTabs брал этот
+	// максимум по всем вкладкам, и окно нельзя было сжать ни на одной.
+	return container.NewVScroll(container.NewBorder(
 		serversHeader,
 		bottom,
 		nil, nil,
 		serversScroll,
-	)
+	))
 }
 
 func dnsServerSummaryFromInvalidRaw(raw json.RawMessage) string {

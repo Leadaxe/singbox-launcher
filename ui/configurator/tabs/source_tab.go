@@ -1659,11 +1659,11 @@ func CreateDirectionsTab(presenter *wizardpresentation.WizardPresenter) fyne.Can
 	)
 
 	scrollContainer := container.NewScroll(content)
-	// Adaptive min-height: a fixed 620px forced the whole wizard window taller
-	// than small laptop screens (Big Sur 1280×800), pushing nav buttons under
-	// the Dock. Scale with window height; the fallback (used before the window
-	// is measured at first layout) is kept small enough to fit a 600px window.
-	scrollContainer.SetMinSize(adaptiveScrollSize(guiState, 0.62, 440))
+	// Нижняя граница, а не высота: скролл — корень вкладки, и AppTabs отдаёт
+	// ему всю площадь. Прежний минимум «62 % высоты окна на момент создания»
+	// становился минимумом всего Мастера (AppTabs считает его по всем
+	// вкладкам), и окно нельзя было сжать ниже размера, с которым открылось.
+	scrollContainer.SetMinSize(fyne.NewSize(0, wizardTabScrollMinHeight))
 
 	return scrollContainer
 }

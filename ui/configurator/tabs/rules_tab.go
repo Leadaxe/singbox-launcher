@@ -563,24 +563,29 @@ func buildRulesTabContainer(headerRow, rulesScroll fyne.CanvasObject, finalSelec
 		finalSelect,
 		layout.NewSpacer(),
 	)
-	return container.NewVBox(
+	// Border, а не VBox: список правил — центр, он получает всю высоту между
+	// шапкой и строкой «Default direction», а на низком окне ужимается до
+	// минимума скролла. В VBox скролл стоял своей фиксированной высотой и
+	// не рос с окном.
+	return container.NewBorder(
 		headerRow,
+		container.NewVBox(widget.NewSeparator(), row),
+		nil, nil,
 		rulesScroll,
-		widget.NewSeparator(),
-		row,
 	)
 }
 
 // CreateRulesScroll creates a scrollable container for rules content.
 func CreateRulesScroll(guiState *wizardpresentation.GUIState, content fyne.CanvasObject) fyne.CanvasObject {
-	maxHeight := guiState.Window.Canvas().Size().Height * 0.65
-	if maxHeight <= 0 {
-		maxHeight = 430
-	}
 	scrollGutter := components.NewScrollGutter()
 	contentWithGutter := container.NewBorder(nil, nil, nil, scrollGutter, content)
 	scroll := container.NewVScroll(contentWithGutter)
-	scroll.SetMinSize(fyne.NewSize(0, maxHeight))
+	// Нижняя граница, а не высота: высоту скролл берёт растяжением в Border
+	// (buildRulesTabContainer). Прежний минимум «65 % высоты окна на момент
+	// создания» становился минимумом ВСЕГО Мастера — AppTabs считает его по
+	// всем вкладкам, — и окно нельзя было сжать ниже размера, с которым оно
+	// открылось.
+	scroll.SetMinSize(fyne.NewSize(0, wizardTabScrollMinHeight))
 	scroll.Offset = guiState.RulesScrollOffset
 	guiState.RulesScroll = scroll
 	return scroll

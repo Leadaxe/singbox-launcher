@@ -514,7 +514,8 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	refresh()
 
 	scroll := container.NewVScroll(box)
-	scroll.SetMinSize(adaptiveScrollSize(gs, 0.5, 400))
+	// Нижняя граница, а не высота: см. wizardTabScrollMinHeight.
+	scroll.SetMinSize(fyne.NewSize(0, wizardTabScrollMinHeight))
 
 	// Бэкап переехал на вкладку «Файлы»: прибитый к низу через Border, он
 	// забирал свою высоту целиком, и прокрутке настроек доставался остаток —
