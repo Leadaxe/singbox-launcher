@@ -390,36 +390,48 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 	}
 }
 
-// tailscaleDeviceDetails — хвост строки устройства (§6): ОС, отметки и путь.
-// Имя и адрес стоят в строке отдельными полями, «в сети» показывает точка.
-func tailscaleDeviceDetails(p services.TailscalePeer, now time.Time) string {
-	parts := make([]string, 0, 5)
+// tailscaleDeviceDetails — кто это (первая строка устройства, §6): ОС и
+// роли. Имя и адрес стоят в строке отдельными полями, «в сети» показывает
+// точка; как подключено — во второй строке (tailscaleDeviceConnection).
+func tailscaleDeviceDetails(p services.TailscalePeer) string {
+	parts := make([]string, 0, 3)
 	if p.OS != "" {
 		parts = append(parts, p.OS)
 	}
-	if !p.Online && !p.LastSeen.IsZero() {
+	if p.ExitNodeOption {
+		parts = append(parts, locale.T("exit node"))
+	}
+	if p.ShareeNode {
+		parts = append(parts, locale.T("shared"))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// tailscaleDeviceConnection — как подключено (вторая строка): путь из
+// снимка потока (SPEC 158; живой — на вкладке Diagnostics), иначе давность
+// last seen; ключ истёк — туда же. Пусто у устройства в сети, которому ядро
+// ещё не писало.
+func tailscaleDeviceConnection(p services.TailscalePeer, now time.Time) string {
+	parts := make([]string, 0, 2)
+	if path := tailscalePathText(p); path != "" {
+		parts = append(parts, path)
+	} else if !p.Online && !p.LastSeen.IsZero() {
 		parts = append(parts, locale.Tf("last seen %s ago", humanAge(now.Sub(p.LastSeen))))
 	}
 	if p.Expired {
 		parts = append(parts, locale.T("key expired"))
 	}
-	if p.ShareeNode {
-		parts = append(parts, locale.T("shared"))
-	}
-	if p.ExitNodeOption {
-		parts = append(parts, locale.T("exit node"))
-	}
-	// Путь из снимка потока (SPEC 158): правда на момент последнего события,
-	// живой — на вкладке Diagnostics.
-	if path := tailscalePathText(p); path != "" {
-		parts = append(parts, path)
-	}
 	return strings.Join(parts, " · ")
 }
 
-// tailscaleDeviceRow — строка устройства, как у пиров WireGuard:
-// «●  GL-MT2500   100.104.79.7   linux · exit node        ⋯»; меню — Copy
-// name, Copy MagicDNS name, Copy address, Ping.
+// tailscaleDeviceRow — устройство в две строки, как узел в списке серверов:
+//
+//	●  GL-MT2500   100.104.79.7   linux · exit node        ⋯
+//	   direct 31.184.97.44:41641
+//
+// Вторая строка держит высоту и пустой, чтобы список не «дышал», когда у
+// устройства появляется путь. Меню — Copy name, Copy MagicDNS name, Copy
+// address, Ping.
 func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer, haveCtrl bool) fyne.CanvasObject {
 	mark := widget.NewLabel("○")
 	mark.Importance = widget.LowImportance
@@ -433,9 +445,12 @@ func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p se
 		addr = p.TailscaleIPs[0]
 	}
 	ip := widget.NewLabel(addr)
-	details := widget.NewLabel(tailscaleDeviceDetails(p, time.Now()))
+	details := widget.NewLabel(tailscaleDeviceDetails(p))
 	details.Importance = widget.LowImportance
 	details.Truncation = fyne.TextTruncateEllipsis
+	conn := widget.NewLabel(tailscaleDeviceConnection(p, time.Now()))
+	conn.Importance = widget.LowImportance
+	conn.Truncation = fyne.TextTruncateEllipsis
 	dns := strings.TrimSuffix(p.DNSName, ".")
 
 	var more *widget.Button
@@ -460,7 +475,10 @@ func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p se
 	})
 	more.Importance = widget.LowImportance
 	left := container.NewHBox(mark, name, rowGap(12), ip, rowGap(12))
-	return container.NewBorder(nil, nil, left, more, details)
+	top := container.NewBorder(nil, nil, left, more, details)
+	// Вторая строка начинается под именем: отступ = знак + зазор HBox.
+	bottom := container.NewBorder(nil, nil, rowGap(mark.MinSize().Width+theme.Padding()), nil, conn)
+	return container.NewVBox(top, bottom)
 }
 
 // tailscalePingLine — одна строка результата проверки (§7).

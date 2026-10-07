@@ -16,6 +16,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
@@ -174,8 +175,10 @@ func buildTailnetSection(box *fyne.Container, st services.TailscaleStatus, ok bo
 	}
 }
 
-// tailnetPeerRow — «●  GL-MT2500   100.104.79.7   direct 1.2.3.4:41641 ·
-// handshake 36s ago», как строка устройства на вкладке Network.
+// tailnetPeerRow — устройство в две строки, как на вкладке Network:
+//
+//	●  GL-MT2500   100.104.79.7   linux
+//	   relay ams · handshake 2m ago
 func tailnetPeerRow(p services.TailscalePeer, now time.Time) fyne.CanvasObject {
 	mark := widget.NewLabel("○")
 	mark.Importance = widget.LowImportance
@@ -190,9 +193,14 @@ func tailnetPeerRow(p services.TailscalePeer, now time.Time) fyne.CanvasObject {
 	}
 	ip := widget.NewLabel(addr)
 	ip.Selectable = true
-	details := widget.NewLabel(tailnetPeerDetails(p, now))
+	details := widget.NewLabel(tailscaleDeviceDetails(p))
 	details.Importance = widget.LowImportance
 	details.Truncation = fyne.TextTruncateEllipsis
+	conn := widget.NewLabel(tailnetPeerDetails(p, now))
+	conn.Importance = widget.LowImportance
+	conn.Truncation = fyne.TextTruncateEllipsis
 	left := container.NewHBox(mark, name, rowGap(12), ip, rowGap(12))
-	return container.NewBorder(nil, nil, left, nil, details)
+	top := container.NewBorder(nil, nil, left, nil, details)
+	bottom := container.NewBorder(nil, nil, rowGap(mark.MinSize().Width+theme.Padding()), nil, conn)
+	return container.NewVBox(top, bottom)
 }
