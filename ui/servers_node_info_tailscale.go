@@ -62,24 +62,32 @@ func tailscalePeerLine(p services.TailscalePeer) string {
 	return strings.Join(parts, " · ")
 }
 
+// tailscalePathGlyphDirect / tailscalePathGlyphRelay — знак перед путём:
+// «⇄» — пакеты ходят прямо между узлами, «↝» — через посредника (DERP или
+// peer relay). Текстовые стрелки, не эмодзи: цвет берут у строки.
+const (
+	tailscalePathGlyphDirect = "⇄"
+	tailscalePathGlyphRelay  = "↝"
+)
+
 // tailscalePathText — путь пира словами (SPEC 158, таблица CONSUMERS ядра):
-// «direct 1.2.3.4:41641», «peer relay», «relay fra»; пусто — узел ни разу не
-// слал пиру, путь не выбран. Домашний регион при direct не пишем: в строке
-// устройства он только шум, а в Diagnostics код виден в строке relay.
+// «⇄ direct 1.2.3.4:41641», «↝ peer relay», «↝ relay fra»; пусто — узел ни
+// разу не слал пиру, путь не выбран. Домашний регион при direct не пишем: в
+// строке устройства он только шум, а в Diagnostics код виден в строке relay.
 func tailscalePathText(p services.TailscalePeer) string {
 	switch p.Path {
 	case services.TailscalePathDirect:
 		if p.Endpoint != "" {
-			return locale.T("direct") + " " + p.Endpoint
+			return tailscalePathGlyphDirect + " " + locale.T("direct") + " " + p.Endpoint
 		}
-		return locale.T("direct")
+		return tailscalePathGlyphDirect + " " + locale.T("direct")
 	case services.TailscalePathPeerRelay:
-		return locale.T("peer relay")
+		return tailscalePathGlyphRelay + " " + locale.T("peer relay")
 	case services.TailscalePathDERP:
 		if p.DERPRegionCode != "" {
-			return locale.T("relay") + " " + p.DERPRegionCode
+			return tailscalePathGlyphRelay + " " + locale.T("relay") + " " + p.DERPRegionCode
 		}
-		return locale.T("relay")
+		return tailscalePathGlyphRelay + " " + locale.T("relay")
 	}
 	return ""
 }
