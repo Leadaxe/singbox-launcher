@@ -43,9 +43,18 @@ func init() {
 
 	// Patch the process-wide default transport so that bare http.Client{}
 	// (no explicit Transport) also uses the custom roots.
+	//
+	// Each transport MUST get its own *tls.Config. http.DefaultTransport has
+	// ForceAttemptHTTP2 and, on first use, appends "h2" to its
+	// TLSClientConfig.NextProtos in place. defaultSharedTransport has a custom
+	// DialContext, so net/http never enables HTTP/2 on it — but with a shared
+	// config it would start advertising h2 in ALPN after any bare http.Client
+	// request, the server would answer in HTTP/2 and the HTTP/1.1 reader would
+	// fail with `malformed HTTP response "\x00\x00\x12\x04…"` (an h2 SETTINGS
+	// frame). Seen on subscription fetch after an unrelated HTTPS request.
 	if dt, ok := http.DefaultTransport.(*http.Transport); ok {
 		clone := dt.Clone()
-		clone.TLSClientConfig = tlsConf
+		clone.TLSClientConfig = tlsConf.Clone()
 		http.DefaultTransport = clone
 	}
 }
