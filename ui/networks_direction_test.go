@@ -81,21 +81,27 @@ func TestExitNodeWarningText(t *testing.T) {
 	}
 }
 
-// Отметки строки устройства (§6).
+// Отметки строки устройства (§6): кто это — первая строка, как подключено — вторая.
 func TestTailscaleDeviceDetails(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	p := services.TailscalePeer{
 		HostName: "nas", DNSName: "nas.tail.ts.net.", TailscaleIPs: []string{"100.64.0.7"}, OS: "linux",
 		LastSeen: now.Add(-2 * time.Hour), Expired: true, ShareeNode: true, ExitNodeOption: true,
 	}
-	got := tailscaleDeviceDetails(p, now)
-	for _, frag := range []string{"linux", "last seen", "key expired", "shared", "exit node"} {
+	got := tailscaleDeviceDetails(p)
+	for _, frag := range []string{"linux", "shared", "exit node"} {
+		if !strings.Contains(got, frag) {
+			t.Errorf("нет %q в %q", frag, got)
+		}
+	}
+	got = tailscaleDeviceConnection(p, now)
+	for _, frag := range []string{"last seen", "key expired"} {
 		if !strings.Contains(got, frag) {
 			t.Errorf("нет %q в %q", frag, got)
 		}
 	}
 	p.Online = true
-	if got := tailscaleDeviceDetails(p, now); strings.Contains(got, "last seen") {
+	if got := tailscaleDeviceConnection(p, now); strings.Contains(got, "last seen") {
 		t.Errorf("в сети: %q", got)
 	}
 }
