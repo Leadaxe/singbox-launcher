@@ -460,3 +460,34 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+// TestSamePathValueNumericTypes — число сырого тела (float64 из JSON) и
+// число чистого (int/uint32 после приведения поля) равны по величине:
+// info-код по такому пути на авторском теле идёт без applied: false
+// (PARSING_PRINCIPLES §6.3, контракт 1.1.114, кейс soft_awg_mtu_high_kept).
+func TestSamePathValueNumericTypes(t *testing.T) {
+	cases := []struct {
+		name  string
+		raw   interface{}
+		clean interface{}
+		want  bool
+	}{
+		{"float64 vs int", float64(1420), 1420, true},
+		{"float64 vs uint32", float64(1420), uint32(1420), true},
+		{"float64 vs json.Number", float64(1420), json.Number("1420"), true},
+		{"float64 vs int другое", float64(1420), 1280, false},
+		{"число vs строка", float64(1420), "1420", false},
+		{"строки", "a", "a", true},
+		{"вложенный массив", []interface{}{float64(1), "x"}, []interface{}{1, "x"}, true},
+		{"вложенный объект", map[string]interface{}{"p": float64(2)}, map[string]interface{}{"p": int64(2)}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			raw := map[string]interface{}{"peers": []interface{}{map[string]interface{}{"v": c.raw}}}
+			clean := map[string]interface{}{"peers": []interface{}{map[string]interface{}{"v": c.clean}}}
+			if got := samePathValue(raw, clean, "peers[0].v"); got != c.want {
+				t.Errorf("samePathValue = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
