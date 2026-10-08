@@ -89,7 +89,7 @@ func Load(path string) (*State, error) {
 	// источника зависит, авторское ли тело.
 	if n := NormalizeBareBodyOrigins(s); n > 0 {
 		if err := s.Save(path); err != nil {
-			debuglog.WarnLog("state: %d node sources reduced to the node body, not persisted: %v", n, err)
+			debuglog.WarnLog("state: %d node sources normalized (body or origin kind), not persisted: %v", n, err)
 		}
 	}
 	if n := recountNodeWarnings(s); n > 0 {

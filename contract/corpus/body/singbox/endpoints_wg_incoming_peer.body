@@ -1,0 +1,7 @@
+# ВХОДЯЩИЙ ПИР (контракт 1.1.109/1.1.110): у пира НЕТ address/port — к узлу
+# подключаются, а не он. Узел слушает listen_port, ядро ставит пиру endpoint
+# только при годном адресе, и через такой узел ходят в интернет. Обязательность
+# адреса снимает required_unless {set: [listen_port]} с кодом wg_peer_incoming
+# (info, тело не меняется); порт не нужен без адреса (absent: [address]).
+# Пара: endpoints_wg_peer_no_endpoint — нет и listen_port, узел выпадает.
+{"endpoints":[{"type":"wireguard","tag":"wg-incoming","address":["10.99.2.1/32"],"listen_port":51822,"private_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=","peers":[{"allowed_ips":["0.0.0.0/0"],"public_key":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="}]}]}

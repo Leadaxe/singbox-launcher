@@ -687,6 +687,21 @@ type EndpointStatus struct {
 	State string
 	// IdleSince — сколько прошло с последнего dial через узел.
 	IdleSince time.Duration
+	// Peers — пиры устройства; только у EndpointStatus (GetWireGuardStatus),
+	// список EndpointStatuses их не несёт.
+	Peers []EndpointPeer
+}
+
+// EndpointPeer — состояние одного пира WG/AWG. Вывода «подключён» ядро не
+// делает: порог считает UI по возрасту хендшейка и росту rx.
+type EndpointPeer struct {
+	PublicKey string
+	// Endpoint — последний известный ip:port; остаётся после ухода пира.
+	Endpoint string
+	// LastHandshake — нулевое время, если хендшейка не было.
+	LastHandshake time.Time
+	// RxBytes/TxBytes обнуляются при пересборке устройства.
+	RxBytes, TxBytes int64
 }
 
 // ErrEndpointToggleUnsupported — ядро старше 1.14.2-lx.4, SetEndpointEnabled
@@ -699,6 +714,9 @@ type EndpointSource interface {
 	// EndpointStatuses — состояния всех WG/AWG-узлов по тегу. Узлы других
 	// типов и ядро без endpointState в карту не попадают.
 	EndpointStatuses() (map[string]EndpointStatus, error)
+	// EndpointStatus — состояние и пиры одного узла; ok=false — тега нет или
+	// это не WG/AWG.
+	EndpointStatus(tag string) (EndpointStatus, bool, error)
 	// SetEndpointEnabled возвращает состояние узла после вызова.
 	SetEndpointEnabled(tag string, enabled bool) (string, error)
 }
@@ -722,6 +740,47 @@ func EndpointStatusesRPC(ctx context.Context, client daemonpb.StartedServiceClie
 	return out, nil
 }
 
+// EndpointStatusRPC — состояние и пиры одного WG/AWG-узла (GetWireGuardStatus,
+// SPEC 114 ядра). ok=false — тега нет или это не WG/AWG. Ядро без этого RPC
+// (≤ 1.14.2-lx.12-rc.1) — состояние из GetOutbounds, без пиров.
+func EndpointStatusRPC(ctx context.Context, client daemonpb.StartedServiceClient, tag string) (EndpointStatus, bool, error) {
+	resp, err := client.GetWireGuardStatus(ctx, &daemonpb.WireGuardStatusRequest{Tag: tag})
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			switch st.Code() {
+			case codes.Unimplemented:
+				states, err := EndpointStatusesRPC(ctx, client)
+				if err != nil {
+					return EndpointStatus{}, false, err
+				}
+				s, ok := states[tag]
+				return s, ok, nil
+			case codes.NotFound, codes.InvalidArgument:
+				return EndpointStatus{}, false, nil
+			}
+			return EndpointStatus{}, false, errors.New(st.Message())
+		}
+		return EndpointStatus{}, false, err
+	}
+	out := EndpointStatus{
+		State:     resp.GetEndpointState(),
+		IdleSince: time.Duration(resp.GetIdleSinceSeconds()) * time.Second,
+	}
+	for _, p := range resp.GetPeers() {
+		peer := EndpointPeer{
+			PublicKey: p.GetPublicKey(),
+			Endpoint:  p.GetEndpoint(),
+			RxBytes:   p.GetRxBytes(),
+			TxBytes:   p.GetTxBytes(),
+		}
+		if hs := p.GetLastHandshakeUnix(); hs > 0 {
+			peer.LastHandshake = time.Unix(hs, 0)
+		}
+		out.Peers = append(out.Peers, peer)
+	}
+	return out, true, nil
+}
+
 // SetEndpointEnabledRPC включает/выключает WG/AWG-узел и возвращает его
 // состояние после вызова. Ошибка ядра (NotFound, FailedPrecondition,
 // Unavailable) отдаётся своим текстом: это диагноз, показываемый человеку.
@@ -739,6 +798,73 @@ func SetEndpointEnabledRPC(ctx context.Context, client daemonpb.StartedServiceCl
 	return resp.GetState(), nil
 }
 
+// URLViaOutboundResult — ответ GET через узел (вкладка Diagnostics окна узла).
+// Не-2xx — результат, а не сбой; Error — запрос не дошёл.
+type URLViaOutboundResult struct {
+	Status     int
+	Body       []byte
+	Truncated  bool
+	RemoteAddr string
+	Elapsed    time.Duration
+	Error      string
+}
+
+// URLViaOutboundSource — транспорт, умеющий сделать GET через узел работающего
+// ядра (gRPC GetURLViaOutbound: локальный демон или удалённая машина; у Clash
+// API этого нет).
+type URLViaOutboundSource interface {
+	GetURLViaOutbound(tag, url string) (URLViaOutboundResult, error)
+}
+
+// URLViaOutboundTimeout и URLViaOutboundMaxBytes — бюджет запроса и потолок
+// тела, как у LxBox.
+const (
+	URLViaOutboundTimeout  = 10 * time.Second
+	URLViaOutboundMaxBytes = 64 << 10
+)
+
+// ErrURLViaOutboundUnsupported — ядро не знает GetURLViaOutbound.
+var ErrURLViaOutboundUnsupported = errors.New("core does not support requests through a node — update the core")
+
+// GetURLViaOutboundRPC — GET через узел tag. Активный selector не меняется.
+func GetURLViaOutboundRPC(ctx context.Context, client daemonpb.StartedServiceClient, tag, url string) (URLViaOutboundResult, error) {
+	resp, err := client.GetURLViaOutbound(ctx, &daemonpb.GetURLViaOutboundRequest{
+		OutboundTag: tag,
+		Link:        url,
+		Timeout:     uint32(URLViaOutboundTimeout / time.Millisecond),
+		MaxBytes:    URLViaOutboundMaxBytes,
+	})
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			if st.Code() == codes.Unimplemented {
+				return URLViaOutboundResult{}, ErrURLViaOutboundUnsupported
+			}
+			return URLViaOutboundResult{}, errors.New(st.Message())
+		}
+		return URLViaOutboundResult{}, err
+	}
+	return URLViaOutboundResult{
+		Status:     int(resp.GetHttpStatus()),
+		Body:       resp.GetBody(),
+		Truncated:  resp.GetTruncated(),
+		RemoteAddr: resp.GetRemoteAddr(),
+		Elapsed:    time.Duration(resp.GetElapsedMs()) * time.Millisecond,
+		Error:      resp.GetError(),
+	}, nil
+}
+
+// GetURLViaOutbound — GET через узел УДАЛЁННОГО ядра.
+func (t *LxdRemoteTransport) GetURLViaOutbound(tag, url string) (URLViaOutboundResult, error) {
+	client, _, cancel, err := t.rpc()
+	if err != nil {
+		return URLViaOutboundResult{}, err
+	}
+	cancel()
+	ctx, longCancel := context.WithTimeout(context.Background(), URLViaOutboundTimeout+5*time.Second)
+	defer longCancel()
+	return GetURLViaOutboundRPC(ctx, client, tag, url)
+}
+
 // EndpointStatuses — состояния WG/AWG-узлов УДАЛЁННОГО ядра.
 func (t *LxdRemoteTransport) EndpointStatuses() (map[string]EndpointStatus, error) {
 	client, ctx, cancel, err := t.rpc()
@@ -747,6 +873,16 @@ func (t *LxdRemoteTransport) EndpointStatuses() (map[string]EndpointStatus, erro
 	}
 	defer cancel()
 	return EndpointStatusesRPC(ctx, client)
+}
+
+// EndpointStatus — состояние и пиры WG/AWG-узла УДАЛЁННОГО ядра.
+func (t *LxdRemoteTransport) EndpointStatus(tag string) (EndpointStatus, bool, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return EndpointStatus{}, false, err
+	}
+	defer cancel()
+	return EndpointStatusRPC(ctx, client, tag)
 }
 
 // SetEndpointEnabled — выключатель WG/AWG-узла на УДАЛЁННОМ ядре. Бюджет как

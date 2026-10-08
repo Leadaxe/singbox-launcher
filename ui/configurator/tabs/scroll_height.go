@@ -1,30 +1,15 @@
 package tabs
 
-import (
-	"fyne.io/fyne/v2"
-
-	wizardpresentation "singbox-launcher/ui/configurator/presentation"
-)
-
-// adaptiveScrollHeight returns a min-height for a tab scroll area that scales
-// with the current window height instead of a fixed constant. Fixed minimums
-// (e.g. 620px) force the whole wizard window to grow taller than the screen on
-// laptops with limited vertical space (macOS 11 Big Sur, logical 1280×800),
-// pushing the navigation buttons under the Dock.
+// wizardTabScrollMinHeight — нижняя граница высоты прокручиваемой области
+// вкладки Мастера (список правил, Направления, Настройки, правила DNS,
+// отчёт сборки).
 //
-// frac is the fraction of the window height to use (e.g. 0.6). fallback is used
-// before the window has a measured size (first layout, canvas size 0).
-func adaptiveScrollHeight(guiState *wizardpresentation.GUIState, frac, fallback float32) float32 {
-	if guiState != nil && guiState.Window != nil {
-		if h := guiState.Window.Canvas().Size().Height; h > 0 {
-			return h * frac
-		}
-	}
-	return fallback
-}
-
-// adaptiveScrollSize is a convenience wrapper returning a width-0 Size with the
-// adaptive height, ready for scroll.SetMinSize.
-func adaptiveScrollSize(guiState *wizardpresentation.GUIState, frac, fallback float32) fyne.Size {
-	return fyne.NewSize(0, adaptiveScrollHeight(guiState, frac, fallback))
-}
+// Именно граница, а не высота: высоту область берёт растяжением — корень
+// вкладки или центр Border получает всё, что AppTabs отдал вкладке. Раньше
+// минимум считался долей высоты окна на момент создания (50–65 %), и это
+// держало минимум ВСЕГО Мастера: AppTabs берёт максимум по всем вкладкам,
+// поэтому окно нельзя было сжать ниже размера, с которым оно открылось, —
+// на какой бы вкладке пользователь ни стоял. Константа мала намеренно: на
+// низком экране важнее, чтобы кнопки навигации остались над Dock, чем
+// чтобы список показывал больше строк без прокрутки.
+const wizardTabScrollMinHeight float32 = 160

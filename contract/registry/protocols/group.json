@@ -66,13 +66,14 @@
         "type": "enum",
         "values": [
           "least_test",
-          "round_robin"
+          "round_robin",
+          "failover"
         ],
         "default": "least_test",
         "ext": "mobile",
         "desc_en": "How the group picks the outbound.",
         "desc_ru": "Как группа выбирает узел.",
-        "impl": "Режим выбора (§208). round_robin включает вложенный balancer{} ядра SPEC 019 (расширение lx-ядра, у апстримного urltest его нет)."
+        "impl": "Режим выбора (§208). round_robin включает вложенный balancer{} ядра SPEC 019 (расширение lx-ядра, у апстримного urltest его нет). failover (ядро SPEC 116, контракт 1.1.111) — удержание выбранного узла до отказа: без balancer, tolerance не действует и в тело не эмитится."
       },
       "url": {
         "type": "string",

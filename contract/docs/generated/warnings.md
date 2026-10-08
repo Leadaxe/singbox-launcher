@@ -45,6 +45,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`fields_order_invalid`](#fields_order_invalid) · `warning` — {a} is greater than {b}
 - [`flow_deprecated`](#flow_deprecated) · `info` — Obsolete flow removed
 - [`form_unrecognized`](#form_unrecognized) · `error` — Entry could not be read
+- [`group_default_dropped`](#group_default_dropped) · `info` — Group {tag}: default {default} dropped
 - [`group_empty`](#group_empty) · `warning` — Group {tag} left without members
 - [`group_member_dropped`](#group_member_dropped) · `warning` — Group {tag}: {member} left the group
 - [`group_member_missing`](#group_member_missing) · `warning` — {count} group members not imported
@@ -59,6 +60,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`naive_extra_headers_invalid`](#naive_extra_headers_invalid) · `info` — naive: header {entry} discarded
 - [`naive_padding_ignored`](#naive_padding_ignored) · `info` — naive: padding parameter ignored
 - [`naive_unavailable`](#naive_unavailable) · `error` — naive is unavailable in this build
+- [`node_detour_through_group`](#node_detour_through_group) · `warning` — {count} node(s) left out of {group}
 - [`obfs_object_flattened`](#obfs_object_flattened) · `info` — Obfuscation password taken from an object
 - [`obfs_password_missing`](#obfs_password_missing) · `warning` — Obfuscation removed: no password
 - [`obfs_unknown`](#obfs_unknown) · `warning` — Unknown obfuscation removed
@@ -110,6 +112,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`vless_encryption_invalid`](#vless_encryption_invalid) · `error` — VLESS encryption string is malformed
 - [`vmess_security_unknown`](#vmess_security_unknown) · `warning` — VMess: unknown cipher replaced with auto
 - [`wg_key_invalid`](#wg_key_invalid) · `error` — WireGuard: invalid key
+- [`wg_peer_incoming`](#wg_peer_incoming) · `info` — Waits for an incoming connection
 - [`wgconf_dns_ignored`](#wgconf_dns_ignored) · `info` — WireGuard: DNS from the configuration not applied
 - [`wgconf_extra_peer_dropped`](#wgconf_extra_peer_dropped) · `warning` — WireGuard: extra [Peer] sections dropped
 - [`wgconf_param_unknown`](#wgconf_param_unknown) · `info` — WireGuard: unknown key {query_name}
@@ -825,6 +828,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
+<a id="group_default_dropped"></a>
+### group_default_dropped
+
+**severity:** `info` · **params:** `tag`, `default`
+
+**Group {tag}: default {default} dropped**
+
+- **What happened:** The default server {default} of group {tag} is not among the group's members when the config was built, so the default was dropped: the core refuses the whole config with such a default. The group starts on its first member instead.
+- **Why it happens:** The node chosen as the default disappeared from its subscription after an update, was renamed or deleted, was turned off, or was itself excluded from the config — so it is no longer a member of the group.
+- **What you can do:**
+  - Nothing to do if starting on the first member suits you.
+  - Otherwise pick another default in the group settings, or bring the node back.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="group_empty"></a>
 ### group_empty
 
@@ -1064,6 +1084,24 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Update the application to a version that ships libcronet with the core.
   - Use another node from this subscription while naive is unavailable.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="node_detour_through_group"></a>
+### node_detour_through_group
+
+**severity:** `warning` · **params:** `group`, `count`, `tags`
+
+**{count} node(s) left out of {group}**
+
+- **What happened:** Group {group} did not take {count} node(s) of this source into its members ({tags}), because they dial through this very group. Otherwise the core would reject the whole config: a group that contains a node routed through itself is a dependency loop.
+- **Why it happens:** The source (or the node itself) is routed through {group} by its detour, and {group} picks its members by a filter that matches these nodes. A node cannot be both a member of a group and dial through it.
+- **What you can do:**
+  - Nothing to do if the group works as you meant it to: the nodes keep working and still dial through it.
+  - If the nodes have to be in this group, remove the detour to this group from their source.
+  - If the nodes have to dial through this group, narrow the group's filter so it does not match them.
 
 **Where it comes from:**
 
@@ -2072,6 +2110,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`peers.pre_shared_key`](protocols/wireguard.md#body-peers-pre-shared-key) — the value does not fit the field → node dropped
   - [`peers.public_key`](protocols/wireguard.md#body-peers-public-key) — the value does not fit the field → node dropped
   - [`private_key`](protocols/wireguard.md#body-private-key) — the value does not fit the field → node dropped
+
+<a id="wg_peer_incoming"></a>
+### wg_peer_incoming
+
+**severity:** `info`
+
+**Waits for an incoming connection**
+
+- **What happened:** The WireGuard peer has no address: the node does not connect anywhere itself, it waits for the peer to connect to its listen port. Traffic goes through the node only while that peer is connected.
+- **Why it happens:** This is a server-side WireGuard: the other device dials in (a phone, a router at home), and the node only listens.
+- **What you can do:**
+  - Nothing to do if this is intended.
+  - If the node seems dead, check that the peer is online and can reach this machine on the listen port.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
 <a id="wgconf_dns_ignored"></a>
 ### wgconf_dns_ignored

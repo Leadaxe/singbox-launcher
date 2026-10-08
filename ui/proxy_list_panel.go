@@ -160,6 +160,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	panel.apiStatusLabel = apiStatusLabel
 	status := widget.NewLabel(locale.T("Click 'Load Proxies'"))
 	panel.listStatusLabel = status
+	errorLine := newErrorStatusLine(ac)
 
 	var (
 		selectorOptions []string
@@ -502,6 +503,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 						// Проверка стоит ДО «❌ gRPC unavailable»: иначе крестик
 						// успевал мигнуть перед правильным текстом.
 						if strings.Contains(err.Error(), "service is not started") {
+							errorLine.Hide()
 							ac.UIService.ApiStatusLabel.SetText(locale.T("✅ gRPC (daemon) · core stopped"))
 							if panel.listStatusLabel != nil {
 								panel.listStatusLabel.SetText(locale.T("The core is stopped — press Start to load the node list."))
@@ -524,7 +526,8 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 							if msg == "" {
 								msg = locale.T("The machine is not answering. Check that it is powered on and reachable on the network, then press Connect again.")
 							}
-							ShowErrorText(ac.UIService.MainWindow, locale.T("Daemon"), msg)
+							RecordBackgroundError(errorTopicDaemon, locale.T("Daemon"), errors.New(msg))
+							errorLine.Show(errorTopicDaemon)
 							return
 						}
 						// Группа машины ещё не прочитана — это не сбой, а
@@ -536,10 +539,12 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 							}
 							return
 						}
-						ShowError(ac.UIService.MainWindow, err)
+						RecordBackgroundError(errorTopicDaemon, "gRPC", err) // l10n-exempt: protocol name
+						errorLine.Show(errorTopicDaemon)
 						return
 					}
 					ac.UIService.ApiStatusLabel.SetText(locale.T("✅ gRPC (daemon)"))
+					errorLine.Hide()
 					updateSelectorList()
 					onLoadAndRefreshProxies()
 				})
@@ -575,11 +580,17 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			}
 			fyne.Do(func() {
 				if err != nil {
+					// Без диалога: проверка идёт и в фоне (после сна, при
+					// смене вкладки), и окна копились стопкой. Ошибка — в
+					// журнале Diagnostics → Errors и в строке под списком
+					// (клик — журнал по теме).
 					ac.UIService.ApiStatusLabel.SetText(locale.T("❌ Clash API Off (Error)"))
-					ShowError(ac.UIService.MainWindow, err)
+					RecordBackgroundError(errorTopicClashAPI, "Clash API", err) // l10n-exempt: product name
+					errorLine.Show(errorTopicClashAPI)
 					return
 				}
 				ac.UIService.ApiStatusLabel.SetText(locale.T("✅ Clash API On"))
+				errorLine.Hide()
 				// Обновить список селекторов после успешного подключения (sing-box запущен, конфиг загружен)
 				updateSelectorList()
 				onLoadAndRefreshProxies()
@@ -599,6 +610,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		selectedProxyNames = make(map[string]struct{})
 		selectionAnchorVis = -1
 		fyne.Do(func() {
+			errorLine.Hide()
 			// Пишем в ЛЕЙБЛЫ СВОЕЙ панели, а не в глобальные слоты UIService:
 			// «Sing-box is stopped» — про локальное ядро, и на вкладке Remote
 			// эта надпись противоречила зелёной машине со статусом started.
@@ -962,7 +974,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		subtitleText.Refresh()
 
 		// Иконка info — во второй строке: перед составом у здорового узла, в
-		// конце у узла с деградацией (там начало строки занято ✖/⚠).
+		// конце у узла с деградацией (там начало строки занято ❌/⚠).
 		subtitleLine.Update(nodeWarns)
 
 		// Замер — цветное число на нейтральной подложке; клик по нему
@@ -1748,27 +1760,31 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			api.PingTestEndpointYaStaticICO,
 		}
 
-		customMode := locale.T("Custom")
-
-		options := make([]string, 0, len(endpoints)+1)
-		selected := customMode
+		// Комбобокс: пресеты в выпадающем списке подставляют свой URL в
+		// поле, произвольный адрес вписывается туда же. Подпись под полем
+		// называет пресет, с которым совпал текст, или «Custom».
+		options := make([]string, 0, len(endpoints))
 		for _, ep := range endpoints {
-			options = append(options, ep.Title)
-			if currentURL == ep.URL {
-				selected = ep.Title
-			}
+			options = append(options, ep.URL)
 		}
-		options = append(options, customMode)
+		presetHint := widget.NewLabel("")
+		presetHint.Importance = widget.LowImportance
+		updatePresetHint := func(text string) {
+			title := locale.T("Custom")
+			for _, ep := range endpoints {
+				if strings.TrimSpace(text) == ep.URL {
+					title = ep.Title
+					break
+				}
+			}
+			presetHint.SetText(title)
+		}
 
-		radio := widget.NewRadioGroup(options, nil)
-		radio.Selected = selected
-
-		urlEntry := widget.NewEntry()
+		urlEntry := widget.NewSelectEntry(options)
 		urlEntry.SetPlaceHolder("https://example.com/generate_204") // l10n-key // l10n-exempt: sample URL
 		urlEntry.SetText(currentURL)
-		if selected != customMode {
-			urlEntry.Disable()
-		}
+		updatePresetHint(currentURL)
+		urlEntry.OnChanged = updatePresetHint
 
 		parallelChosen := strconv.Itoa(api.GetPingTestAllConcurrency())
 		parallelSelect := widget.NewSelect(pingAllConcurrencyOptions, func(v string) {
@@ -1805,9 +1821,8 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 		content := container.NewVBox(
 			widget.NewLabel(locale.T("Ping test URL")),
-			radio,
-			widget.NewLabel(locale.T("Custom URL:")),
 			urlEntry,
+			presetHint,
 			parallelRow,
 			timeoutRow,
 			widget.NewLabel(" "),
@@ -1817,20 +1832,9 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			if !ok {
 				return
 			}
-			selectedMode := radio.Selected
 			newURL := currentURL
-
-			if selectedMode == customMode {
-				if strings.TrimSpace(urlEntry.Text) != "" {
-					newURL = strings.TrimSpace(urlEntry.Text)
-				}
-			} else {
-				for _, ep := range endpoints {
-					if ep.Title == selectedMode {
-						newURL = ep.URL
-						break
-					}
-				}
+			if t := strings.TrimSpace(urlEntry.Text); t != "" {
+				newURL = t
 			}
 
 			api.SetPingTestURL(newURL)
@@ -1854,14 +1858,6 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 			status.SetText(locale.Tf("Ping test URL updated: %s", newURL))
 		}, ac.UIService.MainWindow)
-
-		radio.OnChanged = func(val string) {
-			if val == customMode {
-				urlEntry.Enable()
-			} else {
-				urlEntry.Disable()
-			}
-		}
 
 		d.Show()
 	})
@@ -2126,7 +2122,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 	contentContainer := container.NewBorder(
 		topControls,
-		statusScroll,
+		container.NewVBox(statusScroll, errorLine.btn),
 		nil,
 		nil,
 		scrollContainer,

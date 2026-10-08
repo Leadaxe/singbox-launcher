@@ -12,16 +12,22 @@ package ui
 
 import (
 	"errors"
+	"image/color"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
 )
 
@@ -59,6 +65,18 @@ func endpointStateLabel(state string) string {
 		return locale.T("disabled")
 	}
 	return state
+}
+
+// endpointStateMark — отметка состояния, как у пиров: ● зелёная — работает,
+// ● красная — выключен вручную, ○ серая — спит, освобождён, не собран.
+func endpointStateMark(state string) (string, widget.Importance) {
+	switch state {
+	case services.EndpointStateUp:
+		return "●", widget.SuccessImportance
+	case services.EndpointStateDisabled:
+		return "●", widget.DangerImportance
+	}
+	return "○", widget.LowImportance
 }
 
 func endpointStateText(st services.EndpointStatus) string {
@@ -152,8 +170,10 @@ func endpointStatesEqual(a, b map[string]services.EndpointStatus) bool {
 	if len(a) != len(b) {
 		return false
 	}
+	// Пиры списку не нужны: подзаголовок строки показывает только состояние.
 	for k, v := range a {
-		if b[k] != v {
+		w, ok := b[k]
+		if !ok || w.State != v.State || w.IdleSince != v.IdleSince {
 			return false
 		}
 	}
@@ -221,12 +241,11 @@ func addWireGuardSection(ac *core.AppController, target core.CoreTarget, body *f
 	body.Add(box)
 
 	go func() {
-		states, err := src.EndpointStatuses()
+		st, ok, err := src.EndpointStatus(tag)
 		if err != nil {
-			debuglog.WarnLog("node info: endpoint states: %v", err)
+			debuglog.WarnLog("node info: endpoint state: %v", err)
 			return
 		}
-		st, ok := states[tag]
 		if !ok {
 			return
 		}
@@ -241,7 +260,7 @@ func addWireGuardSection(ac *core.AppController, target core.CoreTarget, body *f
 // сменилась машина — её транспорта больше нет, и команда отвечает ошибкой, а
 // не уходит в другое ядро.
 func buildWireGuardSection(source func() (services.EndpointSource, bool), box *fyne.Container, win fyne.Window, tag string, initial services.EndpointStatus) {
-	var btn *widget.Button
+	var btn *ttwidget.Button
 	current := initial
 
 	errLabel := widget.NewLabel("")
@@ -249,16 +268,26 @@ func buildWireGuardSection(source func() (services.EndpointSource, bool), box *f
 	errLabel.Importance = widget.DangerImportance
 	errLabel.Hide()
 
-	note := widget.NewLabel(locale.T("Until the core restarts or the config is applied."))
-	note.Wrapping = fyne.TextWrapWord
-	note.Importance = widget.LowImportance
+	// Выключатель — в заголовке секции; что он действует до рестарта ядра
+	// или применения конфига, говорит тултип.
+	btn = ttwidget.NewButton("", nil)
+	btn.SetToolTip(locale.T("Until the core restarts or the config is applied."))
+	stateMark := widget.NewLabel("")
+	stateText := widget.NewLabel("")
+	stateText.Truncation = fyne.TextTruncateEllipsis
 
-	btn = widget.NewButton("", nil)
-	stateRow, stateEntry := infoRowEntry(locale.T("State"), "", btn)
+	peers := newWireGuardPeerRows(win)
 
 	apply := func(st services.EndpointStatus) {
 		current = st
-		stateEntry.SetText(endpointStateText(st))
+		peers.update(st.Peers, time.Now())
+		mark, imp := endpointStateMark(st.State)
+		if stateMark.Importance != imp {
+			stateMark.Importance = imp
+			stateMark.Refresh()
+		}
+		stateMark.SetText(mark)
+		stateText.SetText(endpointStateText(st))
 		if st.State == services.EndpointStateDisabled {
 			btn.SetText(locale.T("Enable"))
 		} else {
@@ -271,11 +300,10 @@ func buildWireGuardSection(source func() (services.EndpointSource, bool), box *f
 		if !ok {
 			return services.EndpointStatus{}, false
 		}
-		states, err := src.EndpointStatuses()
+		st, ok, err := src.EndpointStatus(tag)
 		if err != nil {
 			return services.EndpointStatus{}, false
 		}
-		st, ok := states[tag]
 		return st, ok
 	}
 
@@ -308,10 +336,11 @@ func buildWireGuardSection(source func() (services.EndpointSource, bool), box *f
 	}
 
 	box.Add(widget.NewSeparator())
-	box.Add(sectionHeader(locale.T("WireGuard")))
-	box.Add(stateRow)
-	box.Add(note)
+	// Одна строка: заголовок, состояние, выключатель.
+	box.Add(container.NewBorder(nil, nil,
+		container.NewHBox(sectionHeader(locale.T("WireGuard")), stateMark), btn, stateText))
 	box.Add(errLabel)
+	box.Add(peers.box)
 	apply(initial)
 	box.Refresh()
 
@@ -342,4 +371,158 @@ func buildWireGuardSection(source func() (services.EndpointSource, bool), box *f
 			})
 		}
 	}()
+}
+
+// --- окно Info: пиры --------------------------------------------------------
+
+// wgPeerSessionWindow — сколько живёт ключ сессии WG (reject_after_time):
+// хендшейк моложе — пир на связи.
+const wgPeerSessionWindow = 180 * time.Second
+
+// wireGuardPeerRows — строки пиров секции «WireGuard», по строке на пира,
+// поля колонками с отступами:
+// «●  31.184.97.44:48213   48s   ↓2.4 MB  ↑1.6 MB        fIrJ…mz4=  ⋯».
+// Отметки ●/○ — как у устройств tailnet; ● зелёная. Ряды пересобираются
+// только при смене набора ключей, иначе текст меняется на месте.
+type wireGuardPeerRows struct {
+	win  fyne.Window
+	box  *fyne.Container
+	keys []string
+	rows map[string]*wireGuardPeerRow
+	// prevRx — rx прошлого опроса: рост rx при старом хендшейке = на связи.
+	prevRx map[string]int64
+}
+
+type wireGuardPeerRow struct {
+	mark, addr, age, rx, tx *widget.Label
+	// copyAddr — адрес последнего опроса для «Copy address»; пусто — пункта нет.
+	copyAddr string
+}
+
+func newWireGuardPeerRows(win fyne.Window) *wireGuardPeerRows {
+	return &wireGuardPeerRows{win: win, box: container.NewVBox(), rows: map[string]*wireGuardPeerRow{}, prevRx: map[string]int64{}}
+}
+
+func (r *wireGuardPeerRows) update(peers []services.EndpointPeer, now time.Time) {
+	keys := make([]string, 0, len(peers))
+	for _, p := range peers {
+		keys = append(keys, p.PublicKey)
+	}
+	if strings.Join(keys, "\n") != strings.Join(r.keys, "\n") {
+		r.keys = keys
+		r.rows = map[string]*wireGuardPeerRow{}
+		r.box.Objects = nil
+		if len(peers) > 0 {
+			// Подпись, а не заголовок: пиры — часть секции WireGuard.
+			r.box.Add(infoKeyCell(locale.T("Peers")))
+		}
+		for _, p := range peers {
+			row, obj := r.newRow(p.PublicKey)
+			r.rows[p.PublicKey] = row
+			r.box.Add(obj)
+		}
+		r.box.Refresh()
+	}
+	rx := make(map[string]int64, len(peers))
+	for _, p := range peers {
+		prev, seen := r.prevRx[p.PublicKey]
+		// Счётчики обнуляются при пересборке устройства: меньшее значение —
+		// новая база, а не рост.
+		grew := seen && p.RxBytes > prev
+		rx[p.PublicKey] = p.RxBytes
+		if row := r.rows[p.PublicKey]; row != nil {
+			row.apply(p, now, grew)
+		}
+	}
+	r.prevRx = rx
+}
+
+// apply — поля строки из опроса. Адрес без хендшейка не показываем: ядро
+// хранит его и после ухода пира.
+func (row *wireGuardPeerRow) apply(p services.EndpointPeer, now time.Time, rxGrew bool) {
+	online := wireGuardPeerOnline(p, now, rxGrew)
+	mark, imp := "○", widget.LowImportance
+	if online {
+		mark, imp = "●", widget.SuccessImportance
+	}
+	if row.mark.Importance != imp {
+		row.mark.Importance = imp
+		row.mark.Refresh()
+	}
+	row.mark.SetText(mark)
+
+	row.copyAddr = ""
+	if p.LastHandshake.IsZero() {
+		row.addr.SetText(locale.T("no handshake yet"))
+		row.age.SetText("")
+	} else {
+		row.copyAddr = p.Endpoint
+		row.addr.SetText(p.Endpoint)
+		age := now.Sub(p.LastHandshake)
+		if age < 0 {
+			age = 0
+		}
+		if online {
+			row.age.SetText(humanAge(age))
+		} else {
+			row.age.SetText(locale.Tf("%s ago", humanAge(age)))
+		}
+	}
+	row.rx.SetText("↓" + paths.FormatBytes(p.RxBytes))
+	row.tx.SetText("↑" + paths.FormatBytes(p.TxBytes))
+}
+
+// newRow — строка пира: поля колонками слева, ключ серым и «⋯» с
+// копированием справа.
+func (r *wireGuardPeerRows) newRow(key string) (*wireGuardPeerRow, fyne.CanvasObject) {
+	row := &wireGuardPeerRow{
+		mark: widget.NewLabel(""),
+		addr: widget.NewLabel(""),
+		age:  widget.NewLabel(""),
+		rx:   widget.NewLabel(""),
+		tx:   widget.NewLabel(""),
+	}
+	row.age.Importance = widget.LowImportance
+	keyLabel := widget.NewLabel(shortPeerKey(key))
+	keyLabel.Importance = widget.LowImportance
+
+	var more *widget.Button
+	more = widget.NewButtonWithIcon("", theme.MoreHorizontalIcon(), func() {
+		items := []*fyne.MenuItem{}
+		if row.copyAddr != "" {
+			addr := row.copyAddr
+			items = append(items, fyne.NewMenuItem(locale.T("Copy address"), func() { setClipboard(addr) }))
+		}
+		items = append(items, fyne.NewMenuItem(locale.T("Copy public key"), func() { setClipboard(key) }))
+		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(more)
+		widget.NewPopUpMenu(fyne.NewMenu("", items...), r.win.Canvas()).
+			ShowAtPosition(pos.Add(fyne.NewPos(0, more.Size().Height)))
+	})
+	more.Importance = widget.LowImportance
+
+	fields := container.NewHBox(row.mark, row.addr, rowGap(12), row.age, rowGap(12), row.rx, row.tx)
+	return row, container.NewBorder(nil, nil, nil, container.NewHBox(keyLabel, more), fields)
+}
+
+// wireGuardPeerOnline — хендшейк моложе окна сессии или rx растёт.
+func wireGuardPeerOnline(p services.EndpointPeer, now time.Time, rxGrew bool) bool {
+	if p.LastHandshake.IsZero() {
+		return false
+	}
+	return now.Sub(p.LastHandshake) <= wgPeerSessionWindow || rxGrew
+}
+
+// shortPeerKey — «RIpg…A1Eo»: ключ с вырезанной серединой.
+func shortPeerKey(key string) string {
+	if len(key) <= 10 {
+		return key
+	}
+	return key[:4] + "…" + key[len(key)-4:]
+}
+
+// rowGap — прозрачный отступ между полями строки (пиры, устройства tailnet).
+func rowGap(w float32) fyne.CanvasObject {
+	g := canvas.NewRectangle(color.Transparent)
+	g.SetMinSize(fyne.NewSize(w, 0))
+	return g
 }

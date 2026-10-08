@@ -22,15 +22,19 @@ import (
 	"sync"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/nodewarn"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
@@ -55,7 +59,21 @@ func CreateFinalTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 	// длинной — имя источника плюс имя ненайденного узла.
 	reportBox := container.NewVBox()
 	reportScroll := container.NewVScroll(reportBox)
-	reportScroll.SetMinSize(fyne.NewSize(0, 160))
+	// Нижняя граница высоты, а не её значение: панель отчёта занимает всё,
+	// что остаётся между шапкой и кнопками (Border-раскладка ниже), и на
+	// высоком окне растёт вместе с ним. Прежние 160pt были потолком: три
+	// предупреждения уже не помещались, список читался через скролл в
+	// четыре строки, а полэкрана под ним пустовало.
+	//
+	// Минимум — одна строка: AppTabs считает свой min-size по ВСЕМ вкладкам,
+	// и большой минимум здесь не дал бы сжать окно Мастера на невысоком
+	// экране даже на других вкладках. Всё, что не влезло, читается скроллом.
+	reportScroll.SetMinSize(fyne.NewSize(0, 48))
+	// Подложка панели: фон поля ввода и тонкая рамка цвета разделителя.
+	// Без них список предупреждений сливался с подсказкой над ним и
+	// блоком Backup под ним — одна серая простыня, где не видно, что из
+	// этого отчёт.
+	reportPanel := reportPanelFrame(reportScroll)
 
 	// SPEC 116 W12 фикс 4: явный статус сборки НАД списком. Исход перестаёт
 	// читаться косвенно (пустой список / непустой / красная строка внутри
@@ -210,44 +228,117 @@ func CreateFinalTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 		layout.NewSpacer(),
 	)
 
-	body := container.NewVBox(
+	// Border, а не VBox: центр — панель отчёта — получает всю высоту,
+	// которую не заняли шапка и низ. В VBox каждый элемент стоит своим
+	// min-size, и панель отчёта оставалась четырьмя строками при любом
+	// размере окна.
+	//
+	// Снаружи — VScroll, и это не возврат к прежнему: Scroll отдаёт
+	// содержимому max(его минимум, размер окна), то есть на высоком окне
+	// Border растягивает панель отчёта, а на низком страница скроллится
+	// целиком. Без внешнего скролла минимум вкладки — шапка плюс низ плюс
+	// панель — стал бы минимумом всего Мастера: AppTabs считает его по всем
+	// вкладкам, и окно переставало сжиматься на невысоком экране.
+	top := container.NewVBox(
 		hint,
 		container.NewVBox(progressLabel, progress),
 		statusLabel,
-		reportScroll,
+	)
+	bottom := container.NewVBox(
 		buttons,
 		backupSection(presenter, win),
 	)
-	return container.NewVScroll(body)
+	return container.NewVScroll(container.NewBorder(top, bottom, nil, nil, reportPanel))
+}
+
+// reportPanelFrame — панель отчёта с подложкой: фон поля ввода, рамка цвета
+// разделителя, отступ внутри.
+//
+// Цвета берутся у текущей темы при сборке вкладки; смена темы на лету
+// пересоздаёт Мастера целиком, так что следить за ней здесь не нужно.
+func reportPanelFrame(content fyne.CanvasObject) fyne.CanvasObject {
+	bg := canvas.NewRectangle(theme.Color(theme.ColorNameInputBackground))
+	bg.StrokeColor = theme.Color(theme.ColorNameSeparator)
+	bg.StrokeWidth = 1
+	bg.CornerRadius = theme.InputRadiusSize()
+	return container.NewStack(bg, container.NewPadded(content))
 }
 
 // finalReportWidgets — строки отчёта виджетами.
 //
-// У записи с source_id — кнопка перехода: отчёт называет источник, а чинят его
-// на вкладке Sources, и заставлять пользователя искать там строку глазами
-// значило бы оборвать маршрут на полпути.
+// Справа у каждой строки два значка, те же, что у строк узлов и команд в
+// остальном приложении: ⓘ открывает карточку подробностей (что случилось,
+// почему, что делать — по коду реестра, плюс переход к источнику), копия
+// кладёт строку в буфер. Текстовая кнопка «Show source» прямо в строке
+// ушла в карточку: на узком окне она отъедала у длинной причины треть
+// ширины, и строка читалась в четыре переноса.
 func finalReportWidgets(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, lines []finalReportLine) []fyne.CanvasObject {
 	if len(lines) == 0 {
 		clean := widget.NewLabel(locale.T(finalCleanText))
 		clean.Wrapping = fyne.TextWrapWord
 		return []fyne.CanvasObject{clean}
 	}
-	out := make([]fyne.CanvasObject, 0, len(lines))
-	for _, l := range lines {
-		text := widget.NewLabel("• " + l.Text)
+	out := make([]fyne.CanvasObject, 0, len(lines)*2)
+	for i, l := range lines {
+		line := l
+		// Без маркера «•»: субъект строки бывает одним длинным словом
+		// (URL подписки без имени), перенос по словам уносит его на вторую
+		// строку, и маркер оставался на первой один. Строки и так разделены
+		// линиями.
+		text := widget.NewLabel(line.Text)
 		text.Wrapping = fyne.TextWrapWord
-		if l.SourceID == "" {
-			out = append(out, text)
-			continue
-		}
-		sourceID := l.SourceID
-		jump := widget.NewButton(locale.T("Show source"), func() {
-			revealSourceInWizard(presenter, guiState, sourceID)
+
+		info := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
+			showReportDetails(presenter, guiState, line)
 		})
-		jump.Importance = widget.LowImportance
-		out = append(out, container.NewBorder(nil, nil, nil, jump, text))
+		info.Importance = widget.LowImportance
+		copyBtn := fynewidget.NewCopyButton(locale.T("Copy"), func() (string, bool) {
+			return line.Text, true
+		})
+		copyBtn.Importance = widget.LowImportance
+		// Правый кластер центрируется по высоте перенесённой строки — иначе
+		// значки прижимаются к её верхнему краю.
+		right := container.NewCenter(container.NewHBox(info, copyBtn))
+		out = append(out, container.NewBorder(nil, nil, nil, right, text))
+		if i < len(lines)-1 {
+			out = append(out, widget.NewSeparator())
+		}
 	}
 	return out
+}
+
+// showReportDetails — карточка подробностей строки отчёта.
+//
+// Содержимое — та же карточка, что у уведомления узла (nodewarn.Detail):
+// один код реестра — одна карточка, где бы он ни встретился. Внизу —
+// копирование карточки целиком и переход к источнику, если он у записи есть.
+func showReportDetails(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, line finalReportLine) {
+	if guiState == nil || guiState.Window == nil {
+		return
+	}
+	t := finalReportDetail(line)
+	body := container.NewVScroll(nodewarn.Detail(t))
+	body.SetMinSize(fyne.NewSize(560, 260))
+
+	var d dialog.Dialog
+	actions := []fyne.CanvasObject{}
+	if line.SourceID != "" {
+		sourceID := line.SourceID
+		jump := widget.NewButton(locale.T("Show source"), func() {
+			if d != nil {
+				d.Hide()
+			}
+			revealSourceInWizard(presenter, guiState, sourceID)
+		})
+		actions = append(actions, jump)
+	}
+	copyBtn := widget.NewButtonWithIcon(locale.T("Copy"), theme.ContentCopyIcon(), func() {
+		fynewidget.SetClipboard(nodewarn.PlainText(t))
+	})
+	actions = append(actions, copyBtn)
+
+	d = dialogs.NewCustom(t.Title, body, container.NewHBox(actions...), locale.T("Close"), guiState.Window)
+	d.Show()
 }
 
 // revealSourceInWizard переключает Мастера на вкладку Sources и подсвечивает
@@ -463,27 +554,17 @@ func showConfigWindow(text string) {
 	}
 	w := app.NewWindow(locale.T("Generated config.json"))
 
-	entry := widget.NewMultiLineEntry()
-	entry.Wrapping = fyne.TextWrapOff
-	entry.SetText(text)
 	// Только для чтения: править собранный конфиг здесь бессмысленно — он
 	// пересобирается из состояния при каждой сборке. Но выделение и
-	// копирование остаются, ради них поле и взято вместо Label.
-	// Ввод ОТКАТЫВАЕТСЯ, а не игнорируется молча: пустой хэндлер оставлял
-	// напечатанное на экране, и «правка» выглядела принятой, хотя никуда
-	// не шла (паттерн jsonEntry в source_edit_window.go).
-	entry.OnChanged = func(s string) {
-		if s != text {
-			entry.SetText(text)
-		}
-	}
+	// копирование остаются, ради них просмотрщик и взят вместо Label.
+	entry := fynewidget.NewJSONView(text)
 
 	closeBtn := widget.NewButton(locale.T("Cancel"), func() { w.Close() })
 	w.SetContent(container.NewBorder(
 		nil,
 		container.NewHBox(layout.NewSpacer(), closeBtn),
 		nil, nil,
-		container.NewVScroll(entry),
+		container.NewVScroll(entry.Object()),
 	))
 	w.Resize(fyne.NewSize(820, 640))
 	fynewidget.CenterOnScreen(w)

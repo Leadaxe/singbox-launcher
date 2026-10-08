@@ -934,9 +934,6 @@
   "Ping test URL": {
     "value": "URL пинг-теста"
   },
-  "Custom URL:": {
-    "value": "Свой URL:"
-  },
   "Parallel requests (ping all):": {
     "value": "Параллельных запросов (массовый ping):"
   },
@@ -1032,6 +1029,9 @@
   },
   "node %q: %s removed — it cannot be combined with detour %q": {
     "value": "узел %q: %s снят — несовместим с detour %q"
+  },
+  "%d node(s) left out of group %q: they dial through this very group (%s)": {
+    "value": "Не вошло узлов: %d — группа %q не берёт их, они ходят через неё же (%s)"
   },
   "%s (not applied)": {
     "value": "%s (не применено)"
@@ -1774,9 +1774,6 @@
   "Path patterns (one per line):": {
     "value": "Шаблоны путей (по одному на строку):"
   },
-  "Custom JSON (e.g., {})": {
-    "value": "Произвольный JSON (напр., {})"
-  },
   "Custom JSON:": {
     "value": "Произвольный JSON:"
   },
@@ -1785,9 +1782,6 @@
   },
   "SRS URLs (one per line):": {
     "value": "URL SRS-файлов (по одному на строку):"
-  },
-  "{\"ip_cidr\": [], \"outbound\": \"proxy-out\"}": {
-    "value": "{\"ip_cidr\": [], \"outbound\": \"proxy-out\"}"
   },
   "IP Addresses (CIDR)": {
     "value": "IP-адреса (CIDR)"
@@ -1986,9 +1980,6 @@
   },
   "spread across a pool": {
     "value": "распределять по пулу"
-  },
-  "How the paired auto group picks a node: the single fastest one, or a rotating pool of the fastest.": {
-    "value": "Как парная автогруппа выбирает узел: один самый быстрый или ротация по пулу самых быстрых."
   },
   "Invert: keep nodes that do NOT match": {
     "value": "Инверсия: оставить узлы, которые НЕ совпали"
@@ -2394,12 +2385,6 @@
   },
   "Last delay": {
     "value": "Последний замер"
-  },
-  "Section": {
-    "value": "Секция"
-  },
-  "Security": {
-    "value": "Защита"
   },
   "Detour": {
     "value": "Цепочка (detour)"
@@ -4157,14 +4142,8 @@
   "no state": {
     "value": "нет состояния"
   },
-  "State": {
-    "value": "Состояние"
-  },
   "Network": {
     "value": "Сеть"
-  },
-  "online": {
-    "value": "в сети"
   },
   "exit node": {
     "value": "выход"
@@ -4844,9 +4823,6 @@
   "Copy name": {
     "value": "Копировать имя"
   },
-  "Devices (%d online / %d)": {
-    "value": "Устройства (в сети %d / %d)"
-  },
   "Done.": {
     "value": "Готово."
   },
@@ -4924,5 +4900,128 @@
   },
   "signed in with a key": {
     "value": "вход по ключу"
+  },
+  "machine name or tailnet IP of the exit node — empty: no exit node": {
+    "value": "имя машины или tailnet-IP выходного узла — пусто: без выхода"
+  },
+  "Using an exit node sends this node's traffic through another machine of the tailnet; advertising makes this node the exit for others. The two roles exclude each other. Advertising stays pending until it is approved in the tailnet admin console. The Network tab of the node window lists the exit nodes that are online now.": {
+    "value": "Выходной узел отправляет трафик этого узла через другую машину tailnet; анонс делает выходом сам этот узел. Две роли исключают друг друга. Анонс ждёт одобрения в админке tailnet. Вкладка Network окна узла показывает, какие выходы сейчас в сети."
+  },
+  "Peers": {
+    "value": "Пиры"
+  },
+  "no handshake yet": {
+    "value": "хендшейка ещё не было"
+  },
+  "%s ago": {
+    "value": "%s назад"
+  },
+  "Copy public key": {
+    "value": "Копировать публичный ключ"
+  },
+  "Diagnostics": {
+    "value": "Диагностика"
+  },
+  "Diagnostics needs the daemon mode or a remote machine.": {
+    "value": "Диагностике нужен режим демона или удалённая машина."
+  },
+  "This is a group — it has no connection of its own. Check its members.": {
+    "value": "Это группа — своего соединения у неё нет. Проверьте её участников."
+  },
+  "Check": {
+    "value": "Проверка"
+  },
+  "Request is sent through this node": {
+    "value": "запрос идёт через этот узел"
+  },
+  "Run": {
+    "value": "Запустить"
+  },
+  "Running…": {
+    "value": "Выполняется…"
+  },
+  "Response": {
+    "value": "Ответ"
+  },
+  "through this node in the running core": {
+    "value": "через этот узел в работающем ядре"
+  },
+  "(empty response)": {
+    "value": "(пустой ответ)"
+  },
+  "Response was longer and got cut off.": {
+    "value": "Ответ был длиннее и обрезан."
+  },
+  "Connected to %s from inside the tunnel": {
+    "value": "Подключение к %s изнутри туннеля"
+  },
+  "Devices": {
+    "value": "Устройства"
+  },
+  "%d online / %d": {
+    "value": "%d в сети / %d"
+  },
+  "Copy MagicDNS name": {
+    "value": "Копировать имя MagicDNS"
+  },
+  "Errors (%d)": {
+    "value": "Ошибки (%d)"
+  },
+  "since %s": {
+    "value": "с %s"
+  },
+  "No errors recorded.": {
+    "value": "Ошибок нет."
+  },
+  "Copy all": {
+    "value": "Копировать всё"
+  },
+  "Clear": {
+    "value": "Очистить"
+  },
+  "Clash API only": {
+    "value": "Только Clash API"
+  },
+  "gRPC and daemon only": {
+    "value": "Только gRPC и демон"
+  },
+  "Show these errors": {
+    "value": "Показать эти ошибки"
+  },
+  "%s: no connection": {
+    "value": "%s: нет связи"
+  },
+  "Tailnet": {
+    "value": "Tailnet"
+  },
+  "live status, refreshed every %d s": {
+    "value": "живой статус, обновляется каждые %d с"
+  },
+  "peer relay": {
+    "value": "через peer relay"
+  },
+  "no handshake": {
+    "value": "хендшейка не было"
+  },
+  "handshake %s ago": {
+    "value": "хендшейк %s назад"
+  },
+  "%d devices without traffic": {
+    "value": "устройств без трафика: %d"
+  },
+  "This core does not report peer paths (needs sing-box-lx 1.14.2-lx.12).": {
+    "value": "Это ядро не сообщает путь до пиров (нужен sing-box-lx 1.14.2-lx.12)."
+  },
+  "The node is not running in the core.": {
+    "value": "Узел не запущен в ядре."
+  },
+  "hold until it fails": {
+    "value": "держаться до отказа"
+  },
+  "held": {
+    "value": "удержание"
+  },
+  "How the paired auto group picks a node: the single fastest one, a rotating pool of the fastest, or the fastest at the moment of choice held until it fails (only that node is probed, others sleep; a manual group test re-probes everyone and re-picks the fastest).": {
+    "value": "Как парная автогруппа выбирает узел: один самый быстрый, ротация по пулу самых быстрых или самый быстрый на момент выбора с удержанием до отказа (пробуется только он, остальные спят; ручной тест группы меряет всех и перевыбирает самого быстрого)."
   }
 }

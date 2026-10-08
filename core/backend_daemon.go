@@ -872,6 +872,16 @@ func (t *daemonProxyTransport) EndpointStatuses() (map[string]services.EndpointS
 	return services.EndpointStatusesRPC(ctx, client)
 }
 
+// EndpointStatus implements services.EndpointSource через GetWireGuardStatus.
+func (t *daemonProxyTransport) EndpointStatus(tag string) (services.EndpointStatus, bool, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return services.EndpointStatus{}, false, err
+	}
+	defer cancel()
+	return services.EndpointStatusRPC(ctx, client, tag)
+}
+
 // SetEndpointEnabled implements services.EndpointSource через lx-RPC
 // SetEndpointEnabled (SPEC 106 ядра). Бюджет как у пробы: включение будит
 // устройство.
@@ -883,6 +893,17 @@ func (t *daemonProxyTransport) SetEndpointEnabled(tag string, enabled bool) (str
 	ctx, cancel := context.WithTimeout(t.b.ctx, chainProbeCallTimeout())
 	defer cancel()
 	return services.SetEndpointEnabledRPC(ctx, client, tag, enabled)
+}
+
+// GetURLViaOutbound implements services.URLViaOutboundSource.
+func (t *daemonProxyTransport) GetURLViaOutbound(tag, url string) (services.URLViaOutboundResult, error) {
+	client, err := t.b.grpcClient()
+	if err != nil {
+		return services.URLViaOutboundResult{}, err
+	}
+	ctx, cancel := context.WithTimeout(t.b.ctx, services.URLViaOutboundTimeout+5*time.Second)
+	defer cancel()
+	return services.GetURLViaOutboundRPC(ctx, client, tag, url)
 }
 
 // GroupProxies implements services.ProxyTransport через GetGroups.

@@ -204,16 +204,16 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 		return
 	}
 
-	// --- Status ---
-	box.Add(sectionHeader(locale.T("Status")))
+	// --- Status: заголовок, состояние и кнопки входа одной строкой ---
 	word, _ := networksRowState(true, st, true)
-	box.Add(infoRow(locale.T("State"), word))
-	if st.NetworkName != "" {
-		box.Add(infoRow(locale.T("Network"), st.NetworkName))
+	stateMark := widget.NewLabel("○")
+	stateMark.Importance = widget.LowImportance
+	if st.BackendState == services.TailscaleStateRunning {
+		stateMark.SetText("●")
+		stateMark.Importance = widget.SuccessImportance
 	}
-	if st.KeyAuth {
-		note(locale.T("signed in with a key"))
-	}
+	stateText := widget.NewLabel(word)
+	stateText.Truncation = fyne.TextTruncateEllipsis
 	buttons := container.NewHBox()
 	if st.BackendState == services.TailscaleStateNeedsLogin && strings.TrimSpace(st.AuthURL) != "" {
 		url := st.AuthURL
@@ -242,8 +242,14 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 				}, win)
 		}))
 	}
-	if len(buttons.Objects) > 0 {
-		box.Add(buttons)
+	box.Add(container.NewBorder(nil, nil,
+		container.NewHBox(sectionHeader(locale.T("Status")), stateMark), buttons, stateText))
+	if st.NetworkName != "" {
+		network := st.NetworkName
+		if st.KeyAuth {
+			network += " · " + locale.T("signed in with a key")
+		}
+		box.Add(infoRow(locale.T("Network"), network))
 	}
 
 	// --- This device ---
@@ -251,12 +257,12 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 		self := *st.Self
 		box.Add(widget.NewSeparator())
 		box.Add(sectionHeader(locale.T("This device")))
-		box.Add(copyRow(locale.T("Name"), self.HostName))
+		box.Add(infoRow(locale.T("Name"), self.HostName))
 		if dns := strings.TrimSuffix(self.DNSName, "."); dns != "" {
-			box.Add(copyRow(locale.T("MagicDNS name"), dns))
+			box.Add(infoRow(locale.T("MagicDNS name"), dns))
 		}
-		for _, ip := range self.TailscaleIPs {
-			box.Add(copyRow(locale.T("Address"), ip))
+		if len(self.TailscaleIPs) > 0 {
+			box.Add(infoRow(locale.T("Address"), strings.Join(self.TailscaleIPs, " · ")))
 		}
 		expiry := locale.T("never")
 		if !self.KeyExpiry.IsZero() {
@@ -268,11 +274,10 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 	// --- Exit node ---
 	box.Add(widget.NewSeparator())
 	diff := services.CompareExitNode(written, st.ExitNode)
-	header := container.NewHBox(sectionHeader(locale.T("Exit node")))
+	exitKey := container.NewHBox(sectionHeader(locale.T("Exit node")))
 	if diff != services.ExitNodeSame {
-		header.Add(widget.NewIcon(theme.WarningIcon()))
+		exitKey.Add(widget.NewIcon(theme.WarningIcon()))
 	}
-	box.Add(header)
 	options := services.ExitNodeOptions(st)
 	none := locale.T("None")
 	labels := []string{none}
@@ -317,7 +322,7 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 	if !haveCtrl {
 		sel.Disable()
 	}
-	box.Add(sel)
+	box.Add(container.NewBorder(nil, nil, exitKey, nil, sel))
 	if diff != services.ExitNodeSame {
 		w := widget.NewLabel(exitNodeWarningText(diff))
 		w.Wrapping = fyne.TextWrapWord
@@ -357,7 +362,7 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 	// --- Devices ---
 	online, total := st.PeersOnline()
 	box.Add(widget.NewSeparator())
-	box.Add(sectionHeader(locale.Tf("Devices (%d online / %d)", online, total)))
+	box.Add(diagnosticsHeader(locale.T("Devices"), locale.Tf("%d online / %d", online, total)))
 	if total == 0 {
 		note(locale.T("No devices in this network."))
 		return
@@ -377,9 +382,7 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 			if owner == "" {
 				owner = g.LoginName
 			}
-			h := widget.NewLabel(owner)
-			h.TextStyle.Bold = true
-			box.Add(h)
+			box.Add(infoKeyCell(owner))
 		}
 		for _, p := range services.SortDevices(g.Peers) {
 			box.Add(tailscaleDeviceRow(cmd, win, tag, p, haveCtrl))
@@ -387,63 +390,73 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 	}
 }
 
-// copyRow — строка «ключ: значение», нажатие на значение копирует его.
-func copyRow(key, value string) fyne.CanvasObject {
-	b := widget.NewButton(value, func() { setClipboard(value) })
-	b.Importance = widget.LowImportance
-	b.Alignment = widget.ButtonAlignLeading
-	return container.NewBorder(nil, nil, widget.NewLabel(key+":"), nil, b)
-}
-
-// tailscaleDeviceDetails — вторая строка устройства (§6).
-func tailscaleDeviceDetails(p services.TailscalePeer, now time.Time) string {
-	parts := make([]string, 0, 7)
-	if dns := strings.TrimSuffix(p.DNSName, "."); dns != "" {
-		parts = append(parts, dns)
-	}
-	if len(p.TailscaleIPs) > 0 {
-		parts = append(parts, p.TailscaleIPs[0])
-	}
+// tailscaleDeviceDetails — кто это (первая строка устройства, §6): ОС и
+// роли. Имя и адрес стоят в строке отдельными полями, «в сети» показывает
+// точка; как подключено — во второй строке (tailscaleDeviceConnection).
+func tailscaleDeviceDetails(p services.TailscalePeer) string {
+	parts := make([]string, 0, 3)
 	if p.OS != "" {
 		parts = append(parts, p.OS)
 	}
-	if p.Online {
-		parts = append(parts, locale.T("online"))
-	} else if !p.LastSeen.IsZero() {
+	if p.ExitNodeOption {
+		parts = append(parts, locale.T("exit node"))
+	}
+	if p.ShareeNode {
+		parts = append(parts, locale.T("shared"))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// tailscaleDeviceConnection — как подключено (вторая строка): путь из
+// снимка потока (SPEC 158; живой — на вкладке Diagnostics), иначе давность
+// last seen; ключ истёк — туда же. Пусто у устройства в сети, которому ядро
+// ещё не писало.
+func tailscaleDeviceConnection(p services.TailscalePeer, now time.Time) string {
+	parts := make([]string, 0, 2)
+	if path := tailscalePathText(p); path != "" {
+		parts = append(parts, path)
+	} else if !p.Online && !p.LastSeen.IsZero() {
 		parts = append(parts, locale.Tf("last seen %s ago", humanAge(now.Sub(p.LastSeen))))
 	}
 	if p.Expired {
 		parts = append(parts, locale.T("key expired"))
 	}
-	if p.ShareeNode {
-		parts = append(parts, locale.T("shared"))
-	}
-	if p.ExitNodeOption {
-		parts = append(parts, locale.T("exit node"))
-	}
 	return strings.Join(parts, " · ")
 }
 
-// tailscaleDeviceRow — строка устройства и меню: Copy name, Copy address, Ping.
+// tailscaleDeviceRow — устройство в две строки, как узел в списке серверов:
+//
+//	●  GL-MT2500   100.104.79.7   linux · exit node        ⋯
+//	   direct 31.184.97.44:41641
+//
+// Подстрока держит высоту и пустой, чтобы список не «дышал», когда у
+// устройства появляется путь. Меню — Copy name, Copy MagicDNS name, Copy
+// address, Ping.
 func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer, haveCtrl bool) fyne.CanvasObject {
-	mark := "○"
+	mark := widget.NewLabel("○")
+	mark.Importance = widget.LowImportance
 	if p.Online {
-		mark = "●"
+		mark.SetText("●")
+		mark.Importance = widget.SuccessImportance
 	}
-	name := widget.NewLabel(mark + " " + p.HostName)
-	name.TextStyle.Bold = p.Online
-	sub := widget.NewLabel(tailscaleDeviceDetails(p, time.Now()))
-	sub.Importance = widget.LowImportance
-	sub.Wrapping = fyne.TextWrapWord
-
+	name := widget.NewLabel(p.HostName)
 	addr := ""
 	if len(p.TailscaleIPs) > 0 {
 		addr = p.TailscaleIPs[0]
 	}
+	ip := widget.NewLabel(addr)
+	details := widget.NewLabel(tailscaleDeviceDetails(p))
+	details.Importance = widget.LowImportance
+	details.Truncation = fyne.TextTruncateEllipsis
+	dns := strings.TrimSuffix(p.DNSName, ".")
+
 	var more *widget.Button
 	more = widget.NewButtonWithIcon("", theme.MoreHorizontalIcon(), func() {
 		items := []*fyne.MenuItem{
 			fyne.NewMenuItem(locale.T("Copy name"), func() { setClipboard(p.HostName) }),
+		}
+		if dns != "" {
+			items = append(items, fyne.NewMenuItem(locale.T("Copy MagicDNS name"), func() { setClipboard(dns) }))
 		}
 		if addr != "" {
 			items = append(items, fyne.NewMenuItem(locale.T("Copy address"), func() { setClipboard(addr) }))
@@ -458,7 +471,10 @@ func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p se
 			ShowAtPosition(pos.Add(fyne.NewPos(0, more.Size().Height)))
 	})
 	more.Importance = widget.LowImportance
-	return container.NewBorder(nil, nil, nil, more, container.NewVBox(name, sub))
+	left := container.NewHBox(mark, name, rowGap(12), ip, rowGap(12))
+	top := container.NewBorder(nil, nil, left, more, details)
+	// Подстрока начинается под именем: отступ = знак + зазор HBox.
+	return tailscaleDeviceLines(top, tailscaleDeviceConnection(p, time.Now()), mark.MinSize().Width+theme.Padding())
 }
 
 // tailscalePingLine — одна строка результата проверки (§7).

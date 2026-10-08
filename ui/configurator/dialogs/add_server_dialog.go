@@ -158,7 +158,7 @@ type addServerForm struct {
 	sourceBox *fyne.Container
 
 	// Вкладка «JSON».
-	jsonView   *widget.Entry
+	jsonView   fynewidget.JSONEditor
 	jsonStatus *widget.Label
 
 	mode     addServerMode
@@ -409,9 +409,8 @@ func (f *addServerForm) paramsContent() fyne.CanvasObject {
 
 // buildJSONTab собирает виджеты вкладки «JSON».
 func (f *addServerForm) buildJSONTab() {
-	f.jsonView = widget.NewMultiLineEntry()
-	f.jsonView.Wrapping = fyne.TextWrapOff
-	f.jsonView.OnChanged = func(text string) {
+	f.jsonView = fynewidget.NewJSONEditor("")
+	f.jsonView.SetOnChanged(func(text string) {
 		// Программная синхронизация — не правка человека.
 		if f.syncing {
 			return
@@ -424,7 +423,7 @@ func (f *addServerForm) buildJSONTab() {
 			return
 		}
 		f.jsonStatus.SetText(locale.T(addServerJSONDirtyText))
-	}
+	})
 	f.jsonStatus = widget.NewLabel(locale.T(addServerJSONHintText))
 	f.jsonStatus.Wrapping = fyne.TextWrapWord
 }
@@ -440,7 +439,7 @@ func (f *addServerForm) jsonContent() fyne.CanvasObject {
 		nil,
 		container.NewVBox(f.jsonStatus, reset),
 		nil, nil,
-		container.NewScroll(f.jsonView),
+		container.NewScroll(f.jsonView.Object()),
 	)
 }
 
@@ -620,7 +619,7 @@ func (f *addServerForm) result() (AddServerResult, error) {
 
 	// Ручная правка JSON побеждает: в конфиг уходит она, а не поля.
 	if f.jsonDirty {
-		return manualJSONResult(f.jsonView.Text, label)
+		return manualJSONResult(f.jsonView.Text(), label)
 	}
 
 	// SPEC 122: Tailscale отдаёт документ узла — его разберёт тот же

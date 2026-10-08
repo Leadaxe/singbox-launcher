@@ -381,7 +381,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	//
 	// Debug API toggle переехал в Settings tab — это launcher-wide setting,
 	// не диагностика (живёт между запусками, не относится к ad-hoc проверкам).
-	logWindowRow := openLogWindowButton
+	logWindowRow := container.NewGridWithColumns(2, openLogWindowButton, newErrorJournalButton(ac))
 	foldersRow := container.NewGridWithColumns(2, openLogsFolderButton, openConfigFolderButton)
 	killRow := killSingBoxButton
 

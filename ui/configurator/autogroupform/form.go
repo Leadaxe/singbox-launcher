@@ -80,7 +80,11 @@ type Form struct {
 	StickyChecks       map[string]*widget.Check
 
 	balancerBlock *fyne.Container
-	choices       Choices
+	// toleranceRow — ряд «Tolerance (ms)»: в режиме failover (ядро SPEC 116)
+	// допуск не действует — переключений «по скорости» нет, — и поле
+	// прячется, чтобы не обещать то, чего режим не делает.
+	toleranceRow fyne.CanvasObject
+	choices      Choices
 
 	// keep — поля Auto, которых форма НЕ показывает
 	// (interrupt_exist_connections, idle_timeout). Их задаёт шаблон, и
@@ -109,6 +113,7 @@ func New(choices Choices) *Form {
 	f.ModeSelect = widget.NewSelect([]string{
 		locale.T("fastest node"),
 		locale.T("spread across a pool"),
+		locale.T("hold until it fails"),
 	}, nil)
 	f.ModeSelect.SetSelected(locale.T("fastest node"))
 
@@ -155,7 +160,8 @@ func (f *Form) Content(hint fyne.CanvasObject, modeLabel fyne.CanvasObject) fyne
 	}
 	form.Add(Row(modeLabel, f.ModeSelect))
 	form.Add(TextRow("Interval", f.IntervalSelect))
-	form.Add(TextRow("Tolerance (ms)", f.ToleranceSelect))
+	f.toleranceRow = TextRow("Tolerance (ms)", f.ToleranceSelect)
+	form.Add(f.toleranceRow)
 	form.Add(TextRow("URL", f.URLEntry))
 	form.Add(f.balancerBlock)
 
@@ -177,11 +183,43 @@ func (f *Form) Content(hint fyne.CanvasObject, modeLabel fyne.CanvasObject) fyne
 }
 
 func (f *Form) syncBalancerVisible() {
-	if f.ModeSelect.Selected == locale.T("spread across a pool") {
+	mode := f.selectedMode()
+	if mode == configtypes.AutoModeRoundRobin {
 		f.balancerBlock.Show()
 	} else {
 		f.balancerBlock.Hide()
 	}
+	if f.toleranceRow != nil {
+		if mode == configtypes.AutoModeFailover {
+			f.toleranceRow.Hide()
+		} else {
+			f.toleranceRow.Show()
+		}
+	}
+}
+
+// selectedMode — режим по выбранной подписи селекта; пусто = least_test
+// (умолчание ядра, в состояние не пишется).
+func (f *Form) selectedMode() string {
+	switch f.ModeSelect.Selected {
+	case locale.T("spread across a pool"):
+		return configtypes.AutoModeRoundRobin
+	case locale.T("hold until it fails"):
+		return configtypes.AutoModeFailover
+	}
+	return ""
+}
+
+// modeLabel — подпись селекта по режиму; незнакомый или пустой режим —
+// least_test.
+func modeLabel(mode string) string {
+	switch mode {
+	case configtypes.AutoModeRoundRobin:
+		return locale.T("spread across a pool")
+	case configtypes.AutoModeFailover:
+		return locale.T("hold until it fails")
+	}
+	return locale.T("fastest node")
 }
 
 // Load заполняет форму из Auto. nil очищает поля.
@@ -201,10 +239,10 @@ func (f *Form) Load(a *configtypes.DirectionAuto) {
 	// режима свёртки не помечали окно изменённым и терялись на Save.
 	prevHandler := f.ModeSelect.OnChanged
 	f.ModeSelect.OnChanged = nil
-	if a != nil && a.Mode == configtypes.AutoModeRoundRobin {
-		f.ModeSelect.SetSelected(locale.T("spread across a pool"))
+	if a != nil {
+		f.ModeSelect.SetSelected(modeLabel(a.Mode))
 	} else {
-		f.ModeSelect.SetSelected(locale.T("fastest node"))
+		f.ModeSelect.SetSelected(modeLabel(""))
 	}
 	f.ModeSelect.OnChanged = func(s string) {
 		f.syncBalancerVisible()
@@ -281,9 +319,7 @@ func (f *Form) Collect() *configtypes.DirectionAuto {
 		IdleTimeout:               f.keep.IdleTimeout,
 		InterruptExistConnections: f.keep.InterruptExistConnections,
 	}
-	if f.ModeSelect.Selected == locale.T("spread across a pool") {
-		auto.Mode = configtypes.AutoModeRoundRobin
-	}
+	auto.Mode = f.selectedMode()
 	if lbl := f.IntervalSelect.Selected; lbl != "" {
 		auto.Interval = f.choices.Interval.LabelToValue[lbl]
 	}

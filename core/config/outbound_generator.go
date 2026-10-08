@@ -1239,6 +1239,9 @@ func GenerateOutboundsFromParserConfig(
 	selectorsJSON = append(selectorsJSON, selectorJSONs...)
 	emissionWarnings = append(emissionWarnings, emptyReplaceWarnings...)
 	emissionWarnings = append(emissionWarnings, chainCycleWarnings(chainCycles)...)
+	// Кольцо detour→группа — тем же каналом: до этого выброс жил только в
+	// логе, и в Мастере читался как «фильтр Направления не сработал».
+	emissionWarnings = append(emissionWarnings, detourCycleWarnings(detourCycles, parserConfig.ParserConfig.Proxies)...)
 
 	return &OutboundGenerationResult{
 		OutboundsJSON:        selectorsJSON,

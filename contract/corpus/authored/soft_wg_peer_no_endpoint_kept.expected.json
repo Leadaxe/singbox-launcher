@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "container": "own"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.99.2.1/32"
+        ],
+        "peers": [
+          {
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "public_key": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+          }
+        ],
+        "private_key": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "wg-own-dead",
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "applied": false,
+          "code": "field_missing",
+          "path": "peers[0].address"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

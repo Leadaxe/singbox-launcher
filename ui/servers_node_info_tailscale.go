@@ -8,9 +8,26 @@ import (
 	"strings"
 	"time"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
+
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/locale"
 )
+
+// tailscaleDeviceLines — устройство в две строки, как узел в списке серверов:
+// верх — виджеты строки (точка, имя, адрес, ОС), низ — подстрока «как
+// подключено» тем же canvas.Text, что подзаголовок списка (serversSubtitle*),
+// без собственных отступов: Label в верхней строке уже несёт внутренний
+// отступ снизу, поэтому зазор 0. indent — начало подстроки под именем.
+func tailscaleDeviceLines(top fyne.CanvasObject, conn string, indent float32) fyne.CanvasObject {
+	sub := canvas.NewText(truncateSubtitle(conn), theme.Color(theme.ColorNamePlaceHolder))
+	sub.TextSize = serversSubtitleTextSize
+	line := container.NewBorder(nil, nil, rowGap(indent), nil, sub)
+	return container.New(tightVBoxLayout{gap: 0}, top, line)
+}
 
 // tailscaleStateLabel — слово состояния для UI по BackendState ядра.
 //
@@ -43,6 +60,45 @@ func tailscalePeerLine(p services.TailscalePeer) string {
 		parts = append(parts, p.TailscaleIPs[0])
 	}
 	return strings.Join(parts, " · ")
+}
+
+// tailscalePathGlyphDirect / tailscalePathGlyphRelay — знак перед путём:
+// «📶» — пакеты ходят прямо между узлами, «☁» — через посредника (DERP или
+// peer relay). Эмодзи: текстовые стрелки ↝/↪ шрифт либо не знает, либо
+// рисует цветным глифом EmojiOne, так что честнее сразу взять картинку.
+//
+// НЕ «⚡» U+26A1: картинка в EmojiOneColor есть, но go-text/render v0.2.1
+// (drawSVG) собирает прямоугольник вывода как image.Rect(XBearing, -YBearing,
+// pixWidth, pixHeight) — размер подставлен вместо второго угла. Узкий глиф с
+// большим левым отступом (молния: отступ 297, ширина 406 из 1000) сжимается до
+// нескольких пустых столбцов и не рисуется вовсе; широкие (☁, ❌, 📶) задевает
+// только обрезкой края. В upstream main то же самое. Выбирать знаки, чей
+// рисунок занимает почти весь em-квадрат.
+const (
+	tailscalePathGlyphDirect = "📶"
+	tailscalePathGlyphRelay  = "☁"
+)
+
+// tailscalePathText — путь пира словами (SPEC 158, таблица CONSUMERS ядра):
+// «📶 direct 1.2.3.4:41641», «☁ peer relay», «☁ relay fra»; пусто — узел ни
+// разу не слал пиру, путь не выбран. Домашний регион при direct не пишем: в
+// строке устройства он только шум, а в Diagnostics код виден в строке relay.
+func tailscalePathText(p services.TailscalePeer) string {
+	switch p.Path {
+	case services.TailscalePathDirect:
+		if p.Endpoint != "" {
+			return tailscalePathGlyphDirect + " " + locale.T("direct") + " " + p.Endpoint
+		}
+		return tailscalePathGlyphDirect + " " + locale.T("direct")
+	case services.TailscalePathPeerRelay:
+		return tailscalePathGlyphRelay + " " + locale.T("peer relay")
+	case services.TailscalePathDERP:
+		if p.DERPRegionCode != "" {
+			return tailscalePathGlyphRelay + " " + locale.T("relay") + " " + p.DERPRegionCode
+		}
+		return tailscalePathGlyphRelay + " " + locale.T("relay")
+	}
+	return ""
 }
 
 // humanAge — «5m», «2h», «3d»: возраст снимка и last seen.

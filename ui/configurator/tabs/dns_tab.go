@@ -313,8 +313,9 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	rulesScroll := container.NewScroll(guiState.DNSRulesEntry)
 	rulesScroll.Direction = container.ScrollBoth
 	rulesHeight := canvas.NewRectangle(color.Transparent)
-	// Тоже доля окна — см. serversScroll выше.
-	rulesHeight.SetMinSize(adaptiveScrollSize(guiState, 0.26, 170))
+	// Константа, а не доля окна: доля считалась от высоты окна на момент
+	// создания и держала минимум всего Мастера (см. wizardTabScrollMinHeight).
+	rulesHeight.SetMinSize(fyne.NewSize(0, wizardTabScrollMinHeight))
 	rulesBlock := container.NewStack(rulesHeight, rulesScroll)
 
 	rulesLabel := widget.NewLabel(locale.T("Rules (JSON object with \"rules\" array)"))
@@ -352,10 +353,9 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	// interleaved, drag ↑↓). Вместо двух разделённых секций bundled +
 	// user — один VBox dispatch'ит по DNSRuleOrder.
 	unifiedRulesBox := container.NewVBox()
-	// rawRulesEntry — viewer для raw-JSON toggle (Phase 3 deferred mode).
-	rawRulesEntry := widget.NewMultiLineEntry()
-	rawRulesEntry.Wrapping = fyne.TextWrapOff
-	rawRulesScroll := container.NewScroll(rawRulesEntry)
+	// rawRulesEntry — JSON-редактор для raw-JSON toggle (Phase 3 deferred mode).
+	rawRulesEntry := fynewidget.NewJSONEditor("")
+	rawRulesScroll := container.NewScroll(rawRulesEntry.Object())
 	rawRulesScroll.Direction = container.ScrollBoth
 	rawRulesHeight := canvas.NewRectangle(color.Transparent)
 	rawRulesHeight.SetMinSize(fyne.NewSize(0, 200))
@@ -417,7 +417,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 			toggleBtn.SetIcon(theme.ViewRestoreIcon())
 		} else {
 			// Switch to list view: parse text, replace DNSUserRules, rebuild order.
-			newRules := wizardmodels.DNSUserRulesFromText(rawRulesEntry.Text)
+			newRules := wizardmodels.DNSUserRulesFromText(rawRulesEntry.Text())
 			m.DNSUserRules = newRules
 			m.DNSRulesText = wizardmodels.DNSUserRulesToText(newRules)
 			if gs := presenter.GUIState(); gs != nil && gs.DNSRulesEntry != nil {
@@ -486,12 +486,18 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		widget.NewSeparator(),
 		finalAndResolverRow,
 	)
-	return container.NewBorder(
+	// Снаружи — VScroll: Scroll отдаёт содержимому max(его минимум, размер
+	// окна), поэтому на высоком окне Border по-прежнему растягивает список
+	// серверов, а минимум вкладки перестаёт быть минимумом всего Мастера.
+	// Без него нижний блок (кэш, список правил без прокрутки, кнопки,
+	// строка Final) плюс список серверов давали ~650pt, AppTabs брал этот
+	// максимум по всем вкладкам, и окно нельзя было сжать ни на одной.
+	return container.NewVScroll(container.NewBorder(
 		serversHeader,
 		bottom,
 		nil, nil,
 		serversScroll,
-	)
+	))
 }
 
 func dnsServerSummaryFromInvalidRaw(raw json.RawMessage) string {
@@ -787,7 +793,7 @@ func deleteDNSServerAt(p *wizardpresentation.WizardPresenter, index int) {
 // dnsServerDialogEntryMinHeight is the minimum height for the JSON editor in Add/Edit DNS server dialogs.
 const dnsServerDialogEntryMinHeight = 240
 
-func dnsServerDialogJSONArea(entry *widget.Entry) fyne.CanvasObject {
+func dnsServerDialogJSONArea(entry fyne.CanvasObject) fyne.CanvasObject {
 	scroll := container.NewScroll(entry)
 	scroll.Direction = container.ScrollBoth
 	minH := canvas.NewRectangle(color.Transparent)
@@ -880,8 +886,25 @@ func showDNSServerDialog(
 	title, hint string,
 	readOnly bool,
 ) {
-	jsonEntry := widget.NewMultiLineEntry()
-	jsonEntry.Wrapping = fyne.TextWrapOff
+	// Шаблонная запись (readOnly) сохранять нечего — её JSON только
+	// читается, поэтому там просмотрщик, а не редактор.
+	var jsonEditor fynewidget.JSONEditor
+	var jsonViewer fynewidget.JSONView
+	var jsonArea fyne.CanvasObject
+	if readOnly {
+		jsonViewer = fynewidget.NewJSONView("")
+		jsonArea = jsonViewer.Object()
+	} else {
+		jsonEditor = fynewidget.NewJSONEditor("")
+		jsonArea = jsonEditor.Object()
+	}
+	setJSONText := func(s string) {
+		if jsonEditor != nil {
+			jsonEditor.SetText(s)
+		} else {
+			jsonViewer.SetText(s)
+		}
+	}
 
 	formOK := true
 	if body != nil {
@@ -895,10 +918,12 @@ func showDNSServerDialog(
 	// истины до конца сеанса окна.
 	jsonDirty := false
 	lastSyncedJSON := ""
-	jsonEntry.OnChanged = func(s string) {
-		if s != lastSyncedJSON {
-			jsonDirty = true
-		}
+	if jsonEditor != nil {
+		jsonEditor.SetOnChanged(func(s string) {
+			if s != lastSyncedJSON {
+				jsonDirty = true
+			}
+		})
 	}
 	syncJSONFromForm := func() {
 		if !formOK || jsonDirty {
@@ -906,7 +931,7 @@ func showDNSServerDialog(
 		}
 		if b, err := json.MarshalIndent(form.Collect(), "", "  "); err == nil {
 			lastSyncedJSON = string(b)
-			jsonEntry.SetText(lastSyncedJSON)
+			setJSONText(lastSyncedJSON)
 		}
 	}
 	if formOK {
@@ -914,7 +939,7 @@ func showDNSServerDialog(
 	} else if body != nil {
 		if b, err := json.MarshalIndent(body, "", "  "); err == nil {
 			lastSyncedJSON = string(b)
-			jsonEntry.SetText(lastSyncedJSON)
+			setJSONText(lastSyncedJSON)
 		}
 	}
 
@@ -941,7 +966,7 @@ func showDNSServerDialog(
 	jsonHint := widget.NewLabel(locale.T("The same entry as raw JSON, in sing-box dns.servers form. Types without a form are edited here."))
 	jsonHint.Wrapping = fyne.TextWrapWord
 	jsonTab := container.NewTabItem(locale.T("JSON"),
-		container.NewBorder(jsonHint, nil, nil, nil, dnsServerDialogJSONArea(jsonEntry)))
+		container.NewBorder(jsonHint, nil, nil, nil, dnsServerDialogJSONArea(jsonArea)))
 
 	var tabs *container.AppTabs
 	if formOK {
@@ -952,7 +977,7 @@ func showDNSServerDialog(
 		note.Wrapping = fyne.TextWrapWord
 		tabs = container.NewAppTabs(container.NewTabItem(
 			locale.T("JSON"),
-			container.NewBorder(note, nil, nil, nil, dnsServerDialogJSONArea(jsonEntry))))
+			container.NewBorder(note, nil, nil, nil, dnsServerDialogJSONArea(jsonArea))))
 	}
 	tabs.OnSelected = func(ti *container.TabItem) {
 		if ti == jsonTab {
@@ -976,7 +1001,11 @@ func showDNSServerDialog(
 	}
 
 	save := widget.NewButton(locale.T("Save"), func() {
-		text := jsonEntry.Text
+		// readOnly-окно кнопки «Сохранить» не показывает (см. buttons ниже).
+		if jsonEditor == nil {
+			return
+		}
+		text := jsonEditor.Text()
 		// С вкладки «Настройки» источник истины — форма: пользователь мог
 		// не открывать JSON вовсе, и там лежал бы снимок начального
 		// состояния.

@@ -59,11 +59,13 @@ const (
 	codeSourceDetourCycle          = "source_detour_cycle"
 	codeGroupEmpty                 = "group_empty"
 	codeGroupMemberDropped         = "group_member_dropped"
+	codeGroupDefaultDropped        = "group_default_dropped"
 	codeChainUnsupportedByCore     = "chain_unsupported_by_core"
 	codeChainInvalid               = "chain_invalid"
 	codeChainHopMissing            = "chain_hop_missing"
 	codeChainNestedPosition        = "chain_nested_position"
 	codeChainCycleThroughDirection = "chain_cycle_through_direction"
+	codeNodeDetourThroughGroup     = "node_detour_through_group"
 	codeReplaceTagConflict         = "replace_tag_conflict"
 	codeReplaceGroupEmpty          = "replace_group_empty"
 )

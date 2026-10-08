@@ -1998,9 +1998,15 @@
                 "code": "field_missing"
               },
               "required": true,
+              "required_unless": {
+                "set": [
+                  "listen_port"
+                ],
+                "code": "wg_peer_incoming"
+              },
               "desc_en": "Peer endpoint address.",
               "desc_ru": "Адрес точки подключения пира.",
-              "impl": "option/wireguard.go WireGuardPeer.Address."
+              "impl": "option/wireguard.go WireGuardPeer.Address. Обязателен, КРОМЕ узла с listen_port (контракт 1.1.110): пир без адреса подключается К НАМ — узел слушает listen_port, ядро ставит пиру endpoint только при годном адресе (transport/wireguard/endpoint.go NewEndpoint), и через такой узел ходят в интернет; о снятии говорит wg_peer_incoming (info). Нет ни адреса, ни listen_port — рукопожатие не начнёт никто: field_missing, у авторского тела мягко (узел остаётся с ошибкой), у подписки пир снимается, и узел без пиров выпадает."
             },
             "port": {
               "type": "uint16",
@@ -2013,9 +2019,14 @@
                 "core_rejects": true
               },
               "required": true,
+              "required_unless": {
+                "absent": [
+                  "address"
+                ]
+              },
               "desc_en": "Peer endpoint port.",
               "desc_ru": "Порт точки подключения пира.",
-              "impl": "option/wireguard.go WireGuardPeer.Port."
+              "impl": "option/wireguard.go WireGuardPeer.Port. Обязателен при заданном address (контракт 1.1.110): без адреса подключаться некуда, и порт не нужен. На входах ссылки и .conf порт и так материализуется 51820."
             },
             "public_key": {
               "type": "string",

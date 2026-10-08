@@ -75,6 +75,27 @@
       "dart": "UnsupportedProtocolWarning",
       "go": "core/config/subscription/xray_json_array.go:parseXrayJSONArrayElementNodes (Xray-протокол вне списка — core/config/subscription/xray_protocols.go:xrayNodeFromOutbound, код отказа даёт core/config/subscription/json_body_rejects.go:rejectCodeOf); core/config/nodeflow/sanitize.go:SanitizeFromKind (у схемы нет body реестра). Вход sing-box JSON тип вне реестра отбраковывает БЕЗ кода: core/config/subscription/singbox_import.go:parseSingboxEntry возвращает простую ошибку"
     },
+    "wg_peer_incoming": {
+      "severity": "info",
+      "params": [],
+      "title_en": "Waits for an incoming connection",
+      "title_ru": "Ждёт входящего подключения",
+      "text_en": "The WireGuard peer has no address: the node does not connect anywhere itself, it waits for the peer to connect to its listen port. Traffic goes through the node only while that peer is connected.",
+      "text_ru": "У пира WireGuard нет адреса: узел сам никуда не подключается, а ждёт, пока пир подключится к его порту (listen_port). Трафик идёт через узел, только пока этот пир подключён.",
+      "cause_en": "This is a server-side WireGuard: the other device dials in (a phone, a router at home), and the node only listens.",
+      "cause_ru": "Это WireGuard со стороны сервера: подключается другое устройство (телефон, домашний роутер), а узел только слушает.",
+      "fix_en": [
+        "Nothing to do if this is intended.",
+        "If the node seems dead, check that the peer is online and can reach this machine on the listen port."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно, если так задумано.",
+        "Если узел молчит — проверьте, что пир включён и достаёт до этой машины по порту listen_port."
+      ],
+      "desc": "Пир без address/port при заданном listen_port — входящий: обязательность адреса снята required_unless (контракт 1.1.110). Тело не меняется, код только сообщает.",
+      "dart": "код — задача LxBox §106",
+      "go": "правило реестра contract/registry/protocols/wireguard.json body.fields.peers.items.fields.address.required_unless; исполнение — core/config/nodeflow/sanitize.go:sanitizer.requiredLifted"
+    },
     "field_missing": {
       "severity": "error",
       "params": [
@@ -647,6 +668,30 @@
         "Если этот член нужен, включите узел обратно или устраните проблему, из-за которой он исключён; после обновления подписки проверьте, что узел ещё существует."
       ],
       "desc": "Контракт 1.1.67. Член Auto-группы (kind=auto) не разрешился на СБОРКЕ — ссылки нет, цель выключена или отброшена сборкой; группа живёт без него (prune). Запись отчёта сборки, одна на потерянного члена; не путать с group_member_missing (потеря при разборе, код на узле-группе с count). Опустевшая группа — group_empty.",
+      "dart": null,
+      "go": "запись отчёта сборки (EmissionWarning.Code): core/config/nodelink_resolve.go:resolveCanonicalGroup → core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks"
+    },
+    "group_default_dropped": {
+      "severity": "info",
+      "params": [
+        "tag",
+        "default"
+      ],
+      "title_en": "Group {tag}: default {default} dropped",
+      "title_ru": "Группа {tag}: умолчание {default} снято",
+      "text_en": "The default server {default} of group {tag} is not among the group's members when the config was built, so the default was dropped: the core refuses the whole config with such a default. The group starts on its first member instead.",
+      "text_ru": "Сервер по умолчанию {default} группы {tag} при сборке конфига не входит в её состав, поэтому умолчание снято: ядро с таким умолчанием отвергает весь конфиг. Группа стартует с первого члена.",
+      "cause_en": "The node chosen as the default disappeared from its subscription after an update, was renamed or deleted, was turned off, or was itself excluded from the config — so it is no longer a member of the group.",
+      "cause_ru": "Узел, выбранный по умолчанию, пропал из подписки после обновления, был переименован или удалён, выключен либо сам исключён из конфига — и больше не входит в группу.",
+      "fix_en": [
+        "Nothing to do if starting on the first member suits you.",
+        "Otherwise pick another default in the group settings, or bring the node back."
+      ],
+      "fix_ru": [
+        "Если старт с первого члена устраивает, делать ничего не нужно.",
+        "Иначе выберите другое умолчание в настройках группы или верните узел."
+      ],
+      "desc": "Контракт 1.1.112. Умолчание selector-группы (default) не разрешилось в члена её состава на СБОРКЕ — ссылки нет, цель выключена или отброшена, либо выбыла из состава (group_member_dropped); ключ default не эмитится. Запись отчёта сборки, одна на группу. У urltest default не эмитится вовсе и кода не даёт (форма канона).",
       "dart": null,
       "go": "запись отчёта сборки (EmissionWarning.Code): core/config/nodelink_resolve.go:resolveCanonicalGroup → core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks"
     },
@@ -1875,6 +1920,33 @@
       "desc": "Направление не взяло в состав цепочку, которая через это же Направление проходит (SPEC 110 T9). Самый частый случай: цепочка [proxy-out, exit] при фильтре «все узлы» у proxy-out. Ядро на таком не падает — оно развернёт позицию в то, что группа выбрала сейчас, — но пользователь получил бы маршрут, которого не задумывал: выбрав цепочку внутри группы, он замкнул бы трафик на неё же. Проверяется транзитивно, включая цепочку через цепочку. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
       "dart": "services/builder/chain_nodes.dart (T9) + screens/chain_edit/chain_form_validation.dart",
       "go": "EmissionWarning.Code в отчёт сборки (адресат — Направление): core/config/chain_cycle.go:chainCycleWarnings; цепочку из состава снимает core/config/chain_cycle.go:dropChainsThroughDirection"
+    },
+    "node_detour_through_group": {
+      "severity": "warning",
+      "params": [
+        "group",
+        "count",
+        "tags"
+      ],
+      "title_en": "{count} node(s) left out of {group}",
+      "title_ru": "Не вошло в {group}: узлов — {count}",
+      "text_en": "Group {group} did not take {count} node(s) of this source into its members ({tags}), because they dial through this very group. Otherwise the core would reject the whole config: a group that contains a node routed through itself is a dependency loop.",
+      "text_ru": "Группа {group} не взяла в состав узлы этого источника ({tags}; всего {count}), потому что они ходят через эту же группу. Иначе ядро отвергло бы весь конфиг: группа, содержащая узел, который ведётся через неё же, — кольцо зависимостей.",
+      "cause_en": "The source (or the node itself) is routed through {group} by its detour, and {group} picks its members by a filter that matches these nodes. A node cannot be both a member of a group and dial through it.",
+      "cause_ru": "Источник (или сам узел) ведётся через {group} своим detour, а {group} набирает состав фильтром, под который эти узлы попадают. Узел не может одновременно входить в группу и ходить через неё.",
+      "fix_en": [
+        "Nothing to do if the group works as you meant it to: the nodes keep working and still dial through it.",
+        "If the nodes have to be in this group, remove the detour to this group from their source.",
+        "If the nodes have to dial through this group, narrow the group's filter so it does not match them."
+      ],
+      "fix_ru": [
+        "Если группа работает так, как вы задумали, делать ничего не нужно: узлы работают и по-прежнему ходят через неё.",
+        "Если узлы обязаны быть в этой группе, снимите у их источника detour на эту группу.",
+        "Если узлы обязаны ходить через эту группу, сузьте её фильтр, чтобы он их не ловил."
+      ],
+      "desc": "Группа (Направление или группа свёртки папки) не взяла в состав узлы, которые своим detour ходят через эту же группу (SPEC 077 follow-up). Ядро на таком кольце отвергает ВЕСЬ конфиг (`dependency[X] not found for outbound[Y]`), и сообщение указывает не на тот узел, который трогал пользователь. Кольцо рвётся по членству, а не по переходу: узел остаётся в конфиге и ходит через свой detour (снять detour молча значило бы отправить трафик напрямую мимо заданной границы, SPEC 113-B). Одна запись на пару (источник, группа): detour чаще всего задан у источника целиком, и подписка на полсотни узлов дала бы полсотни одинаковых строк. Адресат — источник узла (строка Sources с пометкой); у узла без источника — запись без адреса. Живой случай: подписка Liberty с detour на «Jump server» и фильтр (🔥|🗽) у самого «Jump server» — в Мастере читалось как «фильтр не сработал».",
+      "dart": "services/builder/ (состав групп) — код в отчёт сборки, если ваша сборка тоже рвёт кольцо узел→группа по членству",
+      "go": "EmissionWarning.Code в отчёт сборки (адресат — источник, DirectionTag — группа): core/config/detour_group_cycle.go:detourCycleWarnings; узел из состава снимает core/config/detour_group_cycle.go:dropNodesDetouringThroughGroup"
     },
     "direction_filter_matched_nothing": {
       "severity": "warning",

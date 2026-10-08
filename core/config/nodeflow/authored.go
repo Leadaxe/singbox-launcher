@@ -12,6 +12,8 @@ package nodeflow
 // код с признаком applied: false.
 
 import (
+	"encoding/json"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -65,6 +67,14 @@ func AuthoredResult(scheme string, raw map[string]interface{}, res Result) Resul
 		apply, w2 := Decide(scheme, true, w)
 		if apply && w.Path != "" {
 			patchFromClean(body, res.Clean, w.Path)
+		}
+		if !apply && w.Path != "" && isInfoCode(w.Code) && samePathValue(raw, res.Clean, w.Path) {
+			// Info-код, по пути которого тело не меняется (только сообщает,
+			// как о входящем пире WireGuard): «не применено» значило бы, что
+			// приложение что-то не сделало, — а делать было нечего. Только
+			// info: у error/warning отсутствие поля в обоих телах — это и
+			// есть несделанная правка (узел или блок был бы снят).
+			w2 = w
 		}
 		out.Warnings = append(out.Warnings, w2)
 	}
@@ -144,6 +154,100 @@ func patchFromClean(body, clean map[string]interface{}, path string) {
 		return
 	}
 	deleteBodyPath(body, parts)
+}
+
+// isInfoCode — объявлен ли код в реестре уровнем info.
+func isInfoCode(code string) bool {
+	reg, err := registry.Get()
+	if err != nil {
+		return false
+	}
+	e, ok := reg.Warning(code)
+	return ok && e.Severity == "info"
+}
+
+// samePathValue — одинаково ли значение пути path (индексы в скобках) в
+// сыром теле и в чистом: оба отсутствуют или оба равны.
+func samePathValue(raw, clean map[string]interface{}, path string) bool {
+	parts := strings.Split(strings.NewReplacer("[", ".", "]", "").Replace(path), ".")
+	a, aok := lookupBodyPath(raw, parts)
+	b, bok := lookupBodyPath(clean, parts)
+	if aok != bok {
+		return false
+	}
+	return !aok || sameJSONValue(a, b)
+}
+
+// sameJSONValue — равенство значений тела по смыслу JSON: числа равны по
+// величине независимо от Go-типа (сырое тело из json.Unmarshal несёт
+// float64, чистое — int/uint32 после приведения поля), прочее — как
+// reflect.DeepEqual, вглубь объектов и массивов.
+func sameJSONValue(a, b interface{}) bool {
+	if x, ok := jsonNumber(a); ok {
+		y, ok := jsonNumber(b)
+		return ok && x == y
+	}
+	switch av := a.(type) {
+	case map[string]interface{}:
+		bv, ok := b.(map[string]interface{})
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for k, x := range av {
+			y, ok := bv[k]
+			if !ok || !sameJSONValue(x, y) {
+				return false
+			}
+		}
+		return true
+	case []interface{}:
+		bv, ok := b.([]interface{})
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for i := range av {
+			if !sameJSONValue(av[i], bv[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	return reflect.DeepEqual(a, b)
+}
+
+// jsonNumber — величина числа любого Go-типа, которым число тела бывает
+// после разбора JSON или приведения поля.
+func jsonNumber(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int8:
+		return float64(n), true
+	case int16:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case uint:
+		return float64(n), true
+	case uint8:
+		return float64(n), true
+	case uint16:
+		return float64(n), true
+	case uint32:
+		return float64(n), true
+	case uint64:
+		return float64(n), true
+	case json.Number:
+		f, err := n.Float64()
+		return f, err == nil
+	}
+	return 0, false
 }
 
 func lookupBodyPath(v interface{}, parts []string) (interface{}, bool) {

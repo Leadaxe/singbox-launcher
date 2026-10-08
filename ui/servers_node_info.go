@@ -11,7 +11,9 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	fynetooltip "github.com/dweymouth/fyne-tooltip"
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
@@ -81,7 +83,8 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	// не в конфиге, и узел, которого в config.json ещё нет (гонка
 	// перегенерации), свои деградации имеет ровно так же — ветка `node == nil`
 	// ниже обязана показать их наравне с остальными.
-	warnSection := nodewarn.Section(nodeWarningsFor(ac, proxy.Name, scope))
+	warnings := nodeWarningsFor(ac, proxy.Name, scope)
+	warnSection := nodewarn.Section(warnings)
 	// addWarnSection — раздел за разделителем; нет уведомлений — нет раздела.
 	addWarnSection := func() {
 		if warnSection == nil {
@@ -99,18 +102,19 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		return
 	}
 
-	body.Add(infoRow(locale.T("Type"), node.Type))
-	body.Add(infoRow(locale.T("Section"), node.Kind))
+	// Вид узла одной строкой: тип, секция, транспорт, защита.
+	kind := []string{node.Type, node.Kind}
+	if node.Transport != "" {
+		kind = append(kind, node.Transport)
+	}
+	if node.Security != "" {
+		kind = append(kind, node.Security)
+	}
+	body.Add(infoRow(locale.T("Type"), strings.Join(kind, " · ")))
 
 	if node.Server != "" {
 		body.Add(infoRow(locale.T("Server"),
 			fmt.Sprintf("%s:%d", node.Server, node.ServerPort)))
-	}
-	if node.Transport != "" {
-		body.Add(infoRow(locale.T("Transport"), node.Transport))
-	}
-	if node.Security != "" {
-		body.Add(infoRow(locale.T("Security"), node.Security))
 	}
 	if node.Detour != "" {
 		body.Add(infoRow(locale.T("Detour"), node.Detour))
@@ -286,12 +290,6 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		}
 	}
 
-	// Цепочка: позиции и послойный замер. Только у outbound'а типа chain и
-	// только там, где ядро отвечает по gRPC (см. addChainSection).
-	if bound && node.Type == configtypes.ChainOutboundType {
-		addChainSection(ac, target, body, win, proxy.Name)
-	}
-
 	// Tailnet: состояние, вход, устройства, exit node — отдельной вкладкой
 	// Network (SPEC 148; прежде секция SPEC 130). Только у tailscale-endpoint'а
 	// и только там, где ядро отдаёт статус по gRPC.
@@ -330,10 +328,11 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 
 	// JSON — отдельной вкладкой: он длинный и на общей странице оттеснял бы
 	// разобранные поля вниз, ради которых окно и открывают.
+	// fynewidget.NewJSONView: подсветка, номера строк, свёртка и выделение
+	// мышью в свежих сборках; на Win7 — прежний Entry. Кнопка «Copy JSON»
+	// забирает тело целиком без выделения.
 	jsonText := prettyNodeJSON(node.Raw)
-	jsonEntry := widget.NewMultiLineEntry()
-	jsonEntry.SetText(jsonText)
-	jsonEntry.Wrapping = fyne.TextWrapOff
+	jsonView := fynewidget.NewJSONView(jsonText)
 
 	jsonTab := container.NewBorder(
 		nil,
@@ -341,7 +340,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 			setClipboard(jsonText)
 		}),
 		nil, nil,
-		jsonEntry,
+		jsonView.Object(),
 	)
 
 	tabs := container.NewAppTabs(
@@ -350,9 +349,19 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	if networkTab != nil {
 		tabs.Append(container.NewTabItem(locale.T("Network"), networkTab))
 	}
+	// Diagnostics: проверка через узел и замер цепочки по позициям. Точка на
+	// ярлыке — красная при ошибках узла, жёлтая при предупреждениях (LxBox).
+	diagTab := container.NewTabItem(locale.T("Diagnostics"), nodeDiagnosticsTab(ac, target, bound, win, proxy, node, scope))
+	switch nodewarn.TopSeverity(warnings) {
+	case nodewarn.SeverityError:
+		diagTab.Icon = theme.NewColoredResource(theme.RadioButtonCheckedIcon(), theme.ColorNameError)
+	case nodewarn.SeverityWarning:
+		diagTab.Icon = theme.NewColoredResource(theme.RadioButtonCheckedIcon(), theme.ColorNameWarning)
+	}
+	tabs.Append(diagTab)
 	tabs.Append(container.NewTabItem(locale.T("Outbound JSON"), jsonTab))
 
-	win.SetContent(tabs)
+	win.SetContent(fynetooltip.AddWindowToolTipLayer(tabs, win.Canvas()))
 	win.Resize(fyne.NewSize(620, 680))
 	fynewidget.CenterOnScreen(win)
 	win.Show()
@@ -369,7 +378,7 @@ func withScrollGutter(body fyne.CanvasObject) fyne.CanvasObject {
 // finishNodeInfoWindow показывает окно без вкладок — используется, когда узла
 // нет в конфиге и показывать в JSON-вкладке нечего.
 func finishNodeInfoWindow(win fyne.Window, body *fyne.Container) {
-	win.SetContent(withScrollGutter(body))
+	win.SetContent(fynetooltip.AddWindowToolTipLayer(withScrollGutter(body), win.Canvas()))
 	win.Resize(fyne.NewSize(620, 400))
 	fynewidget.CenterOnScreen(win)
 	win.Show()
@@ -471,7 +480,7 @@ func sectionHeader(text string) *widget.Label {
 // Фиксированная: без неё каждая строка сама решает, сколько занять под ключ, и
 // колонка значений разъезжается — «Tag» и «REALITY public key» дают разный
 // отступ, читать невозможно.
-const nodeInfoKeyColumnWidth = 168
+const nodeInfoKeyColumnWidth = 110
 
 // nodeInfoScrollbarGutter — отступ справа под полосу прокрутки.
 //
@@ -479,32 +488,34 @@ const nodeInfoKeyColumnWidth = 168
 // содержимое (см. components.ScrollbarGutterWidth).
 const nodeInfoScrollbarGutter = 5
 
-// infoRow — строка «ключ: значение».
+// infoRow — строка «ключ  значение» без рамок: ключ серым, значение текстом.
 //
-// Значение в Entry, а не Label: его можно выделить и скопировать, а длинное
-// значение не растягивает окно (Entry сжимается, Label — нет).
+// Значение — выделяемый Label: его можно выделить и скопировать. Обрезка
+// многоточием обязательна — без неё длинное значение растягивает окно.
 func infoRow(key, value string) *fyne.Container {
-	row, _ := infoRowEntry(key, value, nil)
+	row, _ := infoRowLabel(key, value)
 	return row
 }
 
-// infoRowEntry — infoRow, отдающий поле значения для последующих обновлений;
-// right (может быть nil) встаёт справа от поля — кнопка действия над ним.
-func infoRowEntry(key, value string, right fyne.CanvasObject) (*fyne.Container, *widget.Entry) {
+// infoRowLabel — infoRow, отдающий значение для последующих обновлений.
+func infoRowLabel(key, value string) (*fyne.Container, *widget.Label) {
+	valueLabel := widget.NewLabel(value)
+	valueLabel.Selectable = true
+	valueLabel.Truncation = fyne.TextTruncateEllipsis
+
+	return container.NewBorder(nil, nil, infoKeyCell(key), nil, valueLabel), valueLabel
+}
+
+// infoKeyCell — ячейка ключа строки: серый текст в колонке общей ширины.
+func infoKeyCell(key string) fyne.CanvasObject {
 	keyLabel := widget.NewLabel(key)
-	keyLabel.TextStyle.Bold = true
+	keyLabel.Importance = widget.LowImportance
 	keyLabel.Truncation = fyne.TextTruncateEllipsis
 
 	// Распорка задаёт колонке ключей одинаковую ширину во всех строках.
 	keySpacer := canvas.NewRectangle(color.Transparent)
 	keySpacer.SetMinSize(fyne.NewSize(nodeInfoKeyColumnWidth, 0))
-	keyCell := container.NewStack(keySpacer, keyLabel)
-
-	valueEntry := widget.NewEntry()
-	valueEntry.SetText(value)
-	valueEntry.Wrapping = fyne.TextWrapOff
-
-	return container.NewBorder(nil, nil, keyCell, right, valueEntry), valueEntry
+	return container.NewStack(keySpacer, keyLabel)
 }
 
 // memberRow — строка члена группы с его собственным подзаголовком.

@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"net"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/nodewarn"
@@ -246,7 +248,67 @@ func serversNodeSubtitle(ac *core.AppController, proxyInfo api.ProxyInfo, scope 
 	if warn := nodewarn.Subtitle(nodeWarningsFor(ac, proxyInfo.Name, scope)); warn != "" {
 		return warn
 	}
-	return strings.Join(node.SubtitleParts(), "·")
+	base := strings.Join(node.SubtitleParts(), "·")
+	if strings.EqualFold(node.Type, configtypes.SchemeTailscale) {
+		return tailscaleSubtitle(ac, node, proxyInfo.Name, scope, base)
+	}
+	return base
+}
+
+// tailscaleSubtitle — подзаголовок узла Tailscale: роль узла в tailnet
+// (SPEC 157). У обычного узла подзаголовок описывает транспорт, а у
+// Tailscale транспорт один и тот же, и единственное, что отличает узлы
+// друг от друга в списке, — через чей выход идёт трафик:
+//
+//	tailscale ‣ gl-mt2500 · direct 31.184.97.44:41641 — выход через машину
+//	                        tailnet и путь до неё (SPEC 158);
+//	tailscale·exit node     — сам узел анонсируется выходом;
+//	tailscale               — выхода нет (трафик только в tailnet).
+//
+// Выход берётся с живого статуса ядра — он говорит, через кого трафик идёт
+// СЕЙЧАС; без статуса (ядро не запущено, снимка нет) — из `exit_node`
+// собранного конфига, то есть то, что будет после запуска. Разделитель тот
+// же, что у группы перед выбранным узлом: смысл тот же — «идёт через».
+// Путь (direct / peer relay / relay <регион>) — из того же снимка потока,
+// только у живого выхода; пока ядро выходу не писало, пути нет и хвоста нет.
+func tailscaleSubtitle(ac *core.AppController, node *wizardbusiness.ConfigNode, tag string, scope services.ProxyScope, base string) string {
+	if adv, _ := node.Raw["advertise_exit_node"].(bool); adv {
+		return base + "·" + locale.T("exit node")
+	}
+	exit, path := "", ""
+	if st, ok := ac.TailscaleStatus(core.TailscaleIn(scope), tag); ok && st.ExitNode != nil {
+		exit = st.ExitNode.HostName
+		if exit == "" && len(st.ExitNode.TailscaleIPs) > 0 {
+			exit = st.ExitNode.TailscaleIPs[0]
+		}
+		path = tailscalePathText(*st.ExitNode)
+	}
+	if exit == "" {
+		written, _ := node.Raw["exit_node"].(string)
+		exit = tailscaleExitShortName(written)
+	}
+	if exit == "" {
+		return base
+	}
+	if path != "" {
+		exit += " · " + path
+	}
+	return base + " " + groupNowSeparator + " " + exit
+}
+
+// tailscaleExitShortName — имя выхода для подзаголовка: у MagicDNS-имени
+// (`gl-mt2500.tail-net.ts.net`) — первая метка, она и есть имя машины;
+// IP-адрес остаётся как есть. Полное имя не влезает в подзаголовок и
+// обрезалось бы многоточием ровно там, где хвост одинаков у всех машин.
+func tailscaleExitShortName(exit string) string {
+	exit = strings.TrimSpace(exit)
+	if exit == "" || net.ParseIP(exit) != nil {
+		return exit
+	}
+	if i := strings.IndexByte(exit, '.'); i > 0 {
+		return exit[:i]
+	}
+	return exit
 }
 
 // groupSubtitle описывает группу: режим, размер пула и текущий выбор.
@@ -306,10 +368,18 @@ func groupModeLabel(node *wizardbusiness.ConfigNode) (icon, mode string) {
 		// простой и читается на кегле подзаголовка.
 		//
 		// НЕ «🔀» U+1F500: мелкий рисунок из переплетённых стрелок на 10pt
-		// схлопывался в неразличимое пятно. НЕ «⚡» U+26A1: глиф в
-		// EmojiOneColor пустой — символ не рисуется вовсе, ни с
-		// вариационным селектором U+FE0F, ни без него.
+		// схлопывался в неразличимое пятно. НЕ «⚡» U+26A1: не рисуется
+		// вовсе — узкий глиф режет баг прямоугольника в go-text/render,
+		// см. tailscalePathGlyphDirect в servers_node_info_tailscale.go.
 		return "\U00002B50", locale.T("balanced")
+	case "failover":
+		// Удержание (ядро SPEC 116): группа держится за выбранный узел до
+		// его отказа, пробуется только он.
+		//
+		// «📌» U+1F4CC — кнопка-булавка: «приколот к узлу». Глиф не
+		// проверялся в каталоге (вкладка 🔤) — если на кегле подзаголовка
+		// не читается, заменить из каталога.
+		return "\U0001F4CC", locale.T("held")
 	case "least_test", "":
 		// Умолчание urltest — один самый быстрый по замерам.
 		return "\U0001F6A9", locale.T("fastest")

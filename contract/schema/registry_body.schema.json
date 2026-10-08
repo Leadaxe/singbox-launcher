@@ -108,6 +108,16 @@
       "required": ["values", "value", "code", "when"],
       "additionalProperties": false
     },
+    "requiredUnless": {
+      "description": "Когда снимается обязательность (`required`) отсутствующего поля (контракт 1.1.110): задан любой путь из `set` (от корня тела) ИЛИ в том же объекте не задан любой сосед из `absent` (имя поля без префикса; так достаётся сосед по элементу массива). `code` — код, которым сказать о снятии; без него снятие молчит. Пример — пир WireGuard: `address` не нужен при `listen_port` (к узлу подключаются), `port` — без `address`.",
+      "type": "object",
+      "properties": {
+        "set": { "type": "array", "items": { "type": "string" } },
+        "absent": { "type": "array", "items": { "type": "string" } },
+        "code": { "type": "string", "description": "Код из registry/warnings.json." }
+      },
+      "additionalProperties": false
+    },
     "onHopRequired": {
       "description": "У ключа каталога `strip` цепочки (chain.json, контракт 1.1.61): что делать, когда ключ снял бы с тела звена на позиции >= 1 путь, который это тело ТРЕБУЕТ (санитайзер вернул бы его связью `requires` с `set`). `unstrip` — ключ снимается с патча цепочки (ядро применяет каталог ко всем звеньям разом), цепочка собирается, о снятом ключе сообщает `code`.",
       "type": "object",
@@ -441,6 +451,7 @@
         "min_when": { "$ref": "#/definitions/minWhen" },
         "coerce_when": { "$ref": "#/definitions/coerceWhen" },
         "on_hop_required": { "$ref": "#/definitions/onHopRequired" },
+        "required_unless": { "$ref": "#/definitions/requiredUnless" },
         "required": {
           "type": "boolean",
           "description": "Без поля узел не собирается — уходит в dropped с кодом field_missing."

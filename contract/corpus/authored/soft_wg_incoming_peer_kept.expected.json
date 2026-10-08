@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "container": "own"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.99.2.1/32"
+        ],
+        "listen_port": 51822,
+        "peers": [
+          {
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "public_key": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
+          }
+        ],
+        "private_key": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "wg-own-in",
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wg_peer_incoming",
+          "path": "peers[0].address"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

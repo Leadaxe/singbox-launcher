@@ -14,6 +14,7 @@ import (
 	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
@@ -288,19 +289,12 @@ func appendStorageRecordSection(body *fyne.Container, src any) {
 		text = string(b)
 	}
 
-	// MultiLineEntry без Disable() — тот же приём, что у raw body выше:
-	// disabled-текст на macOS рендерится цветом фона. Ввод откатывается.
-	entry := widget.NewMultiLineEntry()
-	entry.Wrapping = fyne.TextWrapOff
-	entry.SetText(text)
-	entry.OnChanged = func(s string) {
-		if s != text {
-			entry.SetText(text)
-		}
-	}
+	// Просмотрщик JSON: только чтение, с выделением и копированием.
+	// Ветка ошибки маршалинга даёт не-JSON текст — он показывается как есть.
+	entry := fynewidget.NewJSONView(text)
 	entryScroll := container.NewVScroll(container.NewStack(
 		canvas.NewRectangle(transparentColor()),
-		entry,
+		entry.Object(),
 	))
 	entryScroll.SetMinSize(fyne.NewSize(0, 240))
 	body.Add(entryScroll)

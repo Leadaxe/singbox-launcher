@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"time"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
@@ -12,9 +10,6 @@ import (
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 )
-
-// copyFeedbackDelay — сколько держится галочка после копирования.
-const copyFeedbackDelay = 1200 * time.Millisecond
 
 // setClipboard — короткое имя для fynewidget.SetClipboard: копирование зовут
 // из десятка мест пакета, и полное имя там только шумит.
@@ -29,25 +24,14 @@ func setClipboard(text string) { fynewidget.SetClipboard(text) }
 // собрать), и галочку не показываем: она означала бы «в буфере то, что нужно».
 //
 // Единая реализация на все места копирования: раньше их было три, и фидбек в
-// них уже начал разъезжаться.
+// них уже начал разъезжаться. Сама кнопка живёт в fynewidget — её рисуют и
+// вкладки Мастера, которым пакет ui недоступен.
 func NewCopyButton(tooltipKey string, text func() (string, bool)) *ttwidget.Button {
-	var btn *ttwidget.Button
-	btn = ttwidget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
-		s, ok := text()
-		if !ok {
-			return
-		}
-		setClipboard(s)
-		btn.SetIcon(theme.ConfirmIcon())
-		go func() {
-			time.Sleep(copyFeedbackDelay)
-			fyne.Do(func() { btn.SetIcon(theme.ContentCopyIcon()) })
-		}()
-	})
+	tooltip := ""
 	if tooltipKey != "" {
-		btn.SetToolTip(locale.T(tooltipKey))
+		tooltip = locale.T(tooltipKey)
 	}
-	return btn
+	return fynewidget.NewCopyButton(tooltip, text)
 }
 
 // CommandRow — строка с командой, которую пользователь должен выполнить сам:

@@ -127,15 +127,14 @@ func showEditPresetRefDialog(
 		return true
 	}
 
-	// JSON preview — обычный читаемый цвет (RichText), не disabled-grey.
-	// Возможность копировать-выделять текст сохраняется. Изменять content юзер
-	// не может — RichText по природе display-only. Visual indicator "read-only"
-	// — иконка 🔒 справа сверху от scroll (см. ниже).
-	jsonRichText := widget.NewRichTextWithText("")
-	jsonRichText.Wrapping = fyne.TextWrapWord
+	// JSON preview — просмотрщик JSON: обычный читаемый цвет, не disabled-grey,
+	// текст можно выделять и копировать. Изменять content юзер не может —
+	// JSONView только для чтения. Visual indicator "read-only" — иконка 🔒
+	// справа сверху от scroll (см. ниже).
+	jsonView := fynewidget.NewJSONView("")
 
 	refreshJSON := func() {
-		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(model, tplPreset, working) + "\n```")
+		jsonView.SetText(buildPresetJSONPreview(model, tplPreset, working))
 	}
 
 	refreshVisibility := func() {
@@ -284,7 +283,7 @@ func showEditPresetRefDialog(
 	// Lock icon справа сверху от content area — visual indicator что preview
 	// read-only (не серый-disabled, текст обычного цвета).
 	jsonLockIcon := widget.NewLabel("🔒")
-	jsonScroll := container.NewScroll(jsonRichText)
+	jsonScroll := container.NewScroll(jsonView.Object())
 	jsonContent := container.NewBorder(
 		container.NewHBox(layout.NewSpacer(), jsonLockIcon),
 		nil, nil, nil,

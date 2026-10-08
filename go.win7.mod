@@ -14,6 +14,7 @@ require (
 	golang.org/x/sys v0.30.0
 	google.golang.org/grpc v0.0.0-00010101000000-000000000000
 	google.golang.org/protobuf v1.33.0
+	github.com/ideaconnect/go-fyne-pretty-view/v2 v2.7.0
 )
 
 require (
@@ -67,3 +68,10 @@ replace golang.org/x/sys => golang.org/x/sys v0.25.0
 replace google.golang.org/grpc => google.golang.org/grpc v1.64.1
 
 replace google.golang.org/protobuf => google.golang.org/protobuf v1.34.2
+
+// JSON-редактор на go-fyne-pretty-view (fyne v2.8, go1.26) живёт за
+// ограничением сборки `go1.26` и в Win7-бинарь не попадает, но тот же
+// `go get ./...` резолвит и его импорт — и поднял бы fyne до v2.8.1 и
+// golang.org/x/net до v0.59 (пакеты iter/cmp, нет в Go 1.20). Модуль
+// подменён пустой заглушкой без зависимостей.
+replace github.com/ideaconnect/go-fyne-pretty-view/v2 => ./build/win7stub/go-fyne-pretty-view

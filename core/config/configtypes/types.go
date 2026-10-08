@@ -395,9 +395,17 @@ type Direction struct {
 //
 // Пусто эквивалентно AutoModeLeastTest: апстримный urltest, который пишется
 // в конфиг бит-в-бит без лишних ключей.
+//
+// AutoModeFailover (ядро SPEC 116): держаться за выбранный узел до его
+// отказа. Выбор — самый быстрый на момент выбора, переезд — только по
+// отказу текущего (проба не ответила или боевой дайл «путь мёртв»), и
+// следующий — снова самый быстрый. Каждый `interval` пробуется ТОЛЬКО
+// текущий узел: остальные спят, их задержки в UI стареют. `tolerance` в
+// этом режиме не действует, `balancer` — ошибка старта ядра.
 const (
 	AutoModeLeastTest  = "least_test"
 	AutoModeRoundRobin = "round_robin"
+	AutoModeFailover   = "failover"
 )
 
 // DirectionAuto — параметры парной urltest-группы направления.
@@ -406,7 +414,7 @@ const (
 // а не «ноль»: подстановка @urltest_* — задача движка шаблонов, и дублировать
 // её значениями по умолчанию здесь значило бы завести вторую реализацию.
 type DirectionAuto struct {
-	Mode        string `json:"mode,omitempty"` // "" | least_test | round_robin
+	Mode        string `json:"mode,omitempty"` // "" | least_test | round_robin | failover
 	URL         string `json:"url,omitempty"`
 	Interval    string `json:"interval,omitempty"`
 	IdleTimeout string `json:"idle_timeout,omitempty"`
