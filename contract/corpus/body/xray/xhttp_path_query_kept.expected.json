@@ -1,4 +1,7 @@
 {
+  "meta": {
+    "body_kind": "xray-array"
+  },
   "nodes": [
     {
       "entry": {
@@ -6,21 +9,19 @@
         "server_port": 443,
         "tls": {
           "enabled": true,
-          "server_name": "example-1.com",
-          "utls": {
-            "enabled": true,
-            "fingerprint": "random"
-          }
+          "server_name": "example-1.com"
         },
         "transport": {
-          "path": "/GaMeOpTiMiZeR",
+          "host": "example-1.com",
+          "mode": "stream-one",
+          "path": "/?proxyip=192.0.2.10",
           "type": "xhttp"
         },
         "type": "vless",
         "uuid": "11111111-1111-1111-1111-111111111111"
       },
       "kind": "outbound",
-      "label": "xhttp-ed-tail",
+      "label": "xhttp-proxyip",
       "scheme": "vless"
     }
   ],

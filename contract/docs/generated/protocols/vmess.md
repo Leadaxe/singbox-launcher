@@ -527,7 +527,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-transport-xhttp-host"></a>**`transport.xhttp.host`** — Host header value.
   - Type: string
   - Default: `""`
-- <a id="body-transport-xhttp-path"></a>**`transport.xhttp.path`** — Base request path.
+- <a id="body-transport-xhttp-path"></a>**`transport.xhttp.path`** — Base request path. Anything after the first `?` is sent as the request query, as Xray does.
   - Type: string
 - <a id="body-transport-xhttp-mode"></a>**`transport.xhttp.mode`** — XHTTP transfer mode.
   - Type: enum, `""`, `auto`, `packet-up`, `stream-up`, `stream-one`

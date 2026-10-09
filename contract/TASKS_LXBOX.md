@@ -9163,3 +9163,18 @@ outbound (запись без `tag` остаётся с `remarks`). Две од�
 Норма §6.3 PARSING_PRINCIPLES (контракт 1.1.110): info-код авторского тела, по пути которого значение одинаково в сыром и чистом теле, идёт без `applied: false`. У нас она нарушалась на числах: сравнение «до/после» (`samePathValue`) шло `reflect.DeepEqual`, и `1420` из разбора JSON (float64) не совпадало с `1420` после приведения поля (int). Отсюда ошибочное ожидание кейса `authored/soft_awg_mtu_high_kept` — `awg_mtu_high` с `applied: false`, хотя `mtu` 1420 в теле не меняется. Исправлено: значения сравниваются по смыслу JSON, числа — по величине при любом типе; §6.3 дополнен этой оговоркой. Ожидание кейса — `awg_mtu_high` без `applied: false`. Других кейсов корпуса исправление не задело.
 
 Что сделать LxBox: синк корпуса; снять исключение `awg_mtu_high` в Dart-санитайзере авторского тела — кейс теперь проходит по общей норме §6.3 (info-код + одинаковое значение по пути); сравнение чисел — по величине.
+
+## 112. Контракт 1.1.115 — путь XHTTP дословно, с хвостом `?…`
+
+Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (релей Cloudflare Worker, edgetunnel берёт `proxyip` из query запроса). Норма Xray (`transport/internet/splithttp/config.go`, `GetNormalizedPath`/`GetNormalizedQuery`): всё после первого `?` в `path` — query запроса, клиент шлёт его как есть. Ядро sing-box-lx делает так же с SPEC 119 (до неё оно клеило хвост в путь: `/%3Fproxyip=…/` → 404). Наш разбор срезал хвост по образцу ws `?ed=N`, и до ядра доезжал `/`.
+
+1. `registry/transports.json`: записи `path` блоков `uri/xhttp` и `xray/xhttp` — `extract` `^(?P<path>[^?]*)` заменён на `maps_to: transport.path`. Путь берётся дословно на всех входах: ссылка, Xray-JSON (`xhttpSettings`/`splithttpSettings`), тело sing-box (там правила среза и не было). `decode_extra` у ссылки прежний (mode path, 2 прохода).
+2. ws и httpupgrade не менялись: у ws `?ed=N` раскладывается в `max_early_data`, у httpupgrade срезается.
+3. Обратный ход: `?`, `=` и `&` хвоста кодируются внутри значения `path=` (`%3F`, `%3D`, `%26`), хвост не смешивается с query самой ссылки.
+4. Тексты `desc_*`/`impl` поля `path` у xhttp (параметр ссылки, поле тела) переписаны.
+
+Корпус: ожидания `uri/vless/xhttp_path_query_tail_trimmed` и `uri/vless/xhttp_path_ed_tail_stripped` изменены (`path` — `/GaMeOpTiMiZeR?ed=2048`), кейсы переименованы в `xhttp_path_query_tail_kept` и `xhttp_path_ed_tail_kept`; новые `uri/vless/xhttp_path_proxyip_query_kept`, `body/xray/xhttp_path_query_kept`.
+
+Следствия: подпись дедупа (эмиссия без тега) теперь различает узлы, отличающиеся только хвостом пути, — узлы edgetunnel с разными `proxyip` больше не схлопываются в один. Идентичность (тег) не затронута. Уже сохранённые тела узлов несут срезанный путь до следующего обновления подписки; узел, добавленный ссылкой вручную, исправляется повторным добавлением.
+
+Что сделать LxBox: синк контракта и корпуса; убрать срез хвоста пути xhttp в разборе ссылки и Xray-JSON (у вас — `app/test/parser/xhttp_test.dart`, кейс «хвост обрезается»); в эмите ссылки кодировать `?` внутри `path=`. Ядро с SPEC 119 нужно, чтобы хвост дошёл до сервера query.

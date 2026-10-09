@@ -171,7 +171,7 @@ Read when the link says `type=httpupgrade`; the reference page is [`_transports.
 
 Read when the link says `type=xhttp`; the reference page is [`_transports.md`](_transports.md).
 
-- <a id="link-tr-xhttp-path"></a>**`path`** — XHTTP request path.
+- <a id="link-tr-xhttp-path"></a>**`path`** — XHTTP request path. Anything after the first `?` is sent as the request query, as Xray does.
   - Type: string · Default: `""`
   - Maps to: [`transport.xhttp.path`](#body-transport-xhttp-path)
 - <a id="link-tr-xhttp-host"></a>**`host`** — Host of the XHTTP request.
@@ -552,7 +552,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: string
   - Default: `""`
   - Set by link parameter: [`host`](#link-tr-xhttp-host)
-- <a id="body-transport-xhttp-path"></a>**`transport.xhttp.path`** — Base request path.
+- <a id="body-transport-xhttp-path"></a>**`transport.xhttp.path`** — Base request path. Anything after the first `?` is sent as the request query, as Xray does.
   - Type: string
   - Set by link parameter: [`path`](#link-tr-xhttp-path)
 - <a id="body-transport-xhttp-mode"></a>**`transport.xhttp.mode`** — XHTTP transfer mode.
