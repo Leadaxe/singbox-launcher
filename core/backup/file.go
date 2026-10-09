@@ -169,6 +169,7 @@ func Parse(data []byte) (*File, []Warning, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("backup parse: %w", err)
 		}
+		b.rulesPresent = rootKeyPresent(data, "rules")
 		return &File{Format: FileFormatLegacy, Legacy: b},
 			append(typeWarns, scanUnknown(data)...), nil
 	case FormatVersion10:
@@ -177,12 +178,25 @@ func Parse(data []byte) (*File, []Warning, error) {
 			return nil, nil, fmt.Errorf("backup parse: %w", err)
 		}
 		b.ruleGroups = ruleOnlyGroups10(data)
+		b.rulesPresent = rootKeyPresent(data, "rules")
 		return &File{Format: FileFormat10, V10: b},
 			append(append(typeWarns, scanUnknown10(data)...), scanSections10(data)...), nil
 	default:
 		return nil, nil, fmt.Errorf("backup format v%d is newer than supported v%d — update the app",
 			head.LxBackup, FormatVersion10)
 	}
+}
+
+// rootKeyPresent — есть ли ключ key в корне документа. Нужен там, где
+// отсутствие ключа и пустое значение значат разное (`rules`, §9 п. 7):
+// структура после разбора этого не помнит, сырой документ — помнит.
+func rootKeyPresent(data []byte, key string) bool {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(data, &root); err != nil {
+		return false
+	}
+	_, ok := root[key]
+	return ok
 }
 
 // maxTypeMismatchPasses — потолок проходов терпимого разбора.

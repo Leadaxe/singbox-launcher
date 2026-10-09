@@ -57,6 +57,13 @@ type Backup struct {
 	Vars          map[string]string `json:"vars,omitempty"`
 	Route         *Route            `json:"route,omitempty"`
 	Warp          []json.RawMessage `json:"warp,omitempty"`
+
+	// rulesPresent — ключ `rules` в файле есть (пусть и пустым массивом).
+	// Заполняет Parse по сырому документу: у разобранной структуры nil и
+	// «ключа нет» неразличимы, а импорт различает (BACKUP.md §9 п. 7, контракт
+	// 1.1.116): без ключа правила приёмника не трогаются, с ключом —
+	// замещаются целиком. Не сериализуется.
+	rulesPresent bool
 }
 
 // ExportedBy — кто и чем создал файл. Нужен для диагностики и для

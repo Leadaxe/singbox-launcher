@@ -17,7 +17,22 @@ type StateChangedPayload struct {
 	// Changed — список «доменов» состояния, которые поменялись
 	// ("proxies", "tun", "dns", "rules", "vars", ...).
 	Changed []string
+	// Source — кто записал состояние. "" — собственное сохранение
+	// приложения (Конфигуратор, маркеры StateService);
+	// StateSourceDebugAPI — запись через debug API (SPEC 160 §E).
+	Source string
+	// Target — чьё состояние записано: constants.ConfigTargetLocal или
+	// constants.ConfigTargetRemote. "" у публикаций без Source.
+	Target string
+	// MachineID — id удалённой машины при Target == ConfigTargetRemote,
+	// иначе "".
+	MachineID string
 }
+
+// StateSourceDebugAPI — значение StateChangedPayload.Source для записей
+// состояния через debug API. Окно Конфигуратора по нему узнаёт внешнюю
+// правку и предлагает перечитать состояние.
+const StateSourceDebugAPI = "debugapi"
 
 // ConfigBuiltPayload сопровождает Kind ConfigBuilt.
 type ConfigBuiltPayload struct {

@@ -188,7 +188,7 @@ const SingboxCoreRepo = "Leadaxe/sing-box-lx" // core for all platforms (XHTTP +
 // `sing-box version`, so the strict-equality reinstall check still holds.
 // Manually bumped per release; source-of-truth here. See
 // docs/RELEASE_PROCESS.md §5.1.
-const RequiredCoreVersion = "1.14.2-lx.12"
+const RequiredCoreVersion = "1.14.3-lx.14"
 
 // AppVersion — git describe output. Set by build scripts via -ldflags.
 //
@@ -202,7 +202,7 @@ const RequiredCoreVersion = "1.14.2-lx.12"
 // HEAD. See docs/RELEASE_PROCESS.md §5.2.
 var (
 	AppVersion          = "v-local-test"
-	RequiredTemplateRef = "73dc753cf6425da5fe929f45d4b95a1bae7410db"
+	RequiredTemplateRef = "6df346de27c15bab2af23dc7b653c91e691b1d93"
 )
 
 // GetMyBranch возвращает ветку репозитория для загрузки ассетов, у которых нет

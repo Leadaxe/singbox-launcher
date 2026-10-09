@@ -296,6 +296,10 @@ func warnText(w backup.Warning) string {
 		return fmt.Sprintf(locale.T("%s — target does not exist here, the rule is imported turned off"), w.Detail)
 	case backup.WarnBackupFinalDropped:
 		return fmt.Sprintf(locale.T("%s — default route target does not exist here, left unchanged"), w.Detail)
+	case backup.WarnBackupRulesReplaced:
+		// Detail — число снятых правил приёмника (§9 п. 7): замена, а не
+		// дописывание, и пользователь обязан это увидеть.
+		return fmt.Sprintf(locale.T("%s routing rule(s) of this machine were replaced by the rules from the file"), w.Detail)
 	case backup.WarnBackupUnknownPreset:
 		return fmt.Sprintf(locale.T("%s — unknown preset, the rule is imported turned off"), w.Detail)
 	case backup.WarnBackupVarSkipped:

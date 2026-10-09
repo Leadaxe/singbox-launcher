@@ -6,6 +6,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core/debugapi"
+	"singbox-launcher/core/events"
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
@@ -156,6 +157,24 @@ func (f *debugAPIFacade) ApplyLogLevelAndReload(level string) error {
 // ReadCurrentLogLevel — proxy to core.ReadCurrentLogLevelFromState.
 func (f *debugAPIFacade) ReadCurrentLogLevel() (string, bool, error) {
 	return ReadCurrentLogLevelFromState(f.ac)
+}
+
+// NotifyStateChanged — SPEC 160 §E: a state write through the debug API
+// succeeded; tell subscribers (an open Configurator window of that target)
+// so they can offer to reload instead of silently overwriting on next Save.
+func (f *debugAPIFacade) NotifyStateChanged(target, machineID string) {
+	if f.ac.EventBus == nil {
+		return
+	}
+	f.ac.EventBus.Publish(events.Event{
+		Kind: events.StateChanged,
+		Payload: events.StateChangedPayload{
+			Changed:   []string{"external"},
+			Source:    events.StateSourceDebugAPI,
+			Target:    target,
+			MachineID: machineID,
+		},
+	})
 }
 
 func (f *debugAPIFacade) UpdateSubscriptions() error {

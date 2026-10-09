@@ -97,22 +97,66 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/state/full" > backup.json
 
 | Метод | Путь | Тело | Что делает |
 |---|---|---|---|
+| GET | `/state/servers` | — | `{"servers":[{tag, kind, type?, enabled, folder_id?, folder?}]}` — корневые `kind=server` и члены папок. По нему находят `tag` для `DELETE`. |
+| POST | `/state/servers` | `{"input":"…", "folder"?:"…", "tag"?:"…"}` | Добавляет узлы так же, как поле добавления источника в Конфигураторе. `input` — ссылки по одной в строке; текст `.conf` WireGuard/AWG; `vpn://`; JSON sing-box (один outbound, массив или документ с `outbounds`). Ответ: `added:[{tag, folder_id?, type, warnings:[code]}]`, `skipped:[{line, tag?, reason}]`. `line` — номер строки ввода с 1 (`0` — запись из JSON); `reason` — `subscription_url` (подписки здесь **не** добавляются), `duplicate` (такая ссылка уже лежит корневым сервером), `unrecognized: …`, `unsupported outbound type: X` либо текст ошибки разбора. `tag` принимается, только если из ввода получился ровно один узел (иначе `422`). Тег уникализируется против корневого пространства имён (`X`, `X-2`, …), в папке — против состава папки. `folder` ищется по ULID, затем по имени (`kind=folder`; подписка → `422`). Ничего не добавлено → `200` с `added:[]`, состояние не сохраняется. |
+| DELETE | `/state/servers?tag=&folder=` | — | Удаляет корневой `kind=server` (без `folder`) или члена папки. Ответ: `deleted:{tag, folder_id?, links_removed:[], directions_updated:[], dangling:[]}`. Ссылки снимаются: `detour`, хопы цепочек, члены и `default` групп и (у корневого узла) списки `include` Направлений. Ссылки **по имени** (`outbound` правил, `route_final`, `detour` DNS, `vars`, `options.default` Направления) не переписываются, а перечисляются в `dangling` (только у корневых узлов — у члена папки корневого имени нет) — как в Конфигураторе: сообщает, не чистит. У узла Tailscale удаляется и каталог состояния. |
 | PATCH | `/state/rules` | `{"mode":"replace"\|"append", "rules":[]state.Rule}` | Заменяет / добавляет правила. Каждое валидируется через `r.DecodeBody()` (kind discriminator: preset/inline/srs). |
-| PATCH | `/state/dns` | `state.DNSOptions` | Заменяет **всю** секцию `dns` (servers + rules; state v8 — до v8 ключ назывался `dns_options`). Каждый server/rule валидируется по `kind`. **Тело обязано содержать `servers` и/или `rules`** — keyless `{}` → `422` (защита от молчаливого стирания всей секции), состояние не трогается. |
+| POST | `/state/rules` | одна запись правила state v8: `kind`, `id?`, `ref?`, `name?`, `enabled?` (по умолчанию `true`), `num?`, `refs?`, `vars?`, `body?` | Добавляет одно правило. `inline`/`srs`: `body` — сырое правило sing-box, обязано нести `outbound` или `action`; неизвестный `outbound` → `422`, `field: body.outbound`. `preset`: `ref` — пресет шаблона, которого ещё нет среди правил. `num` не задан → следующий номер пользовательской зоны (inline/srs) или якорь пресета из шаблона (preset); список остаётся отсортированным. Ответ: `num`. Добавление пресета синхронизирует секции DNS и outbound, как Save в Конфигураторе. |
+| DELETE | `/state/rules?num=\|name=\|ref=` | — | Удаляет ровно одно правило (один селектор). Ответ: `deleted:` запись правила. Совпало несколько → `409` с `nums:[…]` — повторить по `num`. Пресет-голова (несортируемый) → `422`. Удаление пресета синхронизирует DNS/outbound, как добавление. |
+| PATCH | `/state/dns` | `state.DNSOptions` | Заменяет **всю** секцию `dns` (servers + rules; state v8 — до v8 ключ назывался `dns_options`). Каждый server/rule валидируется по `kind`. **Тело обязано содержать оба ключа — `servers` и `rules`** (пустой список — явный сброс); нет ключа → `422` с подсказкой про точки для одной записи, состояние не трогается. |
+| POST | `/state/dns/servers` | `{"kind"?:"user", "tag"?, "enabled"?, "body":{…}}` | Добавляет пользовательский DNS-сервер (только `kind=user`; template/preset → `422`). `tag` можно взять из `body.tag`; заданы оба и различаются → `422`, `field: body.tag`. Занятый тег (среди `dns.servers` или DNS-серверов шаблона) → `422`. `body.detour`, если есть, должен быть известной целью. Ответ: `tag`. |
+| DELETE | `/state/dns/servers?tag=` | — | Удаляет пользовательский DNS-сервер (template/preset → `422`). Ответ: `deleted:{tag, final_moved_to?, final_cleared?, resolver_cleared?, dangling:[]}`. Был `dns_final` — final переезжает на первый включённый сервер (нет такого — снимается); был резолвером доменов по умолчанию — сбрасывается; DNS-правила, называющие его, перечисляются в `dangling`. |
 | PATCH | `/state/dns/rules` | `{"text":"..."}` | Заменяет **только USER** rules; preset-rules сохраняются. `""` (пустой текст) = wipe user rules. |
+| POST | `/state/dns/rules` | `{"rule":{…}}` | Дописывает одно пользовательское DNS-правило — один объект правила DNS sing-box (не массив) с `server` или `action`. Ответ: `index`. |
+| DELETE | `/state/dns/rules?index=` | — | Удаляет пользовательское DNS-правило по `index` в `dns.rules` — позиции, что показывает `GET /state/dns`. Ответ: `deleted:` запись. Запись пресета → `422` (пресеты следуют за своим правилом маршрута); индекс вне диапазона → `404`. |
 | PATCH | `/state/log-level` | `{"level":"trace"\|"debug"\|"info"\|"warn"\|"error"\|"fatal"\|"panic"}` | Пишет `vars[log_level]` → forced rebuild `config.json` → **restart sing-box** (активные соединения рвутся). Отвечает `202` + `{"ok":true,"level":"...","warning":"active connections reset"}`, а не общим `{"ok":true,"diff_summary":[...]}`. Поле `level` обязательно; невалидный уровень → `400` со списком `allowed` (ядро не трогается). |
 
-```bash
-# Replace all rules с одним preset-ref'ом
-curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  "$API/state/rules" \
-  -d '{"mode":"replace","rules":[{"kind":"preset","ref":"ru-direct","enabled":true,"body":{"vars":{}}}]}'
+Каждый `POST`/`DELETE` выше (SPEC 160) отвечает `{"ok":true,"diff_summary":["…"], …}` плюс собственное поле операции и работает как кнопки Конфигуратора: после сохранения локальный `config.json` пересобирается — `config_rebuilt:true`, либо `config_rebuilt:false` с `config_rebuild_error`, если пересборка не удалась (правка уже на диске, вызов не повторять). Зеркала `/remote/machines/{id}/state/*` не пересобирают никогда: `config_rebuilt` всегда `false`.
 
-# Добавить одно inline-правило не трогая остальные
+```bash
+# Добавить один узел ссылкой — остальные настройки (правила, DNS) не трогаются
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/servers" \
+  -d '{"input":"vless://UUID@host.example:443?security=reality&sni=example.com&pbk=KEY&sid=ab#My%20node"}'
+# → {"ok":true,"added":[{"tag":"My node","type":"vless","warnings":[]}],"skipped":[],"config_rebuilt":true,…}
+
+# В папку, с явным тегом
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/servers" -d '{"input":"vless://…","folder":"Work","tag":"work-1"}'
+
+# Список серверов и удаление
+curl -s -H "Authorization: Bearer $TOKEN" "$API/state/servers" | jq
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/servers?tag=My%20node" | jq .deleted
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/servers?tag=work-1&folder=Work"
+
+# Inline-правило маршрута (запись state v8: name/vars/refs — поля записи,
+# body — сырое правило sing-box), затем удаление по имени
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/rules" \
+  -d '{"kind":"inline","name":"Work","body":{"domain_suffix":["corp.example"],"outbound":"Work"}}'
+# → {"ok":true,"num":101,…}
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/rules?name=Work"
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/rules?num=101"
+
+# Добавить правило-пресет из шаблона
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/rules" -d '{"kind":"preset","ref":"ru-direct"}'
+
+# Заменить все правила одним preset-ref'ом
 curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   "$API/state/rules" \
-  -d '{"mode":"append","rules":[{"kind":"inline","enabled":true,
-        "body":{"name":"Block Reddit","match":{"domain_suffix":["reddit.com"]},"outbound":"reject"}}]}'
+  -d '{"mode":"replace","rules":[{"kind":"preset","ref":"ru-direct","enabled":true}]}'
+
+# Добавить / удалить DNS-сервер
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/dns/servers" \
+  -d '{"tag":"cf-doh","body":{"type":"https","server":"1.1.1.1"}}'
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/dns/servers?tag=cf-doh" | jq .deleted
+
+# Добавить / удалить DNS-правило (index — позиция в dns.rules из GET /state/dns)
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/dns/rules" -d '{"rule":{"domain_suffix":["corp.example"],"server":"cf-doh"}}'
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/dns/rules?index=3"
 
 # Patch DNS rules text (как в UI Raw-режиме)
 curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
@@ -126,7 +170,9 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application
 
 > `POST /traffic/verbose` — булев частный случай этой же ручки: умеет только `debug` (`true`) и `warn` (`false`). Для остальных уровней используйте `PATCH /state/log-level`.
 
-**Ошибки:** `400` (битый JSON / неизвестный mode), `422` (semantic validation: unknown rule kind, unknown DNS server kind, body decode fail), `500` (load/save), `405` (метод).
+**Ошибки:** `400` (битый JSON / неизвестный mode; у `DELETE` — нет или битый параметр query), `404` (цели `DELETE` или папки нет), `409` (файл состояния записан схемой более нового мажора — `schema_found`, `schema_supported`; либо селектор `DELETE /state/rules` совпал с несколькими правилами — `nums`), `422` (semantic validation: `{error, field}` — unknown rule kind, unknown DNS server kind, body decode fail, неизвестный `body.outbound`, занятый тег DNS, `PATCH /state/dns` без обоих ключей), `500` (load/save), `405` (метод).
+
+**Журнал мутаций.** Каждый `POST`/`PATCH`/`PUT`/`DELETE` оставляет одну строку в логе лаунчера (`singbox-launcher.log` в каталоге логов — `~/Library/Logs/singbox-launcher/` на macOS; `GET /debug/paths` показывает `log_dir`): `debugapi: <МЕТОД> <путь?query> → <статус> <первые 400 символов ответа>`. Тело запроса не пишется никогда (ссылки несут секреты); `GET` не журналируется.
 
 ---
 
@@ -172,11 +218,11 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application
 
 Потери экспорта не молчаливы: без конверта коды едут заголовком `X-Backup-Warnings` JSON-массивом, с `?envelope=1` — полем `warnings`. У простого ответа есть и `Content-Disposition` с тем же предлагаемым именем файла, что показывает UI.
 
-`POST /backup/import` **сливает**, а не замещает (BACKUP.md §9): подписки сходятся по URL, серверы — по телу, папки — по имени, цепочки и Направления — по тегу. Правила маршрута единственное исключение — их файл замещает целиком. В ответе — что именно применилось:
+`POST /backup/import` **сливает**, а не замещает (BACKUP.md §9): подписки сходятся по URL, серверы — по телу, папки — по имени, цепочки и Направления — по тегу. Правила маршрута единственное исключение — **когда в файле есть ключ `rules`** (пусть и `[]`), правила файла замещают правила этой машины целиком, а снятые считаются в предупреждении `backup_rules_replaced`. Файл **без** ключа `rules` правила не трогает (контракт 1.1.116). Поэтому частичный файл — один узел, одна папка — импортируется безопасно; до 1.1.116 он стирал все правила маршрутизации и отвечал `applied.rules: 0` без предупреждения. Чтобы добавить один узел, файл бэкапа не нужен вовсе: см. `POST /state/servers` в разделе **Запись состояния**. В ответе — что именно применилось:
 
 ```json
 {"ok":true,"format":"1.0","warnings":[{"code":"backup_unknown_outbound","detail":"Work → vpn-de"}],
- "applied":{"rules":7,"sources":4,"directions":1,"added_subscriptions":1,"updated_subscriptions":0,
+ "applied":{"rules":7,"rules_replaced":true,"replaced_rules":5,"sources":4,"directions":1,"added_subscriptions":1,"updated_subscriptions":0,
             "added_servers":2,"skipped_servers":0,"added_folders":1,"updated_folders":0,
             "added_chains":1},
  "config_rebuilt":true}
@@ -328,8 +374,12 @@ API нет. Манифест `GET /` несёт `capabilities` (`remote`/`daemon
 **Состояние (зеркала `/state/*`):** `GET /remote/machines/{id}/state/full`,
 `GET/PATCH …/state/rules`, `…/state/dns`, `…/state/dns/rules`,
 `GET …/state/outbounds/resolved` — те же контракты, что у локальных ручек.
-**Ограничение:** PATCH меняет state машины, но её `config.json` собирает только
-визард (Configure → Save) — программной пересборки пока нет.
+Правки по одной записи зеркалятся тоже: `GET/POST/DELETE …/state/servers`,
+`POST/DELETE …/state/dns/servers`, `POST`/`DELETE` на `…/state/rules` и
+`…/state/dns/rules`.
+**Ограничение:** PATCH, POST и DELETE меняют state машины, но её `config.json`
+собирает только визард (Configure → Save) — программной пересборки пока нет,
+поэтому каждая удалённая мутация отвечает `config_rebuilt:false`.
 
 **Перенос настроек (зеркала `/backup/*`):** `GET /remote/machines/{id}/backup/export`,
 `POST /remote/machines/{id}/backup/import` — те же контракты, что у локальных
@@ -483,8 +533,10 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 
 - **Auth header:** `Authorization: Bearer <token>` обязателен везде кроме `GET /ping`.
 - **Content-Type:** `application/json` для всех PATCH/POST с body.
-- **Errors:** `401` — нет/неверный bearer; `404` — ресурс не найден; `405` — метод не разрешён; `409` — конфликт состояния (traffic session); `422` — semantic validation fail; `500` — внутренняя ошибка.
+- **Errors:** `401` — нет/неверный bearer; `404` — ресурс не найден; `405` — метод не разрешён; `409` — конфликт состояния (traffic session, схема state новее, неоднозначный селектор `DELETE`); `422` — semantic validation fail; `500` — внутренняя ошибка.
+- **Журнал мутаций:** каждый `POST`/`PATCH`/`PUT`/`DELETE` пишет одну строку в `singbox-launcher.log` — метод, путь с query, статус, первые 400 символов ответа. Тела запросов и `GET` не журналируются.
 - **Concurrency:** state-write через atomic `.tmp + Rename`, а цикл load-modify-save сериализован мьютексом (`stateMu` / `settingsMu`; для remote-состояния — на машину). Одновременные PATCH одного ресурса встают в очередь, а не перетирают друг друга.
+- **Открытое окно Конфигуратора:** если окно Конфигуратора открыто, каждая запись состояния через API (локального или той машины, которую окно правит) показывает в нём запрос — перечитать сохранённые настройки или оставить свою копию; раньше открытое окно молча перезаписывало правки API при следующем Save.
 - **Versioning:** header `api` в `/version` сейчас фиксирован `debugapi/v1`. Breaking changes планируются как `v2`-namespace (`/v2/...`), пока без авто-discovery.
 
 ---
@@ -516,6 +568,9 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 |---|---|
 | `core/debugapi/server.go` | Routing, auth middleware, `/ping`, `/version`, `/state`, `/proxies`, `/action/*` |
 | `core/debugapi/state_endpoints.go` | `/state/full`, `/state/rules`, `/state/dns`, `/state/dns/rules`, `/state/outbounds/resolved` |
+| `core/debugapi/state_crud_endpoints.go` | SPEC 160: `GET/POST/DELETE /state/servers`, `POST/DELETE` на `/state/rules`, `/state/dns/servers`, `/state/dns/rules` (общий хвост: гейт схемы → мьютекс → load → правка → save → пересборка) |
+| `core/debugapi/mutation_log.go` | Журнал мутаций: строка в логе лаунчера на каждый `POST`/`PATCH`/`PUT`/`DELETE` |
+| `core/stateedit/` | Операции правки состояния за точками: `servers.go` (добавление из ввода, удаление со снятием ссылок), `rules.go`, `dns.go` |
 | `core/debugapi/backup_endpoints.go` | `/backup/export`, `/backup/import`, `/backup/formats` и их зеркала `/remote/machines/{id}/backup/*` |
 | `core/debugapi/log_level_endpoint.go` | `/state/log-level` (валидация уровня + core restart через `core.ApplyLogLevelAndReloadCore`) |
 | `core/debugapi/traffic_endpoints.go` | Все `/traffic/*` |

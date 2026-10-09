@@ -108,12 +108,13 @@ func TestXHTTPv2_ExtraWinsOverFlat(t *testing.T) {
 	}
 }
 
-func TestXHTTPv2_PathQueryTailTrimmed(t *testing.T) {
-	// SPEC 002 §4.1: path=/GaMeOpTiMiZeR?ed=2048 → the ?-tail is not the path.
+func TestXHTTPv2_PathQueryTailKept(t *testing.T) {
+	// Contract 1.1.115 (sing-box-lx SPEC 119, issue #36): per Xray the ?-tail
+	// of an XHTTP path is the request query and is kept verbatim.
 	uri := "vless://c59eb5ed-6324-4d53-ad4f-8cda48b30811@h.test:443?type=xhttp&path=" + urlEnc("/GaMeOpTiMiZeR?ed=2048") + "&security=tls&sni=h.test#t"
 	m := tr(t, uri)
-	if got, _ := m["path"].(string); got != "/GaMeOpTiMiZeR" {
-		t.Errorf("path ?-tail not trimmed: got %q, want /GaMeOpTiMiZeR", got)
+	if got, _ := m["path"].(string); got != "/GaMeOpTiMiZeR?ed=2048" {
+		t.Errorf("path ?-tail not kept: got %q, want /GaMeOpTiMiZeR?ed=2048", got)
 	}
 }
 

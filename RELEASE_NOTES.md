@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v2.3.8
+
+Патч после v2.3.7, ядро `sing-box-lx 1.14.3-lx.14` (было 1.14.2-lx.12), контракт 1.1.116. **Исправлено:** путь XHTTP сохраняет хвост `?query` (`/?proxyip=…` у релеев Cloudflare Worker вроде edgetunnel) — ядро шлёт его query запроса, как Xray; узлы, различающиеся только этим хвостом, больше не схлопываются; импорт бэкапа без секции `rules` больше не стирает правила маршрутизации. **Новое:** debug API правит состояние по одной записи, как Конфигуратор (узлы, правила, DNS-серверы и DNS-правила, с зеркалами для удалённых машин), пишет журнал мутаций в лог, а открытое окно Конфигуратора узнаёт о такой правке. **Ядро:** `lx.mtu_align` для узлов поверх IP-туннеля (hysteria2 через WARP на IPv6), `vhttp: auto` не залипает на h2, QUIC-приманка AmneziaWG на каждый хендшейк. Подробнее: [docs/release_notes/2-3-8.md](docs/release_notes/2-3-8.md).
+
+### Highlights (EN) — v2.3.8
+
+A patch after v2.3.7, core `sing-box-lx 1.14.3-lx.14` (was 1.14.2-lx.12), contract 1.1.116. **Fixed:** the XHTTP path keeps its `?query` tail (`/?proxyip=…` of Cloudflare Worker relays such as edgetunnel) — the core sends it as the request query, like Xray; nodes that differ only in that tail are no longer merged; importing a backup without a `rules` section no longer wipes the routing rules. **New:** the debug API edits the state one entry at a time like the Configurator (nodes, rules, DNS servers and DNS rules, mirrored for remote machines), logs every mutating call, and an open Configurator window learns about such an edit. **Core:** `lx.mtu_align` for nodes over an IP tunnel (hysteria2 over WARP to IPv6), `vhttp: auto` no longer sticks to h2, the AmneziaWG QUIC decoy is regenerated per handshake. Details: [docs/release_notes/2-3-8.md](docs/release_notes/2-3-8.md).
+
 ### Выжимка (RU) — v2.3.7
 
 Патч после v2.3.6, ядро `sing-box-lx 1.14.2-lx.12` и контракт 1.1.114 без изменений. **Исправлено:** SRS-правило с 8+ ссылками больше не падает с ошибкой загрузки на медленном канале (лимит времени теперь растёт с числом файлов, окно ошибки называет ту ссылку, что не скачалась); список Rules в Мастере не прыгает в начало после перетаскивания, правки или удаления правила. Подробнее: [docs/release_notes/2-3-7.md](docs/release_notes/2-3-7.md).
@@ -768,6 +776,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.3.8** | [docs/release_notes/2-3-8.md](docs/release_notes/2-3-8.md) |
 | **v2.3.7** | [docs/release_notes/2-3-7.md](docs/release_notes/2-3-7.md) |
 | **v2.3.6** | [docs/release_notes/2-3-6.md](docs/release_notes/2-3-6.md) |
 | **v2.3.5** | [docs/release_notes/2-3-5.md](docs/release_notes/2-3-5.md) |

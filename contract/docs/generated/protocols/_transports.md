@@ -57,7 +57,7 @@ These are repeated on the page of every scheme that carries a transport block, t
 
 ### `xhttp`
 
-- **`path`** — XHTTP request path.
+- **`path`** — XHTTP request path. Anything after the first `?` is sent as the request query, as Xray does.
   - Type: string · Default: `""`
   - Maps to: `transport.path`
 - **`host`** — Host of the XHTTP request.
@@ -226,7 +226,7 @@ Discriminator: `type` — `http`, `ws`, `quic`, `grpc`, `httpupgrade`, `xhttp`
 - <a id="body-xhttp-host"></a>**`xhttp.host`** — Host header value.
   - Type: string
   - Default: `""`
-- <a id="body-xhttp-path"></a>**`xhttp.path`** — Base request path.
+- <a id="body-xhttp-path"></a>**`xhttp.path`** — Base request path. Anything after the first `?` is sent as the request query, as Xray does.
   - Type: string
 - <a id="body-xhttp-mode"></a>**`xhttp.mode`** — XHTTP transfer mode.
   - Type: enum, `""`, `auto`, `packet-up`, `stream-up`, `stream-one`

@@ -15,6 +15,10 @@
 //	PATCH /state/dns/rules             — body {text} → replace USER rules
 //	GET   /state/outbounds/resolved    — SPEC 057+058 merged outbounds view
 //
+// SPEC 160 adds single-entry POST/DELETE on /state/rules and /state/dns/rules
+// plus /state/servers and /state/dns/servers (state_crud_endpoints.go); those
+// DO rebuild config.json of the local state after saving.
+//
 // All mutations follow the SPEC 050 contract: validate → Save → respond.
 // We do NOT touch config.json — callers wanting the rebuilt file should
 // follow up with POST /action/rebuild-config (existing endpoint).
@@ -36,6 +40,7 @@ import (
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/platform"
 )
 
@@ -50,16 +55,32 @@ type stateAccess struct {
 	// схемы (SPEC 118 Т10): Load мигрирует и потому наблюдать версию через
 	// него нельзя — вопрос «какой схемой файл написан» задаётся файлу.
 	path string
+	// local — это состояние ЭТОЙ машины: после правки CRUD-точек (SPEC 160)
+	// пересобирается её config.json, а каталоги состояния узлов (Tailscale)
+	// лежат здесь же. У профиля удалённой машины false: её конфиг собирает
+	// её визард (SPEC 100 §3.3), и локальная пересборка была бы пересборкой
+	// не той машины.
+	local bool
 }
 
 // localStateAccess — доступ к state.json локального визарда через facade
 // (Save взводит dirty-маркеры StateService — SPEC 050 invariant 3).
+// Успешная запись извещает открытое окно Конфигуратора (SPEC 160 §E):
+// здесь — единственное место, через которое пишут все локальные
+// PATCH/POST/DELETE /state/* и POST /backup/import.
 func (s *Server) localStateAccess() stateAccess {
 	return stateAccess{
 		load: s.facade.LoadState,
-		save: s.facade.SaveState,
-		mu:   &s.stateMu,
-		path: platform.GetWizardStatePath(s.facade.GetLayout().Data),
+		save: func(st *state.State) error {
+			if err := s.facade.SaveState(st); err != nil {
+				return err
+			}
+			s.facade.NotifyStateChanged(constants.ConfigTargetLocal, "")
+			return nil
+		},
+		mu:    &s.stateMu,
+		path:  platform.GetWizardStatePath(s.facade.GetLayout().Data),
+		local: true,
 	}
 }
 
@@ -230,8 +251,14 @@ func (s *Server) stateRulesWith(w http.ResponseWriter, r *http.Request, acc stat
 			"diff_summary": []string{fmt.Sprintf("rules: %s, %d → %d entries", req.Mode, before, len(st.Rules))},
 		})
 
+	case http.MethodPost:
+		s.stateRuleAddWith(w, r, acc)
+
+	case http.MethodDelete:
+		s.stateRuleDeleteWith(w, r, acc)
+
 	default:
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET or PATCH required"})
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET, PATCH, POST or DELETE required"})
 	}
 }
 
@@ -264,12 +291,14 @@ func (s *Server) stateDNSWith(w http.ResponseWriter, r *http.Request, acc stateA
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "read body: " + err.Error()})
 			return
 		}
-		// Guard against silent wipe: PATCH replaces the WHOLE dns_options, so a
-		// bare `{}` (or a truncated request) would clear every DNS server/rule
-		// and still return 200. Require the body to actually carry servers
-		// and/or rules; a keyless object → 422, state untouched. Probe the raw
-		// keys rather than trusting nil slices: `{"servers": []}` is a legal
-		// wipe of the servers list, `{}` is a truncated request.
+		// Guard against silent wipe: PATCH replaces the WHOLE dns section, so
+		// a body that names only one of the two lists would clear the other and
+		// still return 200 (the same trap as a backup file without `rules`,
+		// SPEC 160). Require BOTH keys, each spelled out: `{"servers": [...],
+		// "rules": []}` is an explicit wipe of the rules list, `{"servers":
+		// [...]}` is a caller who forgot the rules → 422, state untouched.
+		// Callers adding or removing one entry have POST/DELETE
+		// /state/dns/servers and /state/dns/rules.
 		var probe map[string]json.RawMessage
 		if err := json.Unmarshal(body, &probe); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body: " + err.Error()})
@@ -277,9 +306,9 @@ func (s *Server) stateDNSWith(w http.ResponseWriter, r *http.Request, acc stateA
 		}
 		_, hasServers := probe["servers"]
 		_, hasRules := probe["rules"]
-		if !hasServers && !hasRules {
+		if !hasServers || !hasRules {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
-				"error": `body must include "servers" and/or "rules"; refusing to clear dns`,
+				"error": `body must include both "servers" and "rules" (PATCH replaces the whole dns section; pass an empty list to clear one on purpose, or use POST/DELETE /state/dns/servers and /state/dns/rules for single entries)`,
 				"field": "dns",
 			})
 			return
@@ -388,6 +417,9 @@ func (s *Server) stateDNSRulesWith(w http.ResponseWriter, r *http.Request, acc s
 		writeJSON(w, http.StatusOK, map[string]any{"text": build.DNSRulesToText(userRules)})
 
 	case http.MethodPatch:
+		if !guardStateSchema(w, acc) {
+			return
+		}
 		var req patchDNSRulesReq
 		if err := decodeJSONBody(r, &req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body: " + err.Error()})
@@ -439,6 +471,8 @@ func (s *Server) stateDNSRulesWith(w http.ResponseWriter, r *http.Request, acc s
 			})
 		}
 		st.DNS.Rules = kept
+		// SPEC 129: нормы записи — как у остальных PATCH (SPEC 160 B5).
+		state.ApplyRecordVars(st, s.recordVarDeclsFor(st))
 		if err := acc.save(st); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save state: " + err.Error()})
 			return
@@ -449,8 +483,14 @@ func (s *Server) stateDNSRulesWith(w http.ResponseWriter, r *http.Request, acc s
 				beforeUser, len(parsed))},
 		})
 
+	case http.MethodPost:
+		s.stateDNSRuleAddWith(w, r, acc)
+
+	case http.MethodDelete:
+		s.stateDNSRuleDeleteWith(w, r, acc)
+
 	default:
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET or PATCH required"})
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET, PATCH, POST or DELETE required"})
 	}
 }
 

@@ -31,7 +31,14 @@ func (s *Server) machineStateAccess(id string) stateAccess {
 	path := s.machineStatePath(id)
 	return stateAccess{
 		load: func() (*state.State, error) { return state.Load(path) },
-		save: func(st *state.State) error { return st.Save(path) },
+		// Успешная запись извещает окно Конфигуратора этой машины (SPEC 160 §E).
+		save: func(st *state.State) error {
+			if err := st.Save(path); err != nil {
+				return err
+			}
+			s.facade.NotifyStateChanged(constants.ConfigTargetRemote, id)
+			return nil
+		},
 		mu:   s.machineMutex(id),
 		path: path,
 	}
@@ -64,5 +71,19 @@ func (s *Server) handleRemoteStateDNSRules(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleRemoteStateOutboundsResolved(w http.ResponseWriter, r *http.Request) {
 	if id, ok := s.remoteMachineID(w, r); ok {
 		s.stateOutboundsResolvedWith(w, r, s.machineStateAccess(id))
+	}
+}
+
+// SPEC 160: CRUD-точки по одной записи. POST/DELETE /state/rules и
+// /state/dns/rules обслуживают те же хендлеры, что GET/PATCH выше.
+func (s *Server) handleRemoteStateServers(w http.ResponseWriter, r *http.Request) {
+	if id, ok := s.remoteMachineID(w, r); ok {
+		s.stateServersWith(w, r, s.machineStateAccess(id))
+	}
+}
+
+func (s *Server) handleRemoteStateDNSServers(w http.ResponseWriter, r *http.Request) {
+	if id, ok := s.remoteMachineID(w, r); ok {
+		s.stateDNSServersWith(w, r, s.machineStateAccess(id))
 	}
 }

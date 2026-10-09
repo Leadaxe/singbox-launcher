@@ -78,9 +78,11 @@ func (s *Server) remoteEndpoints() []apiEndpoint {
 
 		// Профиль машины (wizard state) — зеркала /state/*.
 		{"GET", "/remote/machines/{id}/state/full", true, "Machine's full wizard state JSON", s.handleRemoteStateFull},
-		{"GET/PATCH", "/remote/machines/{id}/state/rules", true, "Get / replace|append machine's routing rules", s.handleRemoteStateRules},
+		{"GET/PATCH/POST/DELETE", "/remote/machines/{id}/state/rules", true, "Get / replace|append machine's rules; add one / delete one (?num=|name=|ref=)", s.handleRemoteStateRules},
 		{"GET/PATCH", "/remote/machines/{id}/state/dns", true, "Get / replace machine's dns_options", s.handleRemoteStateDNS},
-		{"GET/PATCH", "/remote/machines/{id}/state/dns/rules", true, "Get / replace machine's USER dns rules (text)", s.handleRemoteStateDNSRules},
+		{"POST/DELETE", "/remote/machines/{id}/state/dns/servers", true, "Add / delete (?tag=) a user DNS server of the machine", s.handleRemoteStateDNSServers},
+		{"GET/PATCH/POST/DELETE", "/remote/machines/{id}/state/dns/rules", true, "Get / replace machine's USER dns rules (text); add one / delete one (?index=)", s.handleRemoteStateDNSRules},
+		{"GET/POST/DELETE", "/remote/machines/{id}/state/servers", true, "List / add / delete (?tag=&folder=) servers of the machine", s.handleRemoteStateServers},
 		{"GET", "/remote/machines/{id}/state/outbounds/resolved", true, "Machine's resolved outbounds", s.handleRemoteStateOutboundsResolved},
 		{"GET", "/remote/machines/{id}/backup/export", true, "Export the machine's settings as an LX Backup file", s.handleRemoteBackupExport},
 		{"POST", "/remote/machines/{id}/backup/import", true, "Import an LX Backup file into the machine's profile", s.handleRemoteBackupImport},

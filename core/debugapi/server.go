@@ -1,9 +1,9 @@
 // Package debugapi exposes a small, localhost-only HTTP surface for tools
 // (scripts, automation, other GUIs) to introspect and nudge the launcher.
 // Modeled on LxBox's spec 031 Debug API but trimmed to the most essential
-// endpoints — we intentionally omit the CRUD surface for rules/subs/settings
-// since the desktop already has a full wizard for those and the extra
-// surface is disproportionate to the use case.
+// endpoints. Single-entry state edits mirror the Configurator's add/delete
+// buttons (servers, rules, DNS servers and rules — SPEC 160); subscriptions,
+// folders, chains and Directions are not managed here.
 //
 // Safety posture:
 //   - Bind strictly to 127.0.0.1. No 0.0.0.0 / no LAN. Users who want
@@ -90,6 +90,12 @@ type ControllerFacade interface {
 	LoadTemplate() (*template.TemplateData, error)
 	ApplyLogLevelAndReload(level string) error
 	ReadCurrentLogLevel() (string, bool, error)
+	// NotifyStateChanged — announce a successful state write made through
+	// the API (SPEC 160 §E): publishes events.StateChanged with
+	// Source = events.StateSourceDebugAPI so an open Configurator window of
+	// the same target (constants.ConfigTargetLocal / ConfigTargetRemote +
+	// machine id) can offer to reload. Called only after the save succeeded.
+	NotifyStateChanged(target, machineID string)
 }
 
 // Server owns the listener, shutdown context, and auth config.
@@ -262,9 +268,11 @@ func (s *Server) endpoints() []apiEndpoint {
 		// Methods reflect every verb the handler accepts (GET read + PATCH write)
 		// so an agent reading /help sees the full picture.
 		{"GET", "/state/full", true, "Full wizard state JSON", s.handleStateFull},
-		{"GET/PATCH", "/state/rules", true, "Get / replace|append routing rules", s.handleStateRules},
-		{"GET/PATCH", "/state/dns", true, "Get / replace whole dns_options", s.handleStateDNS},
-		{"GET/PATCH", "/state/dns/rules", true, "Get / replace USER dns rules (text)", s.handleStateDNSRules},
+		{"GET/PATCH/POST/DELETE", "/state/rules", true, "Get / replace|append rules; add one (POST) / delete one (?num=|name=|ref=)", s.handleStateRules},
+		{"GET/PATCH", "/state/dns", true, "Get / replace whole dns_options (both servers and rules required)", s.handleStateDNS},
+		{"POST/DELETE", "/state/dns/servers", true, "Add a user DNS server / delete one (?tag=)", s.handleStateDNSServers},
+		{"GET/PATCH/POST/DELETE", "/state/dns/rules", true, "Get / replace USER dns rules (text); add one (POST) / delete one (?index=)", s.handleStateDNSRules},
+		{"GET/POST/DELETE", "/state/servers", true, "List servers / add from links, .conf, vpn://, JSON / delete one (?tag=&folder=)", s.handleStateServers},
 		{"GET", "/state/outbounds/resolved", true, "Resolved outbound tags", s.handleStateOutboundsResolved},
 		{"GET/PATCH", "/state/log-level", true, "Get / set sing-box log.level (restarts core)", s.handleStateLogLevel},
 
@@ -330,7 +338,9 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("/help", s.handleHelp)
 	protected.HandleFunc("/", s.handleManifest)
 
-	mux.Handle("/", s.authMiddleware(protected))
+	// SPEC 160 C: every write call leaves one line in the launcher log —
+	// outside auth, so rejected writes are visible too.
+	mux.Handle("/", logMutations(s.authMiddleware(protected)))
 	return mux
 }
 

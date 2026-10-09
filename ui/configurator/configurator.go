@@ -48,6 +48,7 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/events"
 	"singbox-launcher/core/services"
 	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
@@ -363,7 +364,12 @@ func buildWizardWindow(
 				}
 			}
 		}
+		// SPEC 160 §E: правка состояния через debug API при открытом окне —
+		// попап «перечитать / оставить своё» вместо молчаливой перезаписи
+		// следующим Save.
+		stopWatchingState := watchExternalStateChanges(ac, presenter, wizardWindow)
 		wizardWindow.SetOnClosed(func() {
+			stopWatchingState()
 			presenter.CancelDebouncedOutboundRefresh()
 			fynetooltip.DestroyWindowToolTipLayer(wizardWindow.Canvas())
 			ac.UIService.WizardWindow = nil
@@ -872,6 +878,80 @@ func handleReadButton(presenter *wizardpresentation.WizardPresenter, wizardWindo
 		// Нет изменений - сразу загружаем
 		loadStateFromRead(presenter, wizardWindow)
 	}
+}
+
+// watchExternalStateChanges подписывает окно Конфигуратора на
+// events.StateChanged от debug API (SPEC 160 §E). Реагирует только на запись
+// того же адресата, что редактирует окно (local или машина с тем же id), и
+// показывает попап «Reload / Keep mine» — не больше одного на окно.
+//
+// Шина зовёт обработчик синхронно на goroutine HTTP-обработчика, поэтому
+// попап уходит в UI-поток через fyne.Do. Возвращённый Cancel снимает
+// подписку; звать из SetOnClosed окна (UI-поток).
+func watchExternalStateChanges(
+	ac *core.AppController,
+	presenter *wizardpresentation.WizardPresenter,
+	wizardWindow fyne.Window,
+) events.Cancel {
+	if ac == nil || ac.EventBus == nil {
+		return func() {}
+	}
+	// popupOpen и closed трогаются только в UI-потоке (fyne.Do / OnClosed).
+	popupOpen := false
+	closed := false
+
+	cancel := ac.EventBus.Subscribe(events.StateChanged, func(ev events.Event) {
+		p, ok := ev.Payload.(events.StateChangedPayload)
+		if !ok || p.Source != events.StateSourceDebugAPI {
+			return
+		}
+		fyne.Do(func() {
+			if closed || popupOpen {
+				return
+			}
+			// Адресат окна читается здесь, в UI-потоке, а не при подписке:
+			// окно умеет переключать таргет (SwitchConfigTarget), и правка
+			// чужого профиля попапа не заслуживает.
+			if p.Target != presenter.ConfigTarget() || p.MachineID != presenter.ConfigMachineID() {
+				return
+			}
+			popupOpen = true
+			d := dialog.NewConfirm(
+				locale.T("Settings changed outside the Configurator"),
+				locale.T("The settings of this configuration were just changed through the debug API while this window is open.\n\nReload settings — read the saved settings into this window (unsaved edits made here are lost).\nKeep mine — leave this window as it is; the next Save will overwrite the external change."),
+				func(reload bool) {
+					popupOpen = false
+					if !reload || closed {
+						return
+					}
+					reloadStateIntoWindow(presenter, wizardWindow)
+				}, wizardWindow)
+			d.SetConfirmText(locale.T("Reload settings"))
+			d.SetDismissText(locale.T("Keep mine"))
+			d.Show()
+		})
+	})
+	return func() {
+		closed = true
+		cancel()
+	}
+}
+
+// reloadStateIntoWindow перечитывает state.json адресата окна в модель и GUI —
+// та же последовательность, что у «Read → state.json» (loadStateFromRead).
+func reloadStateIntoWindow(presenter *wizardpresentation.WizardPresenter, wizardWindow fyne.Window) {
+	stateStore := presenter.GetStateStore()
+	stateFile, err := stateStore.LoadCurrentState()
+	if err != nil {
+		dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to load state"), err))
+		return
+	}
+	if err := presenter.LoadState(stateFile); err != nil {
+		dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to restore state"), err))
+		return
+	}
+	presenter.MarkAsSaved()
+	presenter.SyncModelToGUI()
 }
 
 // loadStateFromRead загружает состояние через кнопку "Read".

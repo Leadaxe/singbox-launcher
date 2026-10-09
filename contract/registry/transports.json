@@ -133,9 +133,9 @@
           "default": "",
           "aliases": [],
           "maps_to": "transport.path",
-          "desc_en": "XHTTP request path.",
-          "desc_ru": "Путь запроса XHTTP.",
-          "impl": "Хвост '?…' срезается (SPEC 002 §4.1; ed у xhttp не существует, значение отбрасывается). Берётся ТОЛЬКО из плоского параметра — одноимённый ключ в extra игнорируется (D-097)."
+          "desc_en": "XHTTP request path. Anything after the first `?` is sent as the request query, as Xray does.",
+          "desc_ru": "Путь запроса XHTTP. Всё после первого `?` уходит query запроса, как у Xray.",
+          "impl": "Берётся дословно, хвост '?…' сохраняется: по норме Xray это query запроса, ядро sing-box-lx шлёт его так с SPEC 119 (issue Leadaxe/sing-box-lx#36). Прежний срез хвоста (SPEC 002 §4.1) снят в контракте 1.1.115. Берётся ТОЛЬКО из плоского параметра — одноимённый ключ в extra игнорируется (D-097)."
         },
         "host": {
           "type": "string",
@@ -716,9 +716,9 @@
           },
           "path": {
             "type": "string",
-            "desc_en": "Base request path.",
-            "desc_ru": "Базовый путь запроса.",
-            "impl": "К пути дописывается идентификатор сессии (и номер пакета в режиме packet-up)."
+            "desc_en": "Base request path. Anything after the first `?` is sent as the request query, as Xray does.",
+            "desc_ru": "Базовый путь запроса. Всё после первого `?` уходит query запроса, как у Xray.",
+            "impl": "К пути дописывается идентификатор сессии (и номер пакета в режиме packet-up); хвост '?…' ядро sing-box-lx шлёт query запроса с SPEC 119 (issue Leadaxe/sing-box-lx#36), старое ядро клеит его в путь."
           },
           "mode": {
             "type": "enum",
@@ -1296,16 +1296,11 @@
             "mode": "path",
             "passes": 2
           },
-          "extract": {
-            "re": "^(?P<path>[^?]*)",
-            "into": {
-              "path": "transport.path"
-            }
-          },
+          "maps_to": "transport.path",
           "when": {
             "transport.type": "xhttp"
           },
-          "impl": "Хвост '?…' срезается целиком (SPEC 002 §4.1): early data у xhttp не существует, и любой хвост запроса ломает маршрут — сервер отвечает 404. Группа одна, без ed: значение хвоста отбрасывается, а не раскладывается (в отличие от ws). mode:path — оба прохода path-семантика, '+' литерален."
+          "impl": "Путь берётся ДОСЛОВНО, вместе с хвостом '?…' (контракт 1.1.115, issue Leadaxe/sing-box-lx#36). Норма Xray (transport/internet/splithttp/config.go: GetNormalizedPath/GetNormalizedQuery): всё после первого '?' в path — query запроса, клиент шлёт его как есть; на этом держатся релеи Cloudflare Worker (edgetunnel берёт proxyip из query). Ядро sing-box-lx делает так же с SPEC 119. Прежний extract срезал хвост по образцу ws '?ed=N' с пометкой «иначе 404» (SPEC 002 §4.1) — у xhttp нет early data, а 404 давало ядро до SPEC 119: оно клеило хвост в путь ('/%3Fproxyip=…/'). На таком ядре узел с хвостом по-прежнему получает 404 — разбор старое ядро не обходит. Записи ws и httpupgrade хвост срезают как прежде. mode:path — оба прохода path-семантика, '+' литерален. Обратный ход пишет '?' внутри значения параметра закодированным (%3F), и хвост не смешивается с query самой ссылки."
         },
         "host": {
           "source": "query.host",
@@ -1971,16 +1966,11 @@
             "json.streamSettings.splithttpSettings.path",
             "json.streamSettings.splithttpSettings.path"
           ],
-          "extract": {
-            "re": "^(?P<path>[^?]*)",
-            "into": {
-              "path": "transport.path"
-            }
-          },
+          "maps_to": "transport.path",
           "when": {
             "transport.type": "xhttp"
           },
-          "impl": "Базовая тройка: читается ТОЛЬКО плоский слой, одноимённый ключ из extra игнорируется целиком — см. $note_extra."
+          "impl": "Базовая тройка: читается ТОЛЬКО плоский слой, одноимённый ключ из extra игнорируется целиком — см. $note_extra. Путь дословно, с хвостом '?…': по норме Xray (GetNormalizedPath/GetNormalizedQuery) это query запроса — см. запись path блока uri/xhttp (issue Leadaxe/sing-box-lx#36, ядро sing-box-lx SPEC 119)."
         },
         "host": {
           "source": [
