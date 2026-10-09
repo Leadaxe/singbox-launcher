@@ -185,16 +185,20 @@ A1─A6 (core) ──┬──▶ B1 (модель окна) ──┬──▶ 
 ## Волна C — Local, Debug API, документация (исполнитель C)
 
 ### C1. Debug API (после A)
-- [ ] `core/debugapi/daemon_endpoints.go:19–51`: `DaemonStatus` += `log_path`,
+- [x] `core/debugapi/daemon_endpoints.go:19–51`: `DaemonStatus` += `log_path`,
   `executable`, `listen`, `tls`, `uptime_seconds`, `reach_error`, `passport_cached`;
   `DaemonCommands` += `restart`, `client_list`.
-- [ ] `core/debugapi_wiring_daemon.go:32–76`: заполнение из `DaemonStatusSnapshot`,
+- [x] `core/debugapi_wiring_daemon.go:32–76`: заполнение из `DaemonStatusSnapshot`,
   `DaemonRestartCommand`, `DaemonClientListCommand`.
-- [ ] `core/debugapi/remote_endpoints.go`: `machineView` (`:211–230`) += `ssh`,
+- [x] `core/debugapi/remote_endpoints.go`: `machineView` (`:211–230`) += `ssh`,
   `init_system`, `core_warn_ack`, `passport`; PATCH (`:300–350`) += `ssh`,
   `init_system` (через `SetSSH`/`SetInitSystem`, текст ошибки «nothing to update»
   дополнить); `handleRemoteHealth` (`:492`) += `core_required`, `core_outdated`.
-- Проверка: `go build ./core/...`. Коммит этими тремя путями.
+  **Δ** `core_outdated` — замыканием `RemoteAPI.CoreOutdated`, проведённым в
+  `core/debugapi_wiring.go` (debugapi не импортирует core); health отдаёт и остальной
+  паспорт (`executable`, `log_path`, `listen`, `tls`, `uptime_seconds`), `/daemon/status` —
+  ещё `passport_seen_at`.
+- Проверка: `go build ./core/...`. Коммит этими тремя путями (+ `core/debugapi_wiring.go`).
 
 ### C2. Источник «локальный демон» (после B1)
 - [ ] Новый `ui/service_source_local.go` (тег `darwin || (windows && !386)`):
@@ -227,23 +231,23 @@ A1─A6 (core) ──┬──▶ B1 (модель окна) ──┬──▶ 
   purge) и новый restart.
 
 ### C4. TROUBLESHOOTING
-- [ ] `docs/TROUBLESHOOTING.md`: раздел `## Daemon` (якорь `#daemon`) — не
+- [x] `docs/TROUBLESHOOTING.md`: раздел `## Daemon` (якорь `#daemon`) — не
   поднимается / обновить ядро на машине / сопряжение / где что лежит, команды
   по procd/systemd/macOS/Windows как в `core/service_recipes.go`.
-- [ ] `docs/TROUBLESHOOTING.ru.md`: раздел `## Демон` (якорь `#демон`) — то же.
+- [x] `docs/TROUBLESHOOTING.ru.md`: раздел `## Демон` (якорь `#демон`) — то же.
 
 ### C5. DAEMON_AND_REMOTE, API, ARCHITECTURE
-- [ ] `docs/DAEMON_AND_REMOTE.md` + `.ru.md`: §2 (окно Service локально, что куда
+- [x] `docs/DAEMON_AND_REMOTE.md` + `.ru.md`: §2 (окно Service локально, что куда
   переехало), §4.1 (⚙ и строка предупреждения), §4.2 (поля `ssh`, `init_system`,
   `core_warn_ack`, `passport`), §4.4 (предупреждение о ядре при Deploy).
-- [ ] `docs/API.md` + `docs/API.ru.md`: поля C1.
-- [ ] `docs/ARCHITECTURE.md`: L6 (`:85`) — окно Service, окно лога машины; §11
+- [x] `docs/API.md` + `docs/API.ru.md`: поля C1.
+- [x] `docs/ARCHITECTURE.md` (+ `.ru.md` — тот же §11.8): L6 (`:85`) — окно Service, окно лога машины; §11
   (`:1029`) — `core/service_recipes.go`, `core/core_build.go`,
   `core/core_download_target.go`, источники local/remote.
 
 ### C6. Релизные заметки
-- [ ] `docs/release_notes/upcoming.md` — EN Highlights / RU Основное.
-- [ ] `RELEASE_NOTES.md` — строка в выжимке черновика (значимый UX).
+- [x] `docs/release_notes/upcoming.md` — EN Highlights / RU Основное.
+- [x] `RELEASE_NOTES.md` — строка в выжимке черновика (значимый UX).
 
 ### C7. Переводы и закрытие (последней, после B8 и C3)
 - [ ] `bin/locale/ru.json`: переводы всех `missing` и удаление всех `orphan` из

@@ -83,7 +83,7 @@ SPEC 070 кодифицировал эти слои, удалил мёртвый
 | **L3** | сервисы + жизненный цикл | `core/services`, `core/uiservice`, `core/events`, `core` (`controller.go`, `process_service.go`, `config_service.go`, `rebuild.go`, `auto_update.go`, `backend*.go`, `daemon_manager*.go`, `main.go`, загрузчики) | Реализации сервисов с состоянием (`FileService`/`APIService`/`StateService`/`SRSDownloader`, реестр удалённых машин, транспорт, сборщик ресурсов для Deploy), контейнер UI-колбэков (без зависимости от Fyne), типизированный `EventBus`, оркестрация жизненного цикла приложения и процесса и шов движков `CoreBackend` (`LegacyBackend` / `DaemonBackend`). **Владеет EventBus и всей DI-разводкой.** |
 | **L4** | api / удалённое управление | `api`, `core/debugapi` | Исходящий клиент Clash API (`api/`) и входящий Debug HTTP API (`core/debugapi`), который интроспектирует и управляет приложением через интерфейс `ControllerFacade`. Оба стоят выше домена, но достижимы из сервисов; `debugapi` говорит с контроллером только через интерфейс. |
 | **L5** | ui-presentation (MVP конфигуратора) | `ui/configurator/presentation`, `ui/configurator/business`, `ui/configurator/models`, `ui/configurator/configurator.go`, `ui/configurator/utils` | MVP-слои визарда: **presentation** (оркестрация + диспетчеризация `fyne.Do`), **business** (чистая логика за интерфейсом `UIUpdater` — никогда не импортирует Fyne), **models** (чистая `WizardModel` + контейнеры слотов и порядка). `business → models → core-domain`; `presentation → business`; **business никогда не импортирует presentation**. |
-| **L6** | ui-views (вкладки / диалоги / корень) | `ui` (`app.go` + `*_tab.go`), `ui/configurator/tabs`, `ui/configurator/dialogs`, `ui/configurator/outbounds_configurator`, `ui/traffic` | Представления Fyne: корневая полоса вкладок, главные вкладки (Локально / Удалённые, затем Настройки / Диагностика / Справка), вкладки и диалоги конфигуратора, конфигуратор outbound'ов, окно профайлера трафика и окна на машину (добавление машины, настройки подключения, телеметрия хоста, ресурсы, профайлер машины). Подписывается на EventBus / колбэки UIService; читает домен для отрисовки. |
+| **L6** | ui-views (вкладки / диалоги / корень) | `ui` (`app.go` + `*_tab.go`), `ui/configurator/tabs`, `ui/configurator/dialogs`, `ui/configurator/outbounds_configurator`, `ui/traffic` | Представления Fyne: корневая полоса вкладок, главные вкладки (Локально / Удалённые, затем Настройки / Диагностика / Справка), вкладки и диалоги конфигуратора, конфигуратор outbound'ов, окно профайлера трафика и окна на машину (добавление машины, настройки подключения, телеметрия хоста, ресурсы, профайлер машины, окно Service, живой лог ядра машины). Окно Service (`ui/service_*.go`, SPEC 161) — один вид для локального демона и для каждой машины, см. §11.8. Подписывается на EventBus / колбэки UIService; читает домен для отрисовки. |
 | **L7** | ui-виджеты / ассеты | `internal/fynewidget`, `ui/icons`, `ui/components` | Переиспользуемые самодостаточные строительные блоки Fyne и ассеты: hover-строки, check-with-content, проброс hover, тултипы, скролл-жёлоб, встроенные SVG-иконки. Чистая композиция Fyne, без зависимости от `core` (прежнее исключение `click_redirect.go` устранено — см. §3, V1). |
 
 ### Диаграмма зависимостей
@@ -927,3 +927,38 @@ Windows-бинари несут манифест `asInvoker` (он остаёт�
 
 Остаётся открытым (SPEC 137 §8 п. 5): classic + TUN под правами исполняет
 `<Data>\bin\sing-box.exe`; защищённая копия — со SPEC 141.
+
+### 11.8 Окно Service — один раннбук для локального и удалённого (SPEC 161)
+
+Окно обслуживания демона (пользовательский вид — DAEMON_AND_REMOTE §2.3 и §4.6)
+разрезано так, что всё проверяемое таблицей живёт в `core` без тегов и без Fyne, а UI
+только раскладывает готовые шаги. Локальный и удалённый случаи различаются
+**источником**, а не окном.
+
+| Слой | Файл | Что в нём |
+|---|---|---|
+| core, без тегов | `core/core_build.go` | версии сборок форка: `parseCoreBuild`/`compareCoreBuilds` (вынесены из тегированного `daemon_service_state.go` — удалённые машины обслуживаются со всех платформ), `CompareCoreVersion(running, required)` (`Unknown` не предупреждает), `CoreBuildShort`, `CoreVersionPairLabels` |
+| core, без тегов | `core/service_recipes.go` | `ServicePlatform`/`ServiceInit` (`procd`/`systemd`/`launchd`/`scm`), пути по умолчанию, `MergeServicePaths` (паспорт поверх дефолтов, флаг `Default` у каждого пути), `BuildServiceRecipes` → `ServiceStep{ID, Command, RunsLocally, NeedsRoot, UsesDefault, Interactive, Placeholder}`, `WrapSSH`/`PosixQuote`, `ClassifyDaemonReachError` (по тем же подстрокам ветвится `diagnoseReachError`) |
+| core, без тегов | `core/services/ssh_target.go` | `SSHTarget`, `ParseSSHTarget`, `DefaultSSHTarget(addr)` — здесь, потому что `SetSSH` реестра валидирует, а `core/services` не может импортировать `core` |
+| core, без тегов | `core/core_download_target.go` | `DownloadCoreForTarget` — ядро под GOOS/GOARCH **машины** в `~/Downloads`, сверка с `SHA256SUMS` релиза, сайдкар `.sha256` как отметка «уже скачано»; ядро лаунчера не трогает |
+| данные core | `core/services/lxd_remote_registry.go` | `RemoteDaemon.SSH/InitSystem/CoreWarnAck/Passport` (`omitempty`, без миграции; реестр не входит ни в LX Backup, ни в контракт); `SetPassport` пишет файл только при изменении или раз в 10 мин; `RemoteHealth` несёт весь паспорт |
+| core, платформы демона | `core/daemon_manager*.go` | `DaemonUIStatus.ReachErr/Passport/PassportCached` с кэшем паспорта в памяти; `DaemonServicePaths()` (точные пути launchd/SCM), `DaemonRestartCommand`/`DaemonRestartService`, `DaemonClientList/RemoveCommand` |
+| ui, без тегов | `ui/service_model.go`, `service_window.go`, `service_tabs.go`, `service_step_row.go`, `service_guides.go` | интерфейс `serviceSource` и снапшот, диагноз (глифы вкладок и стартовая вкладка — та же функция ставит точку на ⚙ строки машины), окно/встраиваемый вид, четыре вкладки, строка шага (⧉ копирует голую команду, ▶ оборачивает в ssh), ссылки на гайды по локали |
+| ui, без тегов | `ui/service_source_remote.go`, `service_core_download.go`, `machine_core_log_window.go` | источник «машина»: читает кэш heartbeat панели тикером раз в 1 с, сеть не трогает; шаг 1 вкладки Core; живой лог ядра машины (`SubscribeLogLines`) |
+| ui, `darwin \|\| (windows && !386)` | `ui/service_source_local.go` | источник «локальный демон»: опрос `DaemonStatusSnapshot` раз в 5 с и `LocalRows` — прежние строки `daemonOps` (install, bootstrap, restart, pair, секрет, Uninstall), чтобы тегированные символы не утекали в нетегированный UI |
+
+Правила, которые держит этот разрез:
+
+- **Рецепты не пересобирают командную строку службы.** В init-скрипте роутера могут
+  быть `-c min.json` или `GOMEMLIMIT`; рецепты берут только имя службы и
+  `restart/stop/start` плюс пути, сообщённые демоном (или дефолты с пометкой).
+- **Окно не ходит в сеть.** Удалённая шапка следует за heartbeat строки; локальный
+  источник опрашивает в своей горутине. Перерисовка сравнивает снапшоты без uptime (по
+  той же причине `healthChanged` в heartbeat) и сохраняет виджеты ввода.
+- **Паритет с Debug API.** Поля, которые читает окно, есть в API (паспорт и
+  `reach_error` в `/daemon/status`, `restart`/`client_list` в `/daemon/commands`,
+  `ssh`/`init_system`/`core_warn_ack`/`passport` в записи машины,
+  `core_required`/`core_outdated` в `…/health`); рецепты — чистая функция от них,
+  поэтому эндпоинта рецептов нет. `core_outdated` считает замыкание
+  `RemoteAPI.CoreOutdated`, проведённое в `core`, — `debugapi` не может импортировать
+  `core`.

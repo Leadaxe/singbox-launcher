@@ -2,9 +2,9 @@
 
 Полный черновик следующего релиза: [docs/release_notes/upcoming.md](docs/release_notes/upcoming.md)
 
-**Черновик (следующий релиз), кратко:** пункты накапливайте в [upcoming.md](docs/release_notes/upcoming.md).
+**Черновик (следующий релиз), кратко:** окно **Service** (⚙ в строке машины и Servers → ⚙ → Local) — раннбук обслуживания демона: не поднимается, обновить ядро (скачать под платформу машины, залить через ssh, проверить, заменить, откатить), сопряжение, пути и `daemon.json`; команды с путями машины, ▶ открывает Терминал с `ssh`; точка на ⚙ и строка предупреждения, когда ядро старое или демон молчит, предупреждение Deploy на старое ядро; раздел «Демон» в [TROUBLESHOOTING](docs/TROUBLESHOOTING.ru.md#демон) — подробности в [upcoming.md](docs/release_notes/upcoming.md).
 
-**Draft (next release), short:** add items in [upcoming.md](docs/release_notes/upcoming.md).
+**Draft (next release), short:** the **Service** window (⚙ in a machine's row and Servers → ⚙ → Local) — a runbook for keeping the daemon running: not running, updating the core (download for the machine's platform, upload over ssh, check, swap, roll back), pairing, paths and `daemon.json`; commands with the machine's paths, ▶ opens Terminal with `ssh`; a dot on ⚙ and a warning line when the core is old or the daemon is silent, a Deploy warning for an older core; a "Daemon" section in [TROUBLESHOOTING](docs/TROUBLESHOOTING.md#daemon) — see [upcoming.md](docs/release_notes/upcoming.md).
 
 ---
 

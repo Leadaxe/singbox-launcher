@@ -359,15 +359,17 @@ non-macOS without `/daemon/*`).
 | Method | Path | What it does |
 |---|---|---|
 | GET/POST | `/remote/machines` | List / pair `{invite, name?, addr?, secret?}` (invite is `addr#fingerprint#code`) |
-| GET/PATCH/DELETE | `/remote/machines/{id}` | Get / update `{name?,addr?,goos?,goarch?}` / remove (response warns: access is NOT revoked on the daemon side) |
+| GET/PATCH/DELETE | `/remote/machines/{id}` | Get / update `{name?,addr?,goos?,goarch?,ssh?,init_system?}` / remove (response warns: access is NOT revoked on the daemon side). `ssh` — `user@host[:port]` for the Service window's commands, `""` resets to `root@<host of addr>`; `init_system` — `""` (default by architecture) \| `systemd` \| `procd`; a value that does not parse → `400` |
 | POST | `/remote/machines/{id}/repair` | Re-pair `{invite, addr?, secret?}` with a fresh client key; the machine's profile is kept |
 | POST | `/remote/machines/{id}/profile/copy-from` | Copy wizard profile `{source_id, overwrite?}`; existing state without `overwrite=true` → `409` |
+
+A machine entry (list, `GET`, `PATCH`, pairing) also carries the Service window fields (SPEC 161), each omitted while empty: `ssh`, `init_system`, `core_warn_ack` (the core version for which Deploy no longer warns that the core is older than required) and `passport` — the last daemon passport cached in the registry (`version`, `executable`, `log_path`, `listen`, `tls`, `seen_at`), so the paths are known while the daemon is down. The state dir stays in `state_dir`.
 
 **Core & deploy:**
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/remote/machines/{id}/health` | `{reachable, core_status, active_sha, last_good_sha, …}` — comparing SHAs is the honest "did it land" check |
+| GET | `/remote/machines/{id}/health` | `{reachable, core_status, active_sha, last_good_sha, …}` — comparing SHAs is the honest "did it land" check. Also the rest of the passport — `executable`, `log_path`, `listen`, `tls`, `uptime_seconds` (`null` when the daemon did not answer `/admin/info`) — and `core_required` (the core version this launcher builds configs for) with `core_outdated` (`true` only when `version` is provably older; an unparsable version → `false`) |
 | POST | `/remote/machines/{id}/core/start` \| `stop` \| `rollback` | Core control (stop drops the VPN of the machine's clients — the API does not ask for confirmation) |
 | GET | `/remote/machines/{id}/config/active` \| `built` | Running config fetched from the machine / locally built one |
 | POST | `/remote/machines/{id}/deploy` | Resources → config (the same chain as the Deploy button). Optional body `{config:{…}}`. `422` = daemon rejected the config, running instance untouched |
@@ -438,12 +440,12 @@ start/stop under the daemon engine goes through the shared
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/daemon/status` | Pairing, service, reachability, core status, daemon passport; `service_state` (`not_installed`\|`unsafe`\|`stale`\|`not_running`\|`process_stale`\|`ok`\|`core_too_old`), `service_path`, `service_detail` — the service classifier (SPEC 136); with `core_too_old` (launcher core below lx.12) `/daemon/commands` returns an empty `install` |
+| GET | `/daemon/status` | Pairing, service, reachability, core status, daemon passport; `service_state` (`not_installed`\|`unsafe`\|`stale`\|`not_running`\|`process_stale`\|`ok`\|`core_too_old`), `service_path`, `service_detail` — the service classifier (SPEC 136); with `core_too_old` (launcher core below lx.12) `/daemon/commands` returns an empty `install`. The Service window fields (SPEC 161): `reach_error` — why `/admin/status` did not answer; the passport paths `executable`, `log_path`, `listen`, `tls` (`null` — no passport this session), `passport_seen_at`; `passport_cached: true` — the daemon is silent and these come from the session cache (no `uptime_seconds` then) |
 | POST | `/daemon/pair` | `{invite, secret?}` — pair with the local daemon |
 | POST | `/daemon/unpair` | Forget the pairing (keys, pin, secret) |
 | PATCH | `/daemon/settings` | `{addr?, secret?}` |
 | GET/POST | `/daemon/engine` | Core engine: `{"mode":"classic"\|"daemon"}`; POST while the VPN runs → `409` |
-| GET | `/daemon/commands` | Ready-to-run sudo commands (install/uninstall/repair/kickstart/show_secret). **The API never executes them** — the "sudo only in your terminal" principle |
+| GET | `/daemon/commands` | Ready-to-run sudo commands (install/uninstall/repair/kickstart/show_secret/restart/client_list). `restart` — macOS: the `kickstart` command, Windows: `Restart-Service` for an elevated PowerShell; `client_list` — who the daemon trusts. **The API never executes them** — the "sudo only in your terminal" principle |
 
 ---
 

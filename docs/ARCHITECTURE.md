@@ -82,7 +82,7 @@ The codebase is organized into **eight layers**. The cardinal rule:
 | **L3** | services + lifecycle | `core/services`, `core/uiservice`, `core/events`, `core` (`controller.go`, `process_service.go`, `config_service.go`, `rebuild.go`, `auto_update.go`, `backend*.go`, `daemon_manager*.go`, `main.go`, downloaders) | Stateful service implementations (`FileService`/`APIService`/`StateService`/`SRSDownloader`, the remote-machine registry / transport / deploy-resource collector), the UI-callback container (no Fyne deps), the typed `EventBus`, app/process lifecycle orchestration, and the `CoreBackend` engine seam (`LegacyBackend` / `DaemonBackend`). **Owns the EventBus and all DI wiring.** |
 | **L4** | api / remote-control | `api`, `core/debugapi` | Outbound Clash API client (`api/`) and inbound Debug HTTP API (`core/debugapi`) that introspects/controls the app through a `ControllerFacade` interface. Both sit above domain but are reachable from services; `debugapi` talks to the controller only via an interface. |
 | **L5** | ui-presentation (configurator MVP) | `ui/configurator/presentation`, `ui/configurator/business`, `ui/configurator/models`, `ui/configurator/configurator.go`, `ui/configurator/utils` | MVP layers for the wizard: **presentation** (orchestration + `fyne.Do` dispatch), **business** (pure logic behind the `UIUpdater` interface — never imports Fyne), **models** (pure `WizardModel` + slot/order containers). `business → models → core-domain`; `presentation → business`; **business never imports presentation**. |
-| **L6** | ui-views (tabs / dialogs / root) | `ui` (`app.go` + `*_tab.go`), `ui/configurator/tabs`, `ui/configurator/dialogs`, `ui/configurator/outbounds_configurator`, `ui/traffic` | Fyne views: root tab strip, main tabs (Local = proxy list + core dashboard, Remote = proxy list + machine list, then Settings / Diagnostics / Help), configurator tabs/dialogs, outbounds configurator, traffic profiler window, and the per-machine windows (add-machine, connection settings, host telemetry, resources, machine profiler). Subscribes to EventBus / UIService callbacks; reads core-domain for rendering. |
+| **L6** | ui-views (tabs / dialogs / root) | `ui` (`app.go` + `*_tab.go`), `ui/configurator/tabs`, `ui/configurator/dialogs`, `ui/configurator/outbounds_configurator`, `ui/traffic` | Fyne views: root tab strip, main tabs (Local = proxy list + core dashboard, Remote = proxy list + machine list, then Settings / Diagnostics / Help), configurator tabs/dialogs, outbounds configurator, traffic profiler window, and the per-machine windows (add-machine, connection settings, host telemetry, resources, machine profiler, the Service window, the machine's live core log). The Service window (`ui/service_*.go`, SPEC 161) is one view for the local daemon and for each machine — see §11.8. Subscribes to EventBus / UIService callbacks; reads core-domain for rendering. |
 | **L7** | ui-widgets / assets | `internal/fynewidget`, `ui/icons`, `ui/components` | Reusable, self-contained Fyne building blocks and assets: hover rows, check-with-content, hover forwarding, tooltips, scroll gutter, embedded SVG icons. Pure Fyne composition, with no dependency on `core` (the former `click_redirect.go` exception was removed — see §3, V1). |
 
 ### Dependency diagram
@@ -1221,3 +1221,37 @@ virtualization). Proxy-only never elevates; TUN elevates only on an explicit act
 
 Still open (SPEC 137 §8 item 5): classic + TUN elevated runs
 `<Data>\bin\sing-box.exe`; the protected copy comes with SPEC 141.
+
+### 11.8 The Service window — one runbook for local and remote (SPEC 161)
+
+The window that keeps a daemon running (user view: DAEMON_AND_REMOTE §2.3 and §4.6)
+is split so that everything a table can check lives in `core`, untagged and without
+Fyne, and the UI only lays out ready steps. Local and remote differ by **source**, not
+by window.
+
+| Layer | File | What it holds |
+|---|---|---|
+| core, untagged | `core/core_build.go` | fork build versions: `parseCoreBuild`/`compareCoreBuilds` (moved out of the tagged `daemon_service_state.go` — remote machines are served from every platform), `CompareCoreVersion(running, required)` (`Unknown` never warns), `CoreBuildShort`, `CoreVersionPairLabels` |
+| core, untagged | `core/service_recipes.go` | `ServicePlatform`/`ServiceInit` (`procd`/`systemd`/`launchd`/`scm`), default paths, `MergeServicePaths` (passport over defaults, `Default` flag per path), `BuildServiceRecipes` → `ServiceStep{ID, Command, RunsLocally, NeedsRoot, UsesDefault, Interactive, Placeholder}`, `WrapSSH`/`PosixQuote`, `ClassifyDaemonReachError` (the substrings also drive `diagnoseReachError`) |
+| core, untagged | `core/services/ssh_target.go` | `SSHTarget`, `ParseSSHTarget`, `DefaultSSHTarget(addr)` — here because the registry's `SetSSH` validates and `core/services` cannot import `core` |
+| core, untagged | `core/core_download_target.go` | `DownloadCoreForTarget` — the core for the **machine's** GOOS/GOARCH into `~/Downloads`, checked against the release's `SHA256SUMS`, a `.sha256` sidecar as the "already downloaded" mark; never touches the launcher's own core |
+| core data | `core/services/lxd_remote_registry.go` | `RemoteDaemon.SSH/InitSystem/CoreWarnAck/Passport` (`omitempty`, no migration; the registry is in neither LX Backup nor the contract); `SetPassport` writes the file only on change or every 10 min; `RemoteHealth` carries the full passport |
+| core, daemon platforms | `core/daemon_manager*.go` | `DaemonUIStatus.ReachErr/Passport/PassportCached` with an in-memory passport cache; `DaemonServicePaths()` (exact launchd/SCM paths), `DaemonRestartCommand`/`DaemonRestartService`, `DaemonClientList/RemoveCommand` |
+| ui, untagged | `ui/service_model.go`, `service_window.go`, `service_tabs.go`, `service_step_row.go`, `service_guides.go` | the `serviceSource` interface and snapshot, the diagnosis (tab glyphs and the start tab — the same function feeds the machine row's ⚙ dot), the window/embeddable view, the four tabs, the step row (⧉ copies the bare command, ▶ wraps it in ssh), guide links by locale |
+| ui, untagged | `ui/service_source_remote.go`, `service_core_download.go`, `machine_core_log_window.go` | the "machine" source: reads the panel's heartbeat cache on a 1 s ticker, never the network; step 1 of the Core tab; the machine's live core log (`SubscribeLogLines`) |
+| ui, `darwin \|\| (windows && !386)` | `ui/service_source_local.go` | the "local daemon" source: a 5 s `DaemonStatusSnapshot` poll, and `LocalRows` — the existing `daemonOps` rows (install, bootstrap, restart, pair, secret, Uninstall), so tagged symbols never leak into untagged UI |
+
+Rules the split keeps:
+
+- **Recipes never rebuild the service's command line.** A router's init script may
+  carry `-c min.json` or `GOMEMLIMIT`; recipes use only the service name and
+  `restart/stop/start`, plus the paths the daemon reported (or defaults, marked).
+- **No network from the window.** The remote header follows the row's heartbeat; the
+  local source polls on its own goroutine. Re-rendering compares snapshots without
+  uptime (`healthChanged` in the heartbeat for the same reason) and keeps input widgets.
+- **Debug API parity.** The fields the window reads are in the API (`/daemon/status`
+  passport and `reach_error`, `/daemon/commands` `restart`/`client_list`, the machine
+  entry's `ssh`/`init_system`/`core_warn_ack`/`passport`, `…/health`
+  `core_required`/`core_outdated`); the recipes are a pure function over them, so
+  there is no recipes endpoint. `core_outdated` comes from a `RemoteAPI.CoreOutdated`
+  closure wired in `core` — `debugapi` cannot import `core`.
