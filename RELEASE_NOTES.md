@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v2.3.7
+
+Патч после v2.3.6, ядро `sing-box-lx 1.14.2-lx.12` и контракт 1.1.114 без изменений. **Исправлено:** SRS-правило с 8+ ссылками больше не падает с ошибкой загрузки на медленном канале (лимит времени теперь растёт с числом файлов, окно ошибки называет ту ссылку, что не скачалась); список Rules в Мастере не прыгает в начало после перетаскивания, правки или удаления правила. Подробнее: [docs/release_notes/2-3-7.md](docs/release_notes/2-3-7.md).
+
+### Highlights (EN) — v2.3.7
+
+A patch after v2.3.6, core `sing-box-lx 1.14.2-lx.12` and contract 1.1.114 unchanged. **Fixed:** an SRS rule with 8+ URLs no longer fails to download on a slow connection (the time limit now grows with the number of files, and the error dialog names the URL that failed); the wizard's Rules list no longer jumps to the top after drag-and-drop, edit or delete. Details: [docs/release_notes/2-3-7.md](docs/release_notes/2-3-7.md).
+
 ### Выжимка (RU) — v2.3.6
 
 Патч после v2.3.5, ядро `sing-box-lx 1.14.2-lx.12` (было 1.14.2-lx.11), контракт 1.1.114. **Tailscale:** видно, как достижимо каждое устройство (direct / peer relay / DERP), путь до выхода — в подзаголовке узла, живая секция «Tailnet» на Diagnostics, блок настроек Tailscale (выход, exit node, локальная сеть) в окне узла. **WireGuard/AWG:** пиры в окне узла с адресом, хендшейком и трафиком; серверный узел WG больше не ругается на пустой адрес пира. **Окно узла:** новый вид без рамок, вкладка Diagnostics как в LxBox (GET через узел). **Автогруппы:** режим «держаться до отказа» (`failover`). **Мастер:** отчёт сборки объясняет узлы, не взятые в группу из-за detour, у предупреждений карточка «что / почему / что делать». **JSON:** настоящий редактор с подсветкой, свёрткой и поиском во всех JSON-полях. **Исправлено:** после сна больше не копятся окна «Ошибка» — ошибки идут в журнал; на macOS загрузка подписки больше не падает с `malformed HTTP response`; окно Мастера снова сжимается. Подробнее: [docs/release_notes/2-3-6.md](docs/release_notes/2-3-6.md).
@@ -760,6 +768,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.3.7** | [docs/release_notes/2-3-7.md](docs/release_notes/2-3-7.md) |
 | **v2.3.6** | [docs/release_notes/2-3-6.md](docs/release_notes/2-3-6.md) |
 | **v2.3.5** | [docs/release_notes/2-3-5.md](docs/release_notes/2-3-5.md) |
 | **v2.3.4** | [docs/release_notes/2-3-4.md](docs/release_notes/2-3-4.md) |

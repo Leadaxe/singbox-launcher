@@ -46,6 +46,14 @@ func (p *WizardPresenter) RefreshRulesTab(createRulesTab func(*WizardPresenter) 
 		return
 	}
 
+	// Вкладка пересоздаётся целиком, и новый скролл встаёт с тем смещением,
+	// что лежит в RulesScrollOffset (tabs.CreateRulesScroll). Снимаем текущее
+	// ДО пересборки: иначе после перетаскивания, правки или удаления строки
+	// длинный список прыгал в самое начало.
+	if p.guiState.RulesScroll != nil {
+		p.guiState.RulesScrollOffset = p.guiState.RulesScroll.Offset
+	}
+
 	// Create new content
 	newContent := createRulesTab(p)
 
