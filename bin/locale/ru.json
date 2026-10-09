@@ -2742,6 +2742,21 @@
   "Restart the core on %s? Everyone routing through that machine loses VPN for a moment; if the start fails, the machine is left without a core.": {
     "value": "Перезапустить ядро на %s? VPN у всех, кто ходит через машину, моргнёт; если старт не удастся, машина останется без ядра."
   },
+  "Deploy": {
+    "value": "Отправить"
+  },
+  "The machine runs a different config than the one saved here. Press Deploy to send it.": {
+    "value": "На машине работает не тот конфиг, что сохранён здесь. Нажмите «Отправить», чтобы доставить его."
+  },
+  "The machine runs the config saved here.": {
+    "value": "На машине работает конфиг, сохранённый здесь."
+  },
+  "The last deploy did not start: the core rolled back to the last-good config. Details under ⓘ.": {
+    "value": "Последняя отправка не завелась: ядро откатилось на прежний удачный конфиг. Подробности под ⓘ."
+  },
+  "Built config sha256 (local)": {
+    "value": "sha256 собранного здесь конфига"
+  },
   "Deploy config": {
     "value": "Отправить конфиг",
     "special": {

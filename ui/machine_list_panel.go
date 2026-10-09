@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"image/color"
 	"os"
@@ -31,6 +33,8 @@ const (
 	machinesDeployMissingText = "No config built for %s yet. Press Configure on its row, set it up and press Save — that writes the config this button sends."
 	machinesRemoveBodyText    = "Remove %s? Its config, wizard states and client keys are deleted from this launcher.\n\nAccess on the machine itself stays registered — revoke it there with `sing-box lxd client remove`."
 	powerDeployBodyText       = "Send the config to %s (%d bytes)? The daemon validates it before swapping the instance and rolls back to last-good if the new one fails to start."
+	machinesDriftTip          = "The machine runs a different config than the one saved here. Press Deploy to send it."
+	machinesRolledBackTip     = "The last deploy did not start: the core rolled back to the last-good config. Details under ⓘ."
 	powerRestartBodyText      = "Restart the core on %s? Everyone routing through that machine loses VPN for a moment; if the start fails, the machine is left without a core."
 )
 
@@ -99,6 +103,21 @@ type machineListPanel struct {
 	// которые поднимают панель отдельно, и будущему teardown вкладки; без
 	// него горутину heartbeat было бы нечем остановить вовсе.
 	stopHeartbeat chan struct{}
+	// builtSums — кэш sha256 локально собранного config.json машин: строка
+	// перерисовывается на каждом изменении health, а файл меняется только на
+	// Save в Конфигураторе. Пересчёт — при смене mtime/размера.
+	builtSums map[string]builtConfigSum
+	// deployDrift — расходился ли собранный конфиг с работающим на машине при
+	// последней отрисовке. Heartbeat сверяет с ним свежий ответ: Save не
+	// меняет health, и без этого оранжевая точка ждала бы чужого повода.
+	deployDrift map[string]bool
+}
+
+// builtConfigSum — sha256 файла вместе с ключом, по которому он посчитан.
+type builtConfigSum struct {
+	modTime time.Time
+	size    int64
+	sum     string
 }
 
 // connectFailure — одна неудачная попытка соединения.
@@ -131,6 +150,8 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 		moreOpen:       make(map[string]bool),
 		liveness:       make(map[string]machineLiveness),
 		stopHeartbeat:  make(chan struct{}),
+		builtSums:      make(map[string]builtConfigSum),
+		deployDrift:    make(map[string]bool),
 	}
 	p.list = container.NewVBox()
 
@@ -313,9 +334,17 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	}
 
 	// Соединены: state_dir известен, конфиг соберётся с верными путями.
-	configureBtn := widget.NewButton(locale.T("Configure"), func() {
+	configureBtn := ttwidget.NewButton(locale.T("Configure"), func() {
 		configurator.ShowConfigWizardForMachine(p.ac.UIService.MainWindow, d)
 	})
+	// Красная точка на Configure — последний Deploy не завёлся, и ядро
+	// откатилось на last-good. Сидит на Configure, потому что лечится там:
+	// конфиг, который не поднялся, надо поправить, а не отправить ещё раз.
+	var configureObj fyne.CanvasObject = configureBtn
+	if health.InterruptedApply {
+		configureObj = withCornerDot(configureBtn, theme.Color(theme.ColorNameError))
+		configureBtn.SetToolTip(locale.T(machinesRolledBackTip))
+	}
 
 	// Соединились: показываем настоящий статус ядра и открываем управление.
 	//
@@ -369,11 +398,24 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	infoBtn.SetToolTip(locale.T("What the daemon reports about itself"))
 	infoBtn.Importance = widget.LowImportance
 
-	deployBtn := widget.NewButton(locale.T("Deploy config"), func() {
+	deployBtn := ttwidget.NewButton(locale.T("Deploy"), func() {
 		p.deployTo(d)
 	})
 	if health.Err != "" {
 		deployBtn.Disable()
+	}
+	// Оранжевая точка на Deploy — на машине работает не тот конфиг, что
+	// собран здесь (sha256 файла ≠ active_sha демона; обе стороны хешируют
+	// сырые байты). Лечится этой же кнопкой.
+	drift := p.configDrift(d.ID, health)
+	p.deployDrift[d.ID] = drift
+	var deployObj fyne.CanvasObject = deployBtn
+	switch {
+	case drift:
+		deployObj = withCornerDot(deployBtn, theme.Color(theme.ColorNameWarning))
+		deployBtn.SetToolTip(locale.T(machinesDriftTip))
+	case p.builtConfigSHA(d.ID) != "":
+		deployBtn.SetToolTip(locale.T("The machine runs the config saved here."))
 	}
 
 	// RES — управление файлами, на которые ссылается конфиг машины
@@ -428,7 +470,7 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	rows = append(rows,
 		statusRow,
 		container.NewBorder(nil, nil, nil, moreBtn,
-			container.NewHBox(configureBtn, deployBtn, resBtn)),
+			container.NewHBox(configureObj, deployObj, resBtn)),
 	)
 	if open {
 		// Раскрытие с анимацией высоты: мгновенный скачок содержимого не
@@ -586,6 +628,7 @@ func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services
 		{locale.T("State dir"), h.StateDir},
 		{locale.T("Active config sha256"), h.ActiveSHA},
 		{locale.T("Last-good config sha256"), h.LastGoodSHA},
+		{locale.T("Built config sha256 (local)"), p.builtConfigSHA(d.ID)},
 	}
 	if h.InterruptedApply {
 		rows = append(rows, [2]string{locale.T("Interrupted apply"), locale.T("yes — the core runs the last-good config")})
@@ -974,6 +1017,59 @@ func (p *machineListPanel) redrawRows() {
 		p.list.Add(p.buildRow(d, d.ID == activeID))
 	}
 	p.list.Refresh()
+}
+
+// builtConfigSHA — sha256 локально собранного config.json машины ("" — его
+// ещё не собирали). Пересчитывает только при смене mtime/размера файла.
+func (p *machineListPanel) builtConfigSHA(id string) string {
+	path := platform.GetRemoteConfigPathFor(p.ac.FileService.Layout.Data, id)
+	fi, err := os.Stat(path)
+	if err != nil {
+		delete(p.builtSums, id)
+		return ""
+	}
+	if c, ok := p.builtSums[id]; ok && c.modTime.Equal(fi.ModTime()) && c.size == fi.Size() {
+		return c.sum
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		debuglog.DebugLog("machine list: read built config %q: %v", id, err)
+		delete(p.builtSums, id)
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	c := builtConfigSum{modTime: fi.ModTime(), size: fi.Size(), sum: hex.EncodeToString(sum[:])}
+	p.builtSums[id] = c
+	return c.sum
+}
+
+// configDrift — собранный здесь конфиг не тот, что работает на машине.
+// Пустой active_sha (ядро без конфига) при собранном файле — тоже расхождение:
+// сохранённое до машины не доехало.
+func (p *machineListPanel) configDrift(id string, h services.RemoteHealth) bool {
+	sum := p.builtConfigSHA(id)
+	return sum != "" && sum != h.ActiveSHA
+}
+
+// withCornerDot кладёт цветную точку в правый верхний угол кнопки. Точка —
+// canvas.Circle, кликов не ловит, поэтому нажатия и подсказка уходят кнопке.
+func withCornerDot(obj fyne.CanvasObject, fill color.Color) fyne.CanvasObject {
+	return container.New(&cornerDotLayout{size: 8}, obj, canvas.NewCircle(fill))
+}
+
+// cornerDotLayout: первый объект занимает всю площадь, второй — круг
+// фиксированного диаметра у правого верхнего угла.
+type cornerDotLayout struct{ size float32 }
+
+func (l *cornerDotLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	return objects[0].MinSize()
+}
+
+func (l *cornerDotLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	objects[0].Resize(size)
+	objects[0].Move(fyne.NewPos(0, 0))
+	objects[1].Resize(fyne.NewSize(l.size, l.size))
+	objects[1].Move(fyne.NewPos(size.Width-l.size-3, 3))
 }
 
 // dotLayout рисует единственный объект кругом фиксированного диаметра,
