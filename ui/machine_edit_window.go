@@ -82,6 +82,13 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 	nameEntry.SetText(d.Name)
 	addrEntry := widget.NewEntry()
 	addrEntry.SetText(d.Addr)
+	// SSH — цель команд окна Service (SPEC 161): пусто — root@<хост адреса>.
+	sshEntry := widget.NewEntry()
+	sshEntry.SetText(d.SSH)
+	sshEntry.SetPlaceHolder(services.DefaultSSHTarget(d.Addr).String())
+	addrEntry.OnChanged = func(addr string) {
+		sshEntry.SetPlaceHolder(services.DefaultSSHTarget(addr).String())
+	}
 
 	tgt := d.Target()
 	goosSelect := widget.NewSelect([]string{"linux", "darwin", "windows"}, nil)
@@ -92,16 +99,29 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 	form := widget.NewForm(
 		widget.NewFormItem(locale.T("Name"), nameEntry),
 		widget.NewFormItem(locale.T("Address"), addrEntry),
+		widget.NewFormItem(locale.T("SSH"), sshEntry),
 		widget.NewFormItem(locale.T("Platform"), goosSelect),
 		widget.NewFormItem(locale.T("Architecture"), goarchSelect),
 	)
 
 	saveBtn := widget.NewButton(locale.T("Save"), func() {
+		// Цель ssh проверяется до записи: иначе имя и адрес сохранились бы,
+		// а ssh — нет, и окно закрылось бы с половиной правки.
+		if ssh := strings.TrimSpace(sshEntry.Text); ssh != "" {
+			if _, err := services.ParseSSHTarget(ssh); err != nil {
+				dialog.ShowError(err, win)
+				return
+			}
+		}
 		if err := registry.Update(d.ID, nameEntry.Text, addrEntry.Text); err != nil {
 			dialog.ShowError(err, win)
 			return
 		}
 		if err := registry.SetPlatform(d.ID, goosSelect.Selected, goarchSelect.Selected); err != nil {
+			dialog.ShowError(err, win)
+			return
+		}
+		if err := registry.SetSSH(d.ID, sshEntry.Text); err != nil {
 			dialog.ShowError(err, win)
 			return
 		}
@@ -172,32 +192,20 @@ func machineEditRePair(win fyne.Window, registry *services.RemoteRegistry,
 				}
 				repairBtn.Disable()
 				status.SetText(locale.T("Re-pairing…"))
-				// Enroll — блокирующий сетевой вызов: недоступная машина
-				// отвечает по таймауту REST-клиента.
-				go func() {
-					entry, err := registry.RePair(d.ID, invite,
-						strings.TrimSpace(addrEntry.Text), strings.TrimSpace(secretEntry.Text))
-					fyne.Do(func() {
-						repairBtn.Enable()
-						if err != nil {
-							debuglog.WarnLog("edit machine: re-pair %q: %v", d.ID, err)
-							status.SetText(locale.Tf("Pairing failed: %v", err))
-							return
-						}
-						// Канал стал другим: прежнее соединение и его окна
-						// разговаривают по отозванному пину. Рвём здесь, а не
-						// оставляем пользователю — иначе строка показывала бы
-						// «connected» на мандате, которого больше нет.
-						if id, _, ok := GetLxdRemoteOverride(); ok && id == d.ID {
-							CloseMachineProfiler(d.ID)
-							CloseMachineHostWindow(d.ID)
-						}
-						debuglog.InfoLog("edit machine: re-paired %q at %s", entry.Name, entry.Addr)
-						status.SetText(locale.Tf("Re-paired at %s. A new client key was issued; connect again.", entry.Addr))
-						inviteEntry.SetText("")
-						reload()
-					})
-				}()
+				// Канал стал другим: окна на прежнем соединении (профайлер,
+				// телеметрия, живой лог) rePairMachine закрывает сам, строку
+				// возвращает к Connect reload — иначе она показывала бы
+				// «connected» на мандате, которого больше нет.
+				rePairMachine(registry, d, invite, addrEntry.Text, secretEntry.Text, func(entry services.RemoteDaemon, err error) {
+					repairBtn.Enable()
+					if err != nil {
+						status.SetText(locale.Tf("Pairing failed: %v", err))
+						return
+					}
+					status.SetText(locale.Tf("Re-paired at %s. A new client key was issued; connect again.", entry.Addr))
+					inviteEntry.SetText("")
+					reload()
+				})
 			}, win)
 	}
 

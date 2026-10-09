@@ -63,6 +63,10 @@ type machineLiveness struct {
 	LastErr string
 	// LastOK — когда машина отвечала в последний раз.
 	LastOK time.Time
+	// FailSince — начало текущей серии промахов (нуль — серии нет): окно
+	// Service пишет «не отвечает 12 мин». Ставится на переходе 0→1 и на
+	// первой неудачной попытке Connect.
+	FailSince time.Time
 }
 
 // startHeartbeat запускает фоновый опрос. Останавливается закрытием stop.
@@ -113,6 +117,9 @@ func (p *machineListPanel) pollActive() {
 		}
 		live := p.liveness[id]
 		if h.Err != "" {
+			if live.FailStreak == 0 {
+				live.FailSince = time.Now()
+			}
 			live.FailStreak++
 			live.LastErr = h.Err
 			p.liveness[id] = live
@@ -135,6 +142,7 @@ func (p *machineListPanel) pollActive() {
 		recovered := live.FailStreak > 0
 		live.FailStreak = 0
 		live.LastErr = ""
+		live.FailSince = time.Time{}
 		live.LastOK = time.Now()
 		p.liveness[id] = live
 		prev, had := p.health[id]
@@ -143,7 +151,7 @@ func (p *machineListPanel) pollActive() {
 		// не повод пересобирать строки. Иначе панель вздрагивает каждые 5 с.
 		// Собранный конфиг сверяется с работающим на каждом тике: Save в
 		// Конфигураторе health не меняет, а точка на Deploy должна появиться.
-		if !had || prev != h || recovered || p.configDrift(id, h) != p.deployDrift[id] {
+		if !had || healthChanged(prev, h) || recovered || p.configDrift(id, h) != p.deployDrift[id] {
 			p.redrawRows()
 		}
 		// Ядро сменило состояние без нашего участия (упало, или его подняли
@@ -154,6 +162,18 @@ func (p *machineListPanel) pollActive() {
 			p.onCoreStatusChanged(h)
 		}
 	})
+}
+
+// healthChanged — ответ машины изменился так, что строку надо перерисовать.
+// Без uptime (он растёт каждый тик) и с TLS по значению (указатель свежий в
+// каждом ответе): прямое `prev != h` перерисовывало бы панель каждые 5 с.
+func healthChanged(a, b services.RemoteHealth) bool {
+	if !sameBoolPtr(a.TLS, b.TLS) {
+		return true
+	}
+	a.UptimeSeconds, b.UptimeSeconds = 0, 0
+	a.TLS, b.TLS = nil, nil
+	return a != b
 }
 
 // onCoreStatusChanged синхронизирует левую колонку с новым состоянием ядра.

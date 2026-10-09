@@ -328,3 +328,21 @@ Windows — пустая строка.
 | windows: `DaemonRestartCommand` (= `scmRestartCommand`), `daemonPowerShellExe`, `daemonServicePathsPlatform`, `DaemonRestartService` | `core/daemon_manager_windows.go:136–157`, `:405` | |
 | `LauncherDocsBaseURL`, `CoreDocsBaseURL` | `internal/constants/constants.go:166–174` | B2 (гайды) |
 | новый ключ `locale.T`: «The service was restarted.» | `core/daemon_manager.go` (`StatusText`) | C7 (ru.json) |
+
+## 14. Волна B — ui окна Service (факт, после реализации)
+
+Отклонения от PLAN помечены **Δ**.
+
+| Сущность | Файл | Для кого |
+|---|---|---|
+| `serviceTab` (`serviceTabAuto/NotRunning/Core/Pairing/Reference/Uninstall`), `serviceLevel` (`OK/Core/Down`), `serviceSnapshot` (**Δ** `Loaded`, `Connected`, `LiveLog`), `localServiceExtras` (плоские поля вместо `DaemonServiceCheck` с тегом), `localServiceRows{Install, Bootstrap, Restart, FreshInvite, Pair, Address, Secret, Uninstall}`, `serviceSource` (**Δ** + `SetSecret`), `serviceDiagnosis`, `serviceSnapshotEqual`, `serviceOSLabel`, `serviceAgeLabel`/`serviceSinceLabel` | `ui/service_model.go` | C2 (локальный источник) |
+| `OpenServiceWindow(ac, src, tab)`, `CloseServiceWindow(key)`, `buildServiceView(ac, win, src, tab) (obj, dispose)`; `serviceView` (перестройка по снапшоту, персистентные виджеты: init Select, секции, форма Pair, секрет, скачивание), `serviceTabScrollMinHeight = 160` | `ui/service_window.go` | C3 (панель Local), B6 |
+| `serviceRunner`, `serviceStepRow(r, title, hint, step, danger)`, `serviceStepTitle`, `serviceNoteLabel` | `ui/service_step_row.go` | вкладки |
+| `buildNotRunningTab`, `buildCoreTab` (`buildLocalCore`/`buildLinuxCore`), `buildPairingTab`, `buildReferenceTab`; `localServiceRows` встают на место строк рецепта | `ui/service_tabs.go` | — |
+| `serviceGuide`, `guideURL`, `guideLink`, `serviceGuidesRow`, `serviceCoreGuides`, `serviceHeaderGuides` | `ui/service_guides.go` | — |
+| `newRemoteServiceSource(p, d)`, `serviceRemoteRefresh = 1 s`, `machineSSHTarget(d)`, `rePairMachine(registry, d, invite, addr, secret, done)`, **Δ** `machineServiceVerdict(h, live, connected)` (без `d`) | `ui/service_source_remote.go` | B6, B7 |
+| `targetCoreDownload` (шаг 1 Core удалённо, сразу ✓ по сайдкару) | `ui/service_core_download.go` | — |
+| `OpenMachineCoreLogWindow(ac, d)`, `CloseMachineCoreLogWindow(id)` (свежие строки сверху, кольцо 1000, батч 250 мс) | `ui/machine_core_log_window.go` | — |
+| ⚙ `serviceButton` (до Connect — в `metaRow` без точки), строка вердикта под статусом (**Δ** текст ошибки связи перенесён из статуса в красную строку, статус — «unreachable»), `confirmDeployOldCore`, `runDeploy` | `ui/machine_list_panel.go` | — |
+| `machineLiveness.FailSince`, `healthChanged` | `ui/machine_heartbeat.go` | — |
+| поле SSH, re-pair через `rePairMachine` | `ui/machine_edit_window.go` | — |

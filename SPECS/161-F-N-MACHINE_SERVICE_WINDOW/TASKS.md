@@ -113,69 +113,69 @@ A1─A6 (core) ──┬──▶ B1 (модель окна) ──┬──▶ 
 ## Волна B — ui: окно Service и удалённые машины (исполнитель B, после A)
 
 ### B1. Модель окна (первой — от неё зависит C2)
-- [ ] Новый `ui/service_model.go`: `serviceTab`, `serviceSnapshot`,
+- [x] Новый `ui/service_model.go`: `serviceTab`, `serviceSnapshot`,
   `localServiceExtras`, `localServiceRows`, `serviceSource`, `serviceLevel`,
   `serviceDiagnosis(snapshot) (glyphs map[serviceTab]string, first serviceTab)`,
   `serviceSnapshotEqual` (PLAN §6.1).
 - Проверка: `go build ./ui/`. Коммит сразу (C2 ждёт его).
 
 ### B2. Окно и шапка
-- [ ] Новый `ui/service_window.go`: `OpenServiceWindow`, `CloseServiceWindow`,
+- [x] Новый `ui/service_window.go`: `OpenServiceWindow`, `CloseServiceWindow`,
   `buildServiceView` (шапка, `Select` init, ярлыки с глифами, стартовая вкладка,
   ре-рендер без потери ввода, VScroll вкладок с `serviceTabScrollMinHeight = 160`,
   слой тултипов) — PLAN §6.2.
-- [ ] Новый `ui/service_guides.go`: таблица гайдов EN/RU-якорей, `guideURL`,
+- [x] Новый `ui/service_guides.go`: таблица гайдов EN/RU-якорей, `guideURL`,
   `guideLink` (PLAN §9).
 - Проверка: `go build ./ui/`.
 
 ### B3. Строка шага
-- [ ] Новый `ui/service_step_row.go`: `serviceStepRow`, `serviceRunner` по таблице PLAN §6.3
+- [x] Новый `ui/service_step_row.go`: `serviceStepRow`, `serviceRunner` по таблице PLAN §6.3
   (ssh-обёртка + `-t`, `RunsLocally`, scm без ▶, `openTerminal == nil` → только ⧉,
   подпись `default`, подтверждение для опасных шагов).
 - Проверка: `go build ./ui/`.
 
 ### B4. Вкладки
-- [ ] Новый `ui/service_tabs.go`: `buildNotRunningTab`, `buildCoreTab`,
+- [x] Новый `ui/service_tabs.go`: `buildNotRunningTab`, `buildCoreTab`,
   `buildPairingTab`, `buildReferenceTab` по SPEC §5.2–§5.5 и PLAN §6–7
   (общие для local/remote; локальные строки — из `src.LocalRows`).
 - Проверка: `go build ./ui/`.
 
 ### B5. Источник «машина», вердикт строки, живой лог
-- [ ] Новый `ui/service_source_remote.go`: `newRemoteServiceSource(p, d)`,
+- [x] Новый `ui/service_source_remote.go`: `newRemoteServiceSource(p, d)`,
   тикер `serviceRemoteRefresh`, `machineServiceVerdict`, `rePairMachine`
   (вынести из `ui/machine_edit_window.go:165–200`).
-- [ ] Новый `ui/service_core_download.go`: шаг 1 Core удалённо (PLAN §6.6).
-- [ ] Новый `ui/machine_core_log_window.go`: `OpenMachineCoreLogWindow`,
+- [x] Новый `ui/service_core_download.go`: шаг 1 Core удалённо (PLAN §6.6).
+- [x] Новый `ui/machine_core_log_window.go`: `OpenMachineCoreLogWindow`,
   `CloseMachineCoreLogWindow` (PLAN §6.7).
 - Проверка: `go build ./ui/`.
 
 ### B6. Строка машины и Deploy
-- [ ] `ui/machine_list_panel.go`: ⚙ в `statusRow` (`:434`) и до Connect в `metaRow`
+- [x] `ui/machine_list_panel.go`: ⚙ в `statusRow` (`:434`) и до Connect в `metaRow`
   (`:301`); точка `withCornerDot` по `machineServiceVerdict`; строка
   предупреждения после `statusRow` (`:470`); `deployTo` (`:972`) — диалог
   старого ядра (`dialogs.NewCustom`, чекбокс → `SetCoreWarnAck`, How to update →
   Service/Core); `CloseMachineCoreLogWindow` в `connectMachine` (`:499–506`),
   `disconnectMachine` (`:798`), `removeMachine` (`:852–855`); `CloseServiceWindow`
   в `removeMachine`.
-- [ ] `ui/machine_heartbeat.go`: `machineLiveness.FailSince` (`:59`), отметка в
+- [x] `ui/machine_heartbeat.go`: `machineLiveness.FailSince` (`:59`), отметка в
   `pollActive` (`:114–118`) и в `connectMachine` (`:575–578`); `healthChanged`
   вместо `prev != h` (`:146`).
 - Проверка: `go build ./ui/`.
 
 ### B7. Окно Edit машины
-- [ ] `ui/machine_edit_window.go`: поле SSH в `machineEditPassport` (`:79–118`,
+- [x] `ui/machine_edit_window.go`: поле SSH в `machineEditPassport` (`:79–118`,
   после Address; плейсхолдер `DefaultSSHTarget(addr)`; Save → `SetSSH`);
   `machineEditRePair` — через `rePairMachine` (B5); закрытие
   `CloseMachineCoreLogWindow` при re-pair.
 - Проверка: `go build ./ui/`.
 
 ### B8. Сдача волны B
-- [ ] `go build ./...`; `go run ./tools/win7guard`; `go run ./tools/l10n/hardcoded_check --strict`.
-- [ ] Список новых ключей `locale.T` волны — в сообщение для C7
+- [x] `go build ./...`; `go run ./tools/win7guard`; `go run ./tools/l10n/hardcoded_check --strict`.
+- [x] Список новых ключей `locale.T` волны — в сообщение для C7
   (`go run ./tools/l10n/l10n_check` покажет их как `missing`).
-- [ ] Показать владельцу: строка роутера (⚙•, строка ⚠/✖), окно Service на всех
+- [ ] Показать владельцу (за владельцем: лаунчер исполнитель не запускает): строка роутера (⚙•, строка ⚠/✖), окно Service на всех
   вкладках, скачивание под linux/arm64, ▶ с `ssh root@…`, диалог Deploy.
-- [ ] Коммит: `ui/service_model.go ui/service_window.go ui/service_guides.go
+- [x] Коммит: `ui/service_model.go ui/service_window.go ui/service_guides.go
   ui/service_step_row.go ui/service_tabs.go ui/service_source_remote.go
   ui/service_core_download.go ui/machine_core_log_window.go ui/machine_list_panel.go
   ui/machine_heartbeat.go ui/machine_edit_window.go`.
