@@ -219,6 +219,9 @@ func (ac *AppController) StartDebugAPI(port int, token string) error {
 			Registry: registry,
 			Pool:     debugAPIRemotePool,
 			DataDir:  ac.FileService.Layout.Data,
+			CoreOutdated: func(running string) bool {
+				return CompareCoreVersion(running, constants.RequiredCoreVersion) == CoreVersionOlder
+			},
 			// UI-override (SPEC 100 §3.8): хуки читаются на КАЖДЫЙ вызов, а не
 			// снимаются здесь — Debug API может стартовать раньше, чем UI
 			// зарегистрирует обработчики (RegisterOverrideAPIHooks в NewApp).

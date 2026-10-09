@@ -24,6 +24,7 @@ import (
 
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/lxdclient"
 	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
@@ -50,6 +51,12 @@ type RemoteAPI struct {
 	UIConnect    func(id string) error
 	UIDisconnect func() error
 	UIState      func() (id, name string, active bool, err error)
+
+	// CoreOutdated — ядро running старее требуемого лаунчером
+	// (constants.RequiredCoreVersion) по правилам core.CompareCoreVersion;
+	// неразборчивая версия — false. Замыкание, потому что debugapi не
+	// импортирует core (цикл). nil — core_outdated всегда false.
+	CoreOutdated func(running string) bool
 }
 
 // ErrUIUnavailable — UI-override недоступен: лаунчер работает headless или
@@ -218,6 +225,13 @@ type machineView struct {
 	GOARCH            string `json:"goarch,omitempty"`
 	StateDir          string `json:"state_dir,omitempty"`
 	AddedAt           string `json:"added_at,omitempty"`
+	// SPEC 161 (окно Service): ssh-цель команд обслуживания (пусто —
+	// root@<хост addr>), init-система Linux ("" — дефолт по архитектуре),
+	// версия ядра, для которой Deploy не предупреждает, и кэш паспорта.
+	SSH         string                   `json:"ssh,omitempty"`
+	InitSystem  string                   `json:"init_system,omitempty"`
+	CoreWarnAck string                   `json:"core_warn_ack,omitempty"`
+	Passport    *services.RemotePassport `json:"passport,omitempty"`
 }
 
 func machineViewOf(d services.RemoteDaemon) machineView {
@@ -226,6 +240,8 @@ func machineViewOf(d services.RemoteDaemon) machineView {
 		ServerFingerprint: d.ServerFingerprint, Secret: d.Secret,
 		GOOS: d.GOOS, GOARCH: d.GOARCH,
 		StateDir: d.StateDir, AddedAt: d.AddedAt,
+		SSH: d.SSH, InitSystem: d.InitSystem, CoreWarnAck: d.CoreWarnAck,
+		Passport: d.Passport,
 	}
 }
 
@@ -283,7 +299,7 @@ func (s *Server) handleRemoteMachines(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleRemoteMachineByID — GET / PATCH {name,addr,goos,goarch} / DELETE.
+// handleRemoteMachineByID — GET / PATCH {name,addr,goos,goarch,ssh,init_system} / DELETE.
 func (s *Server) handleRemoteMachineByID(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.remoteMachineID(w, r)
 	if !ok {
@@ -304,13 +320,16 @@ func (s *Server) handleRemoteMachineByID(w http.ResponseWriter, r *http.Request)
 			Addr   *string `json:"addr"`
 			GOOS   *string `json:"goos"`
 			GOARCH *string `json:"goarch"`
+			// SSH: "" — сброс к root@<хост addr>. InitSystem: "" | systemd | procd.
+			SSH        *string `json:"ssh"`
+			InitSystem *string `json:"init_system"`
 		}
 		if err := decodeJSONBody(r, &req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body: " + err.Error()})
 			return
 		}
-		if req.Name == nil && req.Addr == nil && req.GOOS == nil && req.GOARCH == nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "nothing to update: pass name, addr, goos and/or goarch"})
+		if req.Name == nil && req.Addr == nil && req.GOOS == nil && req.GOARCH == nil && req.SSH == nil && req.InitSystem == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "nothing to update: pass name, addr, goos, goarch, ssh and/or init_system"})
 			return
 		}
 		cur, _, err := s.remote.Registry.Get(id)
@@ -345,6 +364,20 @@ func (s *Server) handleRemoteMachineByID(w http.ResponseWriter, r *http.Request)
 			}
 			if err := s.remote.Registry.SetPlatform(id, goos, goarch); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+				return
+			}
+		}
+		// ssh/init_system валидируют сеттеры реестра: ошибка разбора — вина
+		// запроса (400). Запись уже найдена выше, «unknown id» тут не бывает.
+		if req.SSH != nil {
+			if err := s.remote.Registry.SetSSH(id, *req.SSH); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+				return
+			}
+		}
+		if req.InitSystem != nil {
+			if err := s.remote.Registry.SetInitSystem(id, *req.InitSystem); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 				return
 			}
 		}
@@ -499,6 +532,15 @@ func (s *Server) handleRemoteHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h := s.remote.Registry.Health(id)
+	outdated := s.remote.CoreOutdated != nil && h.Version != "" && s.remote.CoreOutdated(h.Version)
+	var tls any
+	if h.TLS != nil {
+		tls = *h.TLS
+	}
+	var uptime any
+	if h.Reachable && h.TLS != nil {
+		uptime = h.UptimeSeconds
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"reachable":         h.Reachable,
 		"error":             emptyToNil(h.Err),
@@ -509,6 +551,15 @@ func (s *Server) handleRemoteHealth(w http.ResponseWriter, r *http.Request) {
 		"active_sha":        emptyToNil(h.ActiveSHA),
 		"last_good_sha":     emptyToNil(h.LastGoodSHA),
 		"interrupted_apply": h.InterruptedApply,
+		// SPEC 161: остальной паспорт и вердикт версии ядра — то же, что
+		// строка машины и окно Service.
+		"executable":     emptyToNil(h.Executable),
+		"log_path":       emptyToNil(h.LogPath),
+		"listen":         emptyToNil(h.Listen),
+		"tls":            tls,
+		"uptime_seconds": uptime,
+		"core_required":  constants.RequiredCoreVersion,
+		"core_outdated":  outdated,
 	})
 }
 

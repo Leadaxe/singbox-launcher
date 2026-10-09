@@ -4,6 +4,7 @@ package core
 
 import (
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -31,7 +32,7 @@ func (ac *AppController) debugAPIDaemonFacade() debugapi.DaemonFacade {
 
 func (f *debugAPIDaemonWiring) Status() debugapi.DaemonStatus {
 	st := f.ac.DaemonStatusSnapshot()
-	return debugapi.DaemonStatus{
+	out := debugapi.DaemonStatus{
 		CoreSupportsLxd:  st.CoreSupportsLxd,
 		ServiceInstalled: st.ServiceInstalled,
 		Paired:           st.Paired,
@@ -45,7 +46,21 @@ func (f *debugAPIDaemonWiring) Status() debugapi.DaemonStatus {
 		ServiceState:     string(st.Service.State),
 		ServicePath:      st.Service.ServicePath,
 		ServiceDetail:    st.Service.Detail,
+		LogPath:          st.Passport.LogPath,
+		Executable:       st.Passport.Executable,
+		Listen:           st.Passport.Listen,
+		PassportCached:   st.PassportCached,
+		ReachError:       st.ReachErr,
 	}
+	if !st.PassportSeenAt.IsZero() {
+		tls := st.Passport.TLS
+		out.TLS = &tls
+		out.PassportSeenAt = st.PassportSeenAt.UTC().Format(time.RFC3339)
+		if !st.PassportCached {
+			out.UptimeSeconds = st.Passport.UptimeSeconds
+		}
+	}
+	return out
 }
 
 func (f *debugAPIDaemonWiring) Pair(invite, secret string) error {
@@ -72,6 +87,8 @@ func (f *debugAPIDaemonWiring) Commands() debugapi.DaemonCommands {
 		Repair:         f.ac.DaemonRepairCommand(),
 		Kickstart:      f.ac.DaemonKickstartCommand(),
 		ShowSecret:     f.ac.DaemonShowSecretCommand(),
+		Restart:        f.ac.DaemonRestartCommand(),
+		ClientList:     f.ac.DaemonClientListCommand(),
 	}
 }
 
