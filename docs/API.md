@@ -97,22 +97,66 @@ Every patch endpoint returns `{"ok":true,"diff_summary":["..."]}` on success. Th
 
 | Method | Path | Body | What it does |
 |---|---|---|---|
+| GET | `/state/servers` | — | `{"servers":[{tag, kind, type?, enabled, folder_id?, folder?}]}` — root `kind=server` entries and folder members. Use it to find the `tag` for `DELETE`. |
+| POST | `/state/servers` | `{"input":"…", "folder"?:"…", "tag"?:"…"}` | Adds nodes the way the Configurator's add-source field does. `input` is: share links, one per line; WireGuard/AWG `.conf` text; `vpn://`; sing-box JSON (one outbound, an array, or a document with `outbounds`). Reply: `added:[{tag, folder_id?, type, warnings:[code]}]`, `skipped:[{line, tag?, reason}]`. `line` is the 1-based input line (`0` for a record out of JSON); `reason` is `subscription_url` (subscriptions are **not** added here), `duplicate` (the same link is already a root server), `unrecognized: …`, `unsupported outbound type: X`, or the parse error text. `tag` is accepted only when the input yields exactly one node (else `422`). A tag is made unique against the root namespace (`X`, `X-2`, …), inside a folder against the folder's nodes. `folder` is looked up by ULID, then by name (`kind=folder`; a subscription → `422`). Nothing added → `200` with `added:[]`, the state is not saved. |
+| DELETE | `/state/servers?tag=&folder=` | — | Deletes a root `kind=server` (no `folder`) or a folder member. Reply: `deleted:{tag, folder_id?, links_removed:[], directions_updated:[], dangling:[]}`. Link references are removed — `detour`, chain hops, group members and `default`, and (for a root node) the Directions' `include` lists. References **by name** (rule `outbound`, `route_final`, DNS `detour`, `vars`, a Direction's `options.default`) are not rewritten, only listed in `dangling` (root nodes only — a folder member has no root name to refer to) — same as the Configurator, which reports and does not clean. A Tailscale node also loses its state directory. |
 | PATCH | `/state/rules` | `{"mode":"replace"\|"append", "rules":[]state.Rule}` | Replaces / appends rules. Each is validated via `r.DecodeBody()` (kind discriminator: preset/inline/srs). |
-| PATCH | `/state/dns` | `state.DNSOptions` | Replaces the **whole** `dns` section (servers + rules; state v8 — до v8 ключ назывался `dns_options`). Every server/rule is validated by its `kind`. **The body must contain `servers` and/or `rules`** — a keyless `{}` → `422` (a guard against silently wiping the entire section); state is left untouched. |
+| POST | `/state/rules` | one state v8 rule record: `kind`, `id?`, `ref?`, `name?`, `enabled?` (default `true`), `num?`, `refs?`, `vars?`, `body?` | Adds one rule. `inline`/`srs`: `body` is the raw sing-box rule and must carry `outbound` or `action`; an unknown `outbound` → `422`, `field: body.outbound`. `preset`: `ref` must be a template preset that is not in the rules yet. `num` omitted → the next number in the user zone (inline/srs) or the preset's template anchor (preset); the list stays sorted. Reply: `num`. Adding a preset also syncs the DNS and outbound sections, as the Configurator's Save does. |
+| DELETE | `/state/rules?num=\|name=\|ref=` | — | Deletes exactly one rule (one selector). Reply: `deleted:` the rule record. Several matches → `409` with `nums:[…]` — repeat with `num`. A fixed head preset (not sortable) → `422`. Deleting a preset syncs DNS/outbounds like the add. |
+| PATCH | `/state/dns` | `state.DNSOptions` | Replaces the **whole** `dns` section (servers + rules; state v8 — до v8 ключ назывался `dns_options`). Every server/rule is validated by its `kind`. **The body must contain both `servers` and `rules`** (an empty list is an explicit clear); a missing key → `422` with a hint to the single-entry endpoints, the state is left untouched. |
+| POST | `/state/dns/servers` | `{"kind"?:"user", "tag"?, "enabled"?, "body":{…}}` | Adds a user DNS server (only `kind=user`; template/preset kinds → `422`). `tag` may come from `body.tag`; both set and different → `422`, `field: body.tag`. A tag that is taken (among `dns.servers` or the template's DNS servers) → `422`. `body.detour`, if set, must be a known target. Reply: `tag`. |
+| DELETE | `/state/dns/servers?tag=` | — | Deletes a user DNS server (template/preset kinds → `422`). Reply: `deleted:{tag, final_moved_to?, final_cleared?, resolver_cleared?, dangling:[]}`. If it was `dns_final`, the final moves to the first enabled server (cleared when none is left); if it was the default domain resolver, that is cleared; DNS rules that name it are listed in `dangling`. |
 | PATCH | `/state/dns/rules` | `{"text":"..."}` | Replaces **USER rules only**; preset rules are preserved. `""` (empty text) wipes the user rules. |
+| POST | `/state/dns/rules` | `{"rule":{…}}` | Appends one user DNS rule — a single sing-box DNS rule object (not an array) with `server` or `action`. Reply: `index`. |
+| DELETE | `/state/dns/rules?index=` | — | Deletes the user DNS rule at `index` in `dns.rules` — the position `GET /state/dns` shows. Reply: `deleted:` the record. A preset entry → `422` (presets follow their routing rule); out of range → `404`. |
 | PATCH | `/state/log-level` | `{"level":"trace"\|"debug"\|"info"\|"warn"\|"error"\|"fatal"\|"panic"}` | Writes `vars[log_level]` → forces a `config.json` rebuild → **restarts sing-box** (active connections are dropped). Responds `202` + `{"ok":true,"level":"...","warning":"active connections reset"}` rather than the generic `{"ok":true,"diff_summary":[...]}`. The `level` field is required; an invalid level → `400` with the `allowed` list (the core is left alone). |
 
+Every `POST`/`DELETE` above (SPEC 160) answers `{"ok":true,"diff_summary":["…"], …}` plus the operation's own field, and works like the Configurator's buttons: after the save the local `config.json` is rebuilt — `config_rebuilt:true`, or `config_rebuilt:false` with `config_rebuild_error` when the rebuild failed (the edit is already on disk, do not repeat the call). The `/remote/machines/{id}/state/*` mirrors never rebuild: `config_rebuilt` is always `false`.
+
 ```bash
+# Add one node by link — the rest of the setup (rules, DNS) is not touched
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/servers" \
+  -d '{"input":"vless://UUID@host.example:443?security=reality&sni=example.com&pbk=KEY&sid=ab#My%20node"}'
+# → {"ok":true,"added":[{"tag":"My node","type":"vless","warnings":[]}],"skipped":[],"config_rebuilt":true,…}
+
+# Into a folder, with an explicit tag
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/servers" -d '{"input":"vless://…","folder":"Work","tag":"work-1"}'
+
+# List servers, then delete one
+curl -s -H "Authorization: Bearer $TOKEN" "$API/state/servers" | jq
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/servers?tag=My%20node" | jq .deleted
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/servers?tag=work-1&folder=Work"
+
+# Add an inline routing rule (state v8 record: name/vars/refs are record fields,
+# body is the raw sing-box rule), then delete it by name
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/rules" \
+  -d '{"kind":"inline","name":"Work","body":{"domain_suffix":["corp.example"],"outbound":"Work"}}'
+# → {"ok":true,"num":101,…}
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/rules?name=Work"
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/rules?num=101"
+
+# Add a preset rule from the template
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/rules" -d '{"kind":"preset","ref":"ru-direct"}'
+
 # Replace all rules with a single preset ref
 curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   "$API/state/rules" \
-  -d '{"mode":"replace","rules":[{"kind":"preset","ref":"ru-direct","enabled":true,"body":{"vars":{}}}]}'
+  -d '{"mode":"replace","rules":[{"kind":"preset","ref":"ru-direct","enabled":true}]}'
 
-# Append one inline rule without touching the rest
-curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  "$API/state/rules" \
-  -d '{"mode":"append","rules":[{"kind":"inline","enabled":true,
-        "body":{"name":"Block Reddit","match":{"domain_suffix":["reddit.com"]},"outbound":"reject"}}]}'
+# Add / delete a DNS server
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/dns/servers" \
+  -d '{"tag":"cf-doh","body":{"type":"https","server":"1.1.1.1"}}'
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/dns/servers?tag=cf-doh" | jq .deleted
+
+# Add / delete a DNS rule (index = position in dns.rules from GET /state/dns)
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/dns/rules" -d '{"rule":{"domain_suffix":["corp.example"],"server":"cf-doh"}}'
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/dns/rules?index=3"
 
 # Patch the DNS rules text (same as the UI's Raw mode)
 curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
@@ -126,7 +170,9 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application
 
 > `POST /traffic/verbose` is the boolean special case of the same handler: it only knows `debug` (`true`) and `warn` (`false`). For any other level use `PATCH /state/log-level`.
 
-**Errors:** `400` (malformed JSON / unknown mode), `422` (semantic validation: unknown rule kind, unknown DNS server kind, body decode failure), `500` (load/save), `405` (method).
+**Errors:** `400` (malformed JSON / unknown mode; for `DELETE` a missing or malformed query parameter), `404` (the target of a `DELETE` or a folder does not exist), `409` (the state file is written by a newer schema major — `schema_found`, `schema_supported`; or a `DELETE /state/rules` selector matched several rules — `nums`), `422` (semantic validation: `{error, field}` — unknown rule kind, unknown DNS server kind, body decode failure, unknown `body.outbound`, a taken DNS tag, `PATCH /state/dns` without both keys), `500` (load/save), `405` (method).
+
+**Mutation log.** Every `POST`/`PATCH`/`PUT`/`DELETE` leaves one line in the launcher log (`singbox-launcher.log` in the logs dir — `~/Library/Logs/singbox-launcher/` on macOS; `GET /debug/paths` shows `log_dir`): `debugapi: <METHOD> <path?query> → <status> <first 400 chars of the response>`. Request bodies are never logged (links carry secrets); `GET` is not logged.
 
 ---
 
@@ -328,9 +374,13 @@ non-macOS without `/daemon/*`).
 
 **State (mirrors of `/state/*`):** `GET /remote/machines/{id}/state/full`,
 `GET/PATCH …/state/rules`, `…/state/dns`, `…/state/dns/rules`,
-`GET …/state/outbounds/resolved` — same contracts as the local endpoints.
-**Limitation:** PATCH updates the machine's state, but its `config.json` is
-still built only by the wizard (Configure → Save) — no programmatic rebuild yet.
+`GET …/state/outbounds/resolved` — same contracts as the local endpoints. The
+single-entry edits are mirrored too: `GET/POST/DELETE …/state/servers`,
+`POST/DELETE …/state/dns/servers`, and `POST`/`DELETE` on `…/state/rules` and
+`…/state/dns/rules`.
+**Limitation:** PATCH, POST and DELETE update the machine's state, but its
+`config.json` is still built only by the wizard (Configure → Save) — no
+programmatic rebuild yet, so every remote mutation answers `config_rebuilt:false`.
 
 **Backup (mirrors of `/backup/*`):** `GET /remote/machines/{id}/backup/export`,
 `POST /remote/machines/{id}/backup/import` — the same contracts as the local
@@ -485,7 +535,8 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 
 - **Auth header:** `Authorization: Bearer <token>` is required everywhere except `GET /ping`.
 - **Content-Type:** `application/json` for every PATCH/POST that carries a body.
-- **Errors:** `401` — missing/invalid bearer; `404` — resource not found; `405` — method not allowed; `409` — state conflict (traffic session); `422` — semantic validation failure; `500` — internal error.
+- **Errors:** `401` — missing/invalid bearer; `404` — resource not found; `405` — method not allowed; `409` — state conflict (traffic session, newer state schema, ambiguous `DELETE` selector); `422` — semantic validation failure; `500` — internal error.
+- **Mutation log:** every `POST`/`PATCH`/`PUT`/`DELETE` writes one line to `singbox-launcher.log` — method, path with query, status, first 400 chars of the response. Request bodies and `GET`s are not logged.
 - **Concurrency:** state writes go through an atomic `.tmp + Rename`, and the load-modify-save cycle is serialized by a mutex (`stateMu` / `settingsMu`; per-machine for remote state). Concurrent PATCHes to the same resource queue rather than overwrite each other.
 - **Versioning:** the `api` field in `/version` is currently fixed at `debugapi/v1`. Breaking changes are planned as a `v2` namespace (`/v2/...`), with no auto-discovery for now.
 
@@ -518,6 +569,9 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 |---|---|
 | `core/debugapi/server.go` | Routing, auth middleware, `/ping`, `/version`, `/state`, `/proxies`, `/action/*` |
 | `core/debugapi/state_endpoints.go` | `/state/full`, `/state/rules`, `/state/dns`, `/state/dns/rules`, `/state/outbounds/resolved` |
+| `core/debugapi/state_crud_endpoints.go` | SPEC 160: `GET/POST/DELETE /state/servers`, `POST/DELETE` on `/state/rules`, `/state/dns/servers`, `/state/dns/rules` (shared tail: schema gate → mutex → load → edit → save → rebuild) |
+| `core/debugapi/mutation_log.go` | The mutation log: one launcher-log line per `POST`/`PATCH`/`PUT`/`DELETE` |
+| `core/stateedit/` | State edit operations behind the endpoints: `servers.go` (add from input, delete with link cleanup), `rules.go`, `dns.go` |
 | `core/debugapi/backup_endpoints.go` | `/backup/export`, `/backup/import`, `/backup/formats` and their `/remote/machines/{id}/backup/*` mirrors |
 | `core/debugapi/log_level_endpoint.go` | `/state/log-level` (level validation + core restart via `core.ApplyLogLevelAndReloadCore`) |
 | `core/debugapi/traffic_endpoints.go` | All of `/traffic/*` |
