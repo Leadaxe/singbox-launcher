@@ -48,11 +48,26 @@ import (
 type ShowAddRuleDialogFunc func(p *wizardpresentation.WizardPresenter, editRule *wizardmodels.RuleState, ruleIndex int)
 
 const (
+	// srsGroupDownloadTimeout — нижняя граница дедлайна группы. Файлы группы
+	// качаются по очереди под одним контекстом, поэтому дедлайн растёт с
+	// числом файлов (см. srsGroupDeadline): фиксированные 90 с на всю группу
+	// обрывали правило с 8+ наборами на медленном канале — каждая повторная
+	// попытка качала всё заново и падала на том же файле.
 	srsGroupDownloadTimeout = 90 * time.Second
 
 	// rulesOutboundColumnRightGutter — отступ справа только у подписи «Outbound:» в шапке над скроллом.
 	rulesOutboundColumnRightGutter float32 = 40
 )
+
+// srsGroupDeadline — дедлайн на группу из n файлов: по таймауту одного файла
+// на каждый, но не меньше srsGroupDownloadTimeout.
+func srsGroupDeadline(n int) time.Duration {
+	d := time.Duration(n) * services.SRSDownloadTimeout
+	if d < srsGroupDownloadTimeout {
+		return srsGroupDownloadTimeout
+	}
+	return d
+}
 
 func srsBtnDownload() string { return locale.T("⬇ srs") }
 func srsBtnLoading() string  { return locale.T("🔄 srs") }
@@ -117,7 +132,7 @@ func runSRSDownloadAsync(
 	btn.Disable()
 	btn.SetText(srsBtnLoading())
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), srsGroupDownloadTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), srsGroupDeadline(len(srsEntries)))
 		defer cancel()
 		// Качаем в каталог ТОЙ машины, для которой настраиваем: у remote это
 		// её srs/, у local — bin/rule-sets/. Общий каталог означал бы, что
@@ -129,8 +144,16 @@ func runSRSDownloadAsync(
 			if err != nil {
 				btn.SetText(srsBtnDownload())
 				ruleSetsDir := platform.GetRuleSetsDir(model.DataDir)
+				// Группа качается по очереди и встаёт на первой ошибке, так что
+				// первый отсутствующий файл и есть тот, что не скачался.
 				downloadURL := ""
-				if len(srsEntries) > 0 {
+				for _, e := range srsEntries {
+					if !services.AllSRSDownloadedIn(model.DataDir, model.SrsDir(), []services.SRSEntry{e}) {
+						downloadURL = e.URL
+						break
+					}
+				}
+				if downloadURL == "" && len(srsEntries) > 0 {
 					downloadURL = srsEntries[0].URL
 				}
 				debuglog.WarnLog("rules_tab: SRS download failed: %v", err)
