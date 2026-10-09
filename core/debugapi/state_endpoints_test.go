@@ -251,7 +251,9 @@ func TestStateDNSGet(t *testing.T) {
 func TestStateDNSPatchValid(t *testing.T) {
 	ff := &fakeFacade{stateValue: state.New()}
 	base, _ := newTestServer(t, ff)
-	body := []byte(`{"final":"cloudflare_doh","servers":[{"kind":"template","tag":"cloudflare_doh","enabled":true}]}`)
+	// SPEC 160: PATCH замещает секцию целиком и требует ОБА ключа —
+	// пустой `rules` здесь явный сброс, а не забытый список.
+	body := []byte(`{"final":"cloudflare_doh","servers":[{"kind":"template","tag":"cloudflare_doh","enabled":true}],"rules":[]}`)
 	status, raw := doJSON(t, authedReq(t, "PATCH", base+"/state/dns", body), nil)
 	if status != 200 {
 		t.Fatalf("status: %d body=%s", status, raw)
@@ -265,7 +267,7 @@ func TestStateDNSPatchValid(t *testing.T) {
 func TestStateDNSPatchBadKind(t *testing.T) {
 	ff := &fakeFacade{stateValue: state.New()}
 	base, _ := newTestServer(t, ff)
-	body := []byte(`{"servers":[{"kind":"weird","tag":"x","enabled":true}]}`)
+	body := []byte(`{"servers":[{"kind":"weird","tag":"x","enabled":true}],"rules":[]}`)
 	status, raw := doJSON(t, authedReq(t, "PATCH", base+"/state/dns", body), nil)
 	if status != 422 {
 		t.Errorf("status: want 422, got %d body=%s", status, raw)
