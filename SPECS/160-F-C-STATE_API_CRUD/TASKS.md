@@ -19,6 +19,14 @@
 - [x] `PATCH /state/dns`: оба ключа обязательны (сделано 09.10; тест `TestPatchStateDNS_EmptyBodyDoesNotClear` дополнен кейсом «только servers»)
 - [x] `core/debugapi/state_crud_endpoints_test.go`; `TestHelpMethodsMatchHandlers` зелёный
 
+## E. Попап в окне Конфигуратора при внешней правке (решение владельца 09.10)
+- [x] `events.StateChangedPayload`: `Source`, `Target`, `MachineID`
+- [x] `ControllerFacade.NotifyStateChanged`; публикация после каждого save `stateAccess` (local и machine); no-op в `fakeFacade`
+- [x] `buildWizardWindow`: подписка/отписка; фильтр по источнику и адресату; `fyne.Do`
+- [x] Попап Reload / Keep mine; перечитывание как в `loadStateFromRead`; один попап на окно
+- [x] Переводы новых ключей в `ru.json`
+- [x] docs/API.md + API.ru.md (General rules: окно Конфигуратора предупреждается), upcoming.md
+
 ## C. Журнал
 - [x] `core/debugapi/mutation_log.go`: middleware для POST/PATCH/PUT/DELETE → `debuglog.InfoLog` (метод, путь, код, ≤400 символов ответа); подключить в `routes()`
 

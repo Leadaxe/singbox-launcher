@@ -5026,5 +5026,17 @@
   },
   "How the paired auto group picks a node: the single fastest one, a rotating pool of the fastest, or the fastest at the moment of choice held until it fails (only that node is probed, others sleep; a manual group test re-probes everyone and re-picks the fastest).": {
     "value": "Как парная автогруппа выбирает узел: один самый быстрый, ротация по пулу самых быстрых или самый быстрый на момент выбора с удержанием до отказа (пробуется только он, остальные спят; ручной тест группы меряет всех и перевыбирает самого быстрого)."
+  },
+  "Settings changed outside the Configurator": {
+    "value": "Настройки изменены вне Конфигуратора"
+  },
+  "The settings of this configuration were just changed through the debug API while this window is open.\n\nReload settings — read the saved settings into this window (unsaved edits made here are lost).\nKeep mine — leave this window as it is; the next Save will overwrite the external change.": {
+    "value": "Настройки этой конфигурации только что изменены через debug API, пока это окно открыто.\n\nПеречитать — загрузить сохранённые настройки в это окно (несохранённые правки здесь пропадут).\nОставить своё — оставить окно как есть; следующее сохранение перезапишет внешнюю правку."
+  },
+  "Reload settings": {
+    "value": "Перечитать"
+  },
+  "Keep mine": {
+    "value": "Оставить своё"
   }
 }

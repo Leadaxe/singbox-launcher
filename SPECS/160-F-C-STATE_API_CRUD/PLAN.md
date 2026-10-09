@@ -54,3 +54,13 @@
 - `decodeJSONBody` — `DisallowUnknownFields`: тело `state.Rule` с лишним ключом даст 400, это норма.
 - Логи: без секретов тела запроса; ответ ограничить ~400 символами и схлопнуть переводы строк.
 - Новые ключи `locale.T` не ожидаются (API без UI-строк); если появятся — сразу в `bin/locale/ru.json`.
+
+## Раздел E — попап в окне Конфигуратора
+
+| Что | Где |
+|---|---|
+| payload события | `core/events/payloads.go` — `StateChangedPayload` + поля `Source`, `Target`, `MachineID` |
+| публикация из API | `core/debugapi/state_endpoints.go` `localStateAccess` / `remote_state_endpoints.go` `machineStateAccess` — обёртка `save`: после успешной записи `facade.NotifyStateChanged(target, machineID)`; метод в `ControllerFacade` (`server.go`), реализация в `core/debugapi_wiring.go` (публикует в `ac.EventBus`), no-op в `fakeFacade` (`server_test.go`) |
+| подписка окна | `ui/configurator/configurator.go` `buildWizardWindow`: `ac.EventBus.Subscribe(events.StateChanged, …)` → `Cancel` в `SetOnClosed` |
+| фильтр адресата | `presenter.ConfigTarget()`, `presenter.ConfigMachineID()` (`presenter_target.go`) |
+| попап и перечитывание | образец перечитывания — `loadStateFromRead` (`configurator.go:879`); confirm — `dialog.NewCustomConfirm`/`ShowConfirm` как в `configurator.go:851`; UI-поток — `fyne.Do` (образец `ui/machine_list_panel.go:487`) |

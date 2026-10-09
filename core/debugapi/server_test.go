@@ -107,6 +107,8 @@ func (f *fakeFacade) ReadCurrentLogLevel() (string, bool, error) {
 	return f.logLevel, f.logLevelSet, f.logLevelErr
 }
 
+func (f *fakeFacade) NotifyStateChanged(target, machineID string) {}
+
 // freeLocalPort binds :0 then closes, returning the port. Good enough for
 // server-under-test tests on a dev box.
 func freeLocalPort(t *testing.T) int {

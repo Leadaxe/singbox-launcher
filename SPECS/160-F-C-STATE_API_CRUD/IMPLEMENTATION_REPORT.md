@@ -20,6 +20,10 @@
 ### C. Журнал
 - `core/debugapi/mutation_log.go`: middleware снаружи auth — каждый POST/PATCH/PUT/DELETE пишет в `singbox-launcher.log` строку `debugapi: <METHOD> <path?query> → <status> <≤400 символов ответа>`; тело запроса не пишется.
 
+### E. Попап в окне Конфигуратора при внешней правке (решение владельца 09.10: «подписать окно на событие и выкидывать попап»)
+- `events.StateChangedPayload` получил `Source`, `Target`, `MachineID`; константа `events.StateSourceDebugAPI`. `ControllerFacade.NotifyStateChanged` публикует событие после каждого успешного сохранения через API (`localStateAccess`/`machineStateAccess` — покрывает все `PATCH/POST/DELETE /state/*` и `/backup/import`, локально и для машины).
+- `ui/configurator/configurator.go`: `watchExternalStateChanges` — подписка при создании окна, отписка в `SetOnClosed`; событие от API с адресатом этого окна (таргет и машина читаются в UI-потоке в момент события — окно умеет переключать таргет) показывает confirm «Settings changed outside the Configurator»: «Reload settings» перечитывает `state.json` (`reloadStateIntoWindow`: LoadCurrentState → LoadState → MarkAsSaved → SyncModelToGUI), «Keep mine» оставляет окно; один попап на окно. Переводы четырёх ключей в `ru.json`. Вживую попап не проверялся — UI смотрит владелец.
+
 ### D. Документация
 - `docs/API.md`, `docs/API.ru.md` (State write, Backup, Remote, General rules, Source), `docs/ARCHITECTURE.md` (L2: `core/stateedit`), `docs/release_notes/upcoming.md`, `SPECS/README.md`.
 
@@ -32,8 +36,7 @@
 6. `DELETE /state/servers` без `folder` трогает только `kind=server`; цепочки и группы — вне волны.
 7. Журнал стоит снаружи auth — отклонённые 401 тоже видны.
 
-## Вне рамок (решение владельца)
-- Открытое окно Конфигуратора не перечитывает `state.json` после правки через API и при своём Save перепишет её. Варианты: подписка на `StateChanged` с перечитыванием при отсутствии несохранённых правок, либо отказ API в 409, пока окно открыто.
+## Вне рамок
 - CRUD подписок, папок, цепочек, Направлений.
 
 ## Проверка

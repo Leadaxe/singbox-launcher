@@ -90,6 +90,12 @@ type ControllerFacade interface {
 	LoadTemplate() (*template.TemplateData, error)
 	ApplyLogLevelAndReload(level string) error
 	ReadCurrentLogLevel() (string, bool, error)
+	// NotifyStateChanged — announce a successful state write made through
+	// the API (SPEC 160 §E): publishes events.StateChanged with
+	// Source = events.StateSourceDebugAPI so an open Configurator window of
+	// the same target (constants.ConfigTargetLocal / ConfigTargetRemote +
+	// machine id) can offer to reload. Called only after the save succeeded.
+	NotifyStateChanged(target, machineID string)
 }
 
 // Server owns the listener, shutdown context, and auth config.

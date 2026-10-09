@@ -40,6 +40,7 @@ import (
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/platform"
 )
 
@@ -64,10 +65,19 @@ type stateAccess struct {
 
 // localStateAccess — доступ к state.json локального визарда через facade
 // (Save взводит dirty-маркеры StateService — SPEC 050 invariant 3).
+// Успешная запись извещает открытое окно Конфигуратора (SPEC 160 §E):
+// здесь — единственное место, через которое пишут все локальные
+// PATCH/POST/DELETE /state/* и POST /backup/import.
 func (s *Server) localStateAccess() stateAccess {
 	return stateAccess{
-		load:  s.facade.LoadState,
-		save:  s.facade.SaveState,
+		load: s.facade.LoadState,
+		save: func(st *state.State) error {
+			if err := s.facade.SaveState(st); err != nil {
+				return err
+			}
+			s.facade.NotifyStateChanged(constants.ConfigTargetLocal, "")
+			return nil
+		},
 		mu:    &s.stateMu,
 		path:  platform.GetWizardStatePath(s.facade.GetLayout().Data),
 		local: true,

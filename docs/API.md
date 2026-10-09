@@ -538,6 +538,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 - **Errors:** `401` — missing/invalid bearer; `404` — resource not found; `405` — method not allowed; `409` — state conflict (traffic session, newer state schema, ambiguous `DELETE` selector); `422` — semantic validation failure; `500` — internal error.
 - **Mutation log:** every `POST`/`PATCH`/`PUT`/`DELETE` writes one line to `singbox-launcher.log` — method, path with query, status, first 400 chars of the response. Request bodies and `GET`s are not logged.
 - **Concurrency:** state writes go through an atomic `.tmp + Rename`, and the load-modify-save cycle is serialized by a mutex (`stateMu` / `settingsMu`; per-machine for remote state). Concurrent PATCHes to the same resource queue rather than overwrite each other.
+- **Open Configurator window:** when the Configurator window is open, every state write through the API (local or for the machine that window edits) makes it show a prompt to reload the saved settings or keep its own copy; before, an open window silently overwrote API edits on its next Save.
 - **Versioning:** the `api` field in `/version` is currently fixed at `debugapi/v1`. Breaking changes are planned as a `v2` namespace (`/v2/...`), with no auto-discovery for now.
 
 ---

@@ -31,7 +31,14 @@ func (s *Server) machineStateAccess(id string) stateAccess {
 	path := s.machineStatePath(id)
 	return stateAccess{
 		load: func() (*state.State, error) { return state.Load(path) },
-		save: func(st *state.State) error { return st.Save(path) },
+		// Успешная запись извещает окно Конфигуратора этой машины (SPEC 160 §E).
+		save: func(st *state.State) error {
+			if err := st.Save(path); err != nil {
+				return err
+			}
+			s.facade.NotifyStateChanged(constants.ConfigTargetRemote, id)
+			return nil
+		},
 		mu:   s.machineMutex(id),
 		path: path,
 	}
