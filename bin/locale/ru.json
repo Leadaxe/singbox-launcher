@@ -90,9 +90,6 @@
   "reachable": {
     "value": "доступна"
   },
-  "unreachable: %s": {
-    "value": "недоступна: %s"
-  },
   "Edit name, address and platform": {
     "value": "Изменить имя, адрес и платформу"
   },
@@ -2467,35 +2464,8 @@
   "Stop VPN when quitting the launcher": {
     "value": "Останавливать VPN при выходе из лаунчера"
   },
-  "Checking daemon status…": {
-    "value": "Проверка состояния демона…"
-  },
-  "✅ Installed core supports the daemon": {
-    "value": "✅ Установленное ядро поддерживает демон"
-  },
   "❌ Installed core has no lxd support (a sing-box-lx build with the lxd command is required)": {
     "value": "❌ Ядро без поддержки lxd (нужна сборка sing-box-lx с командой lxd)"
-  },
-  "✅ System service installed": {
-    "value": "✅ Системная служба установлена"
-  },
-  "— System service not installed": {
-    "value": "— Системная служба не установлена"
-  },
-  "✅ Paired (%s)": {
-    "value": "✅ Сопряжение выполнено (%s)"
-  },
-  "— Not paired": {
-    "value": "— Сопряжения нет"
-  },
-  "✅ Daemon reachable, core: %s": {
-    "value": "✅ Демон отвечает, ядро: %s"
-  },
-  "❌ Daemon not reachable": {
-    "value": "❌ Демон недоступен"
-  },
-  "Last error: %s": {
-    "value": "Последняя ошибка: %s"
   },
   "Stop the VPN before switching the core engine.": {
     "value": "Остановите VPN перед сменой движка ядра."
@@ -2505,9 +2475,6 @@
   },
   "Pair": {
     "value": "Сопрячь"
-  },
-  "Paste the invite printed by the daemon and click Pair. Where to get one:\n\n- Installing the service prints an invite at the end of its Terminal output (Install section, step 1).\n- For a fresh invite run the command below (copy or open in Terminal), then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS.": {
-    "value": "Вставьте приглашение, которое печатает демон, и нажмите Pair. Где его взять:\n\n- Установка службы печатает приглашение в конце вывода в терминале (секция Install, шаг 1).\n- Свежее приглашение — команда ниже (скопируйте или откройте в терминале), затем вставьте напечатанное приглашение в поле сопряжения.\n\nКод одноразовый — сгорает после успешного сопряжения. Поле секрета нужно только для демонов без TLS."
   },
   "Paired with the daemon.": {
     "value": "Сопряжение с демоном выполнено."
@@ -2524,26 +2491,14 @@
   "Removes the launcher's client keys and daemon address. The daemon keeps its record of this client until removed there (sing-box lxd client remove).": {
     "value": "Клиентские ключи лаунчера и адрес демона будут удалены. Запись об этом клиенте на стороне демона останется, пока её не удалят там (sing-box lxd client remove)."
   },
-  "Daemon address:": {
-    "value": "Адрес демона:"
-  },
-  "Refresh daemon status": {
-    "value": "Обновить состояние демона"
-  },
   "(daemon log buffer is empty — no core output yet)": {
     "value": "(буфер логов демона пуст — ядро ещё ничего не вывело)"
-  },
-  "⚠️ A previous config apply was interrupted; the daemon booted the last working config.": {
-    "value": "⚠️ Предыдущее применение конфига было прервано; демон загрузил последний рабочий."
   },
   "✅ gRPC (daemon)": {
     "value": "✅ gRPC (демон)"
   },
   "❌ gRPC unavailable": {
     "value": "❌ gRPC недоступен"
-  },
-  "Daemon %s · home: %s": {
-    "value": "Демон %s · каталог: %s"
   },
   "Live balancer pool (gRPC)": {
     "value": "Живой пул балансировщика (gRPC)"
@@ -2586,9 +2541,6 @@
   },
   "The launcher spawns `sing-box run` itself and talks to it over the Clash API from config.json. There is nothing to configure here — the clash_api section is managed in the configurator.": {
     "value": "Лаунчер сам запускает `sing-box run` и общается с ним через Clash API из config.json. Настраивать здесь нечего — секция clash_api задаётся в конфигураторе."
-  },
-  "— Daemon engine is not active yet: install the service and pair on the Install tab, then it switches on automatically.": {
-    "value": "— Daemon-движок ещё не активен: установите службу и сопрягитесь на вкладке «Установка» — он включится автоматически."
   },
   "Copy the command": {
     "value": "Скопировать команду"
@@ -2641,20 +2593,8 @@
   "Also wipe all daemon data — keys, clients, last-good (--purge)": {
     "value": "Стереть и все данные демона — ключи, клиентов, last-good (--purge)"
   },
-  "Install": {
-    "value": "Установка"
-  },
-  "1. Install or update the service (run in Terminal, your sudo; a first install prints a pairing invite at the end):": {
-    "value": "1. Установить или обновить службу (в терминале, ваш sudo; первая установка в конце печатает приглашение):"
-  },
-  "2. Paste the invite (address#fingerprint#code) and pair:": {
-    "value": "2. Вставьте приглашение (адрес#отпечаток#код) и сопрягитесь:"
-  },
   "The core runs inside a system daemon (sing-box lxd).": {
     "value": "Ядро работает внутри системного демона (sing-box lxd)."
-  },
-  "Need a fresh invite (service already installed)?": {
-    "value": "Нужно свежее приглашение (служба уже установлена)?"
   },
   "Connecting to the daemon…": {
     "value": "Подключение к демону…"
@@ -4400,12 +4340,6 @@
   "launchd reports: %s": {
     "value": "launchd сообщает: %s"
   },
-  "Load the service into launchd (run in Terminal, your sudo):": {
-    "value": "Загрузить службу в launchd (в терминале, ваш sudo):"
-  },
-  "Install or update the service (run in Terminal, your sudo):": {
-    "value": "Установить или обновить службу (выполнить в терминале, ваш sudo):"
-  },
   "Run as administrator": {
     "value": "Выполнить от имени администратора"
   },
@@ -4421,20 +4355,8 @@
   "The service runs a binary your user can modify. Install or update the service to move it to a protected copy.": {
     "value": "Служба запускает бинарь, который может изменить ваш пользователь. Установите или обновите службу, чтобы перевести её на защищённую копию."
   },
-  "Install or update the service (Windows asks for administrator rights):": {
-    "value": "Установить или обновить службу (Windows запросит права администратора):"
-  },
-  "1. Install or update the service (Windows asks for administrator rights; the launcher pairs with it automatically):": {
-    "value": "1. Установить или обновить службу (Windows запросит права администратора; лаунчер сопряжётся с ней сам):"
-  },
-  "2. If pairing did not happen automatically, paste an invite (address#fingerprint#code) and pair:": {
-    "value": "2. Если сопряжение не произошло само, вставьте приглашение (адрес#отпечаток#код) и сопрягитесь:"
-  },
   "2. Remove the service (Windows asks for administrator rights):": {
     "value": "2. Удалить службу (Windows запросит права администратора):"
-  },
-  "Paste the invite printed by the daemon and click Pair. Installing or updating the service pairs the launcher automatically, so an invite is only needed when that did not happen:\n\n- \"Need a fresh invite\" on the Install tab issues a new invite and pairs with it (Windows asks for administrator rights).\n- Or run the command below in a terminal opened as administrator, then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS.": {
-    "value": "Вставьте приглашение, которое печатает демон, и нажмите «Сопрячь». Установка или обновление службы сопрягает лаунчер автоматически, поэтому приглашение нужно, только если этого не произошло:\n\n- «Нужно свежее приглашение» на вкладке «Установка» выпускает новое приглашение и сопрягается по нему (Windows запросит права администратора).\n- Или выполните команду ниже в консоли, открытой от имени администратора, затем вставьте напечатанное приглашение в поле сопряжения.\n\nКод одноразовый — сгорает после успешного сопряжения. Поле секрета нужно только для демонов без TLS."
   },
   "Remove the service": {
     "value": "Удаление службы"
@@ -5053,5 +4975,461 @@
   },
   "Keep mine": {
     "value": "Оставить своё"
+  },
+  "%s  ✓ sha256 matches SHA256SUMS": {
+    "value": "%s  ✓ sha256 совпадает с SHA256SUMS"
+  },
+  "%s · %s/%s · service %s (%s)": {
+    "value": "%s · %s/%s · служба %s (%s)"
+  },
+  "%s — core log": {
+    "value": "%s — лог ядра"
+  },
+  "%s — sha256 %s. SHA256SUMS is unavailable: compare this sum with the one step 3 prints on the machine.": {
+    "value": "%s — sha256 %s. SHA256SUMS недоступен: сверьте эту сумму с той, что шаг 3 напечатает на машине."
+  },
+  "(%d failed checks in a row)": {
+    "value": "(%d неудачных проверок подряд)"
+  },
+  "Add %s to /etc/sysupgrade.conf, or a firmware upgrade will drop it.": {
+    "value": "Добавьте %s в /etc/sysupgrade.conf, иначе обновление прошивки его сотрёт."
+  },
+  "Also wipe the state — keys, clients and last-good are lost, and every client has to pair again:": {
+    "value": "Стереть и состояние — ключи, клиенты и last-good пропадут, всем клиентам придётся сопрягаться заново:"
+  },
+  "Back up, swap, restart": {
+    "value": "Бэкап, замена, перезапуск"
+  },
+  "Bearer for tls:false": {
+    "value": "Bearer для tls:false"
+  },
+  "Bearer secret": {
+    "value": "Bearer-секрет"
+  },
+  "Check before swapping: build tags and the current config": {
+    "value": "Проверка до замены: теги сборки и текущий конфиг"
+  },
+  "Checking the daemon…": {
+    "value": "Проверяем демон…"
+  },
+  "Commands run on this computer": {
+    "value": "Команды выполняются на этом компьютере"
+  },
+  "Commands run via  ssh %s": {
+    "value": "Команды выполняются через  ssh %s"
+  },
+  "Connect first: the log streams over the machine's channel.": {
+    "value": "Сначала подключитесь: лог идёт по каналу машины."
+  },
+  "Connect to %s first: the log streams over its channel.": {
+    "value": "Сначала подключитесь к %s: лог идёт по её каналу."
+  },
+  "Copy the path": {
+    "value": "Скопировать путь"
+  },
+  "Core %s (required %s — cannot compare)": {
+    "value": "Ядро %s (требуется %s — сравнить нельзя)"
+  },
+  "Core %s (required %s ⚠)": {
+    "value": "Ядро %s (требуется %s ⚠)"
+  },
+  "Core %s (required %s)": {
+    "value": "Ядро %s (требуется %s)"
+  },
+  "Core %s cannot be compared with the required %s.": {
+    "value": "Ядро %s нельзя сравнить с требуемым %s."
+  },
+  "Core binary": {
+    "value": "Бинарь ядра"
+  },
+  "Core is older than required — open Service": {
+    "value": "Ядро старее требуемого — откройте Service"
+  },
+  "Core version unknown (required %s)": {
+    "value": "Версия ядра неизвестна (требуется %s)"
+  },
+  "Daemon address": {
+    "value": "Адрес демона"
+  },
+  "Daemon does not answer — open Service": {
+    "value": "Демон не отвечает — откройте Service"
+  },
+  "Deploy anyway": {
+    "value": "Всё равно отправить"
+  },
+  "Deploy to %s?": {
+    "value": "Отправить на %s?"
+  },
+  "Don't ask again for %s on this machine": {
+    "value": "Не спрашивать больше про %s на этой машине"
+  },
+  "Download %s": {
+    "value": "Скачать %s"
+  },
+  "Download failed: %s": {
+    "value": "Скачивание не удалось: %s"
+  },
+  "Enable and start it": {
+    "value": "Включить и запустить"
+  },
+  "Expect with_lxd among the build tags, the same sha256 as in step 1 and no error from check.": {
+    "value": "Ожидается with_lxd среди тегов сборки, тот же sha256, что в шаге 1, и check без ошибок."
+  },
+  "Follow the log": {
+    "value": "Следить за логом"
+  },
+  "Get the core for %s/%s": {
+    "value": "Скачать ядро под %s/%s"
+  },
+  "Guide:": {
+    "value": "Гайд:"
+  },
+  "Guides:": {
+    "value": "Гайды:"
+  },
+  "How to update": {
+    "value": "Как обновить"
+  },
+  "If the header turns green, you are done.": {
+    "value": "Если шапка позеленела — готово."
+  },
+  "Init system:": {
+    "value": "Init-система:"
+  },
+  "Install from scratch (no service yet)": {
+    "value": "Установка с нуля (службы ещё нет)"
+  },
+  "Install or update the service": {
+    "value": "Установить или обновить службу"
+  },
+  "Install record": {
+    "value": "Запись установки"
+  },
+  "Is it running?": {
+    "value": "Запущен ли он?"
+  },
+  "Last-good": {
+    "value": "Last-good"
+  },
+  "Launcher core %s (required %s). The service runs its own copy of it; download a newer core on the Core tab of the dashboard, then install or update the service.": {
+    "value": "Ядро лаунчера %s (требуется %s). Служба запускает собственную его копию: скачайте новое ядро на вкладке «Ядро» дашборда, затем установите или обновите службу."
+  },
+  "Likely: a pairing problem, not the service — the daemon answers but refuses this launcher.": {
+    "value": "Похоже, дело в сопряжении, а не в службе: демон отвечает, но отказывает этому лаунчеру."
+  },
+  "Likely: the service is stopped or crash-looping.": {
+    "value": "Похоже, служба остановлена или падает в цикле."
+  },
+  "Live log window": {
+    "value": "Окно живого лога"
+  },
+  "Live log": {
+    "value": "Живой лог"
+  },
+  "Load the service": {
+    "value": "Загрузить службу"
+  },
+  "Log": {
+    "value": "Лог"
+  },
+  "Mint an invite on the machine": {
+    "value": "Выпустить приглашение на машине"
+  },
+  "Mint an invite": {
+    "value": "Выпустить приглашение"
+  },
+  "Not connected — press Connect on the machine's row to check the daemon. The commands below use the last known paths.": {
+    "value": "Нет подключения — нажмите Connect в строке машины, чтобы проверить демон. Команды ниже используют последние известные пути."
+  },
+  "Not running": {
+    "value": "Не запущен"
+  },
+  "Nothing helps? Reinstall the core on the Core tab.": {
+    "value": "Ничего не помогает? Переустановите ядро на вкладке «Ядро»."
+  },
+  "On %s the service is installed on the machine itself: run the core's `lxd --service=install` there as administrator — it installs or updates the service in place.": {
+    "value": "На %s служба ставится на самой машине: выполните там `lxd --service=install` ядра от имени администратора — команда установит или обновит службу на месте."
+  },
+  "Only for a daemon with tls:false in daemon.json: the Bearer secret is the whole authentication.": {
+    "value": "Только для демона с tls:false в daemon.json: там Bearer-секрет — вся аутентификация."
+  },
+  "Open the Core tab": {
+    "value": "Открыть вкладку «Ядро»"
+  },
+  "Open the Pairing tab": {
+    "value": "Открыть вкладку «Сопряжение»"
+  },
+  "Paired — connect to check the certificate.": {
+    "value": "Сопряжено — подключитесь, чтобы проверить сертификат."
+  },
+  "Paired — the daemon does not answer, so the certificate cannot be checked now.": {
+    "value": "Сопряжено — демон не отвечает, поэтому сертификат сейчас не проверить."
+  },
+  "Paired. A new client key was issued; connect again.": {
+    "value": "Сопряжено. Выпущен новый ключ клиента — подключитесь заново."
+  },
+  "Pairing": {
+    "value": "Сопряжение"
+  },
+  "Paste the invite printed by the daemon and click Pair. Installing or updating the service pairs the launcher automatically, so an invite is only needed when that did not happen:\n\n- \"Mint an invite\" on the Pairing tab issues a new invite and pairs with it (Windows asks for administrator rights).\n- Or run the command below in a terminal opened as administrator, then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS.": {
+    "value": "Вставьте приглашение, которое печатает демон, и нажмите «Сопрячь». Установка или обновление службы сопрягает лаунчер автоматически, поэтому приглашение нужно, только если этого не произошло:\n\n- «Выпустить приглашение» на вкладке «Сопряжение» выпускает новое приглашение и сопрягается по нему (Windows запросит права администратора).\n- Или выполните команду ниже в консоли, открытой от имени администратора, затем вставьте напечатанное приглашение в поле сопряжения.\n\nКод одноразовый — сгорает после успешного сопряжения. Поле секрета нужно только для демонов без TLS."
+  },
+  "Paste the invite printed by the daemon and click Pair. Where to get one:\n\n- Installing the service prints an invite at the end of its Terminal output (Core tab).\n- For a fresh invite run the command below (copy or open in Terminal), then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS.": {
+    "value": "Вставьте приглашение, которое печатает демон, и нажмите «Сопрячь». Где его взять:\n\n- Установка службы печатает приглашение в конце вывода в терминале (вкладка «Ядро»).\n- Свежее приглашение — команда ниже (скопируйте или откройте в терминале), затем вставьте напечатанное приглашение в поле сопряжения.\n\nКод одноразовый — сгорает после успешного сопряжения. Поле секрета нужно только для демонов без TLS."
+  },
+  "Paste what it printed": {
+    "value": "Вставьте то, что она напечатала"
+  },
+  "Paths — defaults: the daemon has not reported its paths yet": {
+    "value": "Пути — по умолчанию: демон ещё не сообщал свои пути"
+  },
+  "Paths — reported by the daemon %s ago": {
+    "value": "Пути — сообщены демоном %s назад"
+  },
+  "Paths — reported by the daemon just now": {
+    "value": "Пути — сообщены демоном только что"
+  },
+  "Plain mode (tls:false): Bearer secret": {
+    "value": "Режим без TLS (tls:false): Bearer-секрет"
+  },
+  "Puts the backed-up core back and restarts the service.": {
+    "value": "Возвращает ядро из бэкапа и перезапускает службу."
+  },
+  "Re-pair when the error says \"certificate changed\" or \"not paired\", the service was reinstalled or its state dir was wiped.": {
+    "value": "Пере-сопрягайтесь, когда ошибка говорит «certificate changed» или «not paired», службу переустановили или стёрли её каталог состояния."
+  },
+  "Read the log": {
+    "value": "Прочитать лог"
+  },
+  "Reference": {
+    "value": "Справка"
+  },
+  "Reinstall the same version": {
+    "value": "Переустановить ту же версию"
+  },
+  "Remove the service → Uninstall tab": {
+    "value": "Удалить службу → вкладка «Удаление»"
+  },
+  "Replace the <…> part before running it.": {
+    "value": "Перед запуском замените часть <…>."
+  },
+  "Restart it": {
+    "value": "Перезапустить"
+  },
+  "Revoke a client": {
+    "value": "Отозвать клиента"
+  },
+  "Roll back if the new core misbehaves": {
+    "value": "Откат, если новое ядро ведёт себя плохо"
+  },
+  "Run in Terminal over ssh": {
+    "value": "Выполнить в терминале по ssh"
+  },
+  "Run it in an elevated PowerShell on the machine.": {
+    "value": "Выполните это в PowerShell от имени администратора на машине."
+  },
+  "Run the command": {
+    "value": "Выполнить команду"
+  },
+  "Running %s → required %s": {
+    "value": "Работает %s → требуется %s"
+  },
+  "Runs in Terminal with your sudo and prints a one-time invite — paste it below:": {
+    "value": "Выполняется в терминале под вашим sudo и печатает одноразовое приглашение — вставьте его ниже:"
+  },
+  "Runs in Terminal with your sudo:": {
+    "value": "Выполняется в терминале под вашим sudo:"
+  },
+  "Runs in Terminal with your sudo; a first install prints a pairing invite at the end:": {
+    "value": "Выполняется в терминале под вашим sudo; первая установка в конце печатает приглашение для сопряжения:"
+  },
+  "Runs in the foreground: stop it with Ctrl-C, then start the service again.": {
+    "value": "Работает на переднем плане: остановите Ctrl-C, затем снова запустите службу."
+  },
+  "SSH": {
+    "value": "SSH"
+  },
+  "Save this as %s on the machine, then enable and start it:": {
+    "value": "Сохраните это на машине как %s, затем включите и запустите:"
+  },
+  "Saved. It is used on the next connect.": {
+    "value": "Сохранено. Применится при следующем подключении."
+  },
+  "Service binary": {
+    "value": "Бинарь службы"
+  },
+  "Service — %s": {
+    "value": "Service — %s"
+  },
+  "Service": {
+    "value": "Служба"
+  },
+  "Service: restart, update the core, pairing, paths and logs": {
+    "value": "Service: перезапуск, обновление ядра, сопряжение, пути и логи"
+  },
+  "Show it": {
+    "value": "Показать"
+  },
+  "Still down? Read why": {
+    "value": "Всё ещё лежит? Прочитайте почему"
+  },
+  "Stops the daemon and removes its service definition. The state (keys, clients, last-good) stays.": {
+    "value": "Останавливает демон и удаляет определение службы. Состояние (ключи, клиенты, last-good) остаётся."
+  },
+  "The client loses access at once. Replace <name> with a name from the list above.": {
+    "value": "Клиент сразу теряет доступ. Замените <name> именем из списка выше."
+  },
+  "The core release has no build for %s/%s — build the core for this machine yourself.": {
+    "value": "В релизе ядра нет сборки под %s/%s — соберите ядро для этой машины сами."
+  },
+  "The core's log, live, while the daemon answers": {
+    "value": "Лог ядра вживую, пока демон отвечает"
+  },
+  "The current core is kept as %s.": {
+    "value": "Текущее ядро сохраняется как %s."
+  },
+  "The daemon has not been checked yet: connect to the machine to see whether it answers. The steps below use the last known paths.": {
+    "value": "Демон ещё не проверялся: подключитесь к машине, чтобы узнать, отвечает ли он. Шаги ниже используют последние известные пути."
+  },
+  "The daemon has not reported its core version yet (required %s).": {
+    "value": "Демон ещё не сообщал версию ядра (требуется %s)."
+  },
+  "The header should now say %s · started.": {
+    "value": "Теперь в шапке должно быть %s · started."
+  },
+  "The last config broke it? Boot the last working one once": {
+    "value": "Сломал последний конфиг? Загрузите разово последний рабочий"
+  },
+  "The last deploy did not start: the core rolled back to the last-good config.": {
+    "value": "Последний деплой не запустился: ядро откатилось на последний рабочий конфиг (last-good)."
+  },
+  "The service was restarted.": {
+    "value": "Служба перезапущена."
+  },
+  "This changes the service on %s. Run it?": {
+    "value": "Это изменит службу на %s. Выполнить?"
+  },
+  "This computer": {
+    "value": "Этот компьютер"
+  },
+  "Upload it (streamed over ssh — scp does not work on OpenWrt)": {
+    "value": "Залить на машину (потоком по ssh — scp на OpenWrt не работает)"
+  },
+  "Upload it (streamed over ssh)": {
+    "value": "Залить на машину (потоком по ssh)"
+  },
+  "Waiting for log lines…": {
+    "value": "Ждём строки лога…"
+  },
+  "Who holds the port": {
+    "value": "Кто держит порт"
+  },
+  "Who is trusted": {
+    "value": "Кому доверяет демон"
+  },
+  "Windows asks for administrator rights:": {
+    "value": "Windows запросит права администратора:"
+  },
+  "Windows asks for administrator rights; the launcher pairs with the new invite automatically:": {
+    "value": "Windows запросит права администратора; лаунчер сам сопряжётся по новому приглашению:"
+  },
+  "Windows asks for administrator rights; the launcher pairs with the service automatically:": {
+    "value": "Windows запросит права администратора; лаунчер сам сопряжётся со службой:"
+  },
+  "\"refusing to run\" → Core tab · \"bind: address in use\" → Reference tab": {
+    "value": "«refusing to run» → вкладка «Ядро» · «bind: address in use» → вкладка «Справка»"
+  },
+  "core %s": {
+    "value": "ядро %s"
+  },
+  "daemon.json — edit it, then restart the service (never reinstall)": {
+    "value": "daemon.json — правьте его, затем перезапустите службу (не переустанавливайте)"
+  },
+  "default path — the daemon has not reported it yet": {
+    "value": "путь по умолчанию — демон его ещё не сообщал"
+  },
+  "default": {
+    "value": "по умолчанию"
+  },
+  "log path": {
+    "value": "путь лога"
+  },
+  "mTLS on/off": {
+    "value": "mTLS вкл/выкл"
+  },
+  "not reported": {
+    "value": "не сообщалось"
+  },
+  "rotation: size MB / backups / age h": {
+    "value": "ротация: размер МБ / копий / возраст ч"
+  },
+  "shown on the machine only": {
+    "value": "виден только на машине"
+  },
+  "the daemon does not answer": {
+    "value": "демон не отвечает"
+  },
+  "unreachable": {
+    "value": "недоступен"
+  },
+  "uptime %s": {
+    "value": "работает %s"
+  },
+  "where it answers": {
+    "value": "где он отвечает"
+  },
+  "— the core restarted —": {
+    "value": "— ядро перезапустилось —"
+  },
+  "⚠ %s runs core %s; this launcher builds configs for %s. The old core may reject them — it will then roll back to the last working config.": {
+    "value": "⚠ На %s работает ядро %s, а этот лаунчер собирает конфиги под %s. Старое ядро может их отвергнуть — тогда оно откатится на последний рабочий конфиг."
+  },
+  "⚠ Core %s is older than required (%s)": {
+    "value": "⚠ Ядро %s старее требуемого (%s)"
+  },
+  "✅ Answers": {
+    "value": "✅ Отвечает"
+  },
+  "✅ Core %s is current": {
+    "value": "✅ Ядро %s актуально"
+  },
+  "✅ Core %s is newer than required (%s)": {
+    "value": "✅ Ядро %s новее требуемого (%s)"
+  },
+  "✅ Paired · certificate ok": {
+    "value": "✅ Сопряжено · сертификат в порядке"
+  },
+  "✅ The daemon answers — nothing to fix here.": {
+    "value": "✅ Демон отвечает — здесь чинить нечего."
+  },
+  "✅ The daemon answers, uptime %s — nothing to fix here.": {
+    "value": "✅ Демон отвечает, работает %s — здесь чинить нечего."
+  },
+  "✖ Not answering for %s: %s": {
+    "value": "✖ Не отвечает уже %s: %s"
+  },
+  "✖ Not answering: %s": {
+    "value": "✖ Не отвечает: %s"
+  },
+  "✖ Not paired yet": {
+    "value": "✖ Ещё не сопряжено"
+  },
+  "✖ The TLS mode does not match the daemon's: %s": {
+    "value": "✖ Режим TLS не совпадает с режимом демона: %s"
+  },
+  "✖ The daemon does not trust this launcher: %s": {
+    "value": "✖ Демон не доверяет этому лаунчеру: %s"
+  },
+  "✖ The daemon refuses this launcher: %s": {
+    "value": "✖ Демон отказывает этому лаунчеру: %s"
+  },
+  "✖ The daemon's certificate changed: %s": {
+    "value": "✖ Сертификат демона сменился: %s"
+  },
+  "The system service is not installed yet — install it on the Core tab, then pair on the Pairing tab.": {
+    "value": "Системная служба ещё не установлена — установите её на вкладке «Ядро», затем сопрягитесь на вкладке «Сопряжение»."
+  },
+  "The daemon engine is not active yet: it switches on by itself once the service answers and the launcher is paired (stop the VPN first if it is running).": {
+    "value": "Daemon-движок ещё не активен: он включится сам, когда служба ответит и лаунчер будет сопряжён (если VPN запущен — сначала остановите его)."
   }
 }

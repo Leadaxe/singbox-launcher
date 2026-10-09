@@ -198,7 +198,9 @@ func buildLocalCore(c *serviceTabCtx, box *fyne.Container) {
 	if l.CoreHint != "" {
 		serviceAdd(box, serviceNoteLabel(l.CoreHint, widget.WarningImportance))
 	}
-	if c.v.rows.Install != nil {
+	// Ядро лаунчера без root-owned копии: команды install нет — вместо неё
+	// подсказка CoreHint выше (install записал бы в службу файл пользователя).
+	if c.v.rows.Install != nil && l.InstallSupported {
 		serviceAdd(box, serviceTitled(locale.T("Install or update the service"), c.v.rows.Install))
 	}
 	if c.v.rows.Uninstall != nil {

@@ -27,13 +27,15 @@ const (
 
 // buildLocalEngineTab собирает вкладку LOCAL. daemon-панель приходит из
 // платформенного builder'а (nil вне daemon-платформ — тогда вкладка
-// описывает только classic-режим без переключателя).
-func buildLocalEngineTab(ac *core.AppController, win fyne.Window, onChanged func()) fyne.CanvasObject {
+// описывает только classic-режим без переключателя). dispose — останов
+// опроса демона панелью (nil — нечего останавливать); звать при закрытии
+// окна.
+func buildLocalEngineTab(ac *core.AppController, win fyne.Window, onChanged func()) (fyne.CanvasObject, func()) {
 	processHint := widget.NewLabel(locale.T(processHintText))
 	processHint.Wrapping = fyne.TextWrapWord
 
 	var trySwitchToDaemon func()
-	daemonPanel := buildDaemonPanel(ac, win, func() {
+	daemonPanel, dispose := buildDaemonPanel(ac, win, func() {
 		// Успешное сопряжение: если пользователь уже выбрал daemon-движок,
 		// доводим переключение до конца (при первом выборе оно могло
 		// упасть на «not paired»).
@@ -46,7 +48,7 @@ func buildLocalEngineTab(ac *core.AppController, win fyne.Window, onChanged func
 		return container.NewVBox(
 			sectionHeader(locale.T("Process (classic)")),
 			processHint,
-		)
+		), nil
 	}
 
 	processLabel := locale.T("Process (classic)")
@@ -148,11 +150,13 @@ func buildLocalEngineTab(ac *core.AppController, win fyne.Window, onChanged func
 	}
 	updatingRadio = false
 
-	return container.NewVBox(
+	// Панель демона — окно Service с вкладками, у каждой своя прокрутка:
+	// она занимает всю оставшуюся высоту (Border), а не встраивается в общую
+	// прокрутку — вложенная прокрутка сжала бы вкладки до их минимума.
+	top := container.NewVBox(
 		widget.NewLabelWithStyle(locale.T("Core engine"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		radio,
 		widget.NewSeparator(),
-		processBox,
-		daemonPanel,
 	)
+	return container.NewBorder(top, nil, nil, nil, container.NewStack(processBox, daemonPanel)), dispose
 }

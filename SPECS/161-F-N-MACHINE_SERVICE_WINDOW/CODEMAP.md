@@ -346,3 +346,24 @@ Windows — пустая строка.
 | ⚙ `serviceButton` (до Connect — в `metaRow` без точки), строка вердикта под статусом (**Δ** текст ошибки связи перенесён из статуса в красную строку, статус — «unreachable»), `confirmDeployOldCore`, `runDeploy` | `ui/machine_list_panel.go` | — |
 | `machineLiveness.FailSince`, `healthChanged` | `ui/machine_heartbeat.go` | — |
 | поле SSH, re-pair через `rePairMachine` | `ui/machine_edit_window.go` | — |
+
+## 15. Волна C2/C3/C7 — Local на окне Service (факт, после реализации)
+
+Отклонения от PLAN помечены **Δ**.
+
+| Сущность | Якорь | Что делает |
+|---|---|---|
+| `serviceLocalRefresh` = 5 с, `localServiceSource` | `ui/service_source_local.go:37`, `:49` | тег `darwin \|\| (windows && !386)`; состояние только в UI-потоке (`refresh`/`apply` через `fyne.Do`), флаг `inFlight` + `pending` — опрос поверх идущего не стартует, внеочередной после операции встаёт в очередь |
+| `newLocalServiceSource(ac, win, onPaired)`, `Key()` = `"local"`, `localPlatform()` | `:72–83` | `runtime` + `DefaultServiceInit` |
+| `Snapshot` | `:84` | `Loaded=false` до первого опроса (`Local` уже не nil); `Paired = Paired \|\| Reachable` (plain-демон без пина), `Connected = Paired`; `Paths = MergeServicePaths(паспорт, DaemonServicePaths())`; `Uptime`/`PassportLive` — только у свежего паспорта; **Δ** `NeedsInstall` += `NotInstalled` (окно открывается на Core, как прежняя Install); `CoreHint` — при `!InstallSupported && !CoreTooOld`; `ServiceNote` = плашка SPEC 136 §6 + «нет lxd в ядре» (красная) + «служба не установлена» / «движок ещё не активен» |
+| `Poll` / `StopPoll` / `refresh` / `apply` | `:165–230` | немедленный опрос + тикер; `DownSince`/`Attempts` — по серии `(Paired\|\|Reachable) && !Reachable` |
+| `Pair` (адрес — из приглашения), `SetSecret`, `OpenLiveLog` → `OpenLogViewerWindow` | `:240–263` | |
+| `LocalRows` | `:266` | один `daemonOps` на все строки (кнопки гаснут вместе): Install, Bootstrap, **Restart** (`DaemonRestartCommand`/`DaemonRestartService`), FreshInvite, Secret (поле + Save + «?» с `DaemonShowSecretCommand`), Pair (приглашение + Pair + «?»), Address (поле + Save, Enter как раньше) |
+| `uninstallPane` | `:375` | перенос Uninstall без изменений (Unpair, `--purge`, Windows — Keep copy / Remove all) |
+| `buildDaemonPanel(ac, win, onPaired) (obj, dispose)` | `ui/connection_local_daemon.go:54` | подсказка «?», `Stop VPN when quitting`, `buildServiceView(local, serviceTabAuto)` в `Border`; `renderDaemonStatusText`, ↻, вкладки Status/Install удалены; `daemonServiceNoticeText`, `coreBuildLabel`, `daemonOps`, `show*HelpDialog`, `daemonPurgeRow` — на месте |
+| стаб | `ui/connection_local_daemon_stub.go` | `buildDaemonPanel` → `(nil, nil)` |
+| **Δ** `buildLocalEngineTab(...) (obj, dispose)` | `ui/connection_local.go:33` | `Border(заголовок+радио, Stack(processBox, daemonPanel))` вместо `VBox`; радио без изменений |
+| `OpenConnectionWindow` | `ui/connection_window.go:33` | без общей прокрутки (у вкладок Service своя), слой тултипов, ширина `serviceWindowWidth`; `SetOnClosed` → `dispose` + `DestroyWindowToolTipLayer` |
+| подписи строк | `ui/command_row_darwin.go:25–29`, `ui/command_row_windows.go:14–18` | `daemonInstallRowLabel`, `daemonOpRowLabel` (bootstrap, restart), `daemonFreshInviteRowLabel` — подписи под заголовками шагов окна; `daemonInstallStepLabel`, `daemonPairStepLabel`, `daemonStartRowLabel` удалены; `daemonPairHelpText` ссылается на вкладки Core / Pairing |
+| `buildLocalCore` | `ui/service_tabs.go` | строка Install — только при `InstallSupported` (иначе подсказка `CoreHint`, как прежняя `installCoreHint`) |
+| `bin/locale/ru.json` | — | +152 ключа волн A/B/C, −26 orphan (`unreachable: %s`, строки `renderDaemonStatusText`, `Refresh daemon status`, `Install`, подписи шагов «1.»/«2.», `Need a fresh invite…`, старые `daemonPairHelpText`) |

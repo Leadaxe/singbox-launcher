@@ -11,8 +11,8 @@ import (
 // buildDaemonPanel — daemon-движок (sing-box lxd) есть только на
 // daemon-платформах (macOS, Windows x64/arm64); на остальных (Linux, Win7)
 // вкладка LOCAL показывает только classic-движок.
-func buildDaemonPanel(_ *core.AppController, _ fyne.Window, _ func()) fyne.CanvasObject {
-	return nil
+func buildDaemonPanel(_ *core.AppController, _ fyne.Window, _ func()) (fyne.CanvasObject, func()) {
+	return nil, nil
 }
 
 // daemonPurgeRow — службы демона здесь нет (DaemonUninstallHint всегда

@@ -201,7 +201,7 @@ A1─A6 (core) ──┬──▶ B1 (модель окна) ──┬──▶ 
 - Проверка: `go build ./core/...`. Коммит этими тремя путями (+ `core/debugapi_wiring.go`).
 
 ### C2. Источник «локальный демон» (после B1)
-- [ ] Новый `ui/service_source_local.go` (тег `darwin || (windows && !386)`):
+- [x] Новый `ui/service_source_local.go` (тег `darwin || (windows && !386)`):
   `newLocalServiceSource(ac, win, onPaired)`, тикер `serviceLocalRefresh = 5 s`,
   `DownSince`/`Attempts`, `MergeServicePaths(passport, ac.DaemonServicePaths())`,
   `LocalRows` (строки `daemonOps`: install, bootstrap, restart, fresh invite,
@@ -210,21 +210,23 @@ A1─A6 (core) ──┬──▶ B1 (модель окна) ──┬──▶ 
 - Проверка: `go build ./ui/`.
 
 ### C3. Панель Local → окно Service
-- [ ] `ui/connection_local_daemon.go`: `buildDaemonPanel` (`:61–411`) — подсказка,
+- [x] `ui/connection_local_daemon.go`: `buildDaemonPanel` (`:61–411`) — подсказка,
   `Stop VPN when quitting`, затем `buildServiceView(local source)` с вкладкой
   Uninstall; код Uninstall (`:241–313`), install/bootstrap/pair/secret/address
   переезжает в `LocalRows` (C2); удалить `refreshBtn` (`:344`), `statusTab`,
   `installTab`, `AppTabs` (`:368–402`), `renderDaemonStatusText` (`:416–469`);
   `daemonServiceNoticeText`, `coreBuildLabel`, `daemonOps`, `showCommandHelpDialog`,
   `daemonPurgeRow` — остаются.
-- [ ] `ui/command_row_darwin.go`, `ui/command_row_windows.go`: подписи новых
+- [x] `ui/command_row_darwin.go`, `ui/command_row_windows.go`: подписи новых
   локальных шагов (restart, status) с `// l10n-key`; удалить подписи, ставшие
   ненужными (если `daemonInstallStepLabel`/`daemonPairStepLabel` с нумерацией
   «1.»/«2.» больше не используются — заменить на подписи шагов окна).
-- [ ] `ui/connection_window.go:53–75`: `fynetooltip.AddWindowToolTipLayer` на
+- [x] `ui/connection_window.go:53–75`: `fynetooltip.AddWindowToolTipLayer` на
   контент, `DestroyWindowToolTipLayer` в `SetOnClosed`.
-- [ ] `ui/connection_local.go` — **не меняется** (радио движка); если сигнатура
-  `buildDaemonPanel` останется прежней — файл не трогать.
+- [x] `ui/connection_local.go` — радио движка не менялось. **Δ** сигнатура
+  `buildDaemonPanel`/`buildLocalEngineTab` → `(obj, dispose)` (останов опроса на
+  закрытии окна); раскладка — `Border` вместо `VBox` в общей прокрутке окна
+  (вложенная прокрутка сжала бы вкладки Service до минимума 160).
 - Проверка: `go build ./ui/` и `go build ./...`. Показать владельцу окно
   Connection settings (macOS): шапка, пять вкладок, все прежние действия
   (install, bootstrap, pair, fresh invite, secret, address, unpair, uninstall,
@@ -250,15 +252,17 @@ A1─A6 (core) ──┬──▶ B1 (модель окна) ──┬──▶ 
 - [x] `RELEASE_NOTES.md` — строка в выжимке черновика (значимый UX).
 
 ### C7. Переводы и закрытие (последней, после B8 и C3)
-- [ ] `bin/locale/ru.json`: переводы всех `missing` и удаление всех `orphan` из
+- [x] `bin/locale/ru.json`: переводы всех `missing` и удаление всех `orphan` из
   `go run ./tools/l10n/l10n_check --strict` (ключи волн B и C).
-- [ ] `go run ./tools/l10n/l10n_check --strict`, `go run ./tools/l10n/hardcoded_check --strict`,
+- [x] `go run ./tools/l10n/l10n_check --strict`, `go run ./tools/l10n/hardcoded_check --strict`,
   `go run ./tools/win7guard`, `go build ./...`.
 - [ ] CI: `gh workflow run ci.yml --ref develop -f run_mode=tests`; упавшее —
-  `gh run view <ID> --log-failed`.
-- [ ] `SPECS/161-F-N-MACHINE_SERVICE_WINDOW/IMPLEMENTATION_REPORT.md`; строка 161 в
-  `SPECS/README.md`; папка → `161-F-C-MACHINE_SERVICE_WINDOW` после приёмки владельцем.
-- [ ] Коммит C: `core/debugapi/daemon_endpoints.go core/debugapi_wiring_daemon.go
+  `gh run view <ID> --log-failed`. (Волна в ветке `spec-161-service-window`, не
+  запушена — прогон после слияния в `develop`.)
+- [x] `SPECS/161-F-N-MACHINE_SERVICE_WINDOW/IMPLEMENTATION_REPORT.md`; строка 161 в
+  `SPECS/README.md`.
+- [ ] Папка → `161-F-C-MACHINE_SERVICE_WINDOW` — после приёмки владельцем.
+- [x] Коммит C: `core/debugapi/daemon_endpoints.go core/debugapi_wiring_daemon.go
   core/debugapi/remote_endpoints.go ui/service_source_local.go
   ui/connection_local_daemon.go ui/command_row_darwin.go ui/command_row_windows.go
   ui/connection_window.go docs/TROUBLESHOOTING.md docs/TROUBLESHOOTING.ru.md
