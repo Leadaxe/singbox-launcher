@@ -74,6 +74,7 @@ func decode10(b *Backup10, opts ImportOptions) (*decodedFile, error) {
 			out.Rules = append(out.Rules, rule)
 		}
 	}
+	out.RulesPresent = b.rulesPresent || len(b.Rules) > 0
 
 	out.DNS = decode10DNS(b.DNS)
 	out.Vars = b.Vars

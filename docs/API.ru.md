@@ -172,11 +172,11 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application
 
 Потери экспорта не молчаливы: без конверта коды едут заголовком `X-Backup-Warnings` JSON-массивом, с `?envelope=1` — полем `warnings`. У простого ответа есть и `Content-Disposition` с тем же предлагаемым именем файла, что показывает UI.
 
-`POST /backup/import` **сливает**, а не замещает (BACKUP.md §9): подписки сходятся по URL, серверы — по телу, папки — по имени, цепочки и Направления — по тегу. Правила маршрута единственное исключение — их файл замещает целиком. В ответе — что именно применилось:
+`POST /backup/import` **сливает**, а не замещает (BACKUP.md §9): подписки сходятся по URL, серверы — по телу, папки — по имени, цепочки и Направления — по тегу. Правила маршрута единственное исключение — **когда в файле есть ключ `rules`** (пусть и `[]`), правила файла замещают правила этой машины целиком, а снятые считаются в предупреждении `backup_rules_replaced`. Файл **без** ключа `rules` правила не трогает (контракт 1.1.116). Поэтому частичный файл — один узел, одна папка — импортируется безопасно; до 1.1.116 он стирал все правила маршрутизации и отвечал `applied.rules: 0` без предупреждения. Чтобы добавить один узел, файл бэкапа не нужен вовсе: см. `POST /state/servers` в разделе **Запись состояния**. В ответе — что именно применилось:
 
 ```json
 {"ok":true,"format":"1.0","warnings":[{"code":"backup_unknown_outbound","detail":"Work → vpn-de"}],
- "applied":{"rules":7,"sources":4,"directions":1,"added_subscriptions":1,"updated_subscriptions":0,
+ "applied":{"rules":7,"rules_replaced":true,"replaced_rules":5,"sources":4,"directions":1,"added_subscriptions":1,"updated_subscriptions":0,
             "added_servers":2,"skipped_servers":0,"added_folders":1,"updated_folders":0,
             "added_chains":1},
  "config_rebuilt":true}

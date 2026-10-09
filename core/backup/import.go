@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
@@ -83,6 +84,12 @@ const (
 	// WarnBackupFinalDropped — route.final указывает в никуда: не
 	// применяется (иначе весь трафик уходит в несуществующий outbound).
 	WarnBackupFinalDropped = "backup_final_dropped"
+	// WarnBackupRulesReplaced — файл нёс ключ `rules`, и правила приёмника
+	// замещены его правилами целиком (§9 п. 7): это единственная секция
+	// полной замены, и потеря не должна быть молчаливой (П6). Detail — сколько
+	// правил приёмника снято. Файл без ключа `rules` правил не трогает и
+	// кода не даёт (контракт 1.1.116).
+	WarnBackupRulesReplaced = "backup_rules_replaced"
 	// WarnBackupUnknownPreset — preset id вне шаблона принимающей стороны.
 	WarnBackupUnknownPreset = "backup_unknown_preset"
 	// WarnBackupVarSkipped — переменная не применена: корневая не в списке
@@ -254,6 +261,14 @@ type ImportResult struct {
 	AppliedRules      int
 	AppliedSources    int
 	AppliedDirections int
+	// ReplacedRules — сколько правил приёмника снято полной заменой rules[]
+	// (§9 п. 7). Ноль и у файла без ключа `rules` (правила не трогались), и
+	// у пустого приёмника; различает их RulesReplaced.
+	ReplacedRules int
+	// RulesReplaced — файл говорил о правилах (ключ `rules` был), и rules[]
+	// приёмника замещены его записями; false — файл о правилах молчал, и
+	// правила приёмника остались как были.
+	RulesReplaced bool
 
 	// Раскладка применённого по видам события — для отчёта UI (§9 п. 8).
 	//
@@ -384,8 +399,15 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	//
 	// rules[] — ЕДИНСТВЕННАЯ секция полной замены (§9 п. 7): ось порядка у
 	// сторон своя, и «долить» чужие номера в неё нечем. DNS и warp[] ниже
-	// сливаются, каждая по своему ключу.
-	s.Rules = nil
+	// сливаются, каждая по своему ключу. Замена — только когда файл о
+	// правилах ГОВОРИТ (ключ `rules` есть): файл без него правила приёмника
+	// не трогает, иначе файл «один узел» стирал бы всю маршрутизацию молча
+	// (инцидент 08.10.2026, контракт 1.1.116).
+	if dec.RulesPresent {
+		res.RulesReplaced = true
+		res.ReplacedRules = len(s.Rules)
+		s.Rules = nil
+	}
 
 	// Занятые имена КОРНЕВОГО пространства снимаются ДО импорта Направлений.
 	//
@@ -474,19 +496,30 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	}
 
 	known := newTagSet(knownTags)
-	res.Warnings = append(res.Warnings, checkImportedRuleTargets(dec.Rules, known)...)
-	s.Rules = append(s.Rules, dec.Rules...)
-	res.AppliedRules = len(dec.Rules)
-	// SPEC 129 §5.4: `vars` пресетов после замещения — необъявленные имена
-	// снимаются и называются, равные умолчанию снимаются молча. Пресет вне
-	// шаблона (backup_unknown_preset) объявлений не имеет — не трогается.
-	var presetDrops []state.RecordVarDrop
-	state.NormalizePresetRuleVars(s.Rules, opts.RecordVars, &presetDrops)
-	res.Warnings = append(res.Warnings, recordVarWarnings(presetDrops)...)
+	if dec.RulesPresent {
+		res.Warnings = append(res.Warnings, checkImportedRuleTargets(dec.Rules, known)...)
+		s.Rules = append(s.Rules, dec.Rules...)
+		res.AppliedRules = len(dec.Rules)
+		// SPEC 129 §5.4: `vars` пресетов после замещения — необъявленные имена
+		// снимаются и называются, равные умолчанию снимаются молча. Пресет вне
+		// шаблона (backup_unknown_preset) объявлений не имеет — не трогается.
+		var presetDrops []state.RecordVarDrop
+		state.NormalizePresetRuleVars(s.Rules, opts.RecordVars, &presetDrops)
+		res.Warnings = append(res.Warnings, recordVarWarnings(presetDrops)...)
 
-	// Ось порядка встаёт номерами файла (BACKUP.md §9 п. 7): раскладка оси у
-	// сторон одна, и номер несёт зону, которую порядок не передаёт.
-	placeImportedAxis(s.Rules)
+		// Ось порядка встаёт номерами файла (BACKUP.md §9 п. 7): раскладка оси у
+		// сторон одна, и номер несёт зону, которую порядок не передаёт.
+		placeImportedAxis(s.Rules)
+
+		// Снятые правила приёмника — названы числом (П6): «применено N» без
+		// «снято M» выглядит как дописывание, а это замена.
+		if res.ReplacedRules > 0 {
+			res.Warnings = append(res.Warnings, Warning{
+				Code:   WarnBackupRulesReplaced,
+				Detail: strconv.Itoa(res.ReplacedRules),
+			})
+		}
+	}
 
 	if dec.RouteFinal != "" {
 		if known.empty() || known.has(dec.RouteFinal) {

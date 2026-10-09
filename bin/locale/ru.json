@@ -3146,6 +3146,9 @@
   "%s — default route target does not exist here, left unchanged": {
     "value": "%s — цели маршрута по умолчанию здесь нет, оставлено без изменений"
   },
+  "%s routing rule(s) of this machine were replaced by the rules from the file": {
+    "value": "%s правил(о) маршрутизации этой машины заменены правилами из файла"
+  },
   "%s — unknown preset, the rule is imported turned off": {
     "value": "%s — неизвестный пресет, правило импортировано выключенным"
   },

@@ -4,6 +4,7 @@
 
 ## EN
 ### Highlights
+- **Importing a backup without a `rules` section no longer wipes your routing rules.** A partial LX Backup file — one node, one folder — used to replace the whole `rules[]` with nothing, silently, with `applied.rules: 0` in the reply (incident of 8 Oct 2026 via the debug API). Now a file that does not carry the `rules` key leaves the rules alone; a file that does (even an empty list) still replaces them, and the import report says how many rules were removed (`backup_rules_replaced`). Contract 1.1.116.
 - **XHTTP path keeps its `?query` part.** A VLESS/XHTTP node whose path is `/?proxyip=…` (Cloudflare Worker relays such as edgetunnel) used to lose everything after `?` on import from a link or Xray JSON, so the relay got no `proxyip`. The path is now kept as written, like Xray does; with a sing-box-lx core that has SPEC 119 the tail goes to the server as the request query. Shared links encode the `?` inside `path=`. Nodes that differ only in that tail are no longer merged as duplicates. Already imported subscription nodes pick the fix up on the next update; a node added by pasting a link needs to be added again. WebSocket `?ed=N` handling is unchanged. Contract 1.1.115.
 
 ### Technical / Internal
@@ -11,6 +12,7 @@
 
 ## RU
 ### Основное
+- **Импорт бэкапа без секции `rules` больше не стирает правила маршрутизации.** Частичный файл LX Backup — один узел, одна папка — замещал весь `rules[]` пустотой, молча, с `applied.rules: 0` в ответе (инцидент 08.10.2026 через debug API). Теперь файл без ключа `rules` правила не трогает; файл с ключом (даже пустым списком) замещает их, как прежде, а отчёт импорта называет число снятых правил (`backup_rules_replaced`). Контракт 1.1.116.
 - **Путь XHTTP сохраняет хвост `?query`.** У узла VLESS/XHTTP с путём `/?proxyip=…` (релеи Cloudflare Worker, например edgetunnel) при импорте ссылки или Xray JSON терялось всё после `?`, и релей не получал `proxyip`. Теперь путь берётся как написан, как у Xray; ядро sing-box-lx с SPEC 119 отправляет хвост серверу query запроса. В ссылке «Поделиться» `?` внутри `path=` кодируется. Узлы, различающиеся только этим хвостом, больше не схлопываются как дубли. Уже импортированные узлы подписки исправятся при следующем обновлении; узел, добавленный ссылкой вручную, нужно добавить заново. Обработка `?ed=N` у WebSocket не менялась. Контракт 1.1.115.
 
 ### Техническое / Внутреннее

@@ -70,6 +70,9 @@ type Backup10 struct {
 	// группу не ввозить» принимает разбор записи (decode10Source). Не
 	// сериализуется.
 	ruleGroups map[[2]int]bool
+	// rulesPresent — ключ `rules` в файле есть (пусть и пустым массивом); см.
+	// Backup.rulesPresent. Заполняет Parse, не сериализуется.
+	rulesPresent bool
 }
 
 // Source10 — запись sources[]: поля state.Source, кроме кэша и рантайма, плюс

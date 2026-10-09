@@ -105,6 +105,7 @@ func decodeLegacy(b *Backup, opts ImportOptions) (*decodedFile, error) {
 		}
 		out.Rules = append(out.Rules, rules...)
 	}
+	out.RulesPresent = b.rulesPresent || len(b.Rules) > 0
 
 	out.DNS = decodeLegacyDNS(b.DNS)
 	out.Vars = b.Vars

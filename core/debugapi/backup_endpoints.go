@@ -351,6 +351,8 @@ func (s *Server) backupImportWith(w http.ResponseWriter, r *http.Request, acc st
 		"warnings": backupWarningViews(all),
 		"applied": map[string]any{
 			"rules":                 res.AppliedRules,
+			"rules_replaced":        res.RulesReplaced,
+			"replaced_rules":        res.ReplacedRules,
 			"sources":               res.AppliedSources,
 			"directions":            res.AppliedDirections,
 			"added_subscriptions":   res.AddedSubscriptions,

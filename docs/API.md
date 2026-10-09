@@ -172,11 +172,11 @@ Export writes **format 1.0** only: the file is the launcher state, so per-node r
 
 Export losses are never silent: without the envelope the codes travel in the `X-Backup-Warnings` header as a JSON array; with `?envelope=1` they are the `warnings` field. The plain response also carries `Content-Disposition` with the same suggested filename the UI offers.
 
-`POST /backup/import` **merges** — it does not replace (BACKUP.md §9): subscriptions match by URL, servers by what they connect to, folders by name, chains and Directions by tag. Routing rules are the one exception — the file replaces them wholly. The response reports what actually landed:
+`POST /backup/import` **merges** — it does not replace (BACKUP.md §9): subscriptions match by URL, servers by what they connect to, folders by name, chains and Directions by tag. Routing rules are the one exception — **when the file carries the `rules` key** (even as `[]`), the file's rules replace this machine's wholesale, and the rules that were removed are counted in the `backup_rules_replaced` warning. A file **without** the `rules` key leaves the rules alone (contract 1.1.116). So a partial file — one node, one folder — is safe to import; before 1.1.116 it wiped every routing rule and answered `applied.rules: 0` with no warning. To add a single node you do not need a backup file at all: see `POST /state/servers` under **State write**. The response reports what actually landed:
 
 ```json
 {"ok":true,"format":"1.0","warnings":[{"code":"backup_unknown_outbound","detail":"Work → vpn-de"}],
- "applied":{"rules":7,"sources":4,"directions":1,"added_subscriptions":1,"updated_subscriptions":0,
+ "applied":{"rules":7,"rules_replaced":true,"replaced_rules":5,"sources":4,"directions":1,"added_subscriptions":1,"updated_subscriptions":0,
             "added_servers":2,"skipped_servers":0,"added_folders":1,"updated_folders":0,
             "added_chains":1},
  "config_rebuilt":true}

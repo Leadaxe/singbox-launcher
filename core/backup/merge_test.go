@@ -1104,3 +1104,86 @@ func TestImportLinksFollowMergeAddresses(t *testing.T) {
 		}
 	})
 }
+
+// TestImportWithoutRulesKeyKeepsLocalRules — контракт 1.1.116 (§9 п. 7):
+// файл без ключа `rules` правил приёмника не трогает и кода не даёт; файл с
+// `rules: []` замещает их пустотой и называет снятые backup_rules_replaced.
+// Инцидент 08.10.2026: файл «один узел» стирал всю маршрутизацию молча.
+func TestImportWithoutRulesKeyKeepsLocalRules(t *testing.T) {
+	local := func() *state.State {
+		s := state.New()
+		s.Rules = []state.Rule{
+			inlineRuleForTest("keep me", map[string]interface{}{"domain": []interface{}{"a.test"}}, "direct-out"),
+			inlineRuleForTest("and me", map[string]interface{}{"domain": []interface{}{"b.test"}}, "direct-out"),
+		}
+		return s
+	}
+	const nodeOnly = `{"lx_backup": 2, "sources": [
+	  {"kind": "server", "tag": "n1", "enabled": true,
+	   "body": {"type": "trojan", "server": "192.0.2.1", "server_port": 443, "password": "pw"}}]}`
+	const emptyRules = `{"lx_backup": 2, "rules": [], "sources": [
+	  {"kind": "server", "tag": "n1", "enabled": true,
+	   "body": {"type": "trojan", "server": "192.0.2.1", "server_port": 443, "password": "pw"}}]}`
+
+	for _, tc := range []struct {
+		name      string
+		file      string
+		wantRules int
+		wantCode  string
+	}{
+		{"без ключа rules — правила на месте", nodeOnly, 2, ""},
+		{"rules: [] — замена пустотой с кодом", emptyRules, 0, WarnBackupRulesReplaced},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parsed, _, err := Parse([]byte(tc.file))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			s := local()
+			res, err := ImportFile(s, parsed, ImportOptions{})
+			if err != nil {
+				t.Fatalf("Import: %v", err)
+			}
+			if len(s.Rules) != tc.wantRules {
+				t.Fatalf("правил %d, ожидалось %d", len(s.Rules), tc.wantRules)
+			}
+			if res.AddedServers != 1 {
+				t.Errorf("узел не приехал: AddedServers=%d", res.AddedServers)
+			}
+			got := ""
+			for _, w := range res.Warnings {
+				if w.Code == WarnBackupRulesReplaced {
+					got = w.Code
+					if w.Detail != "2" {
+						t.Errorf("Detail %q, ожидалось число снятых правил 2", w.Detail)
+					}
+				}
+			}
+			if got != tc.wantCode {
+				t.Errorf("код %q, ожидался %q (warnings: %v)", got, tc.wantCode, res.Warnings)
+			}
+			if (tc.wantCode != "") != res.RulesReplaced || res.ReplacedRules != map[bool]int{true: 2, false: 0}[tc.wantCode != ""] {
+				t.Errorf("RulesReplaced=%v ReplacedRules=%d не согласованы с кодом %q", res.RulesReplaced, res.ReplacedRules, tc.wantCode)
+			}
+		})
+	}
+
+	// Тот же файл формы 0.x: разбор другой, норма одна.
+	parsed, _, err := Parse([]byte(`{"lx_backup": 1, "servers": [{"uri": "trojan://pw@192.0.2.1:443#n1"}]}`))
+	if err != nil {
+		t.Fatalf("Parse 0.x: %v", err)
+	}
+	s := local()
+	if _, err := ImportFile(s, parsed, ImportOptions{}); err != nil {
+		t.Fatalf("Import 0.x: %v", err)
+	}
+	if len(s.Rules) != 2 {
+		t.Fatalf("0.x без ключа rules: правил %d, ожидалось 2", len(s.Rules))
+	}
+}
+
+func inlineRuleForTest(name string, match map[string]interface{}, outbound string) state.Rule {
+	r := state.NewInlineRule(name, match, outbound)
+	r.Enabled = true
+	return r
+}
