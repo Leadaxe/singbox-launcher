@@ -29,80 +29,80 @@ A1─A6 (core) ──┬──▶ B1 (модель окна) ──┬──▶ 
 ## Волна A — core (исполнитель A)
 
 ### A1. Версии ядра без тегов
-- [ ] Новый `core/core_build.go` (без build-тега): перенести из
+- [x] Новый `core/core_build.go` (без build-тега): перенести из
   `core/daemon_service_state.go:205–304` `coreBuild`, `parseCoreBuild`,
   `leadingDigits`, `compareCoreBuilds`, `compareInts` и `sha256File` (`:560–571`);
   в `daemon_service_state.go` удалить (импорты `strconv`/`crypto/sha256`/`hex`/`io`
   подчистить, если стали лишними).
-- [ ] Добавить `CoreVersionVerdict`, `CompareCoreVersion(running, required)`,
+- [x] Добавить `CoreVersionVerdict`, `CompareCoreVersion(running, required)`,
   `CoreBuildShort(v)`, `CoreVersionPairLabels(running, required)` (PLAN §2).
 - Проверка: `go build ./core/...`.
 
 ### A2. Рецепты и классификатор
-- [ ] Новый `core/service_recipes.go` (без тега): `ServiceInit`, `ServiceName`,
+- [x] Новый `core/service_recipes.go` (без тега): `ServiceInit`, `ServiceName`,
   `ServiceLaunchdLabel`, `ServicePlatform`, `DefaultServiceInit`,
   `NormalizeInitChoice`, `ServicePath`, `ServicePaths`, `DefaultServicePaths`,
   `ServicePassport`, `MergeServicePaths`, `ServiceStep`, `ServiceRecipeInput`,
   `ServiceRecipes`, `BuildServiceRecipes`, `WrapSSH` (над
   `services.SSHTarget` из A4), `PosixQuote`, `DaemonReachKind`,
   `ClassifyDaemonReachError` — по таблицам PLAN §3.
-- [ ] `core/backend_daemon.go:214` `diagnoseReachError`: ветвление через
+- [x] `core/backend_daemon.go:214` `diagnoseReachError`: ветвление через
   `ClassifyDaemonReachError` (тексты советов и `followDaemonPlainChannel` без изменений).
-- [ ] `core/daemon_manager_darwin.go:31`, `core/daemon_manager_windows.go:37`:
+- [x] `core/daemon_manager_darwin.go:31`, `core/daemon_manager_windows.go:37`:
   константы метки/имени службы ссылаются на `ServiceLaunchdLabel`/`ServiceName`
   (один источник).
 - Проверка: `go build ./core/...`.
 
 ### A3. Ядро под платформу машины
-- [ ] `core/core_downloader.go:304`: `SingboxAssetSuffixFor(goos, goarch)` (+ mips/mipsle
+- [x] `core/core_downloader.go:304`: `SingboxAssetSuffixFor(goos, goarch)` (+ mips/mipsle
   softfloat), `SingboxAssetSuffix()` — обёртка; `:206`/`:216` — `directAssetNameFor`,
   `DirectAssetURLFor`, старые — обёртки; `:574–700` — `extractArchiveNamed(archive, dest, binName)`,
   `extractZip`/`extractTarGz` с параметром имени, `extractArchive` — обёртка.
-- [ ] Новый `core/core_download_target.go` (без тега): `TargetCoreDownload`,
+- [x] Новый `core/core_download_target.go` (без тега): `TargetCoreDownload`,
   `TargetCoreFileName`, `DownloadsDir`, `CheckTargetCore`,
   `(*AppController).DownloadCoreForTarget` (PLAN §4: архив → SHA256SUMS →
   сверка → распаковка → `~/Downloads` → chmod 0755 → сайдкар `.sha256`).
 - Проверка: `go build ./core/...`.
 
 ### A4. Запись машины и здоровье
-- [ ] `core/services/lxd_remote_registry.go:37–73`: поля `SSH`, `InitSystem`,
+- [x] `core/services/lxd_remote_registry.go:37–73`: поля `SSH`, `InitSystem`,
   `CoreWarnAck`, `Passport *RemotePassport`; тип `RemotePassport` (PLAN §5.1).
-- [ ] Новый `core/services/ssh_target.go` (без тега): `SSHTarget`,
+- [x] Новый `core/services/ssh_target.go` (без тега): `SSHTarget`,
   `ParseSSHTarget`, `DefaultSSHTarget` (PLAN §3: `core/services` не может
   импортировать `core`, а `SetSSH` валидирует; `core/service_recipes.go`
   использует их напрямую из `services`). Делается до A2.
-- [ ] Сеттеры рядом с `SetPlatform` (`:547`): `SetSSH` (валидация
+- [x] Сеттеры рядом с `SetPlatform` (`:547`): `SetSSH` (валидация
   `ParseSSHTarget`, пустое — сброс), `SetInitSystem`, `SetCoreWarnAck`,
   `SetSecret`, `SetPassport` (no-op без изменений и при `SeenAt` моложе 10 мин).
-- [ ] `RemoteHealth` (`:809`): `Executable`, `LogPath`, `Listen`, `TLS *bool`,
+- [x] `RemoteHealth` (`:809`): `Executable`, `LogPath`, `Listen`, `TLS *bool`,
   `UptimeSeconds`; `healthCtx` (`:874–881`) заполняет их и зовёт `SetPassport`.
 - Проверка: `go build ./core/... && GOOS=linux go build ./core/services/... ./internal/...`.
 
 ### A5. Локальный демон: паспорт, restart, пути
-- [ ] `core/daemon_manager.go:261`: `DaemonUIStatus` += `ReachErr`, `Passport`,
+- [x] `core/daemon_manager.go:261`: `DaemonUIStatus` += `ReachErr`, `Passport`,
   `PassportSeenAt`, `PassportCached`; кэш `daemonPassportCache`; заполнение в
   `DaemonStatusSnapshot` (`:291–334`: ошибка `Status()` → `ReachErr`, при
   ошибке — паспорт из кэша).
-- [ ] `core/daemon_manager.go`: `DaemonOpRestart` (в список `:746–763`),
+- [x] `core/daemon_manager.go`: `DaemonOpRestart` (в список `:746–763`),
   `DaemonServicePaths()`, `DaemonClientListCommand()`, `DaemonClientRemoveCommand(name)`.
-- [ ] `core/daemon_manager_darwin.go`: `DaemonRestartCommand` (= kickstart),
+- [x] `core/daemon_manager_darwin.go`: `DaemonRestartCommand` (= kickstart),
   `DaemonRestartService` (`runDaemonOpInTerminal`), `daemonServicePathsPlatform`.
-- [ ] `core/daemon_manager_windows.go`: `DaemonRestartCommand`
+- [x] `core/daemon_manager_windows.go`: `DaemonRestartCommand`
   (`Restart-Service -Name sing-box-lxd -Force`), `DaemonRestartService`
   (`runDaemonCommandElevated` с `powershell.exe`, затем `waitDaemonServiceRunning`,
   `r.Service = ac.daemonServiceCheck(nil, "")`), `daemonServicePathsPlatform`.
 - Проверка: `go build ./core/...` (macOS); Windows-файл — CI.
 
 ### A6. Константы URL
-- [ ] `internal/constants/constants.go:142–166`: `LauncherDocsBaseURL`,
+- [x] `internal/constants/constants.go:142–166`: `LauncherDocsBaseURL`,
   `CoreDocsBaseURL` (PLAN §9) с комментарием «зачем».
 - Проверка: `go build ./internal/constants/`.
 
 ### A7. Тест волны
-- [ ] Новый `core/service_recipes_test.go`: `TestServiceRecipes` — таблица из PLAN §12.
+- [x] Новый `core/service_recipes_test.go`: `TestServiceRecipes` — таблица из PLAN §12.
 - Проверка: `go test ./core -run '^TestServiceRecipes$' -count=1`; затем `go build ./...`;
   `go run ./tools/win7guard`.
-- [ ] Коммит волны A: `core/core_build.go core/service_recipes.go core/service_recipes_test.go
+- [x] Коммит волны A: `core/core_build.go core/service_recipes.go core/service_recipes_test.go
   core/core_download_target.go core/core_downloader.go core/daemon_service_state.go
   core/backend_daemon.go core/daemon_manager.go core/daemon_manager_darwin.go
   core/daemon_manager_windows.go core/services/lxd_remote_registry.go

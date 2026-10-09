@@ -70,6 +70,47 @@ type RemoteDaemon struct {
 	StateDir string `json:"state_dir,omitempty"`
 	// AddedAt — когда сопряглись (RFC3339, для UI-списка).
 	AddedAt string `json:"added_at,omitempty"`
+	// SSH — ssh-цель для команд обслуживания (user@host[:port], SPEC 161);
+	// пусто — DefaultSSHTarget(Addr).
+	SSH string `json:"ssh,omitempty"`
+	// InitSystem — init-система Linux-машины, выбранная в окне Service:
+	// "" (дефолт по архитектуре) | "systemd" | "procd". Демон её не сообщает.
+	InitSystem string `json:"init_system,omitempty"`
+	// CoreWarnAck — версия ядра машины, для которой пользователь отключил
+	// предупреждение Deploy «ядро старее требуемого». Другая версия —
+	// предупреждение возвращается.
+	CoreWarnAck string `json:"core_warn_ack,omitempty"`
+	// Passport — последний паспорт демона (/admin/info): пути для рецептов
+	// окна Service видны и когда демон лёг. state_dir не дублируется — он
+	// в StateDir.
+	Passport *RemotePassport `json:"passport,omitempty"`
+}
+
+// RemotePassport — кэш паспорта демона машины (SPEC 161 §7).
+type RemotePassport struct {
+	Version    string `json:"version,omitempty"`
+	Executable string `json:"executable,omitempty"`
+	LogPath    string `json:"log_path,omitempty"`
+	Listen     string `json:"listen,omitempty"`
+	TLS        *bool  `json:"tls,omitempty"`
+	// SeenAt — когда демон сообщил паспорт (RFC3339).
+	SeenAt string `json:"seen_at,omitempty"`
+}
+
+// passportSeenRefresh — как часто перезаписывать SeenAt неизменного
+// паспорта: heartbeat зовёт SetPassport каждые 5 с, и писать файл реестра
+// на каждый тик ради одной метки времени незачем.
+const passportSeenRefresh = 10 * time.Minute
+
+// samePassportFields — паспорта совпадают во всём, кроме SeenAt.
+func samePassportFields(a, b RemotePassport) bool {
+	if a.Version != b.Version || a.Executable != b.Executable || a.LogPath != b.LogPath || a.Listen != b.Listen {
+		return false
+	}
+	if (a.TLS == nil) != (b.TLS == nil) {
+		return false
+	}
+	return a.TLS == nil || *a.TLS == *b.TLS
 }
 
 // remoteRegistryFile — <bin>/remote-daemons.json.
@@ -590,6 +631,112 @@ func (r *RemoteRegistry) SetStateDir(id, stateDir string) error {
 	return fmt.Errorf("remote registry: unknown id %q", id)
 }
 
+// mutate — общий ход сеттеров (под r.mu): найти запись id, применить change;
+// change возвращает false — изменений нет, файл не пишется.
+func (r *RemoteRegistry) mutate(id string, change func(d *RemoteDaemon) bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	list, err := r.listLocked()
+	if err != nil {
+		return err
+	}
+	for i := range list {
+		if list[i].ID != id {
+			continue
+		}
+		if !change(&list[i]) {
+			return nil
+		}
+		return r.saveLocked(list)
+	}
+	return fmt.Errorf("remote registry: unknown id %q", id)
+}
+
+// SetSSH сохраняет ssh-цель машины (SPEC 161). Пустая строка — сброс к
+// DefaultSSHTarget(Addr); иначе цель обязана разобраться ParseSSHTarget и
+// хранится в нормализованном виде.
+func (r *RemoteRegistry) SetSSH(id, target string) error {
+	value := strings.TrimSpace(target)
+	if value != "" {
+		t, err := ParseSSHTarget(value)
+		if err != nil {
+			return err
+		}
+		value = t.String()
+	}
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		if d.SSH == value {
+			return false
+		}
+		d.SSH = value
+		return true
+	})
+}
+
+// SetInitSystem сохраняет выбор init-системы Linux-машины: "" | "systemd" |
+// "procd".
+func (r *RemoteRegistry) SetInitSystem(id, initSystem string) error {
+	value := strings.TrimSpace(initSystem)
+	switch value {
+	case "", "systemd", "procd":
+	default:
+		return fmt.Errorf("remote registry: unknown init system %q (want systemd or procd)", value)
+	}
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		if d.InitSystem == value {
+			return false
+		}
+		d.InitSystem = value
+		return true
+	})
+}
+
+// SetCoreWarnAck запоминает версию ядра, для которой Deploy больше не
+// предупреждает о старом ядре; "" — сброс.
+func (r *RemoteRegistry) SetCoreWarnAck(id, version string) error {
+	value := strings.TrimSpace(version)
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		if d.CoreWarnAck == value {
+			return false
+		}
+		d.CoreWarnAck = value
+		return true
+	})
+}
+
+// SetSecret меняет Bearer-секрет plain-машины (tls:false), не трогая
+// ключи и пин (вкладка Pairing окна Service).
+func (r *RemoteRegistry) SetSecret(id, secret string) error {
+	value := strings.TrimSpace(secret)
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		if d.Secret == value {
+			return false
+		}
+		d.Secret = value
+		return true
+	})
+}
+
+// SetPassport кеширует паспорт демона. No-op, если поля, кроме SeenAt, не
+// изменились и прежняя отметка моложе passportSeenRefresh: зовётся на
+// каждом health-опросе. Пустой SeenAt — текущее время.
+func (r *RemoteRegistry) SetPassport(id string, p RemotePassport) error {
+	now := time.Now()
+	if p.SeenAt == "" {
+		p.SeenAt = now.UTC().Format(time.RFC3339)
+	}
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		if prev := d.Passport; prev != nil && samePassportFields(*prev, p) {
+			if seen, err := time.Parse(time.RFC3339, prev.SeenAt); err == nil && now.Sub(seen) < passportSeenRefresh {
+				return false
+			}
+		}
+		cp := p
+		d.Passport = &cp
+		return true
+	})
+}
+
 // ResourceDir — каталог ресурсов машины: `<state_dir>/resources` (SPEC 063).
 // Пусто, если state_dir ещё не известен (ни одного успешного соединения).
 func (d RemoteDaemon) ResourceDir() string {
@@ -827,6 +974,15 @@ type RemoteHealth struct {
 	// InterruptedApply — предыдущее применение конфига прервалось (демон
 	// упал или его убили в процессе). Ядро при этом работает на last-good.
 	InterruptedApply bool
+	// Executable / LogPath / Listen / TLS / UptimeSeconds — остальной
+	// паспорт (/admin/info) для окна Service (SPEC 161). TLS nil — паспорт
+	// не получен. UptimeSeconds меняется каждый тик — сравнивать здоровье
+	// без него.
+	Executable    string
+	LogPath       string
+	Listen        string
+	TLS           *bool
+	UptimeSeconds int
 }
 
 // Health опрашивает машину: статус ядра + паспорт демона.
@@ -871,12 +1027,23 @@ func (r *RemoteRegistry) healthCtx(ctx context.Context, id string) RemoteHealth 
 	// Паспорт — best-effort: машина уже отвечает, и отсутствие /admin/info
 	// (старый демон) не повод считать её недоступной.
 	if info, infoErr := client.InfoCtx(ctx); infoErr == nil {
+		tls := info.TLS
 		out.Version = info.Version
 		out.StateDir = info.StateDir
+		out.Executable = info.Executable
+		out.LogPath = info.LogPath
+		out.Listen = info.Listen
+		out.TLS = &tls
+		out.UptimeSeconds = info.UptimeSeconds
 		// Кешируем в реестр: генерация конфига берёт отсюда путь ресурс-стора
-		// и не зависит от того, доступна ли машина в этот момент.
+		// и не зависит от того, доступна ли машина в этот момент; окно
+		// Service — пути для рецептов, когда демон лёг.
 		if err := r.SetStateDir(id, info.StateDir); err != nil {
 			debuglog.WarnLog("remote registry: cache state_dir for %q: %v", id, err)
+		}
+		passport := RemotePassport{Version: info.Version, Executable: info.Executable, LogPath: info.LogPath, Listen: info.Listen, TLS: &tls}
+		if err := r.SetPassport(id, passport); err != nil {
+			debuglog.WarnLog("remote registry: cache passport for %q: %v", id, err)
 		}
 	}
 	return out

@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/muhammadmuzzammil1998/jsonc"
 
@@ -284,6 +286,47 @@ type DaemonUIStatus struct {
 	// launchd, root-owned ли это копия, то ли в ней ядро, что у лаунчера, и
 	// из того ли образа работает демон. Заменил сверку путей SPEC 135 §5.1.
 	Service DaemonServiceCheck
+	// ReachErr — почему /admin/status не ответил (текст ошибки связи; пусто,
+	// если ответил или опроса не было — не сопряжено и адреса нет).
+	ReachErr string
+	// Passport — паспорт демона (/admin/info): пути, listen, tls, uptime для
+	// окна Service (SPEC 161). PassportSeenAt — когда получен; нулевой —
+	// паспорта не было ни разу за сессию.
+	Passport       lxdclient.InfoData
+	PassportSeenAt time.Time
+	// PassportCached — паспорт из кэша сессии: демон сейчас его не отдал
+	// (молчит или старый, без /admin/info).
+	PassportCached bool
+}
+
+// daemonPassportCache — последний паспорт локального демона за сессию: окну
+// Service нужны его пути и тогда, когда демон лёг. В памяти, не на диск:
+// после перезапуска лаунчера точные платформенные пути есть и без него
+// (DaemonServicePaths).
+var daemonPassportCache struct {
+	mu   sync.Mutex
+	info lxdclient.InfoData
+	seen time.Time
+}
+
+// rememberDaemonPassport кладёт свежий паспорт в кэш и в снимок.
+func rememberDaemonPassport(status *DaemonUIStatus, info lxdclient.InfoData) {
+	now := time.Now()
+	daemonPassportCache.mu.Lock()
+	daemonPassportCache.info, daemonPassportCache.seen = info, now
+	daemonPassportCache.mu.Unlock()
+	status.Passport, status.PassportSeenAt = info, now
+}
+
+// cachedDaemonPassport подставляет в снимок паспорт из кэша, если он есть.
+func cachedDaemonPassport(status *DaemonUIStatus) {
+	daemonPassportCache.mu.Lock()
+	defer daemonPassportCache.mu.Unlock()
+	if daemonPassportCache.seen.IsZero() {
+		return
+	}
+	status.Passport, status.PassportSeenAt = daemonPassportCache.info, daemonPassportCache.seen
+	status.PassportCached = true
 }
 
 // DaemonStatusSnapshot собирает состояние службы/сопряжения/демона.
@@ -302,16 +345,21 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 	status.ServiceInstalled = status.Service.State != DaemonServiceNotInstalled
 	status.Paired = st.DaemonServerFingerprint != "" && lxdclient.HasIdentity(DaemonIdentityDir(ac.FileService.Layout.Data))
 	if !status.Paired && st.DaemonAddress == "" {
+		cachedDaemonPassport(&status)
 		return status
 	}
 	cfg, err := DaemonConfigFromSettings(ac)
 	if err != nil {
+		status.ReachErr = err.Error()
+		cachedDaemonPassport(&status)
 		return status
 	}
 	client := lxdclient.New(cfg)
 	info, err := client.Status()
 	if err != nil {
 		debuglog.DebugLog("DaemonStatusSnapshot: status unavailable: %v", err)
+		status.ReachErr = err.Error()
+		cachedDaemonPassport(&status)
 		return status
 	}
 	status.Reachable = true
@@ -323,7 +371,10 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 	if passport, infoErr := client.Info(); infoErr == nil {
 		status.DaemonVersion = passport.Version
 		status.StateDir = passport.StateDir
+		rememberDaemonPassport(&status, passport)
 		addDaemonProcessVerdict(&status.Service, passport, cfg.Addr)
+	} else {
+		cachedDaemonPassport(&status)
 	}
 	if status.Service.NeedsInstall() || status.Service.NeedsBootstrap() || status.Service.State == DaemonServiceCoreTooOld {
 		debuglog.DebugLog("DaemonStatusSnapshot: daemon service %s: %s", status.Service.State, status.Service.Detail)
@@ -653,6 +704,34 @@ func (ac *AppController) DaemonRepairCommand() string {
 		"lxd", "client", "add", "--name", daemonClientName())
 }
 
+// DaemonClientListCommand — `lxd client list`: кому демон доверяет (вкладка
+// Pairing окна Service). Бинарь — как у DaemonRepairCommand.
+func (ac *AppController) DaemonClientListCommand() string {
+	return daemonServiceCommand(daemonServiceBinaryFor(systemDaemonServiceLayout(), ac.FileService.SingboxPath),
+		"lxd", "client", "list")
+}
+
+// DaemonClientRemoveCommand — `lxd client remove <name>`: отзыв клиента
+// (имя или отпечаток из client list). Пустое имя — плейсхолдер <name>.
+func (ac *AppController) DaemonClientRemoveCommand(name string) string {
+	if name = strings.TrimSpace(name); name == "" {
+		name = "<name>"
+	}
+	return daemonServiceCommand(daemonServiceBinaryFor(systemDaemonServiceLayout(), ac.FileService.SingboxPath),
+		"lxd", "client", "remove", name)
+}
+
+// DaemonServicePaths — точные пути локальной службы (окно Service,
+// SPEC 161): платформенная раскладка (daemonServicePathsPlatform) и адрес
+// канала из настроек лаунчера. Паспорт демона поверх — MergeServicePaths.
+func (ac *AppController) DaemonServicePaths() ServicePaths {
+	p := daemonServicePathsPlatform()
+	if addr := locale.LoadSettings(ac.FileService.Layout.Data.Bin()).DaemonAddress; addr != "" {
+		p.Listen = ServicePath{Value: addr}
+	}
+	return p
+}
+
 // DaemonInstallCommand — «Install or update service» (SPEC 136 §5): одна
 // команда для первой установки, старого небезопасного plist и обновления
 // после скачивания ядра. Бинарь — всегда ядро лаунчера: ядро lx.12+ копирует
@@ -760,6 +839,9 @@ const (
 	// DaemonOpCopy — `--service=copy`: копия для classic с правами, службы
 	// нет (SPEC 141 §8).
 	DaemonOpCopy DaemonServiceOp = "copy"
+	// DaemonOpRestart — перезапуск службы (окно Service, SPEC 161): macOS
+	// `launchctl kickstart -k`, Windows `Restart-Service -Force`.
+	DaemonOpRestart DaemonServiceOp = "restart"
 )
 
 // DaemonServiceWarning — предупреждение install/copy из сайдкара копии
@@ -871,6 +953,8 @@ func (r DaemonRunResult) StatusText() string {
 		head = locale.T("Paired with the daemon.")
 	case r.Op == DaemonOpStart:
 		head = locale.T("The service was started.")
+	case r.Op == DaemonOpRestart:
+		head = locale.T("The service was restarted.")
 	case r.Op == DaemonOpUninstall:
 		head = locale.T("The service was removed.")
 	case r.Op == DaemonOpCopy:

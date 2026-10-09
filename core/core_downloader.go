@@ -204,9 +204,16 @@ func (ac *AppController) getReleaseInfo(ctx context.Context, version string) (*R
 // Note the asymmetry, which is easy to get wrong: the git tag carries a leading
 // "v" ("v1.14.0-lx.27-rc.6") but the filename does not.
 func directAssetName(version string) (string, error) {
-	suffix := SingboxAssetSuffix()
+	return directAssetNameFor(version, runtime.GOOS, runtime.GOARCH)
+}
+
+// directAssetNameFor — directAssetName for an arbitrary platform: the core of
+// a remote machine is downloaded for the machine, not for this computer
+// (SPEC 161).
+func directAssetNameFor(version, goos, goarch string) (string, error) {
+	suffix := SingboxAssetSuffixFor(goos, goarch)
 	if suffix == "" {
-		return "", fmt.Errorf("directAssetName: unsupported platform: %s/%s", runtime.GOOS, runtime.GOARCH)
+		return "", fmt.Errorf("directAssetName: unsupported platform: %s/%s", goos, goarch)
 	}
 	return fmt.Sprintf("sing-box-%s-%s", version, suffix), nil
 }
@@ -214,11 +221,22 @@ func directAssetName(version string) (string, error) {
 // DirectAssetURL returns the CDN download URL for the pinned core version on
 // this platform, bypassing api.github.com entirely.
 func DirectAssetURL(version string) (string, error) {
-	name, err := directAssetName(version)
+	return DirectAssetURLFor(version, runtime.GOOS, runtime.GOARCH)
+}
+
+// DirectAssetURLFor — DirectAssetURL for an arbitrary platform.
+func DirectAssetURLFor(version, goos, goarch string) (string, error) {
+	name, err := directAssetNameFor(version, goos, goarch)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("https://github.com/%s/releases/download/v%s/%s", coreReleaseRepo(), version, name), nil
+	return releaseDownloadURL(version, name), nil
+}
+
+// releaseDownloadURL — URL of a file attached to the core release v<version>
+// (an asset or SHA256SUMS).
+func releaseDownloadURL(version, file string) string {
+	return fmt.Sprintf("https://github.com/%s/releases/download/v%s/%s", coreReleaseRepo(), version, file)
 }
 
 // buildDirectReleaseInfo synthesises the ReleaseInfo the API would have
@@ -302,40 +320,36 @@ func (ac *AppController) fetchReleaseInfo(ctx context.Context, url string) (*Rel
 // SingboxAssetSuffix returns the asset filename suffix for current platform (e.g. "windows-amd64.zip").
 // Used for UI hints when user downloads manually.
 func SingboxAssetSuffix() string {
-	switch runtime.GOOS {
-	case "windows":
-		if runtime.GOARCH == "amd64" {
-			return "windows-amd64.zip"
-		}
-		if runtime.GOARCH == "arm64" {
-			return "windows-arm64.zip"
-		}
-		if runtime.GOARCH == "386" {
-			return "windows-386-legacy-windows-7.zip"
-		}
-		return ""
-	case "linux":
-		if runtime.GOARCH == "amd64" {
-			return "linux-amd64.tar.gz"
-		}
-		if runtime.GOARCH == "arm64" {
-			return "linux-arm64.tar.gz"
-		}
-		if runtime.GOARCH == "arm" {
-			return "linux-armv7.tar.gz"
-		}
-		return ""
-	case "darwin":
-		if runtime.GOARCH == "amd64" {
-			return "darwin-amd64.tar.gz"
-		}
-		if runtime.GOARCH == "arm64" {
-			return "darwin-arm64.tar.gz"
-		}
-		return ""
-	default:
-		return ""
+	return SingboxAssetSuffixFor(runtime.GOOS, runtime.GOARCH)
+}
+
+// SingboxAssetSuffixFor — the release asset suffix for goos/goarch; "" when
+// the fork publishes no build for that platform (e.g. linux/386). Routers on
+// MIPS get the softfloat builds: their SoCs have no FPU.
+func SingboxAssetSuffixFor(goos, goarch string) string {
+	switch goos + "/" + goarch {
+	case "windows/amd64":
+		return "windows-amd64.zip"
+	case "windows/arm64":
+		return "windows-arm64.zip"
+	case "windows/386":
+		return "windows-386-legacy-windows-7.zip"
+	case "linux/amd64":
+		return "linux-amd64.tar.gz"
+	case "linux/arm64":
+		return "linux-arm64.tar.gz"
+	case "linux/arm":
+		return "linux-armv7.tar.gz"
+	case "linux/mips":
+		return "linux-mips-softfloat.tar.gz"
+	case "linux/mipsle":
+		return "linux-mipsle-softfloat.tar.gz"
+	case "darwin/amd64":
+		return "darwin-amd64.tar.gz"
+	case "darwin/arm64":
+		return "darwin-arm64.tar.gz"
 	}
+	return ""
 }
 
 // findPlatformAsset finds the correct asset for current platform
@@ -572,23 +586,34 @@ func isCompanionLib(name string) bool {
 // extractArchive extracts archive and returns path to binary plus paths to
 // any companion libraries (libcronet.*) found in the archive.
 func (ac *AppController) extractArchive(archivePath, destDir string) (string, []string, error) {
+	return ac.extractArchiveNamed(archivePath, destDir, platform.GetExecutableNames())
+}
+
+// extractArchiveNamed — extractArchive with the binary name given explicitly:
+// a core for another platform (a remote machine) is "sing-box" or
+// "sing-box.exe" regardless of the OS the launcher runs on.
+func (ac *AppController) extractArchiveNamed(archivePath, destDir, binName string) (string, []string, error) {
 	if strings.HasSuffix(archivePath, ".zip") {
-		return ac.extractZip(archivePath, destDir)
+		return ac.extractZipNamed(archivePath, destDir, binName)
 	} else if strings.HasSuffix(archivePath, ".tar.gz") {
-		return ac.extractTarGz(archivePath, destDir)
+		return ac.extractTarGzNamed(archivePath, destDir, binName)
 	}
 	return "", nil, fmt.Errorf("extractArchive: unsupported archive format")
 }
 
 // extractZip extracts ZIP archive (Windows)
 func (ac *AppController) extractZip(archivePath, destDir string) (string, []string, error) {
+	return ac.extractZipNamed(archivePath, destDir, platform.GetExecutableNames())
+}
+
+// extractZipNamed — extractZip looking for the binary singboxName.
+func (ac *AppController) extractZipNamed(archivePath, destDir, singboxName string) (string, []string, error) {
 	r, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return "", nil, fmt.Errorf("extractZip: failed to open zip: %w", err)
 	}
 	defer debuglog.RunAndLog(fmt.Sprintf("extractZip: close zip reader %s", archivePath), r.Close)
 
-	singboxName := platform.GetExecutableNames()
 	var binaryPath string
 	var companions []string
 
@@ -636,6 +661,11 @@ func (ac *AppController) extractZip(archivePath, destDir string) (string, []stri
 
 // extractTarGz extracts tar.gz archive (Linux/macOS)
 func (ac *AppController) extractTarGz(archivePath, destDir string) (string, []string, error) {
+	return ac.extractTarGzNamed(archivePath, destDir, platform.GetExecutableNames())
+}
+
+// extractTarGzNamed — extractTarGz looking for the binary singboxName.
+func (ac *AppController) extractTarGzNamed(archivePath, destDir, singboxName string) (string, []string, error) {
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return "", nil, fmt.Errorf("extractTarGz: failed to open archive: %w", err)
@@ -649,7 +679,6 @@ func (ac *AppController) extractTarGz(archivePath, destDir string) (string, []st
 	defer debuglog.RunAndLog(fmt.Sprintf("extractTarGz: close gzip reader %s", archivePath), gzr.Close)
 
 	tr := tar.NewReader(gzr)
-	singboxName := platform.GetExecutableNames()
 	var binaryPath string
 	var companions []string
 

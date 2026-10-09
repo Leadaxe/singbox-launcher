@@ -28,8 +28,9 @@ import (
 // launchd, bootstrap/kickstart, рендер sudo-команды, Terminal.app.
 
 const (
-	// daemonLaunchdLabel зеркалит константу lxd/service_darwin.go форка.
-	daemonLaunchdLabel = "com.leadaxe.sing-box-lxd"
+	// daemonLaunchdLabel — метка launchd; один источник с рецептами окна
+	// Service (ServiceLaunchdLabel, core/service_recipes.go).
+	daemonLaunchdLabel = ServiceLaunchdLabel
 
 	// daemonFallbackRuntimeDir — каталог рантайм-файлов демона, используемый
 	// ТОЛЬКО когда /admin/info недоступен (демон старой сборки). Обычный путь
@@ -126,10 +127,15 @@ func (ac *AppController) DaemonShowSecretCommand() string {
 
 // daemonServiceCommand — единственное место сборки sudo-команд службы
 // (платформенный рендер; аргументы собирает общий код): бинарь в одинарных
-// кавычках (пробелы и апострофы в пути), аргументы — константы без
-// спецсимволов.
+// кавычках (пробелы и апострофы в пути), аргументы — как есть, если в них
+// нет спецсимволов шелла, иначе в кавычках (имя клиента в client remove
+// вводит пользователь).
 func daemonServiceCommand(binary string, args ...string) string {
-	return "sudo " + shellQuote(binary) + " " + strings.Join(args, " ")
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		quoted[i] = PosixQuote(a)
+	}
+	return "sudo " + shellQuote(binary) + " " + strings.Join(quoted, " ")
 }
 
 // daemonBootstrapCommand — sudo-команда загрузки установленной службы в
@@ -142,6 +148,25 @@ func daemonBootstrapCommand() string {
 // (после обновления бинаря ядра launchd держит старый образ в памяти).
 func (ac *AppController) DaemonKickstartCommand() string {
 	return "sudo launchctl kickstart -k system/" + daemonLaunchdLabel
+}
+
+// DaemonRestartCommand — перезапуск службы (окно Service): kickstart.
+func (ac *AppController) DaemonRestartCommand() string { return ac.DaemonKickstartCommand() }
+
+// daemonServicePathsPlatform — точная раскладка службы macOS: root-owned
+// копия и её сайдкар (SPEC 136), plist, state-dir, который пишет install.
+// Лог — дефолт демона (<state-dir>/../lxd.log), daemon.json может его
+// переопределить, поэтому Default.
+func daemonServicePathsPlatform() ServicePaths {
+	p := DefaultServicePaths(ServicePlatform{GOOS: "darwin", Init: ServiceInitLaunchd})
+	corePath := daemonServiceCorePath()
+	p.Executable = ServicePath{Value: corePath}
+	p.ServiceBinary = ServicePath{Value: corePath}
+	p.InstallRecord = ServicePath{Value: daemonServiceSidecarPath(corePath)}
+	p.ServiceFile = ServicePath{Value: daemonSystemPlistPath()}
+	p.StateDir = ServicePath{Value: daemonFallbackRuntimeDir + "/state"}
+	p.LogPath = ServicePath{Value: daemonFallbackRuntimeDir + "/lxd.log", Default: true}
+	return p
 }
 
 // --- Терминальная модель (оператор выполняет все привилегированные шаги) ---
@@ -202,6 +227,11 @@ const DaemonOpsElevated = false
 func (ac *AppController) DaemonInstallOrUpdate() DaemonRunResult {
 	command, err := ac.DaemonInstallCommand()
 	return ac.runDaemonOpInTerminal(DaemonOpInstall, command, err)
+}
+
+// DaemonRestartService — перезапуск службы (kickstart -k) в Terminal.
+func (ac *AppController) DaemonRestartService() DaemonRunResult {
+	return ac.runDaemonOpInTerminal(DaemonOpRestart, ac.DaemonKickstartCommand(), nil)
 }
 
 // DaemonStartService — загрузка службы в launchd (NotRunning) в Terminal.

@@ -33,8 +33,9 @@ import (
 var errDaemonCommandStillRunning = errors.New("the administrator command is still running")
 
 const (
-	// daemonServiceName — имя службы у SCM (SPEC 141 §3 п. 1).
-	daemonServiceName = "sing-box-lxd"
+	// daemonServiceName — имя службы у SCM (SPEC 141 §3 п. 1); один
+	// источник с рецептами окна Service (ServiceName, core/service_recipes.go).
+	daemonServiceName = ServiceName
 	// daemonRunWaitTimeout — ожидание выхода команды под runas (§5.2 п. 3).
 	daemonRunWaitTimeout = 120 * time.Second
 	// daemonClientNamePrefix — имя клиента на пользователя:
@@ -129,6 +130,30 @@ func daemonBootstrapCommand() string {
 // DaemonKickstartCommand — на Windows команды нет (SPEC 141 §5.1): install и
 // copy сами перезапускают службу.
 func (ac *AppController) DaemonKickstartCommand() string { return "" }
+
+// DaemonRestartCommand — перезапуск службы (окно Service, SPEC 161):
+// PowerShell от администратора.
+func (ac *AppController) DaemonRestartCommand() string { return scmRestartCommand }
+
+// daemonPowerShellExe — %SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe.
+func daemonPowerShellExe() string {
+	return filepath.Join(daemonSystemDir(), "WindowsPowerShell", "v1.0", "powershell.exe")
+}
+
+// daemonServicePathsPlatform — точная раскладка службы Windows: защищённая
+// копия и её сайдкар (<ProgramFiles>\sing-box-lxd), имя у SCM, state и лог
+// в <ProgramData>\sing-box-lxd (install пишет log_file в daemon.json).
+func daemonServicePathsPlatform() ServicePaths {
+	p := DefaultServicePaths(ServicePlatform{GOOS: "windows", Init: ServiceInitSCM})
+	corePath := daemonServiceCorePath()
+	p.Executable = ServicePath{Value: corePath}
+	p.ServiceBinary = ServicePath{Value: corePath}
+	p.InstallRecord = ServicePath{Value: daemonServiceSidecarPath(corePath)}
+	p.ServiceFile = ServicePath{Value: daemonServiceName}
+	p.StateDir = ServicePath{Value: daemonFallbackStateDir()}
+	p.LogPath = ServicePath{Value: filepath.Join(platform.PrivilegedDataDir(), "logs", "lxd.log")}
+	return p
+}
 
 // DaemonShowSecretCommand — чтение "secret" из daemon.json службы
 // (<ProgramData>\sing-box-lxd\state, SYSTEM + Administrators): команда для
@@ -369,6 +394,20 @@ func (ac *AppController) DaemonStartService() DaemonRunResult {
 		if r.ExitCode == 0 {
 			waitDaemonServiceRunning(daemonStartSettle)
 		}
+	}
+	r.Service = ac.daemonServiceCheck(nil, "")
+	return r
+}
+
+// DaemonRestartService — `Restart-Service -Name sing-box-lxd -Force` под
+// runas (одно окно UAC), затем короткое ожидание RUNNING и пересчёт
+// классификатора.
+func (ac *AppController) DaemonRestartService() DaemonRunResult {
+	r := DaemonRunResult{Op: DaemonOpRestart, Command: DaemonCommand{Binary: daemonPowerShellExe(),
+		Args: []string{"-NoProfile", "-NonInteractive", "-Command", scmRestartCommand}}}
+	code, err := runDaemonCommandElevated(r.Command)
+	if applyElevatedOutcome(&r, code, err) && r.ExitCode == 0 {
+		waitDaemonServiceRunning(daemonStartSettle)
 	}
 	r.Service = ac.daemonServiceCheck(nil, "")
 	return r

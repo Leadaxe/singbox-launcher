@@ -3,15 +3,11 @@
 package core
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -198,106 +194,6 @@ func coreSupportsRootOwnedCopy(version string) bool {
 	want, _ := parseCoreBuild(minCoreForRootOwnedService)
 	have.pre, have.preNum = false, 0
 	return compareCoreBuilds(have, want) >= 0
-}
-
-// coreBuild — версия ядра форка для сравнения: база X.Y.Z, номер релиза
-// форка -lx.N и пре-релиз после него (-rc1, -rc.2, -dev).
-type coreBuild struct {
-	base   [3]int
-	lx     int
-	pre    bool
-	preNum int
-}
-
-// parseCoreBuild разбирает "1.14.1-lx.12", "v1.14.1-lx.12-rc1",
-// "1.14.1-lx.12-rc.2". Свой разбор, а не CompareVersions: тот сравнивает
-// только базу, и lx.10 для него равно lx.11. ok=false — не пронумерованный
-// релиз форка: пусто, "unknown", "unnamed-dev", апстрим без -lx.N.
-func parseCoreBuild(v string) (coreBuild, bool) {
-	var b coreBuild
-	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
-	i := strings.Index(v, "-lx.")
-	if i < 0 {
-		return b, false
-	}
-	parts := strings.Split(v[:i], ".")
-	if len(parts) != len(b.base) {
-		return b, false
-	}
-	for k, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 0 {
-			return b, false
-		}
-		b.base[k] = n
-	}
-	rest := v[i+len("-lx."):]
-	digits := leadingDigits(rest)
-	if digits == "" {
-		return b, false
-	}
-	n, err := strconv.Atoi(digits)
-	if err != nil {
-		return b, false
-	}
-	b.lx = n
-	rest = rest[len(digits):]
-	if rest == "" {
-		return b, true
-	}
-	if rest[0] != '-' {
-		return b, false
-	}
-	// Пре-релиз: номер — последняя группа цифр (rc1, rc.2); без цифр — 0.
-	b.pre = true
-	tail := strings.TrimRight(rest, "0123456789")
-	if num := rest[len(tail):]; num != "" {
-		if n, err := strconv.Atoi(num); err == nil {
-			b.preNum = n
-		}
-	}
-	return b, true
-}
-
-// leadingDigits — ведущие цифры s.
-func leadingDigits(s string) string {
-	end := 0
-	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
-		end++
-	}
-	return s[:end]
-}
-
-// compareCoreBuilds: база, затем номер lx, затем релиз выше своего
-// пре-релиза (lx.12-rc1 < lx.12), затем номер пре-релиза. -1, 0, 1.
-func compareCoreBuilds(a, b coreBuild) int {
-	for k := range a.base {
-		if c := compareInts(a.base[k], b.base[k]); c != 0 {
-			return c
-		}
-	}
-	if c := compareInts(a.lx, b.lx); c != 0 {
-		return c
-	}
-	switch {
-	case a.pre && !b.pre:
-		return -1
-	case !a.pre && b.pre:
-		return 1
-	case a.pre:
-		return compareInts(a.preNum, b.preNum)
-	}
-	return 0
-}
-
-func compareInts(a, b int) int {
-	switch {
-	case a < b:
-		return -1
-	case a > b:
-		return 1
-	}
-	return 0
 }
 
 // daemonServiceLayout — где классификатор ищет службу. Прод —
@@ -555,17 +451,4 @@ func (vc *coreVersionCache) version(path string) (string, error) {
 	}
 	vc.versions[key] = version
 	return version, nil
-}
-
-func sha256File(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	hasher := sha256.New()
-	if _, err := io.Copy(hasher, f); err != nil {
-		return "", fmt.Errorf("read %s: %w", path, err)
-	}
-	return hex.EncodeToString(hasher.Sum(nil)), nil
 }

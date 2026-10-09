@@ -301,3 +301,30 @@ Windows — пустая строка.
 | `docs/ARCHITECTURE.md` | L6 (`:85`), §11 (`:1029`) | список окон машины, швы движков |
 | гайды форка | `docs-lx/lxd-daemon(.ru).md` §3 (daemon.json), §6 (логи), §7/§7a/§8/§9/§11; `docs-lx/openwrt-vpn-ssid(.ru).md` | ветка `lx` |
 | `docs/release_notes/upcoming.md` | `## EN / ### Highlights`, `## RU / ### Основное` | |
+
+## 13. Волна A — API core (факт, после реализации)
+
+Якоря — на коммит волны A. Отклонения от PLAN помечены **Δ**.
+
+| Сущность | Якорь | Для кого |
+|---|---|---|
+| `CoreVersionVerdict` (`Unknown/Older/Current/Newer`), `CompareCoreVersion(running, required)`, `CoreBuildShort(v)`, `CoreVersionPairLabels(running, required) (a, b)` | `core/core_build.go:120–169` | B (вердикт строки, шапка, Deploy), C1 (`core_outdated`) |
+| перенесены `coreBuild`, `parseCoreBuild`, `compareCoreBuilds`, `sha256File` | `core/core_build.go:20–110`, `:172` | без тега |
+| `ServiceName`, `ServiceLaunchdLabel`, `ServiceInit` (`procd/systemd/launchd/scm`, `.Posix()`), `ServicePlatform`, `DefaultServiceInit`, `NormalizeInitChoice` | `core/service_recipes.go:27–82` | B |
+| `ServicePath{Value, Default}`, `ServicePaths`, `DefaultServicePaths(p)`, `ServicePassport`, **Δ** `RemoteServicePassport(services.RemoteDaemon)`, `MergeServicePaths(reported, def)` (пустое из паспорта → значение `def` со своим флагом) | `:86–183` | B, C2 |
+| `ServiceStep*` — константы ID шагов; `ServiceStep{ID, Command, RunsLocally, NeedsRoot, UsesDefault, Interactive, Placeholder**Δ**}` | `:187–229` | B (`Placeholder` — ▶ не предлагать: `client_remove <name>`, `core_upload` без файла) |
+| `ServiceRecipeInput{Platform, Paths, SSH services.SSHTarget **Δ** (вместо SSHUser), Running, Uploaded, Today}`, `ServiceRecipes{Steps, ScratchScript, ScratchPath, BackupPath **Δ**}`, `BuildServiceRecipes(in)` | `:232–275` | B; sudo для не-root ssh-пользователя на Linux уже в `Command` (`sudo sh -c '…'` для составных) |
+| `WrapSSH(t, cmd, tty)`, `PosixQuote(s)` (без кавычек: `[A-Za-z0-9_./=:@,+-]`) | `:463`, `:495` | B (▶) |
+| `DaemonReachKind` (`ReachOK/Down/CertChanged/NotTrusted/ChannelMismatch/ConnReset**Δ**/Unknown`), `ClassifyDaemonReachError(err)` | `:521–570` | B (глиф Pairing), `diagnoseReachError` (`core/backend_daemon.go:214`) |
+| `services.SSHTarget{User, Host, Port}`, `ParseSSHTarget`, `DefaultSSHTarget(addr)`, `.String()`, **Δ** `.IsRoot()` | `core/services/ssh_target.go:21–117` | B7 (поле SSH), C1 (PATCH) |
+| `RemoteDaemon.SSH/InitSystem/CoreWarnAck/Passport`, `RemotePassport{Version, Executable, LogPath, Listen, TLS *bool, SeenAt}` | `core/services/lxd_remote_registry.go:73–112` | B, C1 |
+| `SetSSH`, `SetInitSystem` (`""/systemd/procd`), `SetCoreWarnAck`, `SetSecret`, `SetPassport` (no-op < 10 мин без изменений); общий `mutate` | `:636–740` | B, C1 |
+| `RemoteHealth.Executable/LogPath/Listen/TLS *bool/UptimeSeconds`; `healthCtx` заполняет и зовёт `SetPassport` | `:970–985`, `healthCtx` | B6: `prev != h` теперь меняется каждый тик (TLS — указатель, uptime) — `healthChanged` обязателен |
+| `SingboxAssetSuffixFor`, `directAssetNameFor`, `DirectAssetURLFor`, `releaseDownloadURL`, `extractArchiveNamed` (+ `extractZipNamed`/`extractTarGzNamed`; `extractZip`/`extractTarGz` оставлены обёртками ради существующих тестов) | `core/core_downloader.go:213–240`, `:329`, `:588–668` | |
+| `ErrNoTargetAsset`**Δ**, `TargetCoreDownload`, `TargetCoreFileName`, `DownloadsDir`, `CheckTargetCore`, `(*AppController).DownloadCoreForTarget(ctx, ver, goos, goarch, progress) (TargetCoreDownload, error)` | `core/core_download_target.go:28–110` | B5 (шаг 1 Core); temp — системный (`os.MkdirTemp`), сайдкар — только при сверке с SHA256SUMS |
+| `DaemonUIStatus.ReachErr/Passport/PassportSeenAt/PassportCached`, кэш `daemonPassportCache` | `core/daemon_manager.go:291–334` | C1, C2 |
+| `DaemonClientListCommand()`, `DaemonClientRemoveCommand(name)`, `DaemonServicePaths()`, `DaemonOpRestart` | `core/daemon_manager.go:709–735`, `:844` | C1, C2 |
+| darwin: `DaemonRestartCommand`, `daemonServicePathsPlatform`, `DaemonRestartService`; `daemonServiceCommand` квотирует аргументы `PosixQuote` | `core/daemon_manager_darwin.go:154–171`, `:233` | |
+| windows: `DaemonRestartCommand` (= `scmRestartCommand`), `daemonPowerShellExe`, `daemonServicePathsPlatform`, `DaemonRestartService` | `core/daemon_manager_windows.go:136–157`, `:405` | |
+| `LauncherDocsBaseURL`, `CoreDocsBaseURL` | `internal/constants/constants.go:166–174` | B2 (гайды) |
+| новый ключ `locale.T`: «The service was restarted.» | `core/daemon_manager.go` (`StatusText`) | C7 (ru.json) |

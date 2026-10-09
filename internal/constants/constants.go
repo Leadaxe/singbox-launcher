@@ -163,6 +163,15 @@ const (
 	// пользователя релизная сборка, и ссылка обязана вести на актуальный
 	// текст, а не на срез времени сборки.
 	ContractWarningsDocBaseURL = "https://github.com/Leadaxe/singbox-launcher/blob/main/contract/docs/generated/warnings.md#"
+	// LauncherDocsBaseURL / CoreDocsBaseURL — базы ссылок «Guides» окна
+	// Service (SPEC 161): полный адрес = база + `<имя>.md` или `<имя>.ru.md`
+	// по локали + якорь. Документация лаунчера — ветка main этого
+	// репозитория (как ContractWarningsDocBaseURL: у пользователя релизная
+	// сборка, ссылка ведёт на актуальный текст); гайды демона — docs-lx
+	// форка ядра на ветке lx (демон — часть ядра, инструкции обновляются
+	// вместе с ним, как RemoteDaemonDocsURL).
+	LauncherDocsBaseURL = "https://github.com/Leadaxe/singbox-launcher/blob/main/docs/"
+	CoreDocsBaseURL     = "https://github.com/Leadaxe/sing-box-lx/blob/lx/docs-lx/"
 )
 
 // sing-box core download source (SPEC 072, Variant A). The launcher ships the
