@@ -26,7 +26,6 @@ package backup
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -328,37 +327,6 @@ func canonicalJSONValue(v interface{}) interface{} {
 	}
 }
 
-// takenRootTags — занятые имена КОРНЕВОГО пространства финальных тегов.
-//
-// Не только теги верхних узлов: в том же пространстве живут теги Направлений
-// и теги замен свёрнутых папок/подписок. Узел, вставший в корень именем
-// свёртки, дал бы двух владельцев одного имени, и в сборке они спорили бы за
-// него — ровно та причина, по которой список у UI-стороны тоже полный
-// (rootTagSet, node_move.go).
-func takenRootTags(s *state.State) map[string]bool {
-	taken := map[string]bool{}
-	for i := range s.Sources {
-		src := &s.Sources[i]
-		switch src.Kind {
-		case state.SourceKindServer, state.SourceKindChain, state.SourceKindAuto:
-			if t := src.NodeTagOrLabel(); t != "" {
-				taken[t] = true
-			}
-		}
-		if src.Replace != nil && src.Replace.Tag != "" {
-			taken[src.Replace.Tag] = true
-			// Двойник режима both: `<tag>-auto` занят тем же владельцем.
-			taken[src.Replace.Tag+"-auto"] = true
-		}
-	}
-	for _, d := range s.Directions {
-		if d.Tag != "" {
-			taken[d.Tag] = true
-		}
-	}
-	return taken
-}
-
 // takenSourceIDs — занятые ULID источников.
 func takenSourceIDs(sources []state.Source) map[string]bool {
 	out := map[string]bool{}
@@ -376,21 +344,6 @@ func freshIDIfTaken(id string, taken map[string]bool) string {
 		return state.MakeULID()
 	}
 	return id
-}
-
-// uniqueTag подбирает свободное имя вида `X`, `X-2`, `X-3` — та же форма
-// суффикса, что у ручного добавления узла (uniqueTagIn, node_move.go) и у
-// уникализации на эмиссии, чтобы имена из разных путей выглядели одинаково.
-func uniqueTag(taken map[string]bool, tag string) string {
-	if tag == "" || !taken[tag] {
-		return tag
-	}
-	for n := 2; ; n++ {
-		candidate := fmt.Sprintf("%s-%d", tag, n)
-		if !taken[candidate] {
-			return candidate
-		}
-	}
 }
 
 // nodeAddr — адрес узла в состоянии: индекс источника и индекс внутри его
@@ -831,7 +784,7 @@ func mergeServerItem(s *state.State, item decodedSource, rootBodies map[string]i
 			cnt.SkippedServers++
 			return
 		}
-		incoming.Tag = uniqueTag(rootTags, incoming.Tag)
+		incoming.Tag = state.UniqueTag(rootTags, incoming.Tag)
 		incoming.ID = freshIDIfTaken(incoming.ID, takenIDs)
 		takenIDs[incoming.ID] = true
 		if incoming.Tag != "" {
@@ -983,7 +936,7 @@ func addFolderMember(s *state.State, folderAt int, node state.Node, fileContaine
 	for i := range folder.Nodes {
 		taken[folder.Nodes[i].Tag] = true
 	}
-	node.Tag = uniqueTag(taken, node.Tag)
+	node.Tag = state.UniqueTag(taken, node.Tag)
 	folder.Nodes = append(folder.Nodes, node)
 	at := len(folder.Nodes) - 1
 	info.linked = append(info.linked, linkedNode{at: nodeAddr{src: folderAt, node: at}, fileContainer: fileContainer})

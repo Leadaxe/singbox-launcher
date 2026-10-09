@@ -27,6 +27,9 @@ func TestPatchStateDNS_EmptyBodyDoesNotClear(t *testing.T) {
 	cases := map[string]string{
 		"empty object": "{}",
 		"only unknown": `{"foo":1}`,
+		// SPEC 160 B5: PATCH заменяет секцию целиком, тело без rules стёрло бы
+		// dns.rules молча.
+		"only servers": `{"servers":[]}`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
