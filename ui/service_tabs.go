@@ -167,7 +167,7 @@ func buildCoreTab(c *serviceTabCtx) fyne.CanvasObject {
 	var lead *widget.Label
 	switch {
 	case verdict == core.CoreVersionOlder:
-		lead = serviceNoteLabel(locale.Tf("Running %s → required %s", s.Running, req), widget.WarningImportance)
+		lead = serviceNoteLabel(locale.Tf("Running %s, required %s", s.Running, req), widget.WarningImportance)
 	case verdict == core.CoreVersionCurrent:
 		lead = serviceNoteLabel(locale.Tf("✅ Core %s is current", s.Running), widget.SuccessImportance)
 	case verdict == core.CoreVersionNewer:

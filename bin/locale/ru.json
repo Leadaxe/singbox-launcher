@@ -5231,8 +5231,8 @@
   "Run the command": {
     "value": "Выполнить команду"
   },
-  "Running %s → required %s": {
-    "value": "Работает %s → требуется %s"
+  "Running %s, required %s": {
+    "value": "Работает %s, требуется %s"
   },
   "Runs in Terminal with your sudo and prints a one-time invite — paste it below:": {
     "value": "Выполняется в терминале под вашим sudo и печатает одноразовое приглашение — вставьте его ниже:"
