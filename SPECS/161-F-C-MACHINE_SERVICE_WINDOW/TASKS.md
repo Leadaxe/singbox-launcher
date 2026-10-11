@@ -259,7 +259,7 @@ A1─A6 (core) ──┬──▶ B1 (модель окна) ──┬──▶ 
 - [ ] CI: `gh workflow run ci.yml --ref develop -f run_mode=tests`; упавшее —
   `gh run view <ID> --log-failed`. (Волна в ветке `spec-161-service-window`, не
   запушена — прогон после слияния в `develop`.)
-- [x] `SPECS/161-F-N-MACHINE_SERVICE_WINDOW/IMPLEMENTATION_REPORT.md`; строка 161 в
+- [x] `SPECS/161-F-C-MACHINE_SERVICE_WINDOW/IMPLEMENTATION_REPORT.md`; строка 161 в
   `SPECS/README.md`.
 - [ ] Папка → `161-F-C-MACHINE_SERVICE_WINDOW` — после приёмки владельцем.
 - [x] Коммит C: `core/debugapi/daemon_endpoints.go core/debugapi_wiring_daemon.go
