@@ -9,6 +9,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
+	"singbox-launcher/core/services"
 )
 
 // keyModifiers returns held keyboard modifiers (desktop); 0 on mobile or if driver has no support.
@@ -53,13 +54,13 @@ func slicesContains(list []string, s string) bool {
 // reorderWithPinned moves special proxies to the top of the list while
 // preserving relative order of the rest:
 //   - "direct-out" (if present)
-//   - currently active proxy (if set and different from direct-out)
-func reorderWithPinned(ac *core.AppController, list []api.ProxyInfo) []api.ProxyInfo {
+//   - currently active proxy of scope (if set and different from direct-out)
+func reorderWithPinned(ac *core.AppController, scope services.ProxyScope, list []api.ProxyInfo) []api.ProxyInfo {
 	if len(list) == 0 {
 		return list
 	}
 	const directName = "direct-out"
-	activeName := ac.GetActiveProxyName()
+	activeName := ac.ActiveProxyNameIn(scope)
 
 	hasDirect := false
 	hasActive := false

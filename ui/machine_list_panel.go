@@ -760,9 +760,11 @@ func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services
 // список. Без него запрос уходил бы с группой предыдущего источника —
 // отсюда «Daemon: group "" not found».
 func (p *machineListPanel) loadNodes() {
-	if p.ac.UIService != nil && p.ac.UIService.ResetAPIStateFunc != nil {
-		p.ac.UIService.ResetAPIStateFunc()
-	}
+	// Сброс — СВОЕЙ панели, а не слота UIService: слоты принадлежат вкладке
+	// на экране, а loadNodes зовёт и heartbeat (ядро машины перезапустилось
+	// после Deploy), пока пользователь смотрит на Local. Через слот сбрасывался
+	// список своего ядра, а узлы машины ложились в него следом.
+	p.proxies.ResetState()
 	// Чьи узлы грузим — фиксируем сейчас: ретраи ниже длятся до 15 с, и за
 	// это время активная машина может смениться.
 	loadID, _, _ := GetLxdRemoteOverride()
@@ -804,10 +806,7 @@ func (p *machineListPanel) loadNodes() {
 			// про ту машину, к которой он подключён.
 			if !ok {
 				p.proxies.Clear()
-				if p.ac.UIService != nil && p.ac.UIService.ListStatusLabel != nil {
-					p.ac.UIService.ListStatusLabel.SetText(
-						locale.T("The machine did not return its groups — press ↻ to retry"))
-				}
+				p.proxies.SetListStatus(locale.T("The machine did not return its groups — press ↻ to retry"))
 				return
 			}
 			// Список заполняется — шапка обязана быть включена той же

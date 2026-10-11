@@ -149,40 +149,40 @@ func NewAPIService(configPath string,
 	return apiSvc, nil
 }
 
-// stateLocked возвращает состояние активной области для ЧТЕНИЯ.
+// stateInLocked возвращает состояние области scope для ЧТЕНИЯ.
 //
 // Годится под RLock: обе области создаёт конструктор, поэтому обращение к
 // карте здесь не мутирующее. Ленивое создание было бы записью под RLock, то
-// есть гонкой на ровном месте — для записи есть mutableStateLocked.
+// есть гонкой на ровном месте — для записи есть mutableStateInLocked.
 //
 // Пустое состояние возвращается только для APIService, собранного литералом
 // (так делают тесты): читать из него можно, ронять приложение — нет.
-func (apiSvc *APIService) stateLocked() *proxyScopeState {
-	if st := apiSvc.scopes[apiSvc.scope]; st != nil {
+func (apiSvc *APIService) stateInLocked(scope ProxyScope) *proxyScopeState {
+	if st := apiSvc.scopes[scope]; st != nil {
 		return st
 	}
 	return newProxyScopeState()
 }
 
-// mutableStateLocked возвращает состояние активной области для ЗАПИСИ,
+// mutableStateInLocked возвращает состояние области scope для ЗАПИСИ,
 // создавая его при необходимости. Вызывать только под StateMutex.Lock().
-func (apiSvc *APIService) mutableStateLocked() *proxyScopeState {
+func (apiSvc *APIService) mutableStateInLocked(scope ProxyScope) *proxyScopeState {
 	if apiSvc.scopes == nil {
 		apiSvc.scopes = make(map[ProxyScope]*proxyScopeState, 2)
 	}
-	st := apiSvc.scopes[apiSvc.scope]
+	st := apiSvc.scopes[scope]
 	if st == nil {
 		st = newProxyScopeState()
-		apiSvc.scopes[apiSvc.scope] = st
+		apiSvc.scopes[scope] = st
 	}
 	return st
 }
 
 // SetProxyScope переключает активную область (SPEC 098).
 //
-// Вызывается при смене вкладки: дальше все геттеры и сеттеры адресуют
-// состояние ЭТОЙ области. Данные предыдущей остаются нетронутыми — вернувшись
-// на вкладку, пользователь видит ровно то, что там было.
+// Вызывается при смене вкладки: дальше все геттеры и сеттеры без суффикса In
+// адресуют состояние ЭТОЙ области. Данные предыдущей остаются нетронутыми —
+// вернувшись на вкладку, пользователь видит ровно то, что там было.
 func (apiSvc *APIService) SetProxyScope(scope ProxyScope) {
 	apiSvc.StateMutex.Lock()
 	defer apiSvc.StateMutex.Unlock()
@@ -196,33 +196,106 @@ func (apiSvc *APIService) ProxyScopeOf() ProxyScope {
 	return apiSvc.scope
 }
 
-// SelectedClashGroupIn / SetSelectedClashGroupIn адресуют КОНКРЕТНУЮ область,
-// а не активную.
+// Аксессоры с суффиксом In адресуют КОНКРЕТНУЮ область, а не активную.
 //
-// Нужны конструкторам панелей: обе строятся на старте, когда активна
-// ScopeLocal, и «активные» аксессоры записали бы группу удалённой машины в
-// local-состояние, оставив remote пустым.
+// Панель списка обязана писать только в свою: ответ на её сетевой запрос
+// приходит позже, и за это время пользователь мог сменить вкладку. Через
+// «активные» аксессоры поздний ответ машины ложился в состояние Local — узлы
+// роутера появлялись в списке своего ядра (так было после Deploy: машина
+// перезапускает ядро, heartbeat перечитывает её узлы, а на экране уже Local).
+// Нужны и конструкторам панелей: обе строятся на старте, когда активна
+// ScopeLocal.
+
 func (apiSvc *APIService) SelectedClashGroupIn(scope ProxyScope) string {
 	apiSvc.StateMutex.RLock()
 	defer apiSvc.StateMutex.RUnlock()
-	if st := apiSvc.scopes[scope]; st != nil {
-		return st.SelectedClashGroup
-	}
-	return ""
+	return apiSvc.stateInLocked(scope).SelectedClashGroup
 }
 
 func (apiSvc *APIService) SetSelectedClashGroupIn(scope ProxyScope, group string) {
 	apiSvc.StateMutex.Lock()
 	defer apiSvc.StateMutex.Unlock()
-	if apiSvc.scopes == nil {
-		apiSvc.scopes = make(map[ProxyScope]*proxyScopeState, 2)
+	apiSvc.mutableStateInLocked(scope).SelectedClashGroup = group
+}
+
+// ProxiesListIn возвращает копию списка области: правка результата
+// состояние не трогает.
+func (apiSvc *APIService) ProxiesListIn(scope ProxyScope) []api.ProxyInfo {
+	apiSvc.StateMutex.RLock()
+	defer apiSvc.StateMutex.RUnlock()
+	list := apiSvc.stateInLocked(scope).ProxiesList
+	result := make([]api.ProxyInfo, len(list))
+	copy(result, list)
+	return result
+}
+
+func (apiSvc *APIService) SetProxiesListIn(scope ProxyScope, proxies []api.ProxyInfo) {
+	apiSvc.StateMutex.Lock()
+	defer apiSvc.StateMutex.Unlock()
+	apiSvc.mutableStateInLocked(scope).ProxiesList = proxies
+}
+
+func (apiSvc *APIService) ActiveProxyNameIn(scope ProxyScope) string {
+	apiSvc.StateMutex.RLock()
+	defer apiSvc.StateMutex.RUnlock()
+	return apiSvc.stateInLocked(scope).ActiveProxyName
+}
+
+func (apiSvc *APIService) SetActiveProxyNameIn(scope ProxyScope, name string) {
+	apiSvc.StateMutex.Lock()
+	defer apiSvc.StateMutex.Unlock()
+	apiSvc.mutableStateInLocked(scope).ActiveProxyName = name
+}
+
+func (apiSvc *APIService) SelectedIndexIn(scope ProxyScope) int {
+	apiSvc.StateMutex.RLock()
+	defer apiSvc.StateMutex.RUnlock()
+	return apiSvc.stateInLocked(scope).SelectedIndex
+}
+
+func (apiSvc *APIService) SetSelectedIndexIn(scope ProxyScope, index int) {
+	apiSvc.StateMutex.Lock()
+	defer apiSvc.StateMutex.Unlock()
+	apiSvc.mutableStateInLocked(scope).SelectedIndex = index
+}
+
+// LastSelectedProxyForGroupIn — последний выбранный узел группы в области.
+func (apiSvc *APIService) LastSelectedProxyForGroupIn(scope ProxyScope, group string) string {
+	apiSvc.StateMutex.RLock()
+	defer apiSvc.StateMutex.RUnlock()
+	return apiSvc.stateInLocked(scope).LastSelectedProxyByGroup[group]
+}
+
+func (apiSvc *APIService) SetLastSelectedProxyForGroupIn(scope ProxyScope, group, name string) {
+	apiSvc.StateMutex.Lock()
+	defer apiSvc.StateMutex.Unlock()
+	st := apiSvc.mutableStateInLocked(scope)
+	if st.LastSelectedProxyByGroup == nil {
+		st.LastSelectedProxyByGroup = make(map[string]string)
 	}
-	st := apiSvc.scopes[scope]
-	if st == nil {
-		st = newProxyScopeState()
-		apiSvc.scopes[scope] = st
+	st.LastSelectedProxyByGroup[group] = name
+}
+
+// LastPingErrorIn — текст последней ошибки пинга узла (подсказка к «Error»).
+func (apiSvc *APIService) LastPingErrorIn(scope ProxyScope, proxyName string) string {
+	apiSvc.StateMutex.RLock()
+	defer apiSvc.StateMutex.RUnlock()
+	return apiSvc.stateInLocked(scope).LastPingError[proxyName]
+}
+
+// SetLastPingErrorIn запоминает ошибку пинга; пустая строка её снимает.
+func (apiSvc *APIService) SetLastPingErrorIn(scope ProxyScope, proxyName, errMsg string) {
+	apiSvc.StateMutex.Lock()
+	defer apiSvc.StateMutex.Unlock()
+	st := apiSvc.mutableStateInLocked(scope)
+	if st.LastPingError == nil {
+		st.LastPingError = make(map[string]string)
 	}
-	st.SelectedClashGroup = group
+	if errMsg == "" {
+		delete(st.LastPingError, proxyName)
+	} else {
+		st.LastPingError[proxyName] = errMsg
+	}
 }
 
 // ResetScope очищает состояние области — список, выбор и ошибки пинга.
@@ -239,107 +312,66 @@ func (apiSvc *APIService) ResetScope(scope ProxyScope) {
 	apiSvc.scopes[scope] = newProxyScopeState()
 }
 
+// Аксессоры без суффикса In — активная область (вкладка на экране).
+
 // SetProxiesList safely sets the proxies list with mutex protection.
 func (apiSvc *APIService) SetProxiesList(proxies []api.ProxyInfo) {
-	apiSvc.StateMutex.Lock()
-	defer apiSvc.StateMutex.Unlock()
-	apiSvc.mutableStateLocked().ProxiesList = proxies
+	apiSvc.SetProxiesListIn(apiSvc.ProxyScopeOf(), proxies)
 }
 
 // GetProxiesList safely gets a copy of the proxies list with mutex protection.
 func (apiSvc *APIService) GetProxiesList() []api.ProxyInfo {
-	apiSvc.StateMutex.RLock()
-	defer apiSvc.StateMutex.RUnlock()
-	// Return a copy to prevent external modifications
-	result := make([]api.ProxyInfo, len(apiSvc.stateLocked().ProxiesList))
-	copy(result, apiSvc.stateLocked().ProxiesList)
-	return result
+	return apiSvc.ProxiesListIn(apiSvc.ProxyScopeOf())
 }
 
 // SetActiveProxyName safely sets the active proxy name with mutex protection.
 func (apiSvc *APIService) SetActiveProxyName(name string) {
-	apiSvc.StateMutex.Lock()
-	defer apiSvc.StateMutex.Unlock()
-	apiSvc.mutableStateLocked().ActiveProxyName = name
+	apiSvc.SetActiveProxyNameIn(apiSvc.ProxyScopeOf(), name)
 }
 
 // GetActiveProxyName safely gets the active proxy name with mutex protection.
 func (apiSvc *APIService) GetActiveProxyName() string {
-	apiSvc.StateMutex.RLock()
-	defer apiSvc.StateMutex.RUnlock()
-	return apiSvc.stateLocked().ActiveProxyName
+	return apiSvc.ActiveProxyNameIn(apiSvc.ProxyScopeOf())
 }
 
 // SetSelectedIndex safely sets the selected index with mutex protection.
 func (apiSvc *APIService) SetSelectedIndex(index int) {
-	apiSvc.StateMutex.Lock()
-	defer apiSvc.StateMutex.Unlock()
-	apiSvc.mutableStateLocked().SelectedIndex = index
+	apiSvc.SetSelectedIndexIn(apiSvc.ProxyScopeOf(), index)
 }
 
 // GetSelectedIndex safely gets the selected index with mutex protection.
 func (apiSvc *APIService) GetSelectedIndex() int {
-	apiSvc.StateMutex.RLock()
-	defer apiSvc.StateMutex.RUnlock()
-	return apiSvc.stateLocked().SelectedIndex
+	return apiSvc.SelectedIndexIn(apiSvc.ProxyScopeOf())
 }
 
 // SetLastSelectedProxyForGroup safely sets the last selected proxy name for a selector group with mutex protection.
 func (apiSvc *APIService) SetLastSelectedProxyForGroup(group, name string) {
-	apiSvc.StateMutex.Lock()
-	defer apiSvc.StateMutex.Unlock()
-	if apiSvc.mutableStateLocked().LastSelectedProxyByGroup == nil {
-		apiSvc.mutableStateLocked().LastSelectedProxyByGroup = make(map[string]string)
-	}
-	apiSvc.mutableStateLocked().LastSelectedProxyByGroup[group] = name
+	apiSvc.SetLastSelectedProxyForGroupIn(apiSvc.ProxyScopeOf(), group, name)
 }
 
 // GetLastSelectedProxyForGroup safely gets the last selected proxy name for a selector group with mutex protection.
 func (apiSvc *APIService) GetLastSelectedProxyForGroup(group string) string {
-	apiSvc.StateMutex.RLock()
-	defer apiSvc.StateMutex.RUnlock()
-	if apiSvc.stateLocked().LastSelectedProxyByGroup == nil {
-		return ""
-	}
-	return apiSvc.stateLocked().LastSelectedProxyByGroup[group]
+	return apiSvc.LastSelectedProxyForGroupIn(apiSvc.ProxyScopeOf(), group)
 }
 
 // SetLastPingError stores the last ping error message for a proxy (for tooltip when button shows "Error").
 func (apiSvc *APIService) SetLastPingError(proxyName, errMsg string) {
-	apiSvc.StateMutex.Lock()
-	defer apiSvc.StateMutex.Unlock()
-	if apiSvc.mutableStateLocked().LastPingError == nil {
-		apiSvc.mutableStateLocked().LastPingError = make(map[string]string)
-	}
-	if errMsg == "" {
-		delete(apiSvc.mutableStateLocked().LastPingError, proxyName)
-	} else {
-		apiSvc.mutableStateLocked().LastPingError[proxyName] = errMsg
-	}
+	apiSvc.SetLastPingErrorIn(apiSvc.ProxyScopeOf(), proxyName, errMsg)
 }
 
 // GetLastPingError returns the last ping error message for a proxy, or empty string.
 func (apiSvc *APIService) GetLastPingError(proxyName string) string {
-	apiSvc.StateMutex.RLock()
-	defer apiSvc.StateMutex.RUnlock()
-	if apiSvc.stateLocked().LastPingError == nil {
-		return ""
-	}
-	return apiSvc.stateLocked().LastPingError[proxyName]
+	return apiSvc.LastPingErrorIn(apiSvc.ProxyScopeOf(), proxyName)
 }
 
 // GetSelectedClashGroup safely gets the selected Clash group.
 func (apiSvc *APIService) GetSelectedClashGroup() string {
-	apiSvc.StateMutex.RLock()
-	defer apiSvc.StateMutex.RUnlock()
-	return apiSvc.stateLocked().SelectedClashGroup
+	return apiSvc.SelectedClashGroupIn(apiSvc.ProxyScopeOf())
 }
 
 // SetSelectedClashGroup safely sets the selected Clash group.
 func (apiSvc *APIService) SetSelectedClashGroup(group string) {
-	apiSvc.StateMutex.Lock()
-	defer apiSvc.StateMutex.Unlock()
-	apiSvc.mutableStateLocked().SelectedClashGroup = group
+	apiSvc.SetSelectedClashGroupIn(apiSvc.ProxyScopeOf(), group)
 }
 
 // GetClashAPIConfig safely gets Clash API configuration.
@@ -482,8 +514,19 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 			// результат, но без ложного пропуска.
 			debuglog.DebugLog("AutoLoadProxies: Attempt %d/%d to load proxies for group '%s'", attempt+1, len(intervals), selectedGroup)
 
+			// Транспорт и область берём вместе и на каждой попытке: за время
+			// retry-цикла пользователь мог сменить вкладку, а с ней и ядро,
+			// с которым идёт разговор. Ответ пишется в ту область, чьим
+			// транспортом получен, — иначе узлы машины, загруженные до
+			// переключения, ложились в список своего ядра (и наоборот).
+			transport, scope, terr := apiSvc.wireTransportAndScope()
+			if terr != nil {
+				debuglog.DebugLog("AutoLoadProxies: transport unavailable (%v)", terr)
+				continue
+			}
+
 			// Get current group (it might have changed)
-			currentGroup := apiSvc.GetSelectedClashGroup()
+			currentGroup := apiSvc.SelectedClashGroupIn(scope)
 
 			if currentGroup == "" {
 				debuglog.DebugLog("AutoLoadProxies: Group cleared, stopping attempts")
@@ -492,14 +535,6 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 
 			if platform.IsSleeping() {
 				debuglog.DebugLog("AutoLoadProxies: Skipping attempt - system sleeping")
-				continue
-			}
-
-			// Транспорт строим на каждой попытке: endpoint/override могли
-			// смениться пока retry-цикл спал.
-			transport, terr := apiSvc.wireTransport()
-			if terr != nil {
-				debuglog.DebugLog("AutoLoadProxies: transport unavailable (%v)", terr)
 				continue
 			}
 
@@ -527,8 +562,8 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 				if isStale() {
 					return
 				}
-				apiSvc.SetProxiesList(proxies)
-				apiSvc.SetActiveProxyName(now)
+				apiSvc.SetProxiesListIn(scope, proxies)
+				apiSvc.SetActiveProxyNameIn(scope, now)
 
 				// Notify about proxies update
 				if apiSvc.OnProxiesUpdated != nil {
@@ -538,7 +573,7 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 
 			// Проверяем, есть ли сохраненный прокси для текущей группы, и переключаемся на него, если он отличается от текущего
 			// Делаем это после обновления UI, чтобы не блокировать
-			lastSelected := apiSvc.GetLastSelectedProxyForGroup(currentGroup)
+			lastSelected := apiSvc.LastSelectedProxyForGroupIn(scope, currentGroup)
 			if lastSelected != "" && lastSelected != now {
 				// Проверяем, что сохраненный прокси существует в списке
 				proxyExists := false
@@ -551,7 +586,7 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 				if proxyExists {
 					debuglog.DebugLog("AutoLoadProxies: Switching to saved proxy '%s' (current: '%s') for group '%s'", lastSelected, now, currentGroup)
 					// Переключаемся на сохраненный прокси (мы уже в goroutine, дополнительная не нужна)
-					if err := apiSvc.SwitchProxy(currentGroup, lastSelected); err != nil {
+					if err := apiSvc.SwitchProxyVia(transport, scope, currentGroup, lastSelected); err != nil {
 						debuglog.WarnLog("AutoLoadProxies: Failed to switch to saved proxy '%s' for group '%s': %v", lastSelected, currentGroup, err)
 						// Не критично, продолжаем с текущим прокси
 					}
@@ -567,29 +602,11 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 }
 
 // SwitchProxy switches to the specified proxy in the selected group.
+// Тело — SwitchProxyVia с транспортом и областью активной вкладки.
 func (apiSvc *APIService) SwitchProxy(group, proxyName string) error {
-	transport, err := apiSvc.wireTransport()
+	transport, scope, err := apiSvc.wireTransportAndScope()
 	if err != nil {
 		return err
 	}
-
-	if err := transport.SwitchProxy(group, proxyName); err != nil {
-		debuglog.WarnLog("SwitchProxy: group=%q → %q failed: %v", group, proxyName, err)
-		return fmt.Errorf("failed to switch proxy: %w", err)
-	}
-	// Логируем факт и адресата: без этого нельзя отличить «лаунчер не послал
-	// команду» от «ядро её приняло, но соединения не разорвало» — а лечение у
-	// этих случаев разное.
-	debuglog.InfoLog("SwitchProxy: group=%q → %q", group, proxyName)
-
-	apiSvc.SetActiveProxyName(proxyName)
-	// Сохраняем последний выбранный прокси для текущей группы для автоматического переключения при следующем старте
-	apiSvc.SetLastSelectedProxyForGroup(group, proxyName)
-
-	// Notify about proxy switch
-	if apiSvc.OnProxySwitched != nil {
-		apiSvc.OnProxySwitched()
-	}
-
-	return nil
+	return apiSvc.SwitchProxyVia(transport, scope, group, proxyName)
 }

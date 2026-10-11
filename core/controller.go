@@ -708,6 +708,54 @@ func (ac *AppController) GetSelectedIndex() int {
 	return -1
 }
 
+// Варианты с суффиксом In адресуют область scope, а не вкладку на экране:
+// панель списка пишет только в свою (см. services.APIService.ProxiesListIn).
+
+// ProxiesListIn returns a copy of the proxies list of scope.
+func (ac *AppController) ProxiesListIn(scope services.ProxyScope) []api.ProxyInfo {
+	if ac.APIService != nil {
+		return ac.APIService.ProxiesListIn(scope)
+	}
+	return []api.ProxyInfo{}
+}
+
+// SetProxiesListIn sets the proxies list of scope.
+func (ac *AppController) SetProxiesListIn(scope services.ProxyScope, proxies []api.ProxyInfo) {
+	if ac.APIService != nil {
+		ac.APIService.SetProxiesListIn(scope, proxies)
+	}
+}
+
+// ActiveProxyNameIn returns the active proxy name of scope.
+func (ac *AppController) ActiveProxyNameIn(scope services.ProxyScope) string {
+	if ac.APIService != nil {
+		return ac.APIService.ActiveProxyNameIn(scope)
+	}
+	return ""
+}
+
+// SetActiveProxyNameIn sets the active proxy name of scope.
+func (ac *AppController) SetActiveProxyNameIn(scope services.ProxyScope, name string) {
+	if ac.APIService != nil {
+		ac.APIService.SetActiveProxyNameIn(scope, name)
+	}
+}
+
+// LastSelectedProxyForGroupIn returns the last selected proxy of group in scope.
+func (ac *AppController) LastSelectedProxyForGroupIn(scope services.ProxyScope, group string) string {
+	if ac.APIService != nil {
+		return ac.APIService.LastSelectedProxyForGroupIn(scope, group)
+	}
+	return ""
+}
+
+// SetSelectedIndexIn sets the selected index of scope.
+func (ac *AppController) SetSelectedIndexIn(scope services.ProxyScope, index int) {
+	if ac.APIService != nil {
+		ac.APIService.SetSelectedIndexIn(scope, index)
+	}
+}
+
 // StartSingBoxProcess launches the sing-box process.
 // skipRunningCheck: если true, пропускает проверку на уже запущенный процесс (для автоперезапуска)
 // Note: ProcessService must be initialized in NewAppController. This is a wrapper for backward compatibility.

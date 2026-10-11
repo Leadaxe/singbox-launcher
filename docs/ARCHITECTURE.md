@@ -1089,6 +1089,17 @@ Everything that has a scope reads its source directly:
   machine selected then, and after the selection changes its commands answer
   "not available" instead of going to another machine.
 
+**List state is addressed by scope too.** `APIService` keeps one list state per
+scope (list, active node, selected index, ping errors, last selection per group).
+The accessors without a suffix read the active scope (the visible tab); the `…In(scope)`
+variants address one scope explicitly. `ProxyListPanel` uses only the `In` variants
+and its own widgets (`panel.proxiesList`, `listStatusLabel`, `apiStatusLabel`), never
+the `UIService` slots: a reply to its network request may land after the tab has
+changed. `AutoLoadProxies` takes transport and scope under one lock
+(`wireTransportAndScope`) and writes the reply into that scope.
+`machineListPanel.loadNodes` resets its own panel (`ProxyListPanel.ResetState`).
+`UIService.ResetAPIStateFunc` stays with Local for good: only local-core events call it.
+
 ### 11.3 Target and role are independent axes (SPEC 097)
 
 Config generation used to assume "the machine the launcher runs on": `runtime.GOOS`
