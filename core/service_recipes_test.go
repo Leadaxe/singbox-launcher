@@ -18,16 +18,16 @@ func TestServiceRecipes(t *testing.T) {
 			running, required string
 			want              CoreVersionVerdict
 		}{
-			{"1.14.2-lx.11", "1.14.3-lx.14", CoreVersionOlder},
-			{"1.14.3-lx.11", "1.14.3-lx.14", CoreVersionOlder},
-			{"1.14.3-lx.14-rc1", "1.14.3-lx.14", CoreVersionOlder},
-			{"1.14.2-lx.14", "1.14.3-lx.14", CoreVersionOlder},
-			{"1.14.3-lx.14", "1.14.3-lx.14", CoreVersionCurrent},
-			{"v1.14.3-lx.14", "1.14.3-lx.14", CoreVersionCurrent},
-			{"1.14.3-lx.15", "1.14.3-lx.14", CoreVersionNewer},
-			{"unknown", "1.14.3-lx.14", CoreVersionUnknown},
-			{"1.12.0", "1.14.3-lx.14", CoreVersionUnknown},
-			{"", "1.14.3-lx.14", CoreVersionUnknown},
+			{"1.14.2-lx.11", "1.14.3-lx.15", CoreVersionOlder},
+			{"1.14.3-lx.11", "1.14.3-lx.15", CoreVersionOlder},
+			{"1.14.3-lx.15-rc1", "1.14.3-lx.15", CoreVersionOlder},
+			{"1.14.2-lx.15", "1.14.3-lx.15", CoreVersionOlder},
+			{"1.14.3-lx.15", "1.14.3-lx.15", CoreVersionCurrent},
+			{"v1.14.3-lx.15", "1.14.3-lx.15", CoreVersionCurrent},
+			{"1.14.3-lx.16", "1.14.3-lx.15", CoreVersionNewer},
+			{"unknown", "1.14.3-lx.15", CoreVersionUnknown},
+			{"1.12.0", "1.14.3-lx.15", CoreVersionUnknown},
+			{"", "1.14.3-lx.15", CoreVersionUnknown},
 		}
 		for _, c := range cases {
 			if got := CompareCoreVersion(c.running, c.required); got != c.want {
@@ -35,10 +35,10 @@ func TestServiceRecipes(t *testing.T) {
 			}
 		}
 		labels := []struct{ running, required, a, b string }{
-			{"1.14.2-lx.11", "1.14.3-lx.14", "lx.11", "lx.14"},
-			{"1.14.2-lx.14", "1.14.3-lx.14", "1.14.2-lx.14", "1.14.3-lx.14"},
-			{"1.14.3-lx.14-rc1", "1.14.3-lx.14", "lx.14-rc1", "lx.14"},
-			{"unknown", "1.14.3-lx.14", "unknown", "lx.14"},
+			{"1.14.2-lx.11", "1.14.3-lx.15", "lx.11", "lx.15"},
+			{"1.14.2-lx.15", "1.14.3-lx.15", "1.14.2-lx.15", "1.14.3-lx.15"},
+			{"1.14.3-lx.15-rc1", "1.14.3-lx.15", "lx.15-rc1", "lx.15"},
+			{"unknown", "1.14.3-lx.15", "unknown", "lx.15"},
 		}
 		for _, c := range labels {
 			if a, b := CoreVersionPairLabels(c.running, c.required); a != c.a || b != c.b {
@@ -83,7 +83,7 @@ func TestServiceRecipes(t *testing.T) {
 		today := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
 
 		withPassport := BuildServiceRecipes(ServiceRecipeInput{Platform: router, Paths: MergeServicePaths(reported, DefaultServicePaths(router)),
-			SSH: root, Running: "1.14.2-lx.11", Uploaded: "/Users/me/Downloads/sing-box-1.14.3-lx.14-linux-arm64", Today: today})
+			SSH: root, Running: "1.14.2-lx.11", Uploaded: "/Users/me/Downloads/sing-box-1.14.3-lx.15-linux-arm64", Today: today})
 		withoutPassport := BuildServiceRecipes(ServiceRecipeInput{Platform: router, Paths: DefaultServicePaths(router),
 			SSH: services.SSHTarget{User: "root", Host: "router", Port: 2222}, Running: "unknown", Today: today})
 		systemd := BuildServiceRecipes(ServiceRecipeInput{Platform: vps, Paths: DefaultServicePaths(vps),
@@ -111,7 +111,7 @@ func TestServiceRecipes(t *testing.T) {
 			{"procd swap by date", withoutPassport, ServiceStepCoreSwap,
 				"cp /usr/bin/sing-box /root/sing-box.20261010.bak && /etc/init.d/sing-box-lxd stop && mv /tmp/sing-box.new /usr/bin/sing-box && chmod 755 /usr/bin/sing-box && /etc/init.d/sing-box-lxd start", true},
 			{"procd upload", withPassport, ServiceStepCoreUpload,
-				"ssh root@192.168.10.1 'cat > /tmp/sing-box.new' < /Users/me/Downloads/sing-box-1.14.3-lx.14-linux-arm64", false},
+				"ssh root@192.168.10.1 'cat > /tmp/sing-box.new' < /Users/me/Downloads/sing-box-1.14.3-lx.15-linux-arm64", false},
 			{"procd upload port", withoutPassport, ServiceStepCoreUpload,
 				"ssh -p 2222 root@router 'cat > /tmp/sing-box.new' < <downloaded sing-box>", false},
 			{"procd port owner", withPassport, ServiceStepPortOwner, "netstat -lnp | grep :19091", false},
