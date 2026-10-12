@@ -157,13 +157,19 @@ func CoreBuildShort(v string) string {
 }
 
 // CoreVersionPairLabels — подписи двух версий для фразы «running … older than
-// required …»: короткие (lx.11 / lx.14), а если короткие совпали при разной
-// базе (1.14.2-lx.14 против 1.14.3-lx.14) — полные, чтобы не вышло
-// «lx.14 is older than lx.14».
+// required …»: короткие (lx.11 / lx.14) только при одной базе апстрима, иначе
+// полные — сравнение идёт сначала по базе, и «lx.30 is older than lx.15» при
+// 1.14.0-lx.30 против 1.14.3-lx.15 читается как ошибка.
 func CoreVersionPairLabels(running, required string) (string, string) {
-	a, b := CoreBuildShort(running), CoreBuildShort(required)
-	if a == b && strings.TrimSpace(running) != strings.TrimSpace(required) {
-		return strings.TrimPrefix(strings.TrimSpace(running), "v"), strings.TrimPrefix(strings.TrimSpace(required), "v")
+	full := func(v string) string { return strings.TrimPrefix(strings.TrimSpace(v), "v") }
+	a, b := full(running), full(required)
+	_, okA := parseCoreBuild(a)
+	_, okB := parseCoreBuild(b)
+	if okA && okB && a[:strings.Index(a, "-lx.")] == b[:strings.Index(b, "-lx.")] {
+		return CoreBuildShort(a), CoreBuildShort(b)
+	}
+	if !okA {
+		return a, CoreBuildShort(b)
 	}
 	return a, b
 }

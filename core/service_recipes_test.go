@@ -35,7 +35,8 @@ func TestServiceRecipes(t *testing.T) {
 			}
 		}
 		labels := []struct{ running, required, a, b string }{
-			{"1.14.2-lx.11", "1.14.3-lx.15", "lx.11", "lx.15"},
+			{"1.14.3-lx.11", "1.14.3-lx.15", "lx.11", "lx.15"},
+			{"1.14.0-lx.30", "1.14.3-lx.15", "1.14.0-lx.30", "1.14.3-lx.15"},
 			{"1.14.2-lx.15", "1.14.3-lx.15", "1.14.2-lx.15", "1.14.3-lx.15"},
 			{"1.14.3-lx.15-rc1", "1.14.3-lx.15", "lx.15-rc1", "lx.15"},
 			{"unknown", "1.14.3-lx.15", "unknown", "lx.15"},
