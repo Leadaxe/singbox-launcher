@@ -18,20 +18,20 @@ func TestServiceRecipes(t *testing.T) {
 			running, required string
 			want              CoreVersionVerdict
 		}{
-			{"1.14.2-lx.11", "1.14.3-lx.15", CoreVersionOlder},
-			{"1.14.3-lx.11", "1.14.3-lx.15", CoreVersionOlder},
-			{"1.14.3-lx.15-rc1", "1.14.3-lx.15", CoreVersionOlder},
-			{"1.14.2-lx.15", "1.14.3-lx.15", CoreVersionOlder},
-			{"1.14.3-lx.15", "1.14.3-lx.15", CoreVersionCurrent},
-			{"v1.14.3-lx.15", "1.14.3-lx.15", CoreVersionCurrent},
-			{"1.14.3-lx.16", "1.14.3-lx.15", CoreVersionNewer},
-			{"unknown", "1.14.3-lx.15", CoreVersionUnknown},
-			{"1.12.0", "1.14.3-lx.15", CoreVersionUnknown},
-			{"", "1.14.3-lx.15", CoreVersionUnknown},
-			{"1.14.3-lx.15-test128", "1.14.3-lx.15", CoreVersionUnknown},
-			{"1.14.3-lx.15-dev", "1.14.3-lx.15", CoreVersionUnknown},
-			{"1.14.3-lx.15-rc", "1.14.3-lx.15", CoreVersionUnknown},
-			{"1.14.3-lx.15-rc.2", "1.14.3-lx.15", CoreVersionOlder},
+			{"1.14.2-lx.11", "1.14.3-lx.17", CoreVersionOlder},
+			{"1.14.3-lx.11", "1.14.3-lx.17", CoreVersionOlder},
+			{"1.14.3-lx.17-rc1", "1.14.3-lx.17", CoreVersionOlder},
+			{"1.14.2-lx.17", "1.14.3-lx.17", CoreVersionOlder},
+			{"1.14.3-lx.17", "1.14.3-lx.17", CoreVersionCurrent},
+			{"v1.14.3-lx.17", "1.14.3-lx.17", CoreVersionCurrent},
+			{"1.14.3-lx.18", "1.14.3-lx.17", CoreVersionNewer},
+			{"unknown", "1.14.3-lx.17", CoreVersionUnknown},
+			{"1.12.0", "1.14.3-lx.17", CoreVersionUnknown},
+			{"", "1.14.3-lx.17", CoreVersionUnknown},
+			{"1.14.3-lx.15-test128", "1.14.3-lx.17", CoreVersionUnknown},
+			{"1.14.3-lx.15-dev", "1.14.3-lx.17", CoreVersionUnknown},
+			{"1.14.3-lx.15-rc", "1.14.3-lx.17", CoreVersionUnknown},
+			{"1.14.3-lx.15-rc.2", "1.14.3-lx.17", CoreVersionOlder},
 			{"1.14.3-lx.15-rc.2", "1.14.3-lx.15-rc.3", CoreVersionOlder},
 		}
 		for _, c := range cases {
@@ -40,11 +40,11 @@ func TestServiceRecipes(t *testing.T) {
 			}
 		}
 		labels := []struct{ running, required, a, b string }{
-			{"1.14.3-lx.11", "1.14.3-lx.15", "lx.11", "lx.15"},
-			{"1.14.0-lx.30", "1.14.3-lx.15", "1.14.0-lx.30", "1.14.3-lx.15"},
-			{"1.14.2-lx.15", "1.14.3-lx.15", "1.14.2-lx.15", "1.14.3-lx.15"},
-			{"1.14.3-lx.15-rc1", "1.14.3-lx.15", "lx.15-rc1", "lx.15"},
-			{"unknown", "1.14.3-lx.15", "unknown", "lx.15"},
+			{"1.14.3-lx.11", "1.14.3-lx.17", "lx.11", "lx.17"},
+			{"1.14.0-lx.30", "1.14.3-lx.17", "1.14.0-lx.30", "1.14.3-lx.17"},
+			{"1.14.2-lx.17", "1.14.3-lx.17", "1.14.2-lx.17", "1.14.3-lx.17"},
+			{"1.14.3-lx.17-rc1", "1.14.3-lx.17", "lx.17-rc1", "lx.17"},
+			{"unknown", "1.14.3-lx.17", "unknown", "lx.17"},
 		}
 		for _, c := range labels {
 			if a, b := CoreVersionPairLabels(c.running, c.required); a != c.a || b != c.b {
