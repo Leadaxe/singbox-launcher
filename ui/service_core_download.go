@@ -40,12 +40,15 @@ type targetCoreDownload struct {
 	got core.TargetCoreDownload
 	// onReady — ядро появилось: окно перестраивает рецепты с его путём.
 	onReady func()
+	// platform — суффикс ассета из паспорта демона (SPEC 162 §4.1); "" —
+	// ассет по таблице goos/goarch.
+	platform string
 }
 
 // newTargetCoreDownload строит шаг и в фоне проверяет, не скачано ли ядро
 // раньше (файл и сайдкар в ~/Downloads совпали — сразу ✓, без сети).
-func newTargetCoreDownload(ac *core.AppController, win fyne.Window, goos, goarch string, onReady func()) *targetCoreDownload {
-	d := &targetCoreDownload{ac: ac, win: win, goos: goos, goarch: goarch, onReady: onReady}
+func newTargetCoreDownload(ac *core.AppController, win fyne.Window, goos, goarch, platform string, onReady func()) *targetCoreDownload {
+	d := &targetCoreDownload{ac: ac, win: win, goos: goos, goarch: goarch, platform: platform, onReady: onReady}
 	d.bar = widget.NewProgressBar()
 	d.bar.Hide()
 	d.result = widget.NewLabel("")
@@ -54,7 +57,7 @@ func newTargetCoreDownload(ac *core.AppController, win fyne.Window, goos, goarch
 	d.btn = widget.NewButton(locale.Tf("Download %s", constants.RequiredCoreVersion), d.start)
 	d.btn.Importance = widget.HighImportance
 
-	if core.SingboxAssetSuffixFor(goos, goarch) == "" {
+	if platform == "" && core.SingboxAssetSuffixFor(goos, goarch) == "" {
 		d.btn.Disable()
 		d.showResult(locale.Tf(serviceCoreNoAssetText, goos, goarch), widget.WarningImportance)
 		return d
@@ -106,7 +109,7 @@ func (d *targetCoreDownload) start() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), serviceCoreDownloadTimeout)
 		defer cancel()
-		got, err := d.ac.DownloadCoreForTarget(ctx, constants.RequiredCoreVersion, d.goos, d.goarch, progress)
+		got, err := d.ac.DownloadCoreForTarget(ctx, constants.RequiredCoreVersion, d.goos, d.goarch, d.platform, progress)
 		fyne.Do(func() {
 			d.busy = false
 			d.btn.Enable()

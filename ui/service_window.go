@@ -409,10 +409,13 @@ func (v *serviceView) section(key, title string, content fyne.CanvasObject) fyne
 }
 
 // coreDownload — шаг скачивания ядра под платформу машины (один на окно;
-// пересоздаётся, если платформу машины поменяли).
-func (v *serviceView) coreDownload(goos, goarch string) *targetCoreDownload {
+// пересоздаётся, если платформу машины поменяли). platform — суффикс ассета
+// из паспорта: приехал позже — подхватывается до следующего скачивания.
+func (v *serviceView) coreDownload(goos, goarch, platform string) *targetCoreDownload {
 	if v.download == nil || !v.download.matches(goos, goarch) {
-		v.download = newTargetCoreDownload(v.ac, v.win, goos, goarch, v.render)
+		v.download = newTargetCoreDownload(v.ac, v.win, goos, goarch, platform, v.render)
+	} else if !v.download.busy {
+		v.download.platform = platform
 	}
 	return v.download
 }

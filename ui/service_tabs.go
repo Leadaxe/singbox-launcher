@@ -221,7 +221,7 @@ func buildLinuxCore(c *serviceTabCtx, box *fyne.Container, current bool) {
 	}
 	recipe := serviceVBox(
 		serviceStepTitle(serviceNumbered(1, locale.Tf("Get the core for %s/%s", s.Platform.GOOS, s.Platform.GOARCH))),
-		c.v.coreDownload(s.Platform.GOOS, s.Platform.GOARCH).object(),
+		c.v.coreDownload(s.Platform.GOOS, s.Platform.GOARCH, s.Platform.Platform).object(),
 		c.step(2, upload, "", core.ServiceStepCoreUpload, false),
 		c.step(3, locale.T("Check before swapping: build tags and the current config"), locale.T(serviceCheckHintText), core.ServiceStepCoreCheck, false),
 		c.step(4, locale.T("Back up, swap, restart"), locale.Tf(serviceSwapHintText, c.rec.BackupPath), core.ServiceStepCoreSwap, true),

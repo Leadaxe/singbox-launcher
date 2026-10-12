@@ -94,13 +94,14 @@ func CheckTargetCore(version, goos, goarch string) (TargetCoreDownload, bool) {
 }
 
 // DownloadCoreForTarget скачивает ядро version под goos/goarch машины в
-// ~/Downloads: архив (оригинал → зеркала, прогресс 15–75) → SHA256SUMS
+// ~/Downloads (ассет — по platform из паспорта демона, "" — по таблице
+// SingboxAssetSuffixFor): архив (оригинал → зеркала, прогресс 15–75) → SHA256SUMS
 // (best-effort) → сверка sha архива (несовпадение — ошибка, файл не
 // кладётся) → распаковка → копия в ~/Downloads, chmod 0755 → сайдкар.
 // Канал progress закрывает сама функция, как DownloadCore.
-func (ac *AppController) DownloadCoreForTarget(ctx context.Context, version, goos, goarch string, progress chan DownloadProgress) (TargetCoreDownload, error) {
+func (ac *AppController) DownloadCoreForTarget(ctx context.Context, version, goos, goarch, platform string, progress chan DownloadProgress) (TargetCoreDownload, error) {
 	defer close(progress)
-	out, err := ac.downloadCoreForTarget(ctx, version, goos, goarch, progress)
+	out, err := ac.downloadCoreForTarget(ctx, version, goos, goarch, platform, progress)
 	if err != nil {
 		debuglog.WarnLog("DownloadCoreForTarget %s %s/%s: %v", version, goos, goarch, err)
 		progress <- DownloadProgress{Message: err.Error(), Status: "error", Error: err}
@@ -110,12 +111,13 @@ func (ac *AppController) DownloadCoreForTarget(ctx context.Context, version, goo
 	return out, nil
 }
 
-func (ac *AppController) downloadCoreForTarget(ctx context.Context, version, goos, goarch string, progress chan DownloadProgress) (TargetCoreDownload, error) {
+func (ac *AppController) downloadCoreForTarget(ctx context.Context, version, goos, goarch, platform string, progress chan DownloadProgress) (TargetCoreDownload, error) {
 	var out TargetCoreDownload
-	asset, err := directAssetNameFor(version, goos, goarch)
-	if err != nil {
+	suffix := assetSuffixFor(goos, goarch, platform)
+	if suffix == "" {
 		return out, fmt.Errorf("%s/%s: %w", goos, goarch, ErrNoTargetAsset)
 	}
+	asset := fmt.Sprintf("sing-box-%s-%s", version, suffix)
 	out.Asset = asset
 	dir, err := DownloadsDir()
 	if err != nil {

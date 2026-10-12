@@ -552,6 +552,16 @@ type InfoData struct {
 	// отдаёт "" — это «неизвестно», а не расхождение.
 	Executable       string `json:"executable,omitempty"`
 	ExecutableSHA256 string `json:"executable_sha256,omitempty"`
+	// Паспорт платформы (lx.16+, SPEC 127 форка): GOOS/GOARCH процесса,
+	// Platform — суффикс релизного ассета под эту машину ("linux-arm64",
+	// "linux-mipsle-softfloat"), InitSystem — procd/systemd/openrc/launchd/
+	// scm, Service — демон работает под init-системой. У ядер старше полей
+	// нет — пустые строки и false; вызывающий проверяет наличие.
+	GOOS       string `json:"goos,omitempty"`
+	GOARCH     string `json:"goarch,omitempty"`
+	Platform   string `json:"platform,omitempty"`
+	InitSystem string `json:"init_system,omitempty"`
+	Service    bool   `json:"service,omitempty"`
 }
 
 // Info возвращает паспорт демона.

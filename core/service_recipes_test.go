@@ -28,6 +28,11 @@ func TestServiceRecipes(t *testing.T) {
 			{"unknown", "1.14.3-lx.15", CoreVersionUnknown},
 			{"1.12.0", "1.14.3-lx.15", CoreVersionUnknown},
 			{"", "1.14.3-lx.15", CoreVersionUnknown},
+			{"1.14.3-lx.15-test128", "1.14.3-lx.15", CoreVersionUnknown},
+			{"1.14.3-lx.15-dev", "1.14.3-lx.15", CoreVersionUnknown},
+			{"1.14.3-lx.15-rc", "1.14.3-lx.15", CoreVersionUnknown},
+			{"1.14.3-lx.15-rc.2", "1.14.3-lx.15", CoreVersionOlder},
+			{"1.14.3-lx.15-rc.2", "1.14.3-lx.15-rc.3", CoreVersionOlder},
 		}
 		for _, c := range cases {
 			if got := CompareCoreVersion(c.running, c.required); got != c.want {
@@ -236,4 +241,85 @@ func TestServiceRecipes(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestCommandsRecipe — фрагмент daemon.json с командами демона (SPEC 162
+// §4.5) по init-системам, с паспортом и без, и разбор init из паспорта.
+func TestCommandsRecipe(t *testing.T) {
+	router := ServicePlatform{GOOS: "linux", GOARCH: "arm64", Init: ServiceInitProcd}
+	vps := ServicePlatform{GOOS: "linux", GOARCH: "amd64", Init: ServiceInitSystemd}
+	mac := ServicePlatform{GOOS: "darwin", GOARCH: "arm64", Init: ServiceInitLaunchd}
+	alpine := ServicePlatform{GOOS: "linux", GOARCH: "amd64", Init: ServiceInitOpenRC}
+	win := ServicePlatform{GOOS: "windows", GOARCH: "amd64", Init: ServiceInitSCM}
+	reported := MergeServicePaths(ServicePassport{Executable: "/root/sing-box"}, DefaultServicePaths(router))
+
+	cases := []struct {
+		name  string
+		p     ServicePlatform
+		paths ServicePaths
+		want  string
+		ok    bool
+	}{
+		{"procd passport", router, reported, `"commands": {
+  "update":       "/root/sing-box lxd update",
+  "update-rc":    "/root/sing-box lxd update --prerelease",
+  "check-update": "/root/sing-box lxd update --dry-run",
+  "restart":      "/etc/init.d/sing-box-lxd restart"
+}`, true},
+		{"systemd default", vps, DefaultServicePaths(vps), `"commands": {
+  "update":       "/usr/local/bin/sing-box lxd update",
+  "update-rc":    "/usr/local/bin/sing-box lxd update --prerelease",
+  "check-update": "/usr/local/bin/sing-box lxd update --dry-run",
+  "restart":      "systemctl restart sing-box-lxd"
+}`, true},
+		{"launchd restart only", mac, DefaultServicePaths(mac), `"commands": {
+  "restart": "launchctl kickstart -k system/com.leadaxe.sing-box-lxd"
+}`, true},
+		{"openrc", alpine, DefaultServicePaths(alpine), "", false},
+		{"scm", win, DefaultServicePaths(win), "", false},
+		{"no init", ServicePlatform{GOOS: "linux", GOARCH: "arm64"}, DefaultServicePaths(router), "", false},
+	}
+	for _, c := range cases {
+		got, ok := CommandsRecipe(c.p, c.paths)
+		if ok != c.ok || got != c.want {
+			t.Errorf("%s: ok=%v, want %v\n got:\n%s\nwant:\n%s", c.name, ok, c.ok, got, c.want)
+		}
+	}
+
+	if r := BuildServiceRecipes(ServiceRecipeInput{Platform: alpine, Paths: DefaultServicePaths(alpine)}); !r.Unsupported || len(r.Steps) != 0 {
+		t.Errorf("openrc recipes: Unsupported=%v steps=%d, want true/0", r.Unsupported, len(r.Steps))
+	}
+	if st := BuildServiceRecipes(ServiceRecipeInput{Platform: router, Paths: reported,
+		SSH: services.SSHTarget{User: "root", Host: "r"}}).Steps[ServiceStepEditDaemonJSON]; st.Command != "vi /etc/sing-box-lxd/state/daemon.json" {
+		t.Errorf("edit daemon.json = %q", st.Command)
+	}
+	for in, want := range map[string]ServiceInit{"procd": ServiceInitProcd, " systemd ": ServiceInitSystemd,
+		"openrc": ServiceInitOpenRC, "launchd": ServiceInitLaunchd, "scm": ServiceInitSCM} {
+		if got, ok := ParseInitSystem(in); !ok || got != want {
+			t.Errorf("ParseInitSystem(%q) = %q, %v", in, got, ok)
+		}
+	}
+	for _, bad := range []string{"", "sysvinit", "runit"} {
+		if _, ok := ParseInitSystem(bad); ok {
+			t.Errorf("ParseInitSystem(%q) accepted", bad)
+		}
+	}
+	if got := NormalizeInitChoice("openrc", "linux", "amd64"); got != ServiceInitOpenRC {
+		t.Errorf("NormalizeInitChoice(openrc, linux) = %q, want openrc", got)
+	}
+	if got := NormalizeInitChoice("openrc", "darwin", "arm64"); got != ServiceInitLaunchd {
+		t.Errorf("NormalizeInitChoice(openrc, darwin) = %q, want launchd", got)
+	}
+	// Ассет Download core: platform из паспорта важнее таблицы (RouteRich
+	// записан linux/amd64, демон сообщил linux-arm64).
+	for _, c := range []struct{ goos, goarch, platform, want string }{
+		{"linux", "amd64", "linux-arm64", "linux-arm64.tar.gz"},
+		{"windows", "amd64", "windows-amd64", "windows-amd64.zip"},
+		{"linux", "arm64", "", "linux-arm64.tar.gz"},
+		{"linux", "386", "", ""},
+	} {
+		if got := assetSuffixFor(c.goos, c.goarch, c.platform); got != c.want {
+			t.Errorf("assetSuffixFor(%s/%s, %q) = %q, want %q", c.goos, c.goarch, c.platform, got, c.want)
+		}
+	}
 }

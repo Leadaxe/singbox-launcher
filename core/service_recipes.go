@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"net"
 	"strconv"
 	"strings"
@@ -38,7 +39,22 @@ const (
 	ServiceInitSystemd ServiceInit = "systemd"
 	ServiceInitLaunchd ServiceInit = "launchd"
 	ServiceInitSCM     ServiceInit = "scm"
+	// ServiceInitOpenRC — Alpine и прочие openrc-системы: демон сообщает его
+	// в паспорте (SPEC 127), рецептов под него нет — только шапка и
+	// отказ в Suggested commands (SPEC 162 §4.1).
+	ServiceInitOpenRC ServiceInit = "openrc"
 )
+
+// ParseInitSystem — init-система из строки паспорта демона (init_system,
+// SPEC 127): procd / systemd / openrc / launchd / scm. Пусто или иное —
+// ok=false (старое ядро без поля, незнакомая система).
+func ParseInitSystem(s string) (ServiceInit, bool) {
+	switch i := ServiceInit(strings.ToLower(strings.TrimSpace(s))); i {
+	case ServiceInitProcd, ServiceInitSystemd, ServiceInitOpenRC, ServiceInitLaunchd, ServiceInitSCM:
+		return i, true
+	}
+	return "", false
+}
 
 // Posix — команды для POSIX-шелла (всё, кроме SCM/PowerShell).
 func (i ServiceInit) Posix() bool { return i != ServiceInitSCM }
@@ -47,6 +63,14 @@ func (i ServiceInit) Posix() bool { return i != ServiceInitSCM }
 type ServicePlatform struct {
 	GOOS, GOARCH string
 	Init         ServiceInit
+	// Platform — суффикс релизного ассета из паспорта демона
+	// ("linux-arm64", "linux-mipsle-softfloat"; SPEC 127); "" — паспорт его
+	// не сообщил, ассет — по таблице SingboxAssetSuffixFor.
+	Platform string
+	// ServiceKnown — паспорт сообщил, работает ли демон под init-системой;
+	// Service — сам ответ (false — запущен руками, службы нет).
+	ServiceKnown bool
+	Service      bool
 }
 
 // DefaultServiceInit — init-система по платформе: Linux на arm/arm64/mips —
@@ -76,6 +100,10 @@ func NormalizeInitChoice(stored string, goos, goarch string) ServiceInit {
 			return ServiceInitProcd
 		case ServiceInitSystemd:
 			return ServiceInitSystemd
+		case ServiceInitOpenRC:
+			// Пишется в запись только из паспорта демона (SPEC 162): селектор
+			// его не предлагает, но и подменять дефолтом нельзя.
+			return ServiceInitOpenRC
 		}
 	}
 	return DefaultServiceInit(goos, goarch)
@@ -185,26 +213,27 @@ func MergeServicePaths(reported ServicePassport, def ServicePaths) ServicePaths 
 
 // Идентификаторы шагов (ServiceStep.ID, ключи ServiceRecipes.Steps).
 const (
-	ServiceStepStatus        = "status"
-	ServiceStepRestart       = "restart"
-	ServiceStepStart         = "start"
-	ServiceStepStop          = "stop"
-	ServiceStepBootstrap     = "bootstrap"
-	ServiceStepLogTail       = "log_tail"
-	ServiceStepLogFollow     = "log_follow"
-	ServiceStepLastGood      = "last_good"
-	ServiceStepShowConfig    = "show_daemon_json"
-	ServiceStepPortOwner     = "port_owner"
-	ServiceStepClientAdd     = "client_add"
-	ServiceStepClientList    = "client_list"
-	ServiceStepClientRemove  = "client_remove"
-	ServiceStepCoreUpload    = "core_upload"
-	ServiceStepCoreCheck     = "core_check"
-	ServiceStepCoreSwap      = "core_swap"
-	ServiceStepCoreRollback  = "core_rollback"
-	ServiceStepScratchEnable = "scratch_enable"
-	ServiceStepRemoveService = "remove_service"
-	ServiceStepRemoveState   = "remove_state"
+	ServiceStepStatus         = "status"
+	ServiceStepRestart        = "restart"
+	ServiceStepStart          = "start"
+	ServiceStepStop           = "stop"
+	ServiceStepBootstrap      = "bootstrap"
+	ServiceStepLogTail        = "log_tail"
+	ServiceStepLogFollow      = "log_follow"
+	ServiceStepLastGood       = "last_good"
+	ServiceStepShowConfig     = "show_daemon_json"
+	ServiceStepEditDaemonJSON = "edit_daemon_json"
+	ServiceStepPortOwner      = "port_owner"
+	ServiceStepClientAdd      = "client_add"
+	ServiceStepClientList     = "client_list"
+	ServiceStepClientRemove   = "client_remove"
+	ServiceStepCoreUpload     = "core_upload"
+	ServiceStepCoreCheck      = "core_check"
+	ServiceStepCoreSwap       = "core_swap"
+	ServiceStepCoreRollback   = "core_rollback"
+	ServiceStepScratchEnable  = "scratch_enable"
+	ServiceStepRemoveService  = "remove_service"
+	ServiceStepRemoveState    = "remove_state"
 )
 
 // ServiceStep — одна команда рецепта.
@@ -255,6 +284,9 @@ type ServiceRecipes struct {
 	// BackupPath — куда core_swap копирует текущее ядро (его же берёт
 	// core_rollback). Пусто вне Linux.
 	BackupPath string
+	// Unsupported — рецептов под эту init-систему нет (openrc): Steps
+	// пустые, окно пишет строку «no recipes for openrc» (SPEC 162 §4.1).
+	Unsupported bool
 }
 
 // BuildServiceRecipes строит команды по init-системе машины (таблица — PLAN
@@ -270,6 +302,8 @@ func BuildServiceRecipes(in ServiceRecipeInput) ServiceRecipes {
 		b.scm()
 	case ServiceInitProcd, ServiceInitSystemd:
 		b.linux()
+	case ServiceInitOpenRC:
+		b.out.Unsupported = true
 	}
 	return b.out
 }
@@ -313,6 +347,7 @@ func (b *recipeBuilder) launchd() {
 	// last-good нужен именно тогда.
 	b.add(ServiceStep{ID: ServiceStepLastGood, Command: "sudo launchctl bootout " + target + " ; " + lastGood, NeedsRoot: true, Interactive: true}, p.Executable, p.StateDir)
 	b.add(ServiceStep{ID: ServiceStepShowConfig, Command: "sudo cat " + PosixQuote(state+"/daemon.json"), NeedsRoot: true}, p.StateDir)
+	b.add(ServiceStep{ID: ServiceStepEditDaemonJSON, Command: "sudo vi " + PosixQuote(state+"/daemon.json"), NeedsRoot: true}, p.StateDir)
 	b.add(ServiceStep{ID: ServiceStepPortOwner, Command: "sudo lsof -nP -i :" + b.port(), NeedsRoot: true}, p.Listen)
 	b.clientSteps("sudo "+exe, PosixQuote(state))
 }
@@ -371,6 +406,7 @@ func (b *recipeBuilder) linux() {
 	b.add(ServiceStep{ID: ServiceStepLastGood, Command: initCmd("stop") + " && " + exe + " lxd --state-dir " + state + " --config-force " + lastGoodFile,
 		NeedsRoot: true, Interactive: true}, p.Executable, p.StateDir)
 	b.add(ServiceStep{ID: ServiceStepShowConfig, Command: "cat " + PosixQuote(stateRaw+"/daemon.json"), NeedsRoot: true}, p.StateDir)
+	b.add(ServiceStep{ID: ServiceStepEditDaemonJSON, Command: "vi " + PosixQuote(stateRaw+"/daemon.json"), NeedsRoot: true}, p.StateDir)
 	b.add(ServiceStep{ID: ServiceStepPortOwner, Command: portOwner, NeedsRoot: true}, p.Listen)
 	b.clientSteps(exe, state)
 
@@ -420,6 +456,59 @@ func (b *recipeBuilder) linux() {
 	if !b.in.SSH.IsRoot() {
 		b.sudoAll()
 	}
+}
+
+// CommandsRecipe — фрагмент daemon.json с именованными командами демона
+// (SPEC 162 §4.5, SPEC 128/129 ядра) под init-систему машины: update /
+// update-rc / check-update (только Linux — самообновление ядро умеет только
+// там) и restart. ok=false — фрагмент не предлагается (openrc, SCM,
+// init неизвестен). Бинарь — paths.Executable (из паспорта или дефолт;
+// пометку «default» ставит окно по paths.Executable.Default).
+func CommandsRecipe(p ServicePlatform, paths ServicePaths) (string, bool) {
+	var restart string
+	switch p.Init {
+	case ServiceInitProcd:
+		restart = procdInitScript + " restart"
+	case ServiceInitSystemd:
+		restart = "systemctl restart " + ServiceName
+	case ServiceInitLaunchd:
+		restart = "launchctl kickstart -k system/" + ServiceLaunchdLabel
+	default:
+		return "", false
+	}
+	type entry struct{ name, command string }
+	var entries []entry
+	if p.GOOS == "linux" {
+		exe := PosixQuote(strings.TrimSpace(paths.Executable.Value))
+		entries = append(entries,
+			entry{"update", exe + " lxd update"},
+			entry{"update-rc", exe + " lxd update --prerelease"},
+			entry{"check-update", exe + " lxd update --dry-run"},
+		)
+	}
+	entries = append(entries, entry{"restart", restart})
+
+	// Значения выровнены в колонку, как в гайде: ключ с двоеточием
+	// дополняется пробелами до самого длинного.
+	width := 0
+	for _, e := range entries {
+		if n := len(e.name) + 3; n > width {
+			width = n
+		}
+	}
+	var sb strings.Builder
+	sb.WriteString("\"commands\": {\n")
+	for k, e := range entries {
+		key, _ := json.Marshal(e.name)
+		val, _ := json.Marshal(e.command)
+		sb.WriteString("  " + string(key) + ":" + strings.Repeat(" ", width-len(key)) + string(val))
+		if k < len(entries)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+	sb.WriteString("}")
+	return sb.String(), true
 }
 
 // backupPath — бэкап текущего ядра перед заменой: procd — в /root (overlay

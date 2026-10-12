@@ -382,6 +382,18 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 	return status
 }
 
+// DaemonAdminClient — REST-клиент admin-плоскости локального демона из
+// settings.json (тот же, что строит DaemonStatusSnapshot): для команд демона
+// в окне Service (SPEC 162). Сам клиент сети не трогает; его вызовы
+// блокирующие — звать из горутины.
+func (ac *AppController) DaemonAdminClient() (*lxdclient.Client, error) {
+	cfg, err := DaemonConfigFromSettings(ac)
+	if err != nil {
+		return nil, err
+	}
+	return lxdclient.New(cfg), nil
+}
+
 // daemonServiceCheck — полный вердикт службы: файлы (daemonServiceFileCheck),
 // состояние у менеджера служб ОС — на macOS launchd (NotRunning, только
 // когда файлы в порядке, compareDaemonServiceRunning) и, если

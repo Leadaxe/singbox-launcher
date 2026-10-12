@@ -16,7 +16,7 @@ import (
 // включая Linux и Win7.
 
 // coreBuild — версия ядра форка для сравнения: база X.Y.Z, номер релиза
-// форка -lx.N и пре-релиз после него (-rc1, -rc.2, -dev).
+// форка -lx.N и пре-релиз после него (-rc1, -rc.2).
 type coreBuild struct {
 	base   [3]int
 	lx     int
@@ -60,17 +60,20 @@ func parseCoreBuild(v string) (coreBuild, bool) {
 	if rest == "" {
 		return b, true
 	}
-	if rest[0] != '-' {
+	// Пре-релиз — только -rc<K> / -rc.<K> (SPEC 162 §4.6). Любой другой
+	// суффикс (-test128, -dev) — сборка вне нумерации форка: сравнивать её
+	// не с чем, иначе тестовая lx.15-test128 выходит «старее lx.15» и даёт
+	// ложный ⚠.
+	num := strings.TrimPrefix(strings.TrimPrefix(rest, "-rc"), ".")
+	if !strings.HasPrefix(rest, "-rc") || num == "" || leadingDigits(num) != num {
 		return b, false
 	}
-	// Пре-релиз: номер — последняя группа цифр (rc1, rc.2); без цифр — 0.
-	b.pre = true
-	tail := strings.TrimRight(rest, "0123456789")
-	if num := rest[len(tail):]; num != "" {
-		if n, err := strconv.Atoi(num); err == nil {
-			b.preNum = n
-		}
+	n, err = strconv.Atoi(num)
+	if err != nil {
+		return b, false
 	}
+	b.pre = true
+	b.preNum = n
 	return b, true
 }
 

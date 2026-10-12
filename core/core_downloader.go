@@ -352,6 +352,20 @@ func SingboxAssetSuffixFor(goos, goarch string) string {
 	return ""
 }
 
+// assetSuffixFor — суффикс релизного ассета ядра под машину: platform из
+// паспорта демона (SPEC 127/162: демон сам называет свой ассет, включая
+// mips softfloat) + ".tar.gz" (".zip" для windows); без паспорта — таблица
+// SingboxAssetSuffixFor, новых строк в которую не добавляется.
+func assetSuffixFor(goos, goarch, platform string) string {
+	if platform = strings.TrimSpace(platform); platform != "" {
+		if goos == "windows" {
+			return platform + ".zip"
+		}
+		return platform + ".tar.gz"
+	}
+	return SingboxAssetSuffixFor(goos, goarch)
+}
+
 // findPlatformAsset finds the correct asset for current platform
 func (ac *AppController) findPlatformAsset(assets []Asset) (*Asset, error) {
 	platformPattern := SingboxAssetSuffix()
