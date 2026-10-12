@@ -3,6 +3,8 @@
 package ui
 
 import (
+	"context"
+	"errors"
 	"runtime"
 	"strings"
 	"sync"
@@ -16,8 +18,10 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/lxdclient"
 )
 
 // Источник окна Service «локальный демон» (SPEC 161, PLAN §6.5): служба
@@ -42,7 +46,7 @@ const (
 	daemonUnpairConfirmBodyText = "Removes the launcher's client keys and daemon address. The daemon keeps its record of this client until removed there (sing-box lxd client remove)."
 	daemonUninstallAskText      = "Keep the protected core copy? The classic engine starts from it when the launcher runs as administrator. Remove all also deletes the copy and all daemon data."
 	daemonNoLxdText             = "❌ Installed core has no lxd support (a sing-box-lx build with the lxd command is required)"
-	daemonNotInstalledText      = "The system service is not installed yet — install it on the Core tab, then pair on the Pairing tab."
+	daemonNotInstalledText      = "The system service is not installed yet — install it in the Core section, then pair in the Pairing section."
 	daemonEngineInactiveText    = "The daemon engine is not active yet: it switches on by itself once the service answers and the launcher is paired (stop the VPN first if it is running)."
 )
 
@@ -53,6 +57,7 @@ type localServiceSource struct {
 
 	// Состояние — только в UI-потоке (refresh/apply зовутся через fyne.Do).
 	st        core.DaemonUIStatus
+	cmds      serviceCommandsCache
 	loaded    bool
 	downSince time.Time
 	attempts  int
@@ -93,6 +98,13 @@ func (s *localServiceSource) Snapshot() serviceSnapshot {
 	var passport core.ServicePassport
 	if !st.PassportSeenAt.IsZero() {
 		p := st.Passport
+		// Паспорт платформы (lx.16+, SPEC 162 §4.1): init и суффикс ассета
+		// демона важнее дефолта по runtime.
+		if init, ok := core.ParseInitSystem(p.InitSystem); ok {
+			snap.Platform.Init = init
+			snap.Platform.ServiceKnown, snap.Platform.Service = true, p.Service
+		}
+		snap.Platform.Platform = p.Platform
 		tls := p.TLS
 		passport = core.ServicePassport{Version: p.Version, StateDir: p.StateDir, Executable: p.Executable,
 			LogPath: p.LogPath, Listen: p.Listen, TLS: &tls}
@@ -120,6 +132,7 @@ func (s *localServiceSource) Snapshot() serviceSnapshot {
 	if snap.Running == "" {
 		snap.Running = st.DaemonVersion
 	}
+	snap.CommandsState, snap.Commands = serviceCommandsFor(st.Reachable, s.cmds)
 	snap.PassportLive = st.Reachable && !st.PassportCached && !st.PassportSeenAt.IsZero()
 	if snap.PassportLive {
 		snap.Uptime = time.Duration(st.Passport.UptimeSeconds) * time.Second
@@ -198,10 +211,10 @@ func (s *localServiceSource) refresh() {
 	}
 	s.inFlight = true
 	go func() {
-		st := s.ac.DaemonStatusSnapshot()
+		st, cmds, cmdsErr := s.poll()
 		fyne.Do(func() {
 			s.inFlight = false
-			s.apply(st)
+			s.apply(st, cmds, cmdsErr)
 			if s.pending {
 				s.pending = false
 				s.refresh()
@@ -210,11 +223,46 @@ func (s *localServiceSource) refresh() {
 	}()
 }
 
+// poll — один опрос (горутина): состояние демона и, если он отвечает,
+// список его команд (SPEC 162 §4.2; на Windows команд нет).
+func (s *localServiceSource) poll() (core.DaemonUIStatus, []lxdclient.Command, error) {
+	st := s.ac.DaemonStatusSnapshot()
+	if !st.Reachable || s.Commander() == nil {
+		return st, nil, errServiceCommandsSkipped
+	}
+	client, err := s.ac.DaemonAdminClient()
+	if err != nil {
+		return st, nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), heartbeatTimeout)
+	defer cancel()
+	list, err := client.CommandsCtx(ctx)
+	return st, list, err
+}
+
+// errServiceCommandsSkipped — список команд в этом опросе не читали.
+var errServiceCommandsSkipped = errors.New("commands not polled")
+
+// storeCommands — ответ списка в кэш (UI-поток); ошибка транспорта кэш не
+// меняет.
+func (s *localServiceSource) storeCommands(list []lxdclient.Command, err error) {
+	switch {
+	case err == nil:
+		s.cmds = serviceCommandsCache{State: serviceCommandsReady, List: list}
+	case errors.Is(err, lxdclient.ErrCommandsUnsupported):
+		s.cmds = serviceCommandsCache{State: serviceCommandsUnsupported}
+	case errors.Is(err, errServiceCommandsSkipped):
+	default:
+		debuglog.DebugLog("service window: local commands: %v", err)
+	}
+}
+
 // apply кладёт снимок в кэш и считает серию отказов (UI-поток).
-func (s *localServiceSource) apply(st core.DaemonUIStatus) {
+func (s *localServiceSource) apply(st core.DaemonUIStatus, cmds []lxdclient.Command, cmdsErr error) {
 	if s.stopped {
 		return
 	}
+	s.storeCommands(cmds, cmdsErr)
 	s.st, s.loaded = st, true
 	if (st.Paired || st.Reachable) && !st.Reachable {
 		if s.attempts == 0 {
@@ -365,6 +413,84 @@ func (s *localServiceSource) LocalRows(win fyne.Window) localServiceRows {
 
 	rows.Uninstall = s.uninstallPane(win, ops)
 	return rows
+}
+
+// Commander — команды локального демона через loopback-клиент
+// (DaemonAdminClient). Служба Windows ключ "commands" игнорирует — nil.
+func (s *localServiceSource) Commander() serviceCommander {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	return s
+}
+
+// withClient — сетевой вызов loopback-клиента в горутине, итог в UI-потоке.
+func (s *localServiceSource) withClient(call func(context.Context, *lxdclient.Client) (lxdclient.Command, error), done func(lxdclient.Command, error)) {
+	go func() {
+		var c lxdclient.Command
+		client, err := s.ac.DaemonAdminClient()
+		if err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), serviceLocalCallTimeout)
+			c, err = call(ctx, client)
+			cancel()
+		}
+		fyne.Do(func() { done(c, err) })
+	}()
+}
+
+// serviceLocalCallTimeout — срок одного вызова команд локального демона.
+const serviceLocalCallTimeout = 15 * time.Second
+
+func (s *localServiceSource) Commands(done func([]lxdclient.Command, error)) {
+	go func() {
+		var list []lxdclient.Command
+		client, err := s.ac.DaemonAdminClient()
+		if err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), serviceLocalCallTimeout)
+			list, err = client.CommandsCtx(ctx)
+			cancel()
+		}
+		fyne.Do(func() {
+			s.storeCommands(list, err)
+			done(list, err)
+		})
+	}()
+}
+
+func (s *localServiceSource) Command(name string, done func(lxdclient.Command, error)) {
+	s.withClient(func(ctx context.Context, c *lxdclient.Client) (lxdclient.Command, error) {
+		return c.CommandCtx(ctx, name)
+	}, done)
+}
+
+func (s *localServiceSource) RunCommand(name string, done func(lxdclient.Command, error)) {
+	s.withClient(func(ctx context.Context, c *lxdclient.Client) (lxdclient.Command, error) {
+		cmd, err := c.RunCommandCtx(ctx, name)
+		if err == nil {
+			debuglog.InfoLog("service window: local command %q started", name)
+		}
+		return cmd, err
+	}, done)
+}
+
+// Reconnect — внеочередной опрос локального демона (паспорт — его же
+// кэшем); ok — демон ответил.
+func (s *localServiceSource) Reconnect(done func(bool)) {
+	go func() {
+		st, cmds, cmdsErr := s.poll()
+		fyne.Do(func() {
+			s.apply(st, cmds, cmdsErr)
+			done(st.Reachable)
+		})
+	}()
+}
+
+// Version — версия ядра демона из последнего опроса.
+func (s *localServiceSource) Version() string {
+	if !s.st.PassportSeenAt.IsZero() && s.st.Passport.Version != "" {
+		return s.st.Passport.Version
+	}
+	return s.st.DaemonVersion
 }
 
 // uninstallPane — вкладка Uninstall: два последовательных шага.

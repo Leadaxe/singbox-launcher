@@ -12,6 +12,7 @@ import (
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/lxdclient"
 )
 
 // Источник окна Service «удалённая машина» (SPEC 161, PLAN §6.4). Сеть не
@@ -51,9 +52,7 @@ func (s *remoteServiceSource) Snapshot() serviceSnapshot {
 		s.d = d
 	}
 	d := s.d
-	tgt := d.Target()
-	platform := core.ServicePlatform{GOOS: tgt.GOOS, GOARCH: tgt.GOARCH,
-		Init: core.NormalizeInitChoice(d.InitSystem, tgt.GOOS, tgt.GOARCH)}
+	platform, initKnown := remoteServicePlatform(d)
 
 	h, connected := s.p.healthOf(s.id)
 	live := s.p.livenessOf(s.id)
@@ -61,7 +60,7 @@ func (s *remoteServiceSource) Snapshot() serviceSnapshot {
 		Loaded:     true,
 		Title:      d.Name,
 		Platform:   platform,
-		InitChoice: tgt.GOOS == "linux",
+		InitChoice: platform.GOOS == "linux" && !initKnown,
 		Connected:  connected,
 		Paths:      core.MergeServicePaths(core.RemoteServicePassport(d), core.DefaultServicePaths(platform)),
 		Paired:     true,
@@ -93,7 +92,31 @@ func (s *remoteServiceSource) Snapshot() serviceSnapshot {
 	snap.Uptime = time.Duration(h.UptimeSeconds) * time.Second
 	snap.PassportLive = snap.Reachable && h.TLS != nil
 	snap.InterruptedApply = h.InterruptedApply
+	snap.CommandsState, snap.Commands = serviceCommandsFor(snap.Reachable, s.p.commands[s.id])
 	return snap
+}
+
+// remoteServicePlatform — платформа машины для окна: ОС/архитектура из
+// записи (паспорт демона уже переписал её, SPEC 162 §4.1), init — из
+// паспорта, если демон его сообщил (initKnown), иначе выбор в окне или
+// дефолт по архитектуре; суффикс ассета и «под службой ли» — из паспорта.
+func remoteServicePlatform(d services.RemoteDaemon) (core.ServicePlatform, bool) {
+	tgt := d.Target()
+	platform := core.ServicePlatform{GOOS: tgt.GOOS, GOARCH: tgt.GOARCH,
+		Init: core.NormalizeInitChoice(d.InitSystem, tgt.GOOS, tgt.GOARCH)}
+	pp := d.Passport
+	if pp == nil {
+		return platform, false
+	}
+	platform.Platform = pp.Platform
+	init, initKnown := core.ParseInitSystem(pp.InitSystem)
+	if initKnown {
+		platform.Init = init
+	}
+	if pp.Service != nil {
+		platform.ServiceKnown, platform.Service = true, *pp.Service
+	}
+	return platform, initKnown
 }
 
 func (s *remoteServiceSource) Poll(onUpdate func()) {
@@ -155,6 +178,54 @@ func (s *remoteServiceSource) OpenLiveLog(fyne.Window) {
 }
 
 func (s *remoteServiceSource) LocalRows(fyne.Window) localServiceRows { return localServiceRows{} }
+
+// Commander — команды демона машины через реестр (admin-клиент записи).
+func (s *remoteServiceSource) Commander() serviceCommander { return s }
+
+func (s *remoteServiceSource) Commands(done func([]lxdclient.Command, error)) {
+	go func() {
+		list, err := s.p.registry.Commands(s.id)
+		fyne.Do(func() {
+			s.p.storeCommands(s.id, list, err)
+			done(list, err)
+		})
+	}()
+}
+
+func (s *remoteServiceSource) Command(name string, done func(lxdclient.Command, error)) {
+	go func() {
+		c, err := s.p.registry.Command(s.id, name)
+		fyne.Do(func() { done(c, err) })
+	}()
+}
+
+func (s *remoteServiceSource) RunCommand(name string, done func(lxdclient.Command, error)) {
+	go func() {
+		c, err := s.p.registry.RunCommand(s.id, name)
+		fyne.Do(func() { done(c, err) })
+	}()
+}
+
+// Reconnect — один health-запрос со сроком heartbeat: успешный ответ
+// перечитывает паспорт в запись (healthCtx → SetPassport). Строку машины
+// не трогает — её ведёт heartbeat.
+func (s *remoteServiceSource) Reconnect(done func(bool)) {
+	go func() {
+		h := s.p.registry.HealthWithin(s.id, heartbeatTimeout)
+		fyne.Do(func() { done(h.Err == "") })
+	}()
+}
+
+// Version — версия ядра из паспорта записи (последний здоровый ответ).
+func (s *remoteServiceSource) Version() string {
+	if d, ok, err := s.p.registry.Get(s.id); err == nil && ok && d.Passport != nil {
+		return d.Passport.Version
+	}
+	if h, ok := s.p.healthOf(s.id); ok {
+		return h.Version
+	}
+	return ""
+}
 
 // rePairMachine — повторное сопряжение записи (общее для окна Edit и вкладки
 // Pairing окна Service). Enroll — сетевой вызов, поэтому в горутине; done —

@@ -19,7 +19,7 @@ const (
 
 	daemonUninstallStepLabel = "2. Remove the service (Windows asks for administrator rights):" // l10n-key
 
-	daemonPairHelpText = "Paste the invite printed by the daemon and click Pair. Installing or updating the service pairs the launcher automatically, so an invite is only needed when that did not happen:\n\n- \"Mint an invite\" on the Pairing tab issues a new invite and pairs with it (Windows asks for administrator rights).\n- Or run the command below in a terminal opened as administrator, then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS." // l10n-key
+	daemonPairHelpText = "Paste the invite printed by the daemon and click Pair. Installing or updating the service pairs the launcher automatically, so an invite is only needed when that did not happen:\n\n- \"Mint an invite\" in the Pairing section issues a new invite and pairs with it (Windows asks for administrator rights).\n- Or run the command below in a terminal opened as administrator, then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS." // l10n-key
 
 	daemonServiceUnsafeText = "The service runs a binary your user can modify. Install or update the service to move it to a protected copy." // l10n-key
 

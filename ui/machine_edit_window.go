@@ -95,6 +95,13 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 	goosSelect.SetSelected(tgt.GOOS)
 	goarchSelect := widget.NewSelect([]string{"amd64", "arm64", "arm", "386", "mips", "mipsle"}, nil)
 	goarchSelect.SetSelected(tgt.GOARCH)
+	// Паспорт важнее ввода (SPEC 162 §4.1): платформу сообщил демон, и
+	// каждый здоровый ответ перепишет выбор обратно — селекторы неактивны.
+	fromPassport := services.PassportPlatformKnown(d)
+	if fromPassport {
+		goosSelect.Disable()
+		goarchSelect.Disable()
+	}
 
 	form := widget.NewForm(
 		widget.NewFormItem(locale.T("Name"), nameEntry),
@@ -103,6 +110,11 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 		widget.NewFormItem(locale.T("Platform"), goosSelect),
 		widget.NewFormItem(locale.T("Architecture"), goarchSelect),
 	)
+	if fromPassport {
+		reported := widget.NewLabel(locale.T("reported by the daemon"))
+		reported.Importance = widget.LowImportance
+		form.Append("", reported)
+	}
 
 	saveBtn := widget.NewButton(locale.T("Save"), func() {
 		// Цель ssh проверяется до записи: иначе имя и адрес сохранились бы,
@@ -117,9 +129,11 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 			dialog.ShowError(err, win)
 			return
 		}
-		if err := registry.SetPlatform(d.ID, goosSelect.Selected, goarchSelect.Selected); err != nil {
-			dialog.ShowError(err, win)
-			return
+		if !fromPassport {
+			if err := registry.SetPlatform(d.ID, goosSelect.Selected, goarchSelect.Selected); err != nil {
+				dialog.ShowError(err, win)
+				return
+			}
 		}
 		if err := registry.SetSSH(d.ID, sshEntry.Text); err != nil {
 			dialog.ShowError(err, win)

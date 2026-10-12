@@ -114,6 +114,10 @@ type machineListPanel struct {
 	// последней отрисовке. Heartbeat сверяет с ним свежий ответ: Save не
 	// меняет health, и без этого оранжевая точка ждала бы чужого повода.
 	deployDrift map[string]bool
+	// commands — список команд демона машины (SPEC 162 §4.2): heartbeat
+	// обновляет его, пока у машины открыто окно Service, окно читает без
+	// сети. Только UI-поток.
+	commands map[string]serviceCommandsCache
 }
 
 // builtConfigSum — sha256 файла вместе с ключом, по которому он посчитан.
@@ -155,6 +159,7 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 		stopHeartbeat:  make(chan struct{}),
 		builtSums:      make(map[string]builtConfigSum),
 		deployDrift:    make(map[string]bool),
+		commands:       make(map[string]serviceCommandsCache),
 	}
 	p.list = container.NewVBox()
 

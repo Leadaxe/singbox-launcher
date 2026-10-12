@@ -16,11 +16,13 @@ import (
 	"singbox-launcher/internal/locale"
 )
 
-// Окно Service (SPEC 161 §5): раннбук обслуживания демона. Шапка — диагноз
-// (платформа, версия ядра, отвечает ли демон, где выполняются команды),
-// вкладки — по случаю: Not running, Core, Pairing, Reference (+ Uninstall у
-// локальной службы). Тело окна (buildServiceView) встраивает и панель Local
-// окна подключения.
+// Окно Service (SPEC 161 §5, SPEC 162 §4.2–§4.4): пульт и раннбук
+// обслуживания демона. Шапка — диагноз (платформа, версия ядра, отвечает ли
+// демон) и строка команд демона; под ней Troubleshooting — аккордеон по
+// случаю: Not running, Core, Pairing, Reference, Suggested commands
+// (+ Uninstall у локальной службы). Раскрыта одна секция — та, что выбрал
+// диагноз; диагноз чистый — всё свёрнуто, и окно короткое. Тело окна
+// (buildServiceView) встраивает и панель Local окна подключения.
 //
 // Окно обновляется само: источник зовёт onUpdate, окно сравнивает снапшот с
 // прежним и перестраивает шапку и содержимое вкладок только при изменении.
@@ -28,9 +30,9 @@ import (
 // раскрытые секции, строки локальной службы) создаются один раз — иначе тик
 // стирал бы введённое.
 
-// serviceTabScrollMinHeight — минимум прокрутки вкладки. AppTabs берёт
-// минимум по всем вкладкам, и высокая Core без константы держала бы высоту
-// окна (см. ui/configurator/tabs/scroll_height.go).
+// serviceTabScrollMinHeight — минимум прокрутки раскрытой секции: без
+// константы высокая Core задавала бы минимальную высоту окна своим
+// содержимым (см. ui/configurator/tabs/scroll_height.go).
 const serviceTabScrollMinHeight = 160
 
 const (
@@ -87,6 +89,16 @@ func OpenServiceWindow(ac *core.AppController, src serviceSource, tab serviceTab
 	win.Show()
 }
 
+// serviceWindowOpen — открыто ли окно Service с этим ключом (heartbeat
+// читает список команд машины только для открытого окна, SPEC 162 PLAN §5.7).
+// Любой поток.
+func serviceWindowOpen(key string) bool {
+	serviceWindowsMu.Lock()
+	defer serviceWindowsMu.Unlock()
+	_, ok := serviceWindows[key]
+	return ok
+}
+
 // CloseServiceWindow закрывает окно Service по ключу (машину удалили).
 // UI-поток.
 func CloseServiceWindow(key string) {
@@ -115,21 +127,28 @@ type serviceView struct {
 	snap     serviceSnapshot
 	rendered bool
 	disposed bool
-	// wantTab — вкладка из вызова; autoSelected — стартовая вкладка уже
-	// выбрана (дальше вкладку выбирает пользователь, тик её не угоняет).
+	// wantTab — секция из вызова; autoSelected — стартовая секция уже
+	// раскрыта (дальше раскрывает пользователь, тик её не угоняет).
 	wantTab      serviceTab
 	autoSelected bool
 
-	root    *fyne.Container
-	header  *fyne.Container
-	tabs    *container.AppTabs
+	root   *fyne.Container
+	header *fyne.Container
+	// acc — Troubleshooting. Секции (AccordionItem) создаются один раз, их
+	// флаг Open живёт в самих элементах и переживает Refresh: перестройка
+	// меняет только Title и содержимое прокрутки секции.
+	acc     *widget.Accordion
 	order   []serviceTab
-	items   map[serviceTab]*container.TabItem
+	items   map[serviceTab]*widget.AccordionItem
 	scrolls map[serviceTab]*container.Scroll
 
-	// Создаются один раз и переживают перестройку вкладок.
+	// Создаются один раз и переживают перестройку секций.
 	rows       localServiceRows
 	initSelect *widget.Select
+	// stateLabel — строка состояния демона; во время ожидания update
+	// строка команд пишет в неё «reconnecting… N s» каждую секунду.
+	stateLabel *widget.Label
+	cmdBar     *serviceCommandBar
 	sections   map[string]*widget.Accordion
 	pairForm   *servicePairForm
 	secret     *widget.Entry
@@ -139,16 +158,17 @@ type serviceView struct {
 func newServiceView(ac *core.AppController, win fyne.Window, src serviceSource, tab serviceTab) *serviceView {
 	v := &serviceView{
 		ac: ac, win: win, src: src, wantTab: tab,
-		items:    make(map[serviceTab]*container.TabItem),
+		items:    make(map[serviceTab]*widget.AccordionItem),
 		scrolls:  make(map[serviceTab]*container.Scroll),
 		sections: make(map[string]*widget.Accordion),
 	}
 	v.rows = src.LocalRows(win)
-	v.order = []serviceTab{serviceTabNotRunning, serviceTabCore, serviceTabPairing, serviceTabReference}
+	v.order = []serviceTab{serviceTabNotRunning, serviceTabCore, serviceTabPairing, serviceTabReference, serviceTabSuggested}
 	if v.rows.Uninstall != nil {
 		v.order = append(v.order, serviceTabUninstall)
 	}
-	v.tabs = container.NewAppTabs()
+	v.acc = widget.NewAccordion()
+	v.acc.MultiOpen = false
 	for _, t := range v.order {
 		scroll := container.NewVScroll(widget.NewLabel(""))
 		scroll.SetMinSize(fyne.NewSize(0, serviceTabScrollMinHeight))
@@ -157,13 +177,15 @@ func newServiceView(ac *core.AppController, win fyne.Window, src serviceSource, 
 			// снапшота и не перестраивается.
 			scroll.Content = container.NewPadded(v.rows.Uninstall)
 		}
-		item := container.NewTabItem(serviceTabName(t), scroll)
+		item := widget.NewAccordionItem(serviceTabName(t), scroll)
 		v.items[t], v.scrolls[t] = item, scroll
-		v.tabs.Append(item)
+		v.acc.Items = append(v.acc.Items, item)
 	}
 	v.initSelect = widget.NewSelect(serviceInitOptions(), nil)
+	v.stateLabel = serviceNoteLabel("", widget.MediumImportance)
+	v.cmdBar = newServiceCommandBar(v)
 	v.header = container.NewVBox()
-	v.root = container.NewBorder(v.header, nil, nil, nil, v.tabs)
+	v.root = container.NewBorder(v.header, nil, nil, nil, container.NewVScroll(v.acc))
 
 	v.update(true)
 	src.Poll(func() { v.update(false) })
@@ -175,6 +197,7 @@ func (v *serviceView) dispose() {
 		return
 	}
 	v.disposed = true
+	v.cmdBar.dispose()
 	v.src.StopPoll()
 }
 
@@ -191,7 +214,7 @@ func (v *serviceView) update(force bool) {
 	v.render()
 }
 
-// render перестраивает шапку и вкладки по v.snap, сохраняя выбранную вкладку
+// render перестраивает шапку и секции по v.snap, сохраняя раскрытую секцию
 // и позицию прокрутки.
 func (v *serviceView) render() {
 	if v.disposed {
@@ -218,21 +241,24 @@ func (v *serviceView) render() {
 		serviceTabCore:       buildCoreTab,
 		serviceTabPairing:    buildPairingTab,
 		serviceTabReference:  buildReferenceTab,
+		serviceTabSuggested:  buildSuggestedCommandsTab,
 	}
-	glyphs, first := serviceDiagnosis(s)
+	titles, first := serviceDiagnosis(s)
 	for _, t := range v.order {
 		if build, ok := builders[t]; ok {
 			scroll := v.scrolls[t]
 			scroll.Content = container.NewPadded(build(c))
 			scroll.Refresh()
 		}
-		label := serviceTabName(t)
-		if g := glyphs[t]; g != "" {
-			label = g + " " + label
+		title := serviceTabName(t)
+		if d := titles[t]; d != "" {
+			title = d
 		}
-		v.items[t].Text = label
+		v.items[t].Title = title
 	}
-	v.tabs.Refresh()
+	// Refresh не трогает AccordionItem.Open: раскрытая секция остаётся
+	// раскрытой (Fyne 2.8 widget/accordion.go — флаг живёт в элементе).
+	v.acc.Refresh()
 
 	if !v.autoSelected && s.Loaded {
 		v.autoSelected = true
@@ -244,23 +270,39 @@ func (v *serviceView) render() {
 	}
 }
 
-// selectTab переключает вкладку (serviceTabAuto — по диагнозу).
+// selectTab раскрывает секцию (serviceTabAuto — по диагнозу,
+// serviceTabNone — свернуть все).
 func (v *serviceView) selectTab(t serviceTab) {
 	if t == serviceTabAuto {
 		_, t = serviceDiagnosis(v.snap)
 	}
-	if item, ok := v.items[t]; ok {
-		v.tabs.Select(item)
+	if t == serviceTabNone {
+		v.acc.CloseAll()
+		return
+	}
+	for i, ot := range v.order {
+		if ot == t {
+			v.acc.Open(i)
+			return
+		}
 	}
 }
 
-// renderHeader — шапка (SPEC 161 §5.1).
+// renderHeader — шапка (SPEC 161 §5.1, SPEC 162 PLAN §5.1).
 func (v *serviceView) renderHeader() {
 	s := v.snap
-	objs := make([]fyne.CanvasObject, 0, 8)
+	// Строка команд — первой: по снапшоту она может перейти в ожидание
+	// update, и строка состояния ниже должна это уже видеть.
+	v.cmdBar.apply(s)
+	objs := make([]fyne.CanvasObject, 0, 12)
 
 	platformLine := serviceNoteLabel(locale.Tf("%s · %s/%s · service %s (%s)", serviceOSLabel(s.Platform),
 		s.Platform.GOOS, s.Platform.GOARCH, core.ServiceName, string(s.Platform.Init)), widget.MediumImportance)
+	if s.Platform.ServiceKnown && !s.Platform.Service {
+		// Паспорт: демон запущен не под init-системой (SPEC 162 §4.1).
+		platformLine = serviceNoteLabel(locale.Tf("%s · %s/%s · service %s (%s, not installed as a service)", serviceOSLabel(s.Platform),
+			s.Platform.GOOS, s.Platform.GOARCH, core.ServiceName, string(s.Platform.Init)), widget.WarningImportance)
+	}
 	left := container.NewVBox(platformLine)
 	if s.InitChoice {
 		v.initSelect.OnChanged = nil
@@ -272,8 +314,16 @@ func (v *serviceView) renderHeader() {
 	objs = append(objs, container.NewBorder(nil, nil, nil, guides, left))
 
 	objs = append(objs, serviceCoreHeaderLine(s))
-	if line, importance := serviceStateLine(s); line != "" {
-		objs = append(objs, serviceNoteLabel(line, importance))
+	line, importance := serviceStateLine(s)
+	if wait := v.cmdBar.reconnectLine(); wait != "" {
+		// Ожидание update: обрыв штатный, «✖ Not answering» не пишем.
+		line, importance = wait, widget.WarningImportance
+	}
+	if line != "" {
+		v.stateLabel.Text = line
+		v.stateLabel.Importance = importance
+		v.stateLabel.Refresh()
+		objs = append(objs, v.stateLabel)
 	}
 	if s.InterruptedApply {
 		objs = append(objs, serviceNoteLabel(locale.T("The last deploy did not start: the core rolled back to the last-good config."), widget.WarningImportance))
@@ -285,10 +335,11 @@ func (v *serviceView) renderHeader() {
 		}
 		objs = append(objs, serviceNoteLabel(s.ServiceNote, importance))
 	}
+	objs = append(objs, widget.NewSeparator(), v.cmdBar.object(), widget.NewSeparator())
 	if ssh, remote := v.src.SSH(); remote {
-		objs = append(objs, serviceNoteLabel(locale.Tf("Commands run via  ssh %s", ssh.String()), widget.MediumImportance))
+		objs = append(objs, serviceStepTitle(locale.Tf("Troubleshooting · commands run via ssh %s", ssh.String())))
 	} else {
-		objs = append(objs, serviceNoteLabel(locale.T("Commands run on this computer"), widget.MediumImportance))
+		objs = append(objs, serviceStepTitle(locale.T("Troubleshooting · commands run on this computer")))
 	}
 	v.header.Objects = objs
 	v.header.Refresh()
@@ -365,6 +416,8 @@ func serviceTabName(t serviceTab) string {
 		return locale.T("Reference")
 	case serviceTabUninstall:
 		return locale.T("Uninstall")
+	case serviceTabSuggested:
+		return locale.T("Suggested commands")
 	}
 	return ""
 }

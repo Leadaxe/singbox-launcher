@@ -1,13 +1,17 @@
 package ui
 
 import (
+	"reflect"
 	"time"
+	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/lxdclient"
 )
 
 // Модель окна Service (SPEC 161): одно окно обслуживания демона для
@@ -21,11 +25,11 @@ import (
 // не попадают — локальный источник (тегированный) переводит их в плоские поля
 // localServiceExtras и готовые виджеты localServiceRows.
 
-// serviceTab — вкладка окна Service.
+// serviceTab — секция Troubleshooting окна Service (до SPEC 162 — вкладка).
 type serviceTab int
 
 const (
-	// serviceTabAuto — выбрать по диагнозу (первая проблемная вкладка).
+	// serviceTabAuto — выбрать по диагнозу (первая проблемная секция).
 	serviceTabAuto serviceTab = iota
 	serviceTabNotRunning
 	serviceTabCore
@@ -33,7 +37,48 @@ const (
 	serviceTabReference
 	// serviceTabUninstall — только локально (localServiceRows.Uninstall).
 	serviceTabUninstall
+	// serviceTabSuggested — фрагмент "commands" для daemon.json (SPEC 162 §4.5).
+	serviceTabSuggested
+	// serviceTabNone — ничего не раскрывать: диагноз чистый.
+	serviceTabNone
 )
+
+// serviceCommandsState — есть ли у демона именованные команды (SPEC 162 §4.2).
+type serviceCommandsState int
+
+const (
+	// serviceCommandsUnknown — список ещё не читали.
+	serviceCommandsUnknown serviceCommandsState = iota
+	// serviceCommandsUnsupported — 404 на списке: старое ядро или ключа
+	// "commands" в daemon.json нет.
+	serviceCommandsUnsupported
+	// serviceCommandsReady — список есть (может быть пустым).
+	serviceCommandsReady
+	// serviceCommandsDown — демон не отвечает: строка команд неактивна.
+	serviceCommandsDown
+)
+
+// serviceCommandsCache — последний прочитанный список команд демона.
+type serviceCommandsCache struct {
+	State serviceCommandsState
+	List  []lxdclient.Command
+}
+
+// serviceCommander — команды демона источника (SPEC 162 §4.2). Сетевые
+// вызовы идут в горутинах; done зовётся в UI-потоке.
+type serviceCommander interface {
+	// Commands перечитывает список (и кладёт его в кэш снапшота).
+	Commands(done func([]lxdclient.Command, error))
+	// Command — одна команда с хвостом лога.
+	Command(name string, done func(lxdclient.Command, error))
+	// RunCommand — запуск по имени, без входных данных.
+	RunCommand(name string, done func(lxdclient.Command, error))
+	// Reconnect — одна попытка достучаться до демона после самоперезапуска
+	// (update): health + свежий паспорт в кэш; ok — демон ответил.
+	Reconnect(done func(ok bool))
+	// Version — версия ядра демона из кэша (паспорт или последний ответ).
+	Version() string
+}
 
 // serviceLevel — вердикт для точки на ⚙ и строки предупреждения машины.
 type serviceLevel int
@@ -57,7 +102,8 @@ type serviceSnapshot struct {
 	Title string
 	// Platform — ОС/архитектура и init-система машины.
 	Platform core.ServicePlatform
-	// InitChoice — показывать в шапке выбор init-системы (удалённый Linux).
+	// InitChoice — показывать в шапке выбор init-системы (удалённый Linux,
+	// паспорт init не сообщил).
 	InitChoice bool
 	// Connected — состояние демона проверено: удалённо — машина активна и
 	// ответ (или отказ) Connect/heartbeat есть; локально — опрос прошёл.
@@ -96,6 +142,10 @@ type serviceSnapshot struct {
 	// ServiceNoteDanger — красная, иначе жёлтая.
 	ServiceNote       string
 	ServiceNoteDanger bool
+	// CommandsState / Commands — именованные команды демона (SPEC 162 §4.2):
+	// список из кэша источника, отсортирован демоном.
+	CommandsState serviceCommandsState
+	Commands      []lxdclient.Command
 	// Local — локальные факты; nil у удалённой машины.
 	Local *localServiceExtras
 }
@@ -171,6 +221,17 @@ type serviceSource interface {
 	// LocalRows — строки локальной службы (нулевое значение у машины).
 	// Зовётся один раз на окно.
 	LocalRows(win fyne.Window) localServiceRows
+	// Commander — команды демона; nil — их нет у этого источника (служба
+	// Windows), строка команд показывает «not available».
+	Commander() serviceCommander
+}
+
+// serviceCommandsFor — состояние строки команд по кэшу и связи с демоном.
+func serviceCommandsFor(reachable bool, c serviceCommandsCache) (serviceCommandsState, []lxdclient.Command) {
+	if !reachable {
+		return serviceCommandsDown, c.List
+	}
+	return c.State, c.List
 }
 
 // serviceOSLabel — имя системы для шапки: init-система различает OpenWrt и
@@ -202,38 +263,91 @@ func servicePairingBroken(k core.DaemonReachKind) bool {
 	return false
 }
 
-// serviceDiagnosis — что чинить: глифы ярлыков вкладок и первая проблемная
-// вкладка в порядке Not running → Core → Pairing (иначе Not running). Общий
-// вердикт окна; строка машины зовёт machineServiceVerdict поверх тех же
-// правил.
+// serviceTitleReasonMax — сколько символов причины влезает в заголовок
+// секции: заголовок — кнопка без переноса, длинный текст ошибки задал бы
+// минимальную ширину окна.
+const serviceTitleReasonMax = 48
+
+// serviceDiagnosis — что чинить: полные заголовки проблемных секций
+// («✖ Not running — connection refused») и первая проблемная секция в
+// порядке Not running → Core → Pairing; диагноз чистый — serviceTabNone.
+// Общий вердикт окна; строка машины зовёт machineServiceVerdict поверх тех
+// же правил.
 func serviceDiagnosis(s serviceSnapshot) (map[serviceTab]string, serviceTab) {
-	glyphs := make(map[serviceTab]string)
+	titles := make(map[serviceTab]string)
 	if !s.Loaded {
-		return glyphs, serviceTabNotRunning
+		return titles, serviceTabNone
 	}
 	notRunning := s.Connected && !s.Reachable && s.Paired && !servicePairingBroken(s.Reach)
-	coreBad := serviceCoreVerdict(s) == core.CoreVersionOlder
+	notRunningWhy := s.Err
+	verdict := serviceCoreVerdict(s)
+	coreBad := verdict == core.CoreVersionOlder
+	var coreWhy string
+	if coreBad {
+		running, required := core.CoreVersionPairLabels(s.Running, constants.RequiredCoreVersion)
+		coreWhy = locale.Tf("%s is older than required %s", running, required)
+	}
 	if l := s.Local; l != nil {
-		notRunning = notRunning || l.NeedsBootstrap
-		coreBad = coreBad || l.NeedsInstall || l.CoreTooOld || l.CoreHint != ""
+		if l.NeedsBootstrap && !notRunning {
+			notRunning = true
+			notRunningWhy = locale.T("the service is not loaded")
+		}
+		if !coreBad {
+			switch {
+			case l.NeedsInstall:
+				coreBad, coreWhy = true, locale.T("install or update the service")
+			case l.CoreTooOld || l.CoreHint != "":
+				coreBad, coreWhy = true, locale.T("the launcher core is too old")
+			}
+		}
 	}
 	pairingBad := !s.Paired || (s.Connected && !s.Reachable && servicePairingBroken(s.Reach))
 
 	if notRunning {
-		glyphs[serviceTabNotRunning] = "✖"
+		titles[serviceTabNotRunning] = serviceSectionTitle("✖", serviceTabNotRunning, notRunningWhy)
 	}
 	if coreBad {
-		glyphs[serviceTabCore] = "⚠"
+		titles[serviceTabCore] = serviceSectionTitle("⚠", serviceTabCore, coreWhy)
 	}
 	if pairingBad {
-		glyphs[serviceTabPairing] = "✖"
+		why := locale.T("not paired yet")
+		if s.Paired {
+			why = servicePairingReason(s.Reach)
+		}
+		titles[serviceTabPairing] = serviceSectionTitle("✖", serviceTabPairing, why)
 	}
 	for _, t := range []serviceTab{serviceTabNotRunning, serviceTabCore, serviceTabPairing} {
-		if glyphs[t] != "" {
-			return glyphs, t
+		if titles[t] != "" {
+			return titles, t
 		}
 	}
-	return glyphs, serviceTabNotRunning
+	return titles, serviceTabNone
+}
+
+// serviceSectionTitle — «✖ Not running — причина»; причина обрезается до
+// serviceTitleReasonMax символов.
+func serviceSectionTitle(glyph string, t serviceTab, reason string) string {
+	title := glyph + " " + serviceTabName(t)
+	if reason == "" {
+		return title
+	}
+	if utf8.RuneCountInString(reason) > serviceTitleReasonMax {
+		reason = string([]rune(reason)[:serviceTitleReasonMax]) + "…"
+	}
+	return title + " — " + reason
+}
+
+// servicePairingReason — причина в заголовке Pairing по классу ошибки связи.
+func servicePairingReason(k core.DaemonReachKind) string {
+	switch k {
+	case core.ReachCertChanged:
+		return locale.T("certificate changed")
+	case core.ReachNotTrusted:
+		return locale.T("the daemon does not trust this launcher")
+	case core.ReachChannelMismatch:
+		return locale.T("TLS mode mismatch")
+	}
+	return ""
 }
 
 // serviceSnapshotEqual — снапшоты равны для отрисовки. Uptime и «давность»
@@ -251,12 +365,37 @@ func serviceSnapshotEqual(a, b serviceSnapshot) bool {
 	if (a.Local == nil) != (b.Local == nil) || (a.Local != nil && *a.Local != *b.Local) {
 		return false
 	}
+	if !serviceCommandsEqual(a.Commands, b.Commands) {
+		return false
+	}
+	a.Commands, b.Commands = nil, nil
 	a.Uptime, b.Uptime = 0, 0
 	a.DownSince, b.DownSince = time.Time{}, time.Time{}
 	a.PassportAt, b.PassportAt = time.Time{}, time.Time{}
 	a.Paths.TLS, b.Paths.TLS = nil, nil
 	a.Local, b.Local = nil, nil
-	return a == b
+	// Срез команд в структуре запрещает ==; после обнуления изменчивых полей
+	// остались только значения — DeepEqual сравнивает их так же.
+	return reflect.DeepEqual(a, b)
+}
+
+// serviceCommandsEqual — списки команд равны для отрисовки: имя, текст,
+// состояние, код выхода и время завершения (лог живёт в виджете строки
+// команд и в сравнение не входит).
+func serviceCommandsEqual(a, b []lxdclient.Command) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		x, y := a[i], b[i]
+		if x.Name != y.Name || x.Command != y.Command || x.State != y.State || x.FinishedAt != y.FinishedAt || x.Client != y.Client {
+			return false
+		}
+		if (x.ExitCode == nil) != (y.ExitCode == nil) || (x.ExitCode != nil && *x.ExitCode != *y.ExitCode) {
+			return false
+		}
+	}
+	return true
 }
 
 // sameBoolPtr — *bool равны по значению (nil равен только nil).

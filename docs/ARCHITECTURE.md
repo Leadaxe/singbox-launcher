@@ -1248,7 +1248,7 @@ by window.
 | core, untagged | `core/core_download_target.go` | `DownloadCoreForTarget` — the core for the **machine's** GOOS/GOARCH into `~/Downloads`, checked against the release's `SHA256SUMS`, a `.sha256` sidecar as the "already downloaded" mark; never touches the launcher's own core |
 | core data | `core/services/lxd_remote_registry.go` | `RemoteDaemon.SSH/InitSystem/CoreWarnAck/Passport` (`omitempty`, no migration; the registry is in neither LX Backup nor the contract); `SetPassport` writes the file only on change or every 10 min; `RemoteHealth` carries the full passport |
 | core, daemon platforms | `core/daemon_manager*.go` | `DaemonUIStatus.ReachErr/Passport/PassportCached` with an in-memory passport cache; `DaemonServicePaths()` (exact launchd/SCM paths), `DaemonRestartCommand`/`DaemonRestartService`, `DaemonClientList/RemoveCommand` |
-| ui, untagged | `ui/service_model.go`, `service_window.go`, `service_tabs.go`, `service_step_row.go`, `service_guides.go` | the `serviceSource` interface and snapshot, the diagnosis (tab glyphs and the start tab — the same function feeds the machine row's ⚙ dot), the window/embeddable view, the four tabs, the step row (⧉ copies the bare command, ▶ wraps it in ssh), guide links by locale |
+| ui, untagged | `ui/service_model.go`, `service_window.go`, `service_tabs.go`, `service_commands.go`, `service_step_row.go`, `service_guides.go` | the `serviceSource` interface and snapshot, the diagnosis (tab glyphs and the start tab — the same function feeds the machine row's ⚙ dot), the window/embeddable view, the four tabs, the step row (⧉ copies the bare command, ▶ wraps it in ssh), guide links by locale |
 | ui, untagged | `ui/service_source_remote.go`, `service_core_download.go`, `machine_core_log_window.go` | the "machine" source: reads the panel's heartbeat cache on a 1 s ticker, never the network; step 1 of the Core tab; the machine's live core log (`SubscribeLogLines`) |
 | ui, `darwin \|\| (windows && !386)` | `ui/service_source_local.go` | the "local daemon" source: a 5 s `DaemonStatusSnapshot` poll, and `LocalRows` — the existing `daemonOps` rows (install, bootstrap, restart, pair, secret, Uninstall), so tagged symbols never leak into untagged UI |
 
@@ -1266,3 +1266,30 @@ Rules the split keeps:
   `core_required`/`core_outdated`); the recipes are a pure function over them, so
   there is no recipes endpoint. `core_outdated` comes from a `RemoteAPI.CoreOutdated`
   closure wired in `core` — `debugapi` cannot import `core`.
+
+**SPEC 162 — the daemon as the executor, the passport as the source of platform.**
+
+- `GET /admin/info` from a core with SPEC 127 adds `goos`, `goarch`, `platform`
+  (the release asset suffix), `init_system` and `service`. `healthCtx` rewrites the
+  machine record's `goos`/`goarch`/`init_system` from them (one `mutate`, logged);
+  the local passport cache keeps the same `InfoData`. `DownloadCoreForTarget` names
+  the asset by `platform` and falls back to the goos/goarch table only without a
+  passport. A known `init_system` hides the header selector; `service:false` moves
+  "install the service" to the top of Not running.
+- `/admin/commands` (SPEC 128) is reached through `lxdclient/commands.go` and the
+  registry's `Commands/Command/RunCommand` (local: `DaemonAdminClient`). The window
+  never sends arguments or a body: `POST /admin/commands/{name}` only. The list is
+  refreshed in the heartbeat while a Service window for that machine is open and is
+  cached on the panel (`commands[id]`); 404 on the list is the "unsupported" state,
+  not an error. `ui/service_commands.go` holds the command bar, the 1 s run watcher
+  and the `update` state machine (posted → polling → reconnecting via `HealthWithin`
+  up to 90 s → verifying by version and `GET …/update` → finished; a 404 list after
+  the restart means the new core has no SPEC 128 and is reported as such).
+- Gating is by the daemon's answer (fields present, list status), never by comparing
+  with `RequiredCoreVersion`. `parseCoreBuild` treats any suffix other than `-rc<K>`
+  after `lx.N` as "cannot compare".
+- The sections are a `widget.Accordion` (`MultiOpen=false`): items are created once,
+  re-render changes titles and content only, so the open section survives the tick;
+  the diagnosis returns full titles (`✖ Not running — <reason>`) and `serviceTabNone`
+  closes everything. `core.CommandsRecipe` is a pure function behind the
+  "Suggested commands" section.

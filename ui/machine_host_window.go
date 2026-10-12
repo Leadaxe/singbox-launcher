@@ -144,6 +144,7 @@ func OpenMachineHostWindow(ac *core.AppController, d services.RemoteDaemon) {
 	win := ac.UIService.Application.NewWindow(locale.Tf("%s — host", d.Name))
 	view := newHostView()
 	view.wantOS, view.wantArch = d.GOOS, d.GOARCH
+	view.platformKnown = services.PassportPlatformKnown(d)
 
 	// Поллинг живёт в своей горутине и гаснет вместе с окном: без остановки
 	// он продолжал бы ходить к роутеру после закрытия.
@@ -230,7 +231,10 @@ type hostView struct {
 	// не косметическая: конфиг уедет на машину, для которой он не собран.
 	wantOS   string
 	wantArch string
-	errBar   *widget.Label
+	// platformKnown — платформу записи сообщил паспорт демона (SPEC 162):
+	// сверять с /admin/host нечего.
+	platformKnown bool
+	errBar        *widget.Label
 
 	cpuTitle    *widget.Label
 	cpuBar      *widget.ProgressBar
@@ -670,7 +674,7 @@ func (v *hostView) update(h lxdclient.HostInfo, hErr error,
 	// Сверка записанной платформы с настоящей. До этой ручки проверить её
 	// было нечем: GOARCH машины оператор выбирает руками при добавлении, и
 	// ошибка в выпадающем списке молча уезжала в сборку конфига.
-	if warn := hostPlatformMismatch(v.wantOS, v.wantArch, h); warn != "" {
+	if warn := hostPlatformMismatch(v.wantOS, v.wantArch, h); !v.platformKnown && warn != "" {
 		v.archWarn.SetText(warn)
 		v.archWarn.Show()
 	} else {

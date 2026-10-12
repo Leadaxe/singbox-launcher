@@ -26,8 +26,8 @@ const (
 	serviceLikelyDownText     = "Likely: the service is stopped or crash-looping."
 	serviceLikelyPairingText  = "Likely: a pairing problem, not the service — the daemon answers but refuses this launcher."
 	serviceRestartHintText    = "If the header turns green, you are done."
-	serviceLogHintText        = "\"refusing to run\" → Core tab · \"bind: address in use\" → Reference tab"
-	serviceNothingHelpsText   = "Nothing helps? Reinstall the core on the Core tab."
+	serviceLogHintText        = "\"refusing to run\" → Core · \"bind: address in use\" → Reference"
+	serviceNothingHelpsText   = "Nothing helps? Reinstall the core (Core section)."
 	serviceUploadOpenWrtText  = "Upload it (streamed over ssh — scp does not work on OpenWrt)"
 	serviceCheckHintText      = "Expect with_lxd among the build tags, the same sha256 as in step 1 and no error from check."
 	serviceSwapHintText       = "The current core is kept as %s."
@@ -46,6 +46,12 @@ const (
 	servicePathsLiveText      = "Paths — reported by the daemon just now"
 	servicePathsAgoText       = "Paths — reported by the daemon %s ago"
 	servicePathsDefaultText   = "Paths — defaults: the daemon has not reported its paths yet"
+	serviceOpenRCText         = "No recipes for openrc yet — see the lxd guide"
+	serviceSelfUpdateText     = "The daemon can update itself: choose update above and press Run. The steps below are the manual way."
+	serviceNoServiceText      = "The daemon runs, but not as a service: install the service first."
+	serviceSuggestedNoteText  = "Paste into the top level of daemon.json next to \"listen\". The daemon validates names on start: a bad name keeps it from starting."
+	serviceSuggestedLeadText  = "Named commands let this window run them on the daemon (the Daemon command row above). Add this to daemon.json:"
+	serviceSuggestedExeText   = "The core binary path is the default — the daemon has not reported it yet."
 )
 
 // serviceTabCtx — всё, из чего строится вкладка на один рендер.
@@ -98,7 +104,7 @@ func serviceTitled(title string, obj fyne.CanvasObject) fyne.CanvasObject {
 	return container.NewVBox(serviceStepTitle(title), obj)
 }
 
-// serviceGoTo — кнопка перехода на другую вкладку окна.
+// serviceGoTo — кнопка перехода на другую секцию окна (раскрывает её).
 func (c *serviceTabCtx) goTo(label string, t serviceTab) fyne.CanvasObject {
 	btn := widget.NewButton(label, func() { c.v.selectTab(t) })
 	btn.Importance = widget.LowImportance
@@ -118,6 +124,9 @@ func buildNotRunningTab(c *serviceTabCtx) fyne.CanvasObject {
 		return c.step(n, title, hint, core.ServiceStepRestart, true)
 	}
 	guides := serviceGuidesRow(c.v.win, locale.T("Guide:"), guideTroubleshooting, guideLxdDiagnose)
+	if c.rec.Unsupported {
+		return serviceVBox(serviceNoteLabel(locale.T(serviceOpenRCText), widget.MediumImportance), guides)
+	}
 
 	if s.Loaded && s.Connected && s.Reachable && !needsBootstrap {
 		text := locale.T(serviceAnswersText)
@@ -138,14 +147,23 @@ func buildNotRunningTab(c *serviceTabCtx) fyne.CanvasObject {
 		lead = serviceNoteLabel(locale.T(serviceUnknownStateText), widget.MediumImportance)
 	case s.Connected && !s.Reachable && servicePairingBroken(s.Reach):
 		lead = serviceVBox(serviceNoteLabel(locale.T(serviceLikelyPairingText), widget.WarningImportance),
-			c.goTo(locale.T("Open the Pairing tab"), serviceTabPairing))
+			c.goTo(locale.T("Open Pairing"), serviceTabPairing))
 	case s.Connected && !s.Reachable:
 		lead = serviceNoteLabel(locale.T(serviceLikelyDownText), widget.MediumImportance)
 	}
 
 	n := 1
 	next := func() int { n++; return n - 1 }
-	box := serviceVBox(lead, c.step(next(), locale.T("Is it running?"), "", core.ServiceStepStatus, false))
+	box := serviceVBox(lead)
+	if s.Platform.ServiceKnown && !s.Platform.Service && c.rec.ScratchScript != "" {
+		// Паспорт: демон запущен руками, службы нет (SPEC 162 §4.1) —
+		// рестартить нечего, первым шагом — установка службы.
+		serviceAdd(box,
+			serviceNoteLabel(locale.T(serviceNoServiceText), widget.WarningImportance),
+			serviceStepTitle(serviceNumbered(next(), locale.T("Install the service"))),
+			buildScratchContent(c))
+	}
+	serviceAdd(box, c.step(next(), locale.T("Is it running?"), "", core.ServiceStepStatus, false))
 	if needsBootstrap && rows.Bootstrap != nil {
 		serviceAdd(box, serviceTitled(serviceNumbered(next(), locale.T("Load the service")), rows.Bootstrap))
 	}
@@ -153,7 +171,7 @@ func buildNotRunningTab(c *serviceTabCtx) fyne.CanvasObject {
 	serviceAdd(box, c.step(next(), locale.T("Still down? Read why"), locale.T(serviceLogHintText), core.ServiceStepLogTail, false))
 	serviceAdd(box, c.step(next(), locale.T("The last config broke it? Boot the last working one once"), "", core.ServiceStepLastGood, true))
 	serviceAdd(box, serviceStepTitle(serviceNumbered(next(), locale.T(serviceNothingHelpsText))))
-	serviceAdd(box, c.goTo(locale.T("Open the Core tab"), serviceTabCore))
+	serviceAdd(box, c.goTo(locale.T("Open Core"), serviceTabCore))
 	serviceAdd(box, guides)
 	return box
 }
@@ -178,7 +196,12 @@ func buildCoreTab(c *serviceTabCtx) fyne.CanvasObject {
 		lead = serviceNoteLabel(locale.Tf("Core %s cannot be compared with the required %s.", s.Running, req), widget.MediumImportance)
 	}
 	box := serviceVBox(lead)
+	if serviceHasCommand(s, serviceCommandUpdate) {
+		serviceAdd(box, serviceNoteLabel(locale.T(serviceSelfUpdateText), widget.MediumImportance))
+	}
 	switch {
+	case c.rec.Unsupported:
+		serviceAdd(box, serviceNoteLabel(locale.T(serviceOpenRCText), widget.MediumImportance))
 	case s.Local != nil:
 		buildLocalCore(c, box)
 	case s.Platform.GOOS == "linux":
@@ -204,7 +227,7 @@ func buildLocalCore(c *serviceTabCtx, box *fyne.Container) {
 		serviceAdd(box, serviceTitled(locale.T("Install or update the service"), c.v.rows.Install))
 	}
 	if c.v.rows.Uninstall != nil {
-		serviceAdd(box, c.goTo(locale.T("Remove the service → Uninstall tab"), serviceTabUninstall))
+		serviceAdd(box, c.goTo(locale.T("Open Uninstall"), serviceTabUninstall))
 	}
 }
 
@@ -238,20 +261,7 @@ func buildLinuxCore(c *serviceTabCtx, box *fyne.Container, current bool) {
 		c.step(0, "", "", core.ServiceStepCoreRollback, true),
 	)))
 
-	script := widget.NewMultiLineEntry()
-	script.Wrapping = fyne.TextWrapOff
-	script.SetText(c.rec.ScratchScript)
-	script.SetMinRowsVisible(strings.Count(c.rec.ScratchScript, "\n") + 1)
-	scriptCopy := NewCopyButton("Copy the command", func() (string, bool) { return script.Text, script.Text != "" })
-	scratch := serviceVBox(
-		serviceNoteLabel(locale.Tf(serviceScratchHintText, c.rec.ScratchPath), widget.MediumImportance),
-		container.NewBorder(nil, nil, nil, container.NewVBox(scriptCopy), script),
-		c.step(0, locale.T("Enable and start it"), "", core.ServiceStepScratchEnable, false),
-	)
-	if procd {
-		scratch.Add(serviceNoteLabel(locale.Tf(serviceSysupgradeText, c.rec.ScratchPath), widget.WarningImportance))
-	}
-	serviceAdd(box, c.v.section("core_scratch", locale.T("Install from scratch (no service yet)"), scratch))
+	serviceAdd(box, c.v.section("core_scratch", locale.T("Install from scratch (no service yet)"), buildScratchContent(c)))
 
 	serviceAdd(box, c.v.section("core_remove", locale.T("Remove the service"), serviceVBox(
 		serviceNoteLabel(locale.T(serviceRemoveDangerText), widget.DangerImportance),
@@ -259,6 +269,81 @@ func buildLinuxCore(c *serviceTabCtx, box *fyne.Container, current bool) {
 		serviceNoteLabel(locale.T(serviceRemoveStateText), widget.DangerImportance),
 		c.step(0, "", "", core.ServiceStepRemoveState, true),
 	)))
+}
+
+// buildScratchContent — установка службы с нуля: init-скрипт / unit,
+// enable и start (свёртка Core; при service:false — первый шаг Not running).
+func buildScratchContent(c *serviceTabCtx) fyne.CanvasObject {
+	script := serviceCodeBlock(c.rec.ScratchScript)
+	scriptCopy := NewCopyButton("Copy the command", func() (string, bool) { return script.Text, script.Text != "" })
+	scratch := serviceVBox(
+		serviceNoteLabel(locale.Tf(serviceScratchHintText, c.rec.ScratchPath), widget.MediumImportance),
+		container.NewBorder(nil, nil, nil, container.NewVBox(scriptCopy), script),
+		c.step(0, locale.T("Enable and start it"), "", core.ServiceStepScratchEnable, false),
+	)
+	if c.s.Platform.Init == core.ServiceInitProcd {
+		scratch.Add(serviceNoteLabel(locale.Tf(serviceSysupgradeText, c.rec.ScratchPath), widget.WarningImportance))
+	}
+	return scratch
+}
+
+// serviceCodeBlock — многострочный текст без переноса, высотой в число строк
+// (скрипт, фрагмент JSON).
+func serviceCodeBlock(text string) *widget.Entry {
+	e := widget.NewMultiLineEntry()
+	e.Wrapping = fyne.TextWrapOff
+	e.TextStyle = fyne.TextStyle{Monospace: true}
+	e.SetText(text)
+	e.SetMinRowsVisible(strings.Count(text, "\n") + 1)
+	return e
+}
+
+// serviceHasCommand — у демона есть команда name и список прочитан.
+func serviceHasCommand(s serviceSnapshot, name string) bool {
+	if s.CommandsState != serviceCommandsReady {
+		return false
+	}
+	for _, c := range s.Commands {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// ------------------------------------------------------- Suggested commands
+
+// buildSuggestedCommandsTab — готовый фрагмент "commands" для daemon.json под
+// init машины (SPEC 162 §4.5): ⧉, правка daemon.json и рестарт службы.
+// daemon.json по сети не правится — фрагмент вставляет пользователь.
+func buildSuggestedCommandsTab(c *serviceTabCtx) fyne.CanvasObject {
+	s := c.s
+	recipe, ok := core.CommandsRecipe(s.Platform, s.Paths)
+	guides := serviceGuidesRow(c.v.win, locale.T("Guide:"), guideLxdConfig)
+	if !ok {
+		return serviceVBox(serviceNoteLabel(locale.T("no recipe for this init"), widget.MediumImportance), guides)
+	}
+	code := serviceCodeBlock(recipe)
+	codeCopy := NewCopyButton("Copy the command", func() (string, bool) { return code.Text, code.Text != "" })
+	box := serviceVBox(
+		serviceNoteLabel(locale.T(serviceSuggestedLeadText), widget.MediumImportance),
+		container.NewBorder(nil, nil, nil, container.NewVBox(codeCopy), code),
+		serviceNoteLabel(locale.T(serviceSuggestedNoteText), widget.MediumImportance),
+	)
+	if s.Paths.Executable.Default && s.Platform.GOOS == "linux" {
+		serviceAdd(box, serviceNoteLabel(locale.T(serviceSuggestedExeText), widget.LowImportance))
+	}
+	serviceAdd(box, c.step(1, locale.T("Edit daemon.json"), "", core.ServiceStepEditDaemonJSON, false))
+	if c.v.rows.Restart != nil {
+		// Строка рестарта локальной службы — один объект, и он уже стоит в
+		// Not running: второй родитель сломал бы раскладку, поэтому переход.
+		serviceAdd(box, serviceStepTitle(serviceNumbered(2, locale.T("Restart the service"))),
+			c.goTo(locale.T("Open Not running"), serviceTabNotRunning))
+	} else {
+		serviceAdd(box, c.step(2, locale.T("Restart the service"), "", core.ServiceStepRestart, true))
+	}
+	serviceAdd(box, guides)
+	return box
 }
 
 // -------------------------------------------------------------------- Pairing

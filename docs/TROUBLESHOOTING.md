@@ -140,7 +140,7 @@ with no previous file the config gets written. This has to be repeated before ev
 The daemon (`sing-box lxd`) is the system service that runs the core — on this computer
 in Daemon mode and on every remote machine (a router, a VPS). When it misbehaves, open
 the **Service** window: ⚙ in the machine's row on the Remote tab, or Servers → ⚙ →
-Local for this computer. It opens on the tab that needs attention (`✖ Not running`,
+Local for this computer. It opens the Troubleshooting section that needs attention (`✖ Not running`,
 `⚠ Core`, `✖ Pairing`; Reference holds the paths) and fills in the commands below with
 that machine's address and paths: ⧉ copies a command as is, ▶ opens Terminal with it —
 for a remote machine wrapped in `ssh <target> '…'`. The SSH target is set in the
@@ -149,11 +149,38 @@ by itself a few seconds after the daemon answers again.
 
 This section holds the same recipes for when the launcher is not at hand.
 
+**Let the daemon do it (core after lx.15).** A daemon whose `daemon.json` has a
+`commands` key runs named commands on request — no ssh needed. The Service header then
+shows a **Daemon command** row: pick a name, see the command text and its last outcome,
+press **Run**, read the log. The launcher never passes anything to a command: no
+arguments, no body — only `POST /admin/commands/<name>`. The ready-made set for an
+OpenWrt router (paste into `daemon.json` next to `"listen"`, then restart the service;
+the **Suggested commands** section of the window builds it with your paths):
+
+```json
+"commands": {
+  "update":       "/usr/bin/sing-box lxd update",
+  "update-rc":    "/usr/bin/sing-box lxd update --prerelease",
+  "check-update": "/usr/bin/sing-box lxd update --dry-run",
+  "restart":      "/etc/init.d/sing-box-lxd restart"
+}
+```
+
+`update` is `sing-box lxd update` on the machine itself: it downloads the latest
+release for the machine's platform, checks the sum, swaps the binary, restarts the
+service and rolls back if the new core does not come up. The connection drops during
+the restart — that is expected; the window waits up to 90 s, reconnects and reports
+`Updated lx.15 → lx.16`, `Already up to date`, `Nothing changed` (exit 1) or `rolled
+back` (exit 2). On systemd replace the paths with the ones the Reference section
+shows and `restart` with `systemctl restart sing-box-lxd`. A bad command name keeps
+the daemon from starting, so check the daemon log after editing. Without the key the
+row says `not available` and the recipes below are the way.
+
 > **These are default paths — yours may differ.** They are what the launcher assumes
 > while the daemon has not reported its own. A hand-made OpenWrt install, for example,
 > often keeps the binary in `/root/sing-box` (fork guide
 > [§8.3](https://github.com/Leadaxe/sing-box-lx/blob/lx/docs-lx/lxd-daemon.md#83-openwrt--procd-routers)).
-> The **Reference** tab of the Service window shows the paths the daemon reported
+> The **Reference** section of the Service window shows the paths the daemon reported
 > (`/admin/info`) and marks every assumed one `default` — trust those over this table.
 
 The service is named `sing-box-lxd` everywhere (macOS launchd label

@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"errors"
 	"time"
 
 	"fyne.io/fyne/v2"
 
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/lxdclient"
 )
 
 // Фоновый опрос активной машины (heartbeat).
@@ -108,6 +110,17 @@ func (p *machineListPanel) pollActive() {
 		return
 	}
 	h := p.registry.HealthWithin(id, heartbeatTimeout)
+	// Команды демона (SPEC 162) — только для открытого окна Service этой
+	// машины: строке списка они не нужны, лишний запрос каждые 5 с ни к чему.
+	var (
+		cmds     []lxdclient.Command
+		cmdsErr  error
+		cmdsRead bool
+	)
+	if h.Err == "" && serviceWindowOpen(id) {
+		cmds, cmdsErr = p.registry.CommandsWithin(id, heartbeatTimeout)
+		cmdsRead = true
+	}
 	fyne.Do(func() {
 		// Пока ходили по сети, пользователь мог отключиться или переключиться
 		// на другую машину. Ответ прежней машины к текущей строке отношения
@@ -145,6 +158,9 @@ func (p *machineListPanel) pollActive() {
 		live.FailSince = time.Time{}
 		live.LastOK = time.Now()
 		p.liveness[id] = live
+		if cmdsRead {
+			p.storeCommands(id, cmds, cmdsErr)
+		}
 		prev, had := p.health[id]
 		p.health[id] = h
 		// То же правило на успехе: тик, не изменивший ни health, ни маркер, —
@@ -168,12 +184,27 @@ func (p *machineListPanel) pollActive() {
 // Без uptime (он растёт каждый тик) и с TLS по значению (указатель свежий в
 // каждом ответе): прямое `prev != h` перерисовывало бы панель каждые 5 с.
 func healthChanged(a, b services.RemoteHealth) bool {
-	if !sameBoolPtr(a.TLS, b.TLS) {
+	if !sameBoolPtr(a.TLS, b.TLS) || !sameBoolPtr(a.Service, b.Service) {
 		return true
 	}
 	a.UptimeSeconds, b.UptimeSeconds = 0, 0
 	a.TLS, b.TLS = nil, nil
+	a.Service, b.Service = nil, nil
 	return a != b
+}
+
+// storeCommands кладёт ответ GET /admin/commands в кэш машины (UI-поток):
+// список → Ready, 404 → Unsupported; ошибка транспорта кэш не меняет —
+// за неё отвечает строка состояния демона.
+func (p *machineListPanel) storeCommands(id string, list []lxdclient.Command, err error) {
+	switch {
+	case err == nil:
+		p.commands[id] = serviceCommandsCache{State: serviceCommandsReady, List: list}
+	case errors.Is(err, lxdclient.ErrCommandsUnsupported):
+		p.commands[id] = serviceCommandsCache{State: serviceCommandsUnsupported}
+	default:
+		debuglog.DebugLog("machine heartbeat: %q commands: %v", id, err)
+	}
 }
 
 // onCoreStatusChanged синхронизирует левую колонку с новым состоянием ядра.

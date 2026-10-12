@@ -55,7 +55,9 @@ func (r *serviceRunner) terminalCommand(step core.ServiceStep) (cmd string, ok b
 		return "", false, ""
 	}
 	if r.remote && !step.RunsLocally {
-		return core.WrapSSH(r.ssh, step.Command, strings.Contains(step.Command, "sudo")), true, ""
+		// tty — для sudo (пароль) и для редактора (vi без терминала не работает).
+		tty := strings.Contains(step.Command, "sudo") || step.ID == core.ServiceStepEditDaemonJSON
+		return core.WrapSSH(r.ssh, step.Command, tty), true, ""
 	}
 	return step.Command, true, ""
 }

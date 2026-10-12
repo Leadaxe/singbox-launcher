@@ -5012,12 +5012,6 @@
   "Checking the daemon…": {
     "value": "Проверяем демон…"
   },
-  "Commands run on this computer": {
-    "value": "Команды выполняются на этом компьютере"
-  },
-  "Commands run via  ssh %s": {
-    "value": "Команды выполняются через  ssh %s"
-  },
   "Connect first: the log streams over the machine's channel.": {
     "value": "Сначала подключитесь: лог идёт по каналу машины."
   },
@@ -5144,20 +5138,11 @@
   "Not running": {
     "value": "Не запущен"
   },
-  "Nothing helps? Reinstall the core on the Core tab.": {
-    "value": "Ничего не помогает? Переустановите ядро на вкладке «Ядро»."
-  },
   "On %s the service is installed on the machine itself: run the core's `lxd --service=install` there as administrator — it installs or updates the service in place.": {
     "value": "На %s служба ставится на самой машине: выполните там `lxd --service=install` ядра от имени администратора — команда установит или обновит службу на месте."
   },
   "Only for a daemon with tls:false in daemon.json: the Bearer secret is the whole authentication.": {
     "value": "Только для демона с tls:false в daemon.json: там Bearer-секрет — вся аутентификация."
-  },
-  "Open the Core tab": {
-    "value": "Открыть вкладку «Ядро»"
-  },
-  "Open the Pairing tab": {
-    "value": "Открыть вкладку «Сопряжение»"
   },
   "Paired — connect to check the certificate.": {
     "value": "Сопряжено — подключитесь, чтобы проверить сертификат."
@@ -5170,12 +5155,6 @@
   },
   "Pairing": {
     "value": "Сопряжение"
-  },
-  "Paste the invite printed by the daemon and click Pair. Installing or updating the service pairs the launcher automatically, so an invite is only needed when that did not happen:\n\n- \"Mint an invite\" on the Pairing tab issues a new invite and pairs with it (Windows asks for administrator rights).\n- Or run the command below in a terminal opened as administrator, then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS.": {
-    "value": "Вставьте приглашение, которое печатает демон, и нажмите «Сопрячь». Установка или обновление службы сопрягает лаунчер автоматически, поэтому приглашение нужно, только если этого не произошло:\n\n- «Выпустить приглашение» на вкладке «Сопряжение» выпускает новое приглашение и сопрягается по нему (Windows запросит права администратора).\n- Или выполните команду ниже в консоли, открытой от имени администратора, затем вставьте напечатанное приглашение в поле сопряжения.\n\nКод одноразовый — сгорает после успешного сопряжения. Поле секрета нужно только для демонов без TLS."
-  },
-  "Paste the invite printed by the daemon and click Pair. Where to get one:\n\n- Installing the service prints an invite at the end of its Terminal output (Core tab).\n- For a fresh invite run the command below (copy or open in Terminal), then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS.": {
-    "value": "Вставьте приглашение, которое печатает демон, и нажмите «Сопрячь». Где его взять:\n\n- Установка службы печатает приглашение в конце вывода в терминале (вкладка «Ядро»).\n- Свежее приглашение — команда ниже (скопируйте или откройте в терминале), затем вставьте напечатанное приглашение в поле сопряжения.\n\nКод одноразовый — сгорает после успешного сопряжения. Поле секрета нужно только для демонов без TLS."
   },
   "Paste what it printed": {
     "value": "Вставьте то, что она напечатала"
@@ -5206,9 +5185,6 @@
   },
   "Reinstall the same version": {
     "value": "Переустановить ту же версию"
-  },
-  "Remove the service → Uninstall tab": {
-    "value": "Удалить службу → вкладка «Удаление»"
   },
   "Replace the <…> part before running it.": {
     "value": "Перед запуском замените часть <…>."
@@ -5336,9 +5312,6 @@
   "Windows asks for administrator rights; the launcher pairs with the service automatically:": {
     "value": "Windows запросит права администратора; лаунчер сам сопряжётся со службой:"
   },
-  "\"refusing to run\" → Core tab · \"bind: address in use\" → Reference tab": {
-    "value": "«refusing to run» → вкладка «Ядро» · «bind: address in use» → вкладка «Справка»"
-  },
   "core %s": {
     "value": "ядро %s"
   },
@@ -5426,10 +5399,169 @@
   "✖ The daemon's certificate changed: %s": {
     "value": "✖ Сертификат демона сменился: %s"
   },
-  "The system service is not installed yet — install it on the Core tab, then pair on the Pairing tab.": {
-    "value": "Системная служба ещё не установлена — установите её на вкладке «Ядро», затем сопрягитесь на вкладке «Сопряжение»."
-  },
   "The daemon engine is not active yet: it switches on by itself once the service answers and the launcher is paired (stop the VPN first if it is running).": {
     "value": "Daemon-движок ещё не активен: он включится сам, когда служба ответит и лаунчер будет сопряжён (если VPN запущен — сначала остановите его)."
+  },
+  "%s is older than required %s": {
+    "value": "%s старее требуемого %s"
+  },
+  "%s · %s/%s · service %s (%s, not installed as a service)": {
+    "value": "%s · %s/%s · служба %s (%s, не установлена как служба)"
+  },
+  "Daemon command:": {
+    "value": "Команда демона:"
+  },
+  "Edit daemon.json": {
+    "value": "Отредактировать daemon.json"
+  },
+  "Install the service": {
+    "value": "Установить службу"
+  },
+  "Named commands let this window run them on the daemon (the Daemon command row above). Add this to daemon.json:": {
+    "value": "Именованные команды позволяют запускать их на демоне из этого окна (строка «Команда демона» выше). Добавьте в daemon.json:"
+  },
+  "No recipes for openrc yet — see the lxd guide": {
+    "value": "Рецептов для openrc пока нет — см. гайд lxd"
+  },
+  "Nothing changed": {
+    "value": "Ничего не изменилось"
+  },
+  "Nothing helps? Reinstall the core (Core section).": {
+    "value": "Ничего не помогает? Переустановите ядро (раздел Core)."
+  },
+  "Open Core": {
+    "value": "Открыть Core"
+  },
+  "Open Pairing": {
+    "value": "Открыть Pairing"
+  },
+  "Open Uninstall": {
+    "value": "Открыть Uninstall"
+  },
+  "Paste into the top level of daemon.json next to \"listen\". The daemon validates names on start: a bad name keeps it from starting.": {
+    "value": "Вставьте на верхний уровень daemon.json рядом с \"listen\". Демон проверяет имена при старте: неверное имя не даст ему запуститься."
+  },
+  "Restart the service": {
+    "value": "Перезапустить службу"
+  },
+  "Restarting the daemon — reconnecting… %d s": {
+    "value": "Демон перезапускается — переподключение… %d с"
+  },
+  "Suggested commands": {
+    "value": "Рецепт команд"
+  },
+  "TLS mode mismatch": {
+    "value": "несовпадение режима TLS"
+  },
+  "The core binary path is the default — the daemon has not reported it yet.": {
+    "value": "Путь к бинарю ядра — по умолчанию: демон его ещё не сообщил."
+  },
+  "The daemon can update itself: choose update above and press Run. The steps below are the manual way.": {
+    "value": "Демон может обновиться сам: выберите update выше и нажмите Run. Шаги ниже — ручной способ."
+  },
+  "The daemon is back — checking the update…": {
+    "value": "Демон вернулся — проверяю обновление…"
+  },
+  "The daemon runs, but not as a service: install the service first.": {
+    "value": "Демон запущен, но не как служба: сначала установите службу."
+  },
+  "The daemon will download the latest core (~60 MB) and restart itself. Connections through it will drop for a few seconds. Continue?": {
+    "value": "Демон скачает последнее ядро (~60 МБ) и перезапустится. Соединения через него оборвутся на несколько секунд. Продолжить?"
+  },
+  "The system service is not installed yet — install it in the Core section, then pair in the Pairing section.": {
+    "value": "Системная служба ещё не установлена — установите её в разделе Core, затем сопрягите в разделе Pairing."
+  },
+  "Troubleshooting · commands run on this computer": {
+    "value": "Troubleshooting · команды выполняются на этом компьютере"
+  },
+  "Troubleshooting · commands run via ssh %s": {
+    "value": "Troubleshooting · команды выполняются через ssh %s"
+  },
+  "Update the core": {
+    "value": "Обновить ядро"
+  },
+  "\"refusing to run\" → Core · \"bind: address in use\" → Reference": {
+    "value": "«refusing to run» → Core · «bind: address in use» → Reference"
+  },
+  "add \"commands\" to daemon.json → Troubleshooting → Suggested commands": {
+    "value": "добавьте \"commands\" в daemon.json → Troubleshooting → Рецепт команд"
+  },
+  "certificate changed": {
+    "value": "сертификат изменился"
+  },
+  "done · exit %d · %s ago": {
+    "value": "выполнено · код %d · %s назад"
+  },
+  "done · exit %d": {
+    "value": "выполнено · код %d"
+  },
+  "install or update the service": {
+    "value": "установите или обновите службу"
+  },
+  "lost": {
+    "value": "потеряно"
+  },
+  "no recipe for this init": {
+    "value": "для этой init-системы рецепта нет"
+  },
+  "not available": {
+    "value": "недоступно"
+  },
+  "not paired yet": {
+    "value": "ещё не сопряжено"
+  },
+  "reported by the daemon": {
+    "value": "сообщено демоном"
+  },
+  "running…": {
+    "value": "выполняется…"
+  },
+  "started by %s": {
+    "value": "запустил %s"
+  },
+  "starting…": {
+    "value": "запуск…"
+  },
+  "the daemon does not trust this launcher": {
+    "value": "демон не доверяет этому лаунчеру"
+  },
+  "the launcher core is too old": {
+    "value": "ядро лаунчера слишком старое"
+  },
+  "the new core": {
+    "value": "новое ядро"
+  },
+  "the service is not loaded": {
+    "value": "служба не загружена"
+  },
+  "updating…": {
+    "value": "обновление…"
+  },
+  "✔ Already up to date (%s)": {
+    "value": "✔ Уже актуально (%s)"
+  },
+  "✔ Updated %s → %s": {
+    "value": "✔ Обновлено %s → %s"
+  },
+  "✔ Updated to %s. Commands are not available in this core version": {
+    "value": "✔ Обновлено до %s. Команды недоступны в этой версии ядра"
+  },
+  "✖ %s did not come up, rolled back to %s": {
+    "value": "✖ %s не поднялось, откат на %s"
+  },
+  "✖ The command is no longer in daemon.json": {
+    "value": "✖ Команды больше нет в daemon.json"
+  },
+  "✖ The daemon did not come back": {
+    "value": "✖ Демон не вернулся"
+  },
+  "Paste the invite printed by the daemon and click Pair. Installing or updating the service pairs the launcher automatically, so an invite is only needed when that did not happen:\n\n- \"Mint an invite\" in the Pairing section issues a new invite and pairs with it (Windows asks for administrator rights).\n- Or run the command below in a terminal opened as administrator, then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS.": {
+    "value": "Вставьте приглашение, которое печатает демон, и нажмите «Сопрячь». Установка или обновление службы сопрягает лаунчер автоматически, поэтому приглашение нужно, только если этого не произошло:\n\n- «Выпустить приглашение» в разделе Pairing выпускает новое приглашение и сопрягается по нему (Windows запросит права администратора).\n- Или выполните команду ниже в консоли, открытой от имени администратора, затем вставьте напечатанное приглашение в поле сопряжения.\n\nКод одноразовый — сгорает после успешного сопряжения. Поле секрета нужно только для демонов без TLS."
+  },
+  "Paste the invite printed by the daemon and click Pair. Where to get one:\n\n- Installing the service prints an invite at the end of its Terminal output (Core section).\n- For a fresh invite run the command below (copy or open in Terminal), then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS.": {
+    "value": "Вставьте приглашение, которое печатает демон, и нажмите «Сопрячь». Где его взять:\n\n- Установка службы печатает приглашение в конце вывода в терминале (раздел Core).\n- Свежее приглашение — команда ниже (скопируйте или откройте в терминале), затем вставьте напечатанное приглашение в поле сопряжения.\n\nКод одноразовый — сгорает после успешного сопряжения. Поле секрета нужно только для демонов без TLS."
+  },
+  "Open Not running": {
+    "value": "Открыть Not running"
   }
 }
