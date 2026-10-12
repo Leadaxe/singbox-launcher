@@ -410,11 +410,14 @@ LxBox, которых в модели лаунчера нет), `disabled{}` (ф
 | `rules[]` `kind: srs` | `update_interval_hours` | integer ≥ 0 (168) | период обновления наборов |
 | `rules[]` `kind: inline` | `verbatim` | bool (`false`) | тело, которое типизированная модель LxBox не выражает; лаунчер не пишет и не читает |
 | `dns.servers[]` | `description` | string | описание сервера |
+| `subscription`, `folder`, `server`, `nodes[]` `kind: server` | `tls` | `{fragment?: bool, record_fragment?: bool, fallback_delay?: string, mixed_case_sni?: bool}` (`$defs/tlsPolicy`, контракт 1.1.117, LxBox §636) | TLS-фрагментация по уровням. Каждое поле трёхзначное: **отсутствует = наследовать** с уровня выше, значение — своё, `false` ниже бьёт `true` выше. Разрешение: узел (`server` / член папки) → источник (`subscription` / `folder`) → глобальные `vars` `tls_fragment` / `tls_record_fragment` / `tls_fragment_fallback_delay` / `tls_mixed_case_sni` (переносимые, без изменений). У узла подписки своей записи нет — уровень узла пропускается. `fragment` → `tls.fragment` ядра, `record_fragment` → `tls.record_fragment`, `fallback_delay` → `tls.fragment_fallback_delay` (строка длительности ядра: `500ms`, `1s`), `mixed_case_sni` — `server_name` в случайном регистре, пост-шаг сборки LxBox, не поле ядра. Пишутся только заданные поля; пустой объект не пишется и не требуется. Ключи внутри `tls` сверх четырёх — законны (валидация не падает), читатель их игнорирует |
 
 НЕ объявлено: DNS-правило `kind: srs` — у лаунчера такого вида нет, и LxBox
-называет потерю `backup_local_only_dropped` до отдельного решения. Кейс —
-`corpus/backup/v10_lxbox_fields`: все поля таблицы в одном файле, импорт у
-лаунчера без предупреждений, состояние такое же, как без них.
+называет потерю `backup_local_only_dropped` до отдельного решения. Кейсы —
+`corpus/backup/v10_lxbox_fields` (все поля таблицы до 1.1.117 в одном файле) и
+`corpus/backup/v10_lxbox_tls` (`tls` на подписке, корневом сервере, папке и
+члене папки): импорт у лаунчера без предупреждений, состояние такое же, как
+без них.
 
 ### `rules[]`
 

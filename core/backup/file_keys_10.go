@@ -110,12 +110,21 @@ var (
 // переезжало бы в state.json.
 var (
 	lxboxSourceKeys10 = map[string]map[string]bool{
-		"subscription": {"detour_policy": true, "import_rules": true, "import_rules_enabled": true, "on_update_action": true},
+		// tls — TLS-фрагментация по уровням узел → источник → глобальные vars
+		// (контракт 1.1.117, LxBox §636): у подписки и папки — общая для
+		// узлов контейнера, у сервера — своя.
+		"subscription": {"detour_policy": true, "import_rules": true, "import_rules_enabled": true, "on_update_action": true, "tls": true},
 		// tag_policy у сервера — ключ записи и так (Source10.TagPolicy); у
 		// корневого сервера лаунчер его отбрасывает при разборе (decode10Source).
-		"server": {"detour_policy": true},
-		"folder": {"detour_policy": true, "ping_url": true, "ping_timeout_ms": true},
+		"server": {"detour_policy": true, "tls": true},
+		"folder": {"detour_policy": true, "ping_url": true, "ping_timeout_ms": true, "tls": true},
 		"chain":  {"label": true},
+	}
+	// lxboxNodeKeys10 — член папки: своя TLS-фрагментация у сервера (контракт
+	// 1.1.117). Таблица отдельная от lxboxSourceKeys10: у члена нет полей
+	// контейнера, и общий список молчал бы на ping_url у узла.
+	lxboxNodeKeys10 = map[string]map[string]bool{
+		"server": {"tls": true},
 	}
 	lxboxGroupKeys10 = map[string]bool{"members_rule": true, "pool_badge": true}
 	lxboxRuleKeys10  = map[string]map[string]bool{
@@ -185,7 +194,7 @@ func scanUnknown10(data []byte) []Warning {
 
 	sc.arrayKinds(root, "sources", "sources", source10Keys, lxboxSourceKeys10, "tag", func(where string, item map[string]json.RawMessage) {
 		sc.scanSourceBody10(where, item)
-		sc.array(item, where+".nodes", "nodes", node10Keys, "tag", sc.scanSourceBody10)
+		sc.arrayKinds(item, where+".nodes", "nodes", node10Keys, lxboxNodeKeys10, "tag", sc.scanSourceBody10)
 	})
 	sc.array(root, "directions", "directions", directionKeys, "tag", sc.scanDirectionBody)
 	sc.arrayKinds(root, "rules", "rules", rule10Keys, lxboxRuleKeys10, "name", nil)

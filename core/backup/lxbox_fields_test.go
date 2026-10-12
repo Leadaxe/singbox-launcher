@@ -16,7 +16,18 @@ import (
 // лаунчера это поле контейнера, и у корневого сервера оно не должно ни
 // попасть в состояние, ни поменять финальный тег.
 func TestLxBoxSideFieldsLeaveStateUnchanged(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join(backupCorpusRelPath, "v10_lxbox_fields.backup.json"))
+	// v10_lxbox_fields — все поля стороны LxBox до контракта 1.1.117;
+	// v10_lxbox_tls — поле tls (1.1.117) на подписке, сервере, папке и
+	// члене папки, с неизвестным ключом внутри объекта.
+	for _, name := range []string{"v10_lxbox_fields", "v10_lxbox_tls"} {
+		t.Run(name, func(t *testing.T) {
+			checkLxBoxSideFieldsLeaveStateUnchanged(t, name)
+		})
+	}
+}
+
+func checkLxBoxSideFieldsLeaveStateUnchanged(t *testing.T, name string) {
+	raw, err := os.ReadFile(filepath.Join(backupCorpusRelPath, name+".backup.json"))
 	if err != nil {
 		t.Skipf("корпус недоступен: %v", err)
 	}
@@ -101,13 +112,14 @@ func stripLxBoxSideFields(t *testing.T, raw []byte) []byte {
 	for i, rawSrc := range sources {
 		src := obj(rawSrc)
 		drop(src, "detour_policy", "import_rules", "import_rules_enabled", "on_update_action",
-			"ping_url", "ping_timeout_ms", "label")
+			"ping_url", "ping_timeout_ms", "label", "tls")
 		if string(src["kind"]) == `"server"` {
 			drop(src, "tag_policy")
 		}
 		if nodes := arr(src["nodes"]); len(nodes) > 0 {
 			for j, rawNode := range nodes {
 				node := obj(rawNode)
+				drop(node, "tls")
 				if group := obj(node["group"]); group != nil {
 					drop(group, "members_rule", "pool_badge")
 					node["group"] = enc(group)

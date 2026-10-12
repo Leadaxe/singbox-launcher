@@ -1,0 +1,26 @@
+{
+  "rules": [],
+  "warnings": [],
+  "subscriptions": {
+    "https://example-1.com/sub-lxbox-tls": {
+      "label": "Provider",
+      "prefix": "",
+      "postfix": "",
+      "enabled": true,
+      "nodes": []
+    }
+  },
+  "root_servers": [
+    "relay-root"
+  ],
+  "folders": {
+    "Work": ["de-1", "de-2"]
+  },
+  "detours": {},
+  "vars": {
+    "tls_fragment": "false",
+    "tls_record_fragment": "false",
+    "tls_fragment_fallback_delay": "500ms",
+    "tls_mixed_case_sni": "false"
+  }
+}
