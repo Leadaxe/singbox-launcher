@@ -5563,5 +5563,8 @@
   },
   "Open Not running": {
     "value": "Открыть Not running"
+  },
+  "⚠ Updated to %s, but the core did not start: %s — restart the service": {
+    "value": "⚠ Обновлено до %s, но ядро не запустилось: %s — перезапустите службу"
   }
 }

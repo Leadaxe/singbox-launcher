@@ -485,6 +485,11 @@ func (s *localServiceSource) Reconnect(done func(bool)) {
 	}()
 }
 
+// CoreState — ядро локального демона по последнему опросу.
+func (s *localServiceSource) CoreState() (string, string) {
+	return s.st.CoreStatus, s.st.LastError
+}
+
 // Version — версия ядра демона из последнего опроса.
 func (s *localServiceSource) Version() string {
 	if !s.st.PassportSeenAt.IsZero() && s.st.Passport.Version != "" {

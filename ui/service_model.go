@@ -78,6 +78,11 @@ type serviceCommander interface {
 	Reconnect(done func(ok bool))
 	// Version — версия ядра демона из кэша (паспорт или последний ответ).
 	Version() string
+	// CoreState — состояние ядра внутри демона по последнему ответу
+	// (Reconnect): status idle|started|fatal и last_error. Демон может
+	// вернуться после update с живым каналом, но без ядра (TUN занят
+	// старым процессом) — exit 0 команды этого не покажет.
+	CoreState() (status, lastErr string)
 }
 
 // serviceLevel — вердикт для точки на ⚙ и строки предупреждения машины.

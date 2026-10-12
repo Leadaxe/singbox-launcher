@@ -36,6 +36,7 @@ const (
 	serviceUpdateConfirmText   = "The daemon will download the latest core (~60 MB) and restart itself. Connections through it will drop for a few seconds. Continue?"
 	serviceUpdateNoCommandText = "✔ Updated to %s. Commands are not available in this core version"
 	serviceUpdateRolledText    = "✖ %s did not come up, rolled back to %s"
+	serviceUpdateCoreDownText  = "⚠ Updated to %s, but the core did not start: %s — restart the service"
 	serviceReconnectingText    = "Restarting the daemon — reconnecting… %d s"
 	serviceCommandGoneText     = "✖ The command is no longer in daemon.json"
 )
@@ -775,6 +776,17 @@ func (b *serviceCommandBar) finishUpdate(c lxdclient.Command) {
 	}
 	switch code {
 	case 0:
+		// Демон вернулся, но ядро внутри него не поднялось (на роутере:
+		// новый процесс стартовал раньше, чем старый отпустил TUN, и демон
+		// остался «staying up» без ядра). Для пользователя это не успех.
+		if status, lastErr := b.cm().CoreState(); status == "fatal" || (status != "started" && lastErr != "") {
+			if lastErr == "" {
+				lastErr = status
+			}
+			b.endUpdate(locale.Tf(serviceUpdateCoreDownText, now, lastErr), widget.WarningImportance)
+			b.v.selectTab(serviceTabNotRunning)
+			return
+		}
 		if now != "" && u.old != "" && now != u.old {
 			b.endUpdate(locale.Tf("✔ Updated %s → %s", u.old, now), widget.SuccessImportance)
 		} else {

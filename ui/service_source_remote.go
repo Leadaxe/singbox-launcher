@@ -37,6 +37,10 @@ type remoteServiceSource struct {
 	// окне Edit — перечитывается на каждом снапшоте).
 	d services.RemoteDaemon
 
+	// lastHealth — последний удачный ответ Reconnect (UI-поток): состояние
+	// ядра после самоперезапуска демона.
+	lastHealth services.RemoteHealth
+
 	stopOnce sync.Once
 	stop     chan struct{}
 }
@@ -212,8 +216,18 @@ func (s *remoteServiceSource) RunCommand(name string, done func(lxdclient.Comman
 func (s *remoteServiceSource) Reconnect(done func(bool)) {
 	go func() {
 		h := s.p.registry.HealthWithin(s.id, heartbeatTimeout)
-		fyne.Do(func() { done(h.Err == "") })
+		fyne.Do(func() {
+			if h.Err == "" {
+				s.lastHealth = h
+			}
+			done(h.Err == "")
+		})
 	}()
+}
+
+// CoreState — ядро демона по последнему удачному Reconnect (UI-поток).
+func (s *remoteServiceSource) CoreState() (string, string) {
+	return s.lastHealth.CoreStatus, s.lastHealth.LastError
 }
 
 // Version — версия ядра из паспорта записи (последний здоровый ответ).
