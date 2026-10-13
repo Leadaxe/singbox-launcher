@@ -52,8 +52,9 @@ SPEC 166.
 | Что | Где |
 |---|---|
 | Раннер | `core/build/contract_node_loop_test.go:48` `TestContractCorpusNodeLoops` — разделы `contract/corpus/template/for_each_node/`, `for_each_node_do/` |
-| Шаблон | `bin/wizard_template.json:1099` пресет `node-domains-fresh-dns` (`for_each_node_do`, `num: 10`, сразу за `traffic-processing`); `:1157` пресет `tailscale` на `for_each_node` + `#filter` (тип и `skip_presets`) |
-| Поздний дефолт | `core/state/rule_order.go:419` `LateDefaultPresetIDs` += `node-domains-fresh-dns` (TEMPLATE_LANG §6.7.5: существующие профили получают пресет один раз) |
+| Шаблон | `bin/wizard_template.json:1111` пресет `tailscale` на `for_each_node` + `#filter` (тип и `skip_presets`); пресет `node-domains-fresh-dns` снят в волне 3 (пример — TEMPLATE_LANG §6.7.4) |
+| Поздний дефолт | `core/state/rule_order.go:419` `LateDefaultPresetIDs` — только `tailscale` |
+| Резолвер-объект (волна 3) | `bin/wizard_template.json:595` переменная `dns_resolver_no_stale`, `:676` `route.default_domain_resolver` объектом; `core/build/route_merge.go:156` подмена резолвера меняет только `server`; чтение объекта — `core/template/loader.go:716`, `ui/configurator/business/wizard_dns.go:204`; замена выпавшего сервера — `core/build/dns_detour_sanitize.go` `resolverTarget`/`setResolverTarget` (обе формы и раньше); галка — `ui/configurator/tabs/dns_tab.go:356`; перенос — `core/backup/portable_vars.go:17`, `contract/registry/vars.json:59` |
 | Шум лога | `core/template/substitute.go:483` `warnUnknownPredicateVar` — путь `@node.…` без предупреждения (SPEC §2.2); `core/template/preset_loader.go:388` пустой default у `text_list` — не предупреждение |
 
 ## 6. Потребители UI (SPEC §5) — волна UI
