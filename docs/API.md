@@ -359,11 +359,14 @@ non-macOS without `/daemon/*`).
 | Method | Path | What it does |
 |---|---|---|
 | GET/POST | `/remote/machines` | List / pair `{invite, name?, addr?, secret?}` (invite is `addr#fingerprint#code`) |
-| GET/PATCH/DELETE | `/remote/machines/{id}` | Get / update `{name?,addr?,goos?,goarch?,ssh?,init_system?}` / remove (response warns: access is NOT revoked on the daemon side). `ssh` — `user@host[:port]` for the Service window's commands, `""` resets to `root@<host of addr>`; `init_system` — `""` (default by architecture) \| `systemd` \| `procd`; a value that does not parse → `400` |
+| GET/PATCH/DELETE | `/remote/machines/{id}` | Get / update `{name?,addr?,goos?,goarch?,ssh?,init_system?,auto_deploy_subscriptions?}` / remove (response warns: access is NOT revoked on the daemon side). `ssh` — `user@host[:port]` for the Service window's commands, `""` resets to `root@<host of addr>`; `init_system` — `""` (default by architecture) \| `systemd` \| `procd`; a value that does not parse → `400` |
 | POST | `/remote/machines/{id}/repair` | Re-pair `{invite, addr?, secret?}` with a fresh client key; the machine's profile is kept |
 | POST | `/remote/machines/{id}/profile/copy-from` | Copy wizard profile `{source_id, overwrite?}`; existing state without `overwrite=true` → `409` |
 
 A machine entry (list, `GET`, `PATCH`, pairing) also carries the Service window fields (SPEC 161), each omitted while empty: `ssh`, `init_system`, `core_warn_ack` (the core version for which Deploy no longer warns that the core is older than required) and `passport` — the last daemon passport cached in the registry (`version`, `executable`, `log_path`, `listen`, `tls`, `seen_at`), so the paths are known while the daemon is down. The state dir stays in `state_dir`.
+SPEC 164 adds `auto_deploy_subscriptions` (bool, always present) and `last_auto_deploy`
+(`{at, result, sha?, note?}`, omitted until the machine has been considered by the
+auto-deploy sweep; `result` ∈ `applied | skipped | failed | build_failed | unreachable | not_configured`).
 
 **Core & deploy:**
 
@@ -373,6 +376,7 @@ A machine entry (list, `GET`, `PATCH`, pairing) also carries the Service window 
 | POST | `/remote/machines/{id}/core/start` \| `stop` \| `rollback` | Core control (stop drops the VPN of the machine's clients — the API does not ask for confirmation) |
 | GET | `/remote/machines/{id}/config/active` \| `built` | Running config fetched from the machine / locally built one |
 | POST | `/remote/machines/{id}/deploy` | Resources → config (the same chain as the Deploy button). Optional body `{config:{…}}`. `422` = daemon rejected the config, running instance untouched |
+| POST | `/remote/machines/{id}/auto-deploy/run` | SPEC 164: consider the machine by the auto-deploy sweep right now, regardless of its flag — refresh the stale subscriptions of its profile (`?force_refresh=1` refreshes all of them), rebuild its config and, when the built sha256 matched the active one before the refresh and changed after it, deploy through the same chain as the button. Answers `{result, sha_before?, sha_after?, deployed, note?}`; a deploy that happened is already applied (the machine's core restarted). `503` when the launcher runs headless |
 
 **State (mirrors of `/state/*`):** `GET /remote/machines/{id}/state/full`,
 `GET/PATCH …/state/rules`, `…/state/dns`, `…/state/dns/rules`,

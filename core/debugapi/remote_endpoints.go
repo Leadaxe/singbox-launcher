@@ -17,6 +17,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -57,6 +58,16 @@ type RemoteAPI struct {
 	// неразборчивая версия — false. Замыкание, потому что debugapi не
 	// импортирует core (цикл). nil — core_outdated всегда false.
 	CoreOutdated func(running string) bool
+
+	// AutoDeployRun — SPEC 164 §4.4: рассмотреть машину авто-деплоем сейчас
+	// (обновить подписки профиля, пересобрать, при изменении только узлов —
+	// задеплоить). force — фетчить все подписки, не только устаревшие.
+	// nil — endpoint отвечает 503.
+	AutoDeployRun func(d services.RemoteDaemon, force bool) services.MachineAutoDeployOutcome
+	// MachineStateLock — per-machine мьютекс файла состояния машины,
+	// общий с обходом авто-деплоя (SPEC 164): PATCH …/state/* и обход не
+	// должны писать один файл одновременно. nil — у сервера свои.
+	MachineStateLock func(id string) *sync.Mutex
 }
 
 // ErrUIUnavailable — UI-override недоступен: лаунчер работает headless или
@@ -82,6 +93,7 @@ func (s *Server) remoteEndpoints() []apiEndpoint {
 		{"GET", "/remote/machines/{id}/config/active", true, "Running config fetched from the machine", s.handleRemoteConfigActive},
 		{"GET", "/remote/machines/{id}/config/built", true, "Locally built config of the machine", s.handleRemoteConfigBuilt},
 		{"POST", "/remote/machines/{id}/deploy", true, "Deploy resources + config to the machine", s.handleRemoteDeploy},
+		{"POST", "/remote/machines/{id}/auto-deploy/run", true, "Refresh the machine's subscriptions, rebuild and deploy if only nodes changed (?force_refresh=1)", s.handleRemoteAutoDeployRun},
 
 		// Профиль машины (wizard state) — зеркала /state/*.
 		{"GET", "/remote/machines/{id}/state/full", true, "Machine's full wizard state JSON", s.handleRemoteStateFull},
@@ -232,6 +244,10 @@ type machineView struct {
 	InitSystem  string                   `json:"init_system,omitempty"`
 	CoreWarnAck string                   `json:"core_warn_ack,omitempty"`
 	Passport    *services.RemotePassport `json:"passport,omitempty"`
+	// SPEC 164: флаг авто-деплоя обновлений подписок и журнал последнего
+	// рассмотрения машины обходом.
+	AutoDeploySubscriptions bool                       `json:"auto_deploy_subscriptions"`
+	LastAutoDeploy          *services.AutoDeployRecord `json:"last_auto_deploy,omitempty"`
 }
 
 func machineViewOf(d services.RemoteDaemon) machineView {
@@ -241,7 +257,9 @@ func machineViewOf(d services.RemoteDaemon) machineView {
 		GOOS: d.GOOS, GOARCH: d.GOARCH,
 		StateDir: d.StateDir, AddedAt: d.AddedAt,
 		SSH: d.SSH, InitSystem: d.InitSystem, CoreWarnAck: d.CoreWarnAck,
-		Passport: d.Passport,
+		Passport:                d.Passport,
+		AutoDeploySubscriptions: d.AutoDeploySubscriptions,
+		LastAutoDeploy:          d.LastAutoDeploy,
 	}
 }
 
@@ -323,13 +341,15 @@ func (s *Server) handleRemoteMachineByID(w http.ResponseWriter, r *http.Request)
 			// SSH: "" — сброс к root@<хост addr>. InitSystem: "" | systemd | procd.
 			SSH        *string `json:"ssh"`
 			InitSystem *string `json:"init_system"`
+			// SPEC 164: авто-деплой обновлений подписок.
+			AutoDeploySubscriptions *bool `json:"auto_deploy_subscriptions"`
 		}
 		if err := decodeJSONBody(r, &req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body: " + err.Error()})
 			return
 		}
-		if req.Name == nil && req.Addr == nil && req.GOOS == nil && req.GOARCH == nil && req.SSH == nil && req.InitSystem == nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "nothing to update: pass name, addr, goos, goarch, ssh and/or init_system"})
+		if req.Name == nil && req.Addr == nil && req.GOOS == nil && req.GOARCH == nil && req.SSH == nil && req.InitSystem == nil && req.AutoDeploySubscriptions == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "nothing to update: pass name, addr, goos, goarch, ssh, init_system and/or auto_deploy_subscriptions"})
 			return
 		}
 		cur, _, err := s.remote.Registry.Get(id)
@@ -378,6 +398,12 @@ func (s *Server) handleRemoteMachineByID(w http.ResponseWriter, r *http.Request)
 		if req.InitSystem != nil {
 			if err := s.remote.Registry.SetInitSystem(id, *req.InitSystem); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+				return
+			}
+		}
+		if req.AutoDeploySubscriptions != nil {
+			if err := s.remote.Registry.SetAutoDeploySubscriptions(id, *req.AutoDeploySubscriptions); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 				return
 			}
 		}
@@ -679,6 +705,33 @@ func (s *Server) handleRemoteDeploy(w http.ResponseWriter, r *http.Request) {
 		"resources_uploaded": res.ResourcesUploaded,
 		"config_sha":         res.ConfigSHA,
 	})
+}
+
+// handleRemoteAutoDeployRun — POST (SPEC 164 §4.4): рассмотреть машину
+// авто-деплоем сейчас, независимо от флага. ?force_refresh=1 — фетчить все
+// подписки машины, иначе только устаревшие. Ответ — исход обхода; деплой,
+// если он состоялся, уже применён (возможен разрыв трафика машины).
+func (s *Server) handleRemoteAutoDeployRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+		return
+	}
+	id, ok := s.remoteMachineID(w, r)
+	if !ok {
+		return
+	}
+	if s.remote.AutoDeployRun == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "auto-deploy is not wired in this process"})
+		return
+	}
+	d, _, err := s.remote.Registry.Get(id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	force := r.URL.Query().Get("force_refresh") == "1" || r.URL.Query().Get("force_refresh") == "true"
+	out := s.remote.AutoDeployRun(d, force)
+	writeJSON(w, http.StatusOK, out)
 }
 
 // --- UI-override (SPEC 100 §3.8) -----------------------------------------

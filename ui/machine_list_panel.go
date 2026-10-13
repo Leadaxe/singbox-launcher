@@ -19,6 +19,7 @@ import (
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/events"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
@@ -200,7 +201,49 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 	// действия пользователя и показывает зелёный маркер над лежащим сервером
 	// (см. ui/machine_heartbeat.go).
 	p.startHeartbeat()
+	// SPEC 164: сборка конфига машины живёт в презентере Мастера, обход
+	// авто-деплоя в core зовёт её через хук. Ставится здесь, потому что
+	// панель — единственный владелец цепочки «машина → Configure → Deploy».
+	ac.MachineConfigRebuildFunc = configurator.RebuildMachineConfig
+	if ac.EventBus != nil {
+		ac.EventBus.Subscribe(events.MachineAutoDeploy, func(e events.Event) {
+			payload, ok := e.Payload.(events.MachineAutoDeployPayload)
+			if !ok {
+				return
+			}
+			p.onAutoDeploy(payload)
+		})
+	}
 	return p.container
+}
+
+// onAutoDeploy — исход авто-деплоя машины (SPEC 164 §4.3): уведомление
+// системы без диалога (пользователь не смотрит на окно) и перерисовка
+// строки; у активной машины после applied ядро перезапустилось — список
+// узлов перечитывается, как после Deploy кнопкой.
+func (p *machineListPanel) onAutoDeploy(payload events.MachineAutoDeployPayload) {
+	title := locale.Tf("Auto-deploy: %s", payload.Name)
+	var body string
+	switch payload.Result {
+	case services.AutoDeployApplied:
+		body = locale.T("Config updated from subscriptions and applied.")
+	case services.AutoDeployUnreachable:
+		body = locale.Tf("Machine unreachable: %s", payload.Note)
+	default:
+		body = locale.Tf("Failed: %s", payload.Note)
+	}
+	if app := fyne.CurrentApp(); app != nil {
+		app.SendNotification(&fyne.Notification{Title: title, Content: body})
+	}
+	fyne.Do(func() {
+		p.Reload()
+		if payload.Result != services.AutoDeployApplied {
+			return
+		}
+		if activeID, _, ok := GetLxdRemoteOverride(); ok && activeID == payload.ID {
+			p.loadNodes()
+		}
+	})
 }
 
 // Reload перечитывает реестр и перерисовывает строки.
@@ -666,6 +709,15 @@ func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services
 		{locale.T("Active config sha256"), h.ActiveSHA},
 		{locale.T("Last-good config sha256"), h.LastGoodSHA},
 		{locale.T("Built config sha256 (local)"), p.builtConfigSHA(d.ID)},
+	}
+	// SPEC 164: флаг и журнал авто-деплоя.
+	autoDeploy := locale.T("off")
+	if d.AutoDeploySubscriptions {
+		autoDeploy = locale.T("on")
+	}
+	rows = append(rows, [2]string{locale.T("Auto-deploy"), autoDeploy})
+	if rec := d.LastAutoDeploy; rec != nil {
+		rows = append(rows, [2]string{locale.T("Last auto-deploy"), autoDeployRecordText(*rec, time.Now())})
 	}
 	if h.InterruptedApply {
 		rows = append(rows, [2]string{locale.T("Interrupted apply"), locale.T("yes — the core runs the last-good config")})
@@ -1273,3 +1325,30 @@ func (r *revealRenderer) MinSize() fyne.Size {
 func (r *revealRenderer) Refresh()                     { canvas.Refresh(r.box) }
 func (r *revealRenderer) Objects() []fyne.CanvasObject { return []fyne.CanvasObject{r.box.content} }
 func (r *revealRenderer) Destroy()                     {}
+
+// autoDeployRecordText — строка журнала авто-деплоя для окна ⓘ:
+// «applied · 2h ago · 1 subscription(s) changed: …».
+func autoDeployRecordText(rec services.AutoDeployRecord, now time.Time) string {
+	parts := []string{rec.Result}
+	if at, err := time.Parse(time.RFC3339, rec.At); err == nil {
+		parts = append(parts, agoText(now.Sub(at)))
+	}
+	if rec.Note != "" {
+		parts = append(parts, rec.Note)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// agoText — «just now» / «5m ago» / «2h ago» / «3d ago».
+func agoText(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return locale.T("just now")
+	case d < time.Hour:
+		return locale.Tf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return locale.Tf("%dh ago", int(d.Hours()))
+	default:
+		return locale.Tf("%dd ago", int(d.Hours()/24))
+	}
+}

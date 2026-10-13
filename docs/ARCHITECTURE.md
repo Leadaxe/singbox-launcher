@@ -1293,3 +1293,46 @@ Rules the split keeps:
   the diagnosis returns full titles (`✖ Not running — <reason>`) and `serviceTabNone`
   closes everything. `core.CommandsRecipe` is a pure function behind the
   "Suggested commands" section.
+
+### 11.9 Machine subscriptions: auto-refresh and auto-deploy (SPEC 164)
+
+The hourly auto-update loop (`core/auto_update.go`) only walks the local
+`state.json`. A machine's profile (`wizard_states/remote/<id>/state.json`)
+used to change only through its Configurator, and its `config.json` reached
+the machine only through the Deploy button. SPEC 164 closes that gap without
+a second build or delivery path:
+
+- **Consent is per machine.** `RemoteDaemon.AutoDeploySubscriptions`
+  (registry, default off, a checkbox in the machine's Edit window) is the only
+  reason the loop talks to a machine in the background — the heartbeat rule
+  "no network to registry entries without being asked" still holds.
+- **Sweep** (`core/machine_auto_deploy.go`, `runMachineSweep`) runs after the
+  local sweep on startup and on every heartbeat tick, under the same gates
+  (auto-update enabled, not asleep, no data move), sequentially per flagged
+  machine: `HealthWithin` → sha256 of the built config (`sha_before`) →
+  `refreshStaleSubscriptionsAt` on the machine's state file (the same
+  `refreshOneSubscriptionSource` as everywhere, under the machine's lock
+  `AppController.MachineStateLock`, which the debug API's `/state/*` PATCHes
+  share) → rebuild through `MachineConfigRebuildFunc` (the hook `ui` sets to
+  `configurator.RebuildMachineConfig`, i.e. the Configurator's own Save) →
+  `sha_after` → decision → `RemoteRegistry.Deploy`, the button's chain.
+- **Decision** (`autoDeployDecision`, pure, table-tested): deploy only when
+  `sha_before == active_sha` (nothing manual was left undeployed) and
+  `sha_after != sha_before`, and the machine is quiet — core `started`,
+  `active == last_good`, no interrupted apply, core not older than required
+  unless acknowledged. Anything else is `skipped` with the reasons in the
+  machine's journal; the orange dot on Deploy keeps asking for a manual one.
+- **Journal and signals.** Every consideration writes `LastAutoDeploy`
+  (`{at, result, sha?, note?}`) into the registry entry; the ⓘ window shows
+  it. `applied` / `failed` / `build_failed` / `unreachable` publish
+  `events.MachineAutoDeploy`; the machine panel turns it into a system
+  notification (no dialog — nobody is watching) and reloads the row, and the
+  Remote tab's node list when the active machine was redeployed. A state-file
+  rewrite also publishes `StateChanged{Source: auto-update, MachineID}` so an
+  open Configurator of that machine offers to reload instead of overwriting.
+- **Manual run:** `POST /remote/machines/{id}/auto-deploy/run[?force_refresh=1]`
+  performs one consideration now and returns the outcome.
+- **Limits:** works while the launcher runs and the machine is reachable from
+  it; one attempt per tick per machine, a failed fetch gets one 15-second
+  refresh retry that never deploys by itself.
+

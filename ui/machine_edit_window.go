@@ -25,6 +25,7 @@ const (
 	copyHintText          = "Copies the wizard setup — sources, rules, DNS and variables — from another machine onto this one, so you don't build the same thing twice. Pairing is NOT copied: each machine keeps its own client key, because one shared key would mean revoking access on one machine revokes it on both. The built config and rule-set files are rebuilt for this machine on the next Save and Deploy."
 	repairConfirmBodyText = "Issue a new client key for %s?\n\nThe current key stops being this launcher's credential and stays on the machine as a leftover — remove it there with `sing-box lxd client remove`. Settings of this machine are not touched."
 	repairHintText        = "Use this when the channel broke on the machine's side: the daemon was reinstalled, its state directory was wiped, this client was revoked, or its server certificate changed and the pin no longer matches. Name, address, platform and every setting of this machine are kept — only the pin and the client key are replaced."
+	autoDeployHintText    = "Refresh this machine's subscriptions hourly and deploy when only the nodes changed. The launcher must be running; a deploy restarts the machine's core for a moment."
 )
 
 // Окно правки удалённой машины (SPEC 098 §2.1).
@@ -115,6 +116,14 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 		reported.Importance = widget.LowImportance
 		form.Append("", reported)
 	}
+	// SPEC 164: согласие на фоновые вызовы к машине — флаг в её записи.
+	autoDeployCheck := widget.NewCheck(locale.T("Auto-deploy subscription updates"), nil)
+	autoDeployCheck.SetChecked(d.AutoDeploySubscriptions)
+	autoDeployHint := widget.NewLabel(locale.T(autoDeployHintText))
+	autoDeployHint.Wrapping = fyne.TextWrapWord
+	autoDeployHint.Importance = widget.LowImportance
+	form.Append("", autoDeployCheck)
+	form.Append("", autoDeployHint)
 
 	saveBtn := widget.NewButton(locale.T("Save"), func() {
 		// Цель ssh проверяется до записи: иначе имя и адрес сохранились бы,
@@ -136,6 +145,10 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 			}
 		}
 		if err := registry.SetSSH(d.ID, sshEntry.Text); err != nil {
+			dialog.ShowError(err, win)
+			return
+		}
+		if err := registry.SetAutoDeploySubscriptions(d.ID, autoDeployCheck.Checked); err != nil {
 			dialog.ShowError(err, win)
 			return
 		}

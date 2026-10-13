@@ -5566,5 +5566,44 @@
   },
   "⚠ Updated to %s, but the core did not start: %s — restart the service": {
     "value": "⚠ Обновлено до %s, но ядро не запустилось: %s — перезапустите службу"
+  },
+  "Auto-deploy subscription updates": {
+    "value": "Авто-деплой обновлений подписок"
+  },
+  "Refresh this machine's subscriptions hourly and deploy when only the nodes changed. The launcher must be running; a deploy restarts the machine's core for a moment.": {
+    "value": "Раз в час обновлять подписки этой машины и отправлять конфиг, если изменились только узлы. Лаунчер должен быть запущен; отправка на мгновение перезапускает ядро машины."
+  },
+  "Auto-deploy": {
+    "value": "Авто-деплой"
+  },
+  "Last auto-deploy": {
+    "value": "Последний авто-деплой"
+  },
+  "on": {
+    "value": "вкл"
+  },
+  "Auto-deploy: %s": {
+    "value": "Авто-деплой: %s"
+  },
+  "Config updated from subscriptions and applied.": {
+    "value": "Конфиг обновлён из подписок и применён."
+  },
+  "Machine unreachable: %s": {
+    "value": "Машина недоступна: %s"
+  },
+  "Failed: %s": {
+    "value": "Ошибка: %s"
+  },
+  "just now": {
+    "value": "только что"
+  },
+  "%dm ago": {
+    "value": "%d мин назад"
+  },
+  "%dh ago": {
+    "value": "%d ч назад"
+  },
+  "%dd ago": {
+    "value": "%d дн назад"
   }
 }

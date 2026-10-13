@@ -86,6 +86,59 @@ type RemoteDaemon struct {
 	// окна Service видны и когда демон лёг. state_dir не дублируется — он
 	// в StateDir.
 	Passport *RemotePassport `json:"passport,omitempty"`
+	// AutoDeploySubscriptions — SPEC 164: лаунчер сам обновляет подписки
+	// профиля этой машины по часовому heartbeat и деплоит конфиг, когда
+	// изменились только узлы. Флаг — согласие на фоновые сетевые вызовы к
+	// машине; по умолчанию выключен.
+	AutoDeploySubscriptions bool `json:"auto_deploy_subscriptions,omitempty"`
+	// LastAutoDeploy — итог последнего рассмотрения машины обходом
+	// авто-деплоя (SPEC 164 §4.3). Перезаписывается каждым обходом, где
+	// машина рассматривалась; nil — ещё не рассматривалась.
+	LastAutoDeploy *AutoDeployRecord `json:"last_auto_deploy,omitempty"`
+}
+
+// AutoDeployRecord — одна запись журнала авто-деплоя машины (SPEC 164 §4.3).
+type AutoDeployRecord struct {
+	// At — когда машина рассматривалась (RFC3339 UTC).
+	At string `json:"at"`
+	// Result — AutoDeployApplied | AutoDeploySkipped | AutoDeployFailed |
+	// AutoDeployBuildFailed | AutoDeployUnreachable | AutoDeployNotConfigured.
+	Result string `json:"result"`
+	// SHA — sha256 отправленного конфига (только при applied).
+	SHA string `json:"sha,omitempty"`
+	// Note — одна строка причины (журнал, не локализуется).
+	Note string `json:"note,omitempty"`
+}
+
+// Исходы авто-деплоя (SPEC 164 §4.2).
+const (
+	AutoDeployApplied       = "applied"
+	AutoDeploySkipped       = "skipped"
+	AutoDeployFailed        = "failed"
+	AutoDeployBuildFailed   = "build_failed"
+	AutoDeployUnreachable   = "unreachable"
+	AutoDeployNotConfigured = "not_configured"
+)
+
+// MachineAutoDeployOutcome — результат одного рассмотрения машины
+// авто-деплоем (SPEC 164 §4.4): то, что отдаёт Debug API и что ложится в
+// LastAutoDeploy. Живёт в services, а не в core, чтобы debugapi мог
+// сериализовать его без импорта core (цикл).
+type MachineAutoDeployOutcome struct {
+	Result    string `json:"result"`
+	SHABefore string `json:"sha_before,omitempty"`
+	SHAAfter  string `json:"sha_after,omitempty"`
+	Deployed  bool   `json:"deployed"`
+	Note      string `json:"note,omitempty"`
+}
+
+// Record — запись журнала по исходу (отметка времени — сейчас).
+func (o MachineAutoDeployOutcome) Record(now time.Time) AutoDeployRecord {
+	rec := AutoDeployRecord{At: now.UTC().Format(time.RFC3339), Result: o.Result, Note: o.Note}
+	if o.Deployed {
+		rec.SHA = o.SHAAfter
+	}
+	return rec
 }
 
 // RemotePassport — кэш паспорта демона машины (SPEC 161 §7).
@@ -734,6 +787,28 @@ func (r *RemoteRegistry) SetCoreWarnAck(id, version string) error {
 			return false
 		}
 		d.CoreWarnAck = value
+		return true
+	})
+}
+
+// SetAutoDeploySubscriptions включает/выключает авто-деплой обновлений
+// подписок машины (SPEC 164 §4.1).
+func (r *RemoteRegistry) SetAutoDeploySubscriptions(id string, on bool) error {
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		if d.AutoDeploySubscriptions == on {
+			return false
+		}
+		d.AutoDeploySubscriptions = on
+		return true
+	})
+}
+
+// SetLastAutoDeploy записывает итог рассмотрения машины обходом
+// авто-деплоя (SPEC 164 §4.3). Пишется всегда: отметка времени нова.
+func (r *RemoteRegistry) SetLastAutoDeploy(id string, rec AutoDeployRecord) error {
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		cp := rec
+		d.LastAutoDeploy = &cp
 		return true
 	})
 }

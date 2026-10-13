@@ -51,6 +51,11 @@ const (
 	// VpnStateChanged — sing-box перешёл из/в running-состояние.
 	// Payload: VpnStateChangedPayload.
 	VpnStateChanged
+
+	// MachineAutoDeploy — обход авто-деплоя (SPEC 164) рассмотрел машину и
+	// получил исход, о котором стоит сказать: applied / failed /
+	// build_failed / unreachable. Payload: MachineAutoDeployPayload.
+	MachineAutoDeploy
 )
 
 // String — человеко-читаемое имя для логов и тестов.
@@ -63,6 +68,8 @@ func (k EventKind) String() string {
 		return "ConfigBuilt"
 	case VpnStateChanged:
 		return "VpnStateChanged"
+	case MachineAutoDeploy:
+		return "MachineAutoDeploy"
 	default:
 		return "Unknown"
 	}

@@ -168,6 +168,37 @@ type AppController struct {
 	// поэтому ожидание lock'а не блокирует main thread; пользователь
 	// видит spinner на per-source Refresh кнопке до освобождения.
 	SubscriptionMu sync.Mutex
+
+	// MachineConfigRebuildFunc — пересборка config.json удалённой машины из
+	// её сохранённого состояния (SPEC 164): тот же шаг, что Save Мастера
+	// машины. Сборка живёт в ui/configurator (презентер), поэтому core
+	// получает её хуком, который ставит UI при старте; nil — headless, обход
+	// авто-деплоя завершается build_failed с понятной записью.
+	MachineConfigRebuildFunc func(machineID string) (string, error)
+
+	// machineStateMus — per-machine мьютексы на load→mutate→save файла
+	// состояния машины (SPEC 164): обход авто-деплоя и PATCH Debug API
+	// (/remote/machines/{id}/state/*) не должны писать один файл
+	// одновременно. Per machine, не глобально: две разные машины не
+	// выстраиваются в очередь.
+	machineStateMusMu sync.Mutex
+	machineStateMus   map[string]*sync.Mutex
+}
+
+// MachineStateLock — мьютекс файла состояния машины id (SPEC 164); создаётся
+// лениво. Один и тот же объект для обхода авто-деплоя и Debug API.
+func (ac *AppController) MachineStateLock(id string) *sync.Mutex {
+	ac.machineStateMusMu.Lock()
+	defer ac.machineStateMusMu.Unlock()
+	if ac.machineStateMus == nil {
+		ac.machineStateMus = map[string]*sync.Mutex{}
+	}
+	m, ok := ac.machineStateMus[id]
+	if !ok {
+		m = &sync.Mutex{}
+		ac.machineStateMus[id] = m
+	}
+	return m
 }
 
 // RunningState - structure for tracking the VPN's running state.

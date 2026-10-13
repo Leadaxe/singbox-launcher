@@ -14,7 +14,12 @@ package core
 //     W13) берёт тот же SubscriptionMu на свой короткий load→mutate→save.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"net/url"
+	"sync"
 	"time"
 
 	"singbox-launcher/core/config"
@@ -454,4 +459,99 @@ func (svc *ConfigService) RefreshSingleSubscription(sourceID string) (*state.Sou
 		}
 	}
 	return src, nil
+}
+
+// machineSubscriptionsRefresh — итог обхода подписок одного файла состояния
+// (SPEC 164 §4.2): сколько источников сменили состав узлов, какие упали.
+type machineSubscriptionsRefresh struct {
+	// Changed — ID подписок, у которых изменился состав nodes[].
+	Changed []string
+	// Failed — ошибки фетча по ID (nodes[] у них не тронуты, SPEC 113-A).
+	Failed map[string]string
+	// Titles — подписи изменившихся подписок для журнала (profile-title или
+	// имя, иначе хвост URL).
+	Titles []string
+}
+
+// refreshStaleSubscriptionsAt — обход подписок ОДНОГО файла состояния
+// (SPEC 164): enabled + URL + устаревшие по effectiveReload (все — при
+// force). Используется только обходом машин: локальный путь остаётся
+// per-source с retry-таймерами (runScheduledRefresh) и здесь не трогается.
+//
+// mu — мьютекс этого файла: держится на весь load→mutate→save, как
+// SubscriptionMu у локального. Фетч идёт под ним же — обход машины
+// последовательный, а PATCH Debug API к тому же файлу обязан ждать, иначе
+// вторая запись перетирает первую.
+//
+// «Изменился состав» считается по сериализации nodes[] до и после merge, а не
+// по возврату refreshOneSubscriptionSource: тот отвечает true и на провал
+// (обновлён updateStatus), а деплоить по провалу нечего.
+func (svc *ConfigService) refreshStaleSubscriptionsAt(statePath string, mu sync.Locker,
+	settings locale.Settings, force bool, now time.Time) (machineSubscriptionsRefresh, error) {
+	out := machineSubscriptionsRefresh{Failed: map[string]string{}}
+	if mu != nil {
+		mu.Lock()
+		defer mu.Unlock()
+	}
+	s, err := state.Load(statePath)
+	if err != nil {
+		return out, fmt.Errorf("load state: %w", err)
+	}
+	dirty := false
+	for i := range s.Sources {
+		src := &s.Sources[i]
+		if src.Kind != state.SourceKindSubscription || !src.Enabled || src.URL == "" {
+			continue
+		}
+		if !force && !sourceIsStale(src, settings, now) {
+			continue
+		}
+		before := nodesDigest(src.Nodes)
+		if !refreshOneSubscriptionSource(src, settings) {
+			continue
+		}
+		dirty = true
+		if src.UpdateStatus != nil && src.UpdateStatus.LastStatus == "err" {
+			out.Failed[src.ID] = src.UpdateStatus.LastErrorMsg
+			continue
+		}
+		if nodesDigest(src.Nodes) != before {
+			out.Changed = append(out.Changed, src.ID)
+			out.Titles = append(out.Titles, subscriptionTitle(src))
+		}
+	}
+	if dirty {
+		if err := s.Save(statePath); err != nil {
+			return out, fmt.Errorf("save state after refresh: %w", err)
+		}
+	}
+	return out, nil
+}
+
+// nodesDigest — sha256 сериализации nodes[]; "" у пустого списка.
+func nodesDigest(nodes []state.Node) string {
+	if len(nodes) == 0 {
+		return ""
+	}
+	raw, err := json.Marshal(nodes)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// subscriptionTitle — подпись подписки для журнала: profile-title провайдера,
+// иначе имя, иначе хост URL.
+func subscriptionTitle(src *state.Source) string {
+	if src.Meta != nil && src.Meta.ProfileTitle != "" {
+		return src.Meta.ProfileTitle
+	}
+	if src.Name != "" {
+		return src.Name
+	}
+	if u, err := url.Parse(src.URL); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return src.ID
 }
