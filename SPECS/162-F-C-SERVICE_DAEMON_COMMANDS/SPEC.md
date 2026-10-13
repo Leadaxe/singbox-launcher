@@ -1,6 +1,6 @@
 # SPEC 162 — Окно Service: паспорт платформы, команды демона, troubleshooting аккордеоном
 
-Статус: N (new). Тип: F. Дата: 2026-10-12. Продолжение SPEC 161.
+Статус: C (complete, 2026-10-13). Тип: F. Дата: 2026-10-12. Продолжение SPEC 161.
 
 Сторона ядра: SPEC 127 (`/admin/info` с платформой и init), SPEC 128
 (`/admin/commands`), SPEC 129 (`sing-box lxd update`) форка sing-box-lx,
