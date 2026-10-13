@@ -9,6 +9,7 @@
         "chrome_padding_psk_shuffle",
         "chrome_pq",
         "chrome_pq_psk",
+        "chrome_155",
         "firefox",
         "edge",
         "safari",
@@ -19,7 +20,7 @@
         "random",
         "randomized"
       ],
-      "note": "Зеркало uTLSClientHelloID ядра (common/tls/utls_client.go; память utls-fp-allowlist). СВЕРЕНО с tls.json: uri /tls/params/fp/values и body /tls/utls/fingerprint/values совпадают с этим списком байт-в-байт (у body дополнительно есть \"\" — отсутствие значения). Прежний список Go (singboxUTLSFingerprints, удалён: Go читает этот allowlist) и Dart (kUtlsFingerprints, utls_fingerprint.dart:21-37) тоже байт-идентичны. Xray-алиасы канонизируются по префиксу hello* (hellochrome_120 → chrome) в обоих; префикс hellorandom→random (без 'ized') есть только в Go (таблица tls.fp_dialect реестра) — целевое = вариант Go (DRIFT §7.1): HelloRandom реальная Xray-запись, а Dart уводит её в junk и подменяет случайный отпечаток хромовым молча. РАЗРЫВ ДЕГРАДАЦИИ ЗАКРЫТ (DRIFT §2(c), целевое = вариант Dart): мусор вне списка → coerce 'chrome' + код utls_fp_unknown на ВСЕХ путях. Было: Go срезал в '' (URI-путь затем подставлял 'random', санитайзер — 'chrome', эмиттер снимал ключ), Dart заменял на 'chrome' с кодом — расходились и identity, и поведение. Снять блок нельзя: под REALITY ядро требует uTLS (B «uTLS is required by reality client»), а вне REALITY «снять» = молча сменить ClientHello на голый Go-TLS, что отличимо на DPI. Сам мусор даёт B «unknown uTLS fingerprint». Канонический список сверять с uTLSClientHelloID в module cache, не по памяти."
+      "note": "Зеркало uTLSClientHelloID ядра (common/tls/utls_client.go; память utls-fp-allowlist). chrome_155 — с ядра 1.14.2-lx.13 (SPEC 118 ядра: opt-in пресет Chrome 155 из форка utls, `chrome` остаётся 133; добавлен контрактом 1.1.118 при сверке body.core с 1.14.3-lx.17). СВЕРЕНО с tls.json: uri /tls/params/fp/values и body /tls/utls/fingerprint/values совпадают с этим списком байт-в-байт (у body дополнительно есть \"\" — отсутствие значения). Прежний список Go (singboxUTLSFingerprints, удалён: Go читает этот allowlist) и Dart (kUtlsFingerprints, utls_fingerprint.dart:21-37) тоже байт-идентичны. Xray-алиасы канонизируются по префиксу hello* (hellochrome_120 → chrome) в обоих; префикс hellorandom→random (без 'ized') есть только в Go (таблица tls.fp_dialect реестра) — целевое = вариант Go (DRIFT §7.1): HelloRandom реальная Xray-запись, а Dart уводит её в junk и подменяет случайный отпечаток хромовым молча. РАЗРЫВ ДЕГРАДАЦИИ ЗАКРЫТ (DRIFT §2(c), целевое = вариант Dart): мусор вне списка → coerce 'chrome' + код utls_fp_unknown на ВСЕХ путях. Было: Go срезал в '' (URI-путь затем подставлял 'random', санитайзер — 'chrome', эмиттер снимал ключ), Dart заменял на 'chrome' с кодом — расходились и identity, и поведение. Снять блок нельзя: под REALITY ядро требует uTLS (B «uTLS is required by reality client»), а вне REALITY «снять» = молча сменить ClientHello на голый Go-TLS, что отличимо на DPI. Сам мусор даёт B «unknown uTLS fingerprint». Канонический список сверять с uTLSClientHelloID в module cache, не по памяти."
     },
     "ss_methods": {
       "values": [

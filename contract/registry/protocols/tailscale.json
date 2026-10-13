@@ -31,7 +31,7 @@
     ]
   },
   "body": {
-    "core": "1.14.2-lx.11",
+    "core": "1.14.3-lx.17",
     "order": ["state_directory", "auth_key", "control_url", "ephemeral", "hostname", "accept_routes", "exit_node", "exit_node_allow_lan_access", "advertise_routes", "advertise_exit_node", "advertise_tags", "listen_port", "relay_server_port", "relay_server_static_endpoints", "system_interface", "system_interface_name", "system_interface_mtu", "udp_timeout", "ssh_server", "taildrop_directory", "__dialer"],
     "fields": {
       "state_directory": {

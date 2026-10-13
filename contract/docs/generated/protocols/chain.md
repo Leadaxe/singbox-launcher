@@ -6,14 +6,14 @@
 
 `chain` — an outbound, sing-box type `chain`.
 
-<sub>Schema checked against core `1.14.2-lx.11`</sub>
+<sub>Schema checked against core `1.14.3-lx.17`</sub>
 
 | Field | Value |
 |---|---|
 | `scheme` | `chain` |
 | `singbox_type` | `chain` |
 | `kind` | `outbound` |
-| Core the schema was checked against | `1.14.2-lx.11` |
+| Core the schema was checked against | `1.14.3-lx.17` |
 
 ## How to read this page
 

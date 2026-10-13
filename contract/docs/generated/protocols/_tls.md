@@ -6,7 +6,7 @@ A shared registry sub-schema (`contract/registry/tls.json`): its fields are subs
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
-Core the schema was checked against: `1.14.2-lx.11`
+Core the schema was checked against: `1.14.3-lx.17`
 
 **The whole block is dropped entirely and silently when `enabled` is `false`** — that is how the core reads it ("not configured", not "configured and switched off"). The block is then absent for every presence check, including its own nested blocks.
 
@@ -30,7 +30,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Maps to: `tls.insecure`
 - **`fp`** — Browser fingerprint mimicked in the ClientHello.
   - Also spelled: `fingerprint`
-  - Type: enum (other spellings of the same value are accepted): `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized` (allowlist `utls_fingerprints`) · Default: `""`
+  - Type: enum (other spellings of the same value are accepted): `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized` (allowlist `utls_fingerprints`) · Default: `""`
   - Maps to: `tls.utls.fingerprint`
 - **`ech`** — Encrypted Client Hello parameters in the Xray form.
   - Also spelled: `echfq`
@@ -114,17 +114,17 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
 - <a id="body-fragment"></a>**`fragment`** — Split the ClientHello across TCP segments.
   - Type: bool
   - Default: `false`
-  - Not supported by: `naive`
+  - Not supported by: `naive`, `hysteria`, `hysteria2`, `tuic`
   - Conflicts with: `vhttp` when `vhttp` is `h3`
   - Conflicts with: `tls.engine` when `tls.engine` is one of `apple`, `windows`
   - Conflicts with: `detour`
 - <a id="body-fragment-fallback-delay"></a>**`fragment_fallback_delay`** — Delay before falling back when fragmenting.
   - Type: duration
-  - Not supported by: `naive`
+  - Not supported by: `naive`, `hysteria`, `hysteria2`, `tuic`
 - <a id="body-record-fragment"></a>**`record_fragment`** — Split the ClientHello across TLS records.
   - Type: bool
   - Default: `false`
-  - Not supported by: `naive`
+  - Not supported by: `naive`, `hysteria`, `hysteria2`, `tuic`
   - Conflicts with: `vhttp` when `vhttp` is `h3`
   - Conflicts with: `tls.engine` when `tls.engine` is one of `apple`, `windows`
 - <a id="body-spoof"></a>**`spoof`** — Domain used for the spoofed ClientHello.
@@ -177,10 +177,10 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Default: `false`
   - Not supported by: `naive`
 - <a id="body-utls-fingerprint"></a>**`utls.fingerprint`** — Browser fingerprint used for the ClientHello.
-  - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
+  - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
   - Default: `chrome`
   - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
-  - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
+  - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
   - Replaced: `random` → `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
 - <a id="body-reality"></a>**`reality`** — REALITY settings.
   - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)

@@ -30,9 +30,9 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`chain_unsupported_by_core`](#chain_unsupported_by_core) · `error` — Chains are unavailable in core {version}
 - [`core_rejected`](#core_rejected) · `error` — The core rejected this server
 - [`detour_chain_too_deep`](#detour_chain_too_deep) · `warning` — Chain shortened to {limit} hops
-- [`detour_cycle_broken`](#detour_cycle_broken) · `warning` — Loop in the chain broken
-- [`detour_target_missing`](#detour_target_missing) · `warning` — Chain cut: {target} not found
-- [`detour_to_group`](#detour_to_group) · `warning` — Chain cut: {target} is a group
+- [`detour_cycle_broken`](#detour_cycle_broken) · `error` — Node dropped: detour loop through {target}
+- [`detour_target_missing`](#detour_target_missing) · `error` — Node dropped: detour target {target} not found
+- [`detour_to_group`](#detour_to_group) · `error` — Node dropped: detour target {target} is a group
 - [`detour_with_listen_port`](#detour_with_listen_port) · `warning` — {tag}: listening port removed for the hop
 - [`detour_with_tls_fragment`](#detour_with_tls_fragment) · `info` — {tag}: TLS fragmentation removed for the hop
 - [`dialer_proxy_unusable`](#dialer_proxy_unusable) · `error` — Preceding proxy {target} is unusable
@@ -68,6 +68,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`packet_encoding_unknown`](#packet_encoding_unknown) · `warning` — Field removed: unknown packet_encoding
 - [`password_empty`](#password_empty) · `warning` — Password is empty
 - [`port_invalid`](#port_invalid) · `error` — Invalid port {value}
+- [`protocol_extension_unsupported`](#protocol_extension_unsupported) · `error` — Protocol {scheme} is not supported in this app
 - [`protocol_unsupported`](#protocol_unsupported) · `error` — Protocol {scheme} is not supported
 - [`provider_banner_link`](#provider_banner_link) · `info` — Subscription: provider notice instead of a server
 - [`reality_fp_not_chrome`](#reality_fp_not_chrome) · `info` — REALITY: fingerprint {value} may not connect
@@ -498,15 +499,15 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="detour_cycle_broken"></a>
 ### detour_cycle_broken
 
-**severity:** `warning` · **params:** `target`
+**severity:** `error` · **params:** `target`
 
-**Loop in the chain broken**
+**Node dropped: detour loop through {target}**
 
-- **What happened:** The detour chain of this node looped back on itself through {target}. The closing link was removed, because the core rejects such a config and would refuse to start it; the node keeps working with a shortened chain.
+- **What happened:** The detour chain of this node loops back on itself through {target}. The node was dropped: the core rejects such a config and would refuse to start it, and a node whose route has degraded must not quietly connect by another path.
 - **Why it happens:** An imported sing-box config described chains that close on themselves — the node goes through a hop that in turn goes back through this node. Hand-assembled configs and merged subscriptions collect such loops easily.
 - **What you can do:**
-  - Nothing to do if the node works: it now connects with a shortened chain.
-  - If you need the full chain, fix the detour links in the source config.
+  - Fix the detour links in the source config so that the chain does not loop, then refresh the subscription.
+  - Pick another node from this subscription.
 
 **Where it comes from:**
 
@@ -515,15 +516,15 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="detour_target_missing"></a>
 ### detour_target_missing
 
-**severity:** `warning` · **params:** `target`
+**severity:** `error` · **params:** `target`
 
-**Chain cut: {target} not found**
+**Node dropped: detour target {target} not found**
 
-- **What happened:** The imported config sends this node through {target}, but there is no such node in it. The chain was cut, because the core rejects a reference to a missing tag and would refuse to start the whole config; the node connects directly.
+- **What happened:** The imported config sends this node through {target}, but there is no usable node with that tag in it. The node was dropped: the core rejects a reference to a missing tag and would refuse to start the whole config, and a node whose route has degraded must not quietly connect directly.
 - **Why it happens:** The imported config references a hop by tag, but the node with that tag did not make it into the import — it was dropped as unsupported, or the provider exports only part of their own config.
 - **What you can do:**
-  - Nothing to do if the node works: it now connects directly.
-  - If the traffic has to go through that hop, ask the provider for a config with all the nodes it references.
+  - Ask the provider for a config with all the nodes it references, then refresh the subscription.
+  - Pick another node from this subscription.
 
 **Where it comes from:**
 
@@ -532,15 +533,15 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="detour_to_group"></a>
 ### detour_to_group
 
-**severity:** `warning` · **params:** `target`
+**severity:** `error` · **params:** `target`
 
-**Chain cut: {target} is a group**
+**Node dropped: detour target {target} is a group**
 
-- **What happened:** This node was routed through {target}, which is a group rather than a server. The chain was cut, because a group cannot be a hop and the core would refuse to start the whole config; the node connects directly.
+- **What happened:** This node was routed through {target}, which is a group rather than a server. The node was dropped: a group cannot be a hop, the core would refuse to start the whole config, and a node whose route has degraded must not quietly connect directly.
 - **Why it happens:** The imported config points a node's detour at a selector or urltest group. Other clients tolerate that spelling, but in sing-box a group is a choice between routes, not a hop in one.
 - **What you can do:**
-  - Nothing to do if the node works: it now connects directly.
-  - If you need a chain, point the detour at a specific node instead of a group.
+  - Point the detour at a specific node instead of a group in the source config, then refresh the subscription.
+  - Pick another node from this subscription.
 
 **Where it comes from:**
 
@@ -1236,6 +1237,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`wireguard`](protocols/wireguard.md)
   - [`peers.port`](protocols/wireguard.md#body-peers-port) — the value does not fit the field → node dropped
 
+<a id="protocol_extension_unsupported"></a>
+### protocol_extension_unsupported
+
+**severity:** `error` · **params:** `scheme`, `alternative`
+
+**Protocol {scheme} is not supported in this app**
+
+- **What happened:** The entry uses {scheme}, which this application does not implement: in the shared registry the protocol is an extension of the other side. The node was dropped. Use {alternative} instead.
+- **Why it happens:** The subscription carries a protocol that only one of the two applications supports (registry/protocols/<scheme>.json: extension). The core could run it, but this application has no parser for it.
+- **What you can do:**
+  - Ask the provider for a link to the same server over {alternative}.
+  - Pick another node from this subscription.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="protocol_unsupported"></a>
 ### protocol_unsupported
 
@@ -1287,7 +1305,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - [`tls`](protocols/_tls.md)
-  - [`utls.fingerprint`](protocols/_tls.md#body-utls-fingerprint) — the value is anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random` → kept with a notice
+  - [`utls.fingerprint`](protocols/_tls.md#body-utls-fingerprint) — the value is anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `safari`, `random` → kept with a notice
 
 <a id="reality_fp_random_pinned"></a>
 ### reality_fp_random_pinned
@@ -1733,8 +1751,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`curve_preferences`](protocols/_tls.md#body-curve-preferences) — not supported by `naive` → removed
   - [`disable_sni`](protocols/_tls.md#body-disable-sni) — not supported by `naive` → removed
   - [`engine`](protocols/_tls.md#body-engine) — not supported by `naive` → removed
-  - [`fragment`](protocols/_tls.md#body-fragment) — not supported by `naive` → removed
-  - [`fragment_fallback_delay`](protocols/_tls.md#body-fragment-fallback-delay) — not supported by `naive` → removed
+  - [`fragment`](protocols/_tls.md#body-fragment) — not supported by `naive`, `hysteria`, `hysteria2`, `tuic` → removed
+  - [`fragment_fallback_delay`](protocols/_tls.md#body-fragment-fallback-delay) — not supported by `naive`, `hysteria`, `hysteria2`, `tuic` → removed
   - [`handshake_timeout`](protocols/_tls.md#body-handshake-timeout) — not supported by `naive` → removed
   - [`insecure`](protocols/_tls.md#body-insecure) — not supported by `naive` → removed
   - [`kernel_rx`](protocols/_tls.md#body-kernel-rx) — not supported by `naive`, `masque` → removed
@@ -1743,7 +1761,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`min_version`](protocols/_tls.md#body-min-version) — not supported by `naive` → removed
   - [`reality`](protocols/_tls.md#body-reality) — not supported by `naive`, `hysteria`, `hysteria2`, `tuic`, `masque` → removed
   - [`reality.enabled`](protocols/_tls.md#body-reality-enabled) — not supported by `naive` → removed
-  - [`record_fragment`](protocols/_tls.md#body-record-fragment) — not supported by `naive` → removed
+  - [`record_fragment`](protocols/_tls.md#body-record-fragment) — not supported by `naive`, `hysteria`, `hysteria2`, `tuic` → removed
   - [`spoof`](protocols/_tls.md#body-spoof) — not supported by `naive` → removed
   - [`spoof_method`](protocols/_tls.md#body-spoof-method) — not supported by `naive` → removed
   - [`utls`](protocols/_tls.md#body-utls) — not supported by `naive`, `hysteria`, `hysteria2`, `tuic`, `masque` → removed
@@ -1793,8 +1811,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **QUIC: TLS field {path} not applicable**
 
-- **What happened:** This protocol runs over QUIC, where the core cannot use a uTLS fingerprint or REALITY at all. The field {path} was removed; the node connects exactly as it would have anyway.
-- **Why it happens:** The subscription applies one TLS template to every protocol, so a QUIC node (hysteria, hysteria2, tuic, masque) was handed a fingerprint or REALITY keys. QUIC carries TLS 1.3 inside itself and the core builds it through the standard engine, which neither uTLS nor REALITY can provide — with such a block the outbound would not start at all.
+- **What happened:** This protocol runs over QUIC, where the core cannot use a uTLS fingerprint, REALITY or TLS fragmentation at all. The field {path} was removed; the node connects exactly as it would have anyway.
+- **Why it happens:** The subscription applies one TLS template to every protocol, so a QUIC node (hysteria, hysteria2, tuic, masque) was handed a fingerprint, REALITY keys or fragmentation flags. QUIC carries TLS 1.3 inside itself and the core builds it through the standard engine, which neither uTLS nor REALITY can provide — with such a block the outbound would not start at all; fragmentation splits TCP records, and QUIC has none.
 - **What you can do:**
   - Nothing to do: the node works, and the removed settings have no meaning over QUIC.
   - If you need a fingerprint or REALITY, take a node on a TCP protocol — vless, trojan, vmess or anytls.

@@ -6,7 +6,7 @@
 
 `vless` — an outbound, sing-box type `vless`. Accepted from: share link, sing-box JSON, Xray JSON.
 
-<sub>Schema checked against core `1.14.2-lx.11` · the link fragment (`#…`) is the node `label`</sub>
+<sub>Schema checked against core `1.14.3-lx.17` · the link fragment (`#…`) is the node `label`</sub>
 
 | Field | Value |
 |---|---|
@@ -14,7 +14,7 @@
 | `singbox_type` | `vless` |
 | `kind` | `outbound` |
 | `sources` | `uri`, `singbox`, `xray` |
-| Core the schema was checked against | `1.14.2-lx.11` |
+| Core the schema was checked against | `1.14.3-lx.17` |
 | URI fragment | `label` |
 
 ## How to read this page
@@ -95,9 +95,9 @@ Shared across every scheme that carries a TLS block; the reference page is [`_tl
   - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
 - <a id="link-tls-fp"></a>**`fp`** — Browser fingerprint mimicked in the ClientHello.
   - Also spelled: `fingerprint`
-  - Type: enum (other spellings of the same value are accepted): `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized` (allowlist `utls_fingerprints`) · Default: `""`
+  - Type: enum (other spellings of the same value are accepted): `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized` (allowlist `utls_fingerprints`) · Default: `""`
   - Maps to: [`tls.utls.fingerprint`](#body-tls-utls-fingerprint)
-  - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown) · Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome) · Replaced: `random` → `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
+  - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown) · Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome) · Replaced: `random` → `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
 - <a id="link-tls-ech"></a>**`ech`** — Encrypted Client Hello parameters in the Xray form.
   - Also spelled: `echfq`
   - Type: string · Default: `""`
@@ -427,11 +427,11 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool
   - Default: `false`
 - <a id="body-tls-utls-fingerprint"></a>**`tls.utls.fingerprint`** — Browser fingerprint used for the ClientHello.
-  - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
+  - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
   - Default: `chrome`
   - Set by link parameter: [`fp`](#link-tls-fp)
   - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
-  - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
+  - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
   - Replaced: `random` → `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
 - <a id="body-tls-reality"></a>**`tls.reality`** — REALITY settings.
   - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
@@ -748,7 +748,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - [`port_invalid`](../warnings.md#port_invalid)
   - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
 - [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
-  - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value is anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `safari`, `random` → kept with a notice
+  - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value is anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `safari`, `random` → kept with a notice
 - [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
   - [`tls.utls.fingerprint`](#body-tls-utls-fingerprint) — the value is `random` when `tls.reality.enabled` is `true` → replaced with `chrome`
 - [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
