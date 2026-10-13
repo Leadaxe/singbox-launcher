@@ -25,6 +25,11 @@ import (
 // ConfigServiceAdapter адаптирует core.ConfigService для использования в бизнес-логике.
 type ConfigServiceAdapter struct {
 	CoreConfigService *core.ConfigService
+	// Target / MachineID — чей Конфигуратор держит адаптер (SPEC 165):
+	// результат Refresh закрепляется в файле состояния этой цели. Пусто —
+	// Local.
+	Target    string
+	MachineID string
 }
 
 // GenerateOutboundsFromParserConfig вызывает соответствующий метод core.ConfigService.
@@ -40,5 +45,5 @@ func (a *ConfigServiceAdapter) RefreshSingleSubscription(sourceID string) (*core
 // RefreshSourceInPlace — proxy в core.ConfigService. Cold-start path для
 // UI Refresh button'а; не требует state.json на диске.
 func (a *ConfigServiceAdapter) RefreshSourceInPlace(src *corestate.Source) (bool, error) {
-	return a.CoreConfigService.RefreshSourceInPlace(src)
+	return a.CoreConfigService.RefreshSourceInPlaceFor(src, a.Target, a.MachineID)
 }

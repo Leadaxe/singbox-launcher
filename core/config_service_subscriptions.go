@@ -19,12 +19,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/paths"
@@ -337,6 +339,15 @@ func successSubStatus(url, now string, httpStatus int, rawBytes int64, material 
 // закрепления на диске не отменяет успех обновления в памяти: визард сохранит
 // его своим Save.
 func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) {
+	return svc.RefreshSourceInPlaceFor(src, constants.ConfigTargetLocal, "")
+}
+
+// RefreshSourceInPlaceFor — то же для Конфигуратора заданной цели (SPEC 165):
+// результат фетча закрепляется в файле состояния ЭТОЙ цели — локальном при
+// target=local, `remote/<machineID>/state.json` при target=remote. До
+// SPEC 165 путь был локальным безусловно, и Refresh в Конфигураторе машины
+// перезаписывал локальный источник с тем же ID (профили машин — копии).
+func (svc *ConfigService) RefreshSourceInPlaceFor(src *state.Source, target, machineID string) (bool, error) {
 	if src == nil {
 		return false, fmt.Errorf("RefreshSourceInPlace: nil source")
 	}
@@ -354,7 +365,7 @@ func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) 
 
 	changed := refreshOneSubscriptionSource(src, settings)
 	if changed {
-		svc.persistFetchResultForSource(src, dataDir)
+		svc.persistFetchResultForSource(src, dataDir, target, machineID)
 	}
 	return changed, nil
 }
@@ -372,14 +383,24 @@ func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) 
 // Источник, которого на диске нет (визард ещё не сохранял его — сценарий 1
 // cold-start), НЕ создаётся: state.json пишет визард, и родить там половину
 // записи значило бы подсунуть ему источник без url и подписи.
-func (svc *ConfigService) persistFetchResultForSource(src *state.Source, dataDir paths.DataDir) {
+//
+// Цель (SPEC 165): файл и мьютекс выбираются по target/machineID —
+// SubscriptionMu и локальный state.json для Local, MachineStateLock(id) и
+// файл машины для remote. Признак «локальный конфиг устарел» поднимается
+// только для Local: устаревание машины выражает sha-сравнение её строки.
+func (svc *ConfigService) persistFetchResultForSource(src *state.Source, dataDir paths.DataDir, target, machineID string) {
 	if src == nil || src.ID == "" || svc == nil || svc.ac == nil {
 		return
 	}
+	remote := strings.EqualFold(strings.TrimSpace(target), constants.ConfigTargetRemote) && strings.TrimSpace(machineID) != ""
 	statePath := platform.GetWizardStatePath(dataDir)
-
-	svc.ac.SubscriptionMu.Lock()
-	defer svc.ac.SubscriptionMu.Unlock()
+	var mu sync.Locker = &svc.ac.SubscriptionMu
+	if remote {
+		statePath = platform.GetWizardStatePathFor(dataDir, constants.ConfigTargetRemote, machineID)
+		mu = svc.ac.MachineStateLock(machineID)
+	}
+	mu.Lock()
+	defer mu.Unlock()
 
 	s, err := state.Load(statePath)
 	if err != nil {
@@ -404,8 +425,8 @@ func (svc *ConfigService) persistFetchResultForSource(src *state.Source, dataDir
 	}
 	// «Конфиг устарел» (SPEC Т4): состав узлов на диске сменился, но сборку
 	// отсюда не запускаем — это решение пользователя, как и у
-	// RefreshSingleSubscription.
-	if svc.ac.StateService != nil {
+	// RefreshSingleSubscription. Только для Local (SPEC 165).
+	if !remote && svc.ac.StateService != nil {
 		svc.ac.StateService.MarkConfigStale()
 	}
 }
