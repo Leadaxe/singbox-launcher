@@ -87,7 +87,7 @@ func (ac *AppController) AutoDeployMachine(d services.RemoteDaemon, trigger stri
 	}
 	switch out.Result {
 	case services.AutoDeployApplied:
-		debuglog.InfoLog("auto-deploy[%s]: %s: applied %s (%s)", trigger, d.Name, shortSHA(out.SHAAfter), out.Note)
+		debuglog.InfoLog("auto-deploy[%s]: %s: applied %s (%s)", trigger, d.Name, sha12(out.SHAAfter), out.Note)
 	case services.AutoDeploySkipped, services.AutoDeployNotConfigured:
 		debuglog.InfoLog("auto-deploy[%s]: %s: %s — %s", trigger, d.Name, out.Result, out.Note)
 	default:
@@ -244,6 +244,15 @@ func fileSHA256(path string) string {
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+// sha12 — первые 12 hex-символов sha256 для лога (свой, потому что
+// shortSHA живёт в darwin-файле демона).
+func sha12(sum string) string {
+	if len(sum) > 12 {
+		return sum[:12]
+	}
+	return sum
 }
 
 func emptyAs(s, fallback string) string {
