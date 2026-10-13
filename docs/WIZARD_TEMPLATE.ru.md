@@ -299,7 +299,8 @@ outbound sing-box (`options`, `filters`, `addOutbounds`, `preferredDefault`, `co
   `inbounds`, `log` и т.д. Принимает `@var`, патчится `params`, обходится `#if`.
 - **`dns_options`** — `servers[]` и `rules[]` (дефолты DNS-вкладки). Скаляры DNS задаются переменными
   `vars` с `wizard_ui: "fix"` (`dns_strategy` → `config.dns.strategy`, `dns_final` → `config.dns.final`,
-  `dns_default_domain_resolver` → `config.route.default_domain_resolver`).
+  `dns_default_domain_resolver` → `config.route.default_domain_resolver.server`,
+  `dns_resolver_no_stale` → `config.route.default_domain_resolver.disable_optimistic_cache`).
 
 > Подробнее: парсер подписок — [`ParserConfig.md`](ParserConfig.md); хранение в state
 > (`vars`, `dns_options`, правила) — [`WIZARD_STATE.md`](WIZARD_STATE.md); движок и формат

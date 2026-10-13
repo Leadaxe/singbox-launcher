@@ -592,6 +592,15 @@
    "default_value": "direct_dns_resolver"
   },
   {
+   "name": "dns_resolver_no_stale",
+   "type": "bool",
+   "wizard_ui": "fix",
+   "title": "Never serve stale answers for node hostnames",
+   "tooltip": "Resolve a node's hostname again once its TTL expires instead of dialing a cached address. Keeps nodes alive with providers that rotate addresses.",
+   "comment": "DNS tab only: route.default_domain_resolver.disable_optimistic_cache.",
+   "default_value": "true"
+  },
+  {
    "name": "dns_final",
    "type": "text",
    "wizard_ui": "fix",
@@ -664,7 +673,10 @@
    }
   ],
   "route": {
-   "default_domain_resolver": "@dns_default_domain_resolver",
+   "default_domain_resolver": {
+    "server": "@dns_default_domain_resolver",
+    "disable_optimistic_cache": "@dns_resolver_no_stale"
+   },
    "rules": [],
    "final": "@route_final",
    "auto_detect_interface": "@auto_detect_interface",
@@ -1094,64 +1106,6 @@
      }
     }
    ]
-  },
-  {
-   "id": "node-domains-fresh-dns",
-   "label": "Node hostnames: fresh DNS",
-   "description": "Resolve the hostnames of your nodes through a chosen resolver and never serve a stale answer for them.",
-   "default_enabled": true,
-   "vars": [
-    {
-     "name": "resolver",
-     "type": "dns_server",
-     "default": "direct_dns_resolver",
-     "title": "Resolver",
-     "tooltip": "Which DNS server resolves node hostnames. Must not go through the proxy itself."
-    },
-    {
-     "name": "domains",
-     "type": "text_list",
-     "unique": true,
-     "title": "Extra domains",
-     "tooltip": "Hostnames of every node are collected automatically; add your own here."
-    }
-   ],
-   "for_each_node_do": {
-    "#filter": {
-     "#and": [
-      {
-       "@node.body.server": "#notEmpty"
-      },
-      {
-       "#not": {
-        "@node.body.server": {
-         "#matches": "^[0-9.]+$"
-        }
-       }
-      },
-      {
-       "#not": {
-        "@node.body.server": {
-         "#matches": ":"
-        }
-       }
-      }
-     ]
-    },
-    "#do": {
-     "@domains": {
-      "#append": "@node.body.server"
-     }
-    }
-   },
-   "dns_rules": [
-    {
-     "domain": "@domains",
-     "server": "@resolver",
-     "disable_optimistic_cache": true
-    }
-   ],
-   "num": 10
   },
   {
    "id": "tailscale",

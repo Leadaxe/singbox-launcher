@@ -300,7 +300,8 @@ sing-box outbound (`options`, `filters`, `addOutbounds`, `preferredDefault`, `co
   `inbounds`, `log`, etc. Accepts `@var`, is patched by `params`, is walked for `#if`.
 - **`dns_options`** — `servers[]` and `rules[]` (DNS-tab defaults). DNS scalars are set by
   `vars` with `wizard_ui: "fix"` (`dns_strategy` → `config.dns.strategy`, `dns_final` → `config.dns.final`,
-  `dns_default_domain_resolver` → `config.route.default_domain_resolver`).
+  `dns_default_domain_resolver` → `config.route.default_domain_resolver.server`,
+  `dns_resolver_no_stale` → `config.route.default_domain_resolver.disable_optimistic_cache`).
 
 > More: subscription parser — [`ParserConfig.md`](ParserConfig.md); state storage
 > (`vars`, `dns_options`, rules) — [`WIZARD_STATE.md`](WIZARD_STATE.md); engine and

@@ -156,8 +156,8 @@ State хранит **только diff** от template defaults в `rule.body.va
 ради сбора значений — `#do: {"@list": {"#append": "@node.body.server"}}` в
 `text_list`-переменные своего пресета, необязательный
 `#final: {"@list": {"#unique": true, "#sort": true, "#limit": N}}` — и раскрывает
-тело один раз (штатный пресет `node-domains-fresh-dns`: одно DNS-правило с
-доменами всех узлов). Прежний ключ `for_each` (`node_type`, `as`) — ошибка
+тело один раз (штатные пресеты его не используют; разобранный пример —
+TEMPLATE_LANG §6.7.4). Прежний ключ `for_each` (`node_type`, `as`) — ошибка
 загрузки: пресет пропускается. Норма — `contract/docs/TEMPLATE_LANG.md` §6.5–6.7.
 
 ---
@@ -333,6 +333,11 @@ runtime-globals `@runtime.*` в `#if` predicates only — §9.5; имена `pla
 объявлены как hidden vars `dns_*`. UI DNS tab пишет в `model.SettingsVars`,
 `SyncDNSModelToSettingsVars` копирует в `state.vars[]` перед Save. Build
 substitute'ит `@dns_*` литералы в `config.dns`.
+`route.default_domain_resolver` — объектная форма ядра
+`{"server": "@dns_default_domain_resolver", "disable_optimistic_cache": "@dns_resolver_no_stale"}`
+(SPEC 166 волна 3, TEMPLATE_LANG §6.9): bool `dns_resolver_no_stale` (галка на
+вкладке DNS под резолвером) подставляется JSON-`true`/`false`; когда вкладка DNS
+выбирает другой резолвер, сборка меняет только `server`, остальные поля остаются.
 
 **Special: `route_final`.** UI Rules tab dropdown «Final outbound» →
 `model.SelectedFinalOutbound` → `SettingsVars["route_final"]` →

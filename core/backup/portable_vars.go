@@ -14,6 +14,7 @@ var portableVars = map[string]struct{}{
 	"dns_default_domain_resolver": {},
 	"dns_final":                   {},
 	"dns_optimistic":              {}, // SPEC 147, контракт 1.1.93
+	"dns_resolver_no_stale":       {}, // SPEC 166 волна 3, контракт 1.1.119
 	"dns_store_cache":             {}, // SPEC 147, контракт 1.1.93
 	"dns_strategy":                {},
 	"ipv6_enabled":                {},

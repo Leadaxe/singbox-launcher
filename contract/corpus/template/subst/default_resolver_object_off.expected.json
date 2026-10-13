@@ -1,0 +1,1 @@
+{"config": {"route": {"default_domain_resolver": {"server": "google_doh", "disable_optimistic_cache": false}}}, "warnings": []}

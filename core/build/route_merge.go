@@ -55,7 +55,8 @@ type RouteConfig struct {
 	// находило набор и не поднималось. Значение приходит из
 	// `GET /admin/info` → state_dir; собирать его самим нельзя.
 	ResourceDir string
-	// DefaultDomainResolver — переопределяет ключ route.default_domain_resolver.
+	// DefaultDomainResolver — переопределяет тег route.default_domain_resolver
+	// (у объектной формы — поле server, прочие поля шаблона остаются).
 	// Игнорируется, если OmitDefaultDomainResolver=true.
 	DefaultDomainResolver string
 	// OmitDefaultDomainResolver — true → ключ default_domain_resolver удаляется
@@ -150,7 +151,10 @@ func MergeRouteSection(raw json.RawMessage, cfg RouteConfig) (json.RawMessage, e
 	if cfg.OmitDefaultDomainResolver {
 		delete(route, "default_domain_resolver")
 	} else if s := strings.TrimSpace(cfg.DefaultDomainResolver); s != "" {
-		route["default_domain_resolver"] = s
+		// Объектная форма шаблона ({server, disable_optimistic_cache, …},
+		// SPEC 166 волна 3) сохраняется: меняется только server.
+		_, isObject := resolverTarget(route["default_domain_resolver"])
+		setResolverTarget(route, "default_domain_resolver", s, isObject)
 	}
 
 	return json.Marshal(route)

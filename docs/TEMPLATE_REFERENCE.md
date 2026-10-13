@@ -158,8 +158,8 @@ preset body per node (stock preset `tailscale`); `for_each_node_do` walks the
 nodes only to collect values — `#do: {"@list": {"#append": "@node.body.server"}}`
 into the preset's own `text_list` variables, optional
 `#final: {"@list": {"#unique": true, "#sort": true, "#limit": N}}` — and then
-expands the body once (stock preset `node-domains-fresh-dns`: one DNS rule with
-the hostnames of every node). The old `for_each` key (`node_type`, `as`) is a
+expands the body once (no stock preset uses it; worked example —
+TEMPLATE_LANG §6.7.4). The old `for_each` key (`node_type`, `as`) is a
 load error: the preset is skipped. The norm is `contract/docs/TEMPLATE_LANG.md`
 §6.5–6.7.
 
@@ -339,6 +339,12 @@ names `platform` / `arch` are free again).
 are declared as hidden `dns_*` vars. The UI DNS tab writes into
 `model.SettingsVars`, `SyncDNSModelToSettingsVars` copies them into `state.vars[]`
 before Save, and the build substitutes the `@dns_*` literals in `config.dns`.
+`route.default_domain_resolver` is the core's object form
+`{"server": "@dns_default_domain_resolver", "disable_optimistic_cache": "@dns_resolver_no_stale"}`
+(SPEC 166 wave 3, TEMPLATE_LANG §6.9): the bool `dns_resolver_no_stale` (DNS tab
+checkbox under the resolver) substitutes as a JSON `true`/`false`; the build
+replaces only `server` when the DNS tab picks another resolver, the other fields
+stay.
 
 **Special: `route_final`.** UI Rules tab dropdown «Final outbound» →
 `model.SelectedFinalOutbound` → `SettingsVars["route_final"]` →

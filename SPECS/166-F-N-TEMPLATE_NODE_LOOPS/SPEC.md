@@ -2,7 +2,7 @@
 
 Статус: **N**. Тип: Feature. Контракт: бамп `contract/VERSION` → **1.1.119**, норма `contract/docs/TEMPLATE_LANG.md` §6.5–6.7 (переписать), параграф **§116** в `contract/TASKS_LXBOX.md`, корпус `corpus/template/for_each_node/` и `corpus/template/for_each_node_do/`.
 
-Решения владельца приняты 13.10.2026. Первый потребитель — пресет «свежий DNS для доменов узлов» (§4).
+Решения владельца приняты 13.10.2026. Задуманный первый потребитель — пресет «свежий DNS для доменов узлов» (§4) — в шаблон не вошёл (решение владельца после волны 2): цели он не достигает. Свежие имена узлов даёт объектная форма `route.default_domain_resolver` (§4a, волна 3).
 
 ---
 
@@ -90,7 +90,9 @@
 - Корпус: `corpus/template/for_each/` переименовать в `for_each_node/`, кейсы переписать на `#filter` (`as: n` → `node`), добавить `load`-кейсы на отказ (`for_each`, `node_type`, `as`, `#do` в `for_each_node`, неизвестный глагол, `#final` без `#do`). Новый раздел `corpus/template/for_each_node_do/`: сбор доменов с фильтром IPv4/IPv6, дубли без `#final`, `#unique`+`#sort`+`#limit`, `#tpl` в `#append`, пустой итог → правило снято, `internal` игнорирует значение из `vars.json`, пользовательское значение + собранное.
 - `contract/TASKS_LXBOX.md` §116: что сделать LxBox (снять `for_each`, реализовать оба ключа, `#do`/`#final`, `unique`, `internal`; корпус обязателен).
 
-## 4. Первый потребитель — пресет «Node hostnames: fresh DNS»
+## 4. Пример `for_each_node_do` (в шаблон не входит)
+
+Пресет реализован в волне 2 и снят в волне 3. Причина: у исходящего с `domain_resolver` — а `route.default_domain_resolver` в шаблоне задан всегда — ядро резолвит адрес сервера узла прямо этим DNS-сервером и DNS-правила не смотрит (`sing-box-lx/dns/router.go:1302`, `if options.Transport != nil { r.client.Lookup(...) }`). Правило с доменами узлов на их резолв не влияет. Пример остаётся образцом языка (TEMPLATE_LANG §6.7.4).
 
 ```json
 {
@@ -124,6 +126,17 @@
 - Место — голова DNS-правил (`num: 10`), чтобы пользовательские правила его не перекрывали; точное значение `num` — по соседям в шаблоне при реализации.
 - Tailscale-пресет переводится на `for_each_node` с `#filter: {"#and": [{"@node.body.type": "tailscale"}, {"#not": "@node.skip_presets"}]}`.
 
+## 4a. Свежие имена узлов — объектная форма резолвера по умолчанию (волна 3)
+
+Рычаг — поля объектной формы ключа резолвера ядра (`sing-box-lx/option/outbound.go:114`, `DomainResolveOptions`: `server`, `timeout`, `strategy`, `disable_cache`, `disable_optimistic_cache`, `rewrite_ttl`, `client_subnet`; при одном `server` ядро само сериализует его строкой).
+
+- Глобальная переменная рядом с `dns_default_domain_resolver`:
+  `{"name": "dns_resolver_no_stale", "type": "bool", "default_value": "true", "wizard_ui": "fix", "title": "Never serve stale answers for node hostnames", "tooltip": "Resolve a node's hostname again once its TTL expires instead of dialing a cached address. Keeps nodes alive with providers that rotate addresses."}`.
+- `route.default_domain_resolver` в шаблоне — объект `{"server": "@dns_default_domain_resolver", "disable_optimistic_cache": "@dns_resolver_no_stale"}`. Bool подставляется JSON-литералом: галка снята — `"disable_optimistic_cache": false`, ядро это принимает.
+- Вкладка DNS: галка под «Default domain resolver:», подпись и подсказка — из переменной (литералы каталога переводов, как у настроек кэша DNS), изменение помечает конфиг грязным. Settings переменную не рисует (`wizard_ui: fix`).
+- Код, который читает или подменяет `default_domain_resolver`, понимает обе формы (строка или объект с `server`) и при подмене меняет только `server`.
+- Бэкап и контракт: переменная переносимая (`registry/vars.json`, `core/backup/portable_vars.go`), TEMPLATE_LANG §6.9, TASKS_LXBOX §116 п. 10, корпус `subst/default_resolver_object_*`.
+
 ## 5. UI
 
 - Форма пресета: `text_list` с `unique` — дубли убираются при сохранении; `wizard_ui: internal` — строки нет.
@@ -134,4 +147,4 @@
 
 - `#set`, обход по группам/источникам, выражения в ссылках.
 - Автоматический перевод чужих шаблонов с `for_each` (их нет: шаблон у каждого приложения свой).
-- Глобальное поведение `dns.optimistic` и дефолты резолверов шаблона.
+- Глобальное поведение `dns.optimistic` и дефолты резолверов шаблона (кроме поля `disable_optimistic_cache` резолвера по умолчанию, §4a).

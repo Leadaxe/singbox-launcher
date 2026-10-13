@@ -4736,6 +4736,12 @@
   "Keep DNS cache after restart": {
     "value": "Сохранять кэш DNS после перезапуска"
   },
+  "Never serve stale answers for node hostnames": {
+    "value": "Не отдавать протухшие ответы для имён узлов"
+  },
+  "Resolve a node's hostname again once its TTL expires instead of dialing a cached address. Keeps nodes alive with providers that rotate addresses.": {
+    "value": "Когда TTL истёк, имя узла резолвится заново, а не берётся устаревший адрес из кэша. Узлы не отваливаются у провайдеров, которые меняют адреса."
+  },
   "From %d to %d": {
     "value": "От %d до %d"
   },

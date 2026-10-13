@@ -201,6 +201,10 @@ func routeDefaultDomainResolver(route map[string]interface{}) string {
 	switch t := v.(type) {
 	case string:
 		return strings.TrimSpace(t)
+	case map[string]interface{}:
+		// Объектная форма ядра {server, disable_optimistic_cache, …}.
+		s, _ := t["server"].(string)
+		return strings.TrimSpace(s)
 	default:
 		return strings.TrimSpace(fmt.Sprint(t))
 	}
