@@ -320,7 +320,7 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 	// было неполным и снимало живые ссылки (DNS-правило теряло ограничение
 	// и начинало матчить всё). Считается и для preview: чистка работает там
 	// так же, и неполное множество врало бы и в превью.
-	// LxBox §578: узлы для for_each — здесь состав окончателен (граф-санитайзер
+	// LxBox §578: узлы для for_each_node* — здесь состав окончателен (граф-санитайзер
 	// уже снял узлы с висячими ссылками) и финальные теги назначены.
 	ctx.Preset.PresetNodes = CollectPresetNodes(ctx.Cache, order)
 	ctx.Preset.EmittedRuleSetTags = CollectEmittedRouteRuleSetTags(cfg["route"], ctx.Route, ctx.Preset)
@@ -564,7 +564,7 @@ func splitEntryComment(entry string) (prefix, jsonPart string) {
 	}
 }
 
-// CollectPresetNodes — узлы конфига для раскрытия for_each (LxBox §578) в
+// CollectPresetNodes — узлы конфига для раскрытия for_each_node* (LxBox §578) в
 // порядке секций шаблона: тег, тело и skip_presets записи. Выключенные узлы и
 // снятые гейтами в кэш не попадают — и сюда тоже. Экспортирована для
 // визарда: превью и строки пресетов строят список этой же функцией

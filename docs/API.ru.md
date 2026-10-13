@@ -358,15 +358,17 @@ API нет. Манифест `GET /` несёт `capabilities` (`remote`/`daemon
 | Метод | Путь | Что делает |
 |---|---|---|
 | GET/POST | `/remote/machines` | Список / сопряжение `{invite, name?, addr?, secret?}` (приглашение `адрес#отпечаток#код`) |
-| GET/PATCH/DELETE | `/remote/machines/{id}` | Запись / правка `{name?,addr?,goos?,goarch?}` / удаление (ответ предупреждает: доступ на стороне демона не отозван) |
+| GET/PATCH/DELETE | `/remote/machines/{id}` | Запись / правка `{name?,addr?,goos?,goarch?,ssh?,init_system?}` / удаление (ответ предупреждает: доступ на стороне демона не отозван). `ssh` — `user@host[:port]` для команд окна Service, `""` — сброс к `root@<хост addr>`; `init_system` — `""` (дефолт по архитектуре) \| `systemd` \| `procd`; неразборчивое значение → `400` |
 | POST | `/remote/machines/{id}/repair` | Пере-сопряжение `{invite, addr?, secret?}` с перевыпуском ключа; профиль машины сохраняется |
 | POST | `/remote/machines/{id}/profile/copy-from` | Копия настроек `{source_id, overwrite?}`; существующий state без `overwrite=true` → `409` |
+
+Запись машины (список, `GET`, `PATCH`, сопряжение) несёт и поля окна Service (SPEC 161), каждое опускается, пока пустое: `ssh`, `init_system`, `core_warn_ack` (версия ядра, для которой Deploy больше не предупреждает, что ядро старее требуемого) и `passport` — последний паспорт демона из кэша реестра (`version`, `executable`, `log_path`, `listen`, `tls`, `seen_at`), чтобы пути были известны и когда демон лёг. State dir — по-прежнему в `state_dir`.
 
 **Ядро и деплой:**
 
 | Метод | Путь | Что делает |
 |---|---|---|
-| GET | `/remote/machines/{id}/health` | `{reachable, core_status, active_sha, last_good_sha, …}` — сверка SHA = проверка «доехало» |
+| GET | `/remote/machines/{id}/health` | `{reachable, core_status, active_sha, last_good_sha, …}` — сверка SHA = проверка «доехало». Плюс остальной паспорт — `executable`, `log_path`, `listen`, `tls`, `uptime_seconds` (`null`, если демон не ответил на `/admin/info`), — и `core_required` (версия ядра, под которую лаунчер собирает конфиги) с `core_outdated` (`true` только при доказуемо старшей `version`; неразборчивая версия → `false`) |
 | POST | `/remote/machines/{id}/core/start` \| `stop` \| `rollback` | Управление ядром машины (stop рвёт VPN её клиентов — подтверждения на стороне API нет) |
 | GET | `/remote/machines/{id}/config/active` \| `built` | Работающий конфиг с машины / локально собранный |
 | POST | `/remote/machines/{id}/deploy` | Ресурсы → конфиг (та же цепочка, что кнопка Deploy). Body `{config:{…}}` опционален. `422` = демон отклонил конфиг, инстанс не тронут |
@@ -435,12 +437,12 @@ Start/stop ядра при daemon-движке идут через общие `/
 
 | Метод | Путь | Что делает |
 |---|---|---|
-| GET | `/daemon/status` | Сопряжение, служба, доступность, статус ядра, паспорт демона; `service_state` (`not_installed`\|`unsafe`\|`stale`\|`not_running`\|`process_stale`\|`ok`\|`core_too_old`), `service_path`, `service_detail` — классификатор службы (SPEC 136); при `core_too_old` (ядро лаунчера ниже lx.12) `/daemon/commands` отдаёт `install` пустым |
+| GET | `/daemon/status` | Сопряжение, служба, доступность, статус ядра, паспорт демона; `service_state` (`not_installed`\|`unsafe`\|`stale`\|`not_running`\|`process_stale`\|`ok`\|`core_too_old`), `service_path`, `service_detail` — классификатор службы (SPEC 136); при `core_too_old` (ядро лаунчера ниже lx.12) `/daemon/commands` отдаёт `install` пустым. Поля окна Service (SPEC 161): `reach_error` — почему `/admin/status` не ответил; пути паспорта `executable`, `log_path`, `listen`, `tls` (`null` — паспорта за сессию не было), `passport_seen_at`; `passport_cached: true` — демон молчит, значения из кэша сессии (`uptime_seconds` тогда нет) |
 | POST | `/daemon/pair` | `{invite, secret?}` — сопряжение с локальным демоном |
 | POST | `/daemon/unpair` | Забыть сопряжение (ключи, пин, секрет) |
 | PATCH | `/daemon/settings` | `{addr?, secret?}` |
 | GET/POST | `/daemon/engine` | Движок ядра: `{"mode":"classic"\|"daemon"}`; POST при работающем VPN → `409` |
-| GET | `/daemon/commands` | Готовые sudo-команды (install/uninstall/repair/kickstart/show_secret). **API их не исполняет** — принцип «sudo только в вашем терминале» |
+| GET | `/daemon/commands` | Готовые sudo-команды (install/uninstall/repair/kickstart/show_secret/restart/client_list). `restart` — macOS: команда `kickstart`, Windows: `Restart-Service` для PowerShell от администратора; `client_list` — кому демон доверяет. **API их не исполняет** — принцип «sudo только в вашем терминале» |
 
 ---
 

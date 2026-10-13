@@ -4,12 +4,19 @@
 // внешнего модального диалога. Tab Form — типизированные var-контролы из
 // preset.vars (универсальный rendering по PresetVar.Type). Tab JSON —
 // preview эмитнутого config-fragment'а (route rule + dns rule + rule_set +
-// bundled dns_servers) read-only.
+// bundled dns_servers) read-only. Tab Preset — исходное определение пресета
+// из шаблона визарда (запись presets[] как есть, с @var / #if / #tpl /
+// for_each_node / for_each_node_do) read-only.
+//
+// Переменная с `wizard_ui: "internal"` (только для сборки, TEMPLATE_LANG §2.1)
+// в форме не рисуется; text_list — многострочное поле, по значению на строку;
+// у text_list с `unique` дубли снимаются при сохранении.
 //
 // Кнопки внизу: Convert to user rule(s) (one-way conversion), Cancel, Save.
 package tabs
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -155,6 +162,9 @@ func showEditPresetRefDialog(
 
 	for i := range tplPreset.Vars {
 		v := &tplPreset.Vars[i]
+		if v.IsInternal() {
+			continue
+		}
 		title := v.Title
 		if title == "" {
 			title = v.Name
@@ -240,6 +250,16 @@ func showEditPresetRefDialog(
 			}
 			entry.Validator = numberEntryValidator
 			wid = entry
+		case "text_list":
+			// Значение — строки через перевод строки (TEMPLATE_LANG §2.2).
+			entry := widget.NewMultiLineEntry()
+			entry.SetMinRowsVisible(3)
+			entry.SetText(curVal)
+			entry.OnChanged = func(s string) {
+				working[v.Name] = s
+				refreshJSON()
+			}
+			wid = entry
 		default: // text
 			entry := widget.NewEntry()
 			entry.SetText(curVal)
@@ -290,7 +310,17 @@ func showEditPresetRefDialog(
 		jsonScroll,
 	)
 
-	// ===== AppTabs (Form / JSON) =====
+	// ===== Preset tab: исходная запись presets[] из шаблона, статично =====
+	presetView := fynewidget.NewJSONView(presetSourceJSON(model.TemplateData, tplPreset))
+	presetHint := widget.NewLabel(locale.T("Preset definition from the wizard template, read-only."))
+	presetHint.Wrapping = fyne.TextWrapWord
+	presetContent := container.NewBorder(
+		container.NewBorder(nil, nil, nil, widget.NewLabel("🔒"), presetHint),
+		nil, nil, nil,
+		container.NewScroll(presetView.Object()),
+	)
+
+	// ===== AppTabs (Form / JSON / Preset) =====
 	// Только вертикальный скролл + gutter внутри: окно фиксированной ширины (500,
 	// editWindow.Resize ниже) уже держит горизонт, поэтому GridWrap-кап не нужен —
 	// но двухосевой NewScroll (в WrapInScrollWithGutter) давал бы горизонтальную
@@ -300,7 +330,8 @@ func showEditPresetRefDialog(
 	formScroll := container.NewVScroll(formInnerScroll)
 	formTabItem := container.NewTabItem(locale.T("Form"), formScroll)
 	jsonTabItem := container.NewTabItem(locale.T("JSON"), jsonContent)
-	tabs := container.NewAppTabs(formTabItem, jsonTabItem)
+	presetTabItem := container.NewTabItem(locale.T("Preset"), presetContent)
+	tabs := container.NewAppTabs(formTabItem, jsonTabItem, presetTabItem)
 	tabs.OnSelected = func(ti *container.TabItem) {
 		if ti == jsonTabItem {
 			refreshJSON()
@@ -362,6 +393,8 @@ func showEditPresetRefDialog(
 		editWindow.Close()
 	}
 	saveButton.OnTapped = func() {
+		// SPEC 166: у text_list с `unique` дубли снимаются при сохранении.
+		uniqueTextListVars(tplPreset, working)
 		// SPEC 129 Н2–Н4 — общим правилом записи, а не своей копией: пустые,
 		// равные умолчанию и необъявленные имена не пишутся.
 		newVars, _, _ := corestate.NormalizeRecordVarMap(working,
@@ -411,6 +444,41 @@ func showEditPresetRefDialog(
 	editWindow.Show()
 }
 
+// presetSourceJSON — исходная запись presets[] шаблона для вкладки Preset:
+// берётся из сырого JSON файла (TemplateData.RawTemplate) и только
+// переформатируется отступами — порядок ключей, @var, #if/#tpl и dns_servers
+// пресетов с обходом узлов остаются как в шаблоне. При одинаковых id берётся
+// первая запись — как у LoadPresets. Сырого текста нет или запись не нашлась —
+// запасной путь: сериализация разобранной структуры (порядок ключей и
+// нормализации загрузчика в ней уже не исходные).
+func presetSourceJSON(td *wizardtemplate.TemplateData, tpl *wizardtemplate.Preset) string {
+	if td != nil && len(td.RawTemplate) > 0 {
+		var root struct {
+			Presets []json.RawMessage `json:"presets"`
+		}
+		if err := json.Unmarshal(td.RawTemplate, &root); err == nil {
+			for _, raw := range root.Presets {
+				var head struct {
+					ID string `json:"id"`
+				}
+				if json.Unmarshal(raw, &head) != nil || head.ID != tpl.ID {
+					continue
+				}
+				var buf bytes.Buffer
+				if json.Indent(&buf, raw, "", "  ") == nil {
+					return buf.String()
+				}
+				break
+			}
+		}
+	}
+	out, err := json.MarshalIndent(tpl, "", "  ")
+	if err != nil {
+		return "// " + err.Error()
+	}
+	return string(out)
+}
+
 // buildPresetJSONPreview — генерит read-only JSON preview эмитнутых fragment'ов
 // для текущих working varsValues. Показывается во вкладке JSON.
 // globalVars — настройки со вкладки Settings (SPEC 106): тело пресета вправе
@@ -421,9 +489,12 @@ func showEditPresetRefDialog(
 // globalDecls — объявления переменных шаблона (SPEC 143 Т2): пустая глобаль
 // даёт Dropped ключа, а не литерал "@name" в превью.
 //
-// Пресет с `for_each` (SPEC 145 §7) раскрывается по узлам, отобранным тем же
-// отбором, что у сборки (wizardbusiness.ExpandPresetForView); подходящих узлов
-// нет — одна строка-пояснение вместо пустых фрагментов.
+// Пресет с обходом узлов (SPEC 145 §7, SPEC 166) раскрывается по узлам,
+// отобранным тем же #filter, что у сборки (wizardbusiness.ExpandPresetForView):
+// у for_each_node тело повторяется по узлам, подходящих нет — одна
+// строка-пояснение вместо пустых фрагментов; у for_each_node_do тело
+// раскрыто один раз — одно правило с собранным массивом (ввод пользователя
+// плюс #do по узлам), пустой итог показан предупреждением о снятом правиле.
 func buildPresetJSONPreview(model *wizardmodels.WizardModel, tpl *wizardtemplate.Preset, working map[string]string) string {
 	// Build effective varsMap (working + defaults).
 	vars := make(map[string]string, len(tpl.Vars))
@@ -434,7 +505,7 @@ func buildPresetJSONPreview(model *wizardmodels.WizardModel, tpl *wizardtemplate
 			vars[v.Name] = v.Default
 		}
 	}
-	if tpl.ForEach != nil && len(wizardbusiness.PresetServedTags(model, tpl, vars)) == 0 {
+	if tpl.ForEachNode != nil && len(wizardbusiness.PresetServedTags(model, tpl, vars)) == 0 {
 		return "// " + locale.T("No matching nodes.")
 	}
 	frags, warns, ok := wizardbusiness.ExpandPresetForView(model, tpl, vars)
@@ -472,6 +543,28 @@ func buildPresetJSONPreview(model *wizardmodels.WizardModel, tpl *wizardtemplate
 		text = "// warnings:\n// " + warningsAsText(warns) + "\n\n" + text
 	}
 	return text
+}
+
+// uniqueTextListVars — дедуп значения text_list с `unique` в рабочей копии:
+// строки по одной, пустые отброшены, порядок первого появления (TEMPLATE_LANG
+// §2.1). Остальные переменные не трогаются.
+func uniqueTextListVars(tpl *wizardtemplate.Preset, working map[string]string) {
+	for _, v := range tpl.Vars {
+		if !v.Unique || v.Type != "text_list" {
+			continue
+		}
+		val, ok := working[v.Name]
+		if !ok {
+			continue
+		}
+		var lines []string
+		for _, line := range strings.Split(strings.ReplaceAll(val, "\r\n", "\n"), "\n") {
+			if t := strings.TrimSpace(line); t != "" {
+				lines = append(lines, t)
+			}
+		}
+		working[v.Name] = strings.Join(wizardtemplate.UniqueStrings(lines), "\n")
+	}
 }
 
 func warningsAsText(warns []build.ExpandWarning) string {

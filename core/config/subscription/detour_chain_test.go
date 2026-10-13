@@ -18,6 +18,15 @@ func chainTagsOf(node *configtypes.ParsedNode) []string {
 	return out
 }
 
+// rejectedCodesOf — коды отбракованных записей импорта в порядке файла.
+func rejectedCodesOf(res *SingboxImportResult) []string {
+	out := make([]string, 0)
+	for _, r := range res.RejectedRecords() {
+		out = append(out, r.Code)
+	}
+	return out
+}
+
 func findNodeByTag(res *SingboxImportResult, tag string) *configtypes.ParsedNode {
 	for _, n := range res.Nodes {
 		if n.Tag == tag {
@@ -89,11 +98,14 @@ func TestDetourChainDepthLimit(t *testing.T) {
 	}
 }
 
-// Критерий 11: кольцо A→B→A даёт ОБЕ ноды; ни одна не теряется.
+// Критерий 11 (контракт 1.1.118, fail-closed): кольцо A→B→A — ОБЕ ноды
+// отбраковываются записями с кодом detour_cycle_broken; ни одна не исчезает
+// молча и ни одна не остаётся рабочей «напрямую».
 //
-// Это главный кейс порядка вычислений (SPEC B3): если сначала собрать цели
-// detour, а кольца искать после, узел внутри кольца окажется целью и исчезнет.
-func TestDetourChainCycleKeepsBothNodes(t *testing.T) {
+// Порядок вычислений (SPEC B3) по-прежнему важен: если сначала собрать цели
+// detour, а кольца искать после, узел внутри кольца окажется чужим джампом и
+// пропадёт без записи.
+func TestDetourChainCycleDropsBothNodes(t *testing.T) {
 	body := `{
 	  "outbounds":[
 	    {"type":"vless","tag":"A","server":"a.com","server_port":443,"uuid":"u1","detour":"B"},
@@ -102,22 +114,44 @@ func TestDetourChainCycleKeepsBothNodes(t *testing.T) {
 	}`
 	res := parseSingboxBodyForTest(t, body)
 
-	if len(res.Nodes) != 2 {
-		t.Fatalf("got %d nodes, want 2 (tags: %v)", len(res.Nodes), tagsOf(res))
+	if len(res.Nodes) != 0 {
+		t.Fatalf("got %d nodes, want 0 (tags: %v)", len(res.Nodes), tagsOf(res))
 	}
+	codes := rejectedCodesOf(res)
+	if len(codes) != 2 || codes[0] != WarnDetourCycleBroken || codes[1] != WarnDetourCycleBroken {
+		t.Fatalf("rejected codes = %v, want two %s", codes, WarnDetourCycleBroken)
+	}
+}
 
-	// Кольцо разорвано: суммарно цепочек не больше одной ссылки,
-	// и ни один узел не ссылается сам на себя транзитивно бесконечно.
-	for _, n := range res.Nodes {
-		for _, hop := range n.Chain {
-			if hop.Tag == n.Tag {
-				t.Fatalf("node %q has itself in its chain: %v", n.Tag, chainTagsOf(n))
-			}
+// Кольцо из трёх узлов A→B→C→A (и X, чья цепь в него ведёт): КАЖДЫЙ участник
+// отбраковывается своей записью — ни один не прячется как цель чужой цепи
+// (расхождение с LxBox, замеченное на синке 1.1.118: лаунчер терял B молча).
+func TestDetourChainCycleOfThreeDropsEveryParticipant(t *testing.T) {
+	body := `{
+	  "outbounds":[
+	    {"type":"vless","tag":"X","server":"x.com","server_port":443,"uuid":"u0","detour":"A"},
+	    {"type":"vless","tag":"A","server":"a.com","server_port":443,"uuid":"u1","detour":"B"},
+	    {"type":"vless","tag":"B","server":"b.com","server_port":443,"uuid":"u2","detour":"C"},
+	    {"type":"vless","tag":"C","server":"c.com","server_port":443,"uuid":"u3","detour":"A"}
+	  ]
+	}`
+	res := parseSingboxBodyForTest(t, body)
+
+	if len(res.Nodes) != 0 {
+		t.Fatalf("got %d nodes, want 0 (tags: %v)", len(res.Nodes), tagsOf(res))
+	}
+	codes := rejectedCodesOf(res)
+	if len(codes) != 4 {
+		t.Fatalf("rejected codes = %v, want four %s (one per node)", codes, WarnDetourCycleBroken)
+	}
+	for _, c := range codes {
+		if c != WarnDetourCycleBroken {
+			t.Fatalf("rejected codes = %v, want all %s", codes, WarnDetourCycleBroken)
 		}
 	}
 }
 
-// Самоссылка detour → узел живёт без цепочки.
+// Самоссылка detour → узел отбраковывается как кольцо (fail-closed).
 func TestDetourChainSelfReference(t *testing.T) {
 	body := `{
 	  "outbounds":[
@@ -126,28 +160,51 @@ func TestDetourChainSelfReference(t *testing.T) {
 	}`
 	res := parseSingboxBodyForTest(t, body)
 
-	if len(res.Nodes) != 1 {
-		t.Fatalf("got %d nodes, want 1 (tags: %v)", len(res.Nodes), tagsOf(res))
+	if len(res.Nodes) != 0 {
+		t.Fatalf("got %d nodes, want 0 (tags: %v)", len(res.Nodes), tagsOf(res))
 	}
-	if len(res.Nodes[0].Chain) != 0 {
-		t.Fatalf("self-detour must not build a chain, got %v", chainTagsOf(res.Nodes[0]))
+	if codes := rejectedCodesOf(res); len(codes) != 1 || codes[0] != WarnDetourCycleBroken {
+		t.Fatalf("rejected codes = %v, want [%s]", codes, WarnDetourCycleBroken)
 	}
 }
 
-// Критерий 12: detour на несуществующий тег — узел живёт, дозванивается напрямую.
+// Критерий 12 (контракт 1.1.118, fail-closed): detour на несуществующий тег —
+// узел отбраковывается с кодом detour_target_missing, а не дозванивается
+// напрямую.
 func TestDetourChainDanglingTarget(t *testing.T) {
 	body := `{
 	  "outbounds":[
-	    {"type":"vless","tag":"A","server":"a.com","server_port":443,"uuid":"u1","detour":"ghost"}
+	    {"type":"vless","tag":"A","server":"a.com","server_port":443,"uuid":"u1","detour":"ghost"},
+	    {"type":"vless","tag":"B","server":"b.com","server_port":443,"uuid":"u2"}
 	  ]
 	}`
 	res := parseSingboxBodyForTest(t, body)
 
-	if len(res.Nodes) != 1 {
-		t.Fatalf("got %d nodes, want 1", len(res.Nodes))
+	if len(res.Nodes) != 1 || res.Nodes[0].Tag != "B" {
+		t.Fatalf("got nodes %v, want only B", tagsOf(res))
 	}
-	if len(res.Nodes[0].Chain) != 0 {
-		t.Fatalf("dangling detour must not build a chain, got %v", chainTagsOf(res.Nodes[0]))
+	if codes := rejectedCodesOf(res); len(codes) != 1 || codes[0] != WarnDetourTargetMissing {
+		t.Fatalf("rejected codes = %v, want [%s]", codes, WarnDetourTargetMissing)
+	}
+}
+
+// Хоп, который узлом не стал (неподдержанный тип), — та же недоступная цель:
+// носитель отбраковывается с detour_target_missing, а не едет с укороченной
+// цепочкой молча.
+func TestDetourChainUnusableHop(t *testing.T) {
+	body := `{
+	  "outbounds":[
+	    {"type":"vless","tag":"A","server":"a.com","server_port":443,"uuid":"u1","detour":"H"},
+	    {"type":"no-such-type","tag":"H","server":"h.com","server_port":1}
+	  ]
+	}`
+	res := parseSingboxBodyForTest(t, body)
+
+	if len(res.Nodes) != 0 {
+		t.Fatalf("got %d nodes, want 0 (tags: %v)", len(res.Nodes), tagsOf(res))
+	}
+	if codes := rejectedCodesOf(res); len(codes) != 1 || codes[0] != WarnDetourTargetMissing {
+		t.Fatalf("rejected codes = %v, want [%s]", codes, WarnDetourTargetMissing)
 	}
 }
 
@@ -169,7 +226,8 @@ func TestDetourChainToServiceType(t *testing.T) {
 	}
 }
 
-// detour на группу цепочку не строит: развёрнутая группа приехала бы без членов.
+// detour на группу (контракт 1.1.118, fail-closed): группа хопом быть не может,
+// носитель отбраковывается с detour_to_group; член группы и сама группа живут.
 func TestDetourChainToGroup(t *testing.T) {
 	body := `{
 	  "outbounds":[
@@ -180,12 +238,14 @@ func TestDetourChainToGroup(t *testing.T) {
 	}`
 	res := parseSingboxBodyForTest(t, body)
 
-	nodeA := findNodeByTag(res, "A")
-	if nodeA == nil {
-		t.Fatalf("node A must survive (tags: %v)", tagsOf(res))
+	if findNodeByTag(res, "A") != nil {
+		t.Fatalf("node A must be dropped (tags: %v)", tagsOf(res))
 	}
-	if len(nodeA.Chain) != 0 {
-		t.Fatalf("detour to a group must not build a chain, got %v", chainTagsOf(nodeA))
+	if findNodeByTag(res, "B") == nil || findNodeByTag(res, "auto") == nil {
+		t.Fatalf("B and the group must survive (tags: %v)", tagsOf(res))
+	}
+	if codes := rejectedCodesOf(res); len(codes) != 1 || codes[0] != WarnDetourToGroup {
+		t.Fatalf("rejected codes = %v, want [%s]", codes, WarnDetourToGroup)
 	}
 }
 

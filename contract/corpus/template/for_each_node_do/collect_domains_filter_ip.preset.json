@@ -1,0 +1,91 @@
+{
+  "_comment": "Сбор доменных серверов узлов с #filter: IPv4 (только цифры и точки) и IPv6 (есть «:») отсекаются, узел без server (Tailscale) отпадает сам. Тело — одно DNS-правило со всем собранным, в порядке узлов.",
+  "preset": {
+    "for_each_node_do": {
+      "#filter": {
+        "#and": [
+          {
+            "@node.body.server": "#notEmpty"
+          },
+          {
+            "#not": {
+              "@node.body.server": {
+                "#matches": "^[0-9.]+$"
+              }
+            }
+          },
+          {
+            "#not": {
+              "@node.body.server": {
+                "#matches": ":"
+              }
+            }
+          }
+        ]
+      },
+      "#do": {
+        "@domains": {
+          "#append": "@node.body.server"
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "domains",
+        "type": "text_list"
+      }
+    ],
+    "dns_rules": [
+      {
+        "domain": "@domains",
+        "server": "dns-x"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "a",
+      "body": {
+        "type": "vless",
+        "tag": "a",
+        "server": "a.example",
+        "server_port": 443
+      }
+    },
+    {
+      "tag": "b",
+      "body": {
+        "type": "vless",
+        "tag": "b",
+        "server": "1.2.3.4",
+        "server_port": 443
+      }
+    },
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    },
+    {
+      "tag": "c",
+      "body": {
+        "type": "hysteria2",
+        "tag": "c",
+        "server": "2001:db8::1",
+        "server_port": 443
+      }
+    },
+    {
+      "tag": "e",
+      "body": {
+        "type": "vless",
+        "tag": "e",
+        "server": "b.example",
+        "server_port": 443
+      }
+    }
+  ]
+}

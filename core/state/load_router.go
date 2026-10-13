@@ -69,16 +69,6 @@ func Load(path string) (*State, error) {
 	if s.Migration != nil && s.Migration.BackupPath == "" {
 		s.Migration.BackupPath = legacyBackupPath(path)
 	}
-	// Разовая правка masque-URI со старым `?network=` (masque_uri_migration.go).
-	// Персистится сразу: иначе тело узла пересобиралось бы на каждом старте,
-	// а файл так и нёс бы legacy-форму.
-	if n := rewriteLegacyMasqueURIs(s); n > 0 {
-		if err := s.Save(path); err != nil {
-			debuglog.WarnLog("state: masque uri migration (%d nodes) not persisted: %v", n, err)
-		} else {
-			debuglog.InfoLog("state: masque uri migration persisted (%d nodes) to %s", n, path)
-		}
-	}
 	// SPEC 131 W2c: разовый пересчёт кодов на узлах, сохранённых до
 	// конвейера (node_warnings_migration.go). Персистится ТОЛЬКО когда
 	// санитайзер переписал хотя бы одно тело: коды производные и считаются
@@ -134,7 +124,6 @@ func Parse(data []byte) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	rewriteLegacyMasqueURIs(s)
 	NormalizeBareBodyOrigins(s)
 	recountNodeWarnings(s)
 	return s, nil

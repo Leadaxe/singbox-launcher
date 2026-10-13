@@ -128,8 +128,16 @@ rule_set / dns_servers / outbounds), валидно.
 | `dns_server` | Grouped dropdown (3 секции) или whitelist (`options`/`select`) | Tag-строка (build prefix'ует bundled tag'и при substitute) |
 | `enum` | Dropdown по `options[]` (object `{title, value}`) | `value`-строка |
 | `text` | Text entry | Строка |
+| `text_list` | Многострочное поле, по значению на строку | JSON-массив непустых строк (`[]`, если пусто) |
 | `number` | Numeric entry | Строка-число |
 | `bool` | Checkbox | `"true"` / `"false"` |
+
+Два поля объявления — из общего языка шаблонов (контракт 1.1.119,
+`TEMPLATE_LANG.md` §2.1): `unique: true` (только у `text_list`) держит значение
+без дублей, порядок первого появления — форма снимает дубли при сохранении,
+сборка применяет его к хранимому значению, умолчанию и собранному по узлам;
+`wizard_ui: "internal"` — переменная только для сборки: строки в форме нет,
+значение из состояния и бэкапа игнорируется, пишет её только `#do` обхода узлов.
 
 Substitute механизм: build-time recursive walk по `rules` / `dns_rule` /
 `dns_servers` / `rule_set` фрагментам — каждая строка `"@name"`
@@ -138,6 +146,19 @@ Substitute механизм: build-time recursive walk по `rules` / `dns_rule`
 
 State хранит **только diff** от template defaults в `rule.body.vars`
 (пустой `vars: {}` = preset на template defaults).
+
+### 4.5.1 Обход узлов — `for_each_node` / `for_each_node_do` (SPEC 166)
+
+Пресет может обойти узлы собранного конфига (включённые, не снятые, в порядке
+конфига); узел — `@node` (`@node.body.<путь>`, `@node.skip_presets`), `#filter`
+отбирает узлы условием языка `#if`. `for_each_node` повторяет тело пресета на
+каждый узел (штатный пресет `tailscale`); `for_each_node_do` обходит узлы только
+ради сбора значений — `#do: {"@list": {"#append": "@node.body.server"}}` в
+`text_list`-переменные своего пресета, необязательный
+`#final: {"@list": {"#unique": true, "#sort": true, "#limit": N}}` — и раскрывает
+тело один раз (штатные пресеты его не используют; разобранный пример —
+TEMPLATE_LANG §6.7.4). Прежний ключ `for_each` (`node_type`, `as`) — ошибка
+загрузки: пресет пропускается. Норма — `contract/docs/TEMPLATE_LANG.md` §6.5–6.7.
 
 ---
 
@@ -312,6 +333,11 @@ runtime-globals `@runtime.*` в `#if` predicates only — §9.5; имена `pla
 объявлены как hidden vars `dns_*`. UI DNS tab пишет в `model.SettingsVars`,
 `SyncDNSModelToSettingsVars` копирует в `state.vars[]` перед Save. Build
 substitute'ит `@dns_*` литералы в `config.dns`.
+`route.default_domain_resolver` — объектная форма ядра
+`{"server": "@dns_default_domain_resolver", "disable_optimistic_cache": "@dns_resolver_no_stale"}`
+(SPEC 166 волна 3, TEMPLATE_LANG §6.9): bool `dns_resolver_no_stale` (галка на
+вкладке DNS под резолвером) подставляется JSON-`true`/`false`; когда вкладка DNS
+выбирает другой резолвер, сборка меняет только `server`, остальные поля остаются.
 
 **Special: `route_final`.** UI Rules tab dropdown «Final outbound» →
 `model.SelectedFinalOutbound` → `SettingsVars["route_final"]` →
@@ -387,8 +413,10 @@ validation). Покрывает кейсы вида «одно поле внут
 > лаунчере (`core/template/substitute.go`) и в LxBox
 > (`app/lib/services/builder/if_engine.dart`); нормативное описание общего языка
 > живёт в `contract/docs/TEMPLATE_LANG.md`. При расхождении этого справочника с
-> контрактом прав контракт. Остальные `#*`-конструкции (потенциальные
-> `#for_each` / `#include`) остаются desktop-only, пока не появятся в LxBox.
+> контрактом прав контракт. Остальные `#*`-конструкции (например,
+> потенциальный `#include`) остаются desktop-only, пока не появятся в LxBox;
+> обход узлов (`for_each_node` / `for_each_node_do`, §4.5.1) — часть общего
+> контракта.
 
 **Именованные условия.** Ключ условия может нести любой суффикс: `"#if"`,
 `"#if1"`, `"#if 2"`, `"#if tun-only"` равнозначны. Это нужно потому, что JSON

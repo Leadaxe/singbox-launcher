@@ -34,6 +34,12 @@ type StateChangedPayload struct {
 // правку и предлагает перечитать состояние.
 const StateSourceDebugAPI = "debugapi"
 
+// StateSourceAutoUpdate — значение StateChangedPayload.Source, когда файл
+// состояния машины переписал обход авто-деплоя (SPEC 164 §4.2): открытый
+// Конфигуратор этой машины предлагает перечитать, а не перезаписывает
+// свежие узлы своим Save.
+const StateSourceAutoUpdate = "auto-update"
+
 // ConfigBuiltPayload сопровождает Kind ConfigBuilt.
 type ConfigBuiltPayload struct {
 	// OK — true, если build + sing-box check прошли, файл записан.
@@ -65,4 +71,18 @@ type DisabledNode struct {
 // VpnStateChangedPayload сопровождает Kind VpnStateChanged.
 type VpnStateChangedPayload struct {
 	Running bool
+}
+
+// MachineAutoDeployPayload сопровождает Kind MachineAutoDeploy (SPEC 164).
+type MachineAutoDeployPayload struct {
+	// ID / Name — машина из реестра.
+	ID   string
+	Name string
+	// Result — services.AutoDeployApplied | AutoDeployFailed |
+	// AutoDeployBuildFailed | AutoDeployUnreachable (skipped не публикуется).
+	Result string
+	// SHA — sha256 отправленного конфига при applied.
+	SHA string
+	// Note — одна строка причины для уведомления.
+	Note string
 }

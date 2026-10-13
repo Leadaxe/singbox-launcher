@@ -31,8 +31,8 @@ func TestBuildPresetJSONPreview_ForEachNodes(t *testing.T) {
 			ts = &td.Presets[i]
 		}
 	}
-	if ts == nil || ts.ForEach == nil {
-		t.Fatal("пресета tailscale с for_each нет в шаблоне")
+	if ts == nil || ts.ForEachNode == nil {
+		t.Fatal("пресета tailscale с for_each_node нет в шаблоне")
 	}
 	prev := config.TailscaleStateDirRoot()
 	config.SetTailscaleStateDirRoot(t.TempDir())

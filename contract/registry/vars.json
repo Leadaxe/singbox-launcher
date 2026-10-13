@@ -56,6 +56,12 @@
       "in": "both",
       "note": "experimental.cache_file.store_dns — кэш DNS в cache.db переживает перезапуск (контракт 1.1.93, TEMPLATE_LANG §6.8). default true."
     },
+    "dns_resolver_no_stale": {
+      "type": "bool",
+      "portable": true,
+      "in": "both",
+      "note": "route.default_domain_resolver.disable_optimistic_cache — имена узлов (и прочие имена, которые ядро резолвит резолвером по умолчанию) не отдаются из устаревшего кэша: после истечения TTL — новый запрос (контракт 1.1.119, TEMPLATE_LANG §6.9). default true; default_domain_resolver в шаблоне — объект {server: @dns_default_domain_resolver, disable_optimistic_cache: @dns_resolver_no_stale}, false подставляется литералом."
+    },
     "dns_google_udp_outbound": {
       "type": "outbound",
       "portable": false,

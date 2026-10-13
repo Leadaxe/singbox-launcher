@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "domain_suffix": [
+        ".a.example",
+        ".b.example"
+      ],
+      "outbound": "direct-out"
+    }
+  ],
+  "dns_servers": [],
+  "dns_rules": [],
+  "warnings": []
+}

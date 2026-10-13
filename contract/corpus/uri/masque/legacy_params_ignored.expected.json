@@ -18,7 +18,12 @@
       "warnings": [
         {
           "code": "uri_param_unknown",
-          "path": "$legacy_flat"
+          "path": "$legacy_flat",
+          "value": "legacy.example-14.com"
+        },
+        {
+          "code": "uri_param_unknown",
+          "path": "network"
         }
       ]
     }

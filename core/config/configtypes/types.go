@@ -739,7 +739,7 @@ type ParsedNode struct {
 	// В конфиг попадает как всякий другой — detour на него иначе повис бы.
 	Service bool
 	// SkipPresets — поле записи skip_presets (LxBox §578): пресеты с
-	// for_each узел не обслуживают.
+	// for_each_node* узел не обслуживают.
 	SkipPresets bool
 	// Chain is the ordered detour path from the nearest hop outwards
 	// (SPEC 094 B1). Empty means the node dials directly.

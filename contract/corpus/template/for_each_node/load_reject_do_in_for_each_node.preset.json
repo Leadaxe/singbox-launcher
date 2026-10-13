@@ -1,0 +1,39 @@
+{
+  "_comment": "#do допустим только в for_each_node_do: тело for_each_node видит @node напрямую — ошибка загрузки.",
+  "preset": {
+    "for_each_node": {
+      "#filter": {
+        "@node.body.type": "tailscale"
+      },
+      "#do": {
+        "@hosts": {
+          "#append": "@node"
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "hosts",
+        "type": "text_list"
+      }
+    ],
+    "rules": [
+      {
+        "preferred_by": [
+          "@node"
+        ],
+        "outbound": "@node"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    }
+  ]
+}

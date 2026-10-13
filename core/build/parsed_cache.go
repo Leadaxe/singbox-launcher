@@ -39,7 +39,7 @@ type ParsedCache struct {
 	NodeOrigins map[string]NodeOrigin
 
 	// SkipPresets — финальные теги узлов, чья запись несёт skip_presets=true
-	// (LxBox §578): пресеты с for_each читают поле как @<as>.skip_presets.
+	// (LxBox §578): пресеты с for_each_node* читают поле как @node.skip_presets.
 	// У узла подписки записи нет — его тега здесь не бывает.
 	SkipPresets map[string]bool
 }

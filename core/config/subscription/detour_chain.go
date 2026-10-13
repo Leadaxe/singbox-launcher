@@ -18,8 +18,10 @@ import (
 //	4. для каждого кандидата собрать цепочку.
 //
 // Если шаг 1 выполнить после шага 2, узел внутри кольца попадёт в цели detour
-// и исчезнет из подписки совсем — вместо того чтобы остаться рабочим узлом с
-// разорванным ребром.
+// и исчезнет из подписки МОЛЧА — как чужой джамп, без записи. Порядок B3
+// оставляет его кандидатом, и кольцо называется кодом detour_cycle_broken у
+// каждого участника: с контракта 1.1.118 узел при этом не остаётся рабочим с
+// разорванным ребром, а отбраковывается (fail-closed, см. attachChain).
 
 // maxDetourChainDepth — предел длины цепочки (SPEC 094 B2).
 const maxDetourChainDepth = 8
@@ -30,6 +32,11 @@ type singboxChainInfo struct {
 	detourTargets map[string]struct{}
 	// brokenEdges — теги, чьё исходящее detour-ребро замыкает кольцо.
 	brokenEdges map[string]struct{}
+	// onCycle — все участники колец (контракт 1.1.118, D-128): каждый из них
+	// остаётся кандидатом и получает СВОЮ запись detour_cycle_broken, а не
+	// поглощается соседом как чужой джамп. Иначе в кольце A→B→C→A узел B
+	// пропадал бы без записи — молчаливая потеря, которую fail-closed запрещает.
+	onCycle map[string]struct{}
 }
 
 func (c *singboxChainInfo) isDetourTarget(tag string) bool {
@@ -48,15 +55,24 @@ func (c *singboxChainInfo) isBrokenEdge(tag string) bool {
 	return ok
 }
 
+func (c *singboxChainInfo) isOnCycle(tag string) bool {
+	if c == nil || tag == "" {
+		return false
+	}
+	_, ok := c.onCycle[tag]
+	return ok
+}
+
 // analyzeSingboxDetour строит карту detour-графа конфига.
 func analyzeSingboxDetour(entries []map[string]interface{}, byTag map[string]map[string]interface{}) *singboxChainInfo {
 	info := &singboxChainInfo{
 		detourTargets: make(map[string]struct{}),
 		brokenEdges:   make(map[string]struct{}),
+		onCycle:       make(map[string]struct{}),
 	}
 
 	// Шаг 1 — кольца.
-	findDetourCycleEdges(entries, byTag, info.brokenEdges)
+	findDetourCycleEdges(entries, byTag, info.brokenEdges, info.onCycle)
 
 	// Шаг 2 — цели detour, кроме снятых рёбер.
 	for _, entry := range entries {
@@ -68,11 +84,10 @@ func analyzeSingboxDetour(entries []map[string]interface{}, byTag map[string]map
 		if target == "" {
 			continue
 		}
-		if info.isBrokenEdge(target) {
-			// Цель сама владеет снятым ребром, то есть лежит на кольце.
-			// Поглотить её как «чужой джамп» нельзя: она осталась без
-			// исходящего ребра и обязана выжить самостоятельным узлом,
-			// иначе кольцо A→B→A стёрло бы из подписки обе ноды.
+		if info.isOnCycle(target) {
+			// Цель лежит на кольце. Поглотить её как «чужой джамп» нельзя:
+			// каждый участник кольца отбраковывается своей записью
+			// (fail-closed, D-128), иначе кольцо A→B→C→A стёрло бы B молча.
 			continue
 		}
 		targetEntry, ok := byTag[target]
@@ -91,12 +106,13 @@ func analyzeSingboxDetour(entries []map[string]interface{}, byTag map[string]map
 	return info
 }
 
-// findDetourCycleEdges помечает теги, чьё detour-ребро замыкает кольцо.
+// findDetourCycleEdges помечает теги, чьё detour-ребро замыкает кольцо, и
+// всех участников кольца (onCycle).
 //
 // Обход стартует с каждого узла в порядке файла; settled хранит уже
 // обойдённые старты, чтобы не переобходить один граф многократно. На кольце
 // A→B→A виновником детерминированно назначается тот, кого обошли первым.
-func findDetourCycleEdges(entries []map[string]interface{}, byTag map[string]map[string]interface{}, broken map[string]struct{}) {
+func findDetourCycleEdges(entries []map[string]interface{}, byTag map[string]map[string]interface{}, broken, onCycle map[string]struct{}) {
 	settled := make(map[string]struct{}, len(entries))
 
 	for _, entry := range entries {
@@ -109,6 +125,9 @@ func findDetourCycleEdges(entries []map[string]interface{}, byTag map[string]map
 		}
 
 		path := make(map[string]struct{})
+		// order — тот же путь по порядку: участники кольца = хвост от
+		// замкнувшей цели до конца.
+		order := make([]string, 0, 8)
 		current := startTag
 
 		for {
@@ -118,6 +137,7 @@ func findDetourCycleEdges(entries []map[string]interface{}, byTag map[string]map
 				break
 			}
 			path[current] = struct{}{}
+			order = append(order, current)
 			settled[current] = struct{}{}
 
 			currentEntry, ok := byTag[current]
@@ -130,7 +150,14 @@ func findDetourCycleEdges(entries []map[string]interface{}, byTag map[string]map
 			}
 			if _, inPath := path[next]; inPath {
 				// Ребро current → next замыкает кольцо: рвём именно его.
+				// Участники кольца — от next до current по пути.
 				broken[current] = struct{}{}
+				for i := len(order) - 1; i >= 0; i-- {
+					onCycle[order[i]] = struct{}{}
+					if order[i] == next {
+						break
+					}
+				}
 				break
 			}
 			current = next
@@ -138,15 +165,33 @@ func findDetourCycleEdges(entries []map[string]interface{}, byTag map[string]map
 	}
 }
 
+// detourReject — отказ сборки цепочки: узел-носитель detour в состав не идёт.
+//
+// Fail-closed для импортированного sing-box конфига (контракт 1.1.118, решение
+// владельца 13.10.2026; норма та же, что у detour источника и у сборки — память
+// detour-failclosed-uniform): detour — управление анонимностью, а не
+// балансировка, и узел, чей маршрут деградировал, не должен молча дозваниваться
+// напрямую. Код — из contract/registry/warnings.json, reason — текст для записи
+// kind=unsupported на позиции узла.
+type detourReject struct {
+	code   string
+	reason string
+}
+
 // attachChain собирает цепочку detour для узла и записывает её в node.Chain.
+//
+// Ненулевой результат — узел отбраковывается вызывающим (parseSingboxConfig):
+// висячая цель, цель-группа, кольцо и неразобранный хоп — всё fail-closed.
+// Служебная цель (detour:"direct") и предел глубины узел не ломают: первая
+// просто завершает цепочку, второй усекает её с предупреждением (B2).
 func (c *singboxChainInfo) attachChain(
 	node *configtypes.ParsedNode,
 	entry map[string]interface{},
 	byTag map[string]map[string]interface{},
 	cfgIdx int,
-) {
+) *detourReject {
 	if node == nil {
-		return
+		return nil
 	}
 
 	visited := map[string]struct{}{}
@@ -159,12 +204,13 @@ func (c *singboxChainInfo) attachChain(
 
 	for depth := 0; depth < maxDetourChainDepth; depth++ {
 		if c.isBrokenEdge(currentTag) {
-			// Ребро снято как замыкающее кольцо (B3).
-			debuglog.DebugLog("Parser: singbox import %q: detour edge broken (cycle)", node.Tag)
-			node.AddWarningWithParams(WarnDetourCycleBroken, map[string]string{
-				"target": strings.TrimSpace(mapString(current, "detour")),
-			})
-			break
+			// Ребро замыкает кольцо (B3): все участники кольца fail-closed.
+			target := strings.TrimSpace(mapString(current, "detour"))
+			debuglog.DebugLog("Parser: singbox import %q: detour chain loops through %q — node dropped", node.Tag, target)
+			return &detourReject{
+				code:   WarnDetourCycleBroken,
+				reason: "detour chain loops back through " + strconv.Quote(target),
+			}
 		}
 
 		target := strings.TrimSpace(mapString(current, "detour"))
@@ -173,17 +219,20 @@ func (c *singboxChainInfo) attachChain(
 		}
 
 		if _, seen := visited[target]; seen {
-			debuglog.DebugLog("Parser: singbox import %q: detour cycle at %q — chain truncated", node.Tag, target)
-			node.AddWarningWithParams(WarnDetourCycleBroken, map[string]string{"target": target})
-			break
+			debuglog.DebugLog("Parser: singbox import %q: detour cycle at %q — node dropped", node.Tag, target)
+			return &detourReject{
+				code:   WarnDetourCycleBroken,
+				reason: "detour chain loops back through " + strconv.Quote(target),
+			}
 		}
 
 		targetEntry, ok := byTag[target]
 		if !ok {
-			// B5: висячая ссылка — узел живёт, дозванивается напрямую.
-			debuglog.DebugLog("Parser: singbox import %q: detour target %q not found — chain truncated", node.Tag, target)
-			node.AddWarningWithParams(WarnDetourTargetMissing, map[string]string{"target": target})
-			break
+			debuglog.DebugLog("Parser: singbox import %q: detour target %q not found — node dropped", node.Tag, target)
+			return &detourReject{
+				code:   WarnDetourTargetMissing,
+				reason: "detour target " + strconv.Quote(target) + " not found",
+			}
 		}
 
 		targetType := strings.ToLower(strings.TrimSpace(mapString(targetEntry, "type")))
@@ -192,16 +241,22 @@ func (c *singboxChainInfo) attachChain(
 			break
 		}
 		if IsSingboxGroupType(targetType) {
-			// B5: развёрнутая группа в detour дала бы её без членов.
-			debuglog.DebugLog("Parser: singbox import %q: detour target %q is a group — chain truncated", node.Tag, target)
-			node.AddWarningWithParams(WarnDetourToGroup, map[string]string{"target": target})
-			break
+			debuglog.DebugLog("Parser: singbox import %q: detour target %q is a group — node dropped", node.Tag, target)
+			return &detourReject{
+				code:   WarnDetourToGroup,
+				reason: "detour target " + strconv.Quote(target) + " is a group",
+			}
 		}
 
 		hop, err := parseSingboxEntry(targetEntry, cfgIdx, depth)
 		if err != nil {
-			debuglog.DebugLog("Parser: singbox import %q: detour hop %q unusable (%v) — chain truncated", node.Tag, target, err)
-			break
+			// Хоп есть в файле, но узлом не стал: для цепочки это та же
+			// недоступная цель (cause кода: «отброшен как неподдержанный»).
+			debuglog.DebugLog("Parser: singbox import %q: detour hop %q unusable (%v) — node dropped", node.Tag, target, err)
+			return &detourReject{
+				code:   WarnDetourTargetMissing,
+				reason: "detour target " + strconv.Quote(target) + " unusable: " + err.Error(),
+			}
 		}
 
 		node.Chain = append(node.Chain, hop)
@@ -222,4 +277,5 @@ func (c *singboxChainInfo) attachChain(
 	}
 
 	node.SyncJumpFromChain()
+	return nil
 }

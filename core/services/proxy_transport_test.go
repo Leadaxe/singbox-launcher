@@ -82,7 +82,7 @@ func TestSetTransportNilRestoresClash(t *testing.T) {
 func TestSwitchProxyViaUsesGivenTransport(t *testing.T) {
 	svc := &APIService{Enabled: false} // wireTransport упал бы (clash off)
 	explicit := &stubTransport{}
-	if err := svc.SwitchProxyVia(explicit, "grp", "node-x"); err != nil {
+	if err := svc.SwitchProxyVia(explicit, ScopeLocal, "grp", "node-x"); err != nil {
 		t.Fatalf("SwitchProxyVia: %v", err)
 	}
 	if explicit.switched != [2]string{"grp", "node-x"} {

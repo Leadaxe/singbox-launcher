@@ -55,7 +55,7 @@ type Warning struct {
 	// разбором тела (LxBox); у лаунчера тело сырое, и такой причины нет.
 	//
 	// У `backup_var_skipped` (SPEC 129 §5.6) — `not_portable` | `undeclared`
-	// | `superseded` | `no_record`.
+	// | `superseded` | `no_record` | `internal` (контракт 1.1.119).
 	Reason string
 	// Record — носитель переменной у `backup_var_skipped` (SPEC 129 §5.6):
 	// `dns:<tag>` — запись шаблонного DNS-сервера, `preset:<ref>` — пресет

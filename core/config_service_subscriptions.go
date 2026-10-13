@@ -14,12 +14,19 @@ package core
 //     W13) берёт тот же SubscriptionMu на свой короткий load→mutate→save.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
+	"sync"
 	"time"
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/paths"
@@ -332,6 +339,15 @@ func successSubStatus(url, now string, httpStatus int, rawBytes int64, material 
 // закрепления на диске не отменяет успех обновления в памяти: визард сохранит
 // его своим Save.
 func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) {
+	return svc.RefreshSourceInPlaceFor(src, constants.ConfigTargetLocal, "")
+}
+
+// RefreshSourceInPlaceFor — то же для Конфигуратора заданной цели (SPEC 165):
+// результат фетча закрепляется в файле состояния ЭТОЙ цели — локальном при
+// target=local, `remote/<machineID>/state.json` при target=remote. До
+// SPEC 165 путь был локальным безусловно, и Refresh в Конфигураторе машины
+// перезаписывал локальный источник с тем же ID (профили машин — копии).
+func (svc *ConfigService) RefreshSourceInPlaceFor(src *state.Source, target, machineID string) (bool, error) {
 	if src == nil {
 		return false, fmt.Errorf("RefreshSourceInPlace: nil source")
 	}
@@ -349,7 +365,7 @@ func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) 
 
 	changed := refreshOneSubscriptionSource(src, settings)
 	if changed {
-		svc.persistFetchResultForSource(src, dataDir)
+		svc.persistFetchResultForSource(src, dataDir, target, machineID)
 	}
 	return changed, nil
 }
@@ -367,14 +383,24 @@ func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) 
 // Источник, которого на диске нет (визард ещё не сохранял его — сценарий 1
 // cold-start), НЕ создаётся: state.json пишет визард, и родить там половину
 // записи значило бы подсунуть ему источник без url и подписи.
-func (svc *ConfigService) persistFetchResultForSource(src *state.Source, dataDir paths.DataDir) {
+//
+// Цель (SPEC 165): файл и мьютекс выбираются по target/machineID —
+// SubscriptionMu и локальный state.json для Local, MachineStateLock(id) и
+// файл машины для remote. Признак «локальный конфиг устарел» поднимается
+// только для Local: устаревание машины выражает sha-сравнение её строки.
+func (svc *ConfigService) persistFetchResultForSource(src *state.Source, dataDir paths.DataDir, target, machineID string) {
 	if src == nil || src.ID == "" || svc == nil || svc.ac == nil {
 		return
 	}
+	remote := strings.EqualFold(strings.TrimSpace(target), constants.ConfigTargetRemote) && strings.TrimSpace(machineID) != ""
 	statePath := platform.GetWizardStatePath(dataDir)
-
-	svc.ac.SubscriptionMu.Lock()
-	defer svc.ac.SubscriptionMu.Unlock()
+	var mu sync.Locker = &svc.ac.SubscriptionMu
+	if remote {
+		statePath = platform.GetWizardStatePathFor(dataDir, constants.ConfigTargetRemote, machineID)
+		mu = svc.ac.MachineStateLock(machineID)
+	}
+	mu.Lock()
+	defer mu.Unlock()
 
 	s, err := state.Load(statePath)
 	if err != nil {
@@ -399,8 +425,8 @@ func (svc *ConfigService) persistFetchResultForSource(src *state.Source, dataDir
 	}
 	// «Конфиг устарел» (SPEC Т4): состав узлов на диске сменился, но сборку
 	// отсюда не запускаем — это решение пользователя, как и у
-	// RefreshSingleSubscription.
-	if svc.ac.StateService != nil {
+	// RefreshSingleSubscription. Только для Local (SPEC 165).
+	if !remote && svc.ac.StateService != nil {
 		svc.ac.StateService.MarkConfigStale()
 	}
 }
@@ -454,4 +480,99 @@ func (svc *ConfigService) RefreshSingleSubscription(sourceID string) (*state.Sou
 		}
 	}
 	return src, nil
+}
+
+// machineSubscriptionsRefresh — итог обхода подписок одного файла состояния
+// (SPEC 164 §4.2): сколько источников сменили состав узлов, какие упали.
+type machineSubscriptionsRefresh struct {
+	// Changed — ID подписок, у которых изменился состав nodes[].
+	Changed []string
+	// Failed — ошибки фетча по ID (nodes[] у них не тронуты, SPEC 113-A).
+	Failed map[string]string
+	// Titles — подписи изменившихся подписок для журнала (profile-title или
+	// имя, иначе хвост URL).
+	Titles []string
+}
+
+// refreshStaleSubscriptionsAt — обход подписок ОДНОГО файла состояния
+// (SPEC 164): enabled + URL + устаревшие по effectiveReload (все — при
+// force). Используется только обходом машин: локальный путь остаётся
+// per-source с retry-таймерами (runScheduledRefresh) и здесь не трогается.
+//
+// mu — мьютекс этого файла: держится на весь load→mutate→save, как
+// SubscriptionMu у локального. Фетч идёт под ним же — обход машины
+// последовательный, а PATCH Debug API к тому же файлу обязан ждать, иначе
+// вторая запись перетирает первую.
+//
+// «Изменился состав» считается по сериализации nodes[] до и после merge, а не
+// по возврату refreshOneSubscriptionSource: тот отвечает true и на провал
+// (обновлён updateStatus), а деплоить по провалу нечего.
+func (svc *ConfigService) refreshStaleSubscriptionsAt(statePath string, mu sync.Locker,
+	settings locale.Settings, force bool, now time.Time) (machineSubscriptionsRefresh, error) {
+	out := machineSubscriptionsRefresh{Failed: map[string]string{}}
+	if mu != nil {
+		mu.Lock()
+		defer mu.Unlock()
+	}
+	s, err := state.Load(statePath)
+	if err != nil {
+		return out, fmt.Errorf("load state: %w", err)
+	}
+	dirty := false
+	for i := range s.Sources {
+		src := &s.Sources[i]
+		if src.Kind != state.SourceKindSubscription || !src.Enabled || src.URL == "" {
+			continue
+		}
+		if !force && !sourceIsStale(src, settings, now) {
+			continue
+		}
+		before := nodesDigest(src.Nodes)
+		if !refreshOneSubscriptionSource(src, settings) {
+			continue
+		}
+		dirty = true
+		if src.UpdateStatus != nil && src.UpdateStatus.LastStatus == "err" {
+			out.Failed[src.ID] = src.UpdateStatus.LastErrorMsg
+			continue
+		}
+		if nodesDigest(src.Nodes) != before {
+			out.Changed = append(out.Changed, src.ID)
+			out.Titles = append(out.Titles, subscriptionTitle(src))
+		}
+	}
+	if dirty {
+		if err := s.Save(statePath); err != nil {
+			return out, fmt.Errorf("save state after refresh: %w", err)
+		}
+	}
+	return out, nil
+}
+
+// nodesDigest — sha256 сериализации nodes[]; "" у пустого списка.
+func nodesDigest(nodes []state.Node) string {
+	if len(nodes) == 0 {
+		return ""
+	}
+	raw, err := json.Marshal(nodes)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// subscriptionTitle — подпись подписки для журнала: profile-title провайдера,
+// иначе имя, иначе хост URL.
+func subscriptionTitle(src *state.Source) string {
+	if src.Meta != nil && src.Meta.ProfileTitle != "" {
+		return src.Meta.ProfileTitle
+	}
+	if src.Name != "" {
+		return src.Name
+	}
+	if u, err := url.Parse(src.URL); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return src.ID
 }

@@ -84,6 +84,9 @@ func (ac *AppController) startAutoUpdateLoop() {
 	// subscription once per launch.
 	if ac.StateService.IsAutoUpdateEnabled() {
 		ac.runScheduledRefresh("startup")
+		// SPEC 164: машины с флагом авто-деплоя — после локального обхода,
+		// в той же горутине и с теми же гейтами.
+		ac.runMachineSweep("startup")
 	} else {
 		debuglog.DebugLog("Auto-update: disabled by user, skipping startup sweep")
 	}
@@ -107,6 +110,7 @@ func (ac *AppController) startAutoUpdateLoop() {
 				continue
 			}
 			ac.runScheduledRefresh("heartbeat")
+			ac.runMachineSweep("heartbeat")
 		}
 	}
 }

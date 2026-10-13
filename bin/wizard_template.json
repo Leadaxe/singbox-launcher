@@ -592,6 +592,15 @@
    "default_value": "direct_dns_resolver"
   },
   {
+   "name": "dns_resolver_no_stale",
+   "type": "bool",
+   "wizard_ui": "fix",
+   "title": "Never serve stale answers for node hostnames",
+   "tooltip": "Resolve a node's hostname again once its TTL expires instead of dialing a cached address. Keeps nodes alive with providers that rotate addresses.",
+   "comment": "DNS tab only: route.default_domain_resolver.disable_optimistic_cache.",
+   "default_value": "true"
+  },
+  {
    "name": "dns_final",
    "type": "text",
    "wizard_ui": "fix",
@@ -664,7 +673,10 @@
    }
   ],
   "route": {
-   "default_domain_resolver": "@dns_default_domain_resolver",
+   "default_domain_resolver": {
+    "server": "@dns_default_domain_resolver",
+    "disable_optimistic_cache": "@dns_resolver_no_stale"
+   },
    "rules": [],
    "final": "@route_final",
    "auto_detect_interface": "@auto_detect_interface",
@@ -825,7 +837,7 @@
      {
       "name": "outbound",
       "type": "outbound",
-      "default_value": "proxy-out",
+      "default_value": "direct-out",
       "title": "Outbound",
       "tooltip": "Which channel carries DNS queries to this server"
      },
@@ -870,7 +882,7 @@
      {
       "name": "outbound",
       "type": "outbound",
-      "default_value": "proxy-out",
+      "default_value": "direct-out",
       "title": "Outbound",
       "tooltip": "Which channel carries DNS queries to this server"
      },
@@ -968,7 +980,7 @@
     }
    },
    {
-    "description": "Quad9 DoH (via VPN, anti-malware)",
+    "description": "Quad9 DoH (anti-malware)",
     "enabled": false,
     "server": {
      "type": "https",
@@ -980,7 +992,7 @@
       "enabled": true,
       "server_name": "dns.quad9.net"
      },
-     "detour": "proxy-out"
+     "detour": "direct-out"
     }
    },
    {
@@ -1100,11 +1112,16 @@
    "label": "Tailscale networks",
    "description": "Route each tailnet through its Tailscale node and resolve its names with the node's own DNS.",
    "default_enabled": true,
-   "for_each": {
-    "node_type": "tailscale",
-    "as": "node",
-    "filter": {
-     "#not": "@node.skip_presets"
+   "for_each_node": {
+    "#filter": {
+     "#and": [
+      {
+       "@node.body.type": "tailscale"
+      },
+      {
+       "#not": "@node.skip_presets"
+      }
+     ]
     }
    },
    "vars": [

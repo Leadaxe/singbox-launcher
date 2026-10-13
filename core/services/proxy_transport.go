@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"singbox-launcher/api"
+	"singbox-launcher/internal/debuglog"
 )
 
 // ProxyTransport abstracts the wire used for proxy-group operations. The
@@ -68,13 +69,19 @@ func (apiSvc *APIService) TransportOverride() ProxyTransport {
 // wireTransport. Нужно для UI-слоя Servers-tab, где источник транспорта —
 // EffectiveProxyTransport (учитывает remote-override SPEC 064, который
 // APIService не видит). Побочные эффекты (active name, last-selected,
-// OnProxySwitched) те же, что у SwitchProxy.
-func (apiSvc *APIService) SwitchProxyVia(t ProxyTransport, group, proxyName string) error {
+// OnProxySwitched) те же, что у SwitchProxy, но пишутся в область scope —
+// панели, которая переключала, а не во вкладку, открытую к моменту ответа.
+func (apiSvc *APIService) SwitchProxyVia(t ProxyTransport, scope ProxyScope, group, proxyName string) error {
 	if err := t.SwitchProxy(group, proxyName); err != nil {
+		debuglog.WarnLog("SwitchProxy: group=%q → %q failed: %v", group, proxyName, err)
 		return fmt.Errorf("failed to switch proxy: %w", err)
 	}
-	apiSvc.SetActiveProxyName(proxyName)
-	apiSvc.SetLastSelectedProxyForGroup(group, proxyName)
+	// Логируем факт и адресата: без этого нельзя отличить «лаунчер не послал
+	// команду» от «ядро её приняло, но соединения не разорвало» — а лечение у
+	// этих случаев разное.
+	debuglog.InfoLog("SwitchProxy: group=%q → %q", group, proxyName)
+	apiSvc.SetActiveProxyNameIn(scope, proxyName)
+	apiSvc.SetLastSelectedProxyForGroupIn(scope, group, proxyName)
 	if apiSvc.OnProxySwitched != nil {
 		apiSvc.OnProxySwitched()
 	}
@@ -85,13 +92,22 @@ func (apiSvc *APIService) SwitchProxyVia(t ProxyTransport, group, proxyName stri
 // override when set (daemon mode), else Clash HTTP with the current
 // config.json endpoint. Returns an error when neither is available.
 func (apiSvc *APIService) wireTransport() (ProxyTransport, error) {
+	t, _, err := apiSvc.wireTransportAndScope()
+	return t, err
+}
+
+// wireTransportAndScope — wireTransport вместе с активной областью, снятые
+// под ОДНОЙ блокировкой. Смена вкладки меняет обе величины (область и
+// transportOverride), и ответ, полученный через этот транспорт, принадлежит
+// именно этой области — даже если к моменту ответа на экране уже другая.
+func (apiSvc *APIService) wireTransportAndScope() (ProxyTransport, ProxyScope, error) {
 	apiSvc.StateMutex.RLock()
 	defer apiSvc.StateMutex.RUnlock()
 	if apiSvc.transportOverride != nil {
-		return apiSvc.transportOverride, nil
+		return apiSvc.transportOverride, apiSvc.scope, nil
 	}
 	if !apiSvc.Enabled {
-		return nil, fmt.Errorf("clash_api is disabled")
+		return nil, apiSvc.scope, fmt.Errorf("clash_api is disabled")
 	}
-	return ClashTransport{BaseURL: apiSvc.BaseURL, Token: apiSvc.Token}, nil
+	return ClashTransport{BaseURL: apiSvc.BaseURL, Token: apiSvc.Token}, apiSvc.scope, nil
 }

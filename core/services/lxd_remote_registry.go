@@ -70,6 +70,135 @@ type RemoteDaemon struct {
 	StateDir string `json:"state_dir,omitempty"`
 	// AddedAt — когда сопряглись (RFC3339, для UI-списка).
 	AddedAt string `json:"added_at,omitempty"`
+	// SSH — ssh-цель для команд обслуживания (user@host[:port], SPEC 161);
+	// пусто — DefaultSSHTarget(Addr).
+	SSH string `json:"ssh,omitempty"`
+	// InitSystem — init-система машины: выбор в окне Service ("" — дефолт
+	// по архитектуре | "systemd" | "procd") либо значение из паспорта демона
+	// lx.16+ (SPEC 127/162: ещё "openrc" | "launchd" | "scm"), которое
+	// перекрывает выбор при каждом здоровом ответе.
+	InitSystem string `json:"init_system,omitempty"`
+	// CoreWarnAck — версия ядра машины, для которой пользователь отключил
+	// предупреждение Deploy «ядро старее требуемого». Другая версия —
+	// предупреждение возвращается.
+	CoreWarnAck string `json:"core_warn_ack,omitempty"`
+	// Passport — последний паспорт демона (/admin/info): пути для рецептов
+	// окна Service видны и когда демон лёг. state_dir не дублируется — он
+	// в StateDir.
+	Passport *RemotePassport `json:"passport,omitempty"`
+	// AutoDeploySubscriptions — SPEC 164: лаунчер сам обновляет подписки
+	// профиля этой машины по часовому heartbeat и деплоит конфиг, когда
+	// изменились только узлы. Флаг — согласие на фоновые сетевые вызовы к
+	// машине; по умолчанию выключен.
+	AutoDeploySubscriptions bool `json:"auto_deploy_subscriptions,omitempty"`
+	// LastAutoDeploy — итог последнего рассмотрения машины обходом
+	// авто-деплоя (SPEC 164 §4.3). Перезаписывается каждым обходом, где
+	// машина рассматривалась; nil — ещё не рассматривалась.
+	LastAutoDeploy *AutoDeployRecord `json:"last_auto_deploy,omitempty"`
+}
+
+// AutoDeployRecord — одна запись журнала авто-деплоя машины (SPEC 164 §4.3).
+type AutoDeployRecord struct {
+	// At — когда машина рассматривалась (RFC3339 UTC).
+	At string `json:"at"`
+	// Result — AutoDeployApplied | AutoDeploySkipped | AutoDeployFailed |
+	// AutoDeployBuildFailed | AutoDeployUnreachable | AutoDeployNotConfigured.
+	Result string `json:"result"`
+	// SHA — sha256 отправленного конфига (только при applied).
+	SHA string `json:"sha,omitempty"`
+	// Note — одна строка причины (журнал, не локализуется).
+	Note string `json:"note,omitempty"`
+}
+
+// Исходы авто-деплоя (SPEC 164 §4.2).
+const (
+	AutoDeployApplied       = "applied"
+	AutoDeploySkipped       = "skipped"
+	AutoDeployFailed        = "failed"
+	AutoDeployBuildFailed   = "build_failed"
+	AutoDeployUnreachable   = "unreachable"
+	AutoDeployNotConfigured = "not_configured"
+)
+
+// MachineAutoDeployOutcome — результат одного рассмотрения машины
+// авто-деплоем (SPEC 164 §4.4): то, что отдаёт Debug API и что ложится в
+// LastAutoDeploy. Живёт в services, а не в core, чтобы debugapi мог
+// сериализовать его без импорта core (цикл).
+type MachineAutoDeployOutcome struct {
+	Result    string `json:"result"`
+	SHABefore string `json:"sha_before,omitempty"`
+	SHAAfter  string `json:"sha_after,omitempty"`
+	Deployed  bool   `json:"deployed"`
+	Note      string `json:"note,omitempty"`
+}
+
+// Record — запись журнала по исходу (отметка времени — сейчас).
+func (o MachineAutoDeployOutcome) Record(now time.Time) AutoDeployRecord {
+	rec := AutoDeployRecord{At: now.UTC().Format(time.RFC3339), Result: o.Result, Note: o.Note}
+	if o.Deployed {
+		rec.SHA = o.SHAAfter
+	}
+	return rec
+}
+
+// RemotePassport — кэш паспорта демона машины (SPEC 161 §7).
+type RemotePassport struct {
+	Version    string `json:"version,omitempty"`
+	Executable string `json:"executable,omitempty"`
+	LogPath    string `json:"log_path,omitempty"`
+	Listen     string `json:"listen,omitempty"`
+	TLS        *bool  `json:"tls,omitempty"`
+	// Паспорт платформы (lx.16+, SPEC 127/162): GOOS/GOARCH процесса демона,
+	// Platform — суффикс релизного ассета, InitSystem — под чем работает
+	// служба, Service — работает ли демон под init-системой (nil — ядро
+	// поле не сообщило). У старых ядер всё пусто.
+	GOOS       string `json:"goos,omitempty"`
+	GOARCH     string `json:"goarch,omitempty"`
+	Platform   string `json:"platform,omitempty"`
+	InitSystem string `json:"init_system,omitempty"`
+	Service    *bool  `json:"service,omitempty"`
+	// SeenAt — когда демон сообщил паспорт (RFC3339).
+	SeenAt string `json:"seen_at,omitempty"`
+}
+
+// passportSeenRefresh — как часто перезаписывать SeenAt неизменного
+// паспорта: heartbeat зовёт SetPassport каждые 5 с, и писать файл реестра
+// на каждый тик ради одной метки времени незачем.
+const passportSeenRefresh = 10 * time.Minute
+
+// samePassportFields — паспорта совпадают во всём, кроме SeenAt.
+func samePassportFields(a, b RemotePassport) bool {
+	if a.Version != b.Version || a.Executable != b.Executable || a.LogPath != b.LogPath || a.Listen != b.Listen {
+		return false
+	}
+	if a.GOOS != b.GOOS || a.GOARCH != b.GOARCH || a.Platform != b.Platform || a.InitSystem != b.InitSystem {
+		return false
+	}
+	return sameBoolPtr(a.TLS, b.TLS) && sameBoolPtr(a.Service, b.Service)
+}
+
+func sameBoolPtr(a, b *bool) bool {
+	if (a == nil) != (b == nil) {
+		return false
+	}
+	return a == nil || *a == *b
+}
+
+// PassportPlatformKnown — паспорт демона сообщил платформу машины (lx.16+):
+// селекторы платформы в Edit неактивны, сверка с /admin/host не нужна.
+func PassportPlatformKnown(d RemoteDaemon) bool {
+	return d.Passport != nil && d.Passport.GOOS != "" && d.Passport.GOARCH != ""
+}
+
+// knownInitSystem — init-системы, которые сообщает демон (SPEC 127) и
+// понимает окно Service. Зеркалит core.ParseInitSystem: core импортирует
+// этот пакет, обратный импорт дал бы цикл.
+func knownInitSystem(s string) bool {
+	switch s {
+	case "procd", "systemd", "openrc", "launchd", "scm":
+		return true
+	}
+	return false
 }
 
 // remoteRegistryFile — <bin>/remote-daemons.json.
@@ -590,6 +719,133 @@ func (r *RemoteRegistry) SetStateDir(id, stateDir string) error {
 	return fmt.Errorf("remote registry: unknown id %q", id)
 }
 
+// mutate — общий ход сеттеров (под r.mu): найти запись id, применить change;
+// change возвращает false — изменений нет, файл не пишется.
+func (r *RemoteRegistry) mutate(id string, change func(d *RemoteDaemon) bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	list, err := r.listLocked()
+	if err != nil {
+		return err
+	}
+	for i := range list {
+		if list[i].ID != id {
+			continue
+		}
+		if !change(&list[i]) {
+			return nil
+		}
+		return r.saveLocked(list)
+	}
+	return fmt.Errorf("remote registry: unknown id %q", id)
+}
+
+// SetSSH сохраняет ssh-цель машины (SPEC 161). Пустая строка — сброс к
+// DefaultSSHTarget(Addr); иначе цель обязана разобраться ParseSSHTarget и
+// хранится в нормализованном виде.
+func (r *RemoteRegistry) SetSSH(id, target string) error {
+	value := strings.TrimSpace(target)
+	if value != "" {
+		t, err := ParseSSHTarget(value)
+		if err != nil {
+			return err
+		}
+		value = t.String()
+	}
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		if d.SSH == value {
+			return false
+		}
+		d.SSH = value
+		return true
+	})
+}
+
+// SetInitSystem сохраняет init-систему машины: "" | "systemd" | "procd"
+// (выбор в окне Service) | "openrc" | "launchd" | "scm" (из паспорта
+// демона, SPEC 162).
+func (r *RemoteRegistry) SetInitSystem(id, initSystem string) error {
+	value := strings.TrimSpace(initSystem)
+	if value != "" && !knownInitSystem(value) {
+		return fmt.Errorf("remote registry: unknown init system %q (want procd, systemd, openrc, launchd or scm)", value)
+	}
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		if d.InitSystem == value {
+			return false
+		}
+		d.InitSystem = value
+		return true
+	})
+}
+
+// SetCoreWarnAck запоминает версию ядра, для которой Deploy больше не
+// предупреждает о старом ядре; "" — сброс.
+func (r *RemoteRegistry) SetCoreWarnAck(id, version string) error {
+	value := strings.TrimSpace(version)
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		if d.CoreWarnAck == value {
+			return false
+		}
+		d.CoreWarnAck = value
+		return true
+	})
+}
+
+// SetAutoDeploySubscriptions включает/выключает авто-деплой обновлений
+// подписок машины (SPEC 164 §4.1).
+func (r *RemoteRegistry) SetAutoDeploySubscriptions(id string, on bool) error {
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		if d.AutoDeploySubscriptions == on {
+			return false
+		}
+		d.AutoDeploySubscriptions = on
+		return true
+	})
+}
+
+// SetLastAutoDeploy записывает итог рассмотрения машины обходом
+// авто-деплоя (SPEC 164 §4.3). Пишется всегда: отметка времени нова.
+func (r *RemoteRegistry) SetLastAutoDeploy(id string, rec AutoDeployRecord) error {
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		cp := rec
+		d.LastAutoDeploy = &cp
+		return true
+	})
+}
+
+// SetSecret меняет Bearer-секрет plain-машины (tls:false), не трогая
+// ключи и пин (вкладка Pairing окна Service).
+func (r *RemoteRegistry) SetSecret(id, secret string) error {
+	value := strings.TrimSpace(secret)
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		if d.Secret == value {
+			return false
+		}
+		d.Secret = value
+		return true
+	})
+}
+
+// SetPassport кеширует паспорт демона. No-op, если поля, кроме SeenAt, не
+// изменились и прежняя отметка моложе passportSeenRefresh: зовётся на
+// каждом health-опросе. Пустой SeenAt — текущее время.
+func (r *RemoteRegistry) SetPassport(id string, p RemotePassport) error {
+	now := time.Now()
+	if p.SeenAt == "" {
+		p.SeenAt = now.UTC().Format(time.RFC3339)
+	}
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		if prev := d.Passport; prev != nil && samePassportFields(*prev, p) {
+			if seen, err := time.Parse(time.RFC3339, prev.SeenAt); err == nil && now.Sub(seen) < passportSeenRefresh {
+				return false
+			}
+		}
+		cp := p
+		d.Passport = &cp
+		return true
+	})
+}
+
 // ResourceDir — каталог ресурсов машины: `<state_dir>/resources` (SPEC 063).
 // Пусто, если state_dir ещё не известен (ни одного успешного соединения).
 func (d RemoteDaemon) ResourceDir() string {
@@ -827,6 +1083,22 @@ type RemoteHealth struct {
 	// InterruptedApply — предыдущее применение конфига прервалось (демон
 	// упал или его убили в процессе). Ядро при этом работает на last-good.
 	InterruptedApply bool
+	// Executable / LogPath / Listen / TLS / UptimeSeconds — остальной
+	// паспорт (/admin/info) для окна Service (SPEC 161). TLS nil — паспорт
+	// не получен. UptimeSeconds меняется каждый тик — сравнивать здоровье
+	// без него.
+	Executable    string
+	LogPath       string
+	Listen        string
+	TLS           *bool
+	UptimeSeconds int
+	// GOOS / GOARCH / Platform / InitSystem / Service — паспорт платформы
+	// (lx.16+, SPEC 127/162); у старых ядер пусто, Service nil.
+	GOOS       string
+	GOARCH     string
+	Platform   string
+	InitSystem string
+	Service    *bool
 }
 
 // Health опрашивает машину: статус ядра + паспорт демона.
@@ -871,15 +1143,121 @@ func (r *RemoteRegistry) healthCtx(ctx context.Context, id string) RemoteHealth 
 	// Паспорт — best-effort: машина уже отвечает, и отсутствие /admin/info
 	// (старый демон) не повод считать её недоступной.
 	if info, infoErr := client.InfoCtx(ctx); infoErr == nil {
+		tls := info.TLS
 		out.Version = info.Version
 		out.StateDir = info.StateDir
+		out.Executable = info.Executable
+		out.LogPath = info.LogPath
+		out.Listen = info.Listen
+		out.TLS = &tls
+		out.UptimeSeconds = info.UptimeSeconds
+		out.GOOS, out.GOARCH, out.Platform, out.InitSystem = info.GOOS, info.GOARCH, info.Platform, info.InitSystem
+		// service у старых ядер отсутствует и читается как false; известен он
+		// только вместе с init_system (SPEC 127).
+		if info.InitSystem != "" {
+			service := info.Service
+			out.Service = &service
+		}
 		// Кешируем в реестр: генерация конфига берёт отсюда путь ресурс-стора
-		// и не зависит от того, доступна ли машина в этот момент.
+		// и не зависит от того, доступна ли машина в этот момент; окно
+		// Service — пути для рецептов, когда демон лёг.
 		if err := r.SetStateDir(id, info.StateDir); err != nil {
 			debuglog.WarnLog("remote registry: cache state_dir for %q: %v", id, err)
 		}
+		passport := RemotePassport{Version: info.Version, Executable: info.Executable, LogPath: info.LogPath, Listen: info.Listen, TLS: &tls,
+			GOOS: info.GOOS, GOARCH: info.GOARCH, Platform: info.Platform, InitSystem: info.InitSystem, Service: out.Service}
+		if err := r.SetPassport(id, passport); err != nil {
+			debuglog.WarnLog("remote registry: cache passport for %q: %v", id, err)
+		}
+		if err := r.adoptPassportPlatform(id, info); err != nil {
+			debuglog.WarnLog("remote registry: platform from passport for %q: %v", id, err)
+		}
 	}
 	return out
+}
+
+// adoptPassportPlatform — паспорт важнее ввода (SPEC 162 §3.3, §4.1):
+// непустые goos/goarch из паспорта перекрывают платформу записи (строка
+// списка, визард и Download core видят то, что сообщил демон), распознанный
+// init_system — выбор init. Запись — тем же ходом, что SetPlatform и
+// SetInitSystem, но одной перезаписью файла; без изменений файл не пишется.
+func (r *RemoteRegistry) adoptPassportPlatform(id string, info lxdclient.InfoData) error {
+	goos, goarch := strings.TrimSpace(info.GOOS), strings.TrimSpace(info.GOARCH)
+	initSystem := strings.ToLower(strings.TrimSpace(info.InitSystem))
+	if !knownInitSystem(initSystem) {
+		initSystem = ""
+	}
+	if (goos == "" || goarch == "") && initSystem == "" {
+		return nil
+	}
+	return r.mutate(id, func(d *RemoteDaemon) bool {
+		changed := false
+		if goos != "" && goarch != "" && (d.GOOS != goos || d.GOARCH != goarch) {
+			debuglog.InfoLog("remote registry: %q platform %s/%s → %s/%s (reported by the daemon)", d.Name, d.GOOS, d.GOARCH, goos, goarch)
+			d.GOOS, d.GOARCH = goos, goarch
+			changed = true
+		}
+		if initSystem != "" && d.InitSystem != initSystem {
+			debuglog.InfoLog("remote registry: %q init system %q → %q (reported by the daemon)", d.Name, d.InitSystem, initSystem)
+			d.InitSystem = initSystem
+			changed = true
+		}
+		return changed
+	})
+}
+
+// Commands — именованные команды демона машины (SPEC 128 форка,
+// GET /admin/commands). lxdclient.ErrCommandsUnsupported — ядро без команд
+// или ключа "commands" в daemon.json нет.
+//
+// Блокирующий сетевой вызов — звать из горутины.
+func (r *RemoteRegistry) Commands(id string) ([]lxdclient.Command, error) {
+	return r.commandsCtx(context.Background(), id)
+}
+
+// CommandsWithin — тот же список со своим сроком (для heartbeat, см.
+// HealthWithin). Звать из горутины.
+func (r *RemoteRegistry) CommandsWithin(id string, timeout time.Duration) ([]lxdclient.Command, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return r.commandsCtx(ctx, id)
+}
+
+func (r *RemoteRegistry) commandsCtx(ctx context.Context, id string) ([]lxdclient.Command, error) {
+	client, err := r.adminClient(id)
+	if err != nil {
+		return nil, err
+	}
+	return client.CommandsCtx(ctx)
+}
+
+// Command — одна команда с хвостом лога (GET /admin/commands/{name}).
+// lxdclient.ErrCommandNotFound — команду убрали из конфига.
+//
+// Блокирующий сетевой вызов — звать из горутины.
+func (r *RemoteRegistry) Command(id, name string) (lxdclient.Command, error) {
+	client, err := r.adminClient(id)
+	if err != nil {
+		return lxdclient.Command{}, err
+	}
+	return client.CommandCtx(context.Background(), name)
+}
+
+// RunCommand запускает команду по имени, без входных данных
+// (POST /admin/commands/{name}). *lxdclient.ErrCommandRunning — уже идёт
+// (в ошибке текущий прогон); lxdclient.ErrCommandNotFound — имени нет.
+//
+// Блокирующий сетевой вызов — звать из горутины.
+func (r *RemoteRegistry) RunCommand(id, name string) (lxdclient.Command, error) {
+	client, err := r.adminClient(id)
+	if err != nil {
+		return lxdclient.Command{}, err
+	}
+	cmd, err := client.RunCommandCtx(context.Background(), name)
+	if err == nil {
+		debuglog.InfoLog("remote registry: command %q started on %q", name, id)
+	}
+	return cmd, err
 }
 
 // StartCore / StopCore — запуск и остановка ЯДРА на удалённой машине

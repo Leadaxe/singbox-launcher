@@ -204,13 +204,18 @@ func ExpandPresetWithGlobals(
 	return ExpandPresetForNodes(preset, userVars, globalVars, globalDecls, target, nil)
 }
 
-// ExpandPresetForNodes — раскрытие с узлами конфига для `for_each` (LxBox
-// §578, TEMPLATE_LANG §6.5). Пресет без for_each раскрывается как прежде,
-// nodes не читаются. Пресет с for_each повторяет тело для каждого узла из
-// nodes (порядок конфига), у которого `type` тела равен node_type и filter
-// истинен; фрагменты повторов идут подряд. Узлов нет — фрагменты пусты.
-// Теги такого пресета не получают пространство `<preset_id>:` (уникальность
-// даёт тег узла, `@{node}-dns`).
+// ExpandPresetForNodes — раскрытие с узлами конфига для обхода узлов
+// (SPEC 166, TEMPLATE_LANG §6.5–§6.7). Пресет без обхода раскрывается как
+// прежде, nodes не читаются.
+//
+//   - for_each_node: тело повторяется для каждого узла из nodes (порядок
+//     конфига), прошедшего #filter; фрагменты повторов идут подряд. Узлов
+//     нет — фрагменты пусты. Теги не получают пространство `<preset_id>:`
+//     (уникальность даёт тег узла, `@{node}-dns`).
+//   - for_each_node_do: обход с #filter, #do дописывает значения узлов в
+//     копию переменных пресета, затем #final и unique объявления; тело
+//     раскрывается ОДИН раз без узла, как у обычного пресета (пространство
+//     тегов действует).
 //
 // nodes — только узлы, уже попавшие в конфиг (выключенные и снятые гейтами
 // сюда не передаются).
@@ -226,15 +231,19 @@ func ExpandPresetForNodes(
 		return nil, nil, false
 	}
 	varsMap, warnings := presetVarsMapWithGlobals(preset, userVars, globalVars, target)
-	fe := preset.ForEach
-	if fe == nil {
+	if loop := preset.ForEachNodeDo; loop != nil {
+		collected, ws := collectNodeLoopDo(preset, loop, varsMap, globalDecls, target, nodes)
+		frags, bodyWarns := expandPresetBody(preset, collected, globalDecls, target, nil)
+		return frags, append(append(warnings, ws...), bodyWarns...), true
+	}
+	if preset.ForEachNode == nil {
 		frags, ws := expandPresetBody(preset, varsMap, globalDecls, target, nil)
 		return frags, append(warnings, ws...), true
 	}
 	out := &PresetFragments{}
 	seen := make(map[string]bool)
-	for _, n := range selectForEachNodes(fe, varsMap, target, nodes) {
-		scope := template.NewNodeScope(fe.As, n)
+	for _, n := range selectLoopNodes(preset, varsMap, target, nodes) {
+		scope := template.NewNodeScope(n)
 		frags, ws := expandPresetBody(preset, varsMap, globalDecls, target, scope)
 		out.RuleSets = append(out.RuleSets, frags.RuleSets...)
 		out.RoutingRules = append(out.RoutingRules, frags.RoutingRules...)
@@ -254,9 +263,78 @@ func ExpandPresetForNodes(
 	return out, warnings, true
 }
 
-// PresetForEachNodes — узлы, которые обслуживает пресет с `for_each` (SPEC 145
-// §7): тот же отбор, что у ExpandPresetForNodes (node_type, затем filter с
-// переменными пресета поверх глобалей). Пресет без for_each — nil.
+// collectNodeLoopDo — шаги 2–5 сборки for_each_node_do (TEMPLATE_LANG
+// §6.7.3) на копии varsMap: обход узлов с #filter, #append правых частей в
+// базу переменной (ввод пользователя или default, у internal — default),
+// #final (#unique → #sort → #limit), unique объявления. Возвращает копию с
+// итоговыми значениями text_list строкой через перевод строки; varsMap не
+// меняется — собранное не персистится.
+//
+// Переменная, снятая своим гейтом (#enable / if), не собирается: тело и так
+// не получит её значения.
+func collectNodeLoopDo(preset *template.Preset, loop *template.NodeLoopDo, varsMap map[string]string, globalDecls []template.TemplateVar, target template.TargetSpec, nodes []template.PresetNode) (map[string]string, []ExpandWarning) {
+	out := make(map[string]string, len(varsMap))
+	for k, v := range varsMap {
+		out[k] = v
+	}
+	active := filterActiveVars(preset.Vars, varsMap, target)
+	lists := make(map[string][]string, len(loop.Do))
+	for _, op := range loop.Do {
+		if active[op.Var] {
+			lists[op.Var] = splitTextListLines(varsMap[op.Var])
+		}
+	}
+	if len(lists) == 0 {
+		return out, nil
+	}
+	var warnings []ExpandWarning
+	seen := make(map[string]bool)
+	decls, resolved := presetSubstitutionScope(preset.Vars, globalDecls, varsMap)
+	for _, n := range selectLoopNodes(preset, varsMap, target, nodes) {
+		scope := template.NewNodeScope(n)
+		for _, op := range loop.Do {
+			if _, ok := lists[op.Var]; !ok {
+				continue
+			}
+			val, ws := template.NodeAppendValue(op.Append, decls, resolved, target, scope)
+			for _, w := range substitutionWarnings(preset.ID, ws) {
+				if k := w.String(); !seen[k] {
+					seen[k] = true
+					warnings = append(warnings, w)
+				}
+			}
+			if val != "" {
+				lists[op.Var] = append(lists[op.Var], val)
+			}
+		}
+	}
+	for name, list := range lists {
+		list = loop.Final[name].Apply(list)
+		if _, had := varsMap[name]; !had && len(list) == 0 {
+			continue // значения не было и не собрано — Dropped, как без обхода
+		}
+		if v := presetVarDecl(preset, name); v != nil && v.Unique {
+			list = template.UniqueStrings(list)
+		}
+		out[name] = strings.Join(list, "\n")
+	}
+	return out, warnings
+}
+
+// presetVarDecl — объявление переменной пресета по имени.
+func presetVarDecl(preset *template.Preset, name string) *template.PresetVar {
+	for i := range preset.Vars {
+		if preset.Vars[i].Name == name {
+			return &preset.Vars[i]
+		}
+	}
+	return nil
+}
+
+// PresetForEachNodes — узлы, которые обслуживает пресет с обходом
+// (for_each_node или for_each_node_do, SPEC 145 §7, SPEC 166): тот же отбор,
+// что у ExpandPresetForNodes (#filter с переменными пресета поверх
+// глобалей). Пресет без обхода — nil.
 func PresetForEachNodes(
 	preset *template.Preset,
 	userVars map[string]string,
@@ -264,22 +342,23 @@ func PresetForEachNodes(
 	target template.TargetSpec,
 	nodes []template.PresetNode,
 ) []template.PresetNode {
-	if preset == nil || preset.ForEach == nil {
+	if !preset.IsNodeLoop() {
 		return nil
 	}
 	varsMap, _ := presetVarsMapWithGlobals(preset, userVars, globalVars, target)
-	return selectForEachNodes(preset.ForEach, varsMap, target, nodes)
+	return selectLoopNodes(preset, varsMap, target, nodes)
 }
 
-// selectForEachNodes — узлы из nodes, чей `type` равен node_type и filter
-// истинен, в порядке nodes.
-func selectForEachNodes(fe *template.PresetForEach, varsMap map[string]string, target template.TargetSpec, nodes []template.PresetNode) []template.PresetNode {
+// selectLoopNodes — узлы из nodes, для которых #filter обхода пресета
+// истинен, в порядке nodes. Фильтра нет — все узлы.
+func selectLoopNodes(preset *template.Preset, varsMap map[string]string, target template.TargetSpec, nodes []template.PresetNode) []template.PresetNode {
+	filter, ok := preset.NodeFilter()
+	if !ok {
+		return nil
+	}
 	out := make([]template.PresetNode, 0, len(nodes))
 	for _, n := range nodes {
-		if t, _ := n.Body["type"].(string); t != fe.NodeType {
-			continue
-		}
-		if !fe.EvalFilter(template.NewNodeScope(fe.As, n), varsMap, target) {
+		if !template.EvalNodeFilter(filter, template.NewNodeScope(n), varsMap, target) {
 			continue
 		}
 		out = append(out, n)
@@ -307,12 +386,14 @@ func presetVarsMapWithGlobals(preset *template.Preset, userVars, globalVars map[
 			// него выпадет как optional-var, а не подставит пустоту.
 			continue
 		}
-		if userVal, ok := userVars[v.Name]; ok && userVal != "" {
-			varsMap[v.Name] = userVal
+		// wizard_ui: internal (TEMPLATE_LANG §2.1, D-132): значение записи
+		// не читается — база только default_value, дальше пишет #do.
+		if userVal, ok := userVars[v.Name]; ok && userVal != "" && !v.IsInternal() {
+			varsMap[v.Name] = uniqueTextList(v, userVal)
 			continue
 		}
 		if v.Default != "" {
-			varsMap[v.Name] = v.Default
+			varsMap[v.Name] = uniqueTextList(v, v.Default)
 			continue
 		}
 		// Пусто и обязательна — значения нет. Пресет при этом НЕ
@@ -355,8 +436,18 @@ func presetVarsMapWithGlobals(preset *template.Preset, userVars, globalVars map[
 	return varsMap, warnings
 }
 
+// uniqueTextList — значение text_list с `unique` без дубликатов (порядок
+// первого появления, TEMPLATE_LANG §2.1): хранимое с дублями нормализуется
+// при чтении. Остальные переменные — как есть.
+func uniqueTextList(v template.PresetVar, value string) string {
+	if !v.Unique || v.Type != "text_list" {
+		return value
+	}
+	return strings.Join(template.UniqueStrings(splitTextListLines(value)), "\n")
+}
+
 // expandPresetBody — шаги 3–6 раскрытия на готовой карте значений. scope —
-// узел for_each (§578) или nil; с узлом теги не получают пространство
+// узел for_each_node (SPEC 166) или nil; с узлом теги не получают пространство
 // пресета, а dns_servers читаются из сырого списка.
 func expandPresetBody(preset *template.Preset, varsMap map[string]string, globalDecls []template.TemplateVar, target template.TargetSpec, scope *template.NodeScope) (*PresetFragments, []ExpandWarning) {
 	var warnings []ExpandWarning
@@ -536,7 +627,7 @@ func expandPresetBody(preset *template.Preset, varsMap map[string]string, global
 }
 
 // presetNamespace — пространство тегов пресета для ссылок rule_set: у
-// раскрытия по узлу for_each пространства нет (§578).
+// раскрытия по узлу for_each_node пространства нет (TEMPLATE_LANG §6.5).
 func presetNamespace(preset *template.Preset, scope *template.NodeScope) string {
 	if scope != nil {
 		return ""
@@ -544,7 +635,7 @@ func presetNamespace(preset *template.Preset, scope *template.NodeScope) string 
 	return preset.ID
 }
 
-// expandForEachDNSServers — dns_servers пресета с for_each (сырой список:
+// expandForEachDNSServers — dns_servers пресета с for_each_node (сырой список:
 // элемент бывает обёрнут в #if, tag задан #tpl). Сервер без tag после
 // подстановки выпадает; ветка #if с ложным условием — молча.
 func expandForEachDNSServers(preset *template.Preset, varsMap, gateVars map[string]string, globalDecls []template.TemplateVar, target template.TargetSpec, scope *template.NodeScope, warnings *[]ExpandWarning) []map[string]interface{} {
@@ -722,8 +813,9 @@ func presetVarsToTemplateVars(vars []template.PresetVar) []template.TemplateVar 
 // значением в varsMap не попадает, и необъявленной она осталась бы
 // плейсхолдером "@name" в конфиге.
 //
-// Значения — только из varsMap. text_list пресета хранится строкой через
-// запятую (как его default), глобали — через перевод строки (VarValuesFor).
+// Значения — только из varsMap. text_list — строкой через перевод строки
+// (TEMPLATE_LANG §2.2) и у пресета, и у глобали (VarValuesFor); собранное
+// #do кладётся так же.
 func presetSubstitutionScope(presetVars []template.PresetVar, globalDecls []template.TemplateVar, varsMap map[string]string) ([]template.TemplateVar, map[string]template.ResolvedVar) {
 	decls := presetVarsToTemplateVars(presetVars)
 	local := make(map[string]bool, len(decls))
@@ -760,11 +852,7 @@ func presetSubstitutionScope(presetVars []template.PresetVar, globalDecls []temp
 	for name, scalar := range varsMap {
 		rv := template.ResolvedVar{Scalar: scalar}
 		if typeByName[name] == "text_list" {
-			if local[name] {
-				rv.List = splitTextList(scalar)
-			} else {
-				rv.List = splitTextListLines(scalar)
-			}
+			rv.List = splitTextListLines(scalar)
 		}
 		resolved[name] = rv
 	}
@@ -777,23 +865,6 @@ func splitTextListLines(scalar string) []string {
 	out := []string{}
 	for _, line := range strings.Split(strings.ReplaceAll(scalar, "\r\n", "\n"), "\n") {
 		if t := strings.TrimSpace(line); t != "" {
-			out = append(out, t)
-		}
-	}
-	return out
-}
-
-// splitTextList — split text_list scalar on commas (trimmed). Empty input →
-// empty list (not nil — distinguish "absent" from "explicitly empty list").
-func splitTextList(scalar string) []string {
-	s := strings.TrimSpace(scalar)
-	if s == "" {
-		return []string{}
-	}
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if t := strings.TrimSpace(p); t != "" {
 			out = append(out, t)
 		}
 	}

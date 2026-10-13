@@ -87,7 +87,10 @@
   ],
   "route": {
     "auto_detect_interface": true,
-    "default_domain_resolver": "direct_dns_resolver",
+    "default_domain_resolver": {
+      "disable_optimistic_cache": false,
+      "server": "direct_dns_resolver"
+    },
     "final": "proxy-out",
     "find_process": true,
     "rule_set": [

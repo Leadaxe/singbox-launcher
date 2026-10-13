@@ -266,7 +266,18 @@ func parseSingboxConfig(
 			continue
 		}
 
-		chainInfo.attachChain(node, entry, byTag, cfgIdx)
+		if rej := chainInfo.attachChain(node, entry, byTag, cfgIdx); rej != nil {
+			// Fail-closed (контракт 1.1.118): узел с недоступным detour в
+			// состав не идёт — запись kind=unsupported на своей позиции с
+			// кодом цепочки, а не рабочий узел «напрямую».
+			debuglog.WarnLog("Parser: singbox import: config %d entry %d (%s): %s — node dropped",
+				cfgIdx, entryIdx, entryType, rej.reason)
+			result.rejected.addCoded(len(result.Nodes),
+				fmt.Sprintf("%s outbound rejected: %s", entryType, rej.reason),
+				rej.code,
+				marshalRawJSONElement(entry))
+			continue
+		}
 
 		result.Nodes = append(result.Nodes, node)
 		if rawTag != "" {

@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"image/color"
 	"os"
@@ -17,8 +19,11 @@ import (
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/events"
 	"singbox-launcher/core/services"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
@@ -31,7 +36,10 @@ const (
 	machinesDeployMissingText = "No config built for %s yet. Press Configure on its row, set it up and press Save — that writes the config this button sends."
 	machinesRemoveBodyText    = "Remove %s? Its config, wizard states and client keys are deleted from this launcher.\n\nAccess on the machine itself stays registered — revoke it there with `sing-box lxd client remove`."
 	powerDeployBodyText       = "Send the config to %s (%d bytes)? The daemon validates it before swapping the instance and rolls back to last-good if the new one fails to start."
+	machinesDriftTip          = "The machine runs a different config than the one saved here. Press Deploy to send it."
+	machinesRolledBackTip     = "The last deploy did not start: the core rolled back to the last-good config. Details under ⓘ."
 	powerRestartBodyText      = "Restart the core on %s? Everyone routing through that machine loses VPN for a moment; if the start fails, the machine is left without a core."
+	machinesDeployOldCoreText = "⚠ %s runs core %s; this launcher builds configs for %s. The old core may reject them — it will then roll back to the last working config."
 )
 
 // Правая колонка вкладки Remote — список удалённых машин (SPEC 098 §2.1).
@@ -99,6 +107,25 @@ type machineListPanel struct {
 	// которые поднимают панель отдельно, и будущему teardown вкладки; без
 	// него горутину heartbeat было бы нечем остановить вовсе.
 	stopHeartbeat chan struct{}
+	// builtSums — кэш sha256 локально собранного config.json машин: строка
+	// перерисовывается на каждом изменении health, а файл меняется только на
+	// Save в Конфигураторе. Пересчёт — при смене mtime/размера.
+	builtSums map[string]builtConfigSum
+	// deployDrift — расходился ли собранный конфиг с работающим на машине при
+	// последней отрисовке. Heartbeat сверяет с ним свежий ответ: Save не
+	// меняет health, и без этого оранжевая точка ждала бы чужого повода.
+	deployDrift map[string]bool
+	// commands — список команд демона машины (SPEC 162 §4.2): heartbeat
+	// обновляет его, пока у машины открыто окно Service, окно читает без
+	// сети. Только UI-поток.
+	commands map[string]serviceCommandsCache
+}
+
+// builtConfigSum — sha256 файла вместе с ключом, по которому он посчитан.
+type builtConfigSum struct {
+	modTime time.Time
+	size    int64
+	sum     string
 }
 
 // connectFailure — одна неудачная попытка соединения.
@@ -131,6 +158,9 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 		moreOpen:       make(map[string]bool),
 		liveness:       make(map[string]machineLiveness),
 		stopHeartbeat:  make(chan struct{}),
+		builtSums:      make(map[string]builtConfigSum),
+		deployDrift:    make(map[string]bool),
+		commands:       make(map[string]serviceCommandsCache),
 	}
 	p.list = container.NewVBox()
 
@@ -171,7 +201,49 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 	// действия пользователя и показывает зелёный маркер над лежащим сервером
 	// (см. ui/machine_heartbeat.go).
 	p.startHeartbeat()
+	// SPEC 164: сборка конфига машины живёт в презентере Мастера, обход
+	// авто-деплоя в core зовёт её через хук. Ставится здесь, потому что
+	// панель — единственный владелец цепочки «машина → Configure → Deploy».
+	ac.MachineConfigRebuildFunc = configurator.RebuildMachineConfig
+	if ac.EventBus != nil {
+		ac.EventBus.Subscribe(events.MachineAutoDeploy, func(e events.Event) {
+			payload, ok := e.Payload.(events.MachineAutoDeployPayload)
+			if !ok {
+				return
+			}
+			p.onAutoDeploy(payload)
+		})
+	}
 	return p.container
+}
+
+// onAutoDeploy — исход авто-деплоя машины (SPEC 164 §4.3): уведомление
+// системы без диалога (пользователь не смотрит на окно) и перерисовка
+// строки; у активной машины после applied ядро перезапустилось — список
+// узлов перечитывается, как после Deploy кнопкой.
+func (p *machineListPanel) onAutoDeploy(payload events.MachineAutoDeployPayload) {
+	title := locale.Tf("Auto-deploy: %s", payload.Name)
+	var body string
+	switch payload.Result {
+	case services.AutoDeployApplied:
+		body = locale.T("Config updated from subscriptions and applied.")
+	case services.AutoDeployUnreachable:
+		body = locale.Tf("Machine unreachable: %s", payload.Note)
+	default:
+		body = locale.Tf("Failed: %s", payload.Note)
+	}
+	if app := fyne.CurrentApp(); app != nil {
+		app.SendNotification(&fyne.Notification{Title: title, Content: body})
+	}
+	fyne.Do(func() {
+		p.Reload()
+		if payload.Result != services.AutoDeployApplied {
+			return
+		}
+		if activeID, _, ok := GetLxdRemoteOverride(); ok && activeID == payload.ID {
+			p.loadNodes()
+		}
+	})
 }
 
 // Reload перечитывает реестр и перерисовывает строки.
@@ -277,7 +349,14 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 		})
 		connBtn.Importance = widget.HighImportance
 	}
-	metaRow := container.NewBorder(nil, nil, nil, connBtn, meta)
+	// ⚙ — окно Service машины (SPEC 161 §4.1). До Connect — без точки: окно
+	// полезно и без связи (рецепты по кэшу паспорта), но выдумывать
+	// состояние точкой нельзя. После Connect ⚙ стоит у статуса.
+	var metaRight fyne.CanvasObject = connBtn
+	if !connected {
+		metaRight = container.NewHBox(p.serviceButton(d, serviceLevelOK, ""), connBtn)
+	}
+	metaRow := container.NewBorder(nil, nil, nil, metaRight, meta)
 
 	editBtn := ttwidget.NewButton("✎", func() {
 		p.editMachine(d)
@@ -313,17 +392,27 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	}
 
 	// Соединены: state_dir известен, конфиг соберётся с верными путями.
-	configureBtn := widget.NewButton(locale.T("Configure"), func() {
+	configureBtn := ttwidget.NewButton(locale.T("Configure"), func() {
 		configurator.ShowConfigWizardForMachine(p.ac.UIService.MainWindow, d)
 	})
+	// Красная точка на Configure — последний Deploy не завёлся, и ядро
+	// откатилось на last-good. Сидит на Configure, потому что лечится там:
+	// конфиг, который не поднялся, надо поправить, а не отправить ещё раз.
+	var configureObj fyne.CanvasObject = configureBtn
+	if health.InterruptedApply {
+		configureObj = withCornerDot(configureBtn, theme.Color(theme.ColorNameError))
+		configureBtn.SetToolTip(locale.T(machinesRolledBackTip))
+	}
 
 	// Соединились: показываем настоящий статус ядра и открываем управление.
 	//
 	// Статусы демона: idle | started | fatal (RemoteHealth.CoreStatus).
+	// Текст ошибки связи — в красной строке под статусом (verdictLine), а
+	// не здесь: две копии одной ошибки в строке машины только шумят.
 	statusText := locale.T("reachable")
 	switch {
 	case health.Err != "":
-		statusText = locale.Tf("unreachable: %s", health.Err)
+		statusText = locale.T("unreachable")
 	case health.CoreStatus != "":
 		statusText = health.CoreStatus
 	}
@@ -369,11 +458,24 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	infoBtn.SetToolTip(locale.T("What the daemon reports about itself"))
 	infoBtn.Importance = widget.LowImportance
 
-	deployBtn := widget.NewButton(locale.T("Deploy config"), func() {
+	deployBtn := ttwidget.NewButton(locale.T("Deploy"), func() {
 		p.deployTo(d)
 	})
 	if health.Err != "" {
 		deployBtn.Disable()
+	}
+	// Оранжевая точка на Deploy — на машине работает не тот конфиг, что
+	// собран здесь (sha256 файла ≠ active_sha демона; обе стороны хешируют
+	// сырые байты). Лечится этой же кнопкой.
+	drift := p.configDrift(d.ID, health)
+	p.deployDrift[d.ID] = drift
+	var deployObj fyne.CanvasObject = deployBtn
+	switch {
+	case drift:
+		deployObj = withCornerDot(deployBtn, theme.Color(theme.ColorNameWarning))
+		deployBtn.SetToolTip(locale.T(machinesDriftTip))
+	case p.builtConfigSHA(d.ID) != "":
+		deployBtn.SetToolTip(locale.T("The machine runs the config saved here."))
 	}
 
 	// RES — управление файлами, на которые ссылается конфиг машины
@@ -389,8 +491,10 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 
 	// Start/Stop — напротив СТАТУСА, который он меняет: кнопка стоит там,
 	// где виден её результат.
+	level, verdictText, verdictTip := machineServiceVerdict(health, live, connected)
+	gearObj := p.serviceButton(d, level, verdictTip)
 	statusRow := container.NewBorder(nil, nil, nil,
-		container.NewHBox(infoBtn, powerBtn, restartBtn), status)
+		container.NewHBox(infoBtn, gearObj, powerBtn, restartBtn), status)
 	// Дополнительные инструменты — под строкой, раскрытием вниз (тот же
 	// Accordion, что «Advanced» в окне добавления машины). Не popup-меню:
 	// содержимое остаётся на месте, не перекрывает соседние машины и не
@@ -425,10 +529,20 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	// Стрелка прижата к правому краю: она про раскрытие всей строки, а не
 	// продолжение ряда действий — встык к RES читалась бы как четвёртая
 	// кнопка того же ряда.
+	rows = append(rows, statusRow)
+	// Строка предупреждения — только при проблеме, без кнопки: лечится ⚙.
+	if verdictText != "" {
+		verdictLine := widget.NewLabel(verdictText)
+		verdictLine.Wrapping = fyne.TextWrapWord
+		verdictLine.Importance = widget.WarningImportance
+		if level == serviceLevelDown {
+			verdictLine.Importance = widget.DangerImportance
+		}
+		rows = append(rows, verdictLine)
+	}
 	rows = append(rows,
-		statusRow,
 		container.NewBorder(nil, nil, nil, moreBtn,
-			container.NewHBox(configureBtn, deployBtn, resBtn)),
+			container.NewHBox(configureObj, deployObj, resBtn)),
 	)
 	if open {
 		// Раскрытие с анимацией высоты: мгновенный скачок содержимого не
@@ -461,6 +575,7 @@ func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 		delete(p.connectAttempt, prevID)
 		delete(p.liveness, prevID)
 		CloseMachineWireLogWindow(prevID)
+		CloseMachineCoreLogWindow(prevID)
 		debuglog.InfoLog("machine list: %q disconnected — connecting to %q", prevID, d.ID)
 	}
 	if err := SetLxdRemoteOverride(p.ac, d.ID); err != nil {
@@ -482,6 +597,9 @@ func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 	p.redrawRows()
 	go func() {
 		var h services.RemoteHealth
+		// firstFail — начало серии отказов для окна Service («не отвечает
+		// N мин»): первая неудачная попытка, а не последняя.
+		var firstFail time.Time
 		for attempt := 1; attempt <= connectAttempts; attempt++ {
 			if attempt > 1 {
 				fyne.Do(func() {
@@ -492,6 +610,9 @@ func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 			h = p.registry.Health(d.ID)
 			if h.Err == "" {
 				break
+			}
+			if firstFail.IsZero() {
+				firstFail = time.Now()
 			}
 			debuglog.WarnLog("machine list: %q unreachable (attempt %d/%d): %s",
 				d.ID, attempt, connectAttempts, h.Err)
@@ -534,6 +655,7 @@ func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 				// а не жёлтым до следующих двух промахов heartbeat.
 				live.FailStreak = heartbeatFailThreshold
 				live.LastErr = h.Err
+				live.FailSince = firstFail
 			} else {
 				live.LastOK = time.Now()
 			}
@@ -586,6 +708,16 @@ func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services
 		{locale.T("State dir"), h.StateDir},
 		{locale.T("Active config sha256"), h.ActiveSHA},
 		{locale.T("Last-good config sha256"), h.LastGoodSHA},
+		{locale.T("Built config sha256 (local)"), p.builtConfigSHA(d.ID)},
+	}
+	// SPEC 164: флаг и журнал авто-деплоя.
+	autoDeploy := locale.T("off")
+	if d.AutoDeploySubscriptions {
+		autoDeploy = locale.T("on")
+	}
+	rows = append(rows, [2]string{locale.T("Auto-deploy"), autoDeploy})
+	if rec := d.LastAutoDeploy; rec != nil {
+		rows = append(rows, [2]string{locale.T("Last auto-deploy"), autoDeployRecordText(*rec, time.Now())})
 	}
 	if h.InterruptedApply {
 		rows = append(rows, [2]string{locale.T("Interrupted apply"), locale.T("yes — the core runs the last-good config")})
@@ -685,9 +817,11 @@ func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services
 // список. Без него запрос уходил бы с группой предыдущего источника —
 // отсюда «Daemon: group "" not found».
 func (p *machineListPanel) loadNodes() {
-	if p.ac.UIService != nil && p.ac.UIService.ResetAPIStateFunc != nil {
-		p.ac.UIService.ResetAPIStateFunc()
-	}
+	// Сброс — СВОЕЙ панели, а не слота UIService: слоты принадлежат вкладке
+	// на экране, а loadNodes зовёт и heartbeat (ядро машины перезапустилось
+	// после Deploy), пока пользователь смотрит на Local. Через слот сбрасывался
+	// список своего ядра, а узлы машины ложились в него следом.
+	p.proxies.ResetState()
 	// Чьи узлы грузим — фиксируем сейчас: ретраи ниже длятся до 15 с, и за
 	// это время активная машина может смениться.
 	loadID, _, _ := GetLxdRemoteOverride()
@@ -729,10 +863,7 @@ func (p *machineListPanel) loadNodes() {
 			// про ту машину, к которой он подключён.
 			if !ok {
 				p.proxies.Clear()
-				if p.ac.UIService != nil && p.ac.UIService.ListStatusLabel != nil {
-					p.ac.UIService.ListStatusLabel.SetText(
-						locale.T("The machine did not return its groups — press ↻ to retry"))
-				}
+				p.proxies.SetListStatus(locale.T("The machine did not return its groups — press ↻ to retry"))
 				return
 			}
 			// Список заполняется — шапка обязана быть включена той же
@@ -760,6 +891,8 @@ func (p *machineListPanel) disconnectMachine() {
 		// Телеметрия хоста ходит по тому же каналу: без остановки её опрос
 		// продолжал бы стучаться к машине, с которой разговор уже окончен.
 		CloseMachineHostWindow(id)
+		// Живой лог ядра — стрим по тому же каналу.
+		CloseMachineCoreLogWindow(id)
 	}
 	p.proxies.SetEnabled(false)
 	ClearLxdRemoteOverride(p.ac)
@@ -810,6 +943,8 @@ func (p *machineListPanel) removeMachine(d services.RemoteDaemon) {
 			CloseMachineHostWindow(d.ID)
 			// Журнал обмена — про машину, которой больше не будет в реестре.
 			CloseMachineWireLogWindow(d.ID)
+			CloseMachineCoreLogWindow(d.ID)
+			CloseServiceWindow(d.ID)
 			activeID, _, _ := GetLxdRemoteOverride()
 			if activeID == d.ID {
 				// Снимаем выбор до удаления: иначе левая колонка осталась бы
@@ -936,30 +1071,95 @@ func (p *machineListPanel) deployTo(d services.RemoteDaemon) {
 			locale.Tf(machinesDeployMissingText, d.Name), p.ac.UIService.MainWindow)
 		return
 	}
+	// Ядро машины старее требуемого — вместо обычного подтверждения
+	// предупреждение с «Deploy anyway» (SPEC 161 §4.3): старое ядро может
+	// отвергнуть конфиг и откатиться на last-good. Запрета нет.
+	version := p.health[d.ID].Version
+	if core.CompareCoreVersion(version, constants.RequiredCoreVersion) == core.CoreVersionOlder && d.CoreWarnAck != version {
+		p.confirmDeployOldCore(d, version, config)
+		return
+	}
 	dialog.ShowConfirm(
 		locale.TN(1, "Deploy config"),
 		locale.Tf(powerDeployBodyText, d.Name, len(config)),
 		func(ok bool) {
-			if !ok {
+			if ok {
+				p.runDeploy(d, config)
+			}
+		}, p.ac.UIService.MainWindow)
+}
+
+// runDeploy отправляет конфиг машине в горутине и показывает итог.
+func (p *machineListPanel) runDeploy(d services.RemoteDaemon, config []byte) {
+	go func() {
+		// Вся цепочка (ресурсы строго раньше конфига) — в
+		// services.Deploy: её же зовёт Debug API, поэтому «через API
+		// деплоится не так, как кнопкой» невозможно (SPEC 100).
+		_, deployErr := p.registry.Deploy(d.ID, config)
+		fyne.Do(func() {
+			if deployErr != nil {
+				debuglog.WarnLog("machine list: deploy %q: %v", d.ID, deployErr)
+				dialog.ShowError(deployErr, p.ac.UIService.MainWindow)
 				return
 			}
-			go func() {
-				// Вся цепочка (ресурсы строго раньше конфига) — в
-				// services.Deploy: её же зовёт Debug API, поэтому «через API
-				// деплоится не так, как кнопкой» невозможно (SPEC 100).
-				_, deployErr := p.registry.Deploy(d.ID, config)
-				fyne.Do(func() {
-					if deployErr != nil {
-						debuglog.WarnLog("machine list: deploy %q: %v", d.ID, deployErr)
-						dialog.ShowError(deployErr, p.ac.UIService.MainWindow)
-						return
-					}
-					dialog.ShowInformation(locale.TN(1, "Deploy config"),
-						locale.Tf("Config applied on %s.", d.Name), p.ac.UIService.MainWindow)
-					p.Reload()
-				})
-			}()
-		}, p.ac.UIService.MainWindow)
+			dialog.ShowInformation(locale.TN(1, "Deploy config"),
+				locale.Tf("Config applied on %s.", d.Name), p.ac.UIService.MainWindow)
+			p.Reload()
+		})
+	}()
+}
+
+// confirmDeployOldCore — Deploy на машину со старым ядром (SPEC 161 §4.3):
+// предупреждение, «How to update» (окно Service на вкладке Core), «Deploy
+// anyway» и галка «не спрашивать для этой версии» — она запоминает версию
+// в записи машины, и смена ядра возвращает предупреждение.
+func (p *machineListPanel) confirmDeployOldCore(d services.RemoteDaemon, version string, config []byte) {
+	win := p.ac.UIService.MainWindow
+	text := widget.NewLabel(locale.Tf(machinesDeployOldCoreText, d.Name, version, constants.RequiredCoreVersion))
+	text.Wrapping = fyne.TextWrapWord
+	text.Importance = widget.WarningImportance
+	ack := widget.NewCheck(locale.Tf("Don't ask again for %s on this machine", core.CoreBuildShort(version)), nil)
+
+	var dlg dialog.Dialog
+	howBtn := widget.NewButton(locale.T("How to update"), func() {
+		dlg.Hide()
+		OpenServiceWindow(p.ac, newRemoteServiceSource(p, d), serviceTabCore)
+	})
+	deployBtn := widget.NewButton(locale.T("Deploy anyway"), func() {
+		dlg.Hide()
+		if ack.Checked {
+			if err := p.registry.SetCoreWarnAck(d.ID, version); err != nil {
+				debuglog.WarnLog("machine list: save core warning ack %q: %v", d.ID, err)
+			}
+		}
+		p.runDeploy(d, config)
+	})
+	deployBtn.Importance = widget.HighImportance
+	dlg = dialogs.NewCustom(locale.Tf("Deploy to %s?", d.Name), container.NewVBox(text, ack),
+		container.NewHBox(howBtn, deployBtn), locale.T("Cancel"), win)
+	dlg.Resize(fyne.NewSize(520, 240))
+	dlg.Show()
+}
+
+// serviceButton — ⚙ строки машины: окно Service. level — точка в углу
+// (жёлтая — ядро старее требуемого, красная — демон не отвечает), tip —
+// что чинить словами.
+func (p *machineListPanel) serviceButton(d services.RemoteDaemon, level serviceLevel, tip string) fyne.CanvasObject {
+	btn := ttwidget.NewButton("⚙", func() {
+		OpenServiceWindow(p.ac, newRemoteServiceSource(p, d), serviceTabAuto)
+	})
+	btn.Importance = widget.LowImportance
+	if tip == "" {
+		tip = locale.T("Service: restart, update the core, pairing, paths and logs")
+	}
+	btn.SetToolTip(tip)
+	switch level {
+	case serviceLevelDown:
+		return withCornerDot(btn, theme.Color(theme.ColorNameError))
+	case serviceLevelCore:
+		return withCornerDot(btn, theme.Color(theme.ColorNameWarning))
+	}
+	return btn
 }
 
 // redrawRows перерисовывает строки из кеша health, не трогая реестр.
@@ -974,6 +1174,59 @@ func (p *machineListPanel) redrawRows() {
 		p.list.Add(p.buildRow(d, d.ID == activeID))
 	}
 	p.list.Refresh()
+}
+
+// builtConfigSHA — sha256 локально собранного config.json машины ("" — его
+// ещё не собирали). Пересчитывает только при смене mtime/размера файла.
+func (p *machineListPanel) builtConfigSHA(id string) string {
+	path := platform.GetRemoteConfigPathFor(p.ac.FileService.Layout.Data, id)
+	fi, err := os.Stat(path)
+	if err != nil {
+		delete(p.builtSums, id)
+		return ""
+	}
+	if c, ok := p.builtSums[id]; ok && c.modTime.Equal(fi.ModTime()) && c.size == fi.Size() {
+		return c.sum
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		debuglog.DebugLog("machine list: read built config %q: %v", id, err)
+		delete(p.builtSums, id)
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	c := builtConfigSum{modTime: fi.ModTime(), size: fi.Size(), sum: hex.EncodeToString(sum[:])}
+	p.builtSums[id] = c
+	return c.sum
+}
+
+// configDrift — собранный здесь конфиг не тот, что работает на машине.
+// Пустой active_sha (ядро без конфига) при собранном файле — тоже расхождение:
+// сохранённое до машины не доехало.
+func (p *machineListPanel) configDrift(id string, h services.RemoteHealth) bool {
+	sum := p.builtConfigSHA(id)
+	return sum != "" && sum != h.ActiveSHA
+}
+
+// withCornerDot кладёт цветную точку в правый верхний угол кнопки. Точка —
+// canvas.Circle, кликов не ловит, поэтому нажатия и подсказка уходят кнопке.
+func withCornerDot(obj fyne.CanvasObject, fill color.Color) fyne.CanvasObject {
+	return container.New(&cornerDotLayout{size: 8}, obj, canvas.NewCircle(fill))
+}
+
+// cornerDotLayout: первый объект занимает всю площадь, второй — круг
+// фиксированного диаметра у правого верхнего угла.
+type cornerDotLayout struct{ size float32 }
+
+func (l *cornerDotLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	return objects[0].MinSize()
+}
+
+func (l *cornerDotLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	objects[0].Resize(size)
+	objects[0].Move(fyne.NewPos(0, 0))
+	objects[1].Resize(fyne.NewSize(l.size, l.size))
+	objects[1].Move(fyne.NewPos(size.Width-l.size-3, 3))
 }
 
 // dotLayout рисует единственный объект кругом фиксированного диаметра,
@@ -1072,3 +1325,30 @@ func (r *revealRenderer) MinSize() fyne.Size {
 func (r *revealRenderer) Refresh()                     { canvas.Refresh(r.box) }
 func (r *revealRenderer) Objects() []fyne.CanvasObject { return []fyne.CanvasObject{r.box.content} }
 func (r *revealRenderer) Destroy()                     {}
+
+// autoDeployRecordText — строка журнала авто-деплоя для окна ⓘ:
+// «applied · 2h ago · 1 subscription(s) changed: …».
+func autoDeployRecordText(rec services.AutoDeployRecord, now time.Time) string {
+	parts := []string{rec.Result}
+	if at, err := time.Parse(time.RFC3339, rec.At); err == nil {
+		parts = append(parts, agoText(now.Sub(at)))
+	}
+	if rec.Note != "" {
+		parts = append(parts, rec.Note)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// agoText — «just now» / «5m ago» / «2h ago» / «3d ago».
+func agoText(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return locale.T("just now")
+	case d < time.Hour:
+		return locale.Tf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return locale.Tf("%dh ago", int(d.Hours()))
+	default:
+		return locale.Tf("%dd ago", int(d.Hours()/24))
+	}
+}

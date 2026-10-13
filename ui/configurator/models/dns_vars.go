@@ -8,4 +8,7 @@ const (
 	// sing-box 1.14.0. Поле снято из template/state/UI.
 	VarDNSDefaultDomainResolver = "dns_default_domain_resolver"
 	VarDNSFinal                 = "dns_final"
+	// VarDNSResolverNoStale — bool, route.default_domain_resolver.disable_optimistic_cache
+	// (SPEC 166 волна 3): имена узлов не отдаются из устаревшего кэша.
+	VarDNSResolverNoStale = "dns_resolver_no_stale"
 )

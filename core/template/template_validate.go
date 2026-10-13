@@ -103,6 +103,13 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 		if _, reserved := reservedVarNames[nm]; reserved {
 			return fmt.Errorf("template: vars[].name %q is reserved (runtime global namespace); rename", nm)
 		}
+		// SPEC 166: имя узла обхода (`@node`, TEMPLATE_LANG §6.6).
+		if nm == NodeLoopVar {
+			return fmt.Errorf("template: vars[].name %q is reserved for the node of %s/%s; rename", nm, NodeLoopKey, NodeLoopDoKey)
+		}
+		if v.Unique && strings.TrimSpace(v.Type) != "text_list" {
+			return fmt.Errorf("vars[%d]: unique is allowed only for type text_list, var %q has type %q", i, nm, v.Type)
+		}
 		// options ортогональны type (SPEC 143 Т8), кроме bool: у флага два
 		// значения, и список поверх них либо дублирует чекбокс, либо
 		// противоречит ему. options_open без options ничего не открывает и

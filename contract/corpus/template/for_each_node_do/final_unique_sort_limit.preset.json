@@ -1,0 +1,90 @@
+{
+  "_comment": "#final: #unique → #sort → #limit в порядке нормы. Собрано [z, a, a, m] → unique [z, a, m] → sort [a, m, z] → limit 2 [a, m]. #limit до #sort дал бы [a, z].",
+  "preset": {
+    "for_each_node_do": {
+      "#filter": {
+        "#and": [
+          {
+            "@node.body.server": "#notEmpty"
+          },
+          {
+            "#not": {
+              "@node.body.server": {
+                "#matches": "^[0-9.]+$"
+              }
+            }
+          },
+          {
+            "#not": {
+              "@node.body.server": {
+                "#matches": ":"
+              }
+            }
+          }
+        ]
+      },
+      "#do": {
+        "@domains": {
+          "#append": "@node.body.server"
+        }
+      },
+      "#final": {
+        "@domains": {
+          "#unique": true,
+          "#sort": true,
+          "#limit": 2
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "domains",
+        "type": "text_list"
+      }
+    ],
+    "dns_rules": [
+      {
+        "domain": "@domains",
+        "server": "dns-x"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "z",
+      "body": {
+        "type": "vless",
+        "tag": "z",
+        "server": "z.example",
+        "server_port": 443
+      }
+    },
+    {
+      "tag": "a1",
+      "body": {
+        "type": "vless",
+        "tag": "a1",
+        "server": "a.example",
+        "server_port": 443
+      }
+    },
+    {
+      "tag": "a2",
+      "body": {
+        "type": "vless",
+        "tag": "a2",
+        "server": "a.example",
+        "server_port": 443
+      }
+    },
+    {
+      "tag": "m",
+      "body": {
+        "type": "vless",
+        "tag": "m",
+        "server": "m.example",
+        "server_port": 443
+      }
+    }
+  ]
+}

@@ -219,6 +219,15 @@ func (ac *AppController) StartDebugAPI(port int, token string) error {
 			Registry: registry,
 			Pool:     debugAPIRemotePool,
 			DataDir:  ac.FileService.Layout.Data,
+			CoreOutdated: func(running string) bool {
+				return CompareCoreVersion(running, constants.RequiredCoreVersion) == CoreVersionOlder
+			},
+			// SPEC 164: ручной прогон авто-деплоя и общий мьютекс файла
+			// состояния машины.
+			AutoDeployRun: func(d services.RemoteDaemon, force bool) services.MachineAutoDeployOutcome {
+				return ac.AutoDeployMachine(d, "api", force)
+			},
+			MachineStateLock: ac.MachineStateLock,
 			// UI-override (SPEC 100 §3.8): хуки читаются на КАЖДЫЙ вызов, а не
 			// снимаются здесь — Debug API может стартовать раньше, чем UI
 			// зарегистрирует обработчики (RegisterOverrideAPIHooks в NewApp).

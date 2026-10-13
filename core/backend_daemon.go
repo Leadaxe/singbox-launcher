@@ -214,11 +214,18 @@ func (b *DaemonBackend) ownProxyTransport() services.ProxyTransport {
 func (b *DaemonBackend) diagnoseReachError(err error) string {
 	s := err.Error()
 	addr := b.admin.AddrString()
-	switch {
-	case strings.Contains(s, "first record does not look like a TLS handshake"):
-		// Профиль лаунчера — TLS (пин установлен), а на адресе живёт
-		// plain-демон: демон перевели на tls:false.
-		if lxdclient.DetectChannel(addr) == lxdclient.ChannelPlain {
+	const requiresMTLS = ". Pair with a fresh invite (mint one with `sudo sing-box lxd client add` on its host), then try again."
+	switch kind := ClassifyDaemonReachError(s); kind {
+	case ReachChannelMismatch, ReachConnReset:
+		// Режим канала разошёлся (или демон рвёт запросы — вероятно, по той
+		// же причине): какой он у демона теперь, решает проба.
+		switch lxdclient.DetectChannel(addr) {
+		case lxdclient.ChannelPlain:
+			if kind != ReachChannelMismatch {
+				break
+			}
+			// Профиль лаунчера — TLS (пин установлен), а на адресе живёт
+			// plain-демон: демон перевели на tls:false.
 			if lxdclient.IsLoopbackAddr(addr) {
 				b.ac.followDaemonPlainChannel()
 				return "Daemon at " + addr + " switched to plain (secret) mode — the launcher followed automatically. " +
@@ -226,30 +233,20 @@ func (b *DaemonBackend) diagnoseReachError(err error) string {
 			}
 			return "Daemon at " + addr + " now runs in plain (secret) mode. " +
 				"Unpair in the connection window to follow it (automatic follow over the network is disabled: it would enable downgrade attacks)."
+		case lxdclient.ChannelTLS:
+			// Профиль лаунчера — plain, а демон отвечает TLS: его вернули
+			// на tls:true.
+			return "Daemon at " + addr + " now requires mTLS" + requiresMTLS
 		}
 		return "Cannot reach the daemon: " + s
-	case strings.Contains(s, "connection refused"), strings.Contains(s, "no such host"), strings.Contains(s, "dial tcp"):
+	case ReachDown:
 		return "Daemon is not reachable at " + addr +
 			". Install the service and pair (Servers tab, gear button, Local), then try again."
-	case strings.Contains(s, "fingerprint"), strings.Contains(s, "certificate"):
+	case ReachCertChanged, ReachNotTrusted:
 		return "Daemon certificate changed (the service was reinstalled). " +
 			"Re-pair with a fresh invite (Servers tab, gear button, Local), then try again."
-	case strings.Contains(s, "HTTP request to an HTTPS server"):
-		// Профиль лаунчера — plain, а демон отвечает 400-сигнатурой
-		// net/http-TLS-сервера: его вернули на tls:true.
-		return "Daemon at " + addr + " now requires mTLS. " +
-			"Pair with a fresh invite (mint one with `sudo sing-box lxd client add` on its host), then try again."
-	case strings.Contains(s, "EOF"), strings.Contains(s, "connection reset"):
-		// Профиль лаунчера — plain, а демон рвёт HTTP-запросы: вероятно, его
-		// вернули на TLS (tls:true) — plain-клиенту он отвечать не будет.
-		if lxdclient.DetectChannel(addr) == lxdclient.ChannelTLS {
-			return "Daemon at " + addr + " now requires mTLS. " +
-				"Pair with a fresh invite (mint one with `sudo sing-box lxd client add` on its host), then try again."
-		}
-		return "Cannot reach the daemon: " + s
-	default:
-		return "Cannot reach the daemon: " + s
 	}
+	return "Cannot reach the daemon: " + s
 }
 
 // isActive сообщает, является ли этот backend всё ещё активным в контроллере.

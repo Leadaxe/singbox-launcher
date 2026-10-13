@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v2.3.9
+
+Патч после v2.3.8, ядро `sing-box-lx 1.14.3-lx.18` (было 1.14.3-lx.14), контракт 1.1.119. **Удалённые машины:** галка **Авто-деплой обновлений подписок** — лаунчер раз в час сам обновляет подписки машины и отправляет конфиг, если изменились только узлы (SPEC 164); строка машины показывает, доехал ли конфиг (оранжевая точка на **Deploy**, красная на **Configure** при откате). **Окно Service** (⚙ в строке машины и Servers → ⚙ → Local) — раннбук обслуживания демона: не поднимается, обновить ядро под платформу машины, сопряжение, пути и `daemon.json` (SPEC 161); строка **Daemon command** — демон с `commands` в `daemon.json` обновляет ядро сам (`update`), а паспорт демона называет платформу и init-систему машины (SPEC 162). **DNS:** шифрованные DoT/DoH-серверы шаблона по умолчанию идут напрямую; новая галка «Never serve stale answers for node hostnames» (включена) — `route.default_domain_resolver` теперь объект. **Правила:** вкладка **Preset** в Edit Rule показывает пресет как он записан в шаблоне; циклы шаблона `for_each_node` / `for_each_node_do` (SPEC 166, контракт 1.1.119). **Исправлено:** узлы удалённой машины больше не попадают на вкладку Local; Refresh подписки в Конфигураторе машины больше не пишет в локальное состояние (SPEC 165). **macOS:** прогресс скачивания ядра в скрипте установки, прозрачные углы иконки на macOS 11–15. Подробнее: [docs/release_notes/2-3-9.md](docs/release_notes/2-3-9.md).
+
+### Highlights (EN) — v2.3.9
+
+A patch after v2.3.8, core `sing-box-lx 1.14.3-lx.18` (was 1.14.3-lx.14), contract 1.1.119. **Remote machines:** an **Auto-deploy subscription updates** checkbox — the launcher refreshes the machine's subscriptions hourly and deploys when only the nodes changed (SPEC 164); the machine row shows whether its config is on the machine (orange dot on **Deploy**, red on **Configure** after a rollback). **Service window** (⚙ in a machine's row and Servers → ⚙ → Local) — a runbook for keeping the daemon running: not running, updating the core for the machine's platform, pairing, paths and `daemon.json` (SPEC 161); a **Daemon command** row — a daemon with `commands` in `daemon.json` updates its core itself (`update`), and the daemon's passport names the machine's platform and init system (SPEC 162). **DNS:** the template's encrypted DoT/DoH servers go direct by default; a new "Never serve stale answers for node hostnames" checkbox (on) — `route.default_domain_resolver` is now an object. **Rules:** a **Preset** tab in Edit Rule shows the preset as written in the template; template loops `for_each_node` / `for_each_node_do` (SPEC 166, contract 1.1.119). **Fixed:** remote nodes no longer show up on the Local tab; Refresh of a subscription in a machine's Configurator no longer writes to the local state (SPEC 165). **macOS:** core download progress in the install script, transparent icon corners on macOS 11–15. Details: [docs/release_notes/2-3-9.md](docs/release_notes/2-3-9.md).
+
 ### Выжимка (RU) — v2.3.8
 
 Патч после v2.3.7, ядро `sing-box-lx 1.14.3-lx.14` (было 1.14.2-lx.12), контракт 1.1.116. **Исправлено:** путь XHTTP сохраняет хвост `?query` (`/?proxyip=…` у релеев Cloudflare Worker вроде edgetunnel) — ядро шлёт его query запроса, как Xray; узлы, различающиеся только этим хвостом, больше не схлопываются; импорт бэкапа без секции `rules` больше не стирает правила маршрутизации. **Новое:** debug API правит состояние по одной записи, как Конфигуратор (узлы, правила, DNS-серверы и DNS-правила, с зеркалами для удалённых машин), пишет журнал мутаций в лог, а открытое окно Конфигуратора узнаёт о такой правке. **Ядро:** `lx.mtu_align` для узлов поверх IP-туннеля (hysteria2 через WARP на IPv6), `vhttp: auto` не залипает на h2, QUIC-приманка AmneziaWG на каждый хендшейк. Подробнее: [docs/release_notes/2-3-8.md](docs/release_notes/2-3-8.md).
@@ -776,6 +784,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.3.9** | [docs/release_notes/2-3-9.md](docs/release_notes/2-3-9.md) |
 | **v2.3.8** | [docs/release_notes/2-3-8.md](docs/release_notes/2-3-8.md) |
 | **v2.3.7** | [docs/release_notes/2-3-7.md](docs/release_notes/2-3-7.md) |
 | **v2.3.6** | [docs/release_notes/2-3-6.md](docs/release_notes/2-3-6.md) |

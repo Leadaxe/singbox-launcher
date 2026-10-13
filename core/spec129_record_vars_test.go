@@ -330,8 +330,10 @@ func TestSpec129DanglingDNSRouteFailsClosed(t *testing.T) {
 	if last == nil || len(last) != 1 || last["action"] != "reject" {
 		t.Errorf("последнее DNS-правило %v, ожидалась заглушка {action: reject}", last)
 	}
-	if got := cfg.Route["default_domain_resolver"]; got != l.td.DefaultDomainResolver {
-		t.Errorf("route.default_domain_resolver %v, ожидалась замена на %q", got, l.td.DefaultDomainResolver)
+	// SPEC 166: route.default_domain_resolver — объект {server, …} или строка;
+	// замена касается только server.
+	if got := resolverServerOf(cfg.Route["default_domain_resolver"]); got != l.td.DefaultDomainResolver {
+		t.Errorf("route.default_domain_resolver %v, ожидалась замена server на %q", cfg.Route["default_domain_resolver"], l.td.DefaultDomainResolver)
 	}
 	for _, ob := range cfg.Outbounds {
 		if ob["tag"] == "srv-1" && ob["domain_resolver"] != l.td.DefaultDomainResolver {
@@ -352,4 +354,17 @@ func TestSpec129DanglingDNSRouteFailsClosed(t *testing.T) {
 	if res, err := exec.Command(bin, "check", "-c", l.configPath).CombinedOutput(); err != nil {
 		t.Errorf("sing-box check отверг конфиг: %v\n%s", err, res)
 	}
+}
+
+// resolverServerOf — тег сервера из route.default_domain_resolver в любой
+// форме: строка или объект {server, …} (SPEC 166).
+func resolverServerOf(v interface{}) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case map[string]interface{}:
+		s, _ := x["server"].(string)
+		return s
+	}
+	return ""
 }

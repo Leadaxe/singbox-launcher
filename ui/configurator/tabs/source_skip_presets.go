@@ -8,6 +8,9 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/build"
+	wizardtemplate "singbox-launcher/core/template"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 
 	"singbox-launcher/internal/locale"
@@ -23,9 +26,13 @@ const (
 // skipPresetsBlock — переключатель «Skip presets» формы узла-сервера.
 //
 // Виден у своего сервера и члена папки (у узла подписки записи нет), когда в
-// шаблоне есть пресет с for_each, чей node_type равен типу тела узла. nil —
-// показывать нечего. Переключатель правит рабочую копию узла; в модель она
-// уходит по Save окна целиком.
+// шаблоне есть пресет с обходом узлов (for_each_node / for_each_node_do),
+// который узел обслуживает и которого переключатель его лишает: #filter
+// пропускает узел без skip_presets и отсекает с ним. Пресет, чей #filter
+// skip_presets не читает (сбор имён серверов всех узлов), переключатель не
+// показывает — выключение ничего бы не изменило. nil — показывать нечего.
+// Переключатель правит рабочую копию узла; в модель она уходит по Save окна
+// целиком.
 func skipPresetsBlock(m *wizardmodels.WizardModel, link wizardmodels.NodeLink, node *wizardmodels.Node) fyne.CanvasObject {
 	if m == nil || m.TemplateData == nil || node == nil || node.Kind != wizardmodels.SourceKindServer {
 		return nil
@@ -37,15 +44,27 @@ func skipPresetsBlock(m *wizardmodels.WizardModel, link wizardmodels.NodeLink, n
 			}
 		}
 	}
-	var body struct {
-		Type string `json:"type"`
-	}
-	if err := json.Unmarshal(node.Body, &body); err != nil || body.Type == "" {
+	// Пресет обслуживает узел ⇔ узел проходит #filter его обхода (SPEC 166):
+	// та же функция отбора, что у сборки, с переменными пресета из правила.
+	// Проба дважды: без skip_presets (иначе включённый переключатель прятал
+	// бы сам себя) и с ним — переключатель нужен, только если он узел снимает.
+	var body map[string]interface{}
+	if err := json.Unmarshal(node.Body, &body); err != nil || len(body) == 0 {
 		return nil
 	}
+	tag, _ := body["tag"].(string)
+	probe := []wizardtemplate.PresetNode{{Tag: tag, Body: body}}
+	skipped := []wizardtemplate.PresetNode{{Tag: tag, Body: body, SkipPresets: true}}
+	globals := wizardbusiness.PresetGlobalVars(m)
 	served := false
 	for i := range m.TemplateData.Presets {
-		if fe := m.TemplateData.Presets[i].ForEach; fe != nil && fe.NodeType == body.Type {
+		p := &m.TemplateData.Presets[i]
+		if !p.IsNodeLoop() {
+			continue
+		}
+		vars := presetRefVars(m, p.ID)
+		if len(build.PresetForEachNodes(p, vars, globals, m.Target, probe)) > 0 &&
+			len(build.PresetForEachNodes(p, vars, globals, m.Target, skipped)) == 0 {
 			served = true
 			break
 		}
@@ -61,4 +80,15 @@ func skipPresetsBlock(m *wizardmodels.WizardModel, link wizardmodels.NodeLink, n
 	hint.Wrapping = fyne.TextWrapWord
 	hint.Importance = widget.LowImportance
 	return container.NewVBox(check, hint)
+}
+
+// presetRefVars — значения переменных пресета из его правила в модели; правила
+// нет — nil (раскрытие возьмёт умолчания шаблона).
+func presetRefVars(m *wizardmodels.WizardModel, ref string) map[string]string {
+	for _, pr := range m.PresetRefs {
+		if pr != nil && pr.Ref == ref {
+			return pr.Vars
+		}
+	}
+	return nil
 }

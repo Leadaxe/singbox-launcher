@@ -82,7 +82,7 @@ The codebase is organized into **eight layers**. The cardinal rule:
 | **L3** | services + lifecycle | `core/services`, `core/uiservice`, `core/events`, `core` (`controller.go`, `process_service.go`, `config_service.go`, `rebuild.go`, `auto_update.go`, `backend*.go`, `daemon_manager*.go`, `main.go`, downloaders) | Stateful service implementations (`FileService`/`APIService`/`StateService`/`SRSDownloader`, the remote-machine registry / transport / deploy-resource collector), the UI-callback container (no Fyne deps), the typed `EventBus`, app/process lifecycle orchestration, and the `CoreBackend` engine seam (`LegacyBackend` / `DaemonBackend`). **Owns the EventBus and all DI wiring.** |
 | **L4** | api / remote-control | `api`, `core/debugapi` | Outbound Clash API client (`api/`) and inbound Debug HTTP API (`core/debugapi`) that introspects/controls the app through a `ControllerFacade` interface. Both sit above domain but are reachable from services; `debugapi` talks to the controller only via an interface. |
 | **L5** | ui-presentation (configurator MVP) | `ui/configurator/presentation`, `ui/configurator/business`, `ui/configurator/models`, `ui/configurator/configurator.go`, `ui/configurator/utils` | MVP layers for the wizard: **presentation** (orchestration + `fyne.Do` dispatch), **business** (pure logic behind the `UIUpdater` interface — never imports Fyne), **models** (pure `WizardModel` + slot/order containers). `business → models → core-domain`; `presentation → business`; **business never imports presentation**. |
-| **L6** | ui-views (tabs / dialogs / root) | `ui` (`app.go` + `*_tab.go`), `ui/configurator/tabs`, `ui/configurator/dialogs`, `ui/configurator/outbounds_configurator`, `ui/traffic` | Fyne views: root tab strip, main tabs (Local = proxy list + core dashboard, Remote = proxy list + machine list, then Settings / Diagnostics / Help), configurator tabs/dialogs, outbounds configurator, traffic profiler window, and the per-machine windows (add-machine, connection settings, host telemetry, resources, machine profiler). Subscribes to EventBus / UIService callbacks; reads core-domain for rendering. |
+| **L6** | ui-views (tabs / dialogs / root) | `ui` (`app.go` + `*_tab.go`), `ui/configurator/tabs`, `ui/configurator/dialogs`, `ui/configurator/outbounds_configurator`, `ui/traffic` | Fyne views: root tab strip, main tabs (Local = proxy list + core dashboard, Remote = proxy list + machine list, then Settings / Diagnostics / Help), configurator tabs/dialogs, outbounds configurator, traffic profiler window, and the per-machine windows (add-machine, connection settings, host telemetry, resources, machine profiler, the Service window, the machine's live core log). The Service window (`ui/service_*.go`, SPEC 161) is one view for the local daemon and for each machine — see §11.8. Subscribes to EventBus / UIService callbacks; reads core-domain for rendering. |
 | **L7** | ui-widgets / assets | `internal/fynewidget`, `ui/icons`, `ui/components` | Reusable, self-contained Fyne building blocks and assets: hover rows, check-with-content, hover forwarding, tooltips, scroll gutter, embedded SVG icons. Pure Fyne composition, with no dependency on `core` (the former `click_redirect.go` exception was removed — see §3, V1). |
 
 ### Dependency diagram
@@ -562,6 +562,18 @@ Key properties:
 - **`ExpandPreset` is single-sourced.** Both `ResolveRoute` and `ResolveDNS` call it
   once and consume the result; `evalIf` / if-filtering live in one place
   (`preset_expand.go`, unified in SPEC 070 cleanup Stage 3b).
+- **Node loops (SPEC 166, contract 1.1.119).** A preset with `for_each_node` /
+  `for_each_node_do` is expanded by `build.ExpandPresetForNodes` over the config
+  nodes collected after the graph sanitizer (`CollectPresetNodes` →
+  `PresetMergeContext.PresetNodes`); `#filter` selects nodes
+  (`template.EvalNodeFilter`, scope `@node`). `for_each_node` repeats the body
+  per node; `for_each_node_do` runs `#do` (`#append` into the preset's own
+  `text_list` vars, on a copy) → `#final` → `unique`, then expands the body
+  once, so the same fragment gate drops a rule whose collected list came out
+  empty. The wizard uses the same functions on the nodes of the last emission
+  (`business.PresetNodesForView`, `build.PresetForEachNodes` for the
+  "served nodes" label and the node's Skip presets toggle). The legacy
+  `for_each` key is a load error (preset skipped).
 - **One template walker (SPEC 143).** Every `@var` / `#if` substitution goes
   through the canonical walker `template.SubstituteVarsInJSONCanonWarnings`
   (`core/template/substitute_canon.go`, rules of `contract/docs/TEMPLATE_LANG.md`):
@@ -1089,6 +1101,17 @@ Everything that has a scope reads its source directly:
   machine selected then, and after the selection changes its commands answer
   "not available" instead of going to another machine.
 
+**List state is addressed by scope too.** `APIService` keeps one list state per
+scope (list, active node, selected index, ping errors, last selection per group).
+The accessors without a suffix read the active scope (the visible tab); the `…In(scope)`
+variants address one scope explicitly. `ProxyListPanel` uses only the `In` variants
+and its own widgets (`panel.proxiesList`, `listStatusLabel`, `apiStatusLabel`), never
+the `UIService` slots: a reply to its network request may land after the tab has
+changed. `AutoLoadProxies` takes transport and scope under one lock
+(`wireTransportAndScope`) and writes the reply into that scope.
+`machineListPanel.loadNodes` resets its own panel (`ProxyListPanel.ResetState`).
+`UIService.ResetAPIStateFunc` stays with Local for good: only local-core events call it.
+
 ### 11.3 Target and role are independent axes (SPEC 097)
 
 Config generation used to assume "the machine the launcher runs on": `runtime.GOOS`
@@ -1221,3 +1244,107 @@ virtualization). Proxy-only never elevates; TUN elevates only on an explicit act
 
 Still open (SPEC 137 §8 item 5): classic + TUN elevated runs
 `<Data>\bin\sing-box.exe`; the protected copy comes with SPEC 141.
+
+### 11.8 The Service window — one runbook for local and remote (SPEC 161)
+
+The window that keeps a daemon running (user view: DAEMON_AND_REMOTE §2.3 and §4.6)
+is split so that everything a table can check lives in `core`, untagged and without
+Fyne, and the UI only lays out ready steps. Local and remote differ by **source**, not
+by window.
+
+| Layer | File | What it holds |
+|---|---|---|
+| core, untagged | `core/core_build.go` | fork build versions: `parseCoreBuild`/`compareCoreBuilds` (moved out of the tagged `daemon_service_state.go` — remote machines are served from every platform), `CompareCoreVersion(running, required)` (`Unknown` never warns), `CoreBuildShort`, `CoreVersionPairLabels` |
+| core, untagged | `core/service_recipes.go` | `ServicePlatform`/`ServiceInit` (`procd`/`systemd`/`launchd`/`scm`), default paths, `MergeServicePaths` (passport over defaults, `Default` flag per path), `BuildServiceRecipes` → `ServiceStep{ID, Command, RunsLocally, NeedsRoot, UsesDefault, Interactive, Placeholder}`, `WrapSSH`/`PosixQuote`, `ClassifyDaemonReachError` (the substrings also drive `diagnoseReachError`) |
+| core, untagged | `core/services/ssh_target.go` | `SSHTarget`, `ParseSSHTarget`, `DefaultSSHTarget(addr)` — here because the registry's `SetSSH` validates and `core/services` cannot import `core` |
+| core, untagged | `core/core_download_target.go` | `DownloadCoreForTarget` — the core for the **machine's** GOOS/GOARCH into `~/Downloads`, checked against the release's `SHA256SUMS`, a `.sha256` sidecar as the "already downloaded" mark; never touches the launcher's own core |
+| core data | `core/services/lxd_remote_registry.go` | `RemoteDaemon.SSH/InitSystem/CoreWarnAck/Passport` (`omitempty`, no migration; the registry is in neither LX Backup nor the contract); `SetPassport` writes the file only on change or every 10 min; `RemoteHealth` carries the full passport |
+| core, daemon platforms | `core/daemon_manager*.go` | `DaemonUIStatus.ReachErr/Passport/PassportCached` with an in-memory passport cache; `DaemonServicePaths()` (exact launchd/SCM paths), `DaemonRestartCommand`/`DaemonRestartService`, `DaemonClientList/RemoveCommand` |
+| ui, untagged | `ui/service_model.go`, `service_window.go`, `service_tabs.go`, `service_commands.go`, `service_step_row.go`, `service_guides.go` | the `serviceSource` interface and snapshot, the diagnosis (tab glyphs and the start tab — the same function feeds the machine row's ⚙ dot), the window/embeddable view, the four tabs, the step row (⧉ copies the bare command, ▶ wraps it in ssh), guide links by locale |
+| ui, untagged | `ui/service_source_remote.go`, `service_core_download.go`, `machine_core_log_window.go` | the "machine" source: reads the panel's heartbeat cache on a 1 s ticker, never the network; step 1 of the Core tab; the machine's live core log (`SubscribeLogLines`) |
+| ui, `darwin \|\| (windows && !386)` | `ui/service_source_local.go` | the "local daemon" source: a 5 s `DaemonStatusSnapshot` poll, and `LocalRows` — the existing `daemonOps` rows (install, bootstrap, restart, pair, secret, Uninstall), so tagged symbols never leak into untagged UI |
+
+Rules the split keeps:
+
+- **Recipes never rebuild the service's command line.** A router's init script may
+  carry `-c min.json` or `GOMEMLIMIT`; recipes use only the service name and
+  `restart/stop/start`, plus the paths the daemon reported (or defaults, marked).
+- **No network from the window.** The remote header follows the row's heartbeat; the
+  local source polls on its own goroutine. Re-rendering compares snapshots without
+  uptime (`healthChanged` in the heartbeat for the same reason) and keeps input widgets.
+- **Debug API parity.** The fields the window reads are in the API (`/daemon/status`
+  passport and `reach_error`, `/daemon/commands` `restart`/`client_list`, the machine
+  entry's `ssh`/`init_system`/`core_warn_ack`/`passport`, `…/health`
+  `core_required`/`core_outdated`); the recipes are a pure function over them, so
+  there is no recipes endpoint. `core_outdated` comes from a `RemoteAPI.CoreOutdated`
+  closure wired in `core` — `debugapi` cannot import `core`.
+
+**SPEC 162 — the daemon as the executor, the passport as the source of platform.**
+
+- `GET /admin/info` from a core with SPEC 127 adds `goos`, `goarch`, `platform`
+  (the release asset suffix), `init_system` and `service`. `healthCtx` rewrites the
+  machine record's `goos`/`goarch`/`init_system` from them (one `mutate`, logged);
+  the local passport cache keeps the same `InfoData`. `DownloadCoreForTarget` names
+  the asset by `platform` and falls back to the goos/goarch table only without a
+  passport. A known `init_system` hides the header selector; `service:false` moves
+  "install the service" to the top of Not running.
+- `/admin/commands` (SPEC 128) is reached through `lxdclient/commands.go` and the
+  registry's `Commands/Command/RunCommand` (local: `DaemonAdminClient`). The window
+  never sends arguments or a body: `POST /admin/commands/{name}` only. The list is
+  refreshed in the heartbeat while a Service window for that machine is open and is
+  cached on the panel (`commands[id]`); 404 on the list is the "unsupported" state,
+  not an error. `ui/service_commands.go` holds the command bar, the 1 s run watcher
+  and the `update` state machine (posted → polling → reconnecting via `HealthWithin`
+  up to 90 s → verifying by version and `GET …/update` → finished; a 404 list after
+  the restart means the new core has no SPEC 128 and is reported as such).
+- Gating is by the daemon's answer (fields present, list status), never by comparing
+  with `RequiredCoreVersion`. `parseCoreBuild` treats any suffix other than `-rc<K>`
+  after `lx.N` as "cannot compare".
+- The sections are a `widget.Accordion` (`MultiOpen=false`): items are created once,
+  re-render changes titles and content only, so the open section survives the tick;
+  the diagnosis returns full titles (`✖ Not running — <reason>`) and `serviceTabNone`
+  closes everything. `core.CommandsRecipe` is a pure function behind the
+  "Suggested commands" section.
+
+### 11.9 Machine subscriptions: auto-refresh and auto-deploy (SPEC 164)
+
+The hourly auto-update loop (`core/auto_update.go`) only walks the local
+`state.json`. A machine's profile (`wizard_states/remote/<id>/state.json`)
+used to change only through its Configurator, and its `config.json` reached
+the machine only through the Deploy button. SPEC 164 closes that gap without
+a second build or delivery path:
+
+- **Consent is per machine.** `RemoteDaemon.AutoDeploySubscriptions`
+  (registry, default off, a checkbox in the machine's Edit window) is the only
+  reason the loop talks to a machine in the background — the heartbeat rule
+  "no network to registry entries without being asked" still holds.
+- **Sweep** (`core/machine_auto_deploy.go`, `runMachineSweep`) runs after the
+  local sweep on startup and on every heartbeat tick, under the same gates
+  (auto-update enabled, not asleep, no data move), sequentially per flagged
+  machine: `HealthWithin` → sha256 of the built config (`sha_before`) →
+  `refreshStaleSubscriptionsAt` on the machine's state file (the same
+  `refreshOneSubscriptionSource` as everywhere, under the machine's lock
+  `AppController.MachineStateLock`, which the debug API's `/state/*` PATCHes
+  share) → rebuild through `MachineConfigRebuildFunc` (the hook `ui` sets to
+  `configurator.RebuildMachineConfig`, i.e. the Configurator's own Save) →
+  `sha_after` → decision → `RemoteRegistry.Deploy`, the button's chain.
+- **Decision** (`autoDeployDecision`, pure, table-tested): deploy only when
+  `sha_before == active_sha` (nothing manual was left undeployed) and
+  `sha_after != sha_before`, and the machine is quiet — core `started`,
+  `active == last_good`, no interrupted apply, core not older than required
+  unless acknowledged. Anything else is `skipped` with the reasons in the
+  machine's journal; the orange dot on Deploy keeps asking for a manual one.
+- **Journal and signals.** Every consideration writes `LastAutoDeploy`
+  (`{at, result, sha?, note?}`) into the registry entry; the ⓘ window shows
+  it. `applied` / `failed` / `build_failed` / `unreachable` publish
+  `events.MachineAutoDeploy`; the machine panel turns it into a system
+  notification (no dialog — nobody is watching) and reloads the row, and the
+  Remote tab's node list when the active machine was redeployed. A state-file
+  rewrite also publishes `StateChanged{Source: auto-update, MachineID}` so an
+  open Configurator of that machine offers to reload instead of overwriting.
+- **Manual run:** `POST /remote/machines/{id}/auto-deploy/run[?force_refresh=1]`
+  performs one consideration now and returns the outcome.
+- **Limits:** works while the launcher runs and the machine is reachable from
+  it; one attempt per tick per machine, a failed fetch gets one 15-second
+  refresh retry that never deploys by itself.
+

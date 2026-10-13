@@ -5,7 +5,11 @@
 > Status: current for SPEC 096 (daemon core engine), 097 (remote config target),
 > 098 (Local/Remote tabs, one profile per machine), 099 (machine traffic profiler),
 > 100 (remote/daemon coverage in the Debug API), 136 (the service runs a root-owned
-> copy of the core), 137 (the classic TUN start runs the same copy).
+> copy of the core), 137 (the classic TUN start runs the same copy), 161 (the Service
+> window: keeping the daemon running locally and on remote machines).
+>
+> When the daemon is down, its core is too old or pairing is lost — the recipes are in
+> **[TROUBLESHOOTING.md → Daemon](TROUBLESHOOTING.md#daemon)**.
 >
 > Companion documents:
 > - **[ARCHITECTURE.md](ARCHITECTURE.md)** — layers, the `CoreBackend`/`ProxyTransport` seams.
@@ -114,8 +118,8 @@ and the paired clients, and restarts the service. After downloading a new core t
 launcher shows this command instead of a plain restart: restarting would bring the
 old copy back up.
 
-The launcher checks the service without sudo and shows the result on the Status tab
-of the LOCAL connection settings:
+The launcher checks the service without sudo and shows the result in the header of
+the Service view on the LOCAL tab of the connection settings (§2.3):
 
 | State | Meaning | Shown as |
 |---|---|---|
@@ -184,6 +188,33 @@ After a core download the log gets a WARN with both sha256 values, and the next 
 start shows the dialog. With a copy and no service, `<launcher-core> lxd --service=status`
 exits with 4 (copy only).
 
+### 2.3 The Service view of this computer (SPEC 161)
+
+Servers → ⚙ → **LOCAL**, Daemon engine: under the engine radio and **Stop VPN when
+quitting** (both stay where they were) sits the same Service window a remote machine
+has (§4.6) — a header plus the tabs **Not running**, **Core**, **Pairing**,
+**Reference** — and one more, **Uninstall**. The former Status and Install tabs are
+gone; their content moved:
+
+| Was | Now |
+|---|---|
+| Status: status lines, the service notice (§2.1) | the header |
+| Install: **Install or update service**, the core hint | Core |
+| the notice's `bootstrap` command (not running) | Not running, "Load the service" |
+| — | Not running: status (`launchctl print` / `sc.exe query`), **restart** (`sudo launchctl kickstart -k …` on macOS, `Restart-Service -Name sing-box-lxd -Force` with one UAC prompt on Windows), the log, the last working config |
+| Install: invite field + Pair, "Need a fresh invite" (`client add`) | Pairing |
+| Status: daemon address, Bearer secret | Pairing (channel parameters) |
+| the secret's help command (`show_secret`) | Reference, next to `daemon.json` |
+| ↻ Refresh daemon status | removed: the view polls the daemon every 5 s by itself |
+| Uninstall | Uninstall, unchanged |
+
+The view opens on the first tab that needs attention. Locally the Core tab has no
+upload or swap steps: the launcher's core is downloaded on the dashboard's Core tab,
+and **Install or update service** puts it into the protected copy (§2.1); Roll back is
+not offered (the same install restores it), Remove leads to the Uninstall tab. On
+Windows the steps that change the service run through "Run as administrator"; the
+others are copy-only.
+
 ---
 
 ## 3. Pairing (mTLS)
@@ -236,6 +267,22 @@ tick re-reads them whenever the group selection is empty. An empty list right
 after Stop/Start is a transient state measured in seconds, not a reason to
 Disconnect/Connect.
 
+**⚙ — the machine's Service window (SPEC 161).** Next to ⓘ (what the daemon says
+about itself) sits ⚙, which opens the machine's Service window (§4.6); before Connect
+it sits left of Connect, without a dot — the window works from the cached passport.
+When there is something to fix, ⚙ carries a dot and a warning line appears under the
+status line, with no button of its own:
+
+| Dot on ⚙ | Line | Tooltip |
+|---|---|---|
+| yellow | `⚠ Core lx.11 is older than required (lx.14)` | Core is older than required — open Service |
+| red | `✖ <first line of the error>` | Daemon does not answer — open Service |
+
+A red dot also means a rolled-back deploy (`interrupted_apply`) while the daemon does
+not answer. The three dots of a row read the same way: Deploy• — the built config
+differs from the one running; Configure• — the last deploy rolled back; ⚙• — the
+service or the core.
+
 The key property: **picking a machine and picking "who are we building for" are the
 same choice.** "Configure" opens the wizard rooted on that machine's profile, and
 Deploy in the same row ships that machine's own config. The "built for one, deployed
@@ -254,6 +301,10 @@ carries:
 | `server_fingerprint` | SHA-256 pin of the server certificate; empty = plain h2c (a dev daemon on loopback) |
 | `secret` | bearer secret; only needed by a plain-h2c daemon. Under mTLS the client certificate is the credential |
 | `goos` / `goarch` | platform and architecture of the **machine** |
+| `ssh` | ssh target for the Service window's commands, `user@host[:port]`; empty = `root@<host of addr>`. Set in the machine's Edit window (the **SSH** field next to the address) |
+| `init_system` | `systemd` \| `procd` for a Linux machine, chosen in the Service window's header (the daemon does not report it); empty = by architecture: `procd` for `linux/arm*`, `mips*`, `systemd` otherwise |
+| `core_warn_ack` | the core version for which Deploy no longer warns that the core is older than required (§4.4) |
+| `passport` | the last daemon passport (`version`, `executable`, `log_path`, `listen`, `tls`, `seen_at`) — the Service window's paths stay known when the daemon is down. Rewritten only when it changes or every 10 min; the state dir is in `state_dir` |
 
 `goos`/`goarch` live here rather than in the wizard state because they are a
 property of the machine, not of one of its settings. The row displays them, the
@@ -301,6 +352,15 @@ Delivery is the admin REST call `POST /admin/apply`: the daemon validates the co
 back to the last working config if the new one fails to start. Start/Stop go through
 `/admin`.
 
+**An older core on the machine (SPEC 161).** If the machine's core is provably older
+than the one this launcher builds configs for (`constants.RequiredCoreVersion`), Deploy
+asks first: the old core may reject the config, and then it rolls back to the last
+working one. The dialog offers **How to update** (the Service window on the Core tab),
+**Deploy anyway** and **Cancel**, and a "Don't ask again for lx.N on this machine"
+checkbox that stores the version in `core_warn_ack`. Once the machine runs another
+version the warning returns. Deploy is never refused; an unknown version (a dev build,
+an upstream core) gives no warning.
+
 The whole "resources strictly before the config" chain is one function,
 `services.RemoteRegistry.Deploy`: both the Deploy button and the Debug API
 (SPEC 100) call it, so "deploying via the API works differently from the button"
@@ -330,6 +390,47 @@ A machine has no per-process breakdown and cannot have one: `find_process` is of
 a router's config because traffic comes from network devices, not from processes of
 this computer.
 
+### 4.6 The Service window (SPEC 161)
+
+One runbook for keeping a daemon running, the same for each remote machine and for this
+computer (§2.3). It is not a reference sheet: the header gives the diagnosis, and the
+window opens on the tab that needs attention.
+
+**Header.** Platform and service (`OpenWrt · linux/arm64 · service sing-box-lxd
+(procd)`; for a Linux machine a systemd/procd selector, stored in `init_system`), the
+core version against the required one (`Core 1.14.2-lx.11 (required 1.14.3-lx.14 ⚠)`),
+the state (`✅ answers · uptime 3 h` or `✖ Not answering for 12 min: <error>, N
+attempts`), where the commands run (`Commands run via ssh root@192.168.10.1` / on this
+computer) and links to the guides. The header follows the machine's heartbeat (locally —
+a 5 s poll): run a restart in Terminal and it turns green on its own; there is no
+Re-check button.
+
+**Tabs.** A tab with something to fix carries a glyph (`✖ Not running`, `⚠ Core`,
+`✖ Pairing`); the window opens on the first of them, otherwise on Not running.
+
+| Tab | What it holds |
+|---|---|
+| Not running | from cheap to expensive: status → restart → the log (and what its lines mean) → boot the last working config once → reinstall the core. When the daemon answers, only restart and the log |
+| Core | running vs required; for a Linux machine: download the core for the **machine's** platform into `~/Downloads` (checked against the release's `SHA256SUMS`), upload streamed over ssh (`scp` does not work on OpenWrt), check with the new binary, back up, swap, restart; folded: roll back, install from scratch, remove the service |
+| Pairing | paired / not paired / certificate changed; mint an invite on the machine (`client add`), paste it, Pair; folded: who is trusted, revoke a client, plain-mode secret |
+| Reference | paths (binary, service, state dir, `daemon.json`, last-good, log) — reported by the daemon, or marked `default`; the `daemon.json` keys; the live log window (while the daemon answers), `tail -f`, who holds the port |
+
+**Commands.** Each step is a command field with ⧉ and ▶. The commands use the machine's
+own paths from its last passport, and only the service name (`sing-box-lxd`) with
+`restart/stop/start` — they never rebuild the service's command line, which may carry
+local flags. ⧉ copies the command as is, to paste into your own ssh session; ▶ opens
+Terminal on this Mac with `ssh <target> '<command>'` (`-t` when the command needs
+`sudo`; a non-root ssh user gets `sudo` added). The upload step is the only one that
+runs on this computer. A remote Windows machine gets copy-only commands for an elevated
+PowerShell; a remote macOS or Windows machine gets no upload/swap steps — the core is
+installed there with `lxd --service=install`. Dangerous steps (roll back, remove the
+service, revoke a client, delete the state) are folded, labelled in red and confirmed.
+
+The same recipes, for when the launcher is not at hand:
+[TROUBLESHOOTING.md → Daemon](TROUBLESHOOTING.md#daemon). Fork guides:
+[lxd-daemon](https://github.com/Leadaxe/sing-box-lx/blob/lx/docs-lx/lxd-daemon.md),
+[openwrt-vpn-ssid](https://github.com/Leadaxe/sing-box-lx/blob/lx/docs-lx/openwrt-vpn-ssid.md).
+
 ---
 
 ## 5. Remote in the Debug API (SPEC 100)
@@ -357,6 +458,12 @@ examples lives in [API.md](API.md); this section is about the principles.
 - **`/daemon/*` (darwin).** Status, pairing and engine of the local daemon, plus
   ready-made privileged command strings (`/daemon/commands`) — the API never
   executes them: "sudo only in your own terminal" applies here too.
+- **Service window parity (SPEC 161).** The fields the Service window reads are in the
+  API too: the passport paths and the reach error in `/daemon/status`, `restart` and
+  `client_list` in `/daemon/commands`, `ssh`/`init_system`/`core_warn_ack`/`passport`
+  in the machine entry (`ssh` and `init_system` are writable via `PATCH`), and
+  `core_required`/`core_outdated` in `…/health`. The recipes themselves are a pure
+  function of those fields; there is no endpoint for them.
 - **The `capabilities` manifest.** `GET /` reports which groups this build has:
   Win7 — no remote at all, non-darwin — no `/daemon/*`.
 

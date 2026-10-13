@@ -289,9 +289,9 @@ type PresetMergeContext struct {
 	// nil — вызывающий отчёт не собирает, предупреждения остаются в логе.
 	templateWarnings *[]template.TemplateWarning
 
-	// PresetNodes — узлы конфига для for_each (LxBox §578): финальные теги,
+	// PresetNodes — узлы конфига для for_each_node* (LxBox §578): финальные теги,
 	// тела и skip_presets. Заполняет BuildConfig после граф-санитайзера —
-	// состав узлов окончателен. nil — пресеты с for_each пусты.
+	// состав узлов окончателен. nil — пресеты с for_each_node* пусты.
 	PresetNodes []template.PresetNode
 }
 
@@ -638,7 +638,7 @@ func CollectEmittedRouteRuleSetTags(routeRaw json.RawMessage, routeCfg RouteConf
 	// (3) Единый резолв правил состояния — тот же вызов, что и в
 	// MergePresetsIntoRoute, с теми же фильтрами эмиссии.
 	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
-	// PresetNodes — как в MergePresetsIntoRoute: наборы пресета for_each
+	// PresetNodes — как в MergePresetsIntoRoute: наборы пресета for_each_node*
 	// раскрываются по узлам, без них множество было бы неполным (SPEC 153).
 	tdVal := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars, PresetNodes: ctx.PresetNodes}
 	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())

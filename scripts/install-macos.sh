@@ -238,7 +238,7 @@ esac
 if [[ -n "$core_ver" && -n "$core_suffix" ]]; then
   core_url="https://github.com/Leadaxe/sing-box-lx/releases/download/v${core_ver}/sing-box-${core_ver}-${core_suffix}.tar.gz"
   echo "Downloading core sing-box ${core_ver} (${core_suffix})..."
-  if curl -fsSL "$core_url" -o "$tmp/core.tgz" && tar -xzf "$tmp/core.tgz" -C "$tmp" 2>/dev/null; then
+  if curl -fL "$core_url" -o "$tmp/core.tgz" && tar -xzf "$tmp/core.tgz" -C "$tmp" 2>/dev/null; then
     core_bin="$(find "$tmp" -maxdepth 2 -type f -name sing-box | head -n 1 || true)"
     if [[ -n "$core_bin" ]]; then
       mkdir -p "$DATA_BIN"

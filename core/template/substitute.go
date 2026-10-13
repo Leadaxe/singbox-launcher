@@ -135,7 +135,7 @@ func SubstituteVarsInJSONCanonWarnings(data []byte, vars []TemplateVar, resolved
 }
 
 // substituteCanon — общий канонический обход; dynPrefixes — пространства имён
-// узла for_each (§578), объявленные целиком.
+// узла for_each_node* (§578), объявленные целиком.
 func substituteCanon(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec, dynPrefixes []string) (json.RawMessage, []TemplateWarning, error) {
 	ctx, err := substituteCanonCtx(data, vars, resolved, target, dynPrefixes)
 	if err != nil {
@@ -450,7 +450,7 @@ func evaluatePredicate(p interface{}, varTypes map[string]string, resolved map[s
 		}
 		scalar, _, _, found := lookupVarScalar(name, resolved, target)
 		if !found {
-			debuglog.WarnLog("substitute: #if predicate references unknown var @%s — treating as false", name)
+			warnUnknownPredicateVar(name)
 			return false
 		}
 		return strings.EqualFold(strings.TrimSpace(scalar), "true")
@@ -476,11 +476,22 @@ func evaluatePredicate(p interface{}, varTypes map[string]string, resolved map[s
 	return false
 }
 
+// warnUnknownPredicateVar — предупреждение о ссылке на неизвестную переменную
+// в условии. Путь узла обхода (`@node.…`, TEMPLATE_LANG §6.6) — исключение:
+// отсутствующее поле узла есть обычная ложь без предупреждения (SPEC 166
+// §2.2), иначе каждый узел без `server` шумел бы в лог на каждой сборке.
+func warnUnknownPredicateVar(name string) {
+	if name == NodeLoopVar || strings.HasPrefix(name, NodeLoopVar+".") {
+		return
+	}
+	debuglog.WarnLog("substitute: #if predicate references unknown var @%s — treating as false", name)
+}
+
 // evaluateVarPredicate dispatches RHS forms for {"@var": ...} predicates.
 func evaluateVarPredicate(varName string, rhs interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec) bool {
 	scalar, isList, list, found := lookupVarScalar(varName, resolved, target)
 	if !found {
-		debuglog.WarnLog("substitute: #if predicate references unknown var @%s — treating as false", varName)
+		warnUnknownPredicateVar(varName)
 		return false
 	}
 	switch r := rhs.(type) {

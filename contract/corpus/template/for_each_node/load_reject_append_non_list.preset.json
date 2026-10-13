@@ -1,0 +1,35 @@
+{
+  "_comment": "#append пишет только в text_list; переменная типа text — ошибка загрузки.",
+  "preset": {
+    "for_each_node_do": {
+      "#do": {
+        "@domains": {
+          "#append": "@node.body.server"
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "domains",
+        "type": "text"
+      }
+    ],
+    "dns_rules": [
+      {
+        "domain": "@domains",
+        "server": "dns-x"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "a",
+      "body": {
+        "type": "vless",
+        "tag": "a",
+        "server": "a.example",
+        "server_port": 443
+      }
+    }
+  ]
+}

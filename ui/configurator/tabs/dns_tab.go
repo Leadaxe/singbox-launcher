@@ -347,6 +347,62 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	resolverGroup := container.NewHBox(resLabel, guiState.DNSDefaultResolverSelect)
 	finalAndResolverRow := container.NewHBox(finalGroup, layout.NewSpacer(), resolverGroup)
 
+	// SPEC 166 волна 3: галка под резолвером — объектная форма
+	// route.default_domain_resolver, поле disable_optimistic_cache. Глобальная
+	// переменная с wizard_ui fix: Settings её не рисует, только эта вкладка.
+	// Подпись и подсказка — литералы каталога переводов, совпадающие с
+	// title/tooltip переменной в шаблоне (как у настроек кэша DNS).
+	noStaleProgrammatic := false
+	noStaleCheck := ttwidget.NewCheck(locale.T("Never serve stale answers for node hostnames"), func(b bool) {
+		if noStaleProgrammatic {
+			return
+		}
+		m := presenter.Model()
+		if m == nil {
+			return
+		}
+		v := "false"
+		if b {
+			v = "true"
+		}
+		if m.SettingsVars == nil {
+			m.SettingsVars = make(map[string]string)
+		}
+		if cur, ok := m.SettingsVars[wizardmodels.VarDNSResolverNoStale]; ok && cur == v {
+			return
+		}
+		m.SettingsVars[wizardmodels.VarDNSResolverNoStale] = v
+		presenter.MarkAsChanged()
+	})
+	noStaleCheck.SetToolTip(locale.T("Resolve a node's hostname again once its TTL expires instead of dialing a cached address. Keeps nodes alive with providers that rotate addresses."))
+	noStaleRow := container.NewHBox(layout.NewSpacer(), noStaleCheck)
+	refreshNoStale := func() {
+		m := presenter.Model()
+		if m == nil || m.TemplateData == nil {
+			return
+		}
+		tdl := m.TemplateData
+		if _, ok := wizardtemplate.VarByName(tdl.Vars, wizardmodels.VarDNSResolverNoStale); !ok {
+			noStaleRow.Hide()
+			return
+		}
+		noStaleRow.Show()
+		val := strings.TrimSpace(wizardtemplate.DisplaySettingValueFor(
+			tdl.Vars, m.SettingsVars, tdl.RawTemplate, wizardmodels.VarDNSResolverNoStale, m.Target.Normalized()))
+		noStaleProgrammatic = true
+		noStaleCheck.SetChecked(val == "true")
+		noStaleProgrammatic = false
+	}
+	refreshNoStale()
+	if prevCacheRefresh := guiState.RefreshDNSCacheSettings; prevCacheRefresh != nil {
+		guiState.RefreshDNSCacheSettings = func() {
+			prevCacheRefresh()
+			refreshNoStale()
+		}
+	} else {
+		guiState.RefreshDNSCacheSettings = refreshNoStale
+	}
+
 	refreshList()
 
 	// SPEC 062-F-N: единый ordered список DNS rules (preset + user
@@ -485,6 +541,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		rulesButtons,
 		widget.NewSeparator(),
 		finalAndResolverRow,
+		noStaleRow,
 	)
 	// Снаружи — VScroll: Scroll отдаёт содержимому max(его минимум, размер
 	// окна), поэтому на высоком окне Border по-прежнему растягивает список

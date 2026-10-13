@@ -138,6 +138,10 @@ func (s *Server) EnableDaemon(d DaemonFacade) { s.daemon = d }
 
 // machineMutex returns the per-machine state mutex, creating it lazily.
 func (s *Server) machineMutex(id string) *sync.Mutex {
+	// SPEC 164: общий с обходом авто-деплоя мьютекс, если wiring его дал.
+	if s.remote != nil && s.remote.MachineStateLock != nil {
+		return s.remote.MachineStateLock(id)
+	}
 	s.machineMuMu.Lock()
 	defer s.machineMuMu.Unlock()
 	if s.machineMu == nil {

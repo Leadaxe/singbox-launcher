@@ -173,7 +173,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 				lbl.SetText(formatDelay(list[i].Delay))
 			}
 		}
-		applyMemberDelays(ac.GetProxiesList())
+		applyMemberDelays(ac.ProxiesListIn(scope))
 		go func(group string) {
 			tr, ok := proxyTransportFor(ac, target)
 			if !ok {

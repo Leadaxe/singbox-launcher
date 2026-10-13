@@ -1,0 +1,1 @@
+{"config": {"route": {"default_domain_resolver": {"server": "direct_dns_resolver", "disable_optimistic_cache": true}}}, "warnings": []}

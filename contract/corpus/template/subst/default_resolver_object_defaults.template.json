@@ -1,0 +1,10 @@
+{
+  "_comment": "§6.9: route.default_domain_resolver — объект {server, disable_optimistic_cache}; значения по умолчанию (контракт 1.1.119, SPEC 166 волна 3)",
+  "vars": [
+    {"name": "dns_default_domain_resolver", "type": "text", "default_value": "direct_dns_resolver"},
+    {"name": "dns_resolver_no_stale", "type": "bool", "default_value": "true"}
+  ],
+  "config": {
+    "route": {"default_domain_resolver": {"server": "@dns_default_domain_resolver", "disable_optimistic_cache": "@dns_resolver_no_stale"}}
+  }
+}

@@ -6,7 +6,7 @@
 
 `tuic` — an outbound, sing-box type `tuic`. Accepted from: share link, sing-box JSON.
 
-<sub>Schema checked against core `1.14.2-lx.11` · the link fragment (`#…`) is the node `label`</sub>
+<sub>Schema checked against core `1.14.3-lx.17` · the link fragment (`#…`) is the node `label`</sub>
 
 | Field | Value |
 |---|---|
@@ -14,7 +14,7 @@
 | `singbox_type` | `tuic` |
 | `kind` | `outbound` |
 | `sources` | `uri`, `singbox` |
-| Core the schema was checked against | `1.14.2-lx.11` |
+| Core the schema was checked against | `1.14.3-lx.17` |
 | URI fragment | `label` |
 
 ## How to read this page
@@ -217,14 +217,17 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-fragment"></a>**`tls.fragment`** — Split the ClientHello across TCP segments.
   - Type: bool
   - Default: `false`
+  - Not applicable to `tuic`: removed → [`tls_not_applicable_quic`](../warnings.md#tls_not_applicable_quic)
   - Conflicts with: `vhttp` when `vhttp` is `h3`
   - Conflicts with: `tls.engine` when `tls.engine` is one of `apple`, `windows`
   - Conflicts with: `detour`
 - <a id="body-tls-fragment-fallback-delay"></a>**`tls.fragment_fallback_delay`** — Delay before falling back when fragmenting.
   - Type: duration
+  - Not applicable to `tuic`: removed → [`tls_not_applicable_quic`](../warnings.md#tls_not_applicable_quic)
 - <a id="body-tls-record-fragment"></a>**`tls.record_fragment`** — Split the ClientHello across TLS records.
   - Type: bool
   - Default: `false`
+  - Not applicable to `tuic`: removed → [`tls_not_applicable_quic`](../warnings.md#tls_not_applicable_quic)
   - Conflicts with: `vhttp` when `vhttp` is `h3`
   - Conflicts with: `tls.engine` when `tls.engine` is one of `apple`, `windows`
 - <a id="body-tls-spoof"></a>**`tls.spoof`** — Domain used for the spoofed ClientHello.
@@ -270,7 +273,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool
   - Default: `false`
 - <a id="body-tls-utls-fingerprint"></a>**`tls.utls.fingerprint`** — Browser fingerprint used for the ClientHello.
-  - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
+  - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
   - Default: `chrome`
   - Set by link parameter: [`fp`](#link-proto-fp)
 - <a id="body-tls-reality"></a>**`tls.reality`** — REALITY settings.
@@ -351,8 +354,6 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 
 Every code that can be raised on a node of this scheme, including the ones coming from the shared TLS, transport, multiplex and dialer sub-schemas. Follow a code for what it means and what to do about it.
 
-- [`detour_with_tls_fragment`](../warnings.md#detour_with_tls_fragment)
-  - [`tls.fragment`](#body-tls-fragment) — conflicts with `detour` → removed
 - [`field_conflict`](../warnings.md#field_conflict)
   - [`udp_relay_mode`](#body-udp-relay-mode) — conflicts with `udp_over_stream` → removed
   - [`tls.disable_sni`](#body-tls-disable-sni) — conflicts with `tls.reality.enabled` → removed
@@ -368,17 +369,14 @@ Every code that can be raised on a node of this scheme, including the ones comin
   - [`tls.client_certificate`](#body-tls-client-certificate) — set without `tls.client_key` → removed
   - [`tls.client_key`](#body-tls-client-key) — set without `tls.client_certificate` → removed
   - [`tls.spoof_method`](#body-tls-spoof-method) — set without `tls.spoof` → removed
-- [`masque_tls_fragment_h3`](../warnings.md#masque_tls_fragment_h3)
-  - [`tls.fragment`](#body-tls-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
-  - [`tls.record_fragment`](#body-tls-record-fragment) — conflicts with `vhttp` when `vhttp` is `h3` → removed
 - [`port_invalid`](../warnings.md#port_invalid)
   - [`server_port`](#body-server-port) — the value does not fit the field → node dropped
-- [`tls_fragment_system_engine`](../warnings.md#tls_fragment_system_engine)
-  - [`tls.fragment`](#body-tls-fragment) — conflicts with `tls.engine` when `tls.engine` is one of `apple`, `windows` → removed
-  - [`tls.record_fragment`](#body-tls-record-fragment) — conflicts with `tls.engine` when `tls.engine` is one of `apple`, `windows` → removed
 - [`tls_insecure`](../warnings.md#tls_insecure)
   - [`tls.insecure`](#body-tls-insecure) — the value is `true` → kept with a notice
 - [`tls_not_applicable_quic`](../warnings.md#tls_not_applicable_quic)
+  - [`tls.fragment`](#body-tls-fragment) — not supported by `tuic` → removed
+  - [`tls.fragment_fallback_delay`](#body-tls-fragment-fallback-delay) — not supported by `tuic` → removed
+  - [`tls.record_fragment`](#body-tls-record-fragment) — not supported by `tuic` → removed
   - [`tls.utls`](#body-tls-utls) — not supported by `tuic` → removed
   - [`tls.reality`](#body-tls-reality) — not supported by `tuic` → removed
 - [`tuic_congestion_invalid`](../warnings.md#tuic_congestion_invalid)
@@ -463,11 +461,12 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `tls.disable_sni` — conflicts with another field of the same node
 - `tls.ech.enabled` — conflicts with another field of the same node
 - `tls.engine` — invalid value
-- `tls.fragment` — conflicts with another field of the same node
+- `tls.fragment_fallback_delay` — not supported by this protocol
+- `tls.fragment` — not supported by this protocol
 - `tls.max_version` — invalid value
 - `tls.min_version` — invalid value
 - `tls.reality` — not supported by this protocol
-- `tls.record_fragment` — conflicts with another field of the same node
+- `tls.record_fragment` — not supported by this protocol
 - `tls.server_name` — invalid value
 - `tls.spoof_method` — conflicts with another field of the same node
 - `tls.spoof_method` — invalid value

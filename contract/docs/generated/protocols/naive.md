@@ -6,7 +6,7 @@
 
 `naive` — an outbound, sing-box type `naive`. Accepted from: share link, sing-box JSON.
 
-<sub>Schema checked against core `1.14.2-lx.11` · the link fragment (`#…`) is the node `label`</sub>
+<sub>Schema checked against core `1.14.3-lx.17` · the link fragment (`#…`) is the node `label`</sub>
 
 | Field | Value |
 |---|---|
@@ -15,7 +15,7 @@
 | `kind` | `outbound` |
 | `aliases` | — |
 | `sources` | `uri`, `singbox` |
-| Core the schema was checked against | `1.14.2-lx.11` |
+| Core the schema was checked against | `1.14.3-lx.17` |
 | Core requirement | build tag `with_naive_outbound`; on a core that lacks it the node is dropped at build: `naive_unavailable` |
 | URI fragment | `label` |
 
@@ -250,7 +250,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool
   - Default: `false`
 - <a id="body-tls-utls-fingerprint"></a>**`tls.utls.fingerprint`** — Browser fingerprint used for the ClientHello.
-  - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
+  - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
   - Default: `chrome`
 - <a id="body-tls-reality"></a>**`tls.reality`** — REALITY settings.
   - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)

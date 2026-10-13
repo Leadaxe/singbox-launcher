@@ -310,9 +310,9 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 				})
 			}
 
-			// 3a'. §578: серверы пресета с for_each — по одному набору на
+			// 3a'. SPEC 166: серверы пресета с for_each_node — по одному набору на
 			// узел, теги без пространства пресета (`<тег узла>-dns`).
-			if p.ForEach != nil {
+			if p.ForEachNode != nil {
 				frags, ws, ok := ExpandPresetForNodes(p, pb.Vars, templateVars, td.Vars, target, td.PresetNodes)
 				if ok && frags != nil {
 					for _, w := range ws {

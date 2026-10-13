@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"errors"
 	"time"
 
 	"fyne.io/fyne/v2"
 
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/lxdclient"
 )
 
 // Фоновый опрос активной машины (heartbeat).
@@ -63,6 +65,10 @@ type machineLiveness struct {
 	LastErr string
 	// LastOK — когда машина отвечала в последний раз.
 	LastOK time.Time
+	// FailSince — начало текущей серии промахов (нуль — серии нет): окно
+	// Service пишет «не отвечает 12 мин». Ставится на переходе 0→1 и на
+	// первой неудачной попытке Connect.
+	FailSince time.Time
 }
 
 // startHeartbeat запускает фоновый опрос. Останавливается закрытием stop.
@@ -104,6 +110,17 @@ func (p *machineListPanel) pollActive() {
 		return
 	}
 	h := p.registry.HealthWithin(id, heartbeatTimeout)
+	// Команды демона (SPEC 162) — только для открытого окна Service этой
+	// машины: строке списка они не нужны, лишний запрос каждые 5 с ни к чему.
+	var (
+		cmds     []lxdclient.Command
+		cmdsErr  error
+		cmdsRead bool
+	)
+	if h.Err == "" && serviceWindowOpen(id) {
+		cmds, cmdsErr = p.registry.CommandsWithin(id, heartbeatTimeout)
+		cmdsRead = true
+	}
 	fyne.Do(func() {
 		// Пока ходили по сети, пользователь мог отключиться или переключиться
 		// на другую машину. Ответ прежней машины к текущей строке отношения
@@ -113,6 +130,9 @@ func (p *machineListPanel) pollActive() {
 		}
 		live := p.liveness[id]
 		if h.Err != "" {
+			if live.FailStreak == 0 {
+				live.FailSince = time.Now()
+			}
 			live.FailStreak++
 			live.LastErr = h.Err
 			p.liveness[id] = live
@@ -135,13 +155,19 @@ func (p *machineListPanel) pollActive() {
 		recovered := live.FailStreak > 0
 		live.FailStreak = 0
 		live.LastErr = ""
+		live.FailSince = time.Time{}
 		live.LastOK = time.Now()
 		p.liveness[id] = live
+		if cmdsRead {
+			p.storeCommands(id, cmds, cmdsErr)
+		}
 		prev, had := p.health[id]
 		p.health[id] = h
 		// То же правило на успехе: тик, не изменивший ни health, ни маркер, —
 		// не повод пересобирать строки. Иначе панель вздрагивает каждые 5 с.
-		if !had || prev != h || recovered {
+		// Собранный конфиг сверяется с работающим на каждом тике: Save в
+		// Конфигураторе health не меняет, а точка на Deploy должна появиться.
+		if !had || healthChanged(prev, h) || recovered || p.configDrift(id, h) != p.deployDrift[id] {
 			p.redrawRows()
 		}
 		// Ядро сменило состояние без нашего участия (упало, или его подняли
@@ -152,6 +178,33 @@ func (p *machineListPanel) pollActive() {
 			p.onCoreStatusChanged(h)
 		}
 	})
+}
+
+// healthChanged — ответ машины изменился так, что строку надо перерисовать.
+// Без uptime (он растёт каждый тик) и с TLS по значению (указатель свежий в
+// каждом ответе): прямое `prev != h` перерисовывало бы панель каждые 5 с.
+func healthChanged(a, b services.RemoteHealth) bool {
+	if !sameBoolPtr(a.TLS, b.TLS) || !sameBoolPtr(a.Service, b.Service) {
+		return true
+	}
+	a.UptimeSeconds, b.UptimeSeconds = 0, 0
+	a.TLS, b.TLS = nil, nil
+	a.Service, b.Service = nil, nil
+	return a != b
+}
+
+// storeCommands кладёт ответ GET /admin/commands в кэш машины (UI-поток):
+// список → Ready, 404 → Unsupported; ошибка транспорта кэш не меняет —
+// за неё отвечает строка состояния демона.
+func (p *machineListPanel) storeCommands(id string, list []lxdclient.Command, err error) {
+	switch {
+	case err == nil:
+		p.commands[id] = serviceCommandsCache{State: serviceCommandsReady, List: list}
+	case errors.Is(err, lxdclient.ErrCommandsUnsupported):
+		p.commands[id] = serviceCommandsCache{State: serviceCommandsUnsupported}
+	default:
+		debuglog.DebugLog("machine heartbeat: %q commands: %v", id, err)
+	}
 }
 
 // onCoreStatusChanged синхронизирует левую колонку с новым состоянием ядра.

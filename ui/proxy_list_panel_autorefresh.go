@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
@@ -228,7 +229,7 @@ func (p *ProxyListPanel) startAutoRefresh(ac *core.AppController) {
 //
 // Пинги сохраняются так же, как в ручном пути: они локальные, машина о них
 // ничего не знает и в ответе их нет.
-func silentRefreshProxies(ac *core.AppController, scope services.ProxyScope, group string) {
+func silentRefreshProxies(ac *core.AppController, scope services.ProxyScope, group string, list *widget.List) {
 	if ac == nil || ac.APIService == nil || group == "" {
 		return
 	}
@@ -251,10 +252,13 @@ func silentRefreshProxies(ac *core.AppController, scope services.ProxyScope, gro
 		if _, _, connected := GetLxdRemoteOverride(); !connected {
 			return
 		}
-		ac.SetProxiesList(mergePreservingOrder(ac.GetProxiesList(), proxies))
-		ac.SetActiveProxyName(now)
-		if ac.UIService != nil && ac.UIService.ProxiesListWidget != nil {
-			ac.UIService.ProxiesListWidget.Refresh()
+		// В СВОЮ область и СВОЙ виджет: тик мог прийти, когда на экране уже
+		// другая вкладка, и «активные» аксессоры положили бы узлы машины в
+		// список своего ядра.
+		ac.SetProxiesListIn(scope, mergePreservingOrder(ac.ProxiesListIn(scope), proxies))
+		ac.SetActiveProxyNameIn(scope, now)
+		if list != nil {
+			list.Refresh()
 		}
 	})
 }

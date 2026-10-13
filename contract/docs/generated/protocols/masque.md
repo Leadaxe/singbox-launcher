@@ -6,7 +6,7 @@
 
 `masque` — an outbound, sing-box type `masque`. Accepted from: share link, sing-box JSON.
 
-<sub>Schema checked against core `1.14.2-lx.11` · the link fragment (`#…`) is the node `label`</sub>
+<sub>Schema checked against core `1.14.3-lx.17` · the link fragment (`#…`) is the node `label`</sub>
 
 | Field | Value |
 |---|---|
@@ -14,7 +14,7 @@
 | `singbox_type` | `masque` |
 | `kind` | `outbound` |
 | `sources` | `uri`, `singbox` |
-| Core the schema was checked against | `1.14.2-lx.11` |
+| Core the schema was checked against | `1.14.3-lx.17` |
 | URI fragment | `label` |
 
 ## How to read this page
@@ -286,7 +286,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool
   - Default: `false`
 - <a id="body-tls-utls-fingerprint"></a>**`tls.utls.fingerprint`** — Browser fingerprint used for the ClientHello.
-  - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
+  - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
   - Default: `chrome`
 - <a id="body-tls-reality"></a>**`tls.reality`** — REALITY settings.
   - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
@@ -441,7 +441,7 @@ Every code that can be raised on a node of this scheme, including the ones comin
 
 **Structural translations.** Decisions taken while the link is being read, before any value is judged: whether a block exists at all, where a field comes from, or how one input becomes several fields. The sanitizer sees a finished body and cannot take them.
 
-- flat `network` / `sni` / `skip_cert_verify` keys in an imported sing-box masque body → `the keys are removed, without carrying their values over` — These are another client's dialect; a flat `sni` sitting next to `tls.server_name` makes the core fail fast on the whole config.
+- flat `sni` / `skip_cert_verify` keys in an imported sing-box masque body → `the keys are removed, without carrying their values over` — These are another client's dialect; a flat `sni` sitting next to `tls.server_name` makes the core fail fast on the whole config.
   - Kind: `drop` · [`unknown_key`](../warnings.md#unknown_key)
 - no `vhttp=` in the link → `vhttp: h3` — A convention shared by both apps, not a core default (the core defaults to `auto`). The value is part of the identity hash of live MASQUE nodes.
   - Kind: `default`

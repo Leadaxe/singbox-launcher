@@ -1,0 +1,44 @@
+{
+  "_comment": "#final называет переменную, которой нет в #do этого пресета — ошибка загрузки.",
+  "preset": {
+    "for_each_node_do": {
+      "#do": {
+        "@domains": {
+          "#append": "@node.body.server"
+        }
+      },
+      "#final": {
+        "@extra": {
+          "#unique": true
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "domains",
+        "type": "text_list"
+      },
+      {
+        "name": "extra",
+        "type": "text_list"
+      }
+    ],
+    "dns_rules": [
+      {
+        "domain": "@domains",
+        "server": "dns-x"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "a",
+      "body": {
+        "type": "vless",
+        "tag": "a",
+        "server": "a.example",
+        "server_port": 443
+      }
+    }
+  ]
+}

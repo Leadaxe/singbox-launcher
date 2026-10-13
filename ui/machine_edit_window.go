@@ -25,6 +25,7 @@ const (
 	copyHintText          = "Copies the wizard setup — sources, rules, DNS and variables — from another machine onto this one, so you don't build the same thing twice. Pairing is NOT copied: each machine keeps its own client key, because one shared key would mean revoking access on one machine revokes it on both. The built config and rule-set files are rebuilt for this machine on the next Save and Deploy."
 	repairConfirmBodyText = "Issue a new client key for %s?\n\nThe current key stops being this launcher's credential and stays on the machine as a leftover — remove it there with `sing-box lxd client remove`. Settings of this machine are not touched."
 	repairHintText        = "Use this when the channel broke on the machine's side: the daemon was reinstalled, its state directory was wiped, this client was revoked, or its server certificate changed and the pin no longer matches. Name, address, platform and every setting of this machine are kept — only the pin and the client key are replaced."
+	autoDeployHintText    = "Refresh this machine's subscriptions hourly and deploy when only the nodes changed. The launcher must be running; a deploy restarts the machine's core for a moment."
 )
 
 // Окно правки удалённой машины (SPEC 098 §2.1).
@@ -82,26 +83,72 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 	nameEntry.SetText(d.Name)
 	addrEntry := widget.NewEntry()
 	addrEntry.SetText(d.Addr)
+	// SSH — цель команд окна Service (SPEC 161): пусто — root@<хост адреса>.
+	sshEntry := widget.NewEntry()
+	sshEntry.SetText(d.SSH)
+	sshEntry.SetPlaceHolder(services.DefaultSSHTarget(d.Addr).String())
+	addrEntry.OnChanged = func(addr string) {
+		sshEntry.SetPlaceHolder(services.DefaultSSHTarget(addr).String())
+	}
 
 	tgt := d.Target()
 	goosSelect := widget.NewSelect([]string{"linux", "darwin", "windows"}, nil)
 	goosSelect.SetSelected(tgt.GOOS)
 	goarchSelect := widget.NewSelect([]string{"amd64", "arm64", "arm", "386", "mips", "mipsle"}, nil)
 	goarchSelect.SetSelected(tgt.GOARCH)
+	// Паспорт важнее ввода (SPEC 162 §4.1): платформу сообщил демон, и
+	// каждый здоровый ответ перепишет выбор обратно — селекторы неактивны.
+	fromPassport := services.PassportPlatformKnown(d)
+	if fromPassport {
+		goosSelect.Disable()
+		goarchSelect.Disable()
+	}
 
 	form := widget.NewForm(
 		widget.NewFormItem(locale.T("Name"), nameEntry),
 		widget.NewFormItem(locale.T("Address"), addrEntry),
+		widget.NewFormItem(locale.T("SSH"), sshEntry),
 		widget.NewFormItem(locale.T("Platform"), goosSelect),
 		widget.NewFormItem(locale.T("Architecture"), goarchSelect),
 	)
+	if fromPassport {
+		reported := widget.NewLabel(locale.T("reported by the daemon"))
+		reported.Importance = widget.LowImportance
+		form.Append("", reported)
+	}
+	// SPEC 164: согласие на фоновые вызовы к машине — флаг в её записи.
+	autoDeployCheck := widget.NewCheck(locale.T("Auto-deploy subscription updates"), nil)
+	autoDeployCheck.SetChecked(d.AutoDeploySubscriptions)
+	autoDeployHint := widget.NewLabel(locale.T(autoDeployHintText))
+	autoDeployHint.Wrapping = fyne.TextWrapWord
+	autoDeployHint.Importance = widget.LowImportance
+	form.Append("", autoDeployCheck)
+	form.Append("", autoDeployHint)
 
 	saveBtn := widget.NewButton(locale.T("Save"), func() {
+		// Цель ssh проверяется до записи: иначе имя и адрес сохранились бы,
+		// а ssh — нет, и окно закрылось бы с половиной правки.
+		if ssh := strings.TrimSpace(sshEntry.Text); ssh != "" {
+			if _, err := services.ParseSSHTarget(ssh); err != nil {
+				dialog.ShowError(err, win)
+				return
+			}
+		}
 		if err := registry.Update(d.ID, nameEntry.Text, addrEntry.Text); err != nil {
 			dialog.ShowError(err, win)
 			return
 		}
-		if err := registry.SetPlatform(d.ID, goosSelect.Selected, goarchSelect.Selected); err != nil {
+		if !fromPassport {
+			if err := registry.SetPlatform(d.ID, goosSelect.Selected, goarchSelect.Selected); err != nil {
+				dialog.ShowError(err, win)
+				return
+			}
+		}
+		if err := registry.SetSSH(d.ID, sshEntry.Text); err != nil {
+			dialog.ShowError(err, win)
+			return
+		}
+		if err := registry.SetAutoDeploySubscriptions(d.ID, autoDeployCheck.Checked); err != nil {
 			dialog.ShowError(err, win)
 			return
 		}
@@ -172,32 +219,20 @@ func machineEditRePair(win fyne.Window, registry *services.RemoteRegistry,
 				}
 				repairBtn.Disable()
 				status.SetText(locale.T("Re-pairing…"))
-				// Enroll — блокирующий сетевой вызов: недоступная машина
-				// отвечает по таймауту REST-клиента.
-				go func() {
-					entry, err := registry.RePair(d.ID, invite,
-						strings.TrimSpace(addrEntry.Text), strings.TrimSpace(secretEntry.Text))
-					fyne.Do(func() {
-						repairBtn.Enable()
-						if err != nil {
-							debuglog.WarnLog("edit machine: re-pair %q: %v", d.ID, err)
-							status.SetText(locale.Tf("Pairing failed: %v", err))
-							return
-						}
-						// Канал стал другим: прежнее соединение и его окна
-						// разговаривают по отозванному пину. Рвём здесь, а не
-						// оставляем пользователю — иначе строка показывала бы
-						// «connected» на мандате, которого больше нет.
-						if id, _, ok := GetLxdRemoteOverride(); ok && id == d.ID {
-							CloseMachineProfiler(d.ID)
-							CloseMachineHostWindow(d.ID)
-						}
-						debuglog.InfoLog("edit machine: re-paired %q at %s", entry.Name, entry.Addr)
-						status.SetText(locale.Tf("Re-paired at %s. A new client key was issued; connect again.", entry.Addr))
-						inviteEntry.SetText("")
-						reload()
-					})
-				}()
+				// Канал стал другим: окна на прежнем соединении (профайлер,
+				// телеметрия, живой лог) rePairMachine закрывает сам, строку
+				// возвращает к Connect reload — иначе она показывала бы
+				// «connected» на мандате, которого больше нет.
+				rePairMachine(registry, d, invite, addrEntry.Text, secretEntry.Text, func(entry services.RemoteDaemon, err error) {
+					repairBtn.Enable()
+					if err != nil {
+						status.SetText(locale.Tf("Pairing failed: %v", err))
+						return
+					}
+					status.SetText(locale.Tf("Re-paired at %s. A new client key was issued; connect again.", entry.Addr))
+					inviteEntry.SetText("")
+					reload()
+				})
 			}, win)
 	}
 

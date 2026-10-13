@@ -1,0 +1,65 @@
+{
+  "_comment": "Пользовательская переменная: ввод пользователя — база, собранное добавляется к нему на время сборки.",
+  "preset": {
+    "for_each_node_do": {
+      "#filter": {
+        "#and": [
+          {
+            "@node.body.server": "#notEmpty"
+          },
+          {
+            "#not": {
+              "@node.body.server": {
+                "#matches": "^[0-9.]+$"
+              }
+            }
+          },
+          {
+            "#not": {
+              "@node.body.server": {
+                "#matches": ":"
+              }
+            }
+          }
+        ]
+      },
+      "#do": {
+        "@domains": {
+          "#append": "@node.body.server"
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "domains",
+        "type": "text_list"
+      }
+    ],
+    "dns_rules": [
+      {
+        "domain": "@domains",
+        "server": "dns-x"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "a",
+      "body": {
+        "type": "vless",
+        "tag": "a",
+        "server": "a.example",
+        "server_port": 443
+      }
+    },
+    {
+      "tag": "e",
+      "body": {
+        "type": "vless",
+        "tag": "e",
+        "server": "b.example",
+        "server_port": 443
+      }
+    }
+  ]
+}

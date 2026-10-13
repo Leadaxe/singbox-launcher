@@ -28,6 +28,10 @@
       "items": { "enum": ["uri", "singbox", "xray", "wgconf", "amnezia"] }
     },
     "extension": { "enum": [null, "desktop", "mobile"] },
+    "extension_alternative": {
+      "type": ["string", "null"],
+      "description": "Контракт 1.1.118: схема, которую сторона БЕЗ этого extension называет в коде protocol_extension_unsupported {scheme, alternative} вместо общего отказа. Только у секций с непустым extension (hysteria → hysteria2)."
+    },
     "uri": {
       "type": "object",
       "additionalProperties": false,

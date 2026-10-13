@@ -16,11 +16,11 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	fynetooltip "github.com/dweymouth/fyne-tooltip"
 
 	"singbox-launcher/core"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/ui/components"
 )
 
 var (
@@ -50,13 +50,12 @@ func OpenConnectionWindow(ac *core.AppController, onChanged func()) {
 	// строка с Connect, Configure и Deploy. Две точки управления одними и теми
 	// же машинами — это два места, где можно ошибиться, и ровно оттуда росла
 	// путаница «сопрягся с роутером, а затёрся адрес своего демона».
-	body := container.NewVBox(buildLocalEngineTab(ac, win, onChanged))
+	body, dispose := buildLocalEngineTab(ac, win, onChanged)
 
-	// Строго вертикальный скролл: по ширине контент ужимается под окно
-	// (Label'ы с Wrapping), правая полоса — канонический gutter проекта
-	// (components.NewScrollGutter, ширина ScrollbarGutterWidth).
-	scrolled := container.NewVScroll(container.NewBorder(nil, nil, nil,
-		components.NewScrollGutter(), container.NewPadded(body)))
+	// Прокрутки нет на уровне окна: панель демона — окно Service, у каждой
+	// его вкладки своя вертикальная прокрутка (SPEC 161 §4.2). Слой тултипов
+	// — для подсказок ▶ и шагов окна Service.
+	content := fynetooltip.AddWindowToolTipLayer(container.NewPadded(body), win.Canvas())
 
 	// Высота — как у главного окна на момент открытия (его фактический
 	// canvas-размер), чтобы окна вставали рядом одинаковыми колонками.
@@ -67,10 +66,15 @@ func OpenConnectionWindow(ac *core.AppController, onChanged func()) {
 		}
 	}
 
-	win.SetContent(scrolled)
-	win.Resize(fyne.NewSize(560, height))
+	win.SetContent(content)
+	// Ширина — как у окна Service машины: шапка и команды те же.
+	win.Resize(fyne.NewSize(serviceWindowWidth, height))
 	fynewidget.CenterOnScreen(win)
 	win.SetOnClosed(func() {
+		if dispose != nil {
+			dispose()
+		}
+		fynetooltip.DestroyWindowToolTipLayer(win.Canvas())
 		connWindowMu.Lock()
 		connWindowOpen = nil
 		connWindowMu.Unlock()

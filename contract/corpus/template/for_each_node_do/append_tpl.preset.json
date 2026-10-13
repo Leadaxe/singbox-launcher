@@ -1,0 +1,54 @@
+{
+  "_comment": "Правая часть #append — вставка #tpl (§4.8). Узел без server даёт пустую вставку — пропускается молча, без элемента и без предупреждения.",
+  "preset": {
+    "for_each_node_do": {
+      "#do": {
+        "@suffixes": {
+          "#append": {
+            "#tpl": ".@{node.body.server}"
+          }
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "suffixes",
+        "type": "text_list"
+      }
+    ],
+    "rules": [
+      {
+        "domain_suffix": "@suffixes",
+        "outbound": "direct-out"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "a",
+      "body": {
+        "type": "vless",
+        "tag": "a",
+        "server": "a.example",
+        "server_port": 443
+      }
+    },
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    },
+    {
+      "tag": "e",
+      "body": {
+        "type": "vless",
+        "tag": "e",
+        "server": "b.example",
+        "server_port": 443
+      }
+    }
+  ]
+}

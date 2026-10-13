@@ -49,6 +49,9 @@ type TemplateVar struct {
 	OptionsOpen bool     `json:"options_open,omitempty"`
 	WizardUI    string   `json:"wizard_ui,omitempty"`
 	Platforms   []string `json:"platforms,omitempty"`
+	// Unique — значение text_list без дубликатов, порядок первого появления
+	// (TEMPLATE_LANG §2.1, D-132); у другого типа — ошибка загрузки.
+	Unique bool `json:"unique,omitempty"`
 	// Title подпись строки на вкладке Settings; при пустом используется name.
 	Title string `json:"title,omitempty"`
 	// Tooltip всплывающая подсказка для строки (виджеты с поддержкой SetToolTip).
@@ -88,6 +91,7 @@ type templateVarAlias struct {
 	Options        json.RawMessage            `json:"options,omitempty"`
 	OptionsOpen    bool                       `json:"options_open,omitempty"`
 	WizardUI       string                     `json:"wizard_ui,omitempty"`
+	Unique         bool                       `json:"unique,omitempty"`
 	Platforms      []string                   `json:"platforms,omitempty"`
 	Title          string                     `json:"title,omitempty"`
 	Tooltip        string                     `json:"tooltip,omitempty"`
@@ -124,6 +128,7 @@ func (v *TemplateVar) UnmarshalJSON(data []byte) error {
 	v.DefaultValue = a.DefaultValue
 	v.DefaultNode = a.DefaultNode
 	v.WizardUI = a.WizardUI
+	v.Unique = a.Unique
 	v.Platforms = a.Platforms
 	v.Title = a.Title
 	v.Tooltip = a.Tooltip
@@ -302,7 +307,7 @@ func (v TemplateVar) GateDeps() []string {
 type ResolvedVar struct {
 	Scalar string
 	List   []string
-	// Raw — значение узла for_each (§578): тег, поле записи или поле тела
+	// Raw — значение узла for_each_node* (§578): тег, поле записи или поле тела
 	// любого JSON-типа. Не nil — подстановка отдаёт его копию как есть.
 	Raw interface{}
 }
@@ -358,7 +363,18 @@ func ResolveTemplateVarsFor(vars []TemplateVar, state map[string]string, rawTemp
 		if v.Separator {
 			continue
 		}
-		out[v.Name] = resolveOneVar(v, state[v.Name], root, target, varTypes, out)
+		stateVal := state[v.Name]
+		// wizard_ui: internal (TEMPLATE_LANG §2.1, D-132): значение состояния
+		// не читается — у переменной верхнего уровня это константа
+		// default_value.
+		if v.WizardUI == WizardUIInternal {
+			stateVal = ""
+		}
+		r := resolveOneVar(v, stateVal, root, target, varTypes, out)
+		if v.Unique && v.Type == "text_list" {
+			r.List = UniqueStrings(r.List)
+		}
+		out[v.Name] = r
 	}
 	return out
 }
@@ -394,6 +410,11 @@ func VarValuesFor(vars []TemplateVar, state map[string]string, rawTemplate json.
 	for _, v := range vars {
 		if v.Separator || v.Name == "" || !VarAppliesOnGOOS(v.Platforms, target.GOOS) {
 			continue
+		}
+		if v.WizardUI == WizardUIInternal {
+			// Значение состояния у internal не читается (§2.1): копия
+			// состояния выше его не должна протащить.
+			delete(out, v.Name)
 		}
 		r, ok := resolved[v.Name]
 		if !ok {

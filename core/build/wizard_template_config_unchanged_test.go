@@ -60,7 +60,7 @@ func wizardTemplateCases() []wizardTemplateCase {
 		{name: "empty_mtu", vars: map[string]string{"tun_mtu": ""}},
 		// Выключенные глобали и переменные пресетов (PLAN «Риски»): DNS
 		// override снят, sniff/resolve выключены, resolve_strategy пуст.
-		{name: "globals_off", vars: map[string]string{"resolve_strategy": ""},
+		{name: "globals_off", vars: map[string]string{"resolve_strategy": "", "dns_resolver_no_stale": "false"},
 			presetVars: map[string]map[string]string{
 				"russian":            {"use_dns_override": "false", "geoip_enabled": "false"},
 				"traffic-processing": {"sniff_enabled": "false", "resolve_enabled": "false"},

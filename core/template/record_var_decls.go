@@ -80,10 +80,11 @@ func PresetRecordVarDecls(p *Preset) []state.RecordVarDecl {
 			continue
 		}
 		list = append(list, state.RecordVarDecl{
-			Name:    v.Name,
-			Type:    v.Type,
-			Default: strings.TrimSpace(v.Default),
-			Ref:     v.Ref != "",
+			Name:     v.Name,
+			Type:     v.Type,
+			Default:  strings.TrimSpace(v.Default),
+			Ref:      v.Ref != "",
+			Internal: v.IsInternal(),
 		})
 	}
 	return list

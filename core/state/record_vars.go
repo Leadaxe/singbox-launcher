@@ -46,6 +46,10 @@ type RecordVarDecl struct {
 	// живёт в глобальных vars, а хранимое в записи читают резолвер DNS и
 	// outbounds пресета — нормализация такое имя не трогает (Н2).
 	Ref bool
+	// Internal — `wizard_ui: "internal"` (контракт 1.1.119, D-132): имя
+	// только для сборки, законным для хранения не бывает — хранение снимает
+	// его молча, импорт называет (RecordVarInternal).
+	Internal bool
 }
 
 // RecordVarDecls — объявления шаблона стороны для обоих носителей.
@@ -71,6 +75,9 @@ const (
 	RecordVarUndeclared = "undeclared"
 	RecordVarSuperseded = "superseded"
 	RecordVarNoRecord   = "no_record"
+	// RecordVarInternal — имя объявлено с `wizard_ui: "internal"`: его пишет
+	// только сборка (#do), значение записи не данные пользователя.
+	RecordVarInternal = "internal"
 )
 
 // RecordVarDrop — имя, снятое с отчётом (импорт называет его предупреждением).
@@ -79,7 +86,8 @@ type RecordVarDrop struct {
 	Name string
 	// Record — носитель: DNSVarRecord / PresetVarRecord; пусто у корневой.
 	Record string
-	// Reason — RecordVarUndeclared | RecordVarSuperseded | RecordVarNoRecord.
+	// Reason — RecordVarUndeclared | RecordVarSuperseded | RecordVarNoRecord
+	// | RecordVarInternal.
 	Reason string
 }
 
@@ -408,6 +416,11 @@ func NormalizeRecordVarMap(vars map[string]string, declared []RecordVarDecl, rec
 		decl, ok := byName[name]
 		if !ok {
 			drops = append(drops, RecordVarDrop{Name: name, Record: record, Reason: RecordVarUndeclared})
+			changed = true
+			continue
+		}
+		if decl.Internal {
+			drops = append(drops, RecordVarDrop{Name: name, Record: record, Reason: RecordVarInternal})
 			changed = true
 			continue
 		}

@@ -95,7 +95,8 @@ func buildSinglePresetRefRow(
 	}
 
 	labelText, brokenRef := presetTileLabel(pr, tplPreset)
-	// LxBox §578: у пресета с for_each строка называет обслуживаемые узлы.
+	// LxBox §578, SPEC 166: у пресета с обходом узлов (for_each_node /
+	// for_each_node_do) строка называет узлы, прошедшие его #filter.
 	if served := wizardbusiness.PresetServedTags(model, tplPreset, pr.Vars); served != nil {
 		labelText += "  ·  " + wizardbusiness.PresetServedNodesLabel(served)
 	}

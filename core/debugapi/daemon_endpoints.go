@@ -36,6 +36,21 @@ type DaemonStatus struct {
 	ServiceState  string `json:"service_state,omitempty"`
 	ServicePath   string `json:"service_path,omitempty"`
 	ServiceDetail string `json:"service_detail,omitempty"`
+
+	// Паспорт демона (/admin/info) для окна Service (SPEC 161): те же
+	// пути, что окно подставляет в рецепты. Пока демон молчит — паспорт из
+	// кэша сессии (PassportCached=true, UptimeSeconds не отдаётся: он
+	// устарел); паспорта не было ни разу — поля пустые, TLS null.
+	LogPath        string `json:"log_path,omitempty"`
+	Executable     string `json:"executable,omitempty"`
+	Listen         string `json:"listen,omitempty"`
+	TLS            *bool  `json:"tls"`
+	UptimeSeconds  int    `json:"uptime_seconds,omitempty"`
+	PassportSeenAt string `json:"passport_seen_at,omitempty"`
+	PassportCached bool   `json:"passport_cached"`
+	// ReachError — почему /admin/status не ответил (текст ошибки связи);
+	// пусто, если ответил или опроса не было (не сопряжено).
+	ReachError string `json:"reach_error,omitempty"`
 }
 
 // DaemonCommands — готовые sudo-команды для терминала оператора. API их
@@ -48,6 +63,11 @@ type DaemonCommands struct {
 	Repair         string `json:"repair"`
 	Kickstart      string `json:"kickstart"`
 	ShowSecret     string `json:"show_secret"`
+	// Restart — перезапуск службы (окно Service, вкладка Not running):
+	// macOS — тот же kickstart, Windows — Restart-Service в PowerShell от
+	// администратора. ClientList — `lxd client list` (вкладка Pairing).
+	Restart    string `json:"restart"`
+	ClientList string `json:"client_list"`
 }
 
 // DaemonFacade — что debugapi нужно от управления локальным демоном.

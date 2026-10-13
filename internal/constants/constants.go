@@ -163,6 +163,15 @@ const (
 	// пользователя релизная сборка, и ссылка обязана вести на актуальный
 	// текст, а не на срез времени сборки.
 	ContractWarningsDocBaseURL = "https://github.com/Leadaxe/singbox-launcher/blob/main/contract/docs/generated/warnings.md#"
+	// LauncherDocsBaseURL / CoreDocsBaseURL — базы ссылок «Guides» окна
+	// Service (SPEC 161): полный адрес = база + `<имя>.md` или `<имя>.ru.md`
+	// по локали + якорь. Документация лаунчера — ветка main этого
+	// репозитория (как ContractWarningsDocBaseURL: у пользователя релизная
+	// сборка, ссылка ведёт на актуальный текст); гайды демона — docs-lx
+	// форка ядра на ветке lx (демон — часть ядра, инструкции обновляются
+	// вместе с ним, как RemoteDaemonDocsURL).
+	LauncherDocsBaseURL = "https://github.com/Leadaxe/singbox-launcher/blob/main/docs/"
+	CoreDocsBaseURL     = "https://github.com/Leadaxe/sing-box-lx/blob/lx/docs-lx/"
 )
 
 // sing-box core download source (SPEC 072, Variant A). The launcher ships the
@@ -188,7 +197,7 @@ const SingboxCoreRepo = "Leadaxe/sing-box-lx" // core for all platforms (XHTTP +
 // `sing-box version`, so the strict-equality reinstall check still holds.
 // Manually bumped per release; source-of-truth here. See
 // docs/RELEASE_PROCESS.md §5.1.
-const RequiredCoreVersion = "1.14.3-lx.14"
+const RequiredCoreVersion = "1.14.3-lx.18"
 
 // AppVersion — git describe output. Set by build scripts via -ldflags.
 //
@@ -202,7 +211,7 @@ const RequiredCoreVersion = "1.14.3-lx.14"
 // HEAD. See docs/RELEASE_PROCESS.md §5.2.
 var (
 	AppVersion          = "v-local-test"
-	RequiredTemplateRef = "6df346de27c15bab2af23dc7b653c91e691b1d93"
+	RequiredTemplateRef = "033f0555aea6ec6c2dfb4779d9a60ae0276464d4"
 )
 
 // GetMyBranch возвращает ветку репозитория для загрузки ассетов, у которых нет
