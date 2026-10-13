@@ -52,15 +52,19 @@ SPEC 166.
 | Что | Где |
 |---|---|
 | Раннер | `core/build/contract_node_loop_test.go:48` `TestContractCorpusNodeLoops` — разделы `contract/corpus/template/for_each_node/`, `for_each_node_do/` |
-| Шаблон | `bin/wizard_template.json:1103` пресет `tailscale` на `for_each_node` + `#filter` (тип и `skip_presets`). Пресет `node-domains-fresh-dns` — волна UI |
+| Шаблон | `bin/wizard_template.json:1099` пресет `node-domains-fresh-dns` (`for_each_node_do`, `num: 10`, сразу за `traffic-processing`); `:1157` пресет `tailscale` на `for_each_node` + `#filter` (тип и `skip_presets`) |
+| Поздний дефолт | `core/state/rule_order.go:419` `LateDefaultPresetIDs` += `node-domains-fresh-dns` (TEMPLATE_LANG §6.7.5: существующие профили получают пресет один раз) |
+| Шум лога | `core/template/substitute.go:483` `warnUnknownPredicateVar` — путь `@node.…` без предупреждения (SPEC §2.2); `core/template/preset_loader.go:388` пустой default у `text_list` — не предупреждение |
 
-## 6. Потребители UI (SPEC §5) — правки этой волны только «чтобы собиралось»
+## 6. Потребители UI (SPEC §5) — волна UI
 
-| Где | Сейчас | Доделать в волне UI |
-|---|---|---|
-| `ui/configurator/tabs/source_skip_presets.go:56` | пресет обслуживает узел ⇔ `build.PresetForEachNodes(p, nil, globals, target, [узел без skip_presets])` непуст | ок; при желании — vars пресета из состояния вместо nil |
-| `ui/configurator/tabs/preset_ref_edit_dialog.go:486` | «No matching nodes» только у `ForEachNode` | форма: `unique` — дубли при сохранении; `internal` — строки нет; text_list пока рендерится веткой `default` (:237 рядом) — нужен многострочный ввод |
-| `ui/configurator/tabs/dns_preset_bundled.go:107` | без выключателя только у `ForEachNode` (у `_do` серверы с пространством пресета, как у обычного) | — |
-| `ui/configurator/business/preset_nodes_view.go:42,51` | `IsNodeLoop()`: узлы передаются и для `_do`; подпись строки — узлы, прошедшие `#filter` | — |
-| `ui/configurator/presentation/presenter_async.go:82` | `IsNodeLoop()` | — |
-| Комментарии `for_each` в `ui/**` | не тронуты | переписать при правке файлов |
+| Где | Что |
+|---|---|
+| `ui/configurator/tabs/source_skip_presets.go:59-70` | «Skip presets» виден ⇔ есть пресет с обходом, чей `#filter` пропускает узел без `skip_presets` (:56 `probe`) и отсекает с ним (:57 `skipped`); переменные пресета — из его правила (`presetRefVars` :87). Пресет без `@node.skip_presets` в фильтре (fresh-dns) переключатель не показывает |
+| `ui/configurator/tabs/preset_ref_edit_dialog.go:165` | `wizard_ui: internal` — строки нет; `:253` `text_list` — `NewMultiLineEntry`, по значению на строку; `:397` Save → `uniqueTextListVars` (:551) — дедуп `unique` до `NormalizeRecordVarMap`; `fix`/`hidden` у переменной пресета, как и раньше, ничего не значат |
+| `ui/configurator/tabs/preset_ref_edit_dialog.go:509` | вкладка JSON: «No matching nodes.» только у `ForEachNode`; у `_do` — `ExpandPresetForView` → одно правило с собранным массивом, пустой итог — предупреждение `template_fragment_dropped` над `{}` |
+| `ui/configurator/tabs/settings_tab.go:37` | глобаль `wizard_ui: internal` — строки во вкладке Settings нет |
+| `ui/configurator/tabs/dns_preset_bundled.go:107` | без выключателя только у `ForEachNode` (у `_do` серверы с пространством пресета, как у обычного) |
+| `ui/configurator/business/preset_nodes_view.go:44,54` | `IsNodeLoop()`: узлы передаются и для `_do`; подпись строки (Rules и DNS) — узлы, прошедшие `#filter` |
+| `ui/configurator/presentation/presenter_async.go:83` | `IsNodeLoop()` |
+| Комментарии `for_each` в `ui/**` | переписаны на `for_each_node` / `for_each_node_do` / «обход узлов» |

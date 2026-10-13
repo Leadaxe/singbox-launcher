@@ -17,7 +17,7 @@
 - [x] T12 раннер корпуса — `core/build/contract_node_loop_test.go` (бывший `contract_for_each_test.go`), разделы `for_each_node/`, `for_each_node_do/`
 
 ## Этап 3 — шаблон, UI, доки
-- [ ] T13 `bin/wizard_template.json` — Tailscale на `for_each_node`, пресет `node-domains-fresh-dns` (Tailscale переведён вместе с движком; пресет — волна UI)
-- [ ] T14 UI: `source_skip_presets.go`, `preset_ref_edit_dialog.go`, `dns_preset_bundled.go`, `business/preset_nodes_view.go`, `presentation/presenter_async.go`, форма пресета (`unique`, `internal`), `bin/locale/ru.json`
-- [ ] T15 `docs/release_notes/upcoming.md`, `docs/ARCHITECTURE.md` (если нужно), `IMPLEMENTATION_REPORT.md`
+- [x] T13 `bin/wizard_template.json` — Tailscale на `for_each_node`, пресет `node-domains-fresh-dns` (`num: 10`, поздний дефолт в `core/state/rule_order.go`)
+- [x] T14 UI: `source_skip_presets.go`, `preset_ref_edit_dialog.go`, `dns_preset_bundled.go`, `business/preset_nodes_view.go`, `presentation/presenter_async.go`, форма пресета (`unique`, `internal`), `bin/locale/ru.json`
+- [x] T15 `docs/release_notes/upcoming.md`, `docs/ARCHITECTURE.md`, `docs/TEMPLATE_REFERENCE*.md`, `IMPLEMENTATION_REPORT.md`
 - [ ] T16 `go build ./...`, раннер корпуса по имени, CI `run_mode=tests`; папка → `166-F-C-…`
