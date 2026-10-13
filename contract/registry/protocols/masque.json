@@ -9,7 +9,7 @@
     "singbox"
   ],
   "extension": null,
-  "note": "MASQUE (CONNECT-IP / Cloudflare WARP), протокол ядра sing-box-lx (SPEC 021/062, ядро >= lx.26 для vhttp + вложенного tls). kind = OUTBOUND в обоих проектах: ядро регистрирует type:masque через outbound.Register, Go эмитит в GenerateNodeJSON, Dart — Outbound (не Endpoint); задание программы ошибочно относило masque к endpoint — реестр фиксирует фактическое состояние. Ключи — ECDSA P-256 base64(DER): private_key = SEC1, public_key = PKIX (pinning). `network` — НЕ имя vhttp и не legacy-алиас (контракт 1.1.118, решение владельца 13.10.2026, D-129): старые ссылки `?network=h2|h3` не поддерживаются и не мигрируются, ключ освобождён под семантику sing-box (список tcp/udp, сегодня у masque — network_list) и до реализации просто не читается; в ссылке `network=` — обычный неизвестный параметр (uri_param_unknown), в теле — неизвестный ключ (unknown_key). Legacy-имя sni снято контрактом 0.8.0 (D-078): tls.server_name — единственное имя; ?server_name= игнорируется как неизвестный query-параметр, плоские sni/skip_cert_verify снимаются без переноса значений (защита от fail-fast ядра на смешении с tls.server_name) — с контракта 1.1.57 на всех входах тела общим unknown_key (body.skipped). Наружу legacy не эмитится никогда. vhttp ∈ {h3, h2, auto} (0.11.1): auto = h3 с откатом на h2 при зависшем QUIC-рукопожатии (ядро >= lx.27, дефолт ядра с lx.28); parse-дефолт при отсутствии vhttp остаётся явным h3. Хранимые URI старого диалога WARP с `?network=` лаунчер разово переписывает в `?vhttp=` при загрузке состояния (core/state/masque_uri_migration.go) — это правка хранения, не приём алиаса.",
+  "note": "MASQUE (CONNECT-IP / Cloudflare WARP), протокол ядра sing-box-lx (SPEC 021/062, ядро >= lx.26 для vhttp + вложенного tls). kind = OUTBOUND в обоих проектах: ядро регистрирует type:masque через outbound.Register, Go эмитит в GenerateNodeJSON, Dart — Outbound (не Endpoint); задание программы ошибочно относило masque к endpoint — реестр фиксирует фактическое состояние. Ключи — ECDSA P-256 base64(DER): private_key = SEC1, public_key = PKIX (pinning). `network` — НЕ имя vhttp и не legacy-алиас (контракт 1.1.118, решение владельца 13.10.2026, D-129): старые ссылки `?network=h2|h3` не поддерживаются и не мигрируются, ключ освобождён под семантику sing-box (список tcp/udp, сегодня у masque — network_list) и до реализации просто не читается; в ссылке `network=` — обычный неизвестный параметр (uri_param_unknown), в теле — неизвестный ключ (unknown_key). Legacy-имя sni снято контрактом 0.8.0 (D-078): tls.server_name — единственное имя; ?server_name= игнорируется как неизвестный query-параметр, плоские sni/skip_cert_verify снимаются без переноса значений (защита от fail-fast ядра на смешении с tls.server_name) — с контракта 1.1.57 на всех входах тела общим unknown_key (body.skipped). Наружу legacy не эмитится никогда. vhttp ∈ {h3, h2, auto} (0.11.1): auto = h3 с откатом на h2 при зависшем QUIC-рукопожатии (ядро >= lx.27, дефолт ядра с lx.28); parse-дефолт при отсутствии vhttp остаётся явным h3. Разовая перезапись хранимых URI старого диалога WARP с `?network=` в `?vhttp=` при загрузке состояния снята контрактом 1.1.118 (D-129): старые ссылки не мигрируются.",
   "uri": {
     "userinfo": {
       "maps_to": "private_key",
@@ -175,8 +175,7 @@
   ],
   "refs": {
     "go": [
-      "core/warp/masque.go:MasqueAccount.ToMasqueURI",
-      "core/state/masque_uri_migration.go:rewriteLegacyMasqueURIs"
+      "core/warp/masque.go:MasqueAccount.ToMasqueURI"
     ],
     "dart": [
       "app/lib/services/parser/mappers/uri_pipeline.dart:parseLinkViaPipeline",
