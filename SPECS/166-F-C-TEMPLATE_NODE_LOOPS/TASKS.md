@@ -21,4 +21,4 @@
 - [x] T14 UI: `source_skip_presets.go`, `preset_ref_edit_dialog.go`, `dns_preset_bundled.go`, `business/preset_nodes_view.go`, `presentation/presenter_async.go`, форма пресета (`unique`, `internal`), `bin/locale/ru.json`
 - [x] T15 `docs/release_notes/upcoming.md`, `docs/ARCHITECTURE.md`, `docs/TEMPLATE_REFERENCE*.md`, `IMPLEMENTATION_REPORT.md`
 - [x] T17 волна 3: пресет `node-domains-fresh-dns` снят (шаблон, `LateDefaultPresetIDs`); `route.default_domain_resolver` — объект `{server, disable_optimistic_cache}`, переменная `dns_resolver_no_stale` (шаблон, вкладка DNS, `ru.json`, переносимая: `registry/vars.json`, `portable_vars.go`); чтение/подмена резолвера понимают объект (`route_merge.go`, `loader.go`, `wizard_dns.go`); TEMPLATE_LANG §6.7.4 пример / §6.9, README 1.1.119, TASKS_LXBOX §116 п. 10, корпус `subst/default_resolver_object_*`; эталон `wizard_template_config`; доки
-- [ ] T16 `go build ./...`, раннер корпуса по имени, CI `run_mode=tests`; папка → `166-F-C-…`
+- [x] T16 `go build ./...`, раннер корпуса по имени, CI `run_mode=tests`; папка → `166-F-C-…`

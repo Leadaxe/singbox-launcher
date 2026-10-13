@@ -1,6 +1,6 @@
 # SPEC 166 — Обход узлов в пресете: `for_each_node`, `for_each_node_do`, `#do`/`#final`, `unique` и `internal` у переменной
 
-Статус: **N**. Тип: Feature. Контракт: бамп `contract/VERSION` → **1.1.119**, норма `contract/docs/TEMPLATE_LANG.md` §6.5–6.7 (переписать), параграф **§116** в `contract/TASKS_LXBOX.md`, корпус `corpus/template/for_each_node/` и `corpus/template/for_each_node_do/`.
+Статус: **C** (CI 38445288075 зелёный, 13.10.2026). Тип: Feature. Контракт: бамп `contract/VERSION` → **1.1.119**, норма `contract/docs/TEMPLATE_LANG.md` §6.5–6.7 (переписать), параграф **§116** в `contract/TASKS_LXBOX.md`, корпус `corpus/template/for_each_node/` и `corpus/template/for_each_node_do/`.
 
 Решения владельца приняты 13.10.2026. Задуманный первый потребитель — пресет «свежий DNS для доменов узлов» (§4) — в шаблон не вошёл (решение владельца после волны 2): цели он не достигает. Свежие имена узлов даёт объектная форма `route.default_domain_resolver` (§4a, волна 3).
 
