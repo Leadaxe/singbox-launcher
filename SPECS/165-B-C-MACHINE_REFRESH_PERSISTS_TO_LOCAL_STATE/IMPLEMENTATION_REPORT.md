@@ -23,7 +23,7 @@
 ## Проверки
 
 - `go build ./...` — ок; `go test ./core -run TestPersistFetchResultTargetsConfiguratorState -count=1` — ок.
-- CI `run_mode=tests` — после пуша.
+- CI `run_mode=tests` — зелёный на macOS/Ubuntu/Windows (run 38433733326).
 
 ## Вне scope (как в SPEC §6)
 
