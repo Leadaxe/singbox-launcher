@@ -2,11 +2,19 @@
 
 Полный черновик следующего релиза: [docs/release_notes/upcoming.md](docs/release_notes/upcoming.md)
 
-**Черновик (следующий релиз), кратко:** галка машины **Авто-деплой обновлений подписок** — лаунчер сам обновляет подписки машины раз в час и отправляет конфиг, если изменились только узлы; в окне **Service** строка **Daemon command** — демон с `commands` в `daemon.json` обновляет ядро сам (`update`), окно пережидает перезапуск и сообщает итог; платформа и init-система машины берутся из паспорта демона; разделы troubleshooting свёрнуты аккордеоном. Окно **Service** (⚙ в строке машины и Servers → ⚙ → Local) — раннбук обслуживания демона: не поднимается, обновить ядро (скачать под платформу машины, залить через ssh, проверить, заменить, откатить), сопряжение, пути и `daemon.json`; команды с путями машины, ▶ открывает Терминал с `ssh`; точка на ⚙ и строка предупреждения, когда ядро старое или демон молчит, предупреждение Deploy на старое ядро; раздел «Демон» в [TROUBLESHOOTING](docs/TROUBLESHOOTING.ru.md#демон) — подробности в [upcoming.md](docs/release_notes/upcoming.md).
+**Черновик (следующий релиз), кратко:** пункты накапливайте в [upcoming.md](docs/release_notes/upcoming.md).
 
-**Draft (next release), short:** a machine's **Auto-deploy subscription updates** checkbox — the launcher refreshes the machine's subscriptions hourly and deploys when only the nodes changed; the **Service** window gets a **Daemon command** row — a daemon with `commands` in `daemon.json` updates its core itself (`update`), the window waits through the restart and reports the outcome; the machine's platform and init system come from the daemon's passport; troubleshooting sections fold into an accordion. The **Service** window (⚙ in a machine's row and Servers → ⚙ → Local) — a runbook for keeping the daemon running: not running, updating the core (download for the machine's platform, upload over ssh, check, swap, roll back), pairing, paths and `daemon.json`; commands with the machine's paths, ▶ opens Terminal with `ssh`; a dot on ⚙ and a warning line when the core is old or the daemon is silent, a Deploy warning for an older core; a "Daemon" section in [TROUBLESHOOTING](docs/TROUBLESHOOTING.md#daemon) — see [upcoming.md](docs/release_notes/upcoming.md).
+**Draft (next release), short:** add items in [upcoming.md](docs/release_notes/upcoming.md).
 
 ---
+
+### Выжимка (RU) — v2.3.9
+
+Патч после v2.3.8, ядро `sing-box-lx 1.14.3-lx.18` (было 1.14.3-lx.14), контракт 1.1.119. **Удалённые машины:** галка **Авто-деплой обновлений подписок** — лаунчер раз в час сам обновляет подписки машины и отправляет конфиг, если изменились только узлы (SPEC 164); строка машины показывает, доехал ли конфиг (оранжевая точка на **Deploy**, красная на **Configure** при откате). **Окно Service** (⚙ в строке машины и Servers → ⚙ → Local) — раннбук обслуживания демона: не поднимается, обновить ядро под платформу машины, сопряжение, пути и `daemon.json` (SPEC 161); строка **Daemon command** — демон с `commands` в `daemon.json` обновляет ядро сам (`update`), а паспорт демона называет платформу и init-систему машины (SPEC 162). **DNS:** шифрованные DoT/DoH-серверы шаблона по умолчанию идут напрямую; новая галка «Never serve stale answers for node hostnames» (включена) — `route.default_domain_resolver` теперь объект. **Правила:** вкладка **Preset** в Edit Rule показывает пресет как он записан в шаблоне; циклы шаблона `for_each_node` / `for_each_node_do` (SPEC 166, контракт 1.1.119). **Исправлено:** узлы удалённой машины больше не попадают на вкладку Local; Refresh подписки в Конфигураторе машины больше не пишет в локальное состояние (SPEC 165). **macOS:** прогресс скачивания ядра в скрипте установки, прозрачные углы иконки на macOS 11–15. Подробнее: [docs/release_notes/2-3-9.md](docs/release_notes/2-3-9.md).
+
+### Highlights (EN) — v2.3.9
+
+A patch after v2.3.8, core `sing-box-lx 1.14.3-lx.18` (was 1.14.3-lx.14), contract 1.1.119. **Remote machines:** an **Auto-deploy subscription updates** checkbox — the launcher refreshes the machine's subscriptions hourly and deploys when only the nodes changed (SPEC 164); the machine row shows whether its config is on the machine (orange dot on **Deploy**, red on **Configure** after a rollback). **Service window** (⚙ in a machine's row and Servers → ⚙ → Local) — a runbook for keeping the daemon running: not running, updating the core for the machine's platform, pairing, paths and `daemon.json` (SPEC 161); a **Daemon command** row — a daemon with `commands` in `daemon.json` updates its core itself (`update`), and the daemon's passport names the machine's platform and init system (SPEC 162). **DNS:** the template's encrypted DoT/DoH servers go direct by default; a new "Never serve stale answers for node hostnames" checkbox (on) — `route.default_domain_resolver` is now an object. **Rules:** a **Preset** tab in Edit Rule shows the preset as written in the template; template loops `for_each_node` / `for_each_node_do` (SPEC 166, contract 1.1.119). **Fixed:** remote nodes no longer show up on the Local tab; Refresh of a subscription in a machine's Configurator no longer writes to the local state (SPEC 165). **macOS:** core download progress in the install script, transparent icon corners on macOS 11–15. Details: [docs/release_notes/2-3-9.md](docs/release_notes/2-3-9.md).
 
 ### Выжимка (RU) — v2.3.8
 
@@ -776,6 +784,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.3.9** | [docs/release_notes/2-3-9.md](docs/release_notes/2-3-9.md) |
 | **v2.3.8** | [docs/release_notes/2-3-8.md](docs/release_notes/2-3-8.md) |
 | **v2.3.7** | [docs/release_notes/2-3-7.md](docs/release_notes/2-3-7.md) |
 | **v2.3.6** | [docs/release_notes/2-3-6.md](docs/release_notes/2-3-6.md) |
