@@ -1,0 +1,8 @@
+{
+  "rules": [],
+  "dns_servers": [],
+  "dns_rules": [],
+  "warnings": [
+    "template_fragment_dropped"
+  ]
+}

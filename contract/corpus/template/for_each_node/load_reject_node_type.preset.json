@@ -1,0 +1,26 @@
+{
+  "_comment": "node_type внутри for_each_node снят вместе с for_each: тип узла выражает #filter — ошибка загрузки.",
+  "preset": {
+    "for_each_node": {
+      "node_type": "tailscale"
+    },
+    "rules": [
+      {
+        "preferred_by": [
+          "@node"
+        ],
+        "outbound": "@node"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    }
+  ]
+}

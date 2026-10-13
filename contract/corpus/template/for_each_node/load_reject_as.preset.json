@@ -1,0 +1,29 @@
+{
+  "_comment": "as внутри for_each_node снят: имя узла фиксировано (@node) — ошибка загрузки.",
+  "preset": {
+    "for_each_node": {
+      "as": "node",
+      "#filter": {
+        "@node.body.type": "tailscale"
+      }
+    },
+    "rules": [
+      {
+        "preferred_by": [
+          "@node"
+        ],
+        "outbound": "@node"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    }
+  ]
+}

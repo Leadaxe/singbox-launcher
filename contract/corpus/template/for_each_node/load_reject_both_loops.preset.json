@@ -1,0 +1,41 @@
+{
+  "_comment": "for_each_node и for_each_node_do в одном пресете — ошибка загрузки: допустим ровно один ключ обхода.",
+  "preset": {
+    "for_each_node": {
+      "#filter": {
+        "@node.body.type": "tailscale"
+      }
+    },
+    "for_each_node_do": {
+      "#do": {
+        "@domains": {
+          "#append": "@node.body.server"
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "domains",
+        "type": "text_list"
+      }
+    ],
+    "rules": [
+      {
+        "preferred_by": [
+          "@node"
+        ],
+        "outbound": "@node"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    }
+  ]
+}

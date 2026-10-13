@@ -1,0 +1,58 @@
+{
+  "_comment": "wizard_ui: internal — значение из состояния (vars.json) игнорируется: база — default_value, дальше пишет только #do (D-132).",
+  "preset": {
+    "for_each_node_do": {
+      "#filter": {
+        "#and": [
+          {
+            "@node.body.server": "#notEmpty"
+          },
+          {
+            "#not": {
+              "@node.body.server": {
+                "#matches": "^[0-9.]+$"
+              }
+            }
+          },
+          {
+            "#not": {
+              "@node.body.server": {
+                "#matches": ":"
+              }
+            }
+          }
+        ]
+      },
+      "#do": {
+        "@hosts": {
+          "#append": "@node.body.server"
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "hosts",
+        "type": "text_list",
+        "wizard_ui": "internal",
+        "default_value": "base.example"
+      }
+    ],
+    "dns_rules": [
+      {
+        "domain": "@hosts",
+        "server": "dns-x"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "a",
+      "body": {
+        "type": "vless",
+        "tag": "a",
+        "server": "a.example",
+        "server_port": 443
+      }
+    }
+  ]
+}

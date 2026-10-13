@@ -1,0 +1,35 @@
+{
+  "_comment": "Имя node зарезервировано за узлом обхода (§6.6): переменная пресета с таким именем — ошибка загрузки.",
+  "preset": {
+    "for_each_node": {
+      "#filter": {
+        "@node.body.type": "tailscale"
+      }
+    },
+    "vars": [
+      {
+        "name": "node",
+        "type": "text",
+        "default_value": "x"
+      }
+    ],
+    "rules": [
+      {
+        "preferred_by": [
+          "@node"
+        ],
+        "outbound": "@node"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "rules": [],
+  "dns_servers": [],
+  "dns_rules": [
+    {
+      "domain": [
+        "a.example",
+        "b.example"
+      ],
+      "server": "dns-x"
+    }
+  ],
+  "warnings": []
+}

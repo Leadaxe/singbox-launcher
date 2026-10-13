@@ -1,0 +1,36 @@
+{
+  "_comment": "Поле объявления unique допустимо только у text_list (D-132); у text — ошибка загрузки.",
+  "preset": {
+    "for_each_node": {
+      "#filter": {
+        "@node.body.type": "tailscale"
+      }
+    },
+    "vars": [
+      {
+        "name": "label",
+        "type": "text",
+        "unique": true,
+        "default_value": "x"
+      }
+    ],
+    "rules": [
+      {
+        "preferred_by": [
+          "@node"
+        ],
+        "outbound": "@node"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "home-ts",
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    }
+  ]
+}
