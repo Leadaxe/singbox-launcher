@@ -87,7 +87,17 @@ func (p *WizardPresenter) ConfigServiceAdapter() wizardbusiness.ConfigService {
 	if ac == nil {
 		return nil
 	}
-	return &wizardbusiness.ConfigServiceAdapter{CoreConfigService: ac.ConfigService}
+	// Цель презентера едет в адаптер (SPEC 165): Refresh в Конфигураторе
+	// машины закрепляет результат в файле ЕЁ состояния, а не в локальном.
+	adapter := &wizardbusiness.ConfigServiceAdapter{CoreConfigService: ac.ConfigService}
+	if m := p.Model(); m != nil {
+		adapter.Target = m.Target.TargetOrLocal()
+		adapter.MachineID = m.Target.MachineIDOrEmpty()
+		if adapter.MachineID == "" {
+			adapter.MachineID = m.MachineID
+		}
+	}
+	return adapter
 }
 
 // Controller возвращает AppController.

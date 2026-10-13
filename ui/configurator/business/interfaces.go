@@ -27,7 +27,8 @@ type ConfigService interface {
 	// RefreshSourceInPlace — cold-start path: fetch+raw+meta для in-memory
 	// Source pointer'а, без обращения к state.json. Используется UI Refresh
 	// button'ом, чтобы работало на свежей инсталляции (без state.json) или
-	// на не-сохранённых правках в визарде.
+	// на не-сохранённых правках в визарде. Результат закрепляется в файле
+	// состояния цели адаптера (SPEC 165), не в локальном безусловно.
 	RefreshSourceInPlace(src *corestate.Source) (bool, error)
 }
 
