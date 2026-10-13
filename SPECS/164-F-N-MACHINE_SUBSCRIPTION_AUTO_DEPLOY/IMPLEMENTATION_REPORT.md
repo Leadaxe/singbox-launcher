@@ -1,6 +1,6 @@
 # IMPLEMENTATION_REPORT 164
 
-Дата: 2026-10-13. Статус: реализовано, ждёт живой проверки владельца и CI.
+Дата: 2026-10-13. Статус: реализовано, проверено вживую; CI после пуша.
 
 ## Что сделано
 
@@ -34,10 +34,20 @@
 
 ## Живая проверка (PLAN §10)
 
-Не выполнялась: деплой на машину — по слову владельца. Сценарий: включить
-галку в Edit, `POST /remote/machines/{id}/auto-deploy/run?force_refresh=1`
-через Debug API, ожидать `applied` или `skipped · config unchanged`.
-Требует перезапуска лаунчера на новой сборке.
+Выполнена 2026-10-13 на сборке `v2.3.8-30-g9ec12226` по слову владельца:
+галка включена в окне Edit, затем `POST …/auto-deploy/run?force_refresh=1`.
+
+- Ответ за 5 с: `result: applied`, `sha_before` = активному конфигу машины на
+  момент прогона (владелец деплоил его руками ранее), `sha_after` новый,
+  `note: 1 subscription(s) changed`.
+- Health после: `core_status: started`, `active_sha == last_good_sha ==
+  sha_after`, `interrupted_apply: false`.
+- Узлы подписки на вкладке Remote из `Error` перешли в 56–124 мс.
+- Журнал машины: `last_auto_deploy {applied, sha, note}`; лог лаунчера —
+  строки `remote apply`, `remote deploy`, `auto-deploy[api]: … applied`.
+- Уведомление системы и перерисовка строки — по событию `MachineAutoDeploy`.
+
+Статус: реализовано и проверено вживую; CI `run_mode=tests` — после пуша.
 
 ## Решения сверх SPEC
 
