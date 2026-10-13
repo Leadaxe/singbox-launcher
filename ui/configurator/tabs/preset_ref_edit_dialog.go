@@ -4,12 +4,15 @@
 // внешнего модального диалога. Tab Form — типизированные var-контролы из
 // preset.vars (универсальный rendering по PresetVar.Type). Tab JSON —
 // preview эмитнутого config-fragment'а (route rule + dns rule + rule_set +
-// bundled dns_servers) read-only.
+// bundled dns_servers) read-only. Tab Preset — исходное определение пресета
+// из шаблона визарда (запись presets[] как есть, с @var / #if / #tpl /
+// for_each) read-only.
 //
 // Кнопки внизу: Convert to user rule(s) (one-way conversion), Cancel, Save.
 package tabs
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -290,7 +293,17 @@ func showEditPresetRefDialog(
 		jsonScroll,
 	)
 
-	// ===== AppTabs (Form / JSON) =====
+	// ===== Preset tab: исходная запись presets[] из шаблона, статично =====
+	presetView := fynewidget.NewJSONView(presetSourceJSON(model.TemplateData, tplPreset))
+	presetHint := widget.NewLabel(locale.T("Preset definition from the wizard template, read-only."))
+	presetHint.Wrapping = fyne.TextWrapWord
+	presetContent := container.NewBorder(
+		container.NewBorder(nil, nil, nil, widget.NewLabel("🔒"), presetHint),
+		nil, nil, nil,
+		container.NewScroll(presetView.Object()),
+	)
+
+	// ===== AppTabs (Form / JSON / Preset) =====
 	// Только вертикальный скролл + gutter внутри: окно фиксированной ширины (500,
 	// editWindow.Resize ниже) уже держит горизонт, поэтому GridWrap-кап не нужен —
 	// но двухосевой NewScroll (в WrapInScrollWithGutter) давал бы горизонтальную
@@ -300,7 +313,8 @@ func showEditPresetRefDialog(
 	formScroll := container.NewVScroll(formInnerScroll)
 	formTabItem := container.NewTabItem(locale.T("Form"), formScroll)
 	jsonTabItem := container.NewTabItem(locale.T("JSON"), jsonContent)
-	tabs := container.NewAppTabs(formTabItem, jsonTabItem)
+	presetTabItem := container.NewTabItem(locale.T("Preset"), presetContent)
+	tabs := container.NewAppTabs(formTabItem, jsonTabItem, presetTabItem)
 	tabs.OnSelected = func(ti *container.TabItem) {
 		if ti == jsonTabItem {
 			refreshJSON()
@@ -409,6 +423,41 @@ func showEditPresetRefDialog(
 		editWindow.Close()
 	})
 	editWindow.Show()
+}
+
+// presetSourceJSON — исходная запись presets[] шаблона для вкладки Preset:
+// берётся из сырого JSON файла (TemplateData.RawTemplate) и только
+// переформатируется отступами — порядок ключей, @var, #if/#tpl и dns_servers
+// пресетов с for_each остаются как в шаблоне. При одинаковых id берётся
+// первая запись — как у LoadPresets. Сырого текста нет или запись не нашлась —
+// запасной путь: сериализация разобранной структуры (порядок ключей и
+// нормализации загрузчика в ней уже не исходные).
+func presetSourceJSON(td *wizardtemplate.TemplateData, tpl *wizardtemplate.Preset) string {
+	if td != nil && len(td.RawTemplate) > 0 {
+		var root struct {
+			Presets []json.RawMessage `json:"presets"`
+		}
+		if err := json.Unmarshal(td.RawTemplate, &root); err == nil {
+			for _, raw := range root.Presets {
+				var head struct {
+					ID string `json:"id"`
+				}
+				if json.Unmarshal(raw, &head) != nil || head.ID != tpl.ID {
+					continue
+				}
+				var buf bytes.Buffer
+				if json.Indent(&buf, raw, "", "  ") == nil {
+					return buf.String()
+				}
+				break
+			}
+		}
+	}
+	out, err := json.MarshalIndent(tpl, "", "  ")
+	if err != nil {
+		return "// " + err.Error()
+	}
+	return string(out)
 }
 
 // buildPresetJSONPreview — генерит read-only JSON preview эмитнутых fragment'ов

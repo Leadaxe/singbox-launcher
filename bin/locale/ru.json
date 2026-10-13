@@ -1840,6 +1840,12 @@
   "Form": {
     "value": "Форма"
   },
+  "Preset": {
+    "value": "Пресет"
+  },
+  "Preset definition from the wizard template, read-only.": {
+    "value": "Определение пресета из шаблона визарда, только чтение."
+  },
   "Rule name is required": {
     "value": "Название правила обязательно"
   },
