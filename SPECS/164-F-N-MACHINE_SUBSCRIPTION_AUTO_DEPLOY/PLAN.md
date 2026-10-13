@@ -14,7 +14,7 @@ machine_auto_deploy.go (новый)               SetLastAutoDeploy             
    runMachineSweep, autoDeployMachine,       lxd_remote_deploy.go  без изм.    configurator/configurator.go
    autoDeployDecision (чистая),                                                   RebuildMachineConfig — регистрируется
    MachineAutoDeployOutcome                 core/events                            как ac.MachineConfigRebuilder
-config_service_subscriptions.go              +MachineConfigDeployed              remote_tab: Reload по событию
+config_service_subscriptions.go              +MachineAutoDeploy                  remote_tab: Reload по событию
    refreshSubscriptionsIn(statePath, mu)
    — общее тело для local и машины
 core/debugapi/remote_endpoints.go

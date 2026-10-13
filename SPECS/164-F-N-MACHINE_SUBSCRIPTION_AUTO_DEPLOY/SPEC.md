@@ -125,7 +125,7 @@ Service, паспорт).
    h. `Deploy(id, nil)`. Успех — запись `auto-deploy: <name>: applied
       <sha12> (<N> node(s) changed in <subscription titles>)`, уведомление
       системы «Auto-deploy: <name> updated», событие шины
-      `MachineConfigDeployed{ID}`; панель машин по нему перечитывает
+      `MachineAutoDeploy{ID, Result: applied}`; панель машин по нему перечитывает
       health, вкладка Remote у активной машины перезагружает список узлов.
       Ошибка — запись и уведомление «Auto-deploy: <name> failed: <err>»;
       демон сам на last-good.
