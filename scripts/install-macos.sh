@@ -8,6 +8,13 @@ echo "--------------------------------------------------------------"
 echo " "
 set -euo pipefail
 
+# macOS only: refuse before any network call or write (a router or a Linux box
+# would otherwise query GitHub and only then fail on the missing tools).
+if [[ "$(uname -s 2>/dev/null)" != "Darwin" ]]; then
+  echo "This script installs singbox-launcher on macOS only (detected: $(uname -s 2>/dev/null || echo unknown))."
+  exit 1
+fi
+
 REPO="Leadaxe/singbox-launcher"
 
 # Parse arguments: first arg can be version or target, second arg is target (only if first is version)
