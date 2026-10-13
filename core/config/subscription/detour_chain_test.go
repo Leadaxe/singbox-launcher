@@ -123,6 +123,34 @@ func TestDetourChainCycleDropsBothNodes(t *testing.T) {
 	}
 }
 
+// Кольцо из трёх узлов A→B→C→A (и X, чья цепь в него ведёт): КАЖДЫЙ участник
+// отбраковывается своей записью — ни один не прячется как цель чужой цепи
+// (расхождение с LxBox, замеченное на синке 1.1.118: лаунчер терял B молча).
+func TestDetourChainCycleOfThreeDropsEveryParticipant(t *testing.T) {
+	body := `{
+	  "outbounds":[
+	    {"type":"vless","tag":"X","server":"x.com","server_port":443,"uuid":"u0","detour":"A"},
+	    {"type":"vless","tag":"A","server":"a.com","server_port":443,"uuid":"u1","detour":"B"},
+	    {"type":"vless","tag":"B","server":"b.com","server_port":443,"uuid":"u2","detour":"C"},
+	    {"type":"vless","tag":"C","server":"c.com","server_port":443,"uuid":"u3","detour":"A"}
+	  ]
+	}`
+	res := parseSingboxBodyForTest(t, body)
+
+	if len(res.Nodes) != 0 {
+		t.Fatalf("got %d nodes, want 0 (tags: %v)", len(res.Nodes), tagsOf(res))
+	}
+	codes := rejectedCodesOf(res)
+	if len(codes) != 4 {
+		t.Fatalf("rejected codes = %v, want four %s (one per node)", codes, WarnDetourCycleBroken)
+	}
+	for _, c := range codes {
+		if c != WarnDetourCycleBroken {
+			t.Fatalf("rejected codes = %v, want all %s", codes, WarnDetourCycleBroken)
+		}
+	}
+}
+
 // Самоссылка detour → узел отбраковывается как кольцо (fail-closed).
 func TestDetourChainSelfReference(t *testing.T) {
 	body := `{

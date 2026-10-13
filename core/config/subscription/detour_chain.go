@@ -32,6 +32,11 @@ type singboxChainInfo struct {
 	detourTargets map[string]struct{}
 	// brokenEdges — теги, чьё исходящее detour-ребро замыкает кольцо.
 	brokenEdges map[string]struct{}
+	// onCycle — все участники колец (контракт 1.1.118, D-128): каждый из них
+	// остаётся кандидатом и получает СВОЮ запись detour_cycle_broken, а не
+	// поглощается соседом как чужой джамп. Иначе в кольце A→B→C→A узел B
+	// пропадал бы без записи — молчаливая потеря, которую fail-closed запрещает.
+	onCycle map[string]struct{}
 }
 
 func (c *singboxChainInfo) isDetourTarget(tag string) bool {
@@ -50,15 +55,24 @@ func (c *singboxChainInfo) isBrokenEdge(tag string) bool {
 	return ok
 }
 
+func (c *singboxChainInfo) isOnCycle(tag string) bool {
+	if c == nil || tag == "" {
+		return false
+	}
+	_, ok := c.onCycle[tag]
+	return ok
+}
+
 // analyzeSingboxDetour строит карту detour-графа конфига.
 func analyzeSingboxDetour(entries []map[string]interface{}, byTag map[string]map[string]interface{}) *singboxChainInfo {
 	info := &singboxChainInfo{
 		detourTargets: make(map[string]struct{}),
 		brokenEdges:   make(map[string]struct{}),
+		onCycle:       make(map[string]struct{}),
 	}
 
 	// Шаг 1 — кольца.
-	findDetourCycleEdges(entries, byTag, info.brokenEdges)
+	findDetourCycleEdges(entries, byTag, info.brokenEdges, info.onCycle)
 
 	// Шаг 2 — цели detour, кроме снятых рёбер.
 	for _, entry := range entries {
@@ -70,11 +84,10 @@ func analyzeSingboxDetour(entries []map[string]interface{}, byTag map[string]map
 		if target == "" {
 			continue
 		}
-		if info.isBrokenEdge(target) {
-			// Цель сама владеет снятым ребром, то есть лежит на кольце.
-			// Поглотить её как «чужой джамп» нельзя: она осталась без
-			// исходящего ребра и обязана выжить самостоятельным узлом,
-			// иначе кольцо A→B→A стёрло бы из подписки обе ноды.
+		if info.isOnCycle(target) {
+			// Цель лежит на кольце. Поглотить её как «чужой джамп» нельзя:
+			// каждый участник кольца отбраковывается своей записью
+			// (fail-closed, D-128), иначе кольцо A→B→C→A стёрло бы B молча.
 			continue
 		}
 		targetEntry, ok := byTag[target]
@@ -93,12 +106,13 @@ func analyzeSingboxDetour(entries []map[string]interface{}, byTag map[string]map
 	return info
 }
 
-// findDetourCycleEdges помечает теги, чьё detour-ребро замыкает кольцо.
+// findDetourCycleEdges помечает теги, чьё detour-ребро замыкает кольцо, и
+// всех участников кольца (onCycle).
 //
 // Обход стартует с каждого узла в порядке файла; settled хранит уже
 // обойдённые старты, чтобы не переобходить один граф многократно. На кольце
 // A→B→A виновником детерминированно назначается тот, кого обошли первым.
-func findDetourCycleEdges(entries []map[string]interface{}, byTag map[string]map[string]interface{}, broken map[string]struct{}) {
+func findDetourCycleEdges(entries []map[string]interface{}, byTag map[string]map[string]interface{}, broken, onCycle map[string]struct{}) {
 	settled := make(map[string]struct{}, len(entries))
 
 	for _, entry := range entries {
@@ -111,6 +125,9 @@ func findDetourCycleEdges(entries []map[string]interface{}, byTag map[string]map
 		}
 
 		path := make(map[string]struct{})
+		// order — тот же путь по порядку: участники кольца = хвост от
+		// замкнувшей цели до конца.
+		order := make([]string, 0, 8)
 		current := startTag
 
 		for {
@@ -120,6 +137,7 @@ func findDetourCycleEdges(entries []map[string]interface{}, byTag map[string]map
 				break
 			}
 			path[current] = struct{}{}
+			order = append(order, current)
 			settled[current] = struct{}{}
 
 			currentEntry, ok := byTag[current]
@@ -132,7 +150,14 @@ func findDetourCycleEdges(entries []map[string]interface{}, byTag map[string]map
 			}
 			if _, inPath := path[next]; inPath {
 				// Ребро current → next замыкает кольцо: рвём именно его.
+				// Участники кольца — от next до current по пути.
 				broken[current] = struct{}{}
+				for i := len(order) - 1; i >= 0; i-- {
+					onCycle[order[i]] = struct{}{}
+					if order[i] == next {
+						break
+					}
+				}
 				break
 			}
 			current = next
