@@ -26,4 +26,4 @@
 ## C — закрытие
 - [ ] C1 `go run ./tools/l10n/l10n_check --strict`; `go run ./tools/l10n/hardcoded_check --strict`; `go run ./tools/win7guard`.
 - [ ] C2 `docs/API.md`, `docs/ARCHITECTURE.md` §11.9, `docs/release_notes/upcoming.md`, `RELEASE_NOTES.md`.
-- [ ] C3 Живая проверка на Home по слову владельца (PLAN §10); `IMPLEMENTATION_REPORT.md`; CI `run_mode=tests`; папка → `164-F-C-…`.
+- [ ] C3 Живая проверка по слову владельца (PLAN §10); `IMPLEMENTATION_REPORT.md`; CI `run_mode=tests`; папка → `164-F-C-…`.

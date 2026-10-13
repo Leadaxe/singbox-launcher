@@ -193,8 +193,9 @@ VPN-event триггер машин не касается.
 
 ## 10. Проверка вживую
 
-Home: включить флаг в Edit, `POST /remote/machines/home/auto-deploy/run?force_refresh=1`
-через Debug API → ожидаем `applied` (если Liberty ротировала с последнего
-деплоя) или `skipped · config unchanged`; на вкладке Remote узлы Liberty
-переходят из `Error` в миллисекунды. Деплой рвёт трафик роутера на секунды —
-запуск только по слову владельца.
+Машина с флагом и подпиской, у которой провайдер ротирует адреса:
+`POST /remote/machines/{id}/auto-deploy/run?force_refresh=1` через Debug API
+→ `applied` (если адреса сменились с последнего деплоя) или `skipped ·
+config unchanged`; на вкладке Remote узлы подписки переходят из `Error` в
+миллисекунды. Деплой рвёт трафик машины на секунды — запуск только по слову
+владельца.
