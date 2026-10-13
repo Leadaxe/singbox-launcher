@@ -825,7 +825,7 @@
      {
       "name": "outbound",
       "type": "outbound",
-      "default_value": "proxy-out",
+      "default_value": "direct-out",
       "title": "Outbound",
       "tooltip": "Which channel carries DNS queries to this server"
      },
@@ -870,7 +870,7 @@
      {
       "name": "outbound",
       "type": "outbound",
-      "default_value": "proxy-out",
+      "default_value": "direct-out",
       "title": "Outbound",
       "tooltip": "Which channel carries DNS queries to this server"
      },
@@ -968,7 +968,7 @@
     }
    },
    {
-    "description": "Quad9 DoH (via VPN, anti-malware)",
+    "description": "Quad9 DoH (anti-malware)",
     "enabled": false,
     "server": {
      "type": "https",
@@ -980,7 +980,7 @@
       "enabled": true,
       "server_name": "dns.quad9.net"
      },
-     "detour": "proxy-out"
+     "detour": "direct-out"
     }
    },
    {
