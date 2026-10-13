@@ -37,8 +37,8 @@ type canonCtx struct {
 	target   TargetSpec
 	warnings []TemplateWarning
 	seen     map[string]bool
-	// dynPrefixes — пространства имён узла for_each (§578): имя `<as>` и
-	// всякое `<as>.…` считаются объявленными.
+	// dynPrefixes — пространства имён узла обхода (SPEC 166): имя `node` и
+	// всякое `node.…` считаются объявленными.
 	dynPrefixes []string
 	// emptyRefs — сколько ссылок на имя дали Dropped или нулевое значение
 	// JSON либо назвали необъявленное имя (SPEC 152, контракт 1.1.103): по

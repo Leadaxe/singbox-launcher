@@ -109,37 +109,51 @@ type Preset struct {
 	// резолв, comment-prefix. Никаких post-merge JSON-патчей или strip'ов.
 	Outbounds []PresetOutbound `json:"outbounds,omitempty"`
 
-	// ForEach — §578: тело повторяется для каждого узла конфига типа
-	// ForEach.NodeType. nil — обычный пресет.
-	ForEach *PresetForEach `json:"for_each,omitempty"`
+	// ForEachNode — `for_each_node` (SPEC 166, TEMPLATE_LANG §6.5): тело
+	// повторяется для каждого узла конфига, прошедшего #filter. nil — нет.
+	ForEachNode *NodeLoop `json:"for_each_node,omitempty"`
 
-	// ForEachDNSServers — dns_servers пресета с for_each, как в шаблоне:
-	// элемент может быть обёрнут в {"#if": …}, а tag задан {"#tpl": …}, и
-	// типизированный PresetDNSServer (tag строкой) такую форму не читает.
-	// У пресета с for_each DNSServers пуст: код, который перечисляет
-	// серверы пресета по строковому tag, их не видит — теги появляются
-	// только при раскрытии по узлам.
+	// ForEachNodeDo — `for_each_node_do` (SPEC 166, §6.7): обход узлов ради
+	// сбора значений в переменные пресета (#do/#final); тело раскрывается
+	// один раз после обхода, без @node. nil — нет. С ForEachNode вместе —
+	// ошибка загрузки (ValidateNodeLoops).
+	ForEachNodeDo *NodeLoopDo `json:"for_each_node_do,omitempty"`
+
+	// ForEachDNSServers — dns_servers пресета с for_each_node, как в
+	// шаблоне: элемент может быть обёрнут в {"#if": …}, а tag задан
+	// {"#tpl": …}, и типизированный PresetDNSServer (tag строкой) такую
+	// форму не читает. У такого пресета DNSServers пуст: код, который
+	// перечисляет серверы пресета по строковому tag, их не видит — теги
+	// появляются только при раскрытии по узлам. У for_each_node_do тело
+	// раскрывается один раз без узла, как у обычного пресета, и dns_servers
+	// читаются типизированными.
 	ForEachDNSServers []map[string]interface{} `json:"-"`
+
+	// legacyForEach — в записи был ключ `for_each` (контракт 1.1.86):
+	// ошибка загрузки (ValidateNodeLoops), легаси-чтения нет.
+	legacyForEach bool
 }
 
-// UnmarshalJSON — у пресета с for_each dns_servers читаются сырыми
+// UnmarshalJSON — у пресета с for_each_node dns_servers читаются сырыми
 // (ForEachDNSServers), у остальных — как прежде.
 func (p *Preset) UnmarshalJSON(data []byte) error {
 	type presetAlias Preset
 	var in struct {
 		presetAlias
-		DNSServers json.RawMessage `json:"dns_servers,omitempty"`
+		DNSServers    json.RawMessage `json:"dns_servers,omitempty"`
+		LegacyForEach json.RawMessage `json:"for_each,omitempty"`
 	}
 	if err := json.Unmarshal(data, &in); err != nil {
 		return err
 	}
 	*p = Preset(in.presetAlias)
+	p.legacyForEach = len(in.LegacyForEach) > 0
 	p.DNSServers = nil
 	p.ForEachDNSServers = nil
 	if len(in.DNSServers) == 0 || string(in.DNSServers) == "null" {
 		return nil
 	}
-	if p.ForEach != nil {
+	if p.ForEachNode != nil {
 		dec := json.NewDecoder(bytes.NewReader(in.DNSServers))
 		dec.UseNumber()
 		return dec.Decode(&p.ForEachDNSServers)
@@ -338,6 +352,22 @@ type PresetVar struct {
 
 	// IfOr — активна iff ХОТЯ БЫ ОДНА из перечисленных bool vars true.
 	IfOr []string `json:"if_or,omitempty"`
+
+	// Unique — значение text_list всегда без дубликатов, порядок первого
+	// появления (SPEC 166 §2.5): ввод пользователя, default и результат
+	// #append. У другого типа — ошибка загрузки.
+	Unique bool `json:"unique,omitempty"`
+
+	// WizardUI — `internal` (WizardUIInternal): переменная только для
+	// сборки — в формах не показывается, значение из состояния и бэкапа
+	// игнорируется (берётся default, затем #do). Прочие значения у
+	// переменной пресета сегодня ничего не значат.
+	WizardUI string `json:"wizard_ui,omitempty"`
+}
+
+// IsInternal — переменная только для сборки (`wizard_ui: "internal"`).
+func (v *PresetVar) IsInternal() bool {
+	return v != nil && v.WizardUI == WizardUIInternal
 }
 
 // OptionEntry — объектная форма option-варианта (для type=enum).

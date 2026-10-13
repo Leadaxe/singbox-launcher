@@ -483,7 +483,7 @@ func buildPresetJSONPreview(model *wizardmodels.WizardModel, tpl *wizardtemplate
 			vars[v.Name] = v.Default
 		}
 	}
-	if tpl.ForEach != nil && len(wizardbusiness.PresetServedTags(model, tpl, vars)) == 0 {
+	if tpl.ForEachNode != nil && len(wizardbusiness.PresetServedTags(model, tpl, vars)) == 0 {
 		return "// " + locale.T("No matching nodes.")
 	}
 	frags, warns, ok := wizardbusiness.ExpandPresetForView(model, tpl, vars)

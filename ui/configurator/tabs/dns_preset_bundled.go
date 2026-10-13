@@ -104,7 +104,7 @@ func renderPresetBundledDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.W
 		// состояние по тегу без пространства пресета, а запись визарда
 		// (<preset_id>:<тег>) до неё не доходит. Чекбокс показал бы
 		// выключение, которого в конфиге не будет.
-		if tplCopy.ForEach != nil {
+		if tplCopy.ForEachNode != nil {
 			onToggle = nil
 		}
 		rows = append(rows, buildPresetBundledDNSRowFromResolved(tplCopy, srvCopy, onToggle, onView))

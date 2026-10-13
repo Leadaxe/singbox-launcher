@@ -91,10 +91,10 @@ type TemplateData struct {
 	// локальные `@name`. У плоской записи объявлений нет — ключа тоже.
 	DNSServerVars map[string][]TemplateVar `json:"-"`
 
-	// PresetNodes — узлы конфига для раскрытия for_each (LxBox §578): не
+	// PresetNodes — узлы конфига для раскрытия for_each_node* (LxBox §578): не
 	// часть шаблона, а вход сборки. Заполняет сборка (PresetMergeContext),
 	// когда состав узлов окончателен и финальные теги назначены; nil —
-	// пресеты с for_each ничего не выдают.
+	// пресеты с for_each_node* ничего не выдают.
 	PresetNodes []PresetNode `json:"-"`
 }
 

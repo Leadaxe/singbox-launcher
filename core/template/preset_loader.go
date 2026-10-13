@@ -115,12 +115,14 @@ func LoadPresets(raw json.RawMessage, globalVarsNames map[string]bool) ([]Preset
 func validatePreset(p *Preset, globalVars map[string]bool) ([]PresetWarning, bool) {
 	var warns []PresetWarning
 
-	// §578: for_each — node_type и as обязательны; без них пресет не
-	// раскрыть ни для одного узла.
-	if p.ForEach != nil && !p.ForEach.Valid() {
+	// SPEC 166 (TEMPLATE_LANG §6.5–§6.7): обход узлов — снятый for_each,
+	// оба ключа сразу, форма for_each_node / for_each_node_do, переменные
+	// #do, резерв имени node, unique не у text_list. Ошибка загрузки:
+	// пресет отвергается целиком.
+	if err := ValidateNodeLoops(p); err != nil {
 		warns = append(warns, PresetWarning{
 			PresetID: p.ID,
-			Message:  "for_each requires non-empty node_type and as (as without '.', '@', braces, spaces)",
+			Message:  err.Error(),
 			Action:   "skip",
 		})
 		return warns, false
@@ -370,7 +372,7 @@ func validateVar(presetID string, v *PresetVar) []PresetWarning {
 
 	// type обязателен
 	switch v.Type {
-	case "outbound", "dns_server", "enum", "text", "number", "bool":
+	case "outbound", "dns_server", "enum", "text", "number", "bool", "text_list":
 		// ok
 	default:
 		warns = append(warns, PresetWarning{

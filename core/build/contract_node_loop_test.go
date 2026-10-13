@@ -1,13 +1,14 @@
 package build
 
-// Конформанс-раннер раздела corpus/template/for_each/ (LxBox §578,
+// Конформанс-раннер разделов corpus/template/for_each_node/ и
+// corpus/template/for_each_node_do/ (SPEC 166, контракт 1.1.119,
 // TEMPLATE_LANG §4.8, §6.5–§6.7). Формат кейса — contract/corpus/template/README.md:
 //
 //	<case>.preset.json    {"preset": {...}, "nodes": [{tag, body, enabled?, in_config?, skip_presets?}]}
 //	<case>.vars.json      значения переменных пресета строками
 //	<case>.expected.json  {"load"?, "rules", "dns_servers", "dns_rules", "warnings"}
 //
-// Узлы с enabled=false или in_config=false сборка в for_each не передаёт —
+// Узлы с enabled=false или in_config=false сборка в обход не передаёт —
 // раннер отсеивает их так же.
 
 import (
@@ -22,7 +23,11 @@ import (
 	"singbox-launcher/core/template"
 )
 
-const forEachCorpusRelPath = "../../contract/corpus/template/for_each"
+// nodeLoopCorpusSections — разделы корпуса обхода узлов.
+var nodeLoopCorpusSections = []string{
+	"../../contract/corpus/template/for_each_node",
+	"../../contract/corpus/template/for_each_node_do",
+}
 
 type forEachCaseNode struct {
 	Tag         string                 `json:"tag"`
@@ -40,10 +45,17 @@ type forEachExpected struct {
 	Warnings   []string      `json:"warnings"`
 }
 
-func TestContractCorpusForEach(t *testing.T) {
-	entries, err := os.ReadDir(forEachCorpusRelPath)
+func TestContractCorpusNodeLoops(t *testing.T) {
+	for _, dir := range nodeLoopCorpusSections {
+		dir := dir
+		t.Run(filepath.Base(dir), func(t *testing.T) { runNodeLoopSection(t, dir) })
+	}
+}
+
+func runNodeLoopSection(t *testing.T, dir string) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		t.Skipf("раздел for_each не найден: %v", err)
+		t.Fatalf("раздел %s не найден: %v", dir, err)
 	}
 	cases := 0
 	for _, e := range entries {
@@ -54,7 +66,7 @@ func TestContractCorpusForEach(t *testing.T) {
 		base := strings.TrimSuffix(e.Name(), ".preset.json")
 		t.Run(base, func(t *testing.T) {
 			read := func(suffix string, into interface{}) {
-				raw, err := os.ReadFile(filepath.Join(forEachCorpusRelPath, base+suffix))
+				raw, err := os.ReadFile(filepath.Join(dir, base+suffix))
 				if err != nil {
 					t.Fatalf("read %s: %v", suffix, err)
 				}
@@ -136,6 +148,6 @@ func TestContractCorpusForEach(t *testing.T) {
 		})
 	}
 	if cases == 0 {
-		t.Fatal("раздел for_each пуст")
+		t.Fatalf("раздел %s пуст", dir)
 	}
 }

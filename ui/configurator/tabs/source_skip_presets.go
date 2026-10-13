@@ -8,6 +8,9 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/build"
+	wizardtemplate "singbox-launcher/core/template"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 
 	"singbox-launcher/internal/locale"
@@ -23,7 +26,7 @@ const (
 // skipPresetsBlock — переключатель «Skip presets» формы узла-сервера.
 //
 // Виден у своего сервера и члена папки (у узла подписки записи нет), когда в
-// шаблоне есть пресет с for_each, чей node_type равен типу тела узла. nil —
+// шаблоне есть пресет с обходом узлов, чей #filter узел проходит. nil —
 // показывать нечего. Переключатель правит рабочую копию узла; в модель она
 // уходит по Save окна целиком.
 func skipPresetsBlock(m *wizardmodels.WizardModel, link wizardmodels.NodeLink, node *wizardmodels.Node) fyne.CanvasObject {
@@ -37,15 +40,20 @@ func skipPresetsBlock(m *wizardmodels.WizardModel, link wizardmodels.NodeLink, n
 			}
 		}
 	}
-	var body struct {
-		Type string `json:"type"`
-	}
-	if err := json.Unmarshal(node.Body, &body); err != nil || body.Type == "" {
+	// Пресет обслуживает узел ⇔ узел проходит #filter его обхода (SPEC 166):
+	// та же функция отбора, что у сборки. skip_presets самого узла при этом
+	// не учитывается — иначе включённый переключатель прятал бы сам себя.
+	var body map[string]interface{}
+	if err := json.Unmarshal(node.Body, &body); err != nil || len(body) == 0 {
 		return nil
 	}
+	tag, _ := body["tag"].(string)
+	probe := []wizardtemplate.PresetNode{{Tag: tag, Body: body}}
+	globals := wizardbusiness.PresetGlobalVars(m)
 	served := false
 	for i := range m.TemplateData.Presets {
-		if fe := m.TemplateData.Presets[i].ForEach; fe != nil && fe.NodeType == body.Type {
+		p := &m.TemplateData.Presets[i]
+		if p.IsNodeLoop() && len(build.PresetForEachNodes(p, nil, globals, m.Target, probe)) > 0 {
 			served = true
 			break
 		}

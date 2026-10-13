@@ -135,7 +135,7 @@ func SubstituteVarsInJSONCanonWarnings(data []byte, vars []TemplateVar, resolved
 }
 
 // substituteCanon — общий канонический обход; dynPrefixes — пространства имён
-// узла for_each (§578), объявленные целиком.
+// узла for_each_node* (§578), объявленные целиком.
 func substituteCanon(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec, dynPrefixes []string) (json.RawMessage, []TemplateWarning, error) {
 	ctx, err := substituteCanonCtx(data, vars, resolved, target, dynPrefixes)
 	if err != nil {

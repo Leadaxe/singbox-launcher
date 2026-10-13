@@ -79,7 +79,7 @@ func (p *WizardPresenter) templateHasForEachPreset() bool {
 		return false
 	}
 	for i := range p.model.TemplateData.Presets {
-		if p.model.TemplateData.Presets[i].ForEach != nil {
+		if p.model.TemplateData.Presets[i].IsNodeLoop() {
 			return true
 		}
 	}

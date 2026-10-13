@@ -30,8 +30,8 @@ func TestTailscalePresetBuild_TwoNodes(t *testing.T) {
 			ts = &td.Presets[i]
 		}
 	}
-	if ts == nil || ts.ForEach == nil || len(ts.ForEachDNSServers) != 1 {
-		t.Fatalf("пресет tailscale не загружен как for_each: %+v", ts)
+	if ts == nil || ts.ForEachNode == nil || len(ts.ForEachDNSServers) != 1 {
+		t.Fatalf("пресет tailscale не загружен как for_each_node: %+v", ts)
 	}
 
 	cache := &ParsedCache{

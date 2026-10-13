@@ -1100,11 +1100,16 @@
    "label": "Tailscale networks",
    "description": "Route each tailnet through its Tailscale node and resolve its names with the node's own DNS.",
    "default_enabled": true,
-   "for_each": {
-    "node_type": "tailscale",
-    "as": "node",
-    "filter": {
-     "#not": "@node.skip_presets"
+   "for_each_node": {
+    "#filter": {
+     "#and": [
+      {
+       "@node.body.type": "tailscale"
+      },
+      {
+       "#not": "@node.skip_presets"
+      }
+     ]
     }
    },
    "vars": [
