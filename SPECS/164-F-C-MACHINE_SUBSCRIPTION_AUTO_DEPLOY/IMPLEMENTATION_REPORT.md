@@ -1,6 +1,6 @@
 # IMPLEMENTATION_REPORT 164
 
-Дата: 2026-10-13. Статус: реализовано, проверено вживую; CI после пуша.
+Дата: 2026-10-13. Статус: C — реализовано, проверено вживую, CI зелёный (run 38401373436).
 
 ## Что сделано
 
@@ -30,7 +30,7 @@
 - `go build ./...` — ок.
 - `go test ./core -run TestAutoDeployDecision -count=1` — ок (9 случаев).
 - `l10n_check --strict`, `hardcoded_check --strict`, `win7guard` — чисто.
-- CI `run_mode=tests` — после пуша develop.
+- CI `run_mode=tests` — первый прогон упал на Ubuntu (`shortSHA` из darwin-файла), после `a55c5b90` зелёный на macOS/Windows/Ubuntu (run 38401373436).
 
 ## Живая проверка (PLAN §10)
 
@@ -47,7 +47,7 @@
   строки `remote apply`, `remote deploy`, `auto-deploy[api]: … applied`.
 - Уведомление системы и перерисовка строки — по событию `MachineAutoDeploy`.
 
-Статус: реализовано и проверено вживую; CI `run_mode=tests` — после пуша.
+Статус: реализовано, проверено вживую, CI зелёный.
 
 ## Решения сверх SPEC
 

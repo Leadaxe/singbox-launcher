@@ -27,4 +27,4 @@
 - [x] C1 `go run ./tools/l10n/l10n_check --strict`; `go run ./tools/l10n/hardcoded_check --strict`; `go run ./tools/win7guard`.
 - [x] C2 `docs/API.md`, `docs/ARCHITECTURE.md` §11.9, `docs/release_notes/upcoming.md`, `RELEASE_NOTES.md`.
 - [x] C3 Живая проверка по слову владельца (PLAN §10) — applied, узлы ожили; `IMPLEMENTATION_REPORT.md` заполнен.
-- [ ] C4 CI `run_mode=tests` после пуша develop; папка → `164-F-C-…`.
+- [x] C4 CI `run_mode=tests` зелёный (run 38401373436, после фикса darwin-only хелпера a55c5b90); папка → `164-F-C-…`.
