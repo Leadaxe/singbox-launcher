@@ -562,6 +562,18 @@ Key properties:
 - **`ExpandPreset` is single-sourced.** Both `ResolveRoute` and `ResolveDNS` call it
   once and consume the result; `evalIf` / if-filtering live in one place
   (`preset_expand.go`, unified in SPEC 070 cleanup Stage 3b).
+- **Node loops (SPEC 166, contract 1.1.119).** A preset with `for_each_node` /
+  `for_each_node_do` is expanded by `build.ExpandPresetForNodes` over the config
+  nodes collected after the graph sanitizer (`CollectPresetNodes` →
+  `PresetMergeContext.PresetNodes`); `#filter` selects nodes
+  (`template.EvalNodeFilter`, scope `@node`). `for_each_node` repeats the body
+  per node; `for_each_node_do` runs `#do` (`#append` into the preset's own
+  `text_list` vars, on a copy) → `#final` → `unique`, then expands the body
+  once, so the same fragment gate drops a rule whose collected list came out
+  empty. The wizard uses the same functions on the nodes of the last emission
+  (`business.PresetNodesForView`, `build.PresetForEachNodes` for the
+  "served nodes" label and the node's Skip presets toggle). The legacy
+  `for_each` key is a load error (preset skipped).
 - **One template walker (SPEC 143).** Every `@var` / `#if` substitution goes
   through the canonical walker `template.SubstituteVarsInJSONCanonWarnings`
   (`core/template/substitute_canon.go`, rules of `contract/docs/TEMPLATE_LANG.md`):

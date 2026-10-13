@@ -804,7 +804,7 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 				guiState.RefreshDNSList()
 			}
 		}
-		// LxBox §578: серверы пресета с for_each строятся по узлам эмиссии —
+		// LxBox §578: серверы и правила пресета с обходом узлов строятся по узлам эмиссии —
 		// разбор нужен и вкладке DNS (после него список перерисуется).
 		if item.Text == locale.T("DNS") {
 			presenter.TriggerParseForPreview()

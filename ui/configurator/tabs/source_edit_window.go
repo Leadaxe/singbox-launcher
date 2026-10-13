@@ -1356,7 +1356,7 @@ func showSourceEditWindowAt(
 			settingsContent.Add(nodeTagEntry)
 			settingsContent.Add(widget.NewSeparator())
 			detourBlock()
-			// LxBox §578: исключение узла из пресетов с for_each.
+			// LxBox §578: исключение узла из пресетов с обходом узлов (#filter читает skip_presets).
 			if blk := skipPresetsBlock(m, nodeLink, &scratch.Node); blk != nil {
 				settingsContent.Add(widget.NewSeparator())
 				settingsContent.Add(blk)

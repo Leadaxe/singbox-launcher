@@ -416,7 +416,7 @@ func placeRuleAt(rules []Rule, movedIdx int, want int, sortable func(Rule) bool)
 // LateDefaultPresetIDs — пресеты шаблона, включённые по умолчанию и
 // появившиеся после того, как у пользователя уже было состояние (LxBox §578,
 // `kLateDefaultPresetIds`). Список только растёт.
-var LateDefaultPresetIDs = []string{"tailscale"}
+var LateDefaultPresetIDs = []string{"tailscale", "node-domains-fresh-dns"}
 
 // SeedLateDefaultRules — разовый засев поздних дефолтных пресетов.
 //

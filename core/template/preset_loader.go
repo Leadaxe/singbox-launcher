@@ -385,8 +385,9 @@ func validateVar(presetID string, v *PresetVar) []PresetWarning {
 	}
 
 	// default required
-	if v.Type != "bool" && v.Default == "" {
+	if v.Type != "bool" && v.Type != "text_list" && v.Default == "" {
 		// Для не-bool пустой default допустим только в редких случаях; warning информативный.
+		// У text_list пустой default — обычный пустой список (SPEC 166 §4: «Extra domains»).
 		warns = append(warns, PresetWarning{
 			PresetID: presetID,
 			Message:  fmt.Sprintf("var %q has empty default", v.Name),

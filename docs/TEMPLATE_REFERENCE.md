@@ -129,8 +129,17 @@ A preset's typed local variables.
 | `dns_server` | A grouped dropdown (3 sections) or a whitelist (`options`/`select`) | A tag string (the build prefixes bundled tags during substitution) |
 | `enum` | A dropdown over `options[]` (objects `{title, value}`) | The `value` string |
 | `text` | A text entry | A string |
+| `text_list` | A multi-line entry, one value per line | A JSON array of the non-empty lines (`[]` when empty) |
 | `number` | A numeric entry | A numeric string |
 | `bool` | Checkbox | `"true"` / `"false"` |
+
+Two declaration fields come from the shared template language (contract
+1.1.119, `TEMPLATE_LANG.md` §2.1): `unique: true` (only on `text_list`) keeps
+the value free of duplicates, first occurrence wins — the form drops duplicates
+on Save, the build applies it to the stored value, the default and the values
+collected over nodes; `wizard_ui: "internal"` marks a build-only variable —
+no row in the form, the stored and backed-up value is ignored, only `#do` of a
+node loop writes it.
 
 The substitution mechanism: a build-time recursive walk over the `rules` /
 `dns_rule` / `dns_servers` / `rule_set` fragments — every `"@name"` string is
@@ -139,6 +148,20 @@ substituting its literal fails → the preset is skipped with a warning.
 
 State stores **only the diff** against the template defaults in `rule.body.vars`
 (an empty `vars: {}` means the preset runs on template defaults).
+
+### 4.5.1 Node loops — `for_each_node` / `for_each_node_do` (SPEC 166)
+
+A preset may walk the nodes of the built config (enabled, not dropped, in
+config order); the node is `@node` (`@node.body.<path>`, `@node.skip_presets`),
+`#filter` selects nodes with an `#if` condition. `for_each_node` repeats the
+preset body per node (stock preset `tailscale`); `for_each_node_do` walks the
+nodes only to collect values — `#do: {"@list": {"#append": "@node.body.server"}}`
+into the preset's own `text_list` variables, optional
+`#final: {"@list": {"#unique": true, "#sort": true, "#limit": N}}` — and then
+expands the body once (stock preset `node-domains-fresh-dns`: one DNS rule with
+the hostnames of every node). The old `for_each` key (`node_type`, `as`) is a
+load error: the preset is skipped. The norm is `contract/docs/TEMPLATE_LANG.md`
+§6.5–6.7.
 
 ---
 
@@ -392,8 +415,9 @@ object depends on a bool var / the runtime platform".
 > (`app/lib/services/builder/if_engine.dart`) — and the normative description of
 > the shared language lives in `contract/docs/TEMPLATE_LANG.md`. Where this
 > reference and the contract disagree, the contract wins. Other `#*` constructs
-> (the potential `#for_each` / `#include`) remain desktop-only until they land in
-> LxBox as well.
+> (e.g. a potential `#include`) remain desktop-only until they land in LxBox as
+> well; node loops (`for_each_node` / `for_each_node_do`, §4.5.1) are part of
+> the shared contract.
 
 **Named conditions.** A condition key may carry any suffix: `"#if"`, `"#if1"`,
 `"#if 2"`, `"#if tun-only"` are all equivalent. This exists because JSON keeps

@@ -1096,6 +1096,64 @@
    ]
   },
   {
+   "id": "node-domains-fresh-dns",
+   "label": "Node hostnames: fresh DNS",
+   "description": "Resolve the hostnames of your nodes through a chosen resolver and never serve a stale answer for them.",
+   "default_enabled": true,
+   "vars": [
+    {
+     "name": "resolver",
+     "type": "dns_server",
+     "default": "direct_dns_resolver",
+     "title": "Resolver",
+     "tooltip": "Which DNS server resolves node hostnames. Must not go through the proxy itself."
+    },
+    {
+     "name": "domains",
+     "type": "text_list",
+     "unique": true,
+     "title": "Extra domains",
+     "tooltip": "Hostnames of every node are collected automatically; add your own here."
+    }
+   ],
+   "for_each_node_do": {
+    "#filter": {
+     "#and": [
+      {
+       "@node.body.server": "#notEmpty"
+      },
+      {
+       "#not": {
+        "@node.body.server": {
+         "#matches": "^[0-9.]+$"
+        }
+       }
+      },
+      {
+       "#not": {
+        "@node.body.server": {
+         "#matches": ":"
+        }
+       }
+      }
+     ]
+    },
+    "#do": {
+     "@domains": {
+      "#append": "@node.body.server"
+     }
+    }
+   },
+   "dns_rules": [
+    {
+     "domain": "@domains",
+     "server": "@resolver",
+     "disable_optimistic_cache": true
+    }
+   ],
+   "num": 10
+  },
+  {
    "id": "tailscale",
    "label": "Tailscale networks",
    "description": "Route each tailnet through its Tailscale node and resolve its names with the node's own DNS.",

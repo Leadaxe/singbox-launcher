@@ -32,7 +32,9 @@ const (
 // у локальной её нет вовсе, и раздача в LAN настраивается здесь.
 func settingsVarVisible(v wizardtemplate.TemplateVar, goos string, isRemote bool) bool {
 	ui := strings.ToLower(strings.TrimSpace(v.WizardUI))
-	if ui == "hidden" || ui == "fix" {
+	// internal (TEMPLATE_LANG §2.1, SPEC 166) — переменная только для сборки,
+	// строки в форме нет.
+	if ui == "hidden" || ui == "fix" || ui == wizardtemplate.WizardUIInternal {
 		return false
 	}
 	// SPEC 097: "target"-vars (gateway_mode и LAN-интерфейсы) рендерит вкладка
