@@ -309,7 +309,7 @@ brew tap leadaxe/singbox-launcher https://github.com/Leadaxe/singbox-launcher.gi
 brew install --cask leadaxe/singbox-launcher/singbox-launcher
 ```
 
-The Cask installs only the `.app` (macOS 11+); it does not preload the core or configure the privileged TUN helper. The unsigned app may be blocked by Gatekeeper. See [Homebrew installation notes](docs/HOMEBREW.md) before installing.
+The Cask installs only the `.app` (macOS 11+); it does not preload the core or configure the privileged TUN helper. The unsigned app may be blocked by Gatekeeper. See [Homebrew installation notes](docs/HOMEBREW.md) before installing. After the first install, use the short command `brew upgrade --cask singbox-launcher` to get new versions when published.
 
 #### Option 1: install script (recommended)
 

@@ -1,8 +1,8 @@
 name: Update Homebrew Cask
 
-# GitHub Releases published by the existing CI/CD workflow use GITHUB_TOKEN.
-# Such releases do not trigger another workflow's `release` event. Listening
-# for the CI/CD run to complete and doing a daily reconciliation avoids that.
+# Releases published by CI/CD use GITHUB_TOKEN, so `release.published`
+# does not reliably trigger a second workflow. Reconcile after successful
+# CI/CD push runs and daily as a fallback.
 "on":
   workflow_run:
     workflows: ["CI/CD"]
@@ -11,9 +11,9 @@ name: Update Homebrew Cask
     - cron: "21 5 * * *"
   workflow_dispatch:
 
+# No PR permission needed: this workflow updates the Cask directly on main.
 permissions:
   contents: write
-  pull-requests: write
 
 concurrency:
   group: update-homebrew-cask
@@ -21,28 +21,62 @@ concurrency:
 
 jobs:
   update:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-24.04
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
 
-      - name: Read latest stable release and update Cask
+      - name: Refresh Cask from latest stable release
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/update-homebrew-cask.sh
 
-      - name: Open or update draft PR
-        uses: peter-evans/create-pull-request@v8
-        with:
-          token: ${{ github.token }}
-          add-paths: Casks/singbox-launcher.rb
-          branch: automation/update-homebrew-cask
-          delete-branch: true
-          draft: always-true
-          title: "chore(homebrew): update singbox-launcher Cask"
-          commit-message: "chore(homebrew): update Cask for latest stable release"
-          body: |
-            Automated Homebrew Cask refresh from the latest stable GitHub Release.
+      - name: Verify Cask and release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -c Casks/singbox-launcher.rb
+          bash -n scripts/update-homebrew-cask.sh
 
-            The update is limited to `version` and `sha256`. Please review
-            the macOS release asset before merging this PR.
+          if git diff --quiet -- Casks/singbox-launcher.rb; then
+            echo "Cask is already up to date"
+            exit 0
+          fi
+
+          version="$(sed -nE 's/^  version "([^"]+)"$/\1/p' Casks/singbox-launcher.rb)"
+          checksum="$(sed -nE 's/^  sha256 "([0-9a-f]{64})"$/\1/p' Casks/singbox-launcher.rb)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$checksum" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Invalid version or checksum in Cask" >&2
+            exit 1
+          fi
+
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "$tmp_dir"' EXIT
+          archive="$tmp_dir/singbox-launcher.zip"
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://github.com/Leadaxe/singbox-launcher/releases/download/v${version}/singbox-launcher-v${version}-macos.zip" \
+            --output "$archive"
+          printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 --check
+          unzip -p "$archive" "artifacts-darwin/singbox-launcher.app/Contents/Info.plist" >/dev/null
+          echo "Release checksum and app bundle verified"
+
+      - name: Commit and push Cask to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Casks/singbox-launcher.rb; then
+            echo "Nothing to commit"
+            exit 0
+          fi
+
+          version="$(sed -nE 's/^  version "([^"]+)"$/\1/p' Casks/singbox-launcher.rb)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- Casks/singbox-launcher.rb
+          git commit -m "chore(homebrew): update Cask to v${version}"
+          # No force push: a concurrent maintainer commit causes a safe failure.
+          # The scheduled run will retry against the newer default branch.
+          git push origin HEAD:main

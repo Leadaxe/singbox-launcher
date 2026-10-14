@@ -13,13 +13,22 @@ brew tap leadaxe/singbox-launcher https://github.com/Leadaxe/singbox-launcher.gi
 brew install --cask leadaxe/singbox-launcher/singbox-launcher
 ```
 
-On Homebrew versions with third-party tap trust checks, installing the fully qualified Cask should trust only that Cask. If prompted, review the Cask before granting trust.
+Installing the fully qualified Cask trusts only this Cask, not the entire tap. The two-part name `leadaxe/singbox-launcher` is not a valid Cask reference: Homebrew uses `user/tap/cask` for third-party packages.
+
+Once the tap is installed, you can also use the short name by trusting this particular Cask first:
+
+```bash
+brew trust --cask leadaxe/singbox-launcher/singbox-launcher
+brew install --cask singbox-launcher
+```
+
+An initial installation using the full name already establishes that trust; you do **not** need to run `brew trust` a second time.
 
 Updates work through the usual Homebrew commands:
 
 ```bash
 brew update
-brew upgrade --cask leadaxe/singbox-launcher/singbox-launcher
+brew upgrade --cask singbox-launcher
 ```
 
 ## How this differs from the upstream install script
@@ -30,8 +39,10 @@ brew upgrade --cask leadaxe/singbox-launcher/singbox-launcher
 
 ## Maintaining the Cask
 
-`Casks/singbox-launcher.rb` is pinned to the latest stable release with its published SHA-256. `scripts/update-homebrew-cask.sh` reads the GitHub Release metadata (falling back to `checksums.txt`) and modifies **only** the version and SHA. The [Update Homebrew Cask workflow](../.github/workflows/update-homebrew-cask.yml) runs when the existing `CI/CD` workflow finishes, once daily as a fallback, and on demand; it opens or updates a **draft PR** for review.
+`Casks/singbox-launcher.rb` pins the latest stable GitHub Release and its SHA-256. `scripts/update-homebrew-cask.sh` reads release metadata (falling back to `checksums.txt`) and changes **only** `version` and `sha256`.
 
-**Maintainer action required:** GitHub requires enabling **Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests** for the repository, otherwise the automatic PR step fails. The workflow requests `contents: write` and `pull-requests: write` for this purpose.
+The [Update Homebrew Cask workflow](../.github/workflows/update-homebrew-cask.yml) runs after a successful `CI/CD` push workflow, once per day as a fallback, or manually. It verifies Ruby syntax, downloads the published macOS ZIP, checks its SHA-256 and expected `.app` bundle, then automatically commits **only the Cask** to `main`. No manual PR is needed for future releases. A failed verification leaves the Cask unchanged. Homebrew users still need `brew update` and `brew upgrade --cask singbox-launcher` to install the update.
+
+**Maintainer action:** The workflow requests `contents: write` for `GITHUB_TOKEN`. Repository settings and branch protection must allow the GitHub Actions bot to push this one-file change to `main`. If pushes are prohibited, the workflow fails without bypassing branch protection; change the repository policy or use the previous PR-based approach. The setting to allow Actions to create pull requests is **not** needed.
 
 To test a proposed version manually, run `brew audit --cask ./Casks/singbox-launcher.rb` and test the installation on macOS. The upstream archive currently stores the app under `artifacts-darwin/` (the release CI artifact directory), so the `app` stanza intentionally uses that nested path.
