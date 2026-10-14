@@ -1,5 +1,7 @@
 # Homebrew Cask (macOS)
 
+**🌐 Language**: English | [Русский](HOMEBREW.ru.md)
+
 This repository also serves as a Homebrew tap. It supports the **universal** macOS 11+ release (Apple Silicon and Intel). The separate macOS Catalina legacy build is not included.
 
 ## Install

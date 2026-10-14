@@ -317,7 +317,7 @@ brew tap leadaxe/singbox-launcher https://github.com/Leadaxe/singbox-launcher.gi
 brew install --cask leadaxe/singbox-launcher/singbox-launcher
 ```
 
-Cask устанавливает только `.app` (macOS 11+), но не загружает ядро заранее и не настраивает привилегированный TUN helper. Неподписанное приложение может блокироваться Gatekeeper. Перед установкой ознакомьтесь с [пояснениями по Homebrew](docs/HOMEBREW.md).
+Cask устанавливает только `.app` (macOS 11+), но не загружает ядро заранее и не настраивает привилегированный TUN helper. Неподписанное приложение может блокироваться Gatekeeper. Перед установкой ознакомьтесь с [пояснениями по Homebrew](docs/HOMEBREW.ru.md).
 
 #### Вариант 1: install-скрипт (рекомендуется)
 
