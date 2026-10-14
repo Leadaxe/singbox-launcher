@@ -18,12 +18,16 @@ cask "singbox-launcher" do
   app "artifacts-darwin/singbox-launcher.app"
 
   caveats <<~EOS
-    This app is currently distributed without Apple notarization, so macOS
-    Gatekeeper may block its first launch. Review the upstream macOS install
-    instructions before deciding whether to allow it.
+    This app is not notarized by Apple. Gatekeeper may block its first launch.
+    If you trust the download, try opening the app and then select
+    System Settings > Privacy & Security > Open Anyway.
 
-    This cask installs only the .app. Unlike the upstream install script,
-    it does not preload the sing-box core or configure the privileged TUN
-    helper. These steps may require a network connection and authorization.
+    Alternatively, you can manually remove only this app's quarantine
+    attribute (default install path):
+      xattr -dr com.apple.quarantine "/Applications/singbox-launcher.app"
+    This bypasses Gatekeeper for the app. Do so only if you trust its source.
+
+    This cask installs only the .app, not the sing-box core or privileged
+    TUN helper. First launch/TUN setup may require downloads or authorization.
   EOS
 end

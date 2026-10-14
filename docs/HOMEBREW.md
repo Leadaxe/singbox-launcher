@@ -34,7 +34,7 @@ brew upgrade --cask singbox-launcher
 ## How this differs from the upstream install script
 
 - The Cask installs the `.app` only. It does not download the separately distributed sing-box core and configuration template ahead of time, or set up the privileged TUN helper. The application may need internet access and administrator authorization to perform initial setup or enable TUN. For an offline-ready first launch, the project's `scripts/install-macos.sh` remains the recommended approach.
-- The upstream app is not currently notarized for macOS. Gatekeeper may block opening it. This Cask deliberately **does not** remove quarantine attributes or disable Gatekeeper. Check the [macOS installation instructions](../README.md#macos) and use the macOS security UI if you decide to allow the app.
+- The upstream app is not currently notarized for macOS. Gatekeeper may block its first launch. If you trust the download, first try opening the app, then choose **System Settings → Privacy & Security → Open Anyway**. Alternatively, you can manually remove only its quarantine attribute with `xattr -dr com.apple.quarantine "/Applications/singbox-launcher.app"` (default installation path). **This bypasses Gatekeeper for the app**, so use it only if you trust the source. The Cask does not remove quarantine automatically. See the [macOS installation instructions](../README.md#macos).
 - If migrating from a pre-v2.3 installation, export an **LX Backup** before upgrading: older versions stored user data inside the application bundle, which replacement can erase.
 
 ## Maintaining the Cask
