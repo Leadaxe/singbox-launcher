@@ -484,13 +484,16 @@ func tailscaleDeviceDetails(p services.TailscalePeer) string {
 }
 
 // tailscaleDeviceConnection — как подключено (третья строка): путь словами
-// (SPEC 158; знак пути — SVG перед строкой), иначе давность last seen; ключ
-// истёк — туда же. Пусто у устройства в сети, которому ядро ещё не писало.
+// (SPEC 158; знак пути — SVG перед строкой); в сети без пути — «no traffic
+// yet» (Tailscale поднимает туннель к пиру по первому пакету, вердикта ядру
+// не из чего сделать); не в сети — давность last seen; ключ истёк — туда же.
 func tailscaleDeviceConnection(p services.TailscalePeer, now time.Time) string {
 	parts := make([]string, 0, 2)
 	if path := tailscalePathWords(p); path != "" {
 		parts = append(parts, path)
-	} else if !p.Online && !p.LastSeen.IsZero() {
+	} else if p.Online {
+		parts = append(parts, locale.T("no traffic yet"))
+	} else if !p.LastSeen.IsZero() {
 		parts = append(parts, locale.Tf("last seen %s ago", humanAge(now.Sub(p.LastSeen))))
 	}
 	if p.Expired {

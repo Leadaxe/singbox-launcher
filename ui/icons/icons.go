@@ -48,7 +48,7 @@ var Link fyne.Resource = theme.NewThemedResource(&fyne.StaticResource{
 //go:embed cloud.svg
 var cloudSVG []byte
 
-// Cloud — облако: путь пира tailnet через посредника (DERP / peer relay).
+// Cloud — контурное облако: путь пира tailnet через посредника (DERP / peer relay).
 // viewBox обрезан по рисунку (облако низкое и широкое), чтобы в слоте
 // значка строки оно занимало всю ширину, а не плавало мелким в квадрате.
 // Цвет задаёт вызывающий (theme.NewColoredResource), рисунок — currentColor.

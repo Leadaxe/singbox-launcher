@@ -4115,6 +4115,9 @@
   "last seen %s ago": {
     "value": "был в сети %s назад"
   },
+  "no traffic yet": {
+    "value": "трафика ещё не было"
+  },
   "%ds": {
     "value": "%d с"
   },
