@@ -310,6 +310,15 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Контроли при�
 
 ### macOS
 
+#### Homebrew Cask (сторонний tap)
+
+```bash
+brew tap leadaxe/singbox-launcher https://github.com/Leadaxe/singbox-launcher.git
+brew install --cask leadaxe/singbox-launcher/singbox-launcher
+```
+
+Cask устанавливает только `.app` (macOS 11+), но не загружает ядро заранее и не настраивает привилегированный TUN helper. Неподписанное приложение может блокироваться Gatekeeper. Перед установкой ознакомьтесь с [пояснениями по Homebrew](docs/HOMEBREW.md).
+
 #### Вариант 1: install-скрипт (рекомендуется)
 
 ```bash

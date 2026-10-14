@@ -302,6 +302,15 @@ Moving from a portable copy to the installer: in the old copy switch off **Setti
 
 ### macOS
 
+#### Homebrew Cask (community tap)
+
+```bash
+brew tap leadaxe/singbox-launcher https://github.com/Leadaxe/singbox-launcher.git
+brew install --cask leadaxe/singbox-launcher/singbox-launcher
+```
+
+The Cask installs only the `.app` (macOS 11+); it does not preload the core or configure the privileged TUN helper. The unsigned app may be blocked by Gatekeeper. See [Homebrew installation notes](docs/HOMEBREW.md) before installing.
+
 #### Option 1: install script (recommended)
 
 ```bash

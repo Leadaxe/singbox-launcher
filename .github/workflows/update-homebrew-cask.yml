@@ -1,0 +1,48 @@
+name: Update Homebrew Cask
+
+# GitHub Releases published by the existing CI/CD workflow use GITHUB_TOKEN.
+# Such releases do not trigger another workflow's `release` event. Listening
+# for the CI/CD run to complete and doing a daily reconciliation avoids that.
+"on":
+  workflow_run:
+    workflows: ["CI/CD"]
+    types: [completed]
+  schedule:
+    - cron: "21 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-homebrew-cask
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read latest stable release and update Cask
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/update-homebrew-cask.sh
+
+      - name: Open or update draft PR
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ github.token }}
+          add-paths: Casks/singbox-launcher.rb
+          branch: automation/update-homebrew-cask
+          delete-branch: true
+          draft: always-true
+          title: "chore(homebrew): update singbox-launcher Cask"
+          commit-message: "chore(homebrew): update Cask for latest stable release"
+          body: |
+            Automated Homebrew Cask refresh from the latest stable GitHub Release.
+
+            The update is limited to `version` and `sha256`. Please review
+            the macOS release asset before merging this PR.
