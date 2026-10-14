@@ -60,25 +60,7 @@ path = Path(sys.argv[1])
 version = sys.argv[2]
 checksum = sys.argv[3]
 original = path.read_text(encoding="utf-8")
-existing_versions = re.findall(r'(?m)^  version "([0-9]+\.[0-9]+\.[0-9]+)"
-    r'(?m)^(  version ")[^"\n]+(")$',
-    lambda match: f"{match.group(1)}{version}{match.group(2)}",
-    original,
-)
-updated, checksum_count = re.subn(
-    r'(?m)^(  sha256 ")[0-9a-f]{64}(")$',
-    lambda match: f"{match.group(1)}{checksum}{match.group(2)}",
-    updated,
-)
-if version_count != 1 or checksum_count != 1:
-    raise SystemExit("Expected exactly one version and sha256 stanza in Cask")
-if original == updated:
-    print(f"Cask already up to date at {version}")
-else:
-    path.write_text(updated, encoding="utf-8")
-    print(f"Updated Cask to {version} ({checksum})")
-PY
-, original)
+existing_versions = re.findall(r'(?m)^  version "([0-9]+\.[0-9]+\.[0-9]+)"$', original)
 if len(existing_versions) != 1:
     raise SystemExit("Expected exactly one semantic version stanza in Cask")
 if tuple(map(int, version.split("."))) < tuple(map(int, existing_versions[0].split("."))):
