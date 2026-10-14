@@ -24,6 +24,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	internaldialogs "singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
@@ -396,7 +397,7 @@ func cloneRuleMap(r map[string]interface{}) map[string]interface{} {
 
 // collectAllRuleSetTags — список всех доступных rule_set tag'ов для DNS-rule:
 //   - bundled rule_set tag'и от active preset-ref'ов (ru-direct:ru-domains, ...)
-//   - user inline/srs правил из state.CustomRules (user:<id>)
+//   - наборы пользовательских srs-правил (user:<id>, user:<id>:N)
 //
 // Возвращает sorted unique list.
 func collectAllRuleSetTags(m *wizardmodels.WizardModel) []string {
@@ -440,16 +441,19 @@ func collectAllRuleSetTags(m *wizardmodels.WizardModel) []string {
 		}
 	}
 
-	// User inline/srs rules tag'и (id-based — формат `user:<id>`).
-	for _, cr := range m.CustomRules {
-		if cr == nil {
+	// Наборы пользовательских srs-правил — те же теги, что эмитит сборка
+	// (resolve_route.go): `user:<id>`, `user:<id>:2`, … по одному на URL.
+	// Inline-правила rule_set не порождают. Ссылку на набор, который не попал
+	// в route.rule_set (правило выключено, .srs не скачан), сборка вычищает
+	// из DNS-правила сама (SPEC 153). Issue #140.
+	for _, r := range wizardmodels.EmitStateRulesWithoutOrder(nil, m.CustomRules) {
+		if r.Kind != state.RuleKindSrs {
 			continue
 		}
-		// CustomRule имеет rule_set (для srs) или генерированный inline tag.
-		// Используем generated tag pattern из MergeRulesAndDNS — `user:<id>`.
-		// Здесь у нас нет ID, поэтому используем label-based heuristic.
-		// Реально юзер ссылается на rule_set от user-rule редко — fallback на пустой.
-		_ = cr
+		id := state.StableRuleID(r)
+		for i := range r.Refs {
+			add(state.SrsRuleSetTag(id, i))
+		}
 	}
 
 	sort.Strings(out)
