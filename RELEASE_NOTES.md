@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v2.3.10
+
+Патч после v2.3.9, ядро `sing-box-lx 1.14.3-lx.18` и контракт 1.1.119 без изменений. **Tailscale → Network:** список устройств оформлен как список серверов — имя и IPv4, ОС и IPv6, третьей строкой путь (зелёная молния — direct, оранжевое облако — relay, `no traffic yet`) с подсказкой при наведении; раскрытие `+N` и копирование любого адреса у устройства с несколькими адресами. Пока вкладка открыта, она раз в 3 с спрашивает у ядра живой статус, так что путь актуален. **macOS:** скрипт установки сразу отказывается работать не на macOS. Подробнее: [docs/release_notes/2-3-10.md](docs/release_notes/2-3-10.md).
+
+### Highlights (EN) — v2.3.10
+
+A patch after v2.3.9, core `sing-box-lx 1.14.3-lx.18` and contract 1.1.119 unchanged. **Tailscale → Network:** the device list looks like the server list — name and IPv4, OS and IPv6, the path on the third line (green bolt = direct, orange cloud = relay, `no traffic yet`) with an explanation on hover; a `+N` expander and copying any address for a device with several addresses. While open, the tab asks the core for the live status every 3 s, so the path is current. **macOS:** the install script refuses to run on anything but macOS up front. Details: [docs/release_notes/2-3-10.md](docs/release_notes/2-3-10.md).
+
 ### Выжимка (RU) — v2.3.9
 
 Патч после v2.3.8, ядро `sing-box-lx 1.14.3-lx.18` (было 1.14.3-lx.14), контракт 1.1.119. **Удалённые машины:** галка **Авто-деплой обновлений подписок** — лаунчер раз в час сам обновляет подписки машины и отправляет конфиг, если изменились только узлы (SPEC 164); строка машины показывает, доехал ли конфиг (оранжевая точка на **Deploy**, красная на **Configure** при откате). **Окно Service** (⚙ в строке машины и Servers → ⚙ → Local) — раннбук обслуживания демона: не поднимается, обновить ядро под платформу машины, сопряжение, пути и `daemon.json` (SPEC 161); строка **Daemon command** — демон с `commands` в `daemon.json` обновляет ядро сам (`update`), а паспорт демона называет платформу и init-систему машины (SPEC 162). **DNS:** шифрованные DoT/DoH-серверы шаблона по умолчанию идут напрямую; новая галка «Never serve stale answers for node hostnames» (включена) — `route.default_domain_resolver` теперь объект. **Правила:** вкладка **Preset** в Edit Rule показывает пресет как он записан в шаблоне; циклы шаблона `for_each_node` / `for_each_node_do` (SPEC 166, контракт 1.1.119). **Исправлено:** узлы удалённой машины больше не попадают на вкладку Local; Refresh подписки в Конфигураторе машины больше не пишет в локальное состояние (SPEC 165). **macOS:** прогресс скачивания ядра в скрипте установки, прозрачные углы иконки на macOS 11–15. Подробнее: [docs/release_notes/2-3-9.md](docs/release_notes/2-3-9.md).
@@ -784,6 +792,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.3.10** | [docs/release_notes/2-3-10.md](docs/release_notes/2-3-10.md) |
 | **v2.3.9** | [docs/release_notes/2-3-9.md](docs/release_notes/2-3-9.md) |
 | **v2.3.8** | [docs/release_notes/2-3-8.md](docs/release_notes/2-3-8.md) |
 | **v2.3.7** | [docs/release_notes/2-3-7.md](docs/release_notes/2-3-7.md) |
