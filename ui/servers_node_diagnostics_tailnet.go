@@ -16,7 +16,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
@@ -109,10 +108,11 @@ func tailnetPeersWithPath(st services.TailscaleStatus) []services.TailscalePeer 
 	return out
 }
 
-// tailnetPeerDetails — «direct 1.2.3.4:41641 · handshake 36s ago».
+// tailnetPeerDetails — «direct 1.2.3.4:41641 · handshake 36s ago»; знак
+// пути — SVG перед строкой (tailscalePeerLines).
 func tailnetPeerDetails(p services.TailscalePeer, now time.Time) string {
 	parts := make([]string, 0, 2)
-	if path := tailscalePathText(p); path != "" {
+	if path := tailscalePathWords(p); path != "" {
 		parts = append(parts, path)
 	}
 	if p.LastHandshake.IsZero() {
@@ -175,28 +175,12 @@ func buildTailnetSection(box *fyne.Container, st services.TailscaleStatus, ok bo
 	}
 }
 
-// tailnetPeerRow — устройство в две строки, как на вкладке Network:
+// tailnetPeerRow — устройство той же строкой, что на вкладке Network
+// (tailscalePeerLines), без меню и без раскрытия адресов:
 //
-//	●  GL-MT2500   100.104.79.7   linux
-//	   relay ams · handshake 2m ago
+//	● GL-MT2500                    100.104.79.7
+//	  linux         fd7a:115c:a1e0::9f01:4f07
+//	  ☁ relay ams · handshake 2m ago
 func tailnetPeerRow(p services.TailscalePeer, now time.Time) fyne.CanvasObject {
-	mark := widget.NewLabel("○")
-	mark.Importance = widget.LowImportance
-	if p.Online {
-		mark.SetText("●")
-		mark.Importance = widget.SuccessImportance
-	}
-	name := widget.NewLabel(p.HostName)
-	addr := ""
-	if len(p.TailscaleIPs) > 0 {
-		addr = p.TailscaleIPs[0]
-	}
-	ip := widget.NewLabel(addr)
-	ip.Selectable = true
-	details := widget.NewLabel(tailscaleDeviceDetails(p))
-	details.Importance = widget.LowImportance
-	details.Truncation = fyne.TextTruncateEllipsis
-	left := container.NewHBox(mark, name, rowGap(12), ip, rowGap(12))
-	top := container.NewBorder(nil, nil, left, nil, details)
-	return tailscaleDeviceLines(top, tailnetPeerDetails(p, now), mark.MinSize().Width+theme.Padding())
+	return tailscalePeerLines(p, tailnetPeerDetails(p, now), false, nil)
 }

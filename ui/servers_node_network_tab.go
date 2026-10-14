@@ -2,11 +2,14 @@
 // (SPEC 148 §3, LxBox §581): Status, This device, Exit node, Devices,
 // проверка устройства.
 //
-// Данные — кеш стрима SubscribeTailscaleStatus (SPEC 130); команды —
-// SetTailscaleExitNode, TailscaleLogout, StartTailscalePing того же
-// источника: ядра области окна — своего (Local) или выбранной машины
-// (Remote). Вкладка перерисовывается не чаще раза в секунду и только когда
-// пришёл новый снимок или сменилось записанное значение.
+// Данные — запросный GetTailscaleStatus (SPEC 115 ядра) раз в
+// tailnetPollInterval, пока окно открыто: путь пира в кеше стрима
+// SubscribeTailscaleStatus (SPEC 130) живёт только до следующего события, а
+// пользователь открыл вкладку ради текущей картины. Ядро без запроса или
+// ответа нет — кеш стрима, как раньше. Команды — SetTailscaleExitNode,
+// TailscaleLogout, StartTailscalePing того же источника: ядра области окна —
+// своего (Local) или выбранной машины (Remote). Вкладка перерисовывается не
+// чаще раза в секунду и только когда сменилось показываемое.
 //
 // Имена устройств, адреса, имя сети, владельцы и ссылка входа в журнал не
 // пишутся: ошибки команд логируются только с тегом узла.
@@ -14,6 +17,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -98,11 +102,21 @@ func tailscaleNetworkTab(ac *core.AppController, win fyne.Window, tag, cfgPath s
 
 	type snapKey struct {
 		view     tailscaleNetworkView
-		at       time.Time
+		state    string
 		written  string
 		haveCtrl bool
 	}
-	var last *snapKey
+	var (
+		last     *snapKey
+		fresh    services.TailscaleStatus // последний ответ GetTailscaleStatus
+		freshAt  time.Time
+		polledAt time.Time
+		noPaths  bool   // ядро без GetTailscaleStatus — только стрим
+		lastErr  string // в журнал — только смена ошибки, не каждый опрос
+	)
+	// Раскрытые адреса устройств (по StableID) переживают перерисовку;
+	// трогается только из UI-потока (fyne.Do и тап).
+	expanded := map[string]bool{}
 	refresh := func() {
 		var (
 			st      services.TailscaleStatus
@@ -117,21 +131,46 @@ func tailscaleNetworkTab(ac *core.AppController, win fyne.Window, tag, cfgPath s
 			live = ac.TailscaleLive(cmd.target)
 			haveCtrl = ac.TailscaleControlAvailable(cmd.target)
 		}
+		if haveCtrl && running && !noPaths && time.Since(polledAt) >= tailnetPollInterval {
+			polledAt = time.Now()
+			now, nowOK, err := ac.TailscaleStatusNow(cmd.target, tag)
+			switch {
+			case errors.Is(err, services.ErrTailscalePathUnsupported):
+				noPaths = true
+			case err != nil:
+				if err.Error() != lastErr {
+					lastErr = err.Error()
+					debuglog.WarnLog("node network: tailscale status %s: %v", tag, err)
+				}
+			case nowOK:
+				fresh, freshAt, lastErr = now, polledAt, ""
+			}
+		}
+		// Ответ старше трёх опросов (ядро перестало отвечать) не держим:
+		// стрим хотя бы знает, что узел жив.
+		if !freshAt.IsZero() && time.Since(freshAt) < 3*tailnetPollInterval {
+			st, ok = fresh, true
+		}
 		written := writtenExitNode(cfgPath, tag)
-		key := snapKey{view: tailscaleNetworkViewFor(running, live, ok), at: st.ReceivedAt, written: written, haveCtrl: haveCtrl}
+		key := snapKey{view: tailscaleNetworkViewFor(running, live, ok), state: tailscaleNetworkKey(st), written: written, haveCtrl: haveCtrl}
 		if last != nil && *last == key {
 			return
 		}
 		last = &key
 		fyne.Do(func() {
-			box.RemoveAll()
-			buildTailscaleNetwork(cmd, win, box, tag, key.view, st, written, canSave, key.haveCtrl)
-			box.Refresh()
+			var draw func()
+			draw = func() {
+				box.RemoveAll()
+				buildTailscaleNetwork(cmd, win, box, tag, key.view, st, written, canSave, key.haveCtrl,
+					deviceExpand{open: expanded, redraw: draw})
+				box.Refresh()
+			}
+			draw()
 		})
 	}
 	go func() {
 		refresh()
-		t := time.NewTicker(time.Second)
+		t := time.NewTicker(time.Second) // стрим — раз в секунду, запрос — реже (tailnetPollInterval)
 		defer t.Stop()
 		for range t.C {
 			if !windowOpen(win) {
@@ -141,6 +180,40 @@ func tailscaleNetworkTab(ac *core.AppController, win fyne.Window, tag, cfgPath s
 		}
 	}()
 	return withScrollGutter(box)
+}
+
+// tailscaleNetworkKey — показываемое содержимое статуса строкой: ключ
+// перерисовки. Свежий ответ приходит каждые tailnetPollInterval с новым
+// ReceivedAt и бегущими счётчиками — по ним перерисовка закрывала бы открытый
+// список Exit node, поэтому то, чего вкладка не показывает, обнуляется.
+func tailscaleNetworkKey(st services.TailscaleStatus) string {
+	peer := func(p services.TailscalePeer) services.TailscalePeer {
+		p.RxBytes, p.TxBytes, p.Active, p.LastHandshake = 0, 0, false, time.Time{}
+		return p
+	}
+	var self, exit services.TailscalePeer
+	if st.Self != nil {
+		self = peer(*st.Self)
+	}
+	if st.ExitNode != nil {
+		exit = peer(*st.ExitNode)
+	}
+	groups := make([]services.TailscaleUserGroup, len(st.UserGroups))
+	for i, g := range st.UserGroups {
+		groups[i] = g
+		groups[i].Peers = make([]services.TailscalePeer, len(g.Peers))
+		for j, p := range g.Peers {
+			groups[i].Peers[j] = peer(p)
+		}
+	}
+	st.Self, st.ExitNode, st.UserGroups, st.ReceivedAt = nil, nil, nil, time.Time{}
+	return fmt.Sprintf("%+v|%+v|%+v|%+v", st, self, exit, groups)
+}
+
+// deviceExpand — раскрытые адреса устройств и перерисовка вкладки по тапу «+N».
+type deviceExpand struct {
+	open   map[string]bool
+	redraw func()
 }
 
 // tailscaleCommands — команды вкладки, привязанные к ядру окна (область и
@@ -184,7 +257,7 @@ func windowOpen(win fyne.Window) bool {
 }
 
 func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Container, tag string,
-	view tailscaleNetworkView, st services.TailscaleStatus, written string, canSave, haveCtrl bool) {
+	view tailscaleNetworkView, st services.TailscaleStatus, written string, canSave, haveCtrl bool, expand deviceExpand) {
 	ac := cmd.ac
 	note := func(text string) {
 		l := widget.NewLabel(text)
@@ -384,8 +457,11 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 			}
 			box.Add(infoKeyCell(owner))
 		}
-		for _, p := range services.SortDevices(g.Peers) {
-			box.Add(tailscaleDeviceRow(cmd, win, tag, p, haveCtrl))
+		for i, p := range services.SortDevices(g.Peers) {
+			if i > 0 {
+				box.Add(widget.NewSeparator())
+			}
+			box.Add(tailscaleDeviceRow(cmd, win, tag, p, haveCtrl, expand))
 		}
 	}
 }
@@ -407,13 +483,12 @@ func tailscaleDeviceDetails(p services.TailscalePeer) string {
 	return strings.Join(parts, " · ")
 }
 
-// tailscaleDeviceConnection — как подключено (вторая строка): путь из
-// снимка потока (SPEC 158; живой — на вкладке Diagnostics), иначе давность
-// last seen; ключ истёк — туда же. Пусто у устройства в сети, которому ядро
-// ещё не писало.
+// tailscaleDeviceConnection — как подключено (третья строка): путь словами
+// (SPEC 158; знак пути — SVG перед строкой), иначе давность last seen; ключ
+// истёк — туда же. Пусто у устройства в сети, которому ядро ещё не писало.
 func tailscaleDeviceConnection(p services.TailscalePeer, now time.Time) string {
 	parts := make([]string, 0, 2)
-	if path := tailscalePathText(p); path != "" {
+	if path := tailscalePathWords(p); path != "" {
 		parts = append(parts, path)
 	} else if !p.Online && !p.LastSeen.IsZero() {
 		parts = append(parts, locale.Tf("last seen %s ago", humanAge(now.Sub(p.LastSeen))))
@@ -424,30 +499,14 @@ func tailscaleDeviceConnection(p services.TailscalePeer, now time.Time) string {
 	return strings.Join(parts, " · ")
 }
 
-// tailscaleDeviceRow — устройство в две строки, как узел в списке серверов:
-//
-//	●  GL-MT2500   100.104.79.7   linux · exit node        ⋯
-//	   direct 31.184.97.44:41641
-//
-// Подстрока держит высоту и пустой, чтобы список не «дышал», когда у
-// устройства появляется путь. Меню — Copy name, Copy MagicDNS name, Copy
-// address, Ping.
-func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer, haveCtrl bool) fyne.CanvasObject {
-	mark := widget.NewLabel("○")
-	mark.Importance = widget.LowImportance
-	if p.Online {
-		mark.SetText("●")
-		mark.Importance = widget.SuccessImportance
-	}
-	name := widget.NewLabel(p.HostName)
+// tailscaleDeviceRow — устройство строкой списка серверов
+// (tailscalePeerLines) и меню справа: Copy name, Copy MagicDNS name, Copy
+// address (адресов несколько — подменю со всеми), Ping (по первому адресу).
+func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer, haveCtrl bool, expand deviceExpand) fyne.CanvasObject {
 	addr := ""
 	if len(p.TailscaleIPs) > 0 {
 		addr = p.TailscaleIPs[0]
 	}
-	ip := widget.NewLabel(addr)
-	details := widget.NewLabel(tailscaleDeviceDetails(p))
-	details.Importance = widget.LowImportance
-	details.Truncation = fyne.TextTruncateEllipsis
 	dns := strings.TrimSuffix(p.DNSName, ".")
 
 	var more *widget.Button
@@ -458,23 +517,44 @@ func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p se
 		if dns != "" {
 			items = append(items, fyne.NewMenuItem(locale.T("Copy MagicDNS name"), func() { setClipboard(dns) }))
 		}
-		if addr != "" {
+		switch len(p.TailscaleIPs) {
+		case 0:
+		case 1:
 			items = append(items, fyne.NewMenuItem(locale.T("Copy address"), func() { setClipboard(addr) }))
-			if haveCtrl {
-				items = append(items, fyne.NewMenuItem(locale.T("Ping"), func() {
-					showTailscalePing(cmd, win, tag, p.HostName, addr)
-				}))
+		default:
+			sub := make([]*fyne.MenuItem, 0, len(p.TailscaleIPs))
+			for _, ip := range p.TailscaleIPs {
+				ip := ip
+				sub = append(sub, fyne.NewMenuItem(ip, func() { setClipboard(ip) }))
 			}
+			copyAddr := fyne.NewMenuItem(locale.T("Copy address"), nil)
+			copyAddr.ChildMenu = fyne.NewMenu("", sub...)
+			items = append(items, copyAddr)
+		}
+		if addr != "" && haveCtrl {
+			items = append(items, fyne.NewMenuItem(locale.T("Ping"), func() {
+				showTailscalePing(cmd, win, tag, p.HostName, addr)
+			}))
 		}
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(more)
 		widget.NewPopUpMenu(fyne.NewMenu("", items...), win.Canvas()).
 			ShowAtPosition(pos.Add(fyne.NewPos(0, more.Size().Height)))
 	})
 	more.Importance = widget.LowImportance
-	left := container.NewHBox(mark, name, rowGap(12), ip, rowGap(12))
-	top := container.NewBorder(nil, nil, left, more, details)
-	// Подстрока начинается под именем: отступ = знак + зазор HBox.
-	return tailscaleDeviceLines(top, tailscaleDeviceConnection(p, time.Now()), mark.MinSize().Width+theme.Padding())
+
+	id := p.StableID
+	if id == "" {
+		id = p.HostName + "|" + addr
+	}
+	var toggle func()
+	if expand.redraw != nil {
+		toggle = func() {
+			expand.open[id] = !expand.open[id]
+			expand.redraw()
+		}
+	}
+	lines := tailscalePeerLines(p, tailscaleDeviceConnection(p, time.Now()), expand.open[id], toggle)
+	return container.NewBorder(nil, nil, nil, container.NewCenter(more), lines)
 }
 
 // tailscalePingLine — одна строка результата проверки (§7).
