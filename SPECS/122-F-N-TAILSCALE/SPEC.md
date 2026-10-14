@@ -89,7 +89,6 @@ Detour на такой узел не запрещается (пользоват�
 | Ephemeral | check | `ephemeral` |
 | Accept routes | check | `accept_routes` |
 | Exit node | text (пусто = нет) | `exit_node` |
-| Keep local network reachable… | check (только при непустом Exit node) | `exit_node_allow_lan_access` |
 | Advertise this node as an exit node | check | `advertise_exit_node` |
 | Advertise routes | text, CIDR через запятую | `advertise_routes` |
 | ACL tags | text, `tag:имя` через запятую | `advertise_tags` |
@@ -98,10 +97,20 @@ Detour на такой узел не запрещается (пользоват�
 `advertise_exit_node` и непустым `exit_node` разом, и проверка эта живёт в
 `NewEndpoint` — `sing-box check` её не ловит, падает только запуск (ловушка
 chain-check-misses-start-errors). Поэтому форма не даёт собрать такую пару:
-галка «быть выходом» гасит строку «Exit node» вместе с её спутником
-`exit_node_allow_lan_access` (тот и сам по себе не значит ничего — ядро
-применяет его только внутри ветки `if t.exitNode != ""`), и на анонсе
-`exit_node` в тело не пишется, даже если строка осталась заполненной.
+галка «быть выходом» гасит строку «Exit node», и на анонсе `exit_node` в
+тело не пишется, даже если строка осталась заполненной.
+
+**`exit_node_allow_lan_access` в форме нет (поправка 2026-10-14).** Галка
+«Keep local network reachable while using the exit node» была в форме и
+ничего не делала. Ядро кладёт флаг в prefs Tailscale, но форк tailscale
+(`ipn/ipnlocal/local.go`, `routerConfigLocked`) маршрутов выхода и
+«LAN-защиты» в систему не ставит: маршрутизацию ведёт sing-box, а
+`LocalRoutes` никто не заполняет. В узел Tailscale пакет попадает только по
+правилу sing-box, а локальную сеть мимо выхода пускает пресет шаблона
+«Private IPs» (`ip_is_private` → direct). Для исключения на уровне ОС —
+`route_exclude_address` у TUN. Поле остаётся в теле, в реестре и в импорте
+JSON — чужие конфиги не ломаются; формой не пишется. Тот же дефект и то же
+решение у LxBox (§646).
 
 **Маршруты проверяются в форме.** `advertise_routes` — это `[]netip.Prefix`,
 а не строки: мусор оттуда свалил бы разбор всего конфига

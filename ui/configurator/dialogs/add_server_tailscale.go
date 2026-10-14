@@ -50,17 +50,16 @@ func tailscaleTag(raw string) string {
 
 // tailscaleFields — виджеты варианта.
 type tailscaleFields struct {
-	authKey     *widget.Entry
-	controlURL  *widget.Entry
-	hostname    *widget.Entry
-	ephemeral   *widget.Check
-	acceptRts   *widget.Check
-	exitNode    *widget.Entry
-	exitNodeLAN *widget.Check
-	advExit     *widget.Check
-	advRoutes   *widget.Entry
-	advTags     *widget.Entry
-	box         *fyne.Container
+	authKey    *widget.Entry
+	controlURL *widget.Entry
+	hostname   *widget.Entry
+	ephemeral  *widget.Check
+	acceptRts  *widget.Check
+	exitNode   *widget.Entry
+	advExit    *widget.Check
+	advRoutes  *widget.Entry
+	advTags    *widget.Entry
+	box        *fyne.Container
 
 	// exitNodeRow держится отдельно от box, чтобы гасить строку целиком
 	// вместе с её подписью (§ «две роли исключают друг друга» ниже).
@@ -94,7 +93,6 @@ func buildTailscaleFields(onChange func()) *tailscaleFields {
 
 	t.ephemeral = widget.NewCheck(locale.T("Ephemeral node (removed from the tailnet when it goes offline)"), func(bool) { onChange() })
 	t.acceptRts = widget.NewCheck(locale.T("Accept routes advertised by other nodes"), func(bool) { onChange() })
-	t.exitNodeLAN = widget.NewCheck(locale.T("Keep local network reachable while using the exit node"), func(bool) { onChange() })
 
 	// Две роли исключают друг друга: ядро отказывается стартовать с
 	// `advertise_exit_node` и непустым `exit_node` разом (protocol/tailscale
@@ -131,7 +129,6 @@ func buildTailscaleFields(onChange func()) *tailscaleFields {
 		labeledRow(locale.T("Advertise routes"), t.advRoutes),
 		labeledRow(locale.T("ACL tags"), t.advTags),
 		t.exitNodeRow,
-		t.exitNodeLAN,
 		advNote,
 	)
 	t.syncExitRole()
@@ -141,17 +138,18 @@ func buildTailscaleFields(onChange func()) *tailscaleFields {
 
 // syncExitRole разводит две роли узла в tailnet, которые ядро вместе не
 // принимает: «быть выходом» (advertise_exit_node) и «пользоваться чужим
-// выходом» (exit_node). Галка гасит строку чужого выхода и её спутника
-// exit_node_allow_lan_access — тот и сам по себе бессмыслен без exit_node:
-// ядро применяет его только внутри ветки `if t.exitNode != ""`.
+// выходом» (exit_node). Галка гасит строку чужого выхода.
+//
+// Галки `exit_node_allow_lan_access` в форме нет: форк tailscale в ядре
+// маршрутов выхода и «LAN-защиты» не ставит (маршрутизацию ведёт sing-box),
+// и поле на трафик не влияет. Локальную сеть мимо выхода пускает пресет
+// шаблона «Private IPs»; само поле принимается только из JSON.
 func (t *tailscaleFields) syncExitRole() {
 	if t.advExit.Checked {
 		t.exitNodeRow.Hide()
-		t.exitNodeLAN.Hide()
 		return
 	}
 	t.exitNodeRow.Show()
-	t.exitNodeLAN.Show()
 }
 
 // tailscaleDocument собирает документ узла: один endpoint.
@@ -182,11 +180,6 @@ func tailscaleDocument(tag string, t *tailscaleFields) ([]byte, error) {
 		endpoint["advertise_exit_node"] = true
 	} else {
 		putIfNotEmpty(endpoint, "exit_node", t.exitNode.Text)
-		// Связь с exit_node судит реестр (requires у
-		// exit_node_allow_lan_access) — через tailscaleVerdict ниже.
-		if t.exitNodeLAN.Checked {
-			endpoint["exit_node_allow_lan_access"] = true
-		}
 	}
 
 	// Маршруты судит и приводит реестр (контракт 1.1.63, SPEC 142 C9):

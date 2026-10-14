@@ -4040,9 +4040,6 @@
   "Advertise this node as an exit node": {
     "value": "Анонсировать этот узел как выход в интернет"
   },
-  "Keep local network reachable while using the exit node": {
-    "value": "Не заворачивать локальную сеть в чужой выход"
-  },
   "Advertise routes": {
     "value": "Анонс маршрутов"
   },
