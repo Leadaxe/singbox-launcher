@@ -14,6 +14,8 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/widget"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/fynewidget"
@@ -87,9 +89,58 @@ func tailscalePeerLines(p services.TailscalePeer, conn string, expanded bool, on
 	if res := tailscalePathIcon(p.Path); res != nil {
 		icon = tailnetInlineIcon(res)
 	}
-	lines.Add(container.NewBorder(nil, nil, icon, nil, text(truncateSubtitle(conn), serversSubtitleTextSize, dim)))
+	var line3 fyne.CanvasObject = container.NewBorder(nil, nil, icon, nil, text(truncateSubtitle(conn), serversSubtitleTextSize, dim))
+	if tip := tailscalePathTooltip(p); tip != "" {
+		// HBox — зона подсказки по ширине текста, а не всей строки.
+		line3 = container.NewHBox(newTipWrap(line3, tip))
+	}
+	lines.Add(line3)
 
 	return container.NewBorder(nil, nil, container.New(tightVBoxLayout{}, mark), nil, lines)
+}
+
+// tailscalePathTooltip — что значит путь, словами: подсказка у третьей
+// строки устройства. Пусто — пояснять нечего (не в сети, last seen).
+func tailscalePathTooltip(p services.TailscalePeer) string {
+	switch p.Path {
+	case services.TailscalePathDirect:
+		return locale.T("Direct: packets go straight between the devices over UDP, to the address:port shown. The fastest path.")
+	case services.TailscalePathPeerRelay:
+		return locale.T("Peer relay: no direct path, so packets go through another device of your tailnet that relays them. Usually faster than a Tailscale relay server.")
+	case services.TailscalePathDERP:
+		return locale.T("Relay (DERP): no direct path, so packets go through a Tailscale relay server; the code is its region (ams = Amsterdam). Works through any NAT or firewall, but adds latency and limits speed. Tailscale keeps trying to switch to direct.")
+	}
+	if p.Online {
+		return locale.T("Nothing has been sent to this device yet: Tailscale opens the tunnel on the first packet. Ping it from the ⋯ menu to see the path.")
+	}
+	return ""
+}
+
+// tipWrap — подсказка при наведении на произвольное содержимое (canvas.Text
+// и canvas.Image событий мыши не ловят). Механизм тот же, что у ttwidget:
+// слой подсказок окна узла (AddWindowToolTipLayer).
+type tipWrap struct {
+	widget.BaseWidget
+	ttwidget.ToolTipWidgetExtend
+	content fyne.CanvasObject
+}
+
+func newTipWrap(content fyne.CanvasObject, tip string) *tipWrap {
+	w := &tipWrap{content: content}
+	w.ExtendBaseWidget(w)
+	w.SetToolTip(tip)
+	return w
+}
+
+// ExtendBaseWidget поднимает обе базы: без второй подсказка не знает свой
+// объект (требование ToolTipWidgetExtend).
+func (w *tipWrap) ExtendBaseWidget(wd fyne.Widget) {
+	w.BaseWidget.ExtendBaseWidget(wd)
+	w.ExtendToolTipWidget(wd)
+}
+
+func (w *tipWrap) CreateRenderer() fyne.WidgetRenderer {
+	return widget.NewSimpleRenderer(w.content)
 }
 
 // tailnetInlineIconSize — слот значка в мелкой строке: чуть шире высоты,

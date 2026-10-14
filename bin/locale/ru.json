@@ -4118,6 +4118,18 @@
   "no traffic yet": {
     "value": "трафика ещё не было"
   },
+  "Direct: packets go straight between the devices over UDP, to the address:port shown. The fastest path.": {
+    "value": "Напрямую: пакеты идут между устройствами по UDP, на показанный адрес:порт. Самый быстрый путь."
+  },
+  "Peer relay: no direct path, so packets go through another device of your tailnet that relays them. Usually faster than a Tailscale relay server.": {
+    "value": "Peer relay: прямого пути нет, пакеты идут через другое устройство вашей сети, которое их пересылает. Обычно быстрее ретранслятора Tailscale."
+  },
+  "Relay (DERP): no direct path, so packets go through a Tailscale relay server; the code is its region (ams = Amsterdam). Works through any NAT or firewall, but adds latency and limits speed. Tailscale keeps trying to switch to direct.": {
+    "value": "Ретранслятор (DERP): прямого пути нет, пакеты идут через сервер-ретранслятор Tailscale; код — его регион (ams = Амстердам). Проходит любой NAT и файрвол, но добавляет задержку и ограничивает скорость. Tailscale продолжает пытаться перейти на прямой путь."
+  },
+  "Nothing has been sent to this device yet: Tailscale opens the tunnel on the first packet. Ping it from the ⋯ menu to see the path.": {
+    "value": "Этому устройству ещё ничего не отправлялось: Tailscale поднимает туннель по первому пакету. Сделайте Ping из меню ⋯, чтобы увидеть путь."
+  },
   "%ds": {
     "value": "%d с"
   },
