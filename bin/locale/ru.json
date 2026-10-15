@@ -5899,5 +5899,20 @@
   },
   "Used by rule %s: kept in the config while the rule needs it.": {
     "value": "Нужен правилу %s: остаётся в конфиге, пока правило на него ссылается."
+  },
+  "Fill in the rule to see what it adds to the config.": {
+    "value": "Заполните правило, чтобы увидеть, что оно добавит в конфиг."
+  },
+  "Rule set not downloaded yet: the rule stays out of the config until it is.": {
+    "value": "Набор правил ещё не скачан: пока его нет, правило в конфиг не попадает."
+  },
+  "DNS options do not apply to this rule: it has ports, protocols or network, or matches only IP addresses.": {
+    "value": "DNS-настройки к этому правилу не применяются: в нём есть порты, протоколы или network, либо оно только по IP-адресам."
+  },
+  "DNS server %s not found: its DNS rule stays out of the config.": {
+    "value": "DNS-сервер %s не найден: DNS-правило в конфиг не попадёт."
+  },
+  "DNS server %s is turned off: it is kept in the config because this rule uses it.": {
+    "value": "DNS-сервер %s выключен: он останется в конфиге, потому что его использует это правило."
   }
 }

@@ -1107,7 +1107,36 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	formTabItem := container.NewTabItem(locale.T("Form"), formScroll)
 	rawTabItem := container.NewTabItem(locale.T("JSON"), rawScroll)
 	dnsTabItem := container.NewTabItem(locale.T("DNS"), components.WrapInScrollWithGutter(dnsBlock))
-	tabs := container.NewAppTabs(formTabItem, dnsTabItem, rawTabItem)
+
+	// Preview — что правило даёт в конфиге, по секциям (route.rule_set,
+	// route.rules, dns.rules), только для чтения. Строится тем же кодом, что
+	// сборка: запись правила из текущего состояния окна → ResolveRouteWithGlobals
+	// → build.RuleDNSMirrors. Тело для правки — по-прежнему вкладка JSON.
+	previewView := fynewidget.NewJSONView("")
+	previewContent := container.NewBorder(
+		container.NewHBox(layout.NewSpacer(), widget.NewLabel("🔒")),
+		nil, nil, nil,
+		container.NewScroll(previewView.Object()),
+	)
+	previewTabItem := container.NewTabItem(locale.T("Preview"), previewContent)
+	refreshPreview := func() {
+		previewView.SetText(rulePreviewText(model, rulePreviewInput{
+			label:    strings.TrimSpace(labelEntry.Text),
+			outbound: outboundSelect.Selected,
+			raw:      activeTabIsRaw,
+			rawText:  rawTabEntry.Text(),
+			form: func() (map[string]interface{}, []json.RawMessage, error) {
+				return buildRuleRaw(ruleSel.Type(), outboundSelect.Selected)
+			},
+			dns: corestate.CloneRuleDNS(&corestate.RuleDNS{
+				Enabled:   dnsServerCheck.Checked,
+				ServerTag: dnsServerSelect.Selected,
+				ForceIPv4: forceIPv4Check.Checked,
+			}),
+		}))
+	}
+
+	tabs := container.NewAppTabs(formTabItem, dnsTabItem, rawTabItem, previewTabItem)
 	syncFormToRaw := func() {
 		ob := outboundSelect.Selected
 		if ob == "" {
@@ -1212,6 +1241,8 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				activeTabIsRaw = false
 				syncRawToForm()
 			}
+		case previewTabItem:
+			refreshPreview()
 		}
 		updateDNSAvailability()
 	}
@@ -1308,4 +1339,121 @@ func dedupeProcessStrings(items []string) []string {
 		out = append(out, n)
 	}
 	return out
+}
+
+// rulePreviewInput — состояние окна правила для вкладки Preview.
+type rulePreviewInput struct {
+	label    string
+	outbound string
+	raw      bool   // тело — с вкладки JSON (последняя из Form/JSON)
+	rawText  string // текст вкладки JSON
+	form     func() (map[string]interface{}, []json.RawMessage, error)
+	dns      *corestate.RuleDNS
+}
+
+// rulePreviewSection — секция конфига в превью; ключи в порядке конфига.
+type rulePreviewSection struct {
+	RuleSet []interface{} `json:"rule_set,omitempty"`
+	Rules   []interface{} `json:"rules,omitempty"`
+}
+
+// rulePreviewText — что правило даёт в конфиге: route.rule_set, route.rules и
+// DNS-зеркала (SPEC 172), с пояснениями строками `//` над JSON — набор не
+// скачан, сервер зеркала выключен или не найден, опция DNS не применима.
+// Запись правила собирается так же, как при Save (EmitStateRulesWithoutOrder),
+// маршрут и зеркала — кодом сборки.
+func rulePreviewText(model *wizardmodels.WizardModel, in rulePreviewInput) string {
+	var body map[string]interface{}
+	var ruleSets []json.RawMessage
+	if in.raw {
+		if json.Unmarshal([]byte(strings.TrimSpace(in.rawText)), &body) != nil {
+			body = nil
+		}
+	} else if b, rs, err := in.form(); err == nil {
+		body, ruleSets = b, rs
+	}
+	outbound := in.outbound
+	if outbound == "" {
+		outbound = wizardmodels.DefaultOutboundTag
+	}
+	rs := &wizardmodels.RuleState{
+		Rule:             wizardtemplate.TemplateSelectableRule{Label: in.label, Rule: body, RuleSets: ruleSets, HasOutbound: true},
+		Enabled:          true,
+		SelectedOutbound: outbound,
+		DNS:              in.dns,
+	}
+	rules := wizardmodels.EmitStateRulesWithoutOrder(nil, []*wizardmodels.RuleState{rs})
+	if body == nil || len(rules) == 0 {
+		return "// " + locale.T("Fill in the rule to see what it adds to the config.")
+	}
+
+	srsCached := build.CollectSrsCachedPaths(rules, model.DataDir, model.ResourceDir)
+	route := build.ResolveRouteWithGlobals(&corestate.State{Rules: rules}, &wizardtemplate.TemplateData{}, model.DataDir, srsCached, model.Target, nil)
+
+	var notes []string
+	routeSec := &rulePreviewSection{}
+	for _, r := range route.RuleSets {
+		if r.Skipped {
+			notes = append(notes, locale.T("Rule set not downloaded yet: the rule stays out of the config until it is."))
+			continue
+		}
+		routeSec.RuleSet = append(routeSec.RuleSet, r.Body)
+	}
+	for _, r := range route.Rules {
+		routeSec.Rules = append(routeSec.Rules, r.Body)
+	}
+
+	dnsSec := &rulePreviewSection{}
+	mirrors := build.RuleDNSMirrors(route)
+	if !in.dns.IsZero() && len(route.Rules) > 0 && len(mirrors) == 0 {
+		notes = append(notes, locale.T("DNS options do not apply to this rule: it has ports, protocols or network, or matches only IP addresses."))
+	}
+	enabled := make(map[string]bool)
+	for _, t := range wizardbusiness.DNSEnabledTagOptions(model) {
+		enabled[t] = true
+	}
+	present := func(tag string) bool {
+		for _, raw := range model.DNSServers {
+			var m map[string]interface{}
+			if json.Unmarshal(raw, &m) == nil && m["tag"] == tag {
+				return true
+			}
+		}
+		return false
+	}
+	for _, m := range mirrors {
+		for _, r := range m.Rules {
+			if r["server"] != nil && !enabled[m.ServerTag] {
+				if !present(m.ServerTag) {
+					notes = append(notes, fmt.Sprintf(locale.T("DNS server %s not found: its DNS rule stays out of the config."), m.ServerTag))
+					continue
+				}
+				notes = append(notes, fmt.Sprintf(locale.T("DNS server %s is turned off: it is kept in the config because this rule uses it."), m.ServerTag))
+			}
+			dnsSec.Rules = append(dnsSec.Rules, r)
+		}
+	}
+
+	out := struct {
+		Route *rulePreviewSection `json:"route,omitempty"`
+		DNS   *rulePreviewSection `json:"dns,omitempty"`
+	}{}
+	if len(routeSec.RuleSet) > 0 || len(routeSec.Rules) > 0 {
+		out.Route = routeSec
+	}
+	if len(dnsSec.Rules) > 0 {
+		out.DNS = dnsSec
+	}
+	if out.Route == nil && out.DNS == nil && len(notes) > 0 {
+		return "// " + strings.Join(notes, "\n// ")
+	}
+	b, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return "// " + err.Error()
+	}
+	text := string(b)
+	if len(notes) > 0 {
+		text = "// " + strings.Join(notes, "\n// ") + "\n\n" + text
+	}
+	return text
 }

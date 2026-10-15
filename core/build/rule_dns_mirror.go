@@ -106,6 +106,34 @@ func collectRuleDNSMirrors(route ResolvedRoute) []ruleDNSMirror {
 	return out
 }
 
+// RuleDNSMirror — DNS-правила одного маршрутного правила для показа (вкладка
+// Preview окна правила): глушилка AAAA и/или зеркало, в порядке выпуска.
+// ServerTag — тег сервера зеркала; есть ли он в конфиге, решает сборка.
+type RuleDNSMirror struct {
+	Rules     []map[string]interface{}
+	ServerTag string
+}
+
+// RuleDNSMirrors — зеркала выпущенных правил разрешённого маршрута тем же
+// кодом, что у сборки (collectRuleDNSMirrors), в порядке оси.
+func RuleDNSMirrors(route ResolvedRoute) []RuleDNSMirror {
+	var out []RuleDNSMirror
+	for _, m := range collectRuleDNSMirrors(route) {
+		var v RuleDNSMirror
+		if m.ForceIPv4 != nil {
+			v.Rules = append(v.Rules, m.ForceIPv4)
+		}
+		if m.Server != nil {
+			body := cloneDNSRuleMap(m.Server)
+			body["server"] = m.ServerTag
+			v.Rules = append(v.Rules, body)
+			v.ServerTag = m.ServerTag
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
 // ruleDNSMirrorsForMerge — зеркала правил контекста сборки. Маршрут
 // разрешается здесь же (как в MergePresetsIntoRoute) только когда хоть одно
 // правило несёт опцию: без неё сборка DNS остаётся прежней.
