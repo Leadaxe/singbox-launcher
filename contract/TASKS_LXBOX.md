@@ -9420,25 +9420,25 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 
 ### 3. Пресет `tunnel-ingress` (§6.5.2)
 
-Тело одинаковое на обеих сторонах, оболочка — в вашем диалекте (D-046: `preset_id`, `ui{}`, `vars[].default_value`). Тело в форме лаунчера, перенести символ в символ (кроме оболочки; `"default": "proxy-out"` у вас — `"default_value": "proxy-out"`):
+Тело одинаковое на обеих сторонах, оболочка — в вашем диалекте (D-046: `preset_id`, `ui{}`, `vars[].default_value`). Тело в форме лаунчера, перенести символ в символ (кроме оболочки; `"default"` у вас — `"default_value"`). Тело поправлено по месту контрактом 1.1.129 (§126): Tailscale выведен, списки служебные, форма — три настройки:
 
 ```json
 {
   "id": "tunnel-ingress",
   "label": "Tunnel ingress",
-  "description": "Connections arriving from a client tunnel (WireGuard, AWG, OpenVPN, OpenConnect) are rejected unless the node's own switches allow them: access to this device, the local network, or using this device as a gateway. The lists below are filled from those switches; add tags by hand to extend them.",
+  "description": "Connections arriving from a client tunnel (WireGuard, AWG, OpenVPN, OpenConnect) are rejected unless the node's own switches allow them: access to this device, the local network, or using this device as a gateway. The settings below choose what happens to the rest and where allowed and gateway traffic goes.",
   "default_enabled": true,
   "num": 940,
   "vars": [
-    { "name": "all_nodes", "type": "text_list", "unique": true, "title": "Tunnel endpoints",
-      "tooltip": "Every client tunnel endpoint in the config. Anything from them not allowed below is rejected." },
-    { "name": "allow_local_nodes", "type": "text_list", "unique": true, "title": "May reach this device",
-      "tooltip": "Peers of these endpoints reach services on this device's tunnel address. The service sees them as 127.0.0.1." },
-    { "name": "allow_lan_nodes", "type": "text_list", "unique": true, "title": "May reach the local network",
-      "tooltip": "Peers of these endpoints reach private networks behind this device." },
-    { "name": "allow_gateway_nodes", "type": "text_list", "unique": true, "title": "May use this device as a gateway",
-      "tooltip": "Peers of these endpoints route everything else through the outbound chosen below." },
-    { "name": "closed_nodes", "type": "text_list", "wizard_ui": "internal" },
+    { "name": "all_nodes",           "type": "text_list", "wizard_ui": "internal" },
+    { "name": "allow_local_nodes",   "type": "text_list", "wizard_ui": "internal" },
+    { "name": "allow_lan_nodes",     "type": "text_list", "wizard_ui": "internal" },
+    { "name": "allow_gateway_nodes", "type": "text_list", "wizard_ui": "internal" },
+    { "name": "closed_nodes",        "type": "text_list", "wizard_ui": "internal" },
+    { "name": "closed_out", "type": "outbound", "default": "reject", "title": "Incoming from tunnels",
+      "tooltip": "What happens to connections arriving from a tunnel that the node's switches did not allow. reject (default) and drop close them; an outbound forwards them." },
+    { "name": "allowed_out", "type": "outbound", "default": "direct-out", "title": "Device and local network go to",
+      "tooltip": "Outbound for peers allowed to reach this device or the local network." },
     { "name": "gateway_out", "type": "outbound", "default": "proxy-out", "title": "Gateway traffic goes to",
       "tooltip": "Outbound for peers allowed to use this device as a gateway." }
   ],
@@ -9453,13 +9453,14 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
     }
   },
   "rules": [
-    { "#if": [{ "@allow_local_nodes": "#notEmpty" },   { "inbound": "@allow_local_nodes",   "ip_cidr": ["127.0.0.0/8", "::1/128"], "outbound": "direct-out" }] },
-    { "#if": [{ "@allow_lan_nodes": "#notEmpty" },     { "inbound": "@allow_lan_nodes",     "ip_is_private": true, "outbound": "direct-out" }] },
+    { "#if": [{ "@allow_local_nodes": "#notEmpty" },   { "inbound": "@allow_local_nodes",   "ip_cidr": ["127.0.0.0/8", "::1/128"], "outbound": "@allowed_out" }] },
+    { "#if": [{ "@allow_lan_nodes": "#notEmpty" },     { "inbound": "@allow_lan_nodes",     "ip_is_private": true, "outbound": "@allowed_out" }] },
     { "#if": [{ "@allow_gateway_nodes": "#notEmpty" }, { "inbound": "@allow_gateway_nodes", "outbound": "@gateway_out" }] },
-    { "#if": [{ "@all_nodes": "#notEmpty" },           { "inbound": "@all_nodes",           "action": "reject" }] }
+    { "#if": [{ "@all_nodes": "#notEmpty" },           { "inbound": "@all_nodes",           "outbound": "@closed_out" }] }
   ],
   "dns_rules": [
-    { "#if": [{ "@closed_nodes": "#notEmpty" }, { "inbound": "@closed_nodes", "action": "reject" }] }
+    { "#if": [{ "#and": [{ "@closed_nodes": "#notEmpty" }, { "@closed_out": { "#in": ["reject", "drop"] } }] },
+              { "inbound": "@closed_nodes", "action": "reject" }] }
   ]
 }
 ```
@@ -9467,27 +9468,30 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 Что важно при переносе:
 
 - **Позиция на оси правил — сразу после запертой головы** (ваш `traffic-processing`, `num: 0`) и **раньше** `tailscale` (945) и `private-ip` (ваш id; 950 у лаунчера): иначе «private → direct» пропустит пира в LAN, а `preferred_by` пресета `tailscale` — в tailnet. Нетерминальные `sniff`/`resolve` головы ничего не решают, терминальный `hijack-dns` закрывает DNS-правило пресета.
-- **DNS-reject — по `closed_nodes`, а не по `all_nodes`**: пир шлюза обязан резолвить имена, а `hijack-dns` перехватит даже его запрос к внешнему DNS. Порядок DNS-правил: правило пресета должно стоять раньше «ловящих всё» DNS-правил (например `query_type: A/AAAA → fakeip`), иначе reject не сработает. Место слота — по оси маршрутного правила: норма §6.10, контракт 1.1.127, **§124 ниже** (у лаунчера до 1.1.127 слот вставал в хвост).
+- **DNS-reject — по `closed_nodes`, а не по `all_nodes`**: пир шлюза обязан резолвить имена, а `hijack-dns` перехватит даже его запрос к внешнему DNS. И только при `closed_out` ∈ {`reject`, `drop`} (условие `#and` в теле): если закрытый трафик направлен в outbound, DNS пирам не режется. Порядок DNS-правил: правило пресета должно стоять раньше «ловящих всё» DNS-правил (например `query_type: A/AAAA → fakeip`), иначе reject не сработает. Место слота — по оси маршрутного правила: норма §6.10, контракт 1.1.127, **§124 ниже** (у лаунчера до 1.1.127 слот вставал в хвост).
 - **`#notEmpty` на каждом правиле обязателен**: без него пустой список у пользователя без туннельных узлов даёт правило без условий → `template_fragment_dropped` и деградацию в отчёте у всех. С ним правило снимается молча (кейс `tunnel_ingress_no_nodes`).
-- **Списки — переменные пресета:** у четырёх видимых ввод пользователя — база, собранное `#do` добавляется на время сборки, `unique` снимает дубли (§6.7.3); собранное **не персистится**, в состояние и бэкап уходит только ввод. `closed_nodes` — `wizard_ui: internal` (§2.1): в форме не показывается, значение из состояния/бэкапа игнорируется, не экспортируется.
+- **Списки — служебные переменные пресета** (все пять `wizard_ui: internal`, §2.1, с 1.1.129): в форме не показываются, ручного ввода тегов нет, значение из состояния/бэкапа игнорируется, не экспортируется; заполняет их только `#do`, собранное не персистится.
+- **Форма — три настройки** (1.1.129): `closed_out` (по умолчанию `reject`), `allowed_out` (`direct-out`), `gateway_out` (`proxy-out`). Значения `reject` / `drop` переменной `outbound` — сентинелы, как у `block-ads`: правило `{"inbound": [...], "outbound": "reject"}` уходит в конфиг как `{"inbound": [...], "action": "reject"}`, `drop` — `"action": "reject", "method": "drop"`.
 - **Правило без `network`** отбрасывает и ICMP — намеренно.
-- `gateway_out` по умолчанию `proxy-out` (как `route.final`): пир шлюза едет в выбранный outbound, минуя остальные правила.
+- `gateway_out` по умолчанию `proxy-out` (как `route.final`): пир шлюза едет в выбранный outbound, минуя остальные правила; `allowed_out` по умолчанию `direct-out`.
 - Пространство тегов `<preset_id>:` (§6.2) у `for_each_node_do` действует, но значения `inbound` — теги узлов, а не теги пресета: префикс к ним не применяется (корпус сравнивает литералы).
 - WG с `system: true` (кернельный интерфейс) пресет не защищает — там решает ОС, правило просто не срабатывает.
 - **Поздний дефолт** (§6.7.5): пресет включён по умолчанию и у существующих пользователей появляется сам, один раз; удалённый пользователем — не возвращается. Добавьте `tunnel-ingress` в `kLateDefaultPresetIds` (лаунчер: `LateDefaultPresetIDs = ["tailscale", "tunnel-ingress"]`).
 - `registry/presets.json`: `tunnel-ingress` объявлен `in: desktop` до вашей реализации; после неё — сообщите, переведём в `both` (ссылка `{kind: preset, ref: tunnel-ingress}` станет переносимой).
 
-Итог для узлов `wg-home` (WireGuard, без полей), `oc-work` (OpenConnect, `allow_local` + `allow_lan`), `ts` (Tailscale, `allow_gateway` — не учитывается, 1.1.129), `wg-exit` (WireGuard, `allow_gateway`), `v1` (VLESS, `allow_lan` — не туннель, не учитывается) и ручного тега `manual-wg` в «Tunnel endpoints»:
+Итог для узлов `wg-home` (WireGuard, без полей), `oc-work` (OpenConnect, `allow_local` + `allow_lan`), `ts` (Tailscale, `allow_gateway` — не учитывается, 1.1.129), `wg-exit` (WireGuard, `allow_gateway`), `v1` (VLESS, `allow_lan` — не туннель, не учитывается), настройки по умолчанию:
 
 ```json
 "route.rules": [
   { "inbound": ["oc-work"], "ip_cidr": ["127.0.0.0/8", "::1/128"], "outbound": "direct-out" },
   { "inbound": ["oc-work"], "ip_is_private": true, "outbound": "direct-out" },
   { "inbound": ["wg-exit"], "outbound": "proxy-out" },
-  { "inbound": ["manual-wg", "wg-home", "oc-work", "wg-exit"], "action": "reject" }
+  { "inbound": ["wg-home", "oc-work", "wg-exit"], "action": "reject" }
 ]
 "dns.rules": [ { "inbound": ["wg-home", "oc-work"], "action": "reject" } ]
 ```
+
+С `closed_out: proxy-out` последнее правило — `{ "inbound": ["wg-home", "oc-work", "wg-exit"], "outbound": "proxy-out" }`, DNS-правила нет.
 
 ### Что сделать LxBox
 
@@ -9500,7 +9504,7 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 ### Корпус — критерий паритета (обязателен)
 
 - `corpus/template/for_each_node/*` и `corpus/template/for_each_node_do/do_if_*`: поле `nodes[].skip_presets` → `nodes[].skip_tailscale_presets`, фильтры `@node.skip_presets` → `@node.skip_tailscale_presets`; ожидания не менялись. Формат `nodes[]` в README корпуса: `{tag, body, enabled?, in_config?, skip_tailscale_presets?, allow_local?, allow_lan?, allow_gateway?}` — раннер кладёт поля записи в пространство узла.
-- Новые: `for_each_node_do/tunnel_ingress_mixed` (тело §6.5.2 в форме ядра — `default_value` вместо `default`, без оболочки; узлы `wg-home`, `oc-work`, `ts`, `wg-exit`, `v1`; `vars.json` — `{"all_nodes": "manual-wg"}`; ожидание — четыре правила и DNS-правило выше, `manual-wg` первым в `all_nodes`, `ts` нигде нет, `warnings` пусты) и `for_each_node_do/tunnel_ingress_no_nodes` (один узел VLESS, ввода нет — `rules`, `dns_rules` пусты, `warnings` пусты: каждое правило снято своим `#notEmpty`, без `template_fragment_dropped`).
+- Новые: `for_each_node_do/tunnel_ingress_mixed` (тело §6.5.2 в форме ядра — `default_value` вместо `default`, без оболочки; узлы `wg-home`, `oc-work`, `ts`, `wg-exit`, `v1`; `vars.json` — `{}`; ожидание — четыре правила и DNS-правило выше, `ts` нигде нет, `warnings` пусты), `for_each_node_do/tunnel_ingress_closed_out_forwarded` (те же узлы, `vars.json` — `{"closed_out": "proxy-out"}`; последнее правило с `outbound`, DNS-правил нет) и `for_each_node_do/tunnel_ingress_no_nodes` (один узел VLESS, ввода нет — `rules`, `dns_rules` пусты, `warnings` пусты: каждое правило снято своим `#notEmpty`, без `template_fragment_dropped`).
 - Бэкап-корпус не менялся: старый ключ в существующих фикстурах `corpus/backup/` не встречается; терпимое чтение проверяйте своим тестом (у лаунчера — `TestLoadLegacySkipPresetsKey` в состоянии и в импорте).
 
 Расхождение — сюда.
@@ -9533,9 +9537,9 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 
 Расхождение — сюда.
 
-## 126. Контракт 1.1.129 — Tailscale выведен из `tunnel-ingress`
+## 126. Контракт 1.1.129 — Tailscale выведен из `tunnel-ingress`; форма пресета — три настройки
 
-Решение владельца 15.10.2026 (SPEC 170 лаунчера, изменение; D-136). Норма — `docs/TEMPLATE_LANG.md` §6.5.2 (абзац «Почему без Tailscale», тело пресета), `docs/BACKUP.md` и `schema/backup.schema.json` (описания `allow_*`), `registry/presets.json` (note). Тело пресета и итог кейса в **§123** поправлены по месту — переносите оттуда.
+Решения владельца 15.10.2026 (SPEC 170 лаунчера, изменение; D-136). Норма — `docs/TEMPLATE_LANG.md` §6.5.2 (абзац «Почему без Tailscale», тело пресета), `docs/BACKUP.md` и `schema/backup.schema.json` (описания `allow_*`), `registry/presets.json` (note). Тело пресета и итог кейса в **§123** поправлены по месту — переносите оттуда.
 
 ### Почему
 
@@ -9546,6 +9550,21 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 - `#filter` пресета `tunnel-ingress`: `{"@node.body.type": {"#in": ["wireguard", "openvpn-client", "openconnect"]}}`; в `description` — «(WireGuard, AWG, OpenVPN, OpenConnect)».
 - Тумблеры `allow_local` / `allow_lan` / `allow_gateway` у узла `tailscale` не показываются (подсказка про `advertise_routes` у Tailscale снята). Значения, если уже стоят в записи, **остаются** (хранилище, экспорт/импорт бэкапа как прежде), обход их у `tailscale` просто не читает — фильтр узел не берёт.
 - `skip_tailscale_presets` и пресет `tailscale` — без изменений.
-- Корпус: `for_each_node_do/tunnel_ingress_mixed` — узел `ts` (tailscale, `allow_gateway`) оставлен как доказательство исключения, добавлен `wg-exit` (wireguard, `allow_gateway`): правило шлюза `{"inbound": ["wg-exit"], "outbound": "proxy-out"}`, reject по `["manual-wg", "wg-home", "oc-work", "wg-exit"]`, DNS-reject по `["wg-home", "oc-work"]`; `tunnel_ingress_no_nodes` — фильтр в теле, ожидание то же. Оба кейса — критерий паритета.
+
+### Форма пресета: настройки вместо списков
+
+В форме пресета пользователь не видит заполняемые списки — только настройки по умолчанию.
+
+- Все пять списков (`all_nodes`, `allow_local_nodes`, `allow_lan_nodes`, `allow_gateway_nodes`, `closed_nodes`) — `wizard_ui: "internal"`, без `unique` (`#append` по тегам узлов дублей не даёт). Ручного ввода тегов больше нет; значение из хранилища/бэкапа у internal игнорируется (D-132).
+- Видимы ровно три переменные `outbound`, в таком порядке: `closed_out` (по умолчанию `reject`, «Incoming from tunnels»), `allowed_out` (`direct-out`, «Device and local network go to»), `gateway_out` (`proxy-out`, «Gateway traffic goes to»); тексты подсказок — в теле §123.
+- Правила: loopback и LAN разрешённых — в `@allowed_out` (было `direct-out`); шлюз — `@gateway_out`; всё прочее из туннеля — `{"inbound": "@all_nodes", "outbound": "@closed_out"}` (было `"action": "reject"`). Сентинелы `reject` / `drop` переменной `outbound` превращаются в action, как у `block-ads`: при значении по умолчанию в конфиге `"action": "reject"`.
+- DNS-правило — под `#and` из `{"@closed_nodes": "#notEmpty"}` и `{"@closed_out": {"#in": ["reject", "drop"]}}`: если закрытый трафик куда-то направлен, DNS пирам не режется.
+- `description` переписан: без списков и ручных тегов, о трёх настройках одной фразой.
+
+### Корпус
+
+- `for_each_node_do/tunnel_ingress_mixed` — узел `ts` (tailscale, `allow_gateway`) оставлен как доказательство исключения, добавлен `wg-exit` (wireguard, `allow_gateway`); `vars.json` — `{}` (ручного `manual-wg` нет): правило шлюза `{"inbound": ["wg-exit"], "outbound": "proxy-out"}`, reject по `["wg-home", "oc-work", "wg-exit"]` (`"action": "reject"`), DNS-reject по `["wg-home", "oc-work"]`.
+- Новый `for_each_node_do/tunnel_ingress_closed_out_forwarded` — те же узлы, `{"closed_out": "proxy-out"}`: последнее правило `{"inbound": ["wg-home", "oc-work", "wg-exit"], "outbound": "proxy-out"}`, `dns_rules` пуст.
+- `tunnel_ingress_no_nodes` — новое тело, ожидание то же. Все три кейса — критерий паритета.
 
 Расхождение — сюда.

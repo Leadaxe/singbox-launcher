@@ -65,13 +65,14 @@
 
 `go build ./...`; `gofmt -l` по изменённым файлам пусто; по имени: `go test ./core/template -run 'TestContractCorpusTemplate'`, `go test ./core/build -run 'TestContractCorpusNodeLoops|TestWizardTemplateConfigUnchanged|TestGoldenScenarios'`, `go test ./core/state -run 'TestLoadLegacySkipPresetsKey'`, `go test ./core/backup -run 'TestLoadLegacySkipPresetsKey'` — зелёные. `go generate ./contract/...`. В новом коде нет builtin `min`/`max`, `slices`, `maps` (Win7). UI тестами не покрыт — показ владельцу. Полный прогон — CI `run_mode=tests`: run [38793036404](https://github.com/Leadaxe/singbox-launcher/actions/runs/38793036404) на коммите `d0e96ebd` — **success** (Test ubuntu / macOS / Windows).
 
-## Дополнение 15.10.2026 — Tailscale выведен из пресета (контракт 1.1.129, D-136)
+## Дополнение 15.10.2026 — Tailscale выведен из пресета, форма — три настройки (контракт 1.1.129, D-136)
 
 Решение владельца (SPEC §«Изменение 15.10.2026»): `#filter` пресета `tunnel-ingress` — три типа (`wireguard`, `openvpn-client`, `openconnect`), `description` — «(WireGuard, AWG, OpenVPN, OpenConnect)». Пиров tailnet ограничивают ACL Tailscale и фильтр control-plane (наши адреса и явно анонсированное `advertise_routes` / `advertise_exit_node`); reject по умолчанию отрезал бы устройства пользователя от этой машины.
 
-- **Код и шаблон.** `bin/wizard_template.json` (фильтр, описание); `ui/configurator/tabs/source_tunnel_access.go` — `tunnelIngressTypes` без `tailscale`, подсказка про `advertise_*` и её константа сняты, ключ снят из `bin/locale/ru.json` (`l10n_check --strict` чистый).
+- **Форма пресета (второе решение владельца того же дня).** Пять списков — `wizard_ui: internal` без `unique`, ручного ввода тегов нет; видимы ровно три `outbound`: `closed_out` (`reject`), `allowed_out` (`direct-out`), `gateway_out` (`proxy-out`). Правила loopback/LAN — в `@allowed_out`, остальное — `{"inbound": "@all_nodes", "outbound": "@closed_out"}`; сентинел `reject` превращает `preset_expand.go` (`outboundutil.ApplyOutboundToRule` после подстановки) — в конфиге и в корпусе `"action": "reject"`. DNS-правило под `#and` с `{"@closed_out": {"#in": ["reject", "drop"]}}`. `description` — о трёх настройках. Код форм не менялся: internal-переменные форма скрывает с SPEC 166.
+- **Код и шаблон.** `bin/wizard_template.json` (фильтр, описание, переменные, правила); `ui/configurator/tabs/source_tunnel_access.go` — `tunnelIngressTypes` без `tailscale`, подсказка про `advertise_*` и её константа сняты, ключ снят из `bin/locale/ru.json` (`l10n_check --strict` чистый).
 - **Контракт.** `VERSION` → 1.1.129, строка changelog в `contract/README.md`; `TEMPLATE_LANG.md` §6.5.2 (заголовок, «Задача», абзац «Почему без Tailscale», тело, итог кейса) и строка D-136 в §9; `BACKUP.md` и `schema/backup.schema.json` — описания `allow_*`; `registry/presets.json` — note; `TASKS_LXBOX.md` §123 по месту (зачем, тумблеры у трёх типов, тело, итог, корпус-критерий) и новый §126; `go generate ./contract/...` (index.md подтянул версию).
-- **Корпус.** `tunnel_ingress_mixed`: `ts` оставлен, добавлен `wg-exit` (wireguard, `allow_gateway`) между `ts` и `v1`; ожидание — шлюз `["wg-exit"]`, reject `["manual-wg", "wg-home", "oc-work", "wg-exit"]`, DNS-reject `["wg-home", "oc-work"]`. `tunnel_ingress_no_nodes` — фильтр в теле, ожидание прежнее.
+- **Корпус.** Тело всех трёх кейсов собрано из шаблона (`default` → `default_value`, без оболочки). `tunnel_ingress_mixed`: `ts` оставлен, добавлен `wg-exit` (wireguard, `allow_gateway`) между `ts` и `v1`, `vars.json` — `{}`; ожидание — шлюз `["wg-exit"]`, reject `["wg-home", "oc-work", "wg-exit"]` (`action: reject`), DNS-reject `["wg-home", "oc-work"]`. Новый `tunnel_ingress_closed_out_forwarded` (`{"closed_out": "proxy-out"}`: последнее правило `outbound: proxy-out`, `dns_rules` пуст). `tunnel_ingress_no_nodes` — новое тело, ожидание прежнее.
 - **Доки.** `docs/TEMPLATE_REFERENCE.md` + `.ru.md` §4.5.1, `docs/release_notes/upcoming.md` (EN/RU), `RELEASE_NOTES.md` (черновик).
 
 Решения по умолчанию:
@@ -81,6 +82,10 @@
 - **Строка §9 TEMPLATE_LANG (D-136)** добавлена, хотя задача называла только пометку в §6.5.2: таблица решений — единый перечень D-NNN нормы.
 - **§6.5.2 «`num: 940` … раньше `tailscale` (945)»** оставлено: `preferred_by` пресета `tailscale` по-прежнему пропустил бы пира WG/OpenVPN/OpenConnect в tailnet.
 - **Строки `docs/ARCHITECTURE.md`** не менялись: там типы не перечислены.
+- **`unique` у служебных списков снят** (бриф разрешал): ввода нет, `#append` по тегам узлов дублей не даёт.
+- **`description`:** «The settings below choose what happens to the rest and where allowed and gateway traffic goes.» — одна фраза о трёх настройках вместо фразы о списках.
+- **Строки шаблона не локализуются** (`title`/`tooltip` пресетов в `ru.json` не заводятся — как у остальных пресетов).
+- **Сохранённый ввод старых видимых списков** у тех, кто собирал develop, игнорируется (internal, D-132) — миграции нет, пресет в релиз не выходил.
 - **Миграции нет:** `allow_*` у Tailscale-узла остаются в записи, ничего не открывают и не закрывают; пресет `tunnel-ingress` в релизе ещё не выходил.
 
-Проверки: `go build ./...`; `go test ./core/template -run TestContractCorpusTemplate`, `go test ./core/build -run 'TestContractCorpusNodeLoops|TestWizardTemplateConfigUnchanged|TestGoldenScenarios|TestLatePresetDNSRuleTakesAxisPosition'` — зелёные, golden без правки.
+Проверки: `go build ./...`; `go test ./core/template -run TestContractCorpusTemplate`, `go test ./core/build -run 'TestContractCorpusNodeLoops|TestWizardTemplateConfigUnchanged|TestGoldenScenarios|TestLatePresetDNSRuleTakesAxisPosition'` — зелёные, golden без правки (в эталонах нет endpoint-узлов); `TestLatePresetDNSRuleTakesAxisPosition` на боевом шаблоне подтверждает DNS-reject при `closed_out` по умолчанию.

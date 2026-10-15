@@ -143,7 +143,7 @@
 
 ---
 
-## Изменение 15.10.2026 (контракт 1.1.129): Tailscale исключён
+## Изменение 15.10.2026 (контракт 1.1.129): Tailscale исключён; форма пресета — три настройки
 
 Решение владельца 15.10.2026, D-136. Пресет `tunnel-ingress` обслуживает `wireguard` (и AWG), `openvpn-client`, `openconnect`; `tailscale` из `#filter` и из `description` снят.
 
@@ -152,4 +152,16 @@
 - Переключатели `allow_local` / `allow_lan` / `allow_gateway` у узла Tailscale не показываются, подсказка про `advertise_*` снята вместе с ключом локали. Значения, если уже стоят в записи, остаются в ней (состояние, бэкап); обход их у `tailscale` не читает — узел не проходит `#filter`.
 - `skip_tailscale_presets` и пресет `tailscale` — без изменений.
 - Норма: `TEMPLATE_LANG.md` §6.5.2 (абзац «Почему без Tailscale», тело, итог кейса), §9 (D-136); `BACKUP.md`, `schema/backup.schema.json` (описания `allow_*`); `registry/presets.json` (note); `TASKS_LXBOX.md` §123 по месту и §126.
-- Корпус `for_each_node_do/tunnel_ingress_mixed`: узел `ts` (tailscale, `allow_gateway`) оставлен доказательством исключения, добавлен `wg-exit` (wireguard, `allow_gateway`) — правило шлюза по нему; `all_nodes` = `manual-wg`, `wg-home`, `oc-work`, `wg-exit`; DNS-reject — `wg-home`, `oc-work`. `tunnel_ingress_no_nodes` — фильтр в теле, ожидание прежнее.
+
+### Форма пресета: настройки вместо списков (решение владельца 15.10.2026, тот же контракт)
+
+В форме пресета не видны заполняемые списки — вместо них настройки по умолчанию.
+
+1. Все пять списков (`all_nodes`, `allow_local_nodes`, `allow_lan_nodes`, `allow_gateway_nodes`, `closed_nodes`) — `wizard_ui: "internal"`, `unique` снят (`#append` по тегам узлов дублей не даёт). Ручного ввода тегов больше нет.
+2. Видимые переменные, ровно три, в таком порядке: `closed_out` (outbound, по умолчанию `reject`, «Incoming from tunnels»), `allowed_out` (outbound, `direct-out`, «Device and local network go to»), `gateway_out` (outbound, `proxy-out`, «Gateway traffic goes to»).
+3. Правила: loopback и LAN разрешённых — `"outbound": "@allowed_out"`; шлюз — `@gateway_out`; остальное — `{"inbound": "@all_nodes", "outbound": "@closed_out"}`, сентинелы `reject`/`drop` превращаются в action (`outboundutil.ApplyOutboundToRule` при раскрытии пресета): по умолчанию в конфиге `"action": "reject"`. DNS-правило — под `#and` из `{"@closed_nodes": "#notEmpty"}` и `{"@closed_out": {"#in": ["reject", "drop"]}}`: если закрытый трафик куда-то направлен, DNS пирам не режется.
+4. `description` — без списков и ручных тегов, о трёх настройках одной фразой.
+
+Тело целиком — `TEMPLATE_LANG.md` §6.5.2 (раздел 2.3 выше — состояние на 1.1.126).
+
+- Корпус `for_each_node_do/tunnel_ingress_mixed`: узел `ts` (tailscale, `allow_gateway`) оставлен доказательством исключения, добавлен `wg-exit` (wireguard, `allow_gateway`) — правило шлюза по нему; ручного `manual-wg` больше нет (`vars.json` — `{}`); `all_nodes` = `wg-home`, `oc-work`, `wg-exit`; DNS-reject — `wg-home`, `oc-work`. Новый `tunnel_ingress_closed_out_forwarded` (`closed_out: proxy-out` — последнее правило с outbound, DNS-правила нет). `tunnel_ingress_no_nodes` — новое тело, ожидание прежнее.

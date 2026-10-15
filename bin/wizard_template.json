@@ -1176,42 +1176,48 @@
   {
    "id": "tunnel-ingress",
    "label": "Tunnel ingress",
-   "description": "Connections arriving from a client tunnel (WireGuard, AWG, OpenVPN, OpenConnect) are rejected unless the node's own switches allow them: access to this device, the local network, or using this device as a gateway. The lists below are filled from those switches; add tags by hand to extend them.",
+   "description": "Connections arriving from a client tunnel (WireGuard, AWG, OpenVPN, OpenConnect) are rejected unless the node's own switches allow them: access to this device, the local network, or using this device as a gateway. The settings below choose what happens to the rest and where allowed and gateway traffic goes.",
    "default_enabled": true,
    "num": 940,
    "vars": [
     {
      "name": "all_nodes",
      "type": "text_list",
-     "unique": true,
-     "title": "Tunnel endpoints",
-     "tooltip": "Every client tunnel endpoint in the config. Anything from them not allowed below is rejected."
+     "wizard_ui": "internal"
     },
     {
      "name": "allow_local_nodes",
      "type": "text_list",
-     "unique": true,
-     "title": "May reach this device",
-     "tooltip": "Peers of these endpoints reach services on this device's tunnel address. The service sees them as 127.0.0.1."
+     "wizard_ui": "internal"
     },
     {
      "name": "allow_lan_nodes",
      "type": "text_list",
-     "unique": true,
-     "title": "May reach the local network",
-     "tooltip": "Peers of these endpoints reach private networks behind this device."
+     "wizard_ui": "internal"
     },
     {
      "name": "allow_gateway_nodes",
      "type": "text_list",
-     "unique": true,
-     "title": "May use this device as a gateway",
-     "tooltip": "Peers of these endpoints route everything else through the outbound chosen below."
+     "wizard_ui": "internal"
     },
     {
      "name": "closed_nodes",
      "type": "text_list",
      "wizard_ui": "internal"
+    },
+    {
+     "name": "closed_out",
+     "type": "outbound",
+     "default": "reject",
+     "title": "Incoming from tunnels",
+     "tooltip": "What happens to connections arriving from a tunnel that the node's switches did not allow. reject (default) and drop close them; an outbound forwards them."
+    },
+    {
+     "name": "allowed_out",
+     "type": "outbound",
+     "default": "direct-out",
+     "title": "Device and local network go to",
+     "tooltip": "Outbound for peers allowed to reach this device or the local network."
     },
     {
      "name": "gateway_out",
@@ -1283,7 +1289,7 @@
         "127.0.0.0/8",
         "::1/128"
        ],
-       "outbound": "direct-out"
+       "outbound": "@allowed_out"
       }
      ]
     },
@@ -1295,7 +1301,7 @@
       {
        "inbound": "@allow_lan_nodes",
        "ip_is_private": true,
-       "outbound": "direct-out"
+       "outbound": "@allowed_out"
       }
      ]
     },
@@ -1317,7 +1323,7 @@
       },
       {
        "inbound": "@all_nodes",
-       "action": "reject"
+       "outbound": "@closed_out"
       }
      ]
     }
@@ -1326,7 +1332,19 @@
     {
      "#if": [
       {
-       "@closed_nodes": "#notEmpty"
+       "#and": [
+        {
+         "@closed_nodes": "#notEmpty"
+        },
+        {
+         "@closed_out": {
+          "#in": [
+           "reject",
+           "drop"
+          ]
+         }
+        }
+       ]
       },
       {
        "inbound": "@closed_nodes",

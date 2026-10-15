@@ -25,7 +25,6 @@
     },
     {
       "inbound": [
-        "manual-wg",
         "wg-home",
         "oc-work",
         "wg-exit"

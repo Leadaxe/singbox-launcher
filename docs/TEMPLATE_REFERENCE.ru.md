@@ -168,8 +168,8 @@ TEMPLATE_LANG §6.7.4). Прежний ключ `for_each` (`node_type`, `as`) �
 | Поле | Переключатель | Кто читает |
 |---|---|---|
 | `skip_tailscale_presets` | Skip Tailscale presets (только у узлов Tailscale) | `tailscale`: узлу не добавляются маршрут и MagicDNS. До 1.1.126 — `skip_presets`; старый ключ в `state.json` и в бэкапе читается, пишется только новый |
-| `allow_local` | Allow access to this device | `tunnel-ingress`: пиры этого туннеля достают сервисы на нашем туннельном адресе (видны как `127.0.0.1`) |
-| `allow_lan` | Expose local network | `tunnel-ingress`: пиры видят частные сети (`ip_is_private`) |
+| `allow_local` | Allow access to this device | `tunnel-ingress`: пиры этого туннеля достают сервисы на нашем туннельном адресе (видны как `127.0.0.1`), через `allowed_out` пресета (по умолчанию `direct-out`) |
+| `allow_lan` | Expose local network | `tunnel-ingress`: пиры видят частные сети (`ip_is_private`), через `allowed_out` |
 | `allow_gateway` | Allow as gateway | `tunnel-ingress`: пиры ходят через нас куда угодно, в `gateway_out` пресета (по умолчанию `proxy-out`); их DNS не отбрасывается |
 
 Переключатели `allow_*` показываются у узлов `wireguard` (и AWG),
@@ -177,8 +177,12 @@ TEMPLATE_LANG §6.7.4). Прежний ключ `for_each` (`node_type`, `as`) �
 (`num: 940`, включён по умолчанию, у существующих настроек появляется один раз)
 собирает endpoint'ы этих типов и отклоняет всё, что приходит из их туннелей,
 кроме разрешённого переключателями, плюс DNS-reject для пиров без
-`allow_gateway`. Четыре видимых списка можно дополнить руками (например тегом
-endpoint'а из своего шаблона). Tailscale пресет не обслуживает (контракт
+`allow_gateway`. Списки пресета служебные (собираются при сборке, в форме не
+видны, ручного ввода тегов нет); в форме три настройки: **Incoming from
+tunnels** (`closed_out`, по умолчанию `reject`; вместо него `drop` или outbound —
+с outbound DNS-reject не добавляется), **Device and local network go to**
+(`allowed_out`, по умолчанию `direct-out`) и **Gateway traffic goes to**
+(`gateway_out`, по умолчанию `proxy-out`). Tailscale пресет не обслуживает (контракт
 1.1.129): пиры tailnet — свои устройства пользователя, их уже ограничивают ACL
 Tailscale и фильтр control-plane, пропускающий только наши адреса и
 анонсированное `advertise_routes` / `advertise_exit_node`. TEMPLATE_LANG §6.5.2.
