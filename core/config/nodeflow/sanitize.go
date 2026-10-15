@@ -215,19 +215,6 @@ func SanitizeFromKind(scheme, source, kind string, m map[string]interface{}) Res
 			},
 		}
 	}
-	if body.FieldsUnchecked {
-		// Поля схемы не описаны (контракт 1.1.99, `fields_unchecked`): тело
-		// едет в ядро как написано — без правил и без unknown_key. Снимаются
-		// только ключи, которые пишет сама сборка (tag, type).
-		clean := make(map[string]interface{}, len(m))
-		for k, v := range m {
-			if buildManagedKeys[k] {
-				continue
-			}
-			clean[k] = deepCopyValue(v)
-		}
-		return Result{Clean: clean}
-	}
 	s := &sanitizer{reg: reg, scheme: scheme, source: source, kind: kind, seen: map[string]bool{}, srcRoot: m, removed: map[string]bool{}, absent: map[string]bool{}, dropped: map[string]bool{}, building: map[string]map[string]interface{}{}}
 	s.cleanRoot = map[string]interface{}{}
 	s.res.Clean = s.cleanRoot
@@ -287,7 +274,7 @@ func (s *sanitizer) markSchemeForbidden(prefix string, order []string, fields ma
 	}
 	for _, name := range order {
 		f := fields[name]
-		if f == nil {
+		if f == nil || f.Wildcard {
 			continue
 		}
 		raw, present := src[name]
@@ -334,7 +321,7 @@ func (s *sanitizer) markAbsentObjects(prefix string, order []string, fields map[
 	}
 	for _, name := range order {
 		f := fields[name]
-		if f == nil {
+		if f == nil || f.Wildcard {
 			continue
 		}
 		raw, present := src[name]
@@ -587,7 +574,8 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 
 	for _, name := range order {
 		f := fields[name]
-		if f == nil {
+		if f == nil || f.Wildcard {
+			// Запись "*" — не поле: её ключи разбирает хвост обхода ниже.
 			continue
 		}
 		path := joinPath(prefix, name)
@@ -696,9 +684,17 @@ func (s *sanitizer) object(prefix string, order []string, fields map[string]*reg
 	s.minWhenAbsent(order, fields, src)
 
 	// Всё, чего нет в fields, — вне схемы: ядро отвергнет ключ и не запустит
-	// весь конфиг, поэтому снимаем с кодом.
+	// весь конфиг, поэтому снимаем с кодом. Исключение — wildcard "*" в
+	// fields ЭТОГО объекта (контракт 1.1.122): неописанный ключ копируется
+	// как есть, без проверки и без кода. Wildcard не наследуется: вложенный
+	// описанный объект без своего "*" остаётся строгим.
+	wildcard := registry.HasWildcard(fields)
 	for _, name := range sortedKeys(src) {
 		if known[name] || (prefix == "" && buildManagedKeys[name]) {
+			continue
+		}
+		if wildcard {
+			out[name] = deepCopyValue(src[name])
 			continue
 		}
 		path := joinPath(prefix, name)
@@ -1012,7 +1008,7 @@ func (s *sanitizer) applyMinWhen(path string, f *registry.Field, v interface{}) 
 func (s *sanitizer) minWhenAbsent(order []string, fields map[string]*registry.Field, src map[string]interface{}) {
 	for _, name := range order {
 		f := fields[name]
-		if f == nil || f.MinWhen == nil || !f.MinWhen.AbsentIsZero {
+		if f == nil || f.Wildcard || f.MinWhen == nil || !f.MinWhen.AbsentIsZero {
 			continue
 		}
 		if _, present := src[name]; present {

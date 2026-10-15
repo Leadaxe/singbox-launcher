@@ -1,17 +1,17 @@
 # TASKS 167
 
 ## Этап 1 — контракт 1.1.122
-- [ ] T1 `contract/schema/registry_body.schema.json` — wildcard `*`, `form`/`formSection`, роль `variant`, снять `fields_unchecked`
-- [ ] T2 `contract/registry/protocols/openconnect.json` по `REGISTRY_DESIGN.md` §5; `openvpn-client.json` → `*`
-- [ ] T3 `contract/registry/warnings.json` — `openconnect_flavor_invalid`, `openconnect_fingerprint_invalid`, `openconnect_mtu_invalid`, `openconnect_insecure_crypto`
-- [ ] T4 корпус тела (8 кейсов), авторский кейс, корпус формы `contract/corpus/form/` с README
-- [ ] T5 `contract/VERSION` 1.1.122, `contract/README.md`, `contract/TASKS_LXBOX.md` §119, `contract/docs/PARSING_PRINCIPLES.md`
+- [x] T1 `contract/schema/registry_body.schema.json` — wildcard `*`, `form`/`formSection`, роль `variant`, снять `fields_unchecked`
+- [x] T2 `contract/registry/protocols/openconnect.json` по `REGISTRY_DESIGN.md` §5; `openvpn-client.json` → `*`
+- [x] T3 `contract/registry/warnings.json` — `openconnect_flavor_invalid`, `openconnect_fingerprint_invalid`, `openconnect_mtu_invalid`, `openconnect_insecure_crypto`
+- [x] T4 корпус тела (8 кейсов), авторский кейс, корпус формы `contract/corpus/form/` с README
+- [x] T5 `contract/VERSION` 1.1.122, `contract/README.md`, `contract/TASKS_LXBOX.md` §119, `contract/docs/PARSING_PRINCIPLES.md`
 
 ## Этап 2 — движок
-- [ ] T6 `core/config/registry/registry.go` — `Wildcard`, `FieldForm`/`FormSection`/`Form()`, роль `variant`, удалить `FieldsUnchecked`
-- [ ] T7 `core/config/nodeflow/sanitize.go`, `emit.go`, `gate.go`, `coerce.go` — норма wildcard, снять ветки
-- [ ] T8 `core/config/linkmap/*`, `contract/tools/gendocs/*` — пропуск `*`, вывод `form`/`variant`; `go generate ./contract/...`
-- [ ] T9 тесты: `TestWildcardNestedStrict`, `registry_body_test.go`, раннер `contract/corpus/form`
+- [x] T6 `core/config/registry/registry.go` — `Wildcard`, `FieldForm`/`FormSection`/`Form()`, роль `variant`, удалить `FieldsUnchecked`
+- [x] T7 `core/config/nodeflow/sanitize.go`, `emit.go`, `gate.go`, `coerce.go` — норма wildcard, снять ветки
+- [x] T8 `core/config/linkmap/*`, `contract/tools/gendocs/*` — пропуск `*`, вывод `form`/`variant`; `go generate ./contract/...`
+- [x] T9 тесты: `TestWildcardNestedStrict`, `registry_body_test.go`, раннер `contract/corpus/form`
 
 ## Этап 3 — UI: подпись и форма
 - [ ] T10 `ui/configurator/business/config_node_labels.go` — роль `variant`

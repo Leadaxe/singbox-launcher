@@ -26,18 +26,6 @@ func Emit(scheme string, clean map[string]interface{}) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("nodeflow: схема %q неизвестна реестру", scheme)
 	}
-	if body.FieldsUnchecked {
-		// Тело без описания полей (контракт 1.1.99) — как есть, ключи по
-		// алфавиту, без экранирования HTML (writeJSON).
-		if clean == nil {
-			clean = map[string]interface{}{}
-		}
-		var buf bytes.Buffer
-		if err := writeJSON(&buf, clean); err != nil {
-			return nil, err
-		}
-		return buf.Bytes(), nil
-	}
 	var buf bytes.Buffer
 	if err := emitObject(&buf, body.Order, body.Fields, clean); err != nil {
 		return nil, err
@@ -48,12 +36,7 @@ func Emit(scheme string, clean map[string]interface{}) ([]byte, error) {
 func emitObject(buf *bytes.Buffer, order []string, fields map[string]*registry.Field, m map[string]interface{}) error {
 	buf.WriteByte('{')
 	first := true
-	for _, name := range order {
-		v, ok := m[name]
-		if !ok {
-			continue
-		}
-		f := fields[name]
+	write := func(name string, f *registry.Field, v interface{}) error {
 		if !first {
 			buf.WriteByte(',')
 		}
@@ -62,7 +45,27 @@ func emitObject(buf *bytes.Buffer, order []string, fields map[string]*registry.F
 			return err
 		}
 		buf.WriteByte(':')
-		if err := emitValue(buf, f, v); err != nil {
+		return emitValue(buf, f, v)
+	}
+	for _, name := range order {
+		if f := fields[name]; f != nil && f.Wildcard {
+			// Слот wildcard (контракт 1.1.122): ключи карты, которых нет в
+			// fields, — по алфавиту, значения как есть (writeJSON).
+			for _, k := range sortedKeys(m) {
+				if _, described := fields[k]; described {
+					continue
+				}
+				if err := write(k, nil, m[k]); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		v, ok := m[name]
+		if !ok {
+			continue
+		}
+		if err := write(name, fields[name], v); err != nil {
 			return err
 		}
 	}

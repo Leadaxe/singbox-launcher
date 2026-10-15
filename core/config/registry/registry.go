@@ -141,8 +141,12 @@ type Field struct {
 	// Role — роль поля в узле (контракт 1.1.59): по ней общий код находит
 	// поле, не зная имени схемы. Только у поля верхнего уровня тела
 	// протокола, каждая роль — не больше одного поля на схему (линтер
-	// реестра). Словарь — RoleCredential, RolePrivateKey.
+	// реестра). Словарь — RoleCredential, RolePrivateKey, RoleVariant.
 	Role string `json:"role"`
+	// Form — правила ФОРМЫ поля (контракт 1.1.122): блок, видимость,
+	// обязательность и диапазон формы. Санитайзер, эмиттер и гейт атрибут не
+	// читают — только формы (см. FormState).
+	Form *FieldForm `json:"form"`
 	// DefaultWhen — дефолт, который реестр велит МАТЕРИАЛИЗОВАТЬ явно
 	// (SPEC §3.2). Обычные `default` в тело не пишутся: дефолты ядра не
 	// материализуются. Исключение — поля, без которых ядро не собирает
@@ -239,6 +243,59 @@ type Field struct {
 	// (transports): выбор варианта — по значению дискриминатора в карте.
 	Variants      map[string]*Field `json:"-"`
 	Discriminator string            `json:"-"`
+
+	// Wildcard — это запись "*" в fields объекта (контракт 1.1.122), а не
+	// поле: неописанные ключи ЭТОГО объекта проходят насквозь. Ставится при
+	// загрузке по имени ключа; все обходы полей такую запись пропускают.
+	Wildcard bool `json:"-"`
+}
+
+// WildcardKey — имя записи wildcard в fields и её слот в order.
+const WildcardKey = "*"
+
+// HasWildcard — стоит ли в fields объекта запись "*": неописанные ключи
+// этого объекта проходят как есть (не наследуется вложенными объектами).
+func HasWildcard(fields map[string]*Field) bool {
+	f := fields[WildcardKey]
+	return f != nil && f.Wildcard
+}
+
+// FieldForm — атрибут `form` поля (контракт 1.1.122, REGISTRY_DESIGN §3).
+type FieldForm struct {
+	// Block — id блока из body.form.blocks; пусто у поля, которое рисует
+	// группа выбора (choices).
+	Block string `json:"block"`
+	// VisibleWhen — условие видимости (грамматика condition без
+	// source_kind), считается по текущему состоянию формы.
+	VisibleWhen *Condition `json:"visible_when"`
+	// Required — форма не сохраняет, пока видимое поле пусто.
+	Required bool `json:"required"`
+	// RequiredUnless — когда обязательность формы снимается.
+	RequiredUnless *RequiredUnless `json:"required_unless"`
+	// Min/Max — диапазон формы; пустое поле ключ не пишет.
+	Min *float64 `json:"min"`
+	Max *float64 `json:"max"`
+}
+
+// FormSection — секция `form` тела протокола: блоки и группы выбора.
+type FormSection struct {
+	Blocks  []string     `json:"blocks"`
+	Choices []FormChoice `json:"choices"`
+}
+
+// FormChoice — группа взаимоисключающих вариантов формы.
+type FormChoice struct {
+	ID      string       `json:"id"`
+	Block   string       `json:"block"`
+	Options []FormOption `json:"options"`
+}
+
+// FormOption — вариант группы выбора: пути, которые он занимает, и
+// значения, которые пишет при выборе.
+type FormOption struct {
+	ID    string                 `json:"id"`
+	Paths []string               `json:"paths"`
+	Set   map[string]interface{} `json:"set"`
 }
 
 // OnCoreUnsupported — действие, когда протокол, поле или форма значения не
@@ -535,10 +592,8 @@ type section struct {
 	// узла, контракт 1.1.60): поля и формы диапазона ссылаются на него
 	// атрибутом `level`.
 	Levels []string `json:"levels"`
-	// FieldsUnchecked — поля тела не описаны и не проверяются (контракт
-	// 1.1.99): тело узла уходит в ядро как написано, без unknown_key и без
-	// правил. `fields` у такой секции пустой.
-	FieldsUnchecked bool `json:"fields_unchecked"`
+	// Form — раскладка формы тела протокола (контракт 1.1.122).
+	Form *FormSection `json:"form"`
 	// ExitCapableWhen — условие, при котором узел схемы годится ВЫХОДОМ В
 	// ИНТЕРНЕТ, то есть кандидатом в состав Направления (контракт 1.1.63).
 	// Без атрибута — годится всегда.
@@ -639,8 +694,11 @@ type BodySchema struct {
 	OnCoreUnsupported *OnCoreUnsupported
 	// Levels — словарь уровней расширения по возрастанию (см. section).
 	Levels []string
-	// FieldsUnchecked — тело не проверяется и едет как написано (см. section).
-	FieldsUnchecked bool
+	// Form — раскладка формы (см. section); nil — формы по реестру нет.
+	Form *FormSection
+	// Wildcard — в корне тела стоит "*": неописанные ключи корня проходят
+	// насквозь (контракт 1.1.122).
+	Wildcard bool
 	// ExitCapableWhen — условие «узел годится выходом» (см. section).
 	ExitCapableWhen *Condition
 }
@@ -748,8 +806,10 @@ func Load() (*Registry, error) {
 		if f.Body == nil {
 			return nil, fmt.Errorf("registry: %s.json: нет секции body", name)
 		}
+		markWildcards(f.Body.Fields)
 		subs[name] = f.Body
 		if f.Common != nil {
+			markWildcards(f.Common.Fields)
 			subs[name+".common"] = f.Common
 		}
 	}
@@ -910,13 +970,22 @@ func resolveSection(scheme string, sec *section, subs map[string]*section) (*Bod
 		BuildTag:          sec.BuildTag,
 		OnCoreUnsupported: sec.OnCoreUnsupported,
 		Levels:            sec.Levels,
-		FieldsUnchecked:   sec.FieldsUnchecked,
+		Form:              sec.Form,
 		ExitCapableWhen:   sec.ExitCapableWhen,
 	}
+	markWildcards(sec.Fields)
 	for _, name := range sec.Order {
 		src := sec.Fields[name]
 		if src == nil {
 			return nil, fmt.Errorf("registry: %s: order упоминает %q, которого нет в fields", scheme, name)
+		}
+		if src.Wildcard {
+			// Запись "*" — не поле: её позиция в order — слот эмиссии
+			// сквозных ключей, сама запись едет как есть.
+			out.Wildcard = true
+			out.Order = append(out.Order, name)
+			out.Fields[name] = src
+			continue
 		}
 		if src.Type != "ref" {
 			out.Order = append(out.Order, name)
@@ -931,7 +1000,9 @@ func resolveSection(scheme string, sec *section, subs map[string]*section) (*Bod
 			// Поля суб-схемы вливаются в тело плоско, без обёртки.
 			for _, inner := range sub.Order {
 				f := sub.Fields[inner]
-				if f == nil {
+				if f == nil || inner == WildcardKey {
+					// "*" суб-схемы в тело протокола не вливается: wildcard
+					// не наследуется и у каждого объекта свой.
 					continue
 				}
 				if _, dup := out.Fields[inner]; dup {
@@ -961,11 +1032,32 @@ func resolveSection(scheme string, sec *section, subs map[string]*section) (*Bod
 	return out, nil
 }
 
+// markWildcards помечает записи "*" во всех объектах поддерева (Fields и
+// Items): по флагу обходы отличают wildcard от поля.
+func markWildcards(fields map[string]*Field) {
+	for name, f := range fields {
+		if f == nil {
+			continue
+		}
+		if name == WildcardKey {
+			f.Wildcard = true
+			continue
+		}
+		markWildcards(f.Fields)
+		if f.Items != nil {
+			markWildcards(f.Items.Fields)
+		}
+	}
+}
+
 // refAsObject превращает ссылку на суб-схему в поле-объект: обычная секция
 // даёт order+fields, вариантная (транспорты) — Variants с дискриминатором.
 func refAsObject(src *Field, sub *section) (*Field, error) {
 	f := &Field{
-		Type:     "object",
+		Type: "object",
+		// Ref сохраняется: по нему документация узнаёт общую суб-схему и
+		// отличает её от одноимённого объекта схемы (у openconnect tls свой).
+		Ref:      src.Ref,
 		Required: src.Required,
 		Code:     src.Code,
 		DescEn:   src.DescEn,
@@ -1309,6 +1401,10 @@ func (r *Registry) Field(scheme, path string) (*Field, bool) {
 	var variants map[string]*Field
 	var cur *Field
 	for _, p := range parts {
+		if p == WildcardKey {
+			// Wildcard — не поле: путь через "*" не адресует ничего.
+			return nil, false
+		}
 		var next *Field
 		if fields != nil {
 			next = fields[p]
@@ -1451,7 +1547,7 @@ func (r *Registry) FieldsWithBuildTag(scheme, tag string) []string {
 	}
 	var out []string
 	for _, name := range b.Order {
-		if f := b.Fields[name]; f != nil && f.BuildTag == tag {
+		if f := b.Fields[name]; f != nil && !f.Wildcard && f.BuildTag == tag {
 			out = append(out, name)
 		}
 	}
@@ -1474,7 +1570,7 @@ func (r *Registry) WalkPresent(scheme string, body map[string]interface{}, fn fu
 func walkPresent(prefix string, order []string, fields map[string]*Field, m map[string]interface{}, fn func(string, *Field, interface{})) {
 	for _, name := range order {
 		f := fields[name]
-		if f == nil {
+		if f == nil || f.Wildcard {
 			continue
 		}
 		v, ok := m[name]
@@ -1580,7 +1676,7 @@ func collapseRangeForms(order []string, fields map[string]*Field, m map[string]i
 	for _, name := range order {
 		f := fields[name]
 		v, ok := m[name]
-		if f == nil || !ok {
+		if f == nil || f.Wildcard || !ok {
 			continue
 		}
 		if f.RangeForm != nil && f.RangeForm.BuildTag == tag && IsRangeValue(v) {
@@ -1618,6 +1714,10 @@ const (
 	RoleCredential = "credential"
 	// RolePrivateKey — приватный ключ, который уезжает в share-ссылку.
 	RolePrivateKey = "private_key"
+	// RoleVariant — разновидность протокола (контракт 1.1.122): значение
+	// поля (после trim; иначе default; иначе пусто) — вторая часть подписи
+	// узла, в слоте транспорта (openconnect flavor → «openconnect·fortinet»).
+	RoleVariant = "variant"
 )
 
 // FieldWithRole — путь поля схемы с ролью role; false — у схемы такого поля
@@ -1628,11 +1728,22 @@ func (r *Registry) FieldWithRole(scheme, role string) (string, bool) {
 		return "", false
 	}
 	for _, name := range b.Order {
-		if f := b.Fields[name]; f != nil && f.Role == role {
+		if f := b.Fields[name]; f != nil && !f.Wildcard && f.Role == role {
 			return name, true
 		}
 	}
 	return "", false
+}
+
+// Form — раскладка формы схемы (секция body.form, контракт 1.1.122); nil —
+// у схемы формы по реестру нет. Правила отдельных полей — Field.Form,
+// вычисление состояния формы по телу — FormState.
+func (r *Registry) Form(scheme string) *FormSection {
+	b, ok := r.bodies[scheme]
+	if !ok {
+		return nil
+	}
+	return b.Form
 }
 
 // ExitCapable — годится ли узел схемы ВЫХОДОМ В ИНТЕРНЕТ, то есть кандидатом
@@ -1911,11 +2022,11 @@ func (r *Registry) RuleCoreRejects(scheme, code, path string) bool {
 // fieldsAtBodyPath — поля по пути тела: вариантный объект даёт по кандидату
 // на каждый вариант, в котором есть следующий сегмент.
 func fieldsAtBodyPath(fields map[string]*Field, parts []string) []*Field {
-	if len(parts) == 0 || fields == nil {
+	if len(parts) == 0 || fields == nil || parts[0] == WildcardKey {
 		return nil
 	}
 	f := fields[parts[0]]
-	if f == nil {
+	if f == nil || f.Wildcard {
 		return nil
 	}
 	rest := parts[1:]

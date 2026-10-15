@@ -65,6 +65,10 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`obfs_password_missing`](#obfs_password_missing) · `warning` — Obfuscation removed: no password
 - [`obfs_unknown`](#obfs_unknown) · `warning` — Unknown obfuscation removed
 - [`openconnect_core_unsupported`](#openconnect_core_unsupported) · `warning` — OpenConnect is unavailable in this core
+- [`openconnect_fingerprint_invalid`](#openconnect_fingerprint_invalid) · `warning` — OpenConnect: bogus certificate fingerprint dropped
+- [`openconnect_flavor_invalid`](#openconnect_flavor_invalid) · `warning` — OpenConnect: unknown gateway type {value}
+- [`openconnect_insecure_crypto`](#openconnect_insecure_crypto) · `info` — OpenConnect: legacy crypto allowed
+- [`openconnect_mtu_invalid`](#openconnect_mtu_invalid) · `warning` — OpenConnect: MTU {value} removed
 - [`openvpn_core_unsupported`](#openvpn_core_unsupported) · `warning` — OpenVPN is unavailable in this core
 - [`packet_encoding_unknown`](#packet_encoding_unknown) · `warning` — Field removed: unknown packet_encoding
 - [`password_empty`](#password_empty) · `warning` — Password is empty
@@ -672,6 +676,11 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`realm`](protocols/hysteria2.md#body-realm) — conflicts with `server_ports` → removed
   - [`realm`](protocols/hysteria2.md#body-realm) — conflicts with `server` → removed
   - [`server_ports`](protocols/hysteria2.md#body-server-ports) — conflicts with `realm` → removed
+- [`openconnect`](protocols/openconnect.md)
+  - [`tls.certificate_authority_path`](protocols/openconnect.md#body-tls-certificate-authority-path) — conflicts with `tls.certificate_authority` → removed
+  - [`tls.client_certificate_path`](protocols/openconnect.md#body-tls-client-certificate-path) — conflicts with `tls.client_certificate` → removed
+  - [`tls.client_key_path`](protocols/openconnect.md#body-tls-client-key-path) — conflicts with `tls.client_key` → removed
+  - [`token.secret_path`](protocols/openconnect.md#body-token-secret-path) — conflicts with `token.secret` → removed
 - [`tailscale`](protocols/tailscale.md)
   - [`exit_node`](protocols/tailscale.md#body-exit-node) — conflicts with `advertise_exit_node` → removed
 - [`tls`](protocols/_tls.md)
@@ -726,6 +735,10 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`public_key`](protocols/masque.md#body-public-key) — the value does not fit the field → node dropped
 - [`naive`](protocols/naive.md)
   - [`tls`](protocols/naive.md#body-tls) — required and missing → node dropped
+- [`openconnect`](protocols/openconnect.md)
+  - [`server`](protocols/openconnect.md#body-server) — required and missing → node dropped
+  - [`token.mode`](protocols/openconnect.md#body-token-mode) — required and missing → node dropped
+  - [`token.secret`](protocols/openconnect.md#body-token-secret) — required and missing → node dropped
 - [`shadowsocks`](protocols/shadowsocks.md)
   - [`password`](protocols/shadowsocks.md#body-password) — required and missing → node dropped
 - [`trojan`](protocols/trojan.md)
@@ -761,6 +774,9 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`masque`](protocols/masque.md)
   - [`private_key`](protocols/masque.md#body-private-key) — set without `public_key` → removed
   - [`public_key`](protocols/masque.md#body-public-key) — set without `private_key` → removed
+- [`openconnect`](protocols/openconnect.md)
+  - [`tls.client_certificate_path`](protocols/openconnect.md#body-tls-client-certificate-path) — set without `tls.client_key_path` (unless `tls.client_key` is set) → removed
+  - [`tls.client_key_path`](protocols/openconnect.md#body-tls-client-key-path) — set without `tls.client_certificate_path` (unless `tls.client_certificate` is set) → removed
 - [`shadowsocks`](protocols/shadowsocks.md)
   - [`plugin_opts`](protocols/shadowsocks.md#body-plugin-opts) — set without `plugin` → removed
 - [`tailscale`](protocols/tailscale.md)
@@ -1180,6 +1196,78 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="openconnect_fingerprint_invalid"></a>
+### openconnect_fingerprint_invalid
+
+**severity:** `warning` · **params:** `path`, `value`
+
+**OpenConnect: bogus certificate fingerprint dropped**
+
+- **What happened:** The certificate fingerprint {value} at {path} is not in a form the core accepts. It was removed, because the core rejects such a value and would refuse to start the whole config; the remaining fingerprints were kept.
+- **Why it happens:** The core accepts a hex SHA-1 of the certificate without a prefix, sha1:<hex>, sha256:<hex> or pin-sha256:<base64>. Fingerprints copied with colons between bytes, with spaces, or truncated do not match any of these forms.
+- **What you can do:**
+  - Write the fingerprint in one of the accepted forms, for example sha256: followed by hex digits without colons.
+  - If no valid fingerprint is left, the gateway certificate is checked against the system CAs.
+
+**Where it comes from:**
+
+- [`openconnect`](protocols/openconnect.md)
+  - [`tls.peer_fingerprint`](protocols/openconnect.md#body-tls-peer-fingerprint) — the value does not fit the field → removed
+
+<a id="openconnect_flavor_invalid"></a>
+### openconnect_flavor_invalid
+
+**severity:** `warning` · **params:** `path`, `value`
+
+**OpenConnect: unknown gateway type {value}**
+
+- **What happened:** The OpenConnect node names gateway type {value} at {path}, which the core does not know. The node was excluded from the config, because the core rejects such a value and would refuse to start the whole config; the remaining nodes work.
+- **Why it happens:** The core knows six gateway types: fortinet, anyconnect, gp, f5, pulse and nc. Another value is a typo or a name from another client (for example "forti" or "globalprotect"). Removing just the key is not an option: without it the core silently talks AnyConnect to the gateway.
+- **What you can do:**
+  - Set flavor to one of fortinet, anyconnect, gp, f5, pulse, nc in the node body.
+  - Ask the provider which gateway type the server runs.
+
+**Where it comes from:**
+
+- [`openconnect`](protocols/openconnect.md)
+  - [`flavor`](protocols/openconnect.md#body-flavor) — the value does not fit the field → node dropped
+
+<a id="openconnect_insecure_crypto"></a>
+### openconnect_insecure_crypto
+
+**severity:** `info` · **params:** `path`, `value`
+
+**OpenConnect: legacy crypto allowed**
+
+- **What happened:** The node sets {path} to {value}, so the connection to the gateway may use legacy ciphers and TLS 1.0. The value was kept as written; such a connection is weaker than a modern one.
+- **Why it happens:** Old gateways only speak TLS 1.0 and legacy ciphers, and the setting was turned on to reach one of them — or it was copied from another profile without need.
+- **What you can do:**
+  - Nothing to do if the gateway is old and needs it.
+  - If the gateway is modern, turn the setting off: the node connects without it.
+
+**Where it comes from:**
+
+- [`openconnect`](protocols/openconnect.md)
+  - [`allow_insecure_crypto`](protocols/openconnect.md#body-allow-insecure-crypto) — the value is `true` → kept with a notice
+
+<a id="openconnect_mtu_invalid"></a>
+### openconnect_mtu_invalid
+
+**severity:** `warning` · **params:** `path`, `value`
+
+**OpenConnect: MTU {value} removed**
+
+- **What happened:** The MTU {value} at {path} is outside what the core accepts (0 to 65535). It was removed, because the core rejects such a value and would refuse to start the whole config; the gateway's own MTU is used instead.
+- **Why it happens:** The value is negative, fractional, too large, or not a number at all — usually a typo in a hand-written body.
+- **What you can do:**
+  - Nothing to do if the tunnel works: the gateway's MTU applies.
+  - If HTTPS stalls through the tunnel, set mtu between 576 and 1500 in the node body.
+
+**Where it comes from:**
+
+- [`openconnect`](protocols/openconnect.md)
+  - [`mtu`](protocols/openconnect.md#body-mtu) — the value does not fit the field → removed
 
 <a id="openvpn_core_unsupported"></a>
 ### openvpn_core_unsupported
@@ -1819,6 +1907,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **Where it comes from:**
 
+- [`openconnect`](protocols/openconnect.md)
+  - [`tls.insecure`](protocols/openconnect.md#body-tls-insecure) — the value is `true` → kept with a notice
 - [`tls`](protocols/_tls.md)
   - [`insecure`](protocols/_tls.md#body-insecure) — the value is `true` → kept with a notice
 
@@ -1964,6 +2054,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`quic_session_receive_window`](protocols/naive.md#body-quic-session-receive-window) — the value does not fit the field → removed
   - [`stream_receive_window`](protocols/naive.md#body-stream-receive-window) — the value does not fit the field → removed
   - [`udp_over_tcp.version`](protocols/naive.md#body-udp-over-tcp-version) — the value does not fit the field → removed
+- [`openconnect`](protocols/openconnect.md)
+  - [`user_agent`](protocols/openconnect.md#body-user-agent) — the value does not fit the field → removed
 - [`shadowsocks`](protocols/shadowsocks.md)
   - [`udp_over_tcp.version`](protocols/shadowsocks.md#body-udp-over-tcp-version) — the value does not fit the field → removed
 - [`socks`](protocols/socks.md)

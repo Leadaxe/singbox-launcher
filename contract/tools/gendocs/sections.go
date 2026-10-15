@@ -132,7 +132,7 @@ func renderSchemeWarnings(b *strings.Builder, raw *rawRegistry, scheme string, b
 	found := map[string][]usage{}
 	for _, name := range body.Order {
 		f := body.Fields[name]
-		if f == nil {
+		if f == nil || name == registry.WildcardKey {
 			continue
 		}
 		collectSchemeUsages(found, scheme, name, f)
@@ -280,7 +280,7 @@ func collectNestedUsages(out map[string][]usage, scheme, path string, f *registr
 		sort.Strings(names)
 	}
 	for _, name := range names {
-		if child := inner.Fields[name]; child != nil {
+		if child := inner.Fields[name]; child != nil && name != registry.WildcardKey {
 			collectSchemeUsages(out, scheme, joinPath(path, name), child)
 		}
 	}
@@ -390,7 +390,7 @@ func collectReplacements(out *[]string, prefix string, order []string, fields ma
 	}
 	for _, name := range names {
 		f := fields[name]
-		if f == nil {
+		if f == nil || name == registry.WildcardKey {
 			continue
 		}
 		path := joinPath(prefix, name)
@@ -472,7 +472,7 @@ func renderDegradation(b *strings.Builder, scheme string, body *registry.BodySch
 
 	buckets := map[string][]string{}
 	for _, name := range body.Order {
-		if f := body.Fields[name]; f != nil {
+		if f := body.Fields[name]; f != nil && name != registry.WildcardKey {
 			collectDegradation(buckets, scheme, name, f)
 		}
 	}
@@ -602,7 +602,7 @@ func collectDegradationNested(out map[string][]string, scheme, path string, f *r
 		sort.Strings(names)
 	}
 	for _, name := range names {
-		if child := inner.Fields[name]; child != nil {
+		if child := inner.Fields[name]; child != nil && name != registry.WildcardKey {
 			collectDegradation(out, scheme, joinPath(path, name), child)
 		}
 	}

@@ -41,6 +41,8 @@ The scheme has no link form: it comes from sing-box JSON only.
 
 The node body itself — the sing-box JSON kept in the launcher state. The path is the one used in that body.
 
+- <a id="body-other-keys"></a>**`*`** — All core keys pass through as written.
+  - Other keys of this object pass through as written: no rules, no `unknown_key`; emitted here in alphabetical order. Not inherited by nested objects
 
 ## Diagnosed problems
 

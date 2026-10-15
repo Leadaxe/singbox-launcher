@@ -209,39 +209,46 @@ func outboundMapOf(node *configtypes.ParsedNode) map[string]interface{} {
 	// входит в tailnet по auth_key. ParsedNode.Server у них всё равно
 	// заполнен (списки и skip-фильтры читают именно его), и дописывание его
 	// в карту дало бы узлу два лишних unknown_key на ровном месте.
-	if !schemeHasRootAddress(node.Scheme) {
-		return src
-	}
+	//
+	// server и server_port проверяются НЕЗАВИСИМО (контракт 1.1.122): у
+	// openconnect описан server (host:port или URL), а server_port у ядра
+	// нет вовсе — под wildcard `*` дописанный ключ ушёл бы в ядро без
+	// проверки и уронил бы декодирование всего конфига.
+	writeServer := schemeHasRootField(node.Scheme, "server")
+	writePort := schemeHasRootField(node.Scheme, "server_port")
 	_, hasServer := src["server"]
 	_, hasPort := src["server_port"]
-	if (hasServer || node.Server == "") && (hasPort || node.Port <= 0) {
+	addServer := writeServer && !hasServer && node.Server != ""
+	addPort := writePort && !hasPort && node.Port > 0
+	if !addServer && !addPort {
 		return src
 	}
 	out := make(map[string]interface{}, len(src)+2)
 	for k, v := range src {
 		out[k] = v
 	}
-	if !hasServer && node.Server != "" {
+	if addServer {
 		out["server"] = node.Server
 	}
-	if !hasPort && node.Port > 0 {
+	if addPort {
 		out["server_port"] = node.Port
 	}
 	return out
 }
 
-// schemeHasRootAddress — есть ли у схемы адрес в КОРНЕ тела.
+// schemeHasRootField — описано ли у схемы поле name в КОРНЕ тела.
 //
 // Ответ берётся из реестра, а не из списка в коде: список схем-исключений —
 // это ровно тот вид знания, который кампания и выносит из кода в контракт, и
 // вторая его копия здесь разъехалась бы с первой на следующей схеме.
-func schemeHasRootAddress(scheme string) bool {
+// Wildcard `*` полем не считается: сквозной ключ сборка не дописывает.
+func schemeHasRootField(scheme, name string) bool {
 	body, ok := registry.MustGet().Body(scheme)
 	if !ok {
 		return false
 	}
-	_, hasServer := body.Fields["server"]
-	return hasServer
+	f, has := body.Fields[name]
+	return has && f != nil && !f.Wildcard
 }
 
 // mergeWarnings склеивает слои кодов с дедупом по паре (code, path),
