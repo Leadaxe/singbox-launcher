@@ -108,7 +108,7 @@ func checkDaemonCopyChain(l daemonServiceLayout) error {
 
 // checkRootOwnedEntry — звено цепочки по uid (macOS); на Windows цепочку
 // проверяет checkDaemonCopyChain по DACL.
-func checkRootOwnedEntry(path string, _ uint32, _ bool) error {
+func checkRootOwnedEntry(path string, _ uint32, _ bool) error { //nolint:unused // заглушка для общего checkRootOwnedChain, на Windows не вызывается
 	return fmt.Errorf("%s: unix ownership is not available on Windows", path)
 }
 

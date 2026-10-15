@@ -113,7 +113,7 @@ func CloseServiceWindow(key string) {
 // buildServiceView — тело окна Service для встраивания (панель Local окна
 // подключения). dispose останавливает опрос источника; звать при закрытии
 // окна-хозяина.
-func buildServiceView(ac *core.AppController, win fyne.Window, src serviceSource, tab serviceTab) (fyne.CanvasObject, func()) {
+func buildServiceView(ac *core.AppController, win fyne.Window, src serviceSource, tab serviceTab) (fyne.CanvasObject, func()) { //nolint:unused // вызывается только из connection_local_daemon.go (//go:build darwin || windows)
 	v := newServiceView(ac, win, src, tab)
 	return v.root, v.dispose
 }
