@@ -520,6 +520,7 @@
         "fields": {
           "host": {
             "type": "listable_string",
+            "form": {},
             "desc_en": "Host header values, picked at random per request.",
             "desc_ru": "Значения заголовка Host, выбираются случайно на запрос.",
             "impl": "В отличие от httpupgrade здесь listable."
@@ -528,6 +529,7 @@
             "type": "string",
             "format": "url_path",
             "default": "/",
+            "form": {},
             "desc_en": "Request path.",
             "desc_ru": "Путь запроса.",
             "impl": "Ведущий «/» дописывается ядром. Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c.",
@@ -572,6 +574,7 @@
             "type": "string",
             "format": "url_path",
             "default": "/",
+            "form": {},
             "desc_en": "WebSocket request path.",
             "desc_ru": "Путь запроса WebSocket.",
             "impl": "Хвост «?ed=N» из Xray-ссылок в путь не пишется: он разбирается в max_early_data + early_data_header_name (issue #96). Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c.",
@@ -579,6 +582,24 @@
           },
           "headers": {
             "type": "object",
+            "order": [
+              "Host",
+              "*"
+            ],
+            "fields": {
+              "Host": {
+                "type": "listable_string",
+                "form": {},
+                "desc_en": "Host header value.",
+                "desc_ru": "Значение заголовка Host.",
+                "impl": "Ключ карты badoption.HTTPHeader, значение строкой или массивом строк. Описан ради формы (контракт 1.1.123): правило значения то же, что у свободной карты, — приведение к listable без проверок."
+              },
+              "*": {
+                "desc_en": "Other headers pass through as written.",
+                "desc_ru": "Прочие заголовки проходят как написаны.",
+                "impl": "Wildcard (контракт 1.1.122): неописанные ключи карты копируются как есть, без unknown_key."
+              }
+            },
             "desc_en": "Extra HTTP headers sent with each request.",
             "desc_ru": "Дополнительные HTTP-заголовки в каждом запросе.",
             "impl": "badoption.HTTPHeader: map[string]listable_string — значение строкой или массивом строк."
@@ -619,6 +640,7 @@
           "service_name": {
             "type": "string",
             "default": "",
+            "form": {},
             "desc_en": "gRPC service name in the request path. A leading \"/\" makes the value a ready-made request path in Xray's absolute-path form (core >= 1.14.1-lx.8): \"/a/b/Tun\" goes on the wire as \"/a/b/Tun\", each segment escaped on its own. Without a leading \"/\" it is a service name and the core appends \"/Tun\" itself (\"a/b\" -> \"/a%2Fb/Tun\"). The value is passed to the core unchanged in either form.",
             "desc_ru": "Имя gRPC-сервиса в пути запроса. Ведущий «/» означает, что значение — готовый путь запроса в Xray-форме «абсолютного пути» (ядро ≥ 1.14.1-lx.8): «/a/b/Tun» уезжает на провод как «/a/b/Tun», каждый сегмент экранируется отдельно. Без ведущего «/» это имя сервиса, и ядро само дописывает «/Tun» («a/b» → «/a%2Fb/Tun»). Значение передаётся ядру как есть в любой форме — лаунчер его не меняет.",
             "impl": "option/v2ray_transport.go V2RayGRPCOptions.ServiceName; enum нет. Ядро sing-box-lx ≥ 1.14.1-lx.8 (SPEC 093 ядра) разбирает ведущий «/» как custom path Xray: сегменты между слэшами экранируются по отдельности, хвост «|…» (вторая половина серверной записи Xray, имя потока TunMulti) отбрасывается. Без ведущего «/» — прежнее поведение: имя сервиса целиком экранируется одним сегментом и ядро дописывает «/Tun». Нормализации НЕТ ни у одной стороны: значение едет в конфиг как есть (прежний перевод «/service/Tun» → «service», issue #130, снят целиком с пином lx.8 — контракт 1.1.3). Парсер share-URI percent-декодирует serviceName, поэтому «%2F» внутри сегмента после разбора становится разделителем — ровно так же, как у Xray."
@@ -653,6 +675,7 @@
         "fields": {
           "host": {
             "type": "string",
+            "form": {},
             "desc_en": "Host header value.",
             "desc_ru": "Значение заголовка Host.",
             "impl": "Здесь НЕ listable — в отличие от транспорта http."
@@ -661,6 +684,7 @@
             "type": "string",
             "format": "url_path",
             "default": "/",
+            "form": {},
             "desc_en": "Request path.",
             "desc_ru": "Путь запроса.",
             "impl": "option/v2ray_transport.go V2RayHTTPUpgradeOptions.Path. Путь разбирается url.Parse: битое percent-кодирование («/x%zz») = «invalid URL escape» и отказ ВСЕГО конфига (проверено `sing-box check` на 1.14.0-lx.39). Отсюда format url_path — SPEC 131 W2c.",
@@ -668,6 +692,23 @@
           },
           "headers": {
             "type": "object",
+            "order": [
+              "Host",
+              "*"
+            ],
+            "fields": {
+              "Host": {
+                "type": "listable_string",
+                "desc_en": "Host header value.",
+                "desc_ru": "Значение заголовка Host.",
+                "impl": "Ключ карты badoption.HTTPHeader, значение строкой или массивом строк. Описан ради формы (контракт 1.1.123): правило значения то же, что у свободной карты, — приведение к listable без проверок."
+              },
+              "*": {
+                "desc_en": "Other headers pass through as written.",
+                "desc_ru": "Прочие заголовки проходят как написаны.",
+                "impl": "Wildcard (контракт 1.1.122): неописанные ключи карты копируются как есть, без unknown_key."
+              }
+            },
             "desc_en": "Extra HTTP headers sent with each request.",
             "desc_ru": "Дополнительные HTTP-заголовки в каждом запросе.",
             "impl": "badoption.HTTPHeader: map[string]listable_string — значение строкой или массивом строк."
@@ -710,12 +751,14 @@
           "host": {
             "type": "string",
             "default": "",
+            "form": {},
             "desc_en": "Host header value.",
             "desc_ru": "Значение заголовка Host.",
             "impl": "Пусто → берётся SNI, иначе адрес сервера."
           },
           "path": {
             "type": "string",
+            "form": {},
             "desc_en": "Base request path. Anything after the first `?` is sent as the request query, as Xray does.",
             "desc_ru": "Базовый путь запроса. Всё после первого `?` уходит query запроса, как у Xray.",
             "impl": "К пути дописывается идентификатор сессии (и номер пакета в режиме packet-up); хвост '?…' ядро sing-box-lx шлёт query запроса с SPEC 119 (issue Leadaxe/sing-box-lx#36), старое ядро клеит его в путь."
@@ -748,6 +791,7 @@
                 }
               }
             },
+            "form": {},
             "desc_en": "XHTTP transfer mode.",
             "desc_ru": "Режим передачи XHTTP.",
             "impl": "Иное значение = ошибка старта. Коды деградации — xhttp_mode_forced_packet_up, xhttp_param_reset. default_when (контракт 1.1.56, LxBox §546): режим не назван, а uplink_data_placement ∈ {header, cookie} → materialize packet-up с кодом — то же, что делает `implies` записи uplinkDataPlacement в блоках uri/xray, только на входе singbox; без режима пара «header + дефолт auto» роняет ВЕСЬ конфиг ядра (transport/v2rayxhttp/meta.go). body/auto ядро принимает в любом режиме — им режим не дописывается (решение LxBox/владельца 25.09.2026). Пустая строка placement — «не задано». mode идёт в order раньше uplink_data_placement, поэтому связь `requires … equals: packet-up` у placement уже видит материализованный режим."

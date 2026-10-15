@@ -1,0 +1,121 @@
+{
+  "v": 1,
+  "scheme": "vless",
+  "cases": [
+    {
+      "name": "none_empty",
+      "comment": "Пустая форма VLESS. Группа security: ни tls.enabled, ни tls.reality.enabled не заданы — активен вариант none (пустые paths). Общая секция tls подключена ref-полем с form: видны tls (ref-поле), tls.enabled и tls.reality.enabled (их рисует группа выбора), а server_name/insecure/alpn/utls.fingerprint скрыты (visible_when tls.enabled). Транспорт: виден дискриминатор transport.type, полей варианта нет — тип не задан. Обязательны server, server_port, uuid — все пусты.",
+      "body": {},
+      "expect": {
+        "visible": [
+          "server", "server_port", "uuid", "flow", "encryption", "packet_encoding", "tls", "tls.enabled",
+          "tls.reality.enabled", "transport", "transport.type"
+        ],
+        "required": ["server", "server_port", "uuid"],
+        "missing": ["server", "server_port", "uuid"],
+        "choices": {
+          "security": "none"
+        },
+        "out_of_range": []
+      }
+    },
+    {
+      "name": "tls_ws_host",
+      "comment": "TLS + WebSocket. Задан только tls.enabled из путей группы: tls набирает 1, reality — 0 путей своих paths (вариант не кандидат) — активен tls. Видны поля TLS (visible_when tls.enabled), REALITY-ключи скрыты. Вариант ws: видны transport.path и transport.headers.Host (поля варианта, путь без имени варианта); сквозной заголовок X-Extra форме не виден. utls.enabled формой не рисуется.",
+      "body": {
+        "server": "v.example.com",
+        "server_port": 443,
+        "uuid": "11111111-2222-3333-4444-555555555555",
+        "tls": {
+          "enabled": true,
+          "server_name": "cdn.example.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "transport": {
+          "type": "ws",
+          "path": "/ws",
+          "headers": {
+            "Host": "cdn.example.com",
+            "X-Extra": "1"
+          }
+        }
+      },
+      "expect": {
+        "visible": [
+          "server", "server_port", "uuid", "flow", "encryption", "packet_encoding", "tls", "tls.enabled",
+          "tls.server_name", "tls.insecure", "tls.alpn", "tls.utls.fingerprint", "tls.reality.enabled",
+          "transport", "transport.type", "transport.path", "transport.headers.Host"
+        ],
+        "required": ["server", "server_port", "uuid"],
+        "missing": [],
+        "choices": {
+          "security": "tls"
+        },
+        "out_of_range": []
+      }
+    },
+    {
+      "name": "reality_grpc_no_pbk",
+      "comment": "REALITY + gRPC. Заданы tls.enabled и tls.reality.enabled: reality набирает 2 пути из paths ∪ set против 1 у tls — активен reality (самое длинное совпадение, контракт 1.1.123). Видны public_key (обязателен формой при reality) и short_id. public_key не задан — форма не сохранит. Вариант grpc — виден transport.service_name.",
+      "body": {
+        "server": "r.example.com",
+        "server_port": 443,
+        "uuid": "11111111-2222-3333-4444-555555555555",
+        "flow": "xtls-rprx-vision",
+        "tls": {
+          "enabled": true,
+          "server_name": "www.example.com",
+          "reality": {
+            "enabled": true,
+            "short_id": "ab"
+          }
+        },
+        "transport": {
+          "type": "grpc",
+          "service_name": "svc"
+        }
+      },
+      "expect": {
+        "visible": [
+          "server", "server_port", "uuid", "flow", "encryption", "packet_encoding", "tls", "tls.enabled",
+          "tls.server_name", "tls.insecure", "tls.alpn", "tls.utls.fingerprint", "tls.reality.enabled",
+          "tls.reality.public_key", "tls.reality.short_id", "transport", "transport.type",
+          "transport.service_name"
+        ],
+        "required": ["server", "server_port", "uuid", "tls.reality.public_key"],
+        "missing": ["tls.reality.public_key"],
+        "choices": {
+          "security": "reality"
+        },
+        "out_of_range": []
+      }
+    },
+    {
+      "name": "quic_excluded",
+      "comment": "transport.type = quic исключён у VLESS (exclude_variants ref-поля): дискриминатор виден, полей варианта нет. Тело при этом не меняется — форма лишь не предлагает quic.",
+      "body": {
+        "server": "q.example.com",
+        "server_port": 443,
+        "uuid": "11111111-2222-3333-4444-555555555555",
+        "transport": {
+          "type": "quic"
+        }
+      },
+      "expect": {
+        "visible": [
+          "server", "server_port", "uuid", "flow", "encryption", "packet_encoding", "tls", "tls.enabled",
+          "tls.reality.enabled", "transport", "transport.type"
+        ],
+        "required": ["server", "server_port", "uuid"],
+        "missing": [],
+        "choices": {
+          "security": "none"
+        },
+        "out_of_range": []
+      }
+    }
+  ]
+}

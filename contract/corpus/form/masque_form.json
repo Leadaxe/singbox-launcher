@@ -1,0 +1,27 @@
+{
+  "v": 1,
+  "scheme": "masque",
+  "cases": [
+    {
+      "name": "cloudflare",
+      "comment": "masque: tls.enabled — fixed (ядро masque само включает TLS), видны tls.server_name и tls.insecure; alpn/utls/reality отпадают по forbidden_for masque.",
+      "body": {
+        "server": "engage.cloudflareclient.com",
+        "server_port": 443,
+        "profile": "cloudflare",
+        "private_key": "k",
+        "mtu": 1280
+      },
+      "expect": {
+        "visible": [
+          "server", "server_port", "profile", "vhttp", "private_key", "public_key", "ip", "ipv6", "uri", "mtu",
+          "tls", "tls.server_name", "tls.insecure"
+        ],
+        "required": ["server", "server_port"],
+        "missing": [],
+        "choices": {},
+        "out_of_range": []
+      }
+    }
+  ]
+}

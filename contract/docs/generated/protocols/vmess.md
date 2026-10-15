@@ -512,11 +512,19 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Default: `/`
 - <a id="body-transport-httpupgrade-headers"></a>**`transport.httpupgrade.headers`** — Extra HTTP headers sent with each request.
   - Type: object
+- <a id="body-transport-httpupgrade-headers-host"></a>**`transport.httpupgrade.headers.Host`** — Host header value.
+  - Type: listable_string
+- <a id="body-transport-httpupgrade-headers-other-keys"></a>**`transport.httpupgrade.headers.*`** — Other headers pass through as written.
+  - Other keys of this object pass through as written: no rules, no `unknown_key`; emitted here in alphabetical order. Not inherited by nested objects
 - <a id="body-transport-ws-path"></a>**`transport.ws.path`** — WebSocket request path.
   - Type: string, format `url_path`
   - Default: `/`
 - <a id="body-transport-ws-headers"></a>**`transport.ws.headers`** — Extra HTTP headers sent with each request.
   - Type: object
+- <a id="body-transport-ws-headers-host"></a>**`transport.ws.headers.Host`** — Host header value.
+  - Type: listable_string
+- <a id="body-transport-ws-headers-other-keys"></a>**`transport.ws.headers.*`** — Other headers pass through as written.
+  - Other keys of this object pass through as written: no rules, no `unknown_key`; emitted here in alphabetical order. Not inherited by nested objects
 - <a id="body-transport-ws-max-early-data"></a>**`transport.ws.max_early_data`** — Maximum bytes of WebSocket early data.
   - Type: int, `0–4294967295`
   - Set by link parameter: [`ed`](#link-tr-ws-ed)

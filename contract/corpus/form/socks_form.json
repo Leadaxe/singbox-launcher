@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "scheme": "socks",
+  "cases": [
+    {
+      "name": "missing_port",
+      "comment": "SOCKS5 без порта: server_port обязателен формой — Missing. udp_over_tcp.enabled — блок advanced.",
+      "body": {
+        "server": "s.example.com",
+        "version": "5",
+        "udp_over_tcp": {
+          "enabled": true
+        }
+      },
+      "expect": {
+        "visible": ["server", "server_port", "version", "username", "password", "udp_over_tcp.enabled"],
+        "required": ["server", "server_port"],
+        "missing": ["server_port"],
+        "choices": {},
+        "out_of_range": []
+      }
+    }
+  ]
+}

@@ -130,27 +130,33 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Required: the node is dropped without it
   - Set by link parameter: [`host`](#link-common-host)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+  - Form: block `connection`, required
 - <a id="body-server-port"></a>**`server_port`** — Server port.
   - Type: uint16, format `port`, `1–65535`
   - Required: the node is dropped without it
   - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
+  - Form: block `connection`, required
 - <a id="body-server-ports"></a>**`server_ports`** — Port ranges used for port hopping.
   - Type: listable_string
   - Set by link parameter: [`mport`](#link-proto-mport)
   - Conflicts with: `realm`
+  - Form: block `advanced`
 - <a id="body-hop-interval"></a>**`hop_interval`** — Interval between port hops.
   - Type: duration
+  - Form: block `advanced`
 - <a id="body-hop-interval-max"></a>**`hop_interval_max`** — Upper bound of the randomized hop interval.
   - Type: duration
 - <a id="body-up-mbps"></a>**`up_mbps`** — Upload bandwidth in Mbps.
   - Type: int, `0–…`
   - Set by link parameter: [`upmbps`](#link-proto-upmbps)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block `advanced`
 - <a id="body-down-mbps"></a>**`down_mbps`** — Download bandwidth in Mbps.
   - Type: int, `0–…`
   - Set by link parameter: [`downmbps`](#link-proto-downmbps)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block `advanced`
 - <a id="body-obfs"></a>**`obfs`** — Obfuscation settings.
   - Type: object
 - <a id="body-obfs-type"></a>**`obfs.type`** — Obfuscation algorithm.
@@ -158,10 +164,12 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Required: the node is dropped without it
   - Set by link parameter: [`obfs`](#link-proto-obfs)
   - If invalid: removed → [`obfs_unknown`](../warnings.md#obfs_unknown)
+  - Form: block `obfs`
 - <a id="body-obfs-password"></a>**`obfs.password`** — Obfuscation password.
   - Type: string, secret
   - Required: the node is dropped without it
   - Set by link parameter: [`obfs-password`](#link-proto-obfs-password)
+  - Form: block `obfs`, required, shown when any of `obfs.type` is set
 - <a id="body-obfs-min-packet-size"></a>**`obfs.min_packet_size`** — Minimum packet size, gecko only.
   - Type: int, `0–…`
   - Set by link parameter: [`obfs-min-packet-size`](#link-proto-obfs-min-packet-size)
@@ -175,14 +183,17 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-password"></a>**`password`** — Account password.
   - Type: string, secret, role `credential`
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
+  - Form: block `connection`
 - <a id="body-network"></a>**`network`** — Networks this outbound handles.
   - Type: listable_string, `tcp`, `udp`, normalized: `trim_lower`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="body-tls"></a>**`tls`** — TLS settings.
   - Shared sub-schema, expanded below · reference page: [_tls](_tls.md)
+  - Form: block `tls`
 - <a id="body-tls-enabled"></a>**`tls.enabled`** — Enable TLS for this outbound.
   - Type: bool
   - Default: `false`
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-tls-engine"></a>**`tls.engine`** — TLS implementation used for the handshake.
   - Type: enum, `""`, `go`, `apple`, `windows`, normalized: `trim_lower`
   - Default: `go`
@@ -195,14 +206,17 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: string, format `host`
   - Set by link parameter: [`sni`](#link-proto-sni)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-tls-insecure"></a>**`tls.insecure`** — Skip server certificate verification.
   - Type: bool
   - Default: `false`
   - Set by link parameter: [`insecure`](#link-proto-insecure)
   - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-tls-alpn"></a>**`tls.alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string, normalized: `trim`
   - Set by link parameter: [`alpn`](#link-proto-alpn)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-tls-min-version"></a>**`tls.min_version`** — Minimum accepted TLS version.
   - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -384,6 +398,13 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: listable_string
 - <a id="body-fallback-delay"></a>**`fallback_delay`** — Delay before falling back to the secondary network type.
   - Type: duration
+
+### Form layout
+
+Read by the node forms only; the sanitizer ignores it. A hidden field stays in the body as written.
+
+- Blocks: `connection`, `obfs`, `tls`, `advanced`
+- Always written, not drawn: `tls.enabled = true`
 
 ## Diagnosed problems
 

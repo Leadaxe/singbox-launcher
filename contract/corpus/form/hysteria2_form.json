@@ -1,0 +1,46 @@
+{
+  "v": 1,
+  "scheme": "hysteria2",
+  "cases": [
+    {
+      "name": "obfs_no_password",
+      "comment": "Hysteria2 с obfs salamander без пароля: obfs.password виден (visible_when any_set obfs.type) и обязателен формой — Missing. TLS: tls.enabled — fixed (форма пишет его всегда и не рисует), поэтому поля TLS видны и без enabled в теле. utls/reality отпадают по forbidden_for hysteria2.",
+      "body": {
+        "server": "h.example.com",
+        "server_port": 443,
+        "password": "p",
+        "obfs": {
+          "type": "salamander"
+        },
+        "tls": {
+          "server_name": "h.example.com"
+        }
+      },
+      "expect": {
+        "visible": [
+          "server", "server_port", "server_ports", "hop_interval", "up_mbps", "down_mbps", "obfs.type",
+          "obfs.password", "password", "tls", "tls.server_name", "tls.insecure", "tls.alpn"
+        ],
+        "required": ["server", "server_port", "obfs.password"],
+        "missing": ["obfs.password"],
+        "choices": {},
+        "out_of_range": []
+      }
+    },
+    {
+      "name": "empty",
+      "comment": "Пустая форма Hysteria2: obfs.password скрыт (obfs.type не задан). Видимость полей TLS — по fixed tls.enabled, наложенному на тело перед вычислением.",
+      "body": {},
+      "expect": {
+        "visible": [
+          "server", "server_port", "server_ports", "hop_interval", "up_mbps", "down_mbps", "obfs.type",
+          "password", "tls", "tls.server_name", "tls.insecure", "tls.alpn"
+        ],
+        "required": ["server", "server_port"],
+        "missing": ["server", "server_port"],
+        "choices": {},
+        "out_of_range": []
+      }
+    }
+  ]
+}

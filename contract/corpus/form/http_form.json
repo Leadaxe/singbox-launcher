@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "scheme": "http",
+  "cases": [
+    {
+      "name": "plain",
+      "comment": "HTTP без TLS: галка tls.enabled видна в блоке tls (блок унаследован от ref-поля), server_name/insecure скрыты (visible_when tls.enabled). alpn/utls/reality сняты exclude_fields.",
+      "body": {
+        "server": "p.example.com",
+        "server_port": 8080,
+        "username": "u"
+      },
+      "expect": {
+        "visible": ["server", "server_port", "username", "password", "path", "tls", "tls.enabled"],
+        "required": ["server", "server_port"],
+        "missing": [],
+        "choices": {},
+        "out_of_range": []
+      }
+    },
+    {
+      "name": "tls_on",
+      "comment": "HTTP с TLS: tls.enabled задан — видны server_name и insecure.",
+      "body": {
+        "server": "p.example.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "p.example.com"
+        }
+      },
+      "expect": {
+        "visible": [
+          "server", "server_port", "username", "password", "path", "tls", "tls.enabled", "tls.server_name",
+          "tls.insecure"
+        ],
+        "required": ["server", "server_port"],
+        "missing": [],
+        "choices": {},
+        "out_of_range": []
+      }
+    }
+  ]
+}

@@ -182,10 +182,53 @@
       "transport",
       "__dialer"
     ],
+    "form": {
+      "blocks": [
+        "connection",
+        "tls",
+        "transport",
+        "advanced"
+      ],
+      "choices": [
+        {
+          "id": "security",
+          "block": "tls",
+          "options": [
+            {
+              "id": "none",
+              "paths": []
+            },
+            {
+              "id": "tls",
+              "paths": [
+                "tls.enabled"
+              ],
+              "set": {
+                "tls.enabled": true
+              }
+            },
+            {
+              "id": "reality",
+              "paths": [
+                "tls.reality.enabled"
+              ],
+              "set": {
+                "tls.enabled": true,
+                "tls.reality.enabled": true
+              }
+            }
+          ]
+        }
+      ]
+    },
     "fields": {
       "server": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server address: domain or IP.",
         "desc_ru": "Адрес сервера: домен или IP.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -193,6 +236,10 @@
       "server_port": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server port.",
         "desc_ru": "Порт сервера.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -202,6 +249,10 @@
         "role": "credential",
         "required": true,
         "secret": true,
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "User identifier.",
         "desc_ru": "Идентификатор пользователя.",
         "impl": "json-тег без omitempty. Секрет: в warnings и логах маскируется. Формат uuid — только документация: ядро мусорную строку ПРИНИМАЕТ (хеширует в vless.NewClient), проверено `sing-box check` на 1.14.1-lx.4 — DRIFT §(t), SPEC 131 W2c."
@@ -228,6 +279,9 @@
             ]
           }
         ],
+        "form": {
+          "block": "connection"
+        },
         "desc_en": "XTLS flow control mode.",
         "desc_ru": "Режим управления потоком XTLS.",
         "impl": "Проверка в sing-vmess/vless.NewClient; иное значение = код flow_deprecated, поле снимается. Vision несовместим с транспортом и не поддерживает UDP — ЕСЛИ у узла нет слоя VLESS Encryption: с ним Vision (padding и фрейминг) работает поверх слоя шифрования (CommonConn), нижний TLS не трогает, и транспорт, xhttp в том числе, ему не важен (Xray; LxBox §544). Поэтому связь несёт `unless_set: [encryption]`: при заданном encryption flow остаётся и кода нет. «Задан» = поле доедет до тела: пустое и ТОЧНОЕ 'none' (absent_values) слоя не задают и связь не отменяют; 'None' — настоящее значение, но оно не проходит pattern и хоронит весь узел кодом vless_encryption_invalid. Encryption идёт по order ПОСЛЕ flow, но связи читают исходное тело (srcRoot), а литерал-выключатель снимается предварительным проходом (markAbsentObjects) — поэтому порядок order на исход не влияет. Конфликт назван СВОИМ кодом vision_with_transport, а не общим field_conflict: у общего кода текст «ядро отвергает такую пару и не запустит весь конфиг», а здесь ядро пару ПРИНИМАЕТ (вердикт D) — снимается бессмыслица, узел живёт, и severity тут info, а не warning. Снимается при этом сам flow: связи читают исходное тело (pathPresent → srcRoot), поэтому transport виден, хотя по body.order он идёт ПОЗЖЕ flow, — «младшее по order» описывает не то, какое поле снимается, а лишь то, что сторона-декларант уступает."
@@ -245,6 +299,9 @@
           "action": "drop_node",
           "code": "vless_encryption_invalid",
           "core_rejects": true
+        },
+        "form": {
+          "block": "advanced"
         },
         "desc_en": "Post-quantum encryption layer.",
         "desc_ru": "Постквантовый слой шифрования.",
@@ -272,6 +329,9 @@
         },
         "default": "xudp",
         "tristate": true,
+        "form": {
+          "block": "advanced"
+        },
         "desc_en": "How UDP packets are encapsulated.",
         "desc_ru": "Способ инкапсуляции UDP-пакетов.",
         "impl": "*string — три состояния: ключа НЕТ = xudp (дефолт ядра), явная \"\" = без инкапсуляции, значение = как задано. Эмиттер обязан писать явную пустую строку, а не опускать ключ. ЗАПИСЬ ИСПРАВЛЕНА (DRIFT §4/§2(i)): «паника ядра (SPEC 049)» протухла — на пине это аккуратный ФАТАЛ B «unknown packet encoding: <value>», а не паника; ядро починили, но фатальность осталась и гард по-прежнему обязателен (валит ВЕСЬ конфиг, не один узел). 'none' — алиас отсутствия поля: ядро его НЕ принимает (прогон: B «unknown packet encoding: none»), поэтому обе стороны снимают его молча. Прочий мусор — снять поле + packet_encoding_unknown."
@@ -279,6 +339,9 @@
       "tls": {
         "type": "ref",
         "ref": "tls",
+        "form": {
+          "block": "tls"
+        },
         "desc_en": "TLS settings.",
         "desc_ru": "Настройки TLS.",
         "impl": "OutboundTLSOptions; поля — registry/tls.json."
@@ -293,6 +356,12 @@
       "transport": {
         "type": "ref",
         "ref": "transports",
+        "form": {
+          "block": "transport",
+          "exclude_variants": [
+            "quic"
+          ]
+        },
         "desc_en": "V2Ray transport settings.",
         "desc_ru": "Настройки транспорта V2Ray.",
         "impl": "V2RayTransportOptions; варианты по transport.type — registry/transports.json."

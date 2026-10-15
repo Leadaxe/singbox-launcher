@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "scheme": "naive",
+  "cases": [
+    {
+      "name": "quic",
+      "comment": "naive с quic: quic_congestion_control виден (visible_when quic = true). TLS: виден только server_name — прочие поля TLS naive запрещены (forbidden_for), tls.enabled — fixed.",
+      "body": {
+        "server": "n.example.com",
+        "server_port": 443,
+        "username": "u",
+        "password": "p",
+        "quic": true
+      },
+      "expect": {
+        "visible": [
+          "server", "server_port", "username", "password", "quic", "quic_congestion_control", "tls",
+          "tls.server_name"
+        ],
+        "required": ["server", "server_port"],
+        "missing": [],
+        "choices": {},
+        "out_of_range": []
+      }
+    },
+    {
+      "name": "no_quic_missing_port",
+      "comment": "naive без quic: quic_congestion_control скрыт. Порт не задан — Missing.",
+      "body": {
+        "server": "n.example.com"
+      },
+      "expect": {
+        "visible": ["server", "server_port", "username", "password", "quic", "tls", "tls.server_name"],
+        "required": ["server", "server_port"],
+        "missing": ["server_port"],
+        "choices": {},
+        "out_of_range": []
+      }
+    }
+  ]
+}

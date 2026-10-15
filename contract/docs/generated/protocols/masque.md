@@ -119,46 +119,56 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Required: the node is dropped without it
   - Set by link parameter: [`host`](#link-common-host)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+  - Form: block `connection`, required
 - <a id="body-server-port"></a>**`server_port`** — Server port.
   - Type: uint16, format `port`, `1–65535`
   - Required: the node is dropped without it
   - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
+  - Form: block `connection`, required
 - <a id="body-profile"></a>**`profile`** — MASQUE server profile.
   - Type: enum, `""`, `cloudflare`, `standard`, normalized: `trim_lower`
   - Default: `cloudflare`
   - Set by link parameter: [`profile`](#link-proto-profile)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block `connection`
 - <a id="body-vhttp"></a>**`vhttp`** — HTTP version carrying the MASQUE tunnel.
   - Type: enum, `""`, `h3`, `h2`, `auto`, normalized: `trim_lower`
   - Default: `auto`
   - Set by link parameter: [`vhttp`](#link-proto-vhttp)
   - If invalid: replaced with `h3` → [`masque_vhttp_invalid`](../warnings.md#masque_vhttp_invalid)
+  - Form: block `advanced`
 - <a id="body-private-key"></a>**`private_key`** — Client private key, base64 DER EC.
   - Type: string, secret, role `private_key`, format `base64`
   - Set by link parameter: [`userinfo`](#link-common-userinfo), [`private_key`](#link-proto-private-key)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
   - Meaningless without: `public_key`
+  - Form: block `connection`
 - <a id="body-public-key"></a>**`public_key`** — Client public key, base64 DER PKIX.
   - Type: string, format `base64`
   - Set by link parameter: [`publickey`](#link-proto-publickey)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
   - Meaningless without: `private_key`
+  - Form: block `connection`
 - <a id="body-ip"></a>**`ip`** — IPv4 address assigned inside the tunnel.
   - Type: string, format `cidr`
   - Set by link parameter: [`address`](#link-proto-address)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block `advanced`
 - <a id="body-ipv6"></a>**`ipv6`** — IPv6 address assigned inside the tunnel.
   - Type: string, format `cidr`
   - Set by link parameter: [`address`](#link-proto-address)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block `advanced`
 - <a id="body-uri"></a>**`uri`** — MASQUE endpoint URI.
   - Type: string
+  - Form: block `advanced`
 - <a id="body-mtu"></a>**`mtu`** — Tunnel MTU in bytes.
   - Type: int, `576–16000`
   - Default: `1280`
   - Set by link parameter: [`mtu`](#link-proto-mtu)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block `advanced`
 - <a id="body-idle-timeout"></a>**`idle_timeout`** — Suspend the tunnel after this idle period.
   - Type: duration
   - Default: `0s`
@@ -172,10 +182,12 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="body-tls"></a>**`tls`** — TLS settings.
   - Shared sub-schema, expanded below · reference page: [_tls](_tls.md)
+  - Form: block `tls`
 - <a id="body-tls-enabled"></a>**`tls.enabled`** — Enable TLS for this outbound.
   - Type: bool
   - Default: `false`
   - Set by link parameter: [`security`](#link-tls-security)
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-tls-engine"></a>**`tls.engine`** — TLS implementation used for the handshake.
   - Type: enum, `""`, `go`, `apple`, `windows`, normalized: `trim_lower`
   - Default: `go`
@@ -189,14 +201,17 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: string, format `host`
   - Set by link parameter: [`sni`](#link-proto-sni)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-tls-insecure"></a>**`tls.insecure`** — Skip server certificate verification.
   - Type: bool
   - Default: `false`
   - Set by link parameter: [`insecure`](#link-proto-insecure)
   - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-tls-alpn"></a>**`tls.alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string, normalized: `trim`
   - Not applicable to `masque`: removed → [`masque_tls_field_ignored`](../warnings.md#masque_tls_field_ignored)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-tls-min-version"></a>**`tls.min_version`** — Minimum accepted TLS version.
   - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -350,6 +365,13 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: listable_string
 - <a id="body-fallback-delay"></a>**`fallback_delay`** — Delay before falling back to the secondary network type.
   - Type: duration
+
+### Form layout
+
+Read by the node forms only; the sanitizer ignores it. A hidden field stays in the body as written.
+
+- Blocks: `connection`, `tls`, `advanced`
+- Always written, not drawn: `tls.enabled = true`
 
 ## Diagnosed problems
 

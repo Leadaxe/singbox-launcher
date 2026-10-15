@@ -183,16 +183,19 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
   - If absent: filled in with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more)
   - Above `1280`: replaced with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) → [`awg_mtu_clamped`](../warnings.md#awg_mtu_clamped). From `singbox`: kept as written, with a note → [`awg_mtu_high`](../warnings.md#awg_mtu_high)
+  - Form: block `advanced`
 - <a id="body-address"></a>**`address`** — Addresses assigned to the tunnel interface.
   - Type: string_array, format `cidr`, normalized: `cidr_prefix`
   - Required: the node is dropped without it
   - Set by link parameter: [`address`](#link-proto-address)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block `connection`, required
 - <a id="body-private-key"></a>**`private_key`** — Local private key.
   - Type: string, secret, role `private_key`, format `base64_32`, normalized: `base64_std`
   - Required: the node is dropped without it
   - Set by link parameter: [`userinfo`](#link-common-userinfo), [`privatekey`](#link-proto-privatekey)
   - If invalid: node dropped → [`wg_key_invalid`](../warnings.md#wg_key_invalid)
+  - Form: block `connection`, required
 - <a id="body-listen-port"></a>**`listen_port`** — Local UDP port the tunnel listens on.
   - Type: uint16, format `port`, `1–65535`
   - Set by link parameter: [`listenport`](#link-proto-listenport)
@@ -201,29 +204,36 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-peers"></a>**`peers`** — List of WireGuard peers.
   - Type: array
   - Required: the node is dropped without it
+  - Form: block `connection`
 - <a id="body-peers-address"></a>**`peers.address`** — Peer endpoint address.
   - Type: string, format `host`
   - Required: the node is dropped without it
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+  - Form: block `connection`, required
 - <a id="body-peers-port"></a>**`peers.port`** — Peer endpoint port.
   - Type: uint16, format `port`, `1–65535`
   - Required: the node is dropped without it
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
+  - Form: block `connection`, required
 - <a id="body-peers-public-key"></a>**`peers.public_key`** — Peer public key.
   - Type: string, format `base64_32`, normalized: `base64_std`
   - Required: the node is dropped without it
   - If invalid: node dropped → [`wg_key_invalid`](../warnings.md#wg_key_invalid)
+  - Form: block `connection`, required
 - <a id="body-peers-pre-shared-key"></a>**`peers.pre_shared_key`** — Optional pre-shared key.
   - Type: string, secret, format `base64_32`, normalized: `base64_std`
   - If invalid: node dropped → [`wg_key_invalid`](../warnings.md#wg_key_invalid)
+  - Form: block `advanced`
 - <a id="body-peers-allowed-ips"></a>**`peers.allowed_ips`** — Prefixes routed to this peer.
   - Type: string_array, format `cidr`, normalized: `cidr_prefix`
   - Required: the node is dropped without it
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
   - If absent: filled in with `0.0.0.0/0`, `::/0`
+  - Form: block `advanced`
 - <a id="body-peers-persistent-keepalive-interval"></a>**`peers.persistent_keepalive_interval`** — Keepalive interval in seconds, number or range.
   - Type: awg_range
   - Range form `N-M` needs core ≥ `1.14.0-lx.32`, build tag `with_awg`; means level `awg3`; on a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`; removing the extension collapses the range to its lower bound
+  - Form: block `advanced`
 - <a id="body-peers-reserved"></a>**`peers.reserved`** — Three reserved bytes prepended to packets.
   - Type: int_array, `0–255`, len `3`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -245,6 +255,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Means protocol level `awg`
+  - Form: block `amnezia`
 - <a id="body-jmin"></a>**`jmin`** — Minimum size of a junk packet.
   - Type: int, `0–…`
   - Set by link parameter: [`jmin`](#link-proto-jmin)
@@ -252,36 +263,42 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Meaningless without: `jmax`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Means protocol level `awg`
+  - Form: block `amnezia`
 - <a id="body-jmax"></a>**`jmax`** — Maximum size of a junk packet.
   - Type: int, `0–…`
   - Set by link parameter: [`jmax`](#link-proto-jmax)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Means protocol level `awg`
+  - Form: block `amnezia`
 - <a id="body-s1"></a>**`s1`** — Junk prepended to the handshake initiation packet.
   - Type: int, `0–…`
   - Set by link parameter: [`s1`](#link-proto-s1)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Means protocol level `awg`
+  - Form: block `amnezia`
 - <a id="body-s2"></a>**`s2`** — Junk prepended to the handshake response packet.
   - Type: int, `0–…`
   - Set by link parameter: [`s2`](#link-proto-s2)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Means protocol level `awg`
+  - Form: block `amnezia`
 - <a id="body-s3"></a>**`s3`** — Junk prepended to the cookie reply packet.
   - Type: int, `0–…`
   - Set by link parameter: [`s3`](#link-proto-s3)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Means protocol level `awg2`
+  - Form: block `amnezia`
 - <a id="body-s4"></a>**`s4`** — Junk prepended to every transport packet.
   - Type: int, `0–…`
   - Set by link parameter: [`s4`](#link-proto-s4)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Means protocol level `awg2`
+  - Form: block `amnezia`
 - <a id="body-h1"></a>**`h1`** — Magic header of the handshake initiation packet.
   - Type: awg_range, normalized: `range_order`
   - Set by link parameter: [`h1`](#link-proto-h1)
@@ -289,6 +306,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Range form `N-M`; means level `awg2`
   - Means protocol level `awg`
+  - Form: block `amnezia`
 - <a id="body-h2"></a>**`h2`** — Magic header of the handshake response packet.
   - Type: awg_range, normalized: `range_order`
   - Set by link parameter: [`h2`](#link-proto-h2)
@@ -296,6 +314,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Range form `N-M`; means level `awg2`
   - Means protocol level `awg`
+  - Form: block `amnezia`
 - <a id="body-h3"></a>**`h3`** — Magic header of the cookie reply packet.
   - Type: awg_range, normalized: `range_order`
   - Set by link parameter: [`h3`](#link-proto-h3)
@@ -303,6 +322,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Range form `N-M`; means level `awg2`
   - Means protocol level `awg`
+  - Form: block `amnezia`
 - <a id="body-h4"></a>**`h4`** — Magic header of the transport packet.
   - Type: awg_range, normalized: `range_order`
   - Set by link parameter: [`h4`](#link-proto-h4)
@@ -310,6 +330,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Range form `N-M`; means level `awg2`
   - Means protocol level `awg`
+  - Form: block `amnezia`
 - <a id="body-i1"></a>**`i1`** — First custom junk packet.
   - Type: string
   - Set by link parameter: [`i1`](#link-proto-i1)
@@ -318,27 +339,32 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Conflicts with: `ib`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Means protocol level `awg1.5`
+  - Form: block `amnezia`
 - <a id="body-i2"></a>**`i2`** — Second custom junk packet.
   - Type: string
   - Set by link parameter: [`i2`](#link-proto-i2)
   - Conflicts with: `ip`
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Means protocol level `awg1.5`
+  - Form: block `amnezia`
 - <a id="body-i3"></a>**`i3`** — Third custom junk packet.
   - Type: string
   - Set by link parameter: [`i3`](#link-proto-i3)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Means protocol level `awg1.5`
+  - Form: block `amnezia`
 - <a id="body-i4"></a>**`i4`** — Fourth custom junk packet.
   - Type: string
   - Set by link parameter: [`i4`](#link-proto-i4)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Means protocol level `awg1.5`
+  - Form: block `amnezia`
 - <a id="body-i5"></a>**`i5`** — Fifth custom junk packet.
   - Type: string
   - Set by link parameter: [`i5`](#link-proto-i5)
   - Only written when: core ≥ `1.13.13-lx.1`, lx fork only, build tag `with_awg`
   - Means protocol level `awg1.5`
+  - Form: block `amnezia`
 - <a id="body-id"></a>**`id`** — Masquerade domain name.
   - Type: string, format `host`, must match `^[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?(?:\.[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)*\.?$`, `…–253`
   - Set by link parameter: [`id`](#link-proto-id)
@@ -454,6 +480,12 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: listable_string
 - <a id="body-fallback-delay"></a>**`fallback_delay`** — Delay before falling back to the secondary network type.
   - Type: duration
+
+### Form layout
+
+Read by the node forms only; the sanitizer ignores it. A hidden field stays in the body as written.
+
+- Blocks: `connection`, `amnezia`, `advanced`
 
 ## Diagnosed problems
 

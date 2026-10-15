@@ -87,17 +87,21 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Required: the node is dropped without it
   - Set by link parameter: [`host`](#link-common-host)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+  - Form: block `connection`, required
 - <a id="body-server-port"></a>**`server_port`** — Server port.
   - Type: uint16, format `port`, `1–65535`
   - Required: the node is dropped without it
   - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
+  - Form: block `connection`, required
 - <a id="body-username"></a>**`username`** — Account user name.
   - Type: string, role `credential`
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
+  - Form: block `connection`
 - <a id="body-password"></a>**`password`** — Account password.
   - Type: string, secret
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
+  - Form: block `connection`
 - <a id="body-insecure-concurrency"></a>**`insecure_concurrency`** — Number of concurrent insecure connections.
   - Type: int, `0–…`
   - Default: `0`
@@ -120,19 +124,23 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-quic"></a>**`quic`** — Use QUIC instead of TCP.
   - Type: bool
   - Default: `false`
+  - Form: block `advanced`
 - <a id="body-quic-congestion-control"></a>**`quic_congestion_control`** — QUIC congestion control algorithm.
   - Type: enum, `""`, `bbr`, `bbr2`, `cubic`, `reno`, normalized: `trim_lower`
   - Default: `""`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block `advanced`, shown when `quic` is `true`
 - <a id="body-quic-session-receive-window"></a>**`quic_session_receive_window`** — Receive window of the QUIC session.
   - Type: int, `0–…`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="body-tls"></a>**`tls`** — TLS settings.
   - Shared sub-schema, expanded below · reference page: [_tls](_tls.md)
+  - Form: block `tls`
 - <a id="body-tls-enabled"></a>**`tls.enabled`** — Enable TLS for this outbound.
   - Type: bool
   - Default: `false`
   - Set by link parameter: [`security`](#link-tls-security)
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-tls-engine"></a>**`tls.engine`** — TLS implementation used for the handshake.
   - Type: enum, `""`, `go`, `apple`, `windows`, normalized: `trim_lower`
   - Default: `go`
@@ -146,13 +154,16 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: string, format `host`
   - Set by link parameter: [`sni`](#link-tls-sni)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-tls-insecure"></a>**`tls.insecure`** — Skip server certificate verification.
   - Type: bool
   - Default: `false`
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-tls-alpn"></a>**`tls.alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string, normalized: `trim`
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-tls-min-version"></a>**`tls.min_version`** — Minimum accepted TLS version.
   - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
   - Not applicable to `naive`: removed → [`tls_field_unsupported_naive`](../warnings.md#tls_field_unsupported_naive)
@@ -306,6 +317,13 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: listable_string
 - <a id="body-fallback-delay"></a>**`fallback_delay`** — Delay before falling back to the secondary network type.
   - Type: duration
+
+### Form layout
+
+Read by the node forms only; the sanitizer ignores it. A hidden field stays in the body as written.
+
+- Blocks: `connection`, `tls`, `advanced`
+- Always written, not drawn: `tls.enabled = true`
 
 ## Diagnosed problems
 

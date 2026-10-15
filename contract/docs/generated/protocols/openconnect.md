@@ -117,14 +117,14 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-insecure"></a>**`tls.insecure`** — Do not verify the gateway certificate.
   - Type: bool
   - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
-  - Form: drawn by a choice group
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-tls-server-name"></a>**`tls.server_name`** — SNI, if it differs from the server host.
   - Type: string
   - Form: block `security`
 - <a id="body-tls-peer-fingerprint"></a>**`tls.peer_fingerprint`** — Pinned gateway certificate fingerprints.
   - Type: listable_string, must match `^(?:[0-9A-Fa-f]{4,40}|sha1:[0-9A-Fa-f]{4,40}|sha256:[0-9A-Fa-f]{4,64}|pin-sha256:(?:[A-Za-z0-9+/]{4,43}|[A-Za-z0-9+/]{3,42}=|[A-Za-z0-9+/]{2,41}==|[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=))$`
   - If invalid: removed → [`openconnect_fingerprint_invalid`](../warnings.md#openconnect_fingerprint_invalid)
-  - Form: drawn by a choice group
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-tls-certificate-authority"></a>**`tls.certificate_authority`** — Trusted CA certificates (PEM).
   - Type: listable_string
 - <a id="body-tls-certificate-authority-path"></a>**`tls.certificate_authority_path`** — Path to a trusted CA file.
@@ -191,7 +191,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 Read by the node forms only; the sanitizer ignores it. A hidden field stays in the body as written.
 
 - Blocks: `connection`, `security`, `advanced`
-- Choice `server_cert_check` in block `security`: `system` (nothing set) · `pinned` (`tls.peer_fingerprint`) · `insecure` (`tls.insecure`). The first option with a set path is active; switching clears the other options' paths
+- Choice `server_cert_check` in block `security`: `system` (nothing set) · `pinned` (`tls.peer_fingerprint`) · `insecure` (`tls.insecure`). Active is the option with the most set paths (its paths and `set` keys) among those with a set path, the first on a tie; switching clears the other options' paths
 
 ## Diagnosed problems
 

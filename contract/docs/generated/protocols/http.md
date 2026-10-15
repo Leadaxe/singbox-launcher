@@ -111,29 +111,36 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Required: the node is dropped without it
   - Set by link parameter: [`host`](#link-common-host)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+  - Form: block `connection`, required
 - <a id="body-server-port"></a>**`server_port`** — Server port.
   - Type: uint16, format `port`, `1–65535`
   - Required: the node is dropped without it
   - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
+  - Form: block `connection`, required
 - <a id="body-username"></a>**`username`** — Account user name.
   - Type: string, role `credential`
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
+  - Form: block `connection`
 - <a id="body-password"></a>**`password`** — Account password.
   - Type: string, secret
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
+  - Form: block `connection`
 - <a id="body-path"></a>**`path`** — Request path of the CONNECT request.
   - Type: string
   - Set by link parameter: [`path`](#link-proto-path)
+  - Form: block `advanced`
 - <a id="body-headers"></a>**`headers`** — Extra HTTP headers sent with the request.
   - Type: object
   - Set by link parameter: [`headers`](#link-proto-headers)
 - <a id="body-tls"></a>**`tls`** — TLS settings.
   - Shared sub-schema, expanded below · reference page: [_tls](_tls.md)
+  - Form: block `tls`, not drawn `alpn`, `utls`, `reality`
 - <a id="body-tls-enabled"></a>**`tls.enabled`** — Enable TLS for this outbound.
   - Type: bool
   - Default: `false`
   - Set by link parameter: [`security`](#link-proto-security)
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-tls-engine"></a>**`tls.engine`** — TLS implementation used for the handshake.
   - Type: enum, `""`, `go`, `apple`, `windows`, normalized: `trim_lower`
   - Default: `go`
@@ -146,14 +153,17 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: string, format `host`
   - Set by link parameter: [`sni`](#link-proto-sni)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-tls-insecure"></a>**`tls.insecure`** — Skip server certificate verification.
   - Type: bool
   - Default: `false`
   - Set by link parameter: [`insecure`](#link-proto-insecure)
   - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-tls-alpn"></a>**`tls.alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string, normalized: `trim`
   - Set by link parameter: [`alpn`](#link-proto-alpn)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-tls-min-version"></a>**`tls.min_version`** — Minimum accepted TLS version.
   - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -245,6 +255,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
   - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
   - Replaced: `random` → `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-tls-reality"></a>**`tls.reality`** — REALITY settings.
   - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
 - <a id="body-tls-reality-enabled"></a>**`tls.reality.enabled`** — Enable REALITY handshake camouflage.
@@ -254,17 +265,20 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Conflicts with: `tls.disable_sni`
   - Conflicts with: `tls.spoof`
   - Requires: `tls.utls.enabled` — if missing, filled in with `true`
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-tls-reality-public-key"></a>**`tls.reality.public_key`** — Server REALITY public key (x25519).
   - Type: string, format `base64_32`, normalized: `base64_rawurl`
   - Required: the node is dropped without it
   - Set by link parameter: [`pbk`](#link-tls-pbk)
   - If invalid: removed → [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, required, shown when `tls.reality.enabled` is `true`
 - <a id="body-tls-reality-short-id"></a>**`tls.reality.short_id`** — REALITY short ID (hex, even length).
   - Type: string, format `hex`, `…–16`, len `even`, normalized: `hex_only`
   - Set by link parameter: [`sid`](#link-tls-sid)
   - If invalid: removed → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
   - If the value had to be cleaned up: [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
   - Meaningless without: `tls.reality.public_key`
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.reality.enabled` is `true`
 - <a id="body-tls-reality-key-share"></a>**`tls.reality.key_share`** — Key exchange used in the REALITY ClientHello.
   - Type: enum, `""`, `hybrid`, `classical`, normalized: `trim_lower`
   - Default: `""`
@@ -305,6 +319,12 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: listable_string
 - <a id="body-fallback-delay"></a>**`fallback_delay`** — Delay before falling back to the secondary network type.
   - Type: duration
+
+### Form layout
+
+Read by the node forms only; the sanitizer ignores it. A hidden field stays in the body as written.
+
+- Blocks: `connection`, `tls`, `advanced`
 
 ## Diagnosed problems
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -396,7 +397,12 @@ func renderBodyList(b *strings.Builder, scheme string, body *registry.BodySchema
 			l.item(anchorTag(bodyAnchor(name))+"**`"+name+"`**", f.DescEn)
 			l.attr("Shared sub-schema, expanded below · reference page: [" +
 				strings.TrimSuffix(file, ".md") + "](" + file + ")")
+			if fl := formLine(f.Form); fl != "" {
+				l.attr(fl)
+			}
+			l.noForm = f.Form == nil
 			writeChildren(l, name, f, "../")
+			l.noForm = false
 			continue
 		}
 		writeBodyItems(l, "", name, f, "../")
@@ -432,7 +438,7 @@ func formLine(ff *registry.FieldForm) string {
 	if ff.Block != "" {
 		parts = append(parts, "block "+code(ff.Block))
 	} else {
-		parts = append(parts, "drawn by a choice group")
+		parts = append(parts, "block of the connecting `ref` field, or drawn by a choice group")
 	}
 	if ff.Required {
 		req := "required"
@@ -453,6 +459,12 @@ func formLine(ff *registry.FieldForm) string {
 			hi = trimFloat(*ff.Max)
 		}
 		parts = append(parts, "range "+code(lo+"–"+hi))
+	}
+	if len(ff.ExcludeVariants) > 0 {
+		parts = append(parts, "variants not offered "+codeList(ff.ExcludeVariants))
+	}
+	if len(ff.ExcludeFields) > 0 {
+		parts = append(parts, "not drawn "+codeList(ff.ExcludeFields))
 	}
 	return "Form: " + strings.Join(parts, ", ")
 }
@@ -476,7 +488,20 @@ func renderBodyForm(b *strings.Builder, form *registry.FormSection) {
 			opts = append(opts, code(o.ID)+" ("+what+")")
 		}
 		b.WriteString("- Choice " + code(c.ID) + " in block " + code(c.Block) + ": " + strings.Join(opts, " · ") +
-			". The first option with a set path is active; switching clears the other options' paths\n")
+			". Active is the option with the most set paths (its paths and `set` keys) among those with a set path, " +
+			"the first on a tie; switching clears the other options' paths\n")
+	}
+	if len(form.Fixed) > 0 {
+		keys := make([]string, 0, len(form.Fixed))
+		for k := range form.Fixed {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		fixed := make([]string, 0, len(keys))
+		for _, k := range keys {
+			fixed = append(fixed, code(k+" = "+fmt.Sprint(form.Fixed[k])))
+		}
+		b.WriteString("- Always written, not drawn: " + strings.Join(fixed, ", ") + "\n")
 	}
 	b.WriteString("\n")
 }
@@ -532,7 +557,7 @@ func writeBodyItems(l *list, prefix, name string, f *registry.Field, linkPrefix 
 	for _, g := range bodyCoreGate(f) {
 		l.attr(g)
 	}
-	if fl := formLine(f.Form); fl != "" {
+	if fl := formLine(f.Form); fl != "" && !l.noForm && !l.banned {
 		l.attr(fl)
 	}
 
