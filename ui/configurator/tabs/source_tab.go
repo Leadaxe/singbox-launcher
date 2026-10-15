@@ -70,7 +70,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// BodyKindWGConf — вместе с AWG-полями Jc/Jmin/…/I1-I5) и Amnezia vpn://,
 	// которое и стоит за «…».
 	guiState.SourceURLEntry.SetPlaceHolder(
-		locale.T("Subscription URL, Direct Links, JSON, WG/AWG INI ..."))
+		locale.T("Subscription URL, Direct Links, JSON, WG/AWG INI, OpenVPN ..."))
 	guiState.SourceURLEntry.Wrapping = fyne.TextWrapOff
 	// No automatic application: URLs are applied only when the user clicks Add.
 	guiState.SourceURLEntry.OnChanged = func(value string) {

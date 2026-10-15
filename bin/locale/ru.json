@@ -3848,8 +3848,8 @@
   "Origin is empty.": {
     "value": "Исходник пуст."
   },
-  "Subscription URL, Direct Links, JSON, WG/AWG INI ...": {
-    "value": "Ссылка на подписку, прямые ссылки, JSON, WG/AWG INI ..."
+  "Subscription URL, Direct Links, JSON, WG/AWG INI, OpenVPN ...": {
+    "value": "Ссылка на подписку, прямые ссылки, JSON, WG/AWG INI, OpenVPN ..."
   },
   "subscription has never been updated — no nodes yet; press Update": {
     "value": "подписка ещё ни разу не обновлялась — узлов нет; нажмите Update"
