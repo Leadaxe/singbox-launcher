@@ -786,10 +786,39 @@ jobs:
           find . -name "*.tmp" -type f -delete 2>/dev/null || true
           echo ""
 
+          # actions/download-artifact restores files with 0644 permissions.
+          # Fix executable bits before zipping, then verify the mode IN the ZIP
+          # (a matching SHA-256 alone cannot detect a release built with bad modes).
+          package_macos_app() {
+            local app_path="$1"
+            local archive_name="$2"
+            local binary="${app_path}/Contents/MacOS/singbox-launcher"
+
+            if [ ! -f "$binary" ]; then
+              echo "::error::Missing macOS launcher binary: $binary"
+              return 1
+            fi
+
+            chmod 755 "$binary"
+            zip -r "$archive_name" "$app_path"
+
+            python3 - "$archive_name" "${binary#./}" <<'PY'
+          import stat
+          import sys
+          import zipfile
+
+          archive_name, binary_path = sys.argv[1:]
+          with zipfile.ZipFile(archive_name) as archive:
+              mode = archive.getinfo(binary_path).external_attr >> 16
+          if not stat.S_ISREG(mode) or (mode & 0o111) != 0o111:
+              sys.exit(f"Non-executable macOS binary in {archive_name}: {binary_path} ({mode & 0o777:04o})")
+          PY
+          }
+
           MACOS_APP=$(find . -name "singbox-launcher.app" -type d | head -1 || true)
           if [ -n "${MACOS_APP:-}" ]; then
             echo "✓ Found singbox-launcher.app, creating ZIP..."
-            zip -r "singbox-launcher-${VERSION}-macos.zip" "$MACOS_APP"
+            package_macos_app "$MACOS_APP" "singbox-launcher-${VERSION}-macos.zip"
             echo "✓ Created: singbox-launcher-${VERSION}-macos.zip"
           else
             echo "⚠ Warning: singbox-launcher.app not found"
@@ -799,7 +828,7 @@ jobs:
           MACOS_APP_CATALINA=$(find . -name "singbox-launcher-macos-catalina.app" -type d | head -1 || true)
           if [ -n "${MACOS_APP_CATALINA:-}" ]; then
             echo "✓ Found Catalina-targeted app, creating ZIP..."
-            zip -r "singbox-launcher-${VERSION}-macos-catalina.zip" "$MACOS_APP_CATALINA"
+            package_macos_app "$MACOS_APP_CATALINA" "singbox-launcher-${VERSION}-macos-catalina.zip"
             echo "✓ Created: singbox-launcher-${VERSION}-macos-catalina.zip"
           fi
 
