@@ -1,16 +1,16 @@
 # TASKS 168
 
 ## Этап 1 — контракт 1.1.123
-- [ ] T1 `contract/schema/registry_body.schema.json` — form у ref-полей и общих секций, `fixed`, `exclude_variants`, form у массива объектов
-- [ ] T2 `contract/registry/protocols/{vless,hysteria2,trojan,wireguard,naive,masque,socks,http}.json` — `body.form` и `form` полей
-- [ ] T3 `contract/registry/tls.json`, `contract/registry/transports.json` — `form` полей, `headers.Host` + `*`
-- [ ] T4 корпус `contract/corpus/form/*_form.json` (8 схем), README корпуса формы
-- [ ] T5 `contract/VERSION` 1.1.123, `contract/README.md`, `contract/TASKS_LXBOX.md` §120, `go generate ./contract/...`
+- [x] T1 `contract/schema/registry_body.schema.json` — form у ref-полей и общих секций, `fixed`, `exclude_variants`, form у массива объектов
+- [x] T2 `contract/registry/protocols/{vless,hysteria2,trojan,wireguard,naive,masque,socks,http}.json` — `body.form` и `form` полей
+- [x] T3 `contract/registry/tls.json`, `contract/registry/transports.json` — `form` полей, `headers.Host` + `*`
+- [x] T4 корпус `contract/corpus/form/*_form.json` (8 схем), README корпуса формы
+- [x] T5 `contract/VERSION` 1.1.123, `contract/README.md`, `contract/TASKS_LXBOX.md` §120, `go generate ./contract/...`
 
 ## Этап 2 — движок
-- [ ] T6 `core/config/registry/registry.go` — перенос form ref-поля, `Fixed`, `ExcludeVariants`, наследование block
-- [ ] T7 `core/config/registry/form.go` — forbidden_for, Variants, `[0]` массива, активный вариант по длине совпадения, запись по пути
-- [ ] T8 `core/config/registry_body_test.go`, `core/config/contract_form_test.go`
+- [x] T6 `core/config/registry/registry.go` — перенос form ref-поля, `Fixed`, `ExcludeVariants`, наследование block
+- [x] T7 `core/config/registry/form.go` — forbidden_for, Variants, `[0]` массива, активный вариант по длине совпадения, запись по пути
+- [x] T8 `core/config/registry_body_test.go`, `core/config/contract_form_test.go`
 
 ## Этап 3 — UI
 - [ ] T9 `ui/configurator/business/node_form_model.go`, `node_form_labels.go` (из openconnect_form_model.go)
