@@ -401,6 +401,24 @@ primitives came out of that work:
   `nodeflow.Repairs`, with the code going to the log instead of a stored
   warning.
 
+Contract 1.1.123 (SPEC 168) makes `form` the single source of every node
+form. A scheme opts into a shared section by putting `form` on its ref field
+(`server`/`server_port` → `dialer.common`, `tls`, `transport`); fields of
+`tls.json` and of `transports.json` variants carry their own `form`, minus
+the scheme's `forbidden_for` and the ref field's `exclude_fields` /
+`exclude_variants`. The transport discriminator becomes a selector, variant
+fields are visible only for their variant, an array of objects is edited as
+its element `[0]` (`peers.0.address`), `form.fixed` values are always written
+and never drawn (`tls.enabled` for Hysteria2, Trojan, naive, masque), and
+`form.implies` writes companion keys (`tls.utls.enabled` with a fingerprint).
+`registry.FormFields` lists the drawn fields; the UI side is one model
+(`ui/configurator/business/node_form_model.go`, labels by body path in
+`node_form_labels.go`) and one view (`ui/configurator/dialogs/node_form_view.go`)
+used by Add server and by the node window (`tabs/source_form_edit.go`). The
+form hands out a body already run through the sanitizer and emitter, so
+registry defaults (WireGuard `allowed_ips`, the AmneziaWG MTU) are in the
+stored body.
+
 Contract 1.1.122 (SPEC 167) added three registry primitives for protocols
 whose core config is large and mostly pass-through (OpenConnect). **Wildcard
 `*`** — an entry `"*"` in an object's `fields` (listed in `order`) lets the

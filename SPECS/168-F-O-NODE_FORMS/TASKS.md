@@ -19,5 +19,5 @@
 - [x] T12 `bin/locale/ru.json`, `l10n_check --strict`
 
 ## Этап 4 — доки и закрытие
-- [ ] T13 `docs/release_notes/upcoming.md`, `RELEASE_NOTES.md`, `docs/ARCHITECTURE.md`, `IMPLEMENTATION_REPORT.md`
+- [x] T13 `docs/release_notes/upcoming.md`, `RELEASE_NOTES.md`, `docs/ARCHITECTURE.md`, `IMPLEMENTATION_REPORT.md`
 - [ ] T14 `go build ./...`, именованные тесты, слияние в develop, CI `run_mode=tests`
