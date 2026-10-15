@@ -266,7 +266,7 @@
             "form": {},
             "desc_en": "Pinned gateway certificate fingerprints.",
             "desc_ru": "Закреплённые отпечатки сертификата шлюза.",
-            "impl": "parsePeerFingerprint (sing-openconnect tls_config.go): без префикса — SHA-1 сертификата hex 4..40; sha1: hex 4..40; sha256: hex 4..64; pin-sha256: base64 4..44, при длине 44 строгий base64 на 32 байта. Негодный элемент — отказ ядра; снимается только он. В форме — вариант pinned группы server_cert_check."
+            "impl": "parsePeerFingerprint (sing-openconnect, файл tls_config): без префикса — SHA-1 сертификата hex 4..40; sha1: hex 4..40; sha256: hex 4..64; pin-sha256: base64 4..44, при длине 44 строгий base64 на 32 байта. Негодный элемент — отказ ядра; снимается только он. В форме — вариант pinned группы server_cert_check."
           },
           "certificate_authority": {
             "type": "listable_string",
