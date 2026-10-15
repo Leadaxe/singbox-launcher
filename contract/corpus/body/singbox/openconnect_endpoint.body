@@ -2,10 +2,12 @@
 # без записи реестра узел openconnect из sing-box JSON уходил в outbounds[], и
 # ядро отвергало весь конфиг («outbounds[N]: unknown outbound type:
 # openconnect») — ядро регистрирует тип только как endpoint. Тип известен
-# реестру (protocols/openconnect.json, kind endpoint), но поля не описаны и не
-# проверяются (body.fields_unchecked): тело уходит как написано — flavor,
-# учётные данные, tls.insecure и ключи, которых реестр не знает, на месте, и
-# НИ ОДНОГО предупреждения. Снят только tag — он уходит в имя узла.
+# реестру (protocols/openconnect.json, kind endpoint). С контракта 1.1.122
+# поля формы описаны, прочие ключи проходят через wildcard `*`: тело уходит
+# как написано — flavor, учётные данные, tls.insecure и ключи, которых реестр
+# не знает (x_future_key), на месте. Единственный код — info tls_insecure
+# (advisory описанного tls.insecure, значение сохранено). Снят только tag —
+# он уходит в имя узла.
 #
 # kind в ожидании — endpoint: узел пишется в endpoints[], а не в outbounds[].
 {"outbounds":[{"type":"openconnect","tag":"forti-office","server":"https://fw.example.com:42319","flavor":"fortinet","username":"user","password":"pass","tls":{"insecure":true},"x_future_key":1}]}

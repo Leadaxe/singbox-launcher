@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "flavor": "fortinet",
+        "server": "fw.example.com",
+        "type": "openconnect",
+        "username": "user"
+      },
+      "kind": "endpoint",
+      "label": "forti-cert",
+      "scheme": "openconnect",
+      "warnings": [
+        {
+          "code": "field_requires",
+          "path": "tls.client_certificate_path"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

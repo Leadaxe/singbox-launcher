@@ -8,16 +8,16 @@
     "singbox"
   ],
   "extension": null,
-  "note": "Endpoint форка (sing-box-lx protocol/openvpn, include/openvpn.go): узел живёт в endpoints[], не в outbounds[]. Ядро регистрирует тип только при теге сборки with_openvpn (форк с 1.14.0-lx.10); на ядре без тега узел снимается на сборке с warning openvpn_core_unsupported, иначе один такой узел валит sing-box check для ВСЕГО конфига. Решение владельца 28.09.2026 (контракт 1.1.99): тип ИЗВЕСТЕН, но поля не описаны и не проверяются (`body.fields_unchecked`) — тело уходит в ядро как написано, без правил и без unknown_key. URI-формы, разбора .ovpn и формы добавления нет: узел приходит только как sing-box JSON (своя запись, документ, подписка).",
+  "note": "Endpoint форка (sing-box-lx protocol/openvpn, include/openvpn.go): узел живёт в endpoints[], не в outbounds[]. Ядро регистрирует тип только при теге сборки with_openvpn (форк с 1.14.0-lx.10); на ядре без тега узел снимается на сборке с warning openvpn_core_unsupported, иначе один такой узел валит sing-box check для ВСЕГО конфига. Решение владельца 28.09.2026 (контракт 1.1.99): тип ИЗВЕСТЕН, но поля не описаны и не проверяются — тело уходит в ядро как написано, без правил и без unknown_key. С контракта 1.1.122 это выражено wildcard `*` (`order: [\"*\"]`, единственная запись `fields[\"*\"]`); прежний атрибут `fields_unchecked` снят как его точный эквивалент (SPEC 167), поведение не изменилось — кейс корпуса openvpn_client_endpoint тот же. URI-формы, разбора .ovpn и формы добавления нет: узел приходит только как sing-box JSON (своя запись, документ, подписка).",
   "uri": null,
   "emit": {
     "share_uri": false,
-    "note": "Share-URI не эмитится — URI-формы у схемы нет. Тело эмитится как есть, ключи по алфавиту (fields_unchecked)."
+    "note": "Share-URI не эмитится — URI-формы у схемы нет. Тело эмитится как есть, ключи по алфавиту (слот `*`)."
   },
   "refs": {
     "go": [
-      "core/config/nodeflow/sanitize.go:SanitizeFromKind (ветка FieldsUnchecked)",
-      "core/config/nodeflow/emit.go:Emit (ветка FieldsUnchecked)",
+      "core/config/nodeflow/sanitize.go:sanitizer.object (wildcard `*`: неописанный ключ копируется)",
+      "core/config/nodeflow/emit.go:emitObject (слот `*`)",
       "core/config/endpoint_schemes.go:IsEndpointScheme"
     ],
     "dart": [
@@ -26,14 +26,19 @@
   },
   "body": {
     "core": "1.14.3-lx.17",
-    "order": [],
-    "fields": {},
-    "fields_unchecked": true,
+    "order": ["*"],
+    "fields": {
+      "*": {
+        "desc_en": "All core keys pass through as written.",
+        "desc_ru": "Все ключи ядра проходят как написаны.",
+        "impl": "Поля не описаны сознательно (решение владельца 28.09.2026): mode, network, servers, username, password, tls, data_ciphers и прочие — без правил и без unknown_key."
+      }
+    },
     "lx_only": true,
     "min_core": "1.14.0-lx.10",
     "build_tag": "with_openvpn",
     "on_core_unsupported": { "action": "drop_node", "code": "openvpn_core_unsupported" },
-    "note": "Поля не описаны сознательно (решение владельца 28.09.2026): правил и проверок значений нет, тело — как написано. Снимаются только tag и type — их пишет сборка."
+    "note": "Поля не описаны сознательно (решение владельца 28.09.2026): правил и проверок значений нет, тело — как написано. Снимаются только tag и type — их пишет сборка. Контракт 1.1.122: выражено wildcard `*` вместо снятого атрибута fields_unchecked."
   },
   "mappers": {
     "singbox": {

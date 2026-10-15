@@ -1,0 +1,94 @@
+{
+  "v": 1,
+  "scheme": "openconnect",
+  "cases": [
+    {
+      "name": "fortinet_basic",
+      "comment": "FortiGate с логином и паролем. auth_group скрыт (visible_when flavor not_in fortinet), fortinet_host_check виден вместе с hostcheck. token.secret скрыт: token.mode не задан; client_key_password скрыт: ключа нет. Обязательны server, flavor, username — все заданы. Сертификат — вариант system (ни один путь вариантов не задан).",
+      "body": {
+        "server": "fw.example.com:42319",
+        "flavor": "fortinet",
+        "username": "user",
+        "password": "pass"
+      },
+      "expect": {
+        "visible": [
+          "server", "flavor", "username", "password", "token.mode", "user_agent",
+          "fortinet_host_check", "fortinet_host_check.hostcheck",
+          "no_udp", "ipv6_disabled", "external_auth_disabled", "mtu", "dpd_interval", "reconnect_timeout",
+          "allow_insecure_crypto", "tls.insecure", "tls.server_name", "tls.peer_fingerprint",
+          "tls.certificate_authority_path", "tls.client_certificate_path", "tls.client_key_path"
+        ],
+        "required": ["server", "flavor", "username"],
+        "missing": [],
+        "choices": { "server_cert_check": "system" },
+        "out_of_range": []
+      }
+    },
+    {
+      "name": "anyconnect_cookie_pinned_mtu_high",
+      "comment": "AnyConnect с cookie (сквозной ключ, неописанный путь в required_unless.set) — обязательность username снята. fortinet_host_check скрыт со всем поддеревом, auth_group виден. Отпечаток задан — активен вариант pinned. mtu 1600 выше max формы 1500 — нарушение диапазона (санитайзер такое значение принимает: потолок ядра 65535).",
+      "body": {
+        "server": "vpn.example.com",
+        "flavor": "anyconnect",
+        "cookie": "webvpn=abc",
+        "mtu": 1600,
+        "tls": { "peer_fingerprint": ["sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"] }
+      },
+      "expect": {
+        "visible": [
+          "server", "flavor", "username", "password", "auth_group", "token.mode", "user_agent",
+          "no_udp", "ipv6_disabled", "external_auth_disabled", "mtu", "dpd_interval", "reconnect_timeout",
+          "allow_insecure_crypto", "tls.insecure", "tls.server_name", "tls.peer_fingerprint",
+          "tls.certificate_authority_path", "tls.client_certificate_path", "tls.client_key_path"
+        ],
+        "required": ["server", "flavor"],
+        "missing": [],
+        "choices": { "server_cert_check": "pinned" },
+        "out_of_range": [{ "path": "mtu", "value": 1600 }]
+      }
+    },
+    {
+      "name": "no_flavor_hotp_insecure_mtu_low",
+      "comment": "Пустая форма с hotp-токеном и ключом клиента. flavor не задан: default поля в условие не подставляется — fortinet_host_check (flavor = fortinet) скрыт, auth_group (flavor not_in [fortinet]) виден. token.mode задан — видны token.secret (обязателен) и token.counter (mode = hotp). Ключ задан — виден client_key_password. tls.insecure задан — активен вариант insecure. mtu 500 ниже min формы 576. Незаполнены server, flavor, username, token.secret.",
+      "body": {
+        "token": { "mode": "hotp" },
+        "mtu": 500,
+        "tls": { "insecure": true, "client_key_path": "/etc/oc/client.key" }
+      },
+      "expect": {
+        "visible": [
+          "server", "flavor", "username", "password", "auth_group", "token.mode", "token.secret", "token.counter",
+          "user_agent", "no_udp", "ipv6_disabled", "external_auth_disabled", "mtu", "dpd_interval", "reconnect_timeout",
+          "allow_insecure_crypto", "tls.insecure", "tls.server_name", "tls.peer_fingerprint",
+          "tls.certificate_authority_path", "tls.client_certificate_path", "tls.client_key_path", "tls.client_key_password"
+        ],
+        "required": ["server", "flavor", "username", "token.secret"],
+        "missing": ["server", "flavor", "username", "token.secret"],
+        "choices": { "server_cert_check": "insecure" },
+        "out_of_range": [{ "path": "mtu", "value": 500 }]
+      }
+    },
+    {
+      "name": "gp_client_cert_lifts_username",
+      "comment": "GlobalProtect с клиентским сертификатом путём: tls.client_certificate_path из required_unless.set снимает обязательность username. Виден client_key_password (задан client_key_path).",
+      "body": {
+        "server": "gp.example.com",
+        "flavor": "gp",
+        "tls": { "client_certificate_path": "/etc/oc/client.crt", "client_key_path": "/etc/oc/client.key" }
+      },
+      "expect": {
+        "visible": [
+          "server", "flavor", "username", "password", "auth_group", "token.mode", "user_agent",
+          "no_udp", "ipv6_disabled", "external_auth_disabled", "mtu", "dpd_interval", "reconnect_timeout",
+          "allow_insecure_crypto", "tls.insecure", "tls.server_name", "tls.peer_fingerprint",
+          "tls.certificate_authority_path", "tls.client_certificate_path", "tls.client_key_path", "tls.client_key_password"
+        ],
+        "required": ["server", "flavor"],
+        "missing": [],
+        "choices": { "server_cert_check": "system" },
+        "out_of_range": []
+      }
+    }
+  ]
+}

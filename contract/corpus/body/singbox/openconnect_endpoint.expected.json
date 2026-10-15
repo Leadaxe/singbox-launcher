@@ -17,7 +17,14 @@
       },
       "kind": "endpoint",
       "label": "forti-office",
-      "scheme": "openconnect"
+      "scheme": "openconnect",
+      "warnings": [
+        {
+          "code": "tls_insecure",
+          "path": "tls.insecure",
+          "value": "true"
+        }
+      ]
     }
   ],
   "v": 1

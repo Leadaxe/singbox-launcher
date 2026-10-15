@@ -1,0 +1,3 @@
+# sing-box: openconnect с tls.insecure=true (контракт 1.1.122). Ядро принимает:
+# узел получает info-код tls_insecure, тело не меняется.
+{"endpoints":[{"type":"openconnect","tag":"forti-insecure","server":"fw.example.com","flavor":"fortinet","username":"user","tls":{"insecure":true}}]}

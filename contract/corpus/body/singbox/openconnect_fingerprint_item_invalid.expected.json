@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "flavor": "fortinet",
+        "server": "fw.example.com",
+        "tls": {
+          "peer_fingerprint": [
+            "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          ]
+        },
+        "type": "openconnect",
+        "username": "user"
+      },
+      "kind": "endpoint",
+      "label": "forti-pin",
+      "scheme": "openconnect",
+      "warnings": [
+        {
+          "code": "openconnect_fingerprint_invalid",
+          "path": "tls.peer_fingerprint[1]",
+          "value": "AA:BB:CC:DD"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

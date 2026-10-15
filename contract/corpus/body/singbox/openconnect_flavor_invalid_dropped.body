@@ -1,0 +1,5 @@
+# sing-box: openconnect с неизвестным flavor (контракт 1.1.122). Ядро отвергает
+# такое значение (newFlavorFrontend) и не запускает весь конфиг; снять одно поле
+# нельзя — без ключа ядро молча берёт anyconnect. Поэтому снимается УЗЕЛ с
+# кодом openconnect_flavor_invalid.
+{"endpoints":[{"type":"openconnect","tag":"forti-typo","server":"fw.example.com","flavor":"forti","username":"user"}]}

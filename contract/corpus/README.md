@@ -32,8 +32,10 @@ corpus/
 ├── template/                   # шаблон + vars → итоговый JSON (Фаза 3)
 ├── backup/                     # экспорт ↔ импорт LX Backup (Фаза 4)
 ├── authored/<case>.body        # авторское тело своего сервера (1.1.87)
-└── node_edit/<case>.edit.json  # правка JSON узла → источник (1.1.88,
-      формат — TASKS_LXBOX §85)
+├── node_edit/<case>.edit.json  # правка JSON узла → источник (1.1.88,
+│     формат — TASKS_LXBOX §85)
+└── form/<scheme>_form.json     # тело → состояние формы по реестру
+      (1.1.122, формат — form/README.md)
 ```
 
 ## Формат файла кейса

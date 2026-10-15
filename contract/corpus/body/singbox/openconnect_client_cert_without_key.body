@@ -1,0 +1,4 @@
+# sing-box: openconnect, клиентский сертификат путём без ключа (контракт
+# 1.1.122). Ядро требует пару (loadOptionalCertificate): client_certificate_path
+# снят с кодом field_requires.
+{"endpoints":[{"type":"openconnect","tag":"forti-cert","server":"fw.example.com","flavor":"fortinet","username":"user","tls":{"client_certificate_path":"/etc/oc/client.crt"}}]}

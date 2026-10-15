@@ -1,0 +1,42 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "flavor": "fortinet",
+        "form_entries": [
+          {
+            "form_id": "main",
+            "name": "realm",
+            "value": "corp"
+          }
+        ],
+        "mobile": {
+          "device_type": "iPhone",
+          "device_unique_id": "abc",
+          "platform_version": "17"
+        },
+        "password": "pass",
+        "server": "fw.example.com:42319",
+        "tls": {
+          "mca_key_path": "/etc/oc/mca.key",
+          "server_name": "fw.example.com"
+        },
+        "token": {
+          "mode": "totp",
+          "pin": "1234",
+          "secret": "JBSWY3DPEHPK3PXP"
+        },
+        "type": "openconnect",
+        "username": "user",
+        "x_future": 1
+      },
+      "kind": "endpoint",
+      "label": "forti-wild",
+      "scheme": "openconnect"
+    }
+  ],
+  "v": 1
+}
