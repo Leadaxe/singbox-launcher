@@ -1,12 +1,12 @@
 # TASKS 172
 
 ## Этап 0 — решения
-- [ ] T0 Ответы владельца на развилки SPEC §6 (1 — ключи camelCase; 2 — выключенный сервер; 3 — зеркала во вкладке DNS; 4 — `forceIpv4`)
+- [x] T0 Развилки SPEC §6 решены 15.10 по умолчанию: camelCase как у LxBox; выключенный сервер включается принудительно; зеркала строками во вкладке DNS; `forceIpv4` в этой SPEC
 
 ## Этап 1 — контракт
-- [ ] T1 `contract/docs/TEMPLATE_LANG.md`: §6.11 (D-137), ссылка из §6.10, строка D-137 в §9
-- [ ] T2 `contract/docs/ONE_NAMESPACE.md` §1; `contract/docs/BACKUP.md` (таблица `rules[]`, «Поля стороны LxBox»)
-- [ ] T3 `contract/schema/backup.schema.json` (`$defs/rule/properties/dns`); `contract/VERSION`; `contract/README.md`; `contract/TASKS_LXBOX.md` §127; `go generate ./contract/...`
+- [x] T1 `contract/docs/TEMPLATE_LANG.md`: §6.11 (D-137), ссылка из §6.10, строка D-137 в §9
+- [x] T2 `contract/docs/ONE_NAMESPACE.md` §1; `contract/docs/BACKUP.md` (таблица `rules[]`, «Поля стороны LxBox»)
+- [x] T3 `contract/schema/backup.schema.json` (`$defs/rule/properties/dns`); `contract/VERSION`; `contract/README.md`; `contract/TASKS_LXBOX.md` §127; `go generate ./contract/...`
 
 ## Этап 2 — данные
 - [ ] T4 `core/state/rule_types.go`: `RuleDNS`, `Rule.DNS`; `core/state/record_clone.go`

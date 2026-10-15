@@ -982,12 +982,26 @@
         "dns": {
           "type": "object",
           "additionalProperties": true,
-          "description": "Поддержка: LxBox. Объявленное поле их формы; лаунчер не применяет, но провозит без изменений."
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "DNS-запросы, подходящие под правило, отвечает сервер serverTag."
+            },
+            "serverTag": {
+              "type": "string",
+              "description": "Тег DNS-сервера из dns.servers[]; хранится и при enabled: false."
+            },
+            "forceIpv4": {
+              "type": "boolean",
+              "description": "AAAA-запросы под правило получают пустой ответ (NOERROR); пишется только true."
+            }
+          },
+          "description": "inline | srs. Поддержка: обе (контракт 1.1.130, D-137). DNS-зеркало правила — TEMPLATE_LANG.md §6.11. Ключи в форме LxBox (camelCase)."
         },
         "resolve": {
           "type": "object",
           "additionalProperties": true,
-          "description": "Поддержка: LxBox. Объявленное поле их формы; лаунчер не применяет, но провозит без изменений."
+          "description": "Поддержка: LxBox. Объявленное поле их формы; лаунчер игнорирует молча и не пишет."
         },
         "update_interval_hours": {
           "type": "integer",
