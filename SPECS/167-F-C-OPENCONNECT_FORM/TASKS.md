@@ -24,5 +24,5 @@
 - [x] T15 `ui/servers_openconnect_auth.go` — диалоги формы и браузера, статус узла, ru.json
 
 ## Этап 5 — доки и закрытие
-- [ ] T16 `docs/release_notes/upcoming.md`, `docs/ARCHITECTURE.md`, `IMPLEMENTATION_REPORT.md`
-- [ ] T17 `go build ./...`, именованные тесты, слияние в develop, push, CI `run_mode=tests`, папка → `167-F-C-…`
+- [x] T16 `docs/release_notes/upcoming.md`, `docs/ARCHITECTURE.md`, `IMPLEMENTATION_REPORT.md`
+- [x] T17 `go build ./...`, именованные тесты, слияние в develop, push, CI `run_mode=tests`, папка → `167-F-C-…`
