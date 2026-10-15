@@ -150,6 +150,11 @@ type addServerForm struct {
 	// Поля Tailscale.
 	ts *tailscaleFields
 
+	// Форма OpenConnect (SPEC 167): раскладка по реестру, общая с блоком
+	// правки узла. nil — у реестра нет формы схемы, вариант не предлагается.
+	oc    *OpenConnectForm
+	ocBox *fyne.Container
+
 	// formsScroll — прокручиваемая область с формами SOCKS5/HTTP/WireGuard.
 	formsScroll *container.Scroll
 
@@ -180,6 +185,9 @@ const (
 	// SPEC 122: узел tailnet. Единственный вариант, который отдаёт не
 	// share-URI, а ДОКУМЕНТ узла (тело + секции) — см. add_server_tailscale.go.
 	modeTailscale
+	// SPEC 167: узел OpenConnect — тоже ДОКУМЕНТ узла (endpoint), см.
+	// add_server_openconnect.go.
+	modeOpenConnect
 	modeSource
 )
 
@@ -198,7 +206,7 @@ func newAddServerForm() *addServerForm {
 	// (components.WrapInScrollWithGutter): Fyne рисует полосу ПОВЕРХ вьюпорта,
 	// и без зарезервированной полосы справа она наезжает на правый край полей.
 	// Заметнее всего на длинных строках варианта Tailscale.
-	f.formsScroll = components.WrapInScrollWithGutter(container.NewVBox(f.fieldsBox, f.wgBox, f.ts.box))
+	f.formsScroll = components.WrapInScrollWithGutter(container.NewVBox(f.fieldsBox, f.wgBox, f.ts.box, f.ocBox))
 	f.buildJSONTab()
 
 	tabs := container.NewAppTabs(
@@ -230,6 +238,7 @@ func (f *addServerForm) buildParamsTab() {
 	httpLabel := locale.T("HTTP")
 	wgLabel := locale.T("WireGuard")
 	tsLabel := locale.T("Tailscale")
+	ocLabel := locale.T("OpenConnect")
 	sourceLabel := locale.T("Source")
 
 	f.host = widget.NewEntry()
@@ -291,8 +300,17 @@ func (f *addServerForm) buildParamsTab() {
 	f.buildWGFields()
 	f.ts = buildTailscaleFields(func() { f.refreshJSON() })
 
-	f.proto = widget.NewSelect(
-		[]string{socksLabel, httpLabel, wgLabel, tsLabel, sourceLabel}, nil)
+	types := []string{socksLabel, httpLabel, wgLabel, tsLabel}
+	f.ocBox = container.NewVBox()
+	if oc, err := NewOpenConnectForm(func() { f.refreshJSON() }); err == nil {
+		f.oc = oc
+		f.ocBox.Add(oc.Object())
+		types = append(types, ocLabel)
+	}
+	f.ocBox.Hide()
+	types = append(types, sourceLabel)
+
+	f.proto = widget.NewSelect(types, nil)
 	f.proto.SetSelected(socksLabel)
 	f.proto.OnChanged = func(sel string) {
 		switch sel {
@@ -302,6 +320,8 @@ func (f *addServerForm) buildParamsTab() {
 			f.mode = modeWireGuard
 		case tsLabel:
 			f.mode = modeTailscale
+		case ocLabel:
+			f.mode = modeOpenConnect
 		case sourceLabel:
 			f.mode = modeSource
 		default:
@@ -360,8 +380,13 @@ func (f *addServerForm) applyModeVisibility() {
 	f.sourceBox.Hide()
 	f.wgBox.Hide()
 	f.ts.box.Hide()
+	f.ocBox.Hide()
 
 	switch f.mode {
+	case modeOpenConnect:
+		// Адрес — поле Server формы (host:port или URL), без Host/Port.
+		f.formsScroll.Show()
+		f.ocBox.Show()
 	case modeTailscale:
 		// Ни host, ни port: адреса у узла tailnet нет — в tailnet он входит
 		// сам, по auth_key.
@@ -494,6 +519,9 @@ func (f *addServerForm) previewJSON() (string, string) {
 	// которым документ рисует вкладка JSON окна источника.
 	if f.mode == modeTailscale {
 		return f.previewTailscaleDocument()
+	}
+	if f.mode == modeOpenConnect {
+		return f.previewOpenConnectDocument()
 	}
 
 	input, err := f.rawInput()
@@ -630,6 +658,9 @@ func (f *addServerForm) result() (AddServerResult, error) {
 			return AddServerResult{}, derr
 		}
 		return AddServerResult{ConfigJSON: doc, Label: tailscaleTag(label)}, nil
+	}
+	if f.mode == modeOpenConnect {
+		return f.openConnectResult()
 	}
 
 	if f.mode == modeSource {

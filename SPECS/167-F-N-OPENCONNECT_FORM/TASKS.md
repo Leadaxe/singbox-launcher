@@ -14,9 +14,9 @@
 - [x] T9 тесты: `TestWildcardNestedStrict`, `registry_body_test.go`, раннер `contract/corpus/form`
 
 ## Этап 3 — UI: подпись и форма
-- [ ] T10 `ui/configurator/business/config_node_labels.go` — роль `variant`
-- [ ] T11 `ui/configurator/business/openconnect_form_model.go` (общая модель по `reg.Form`), ветка OpenConnect в `ui/configurator/dialogs/add_server_dialog.go`, правка узла `ui/configurator/tabs/source_openconnect_edit.go`, `bin/locale/ru.json`
-- [ ] T12 подключение в меню Add server и Settings узла; подсказка классического режима
+- [x] T10 `ui/configurator/business/config_node_labels.go` — роль `variant`
+- [x] T11 `ui/configurator/business/openconnect_form_model.go` (общая модель по `reg.Form`), ветка OpenConnect в `ui/configurator/dialogs/add_server_dialog.go`, правка узла `ui/configurator/tabs/source_openconnect_edit.go`, `bin/locale/ru.json`
+- [x] T12 подключение в меню Add server и Settings узла; подсказка классического режима
 
 ## Этап 4 — второй фактор и SSO
 - [x] T13 `core/backend_daemon_openconnect.go`, `core/services/lxd_remote_openconnect.go`, `core/openconnect_status.go` — стрим, submit, cancel

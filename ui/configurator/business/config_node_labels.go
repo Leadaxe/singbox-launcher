@@ -34,6 +34,9 @@ func deriveTransport(nodeType string, raw map[string]interface{}) string {
 //     как "h2": так короче и так пишут провайдеры), без блока — "tcp";
 //   - у схемы есть поле версии HTTP `vhttp` (транспорт поверх QUIC/h2) — его
 //     значение, пустое = дефолт поля в реестре;
+//   - у схемы есть поле с ролью `variant` (контракт 1.1.122, SPEC 167 §2.4)
+//     — его значение после trim, пустое = дефолт поля в реестре: у
+//     openconnect flavor даёт «openconnect·fortinet»;
 //   - иначе транспорта нет — пусто (группы, WireGuard, QUIC-протоколы и
 //     протоколы без сменного транспорта).
 func TransportLabel(scheme string, raw map[string]interface{}) string {
@@ -58,6 +61,16 @@ func TransportLabel(scheme string, raw map[string]interface{}) string {
 		}
 		if def, ok := f.Default.(string); ok {
 			return def
+		}
+	}
+	if path, has := reg.FieldWithRole(scheme, registry.RoleVariant); has {
+		if v := strings.TrimSpace(cfgNodeString(raw, path)); v != "" {
+			return v
+		}
+		if f, ok := reg.Field(scheme, path); ok {
+			if def, ok := f.Default.(string); ok {
+				return strings.TrimSpace(def)
+			}
 		}
 	}
 	return ""

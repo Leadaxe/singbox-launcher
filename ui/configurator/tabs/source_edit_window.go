@@ -764,6 +764,8 @@ func showSourceEditWindowAt(
 	var refreshAWGAfterRegen func()
 	// refreshTailscaleAfterRegen — то же для блока роли Tailscale (SPEC 157).
 	var refreshTailscaleAfterRegen func()
+	// refreshOpenConnectAfterRegen — то же для формы OpenConnect (SPEC 167).
+	var refreshOpenConnectAfterRegen func()
 	var originBtnRow *fyne.Container
 	var setOriginMode func(editing bool)
 
@@ -1194,6 +1196,9 @@ func showSourceEditWindowAt(
 		if refreshTailscaleAfterRegen != nil {
 			refreshTailscaleAfterRegen()
 		}
+		if refreshOpenConnectAfterRegen != nil {
+			refreshOpenConnectAfterRegen()
+		}
 		originTextAtOpen = raw
 		setOriginMode(false)
 		// Вид происхождения мог смениться (ссылка → JSON): подпись поля и
@@ -1279,6 +1284,28 @@ func showSourceEditWindowAt(
 	})
 	tsUI.load(&scratch.Node)
 	refreshTailscaleAfterRegen = func() { tsUI.load(&scratch.Node) }
+	// Форма узла OpenConnect (source_openconnect_edit.go, SPEC 167): те же
+	// поля, что у конструктора Add server. После записи — то же, что у блока
+	// Tailscale: JSON, поле Origin узла-тела, пометка изменений.
+	var ocUI *openConnectBlock
+	if openConnectEditableNode(&scratch.Node) {
+		ocUI = newOpenConnectBlock(func() *wizardmodels.Node { return &scratch.Node }, win, func() {
+			if refreshJSONAfterOriginRegen != nil {
+				refreshJSONAfterOriginRegen()
+			}
+			if !originEditing {
+				if raw := sourceOriginURI(&scratch); raw != uriEntry.Text {
+					uriEntry.OnChanged = nil
+					uriEntry.SetText(raw)
+					originTextAtOpen = raw
+					setOriginMode(false)
+				}
+			}
+			presenter.MarkAsChanged()
+		})
+		ocUI.load(&scratch.Node)
+		refreshOpenConnectAfterRegen = func() { ocUI.load(&scratch.Node) }
+	}
 	clearAWGAfterDetour = func() {
 		if !awgEditableNode(&scratch.Node) {
 			return
@@ -1365,6 +1392,11 @@ func showSourceEditWindowAt(
 				settingsContent.Add(widget.NewSeparator())
 				tsUI.load(&scratch.Node)
 				settingsContent.Add(tsUI.content)
+			}
+			if ocUI != nil && openConnectEditableNode(&scratch.Node) {
+				settingsContent.Add(widget.NewSeparator())
+				ocUI.load(&scratch.Node)
+				settingsContent.Add(ocUI.content)
 			}
 			if awgVisibleFor() {
 				settingsContent.Add(widget.NewSeparator())

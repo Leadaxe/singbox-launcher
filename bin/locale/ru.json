@@ -5674,5 +5674,98 @@
   },
   "sign in": {
     "value": "войти"
+  },
+  "%s must be a whole number": {
+    "value": "%s — должно быть целым числом"
+  },
+  "%s must be within %s…%s": {
+    "value": "%s — допустимо от %s до %s"
+  },
+  "Allow legacy crypto ⚠": {
+    "value": "Разрешить устаревшую криптографию ⚠"
+  },
+  "DPD interval": {
+    "value": "Интервал DPD"
+  },
+  "Disable IPv6": {
+    "value": "Отключить IPv6"
+  },
+  "Disable SSO (external auth)": {
+    "value": "Отключить SSO (внешнюю аутентификацию)"
+  },
+  "Do not verify ⚠": {
+    "value": "Не проверять ⚠"
+  },
+  "Empty = core default (FortiGate: Mozilla/5.0 SV1)": {
+    "value": "Пусто — значение ядра по умолчанию (FortiGate: Mozilla/5.0 SV1)"
+  },
+  "Empty = from gateway; lower it if HTTPS stalls (576…1500)": {
+    "value": "Пусто — значение шлюза; уменьшите, если HTTPS зависает (576…1500)"
+  },
+  "FortiGate only": {
+    "value": "Только для FortiGate"
+  },
+  "Gateway": {
+    "value": "Шлюз"
+  },
+  "Group / Realm": {
+    "value": "Группа / Realm"
+  },
+  "Hostcheck": {
+    "value": "Hostcheck"
+  },
+  "How long to retry a dropped tunnel, e.g. 5m. Empty = core default (5m)": {
+    "value": "Сколько пытаться восстановить оборванный туннель, например 5m. Пусто — значение ядра (5m)"
+  },
+  "If the gateway asks for a code, you will be prompted on connect (daemon mode only)": {
+    "value": "Если шлюз запросит код, его спросят при подключении (только в режиме демона)"
+  },
+  "Keep-alive probe period, e.g. 30s. Empty = from gateway": {
+    "value": "Период проверки живости, например 30s. Пусто — значение шлюза"
+  },
+  "Only for old gateways (TLS 1.0)": {
+    "value": "Только для старых шлюзов (TLS 1.0)"
+  },
+  "Only if it differs from the server host": {
+    "value": "Только если отличается от хоста сервера"
+  },
+  "OpenConnect form is unavailable": {
+    "value": "Форма OpenConnect недоступна"
+  },
+  "OpenConnect": {
+    "value": "OpenConnect"
+  },
+  "Pinned fingerprint": {
+    "value": "Закреплённый отпечаток"
+  },
+  "Reconnect timeout": {
+    "value": "Тайм-аут переподключения"
+  },
+  "Required: %s": {
+    "value": "Обязательно: %s"
+  },
+  "Security": {
+    "value": "Безопасность"
+  },
+  "Server certificate": {
+    "value": "Сертификат сервера"
+  },
+  "Several fingerprints: comma-separated": {
+    "value": "Несколько отпечатков — через запятую"
+  },
+  "System CA": {
+    "value": "Системные УЦ"
+  },
+  "TCP only (no DTLS)": {
+    "value": "Только TCP (без DTLS)"
+  },
+  "This launcher runs the core in classic mode: second-factor prompts are unavailable here": {
+    "value": "Лаунчер запускает ядро в классическом режиме: запросы второго фактора здесь недоступны"
+  },
+  "Use when UDP is blocked and the tunnel keeps dropping": {
+    "value": "Включите, если UDP заблокирован и туннель постоянно рвётся"
+  },
+  "host:port or full URL; port 443 if omitted": {
+    "value": "хост:порт или полный URL; без порта — 443"
   }
 }
