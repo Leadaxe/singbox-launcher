@@ -1,5 +1,5 @@
 {
-  "_comment": "SPEC 170, контракт 1.1.126: пресет tunnel-ingress без узлов клиентских туннелей и без ввода пользователя — все пять списков пусты, каждое правило снято своим #notEmpty-условием молча: ни правил, ни template_fragment_dropped.",
+  "_comment": "SPEC 170, контракт 1.1.126 (без Tailscale — 1.1.129, D-136): пресет tunnel-ingress без узлов клиентских туннелей и без ввода пользователя — все пять списков пусты, каждое правило снято своим #notEmpty-условием молча: ни правил, ни template_fragment_dropped.",
   "preset": {
     "for_each_node_do": {
       "#filter": {
@@ -7,8 +7,7 @@
           "#in": [
             "wireguard",
             "openvpn-client",
-            "openconnect",
-            "tailscale"
+            "openconnect"
           ]
         }
       },

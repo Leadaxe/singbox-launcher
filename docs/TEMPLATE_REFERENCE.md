@@ -177,13 +177,17 @@ window:
 | `allow_lan` | Expose local network | `tunnel-ingress`: peers reach private networks (`ip_is_private`) |
 | `allow_gateway` | Allow as gateway | `tunnel-ingress`: peers route anything through us, into the preset's `gateway_out` (default `proxy-out`); their DNS is not rejected |
 
-The `allow_*` switches are shown for `wireguard` (and AWG), `openvpn-client`,
-`openconnect` and `tailscale` nodes. The stock preset `tunnel-ingress`
+The `allow_*` switches are shown for `wireguard` (and AWG), `openvpn-client`
+and `openconnect` nodes. The stock preset `tunnel-ingress`
 (`num: 940`, on by default, added once to existing setups) collects the
 endpoints of these types and rejects every connection arriving from their
 tunnels except what the switches allow, plus a DNS reject for peers without
 `allow_gateway`. Its four visible lists can be extended by hand (e.g. a tag of
-an endpoint written in your own template). TEMPLATE_LANG §6.5.2.
+an endpoint written in your own template). Tailscale is not covered (contract
+1.1.129): tailnet peers are the user's own devices, already limited by
+Tailscale ACLs and the control-plane filter, which passes only our addresses
+and what `advertise_routes` / `advertise_exit_node` announce. TEMPLATE_LANG
+§6.5.2.
 
 ---
 

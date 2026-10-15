@@ -932,10 +932,10 @@ DNS-правиле — через менеджер DNS-серверов (`rule_i
 отказ `DNS server not found: <тег>`). Тег узла в DNS-правиле валит старт ядра,
 поэтому там стоит `<тег>-dns` — тот же сервер, что в `server`.
 
-#### 6.5.2 Пресет `tunnel-ingress` (контракт 1.1.126, D-134)
+#### 6.5.2 Пресет `tunnel-ingress` (контракт 1.1.126, D-134; без Tailscale — 1.1.129, D-136)
 
 **Задача.** Клиентский endpoint — `wireguard` (и AWG), `openvpn-client`,
-`openconnect`, `tailscale` — двусторонний канал: входящий поток из туннеля
+`openconnect` — двусторонний канал: входящий поток из туннеля
 ядро отдаёт в роутер как обычное inbound-соединение с
 `metadata.Inbound = <тег endpoint'а>`. Адресат, равный нашему туннельному
 адресу, endpoint переписывает в loopback; любой другой идёт по `route.rules`
@@ -944,10 +944,19 @@ DNS-правиле — через менеджер DNS-серверов (`rule_i
 `final = proxy` — через нашу цепочку). Ядро это поведение не меняет (оно
 upstream: endpoint задуман как «inbound + outbound»), закрывает генератор
 конфига: правило маршрута и DNS-правило с условием `inbound` матчатся по тегу
-endpoint'а (`rule_item_inbound.go` ядра). Автоматики нет: ни
-`advertise_routes` Tailscale, ни включённый `private-ips` пиру ничего не
-открывают — только поля записи узла `allow_local`, `allow_lan`,
-`allow_gateway` (§6.6).
+endpoint'а (`rule_item_inbound.go` ядра). Автоматики нет: включённый
+`private-ips` пиру ничего не открывает — только поля записи узла
+`allow_local`, `allow_lan`, `allow_gateway` (§6.6).
+
+**Почему без Tailscale (контракт 1.1.129, D-136).** Пиры tailnet — свои
+устройства пользователя, и доступ к ним уже ограничен дважды: ACL Tailscale и
+фильтр control-plane, который пропускает к нам только наши адреса и
+анонсированное `advertise_routes` / `advertise_exit_node` — а их пользователь
+задаёт явно в узле. Под reject по умолчанию устройства пользователя перестали
+бы доставать эту машину по tailnet. Поэтому `tailscale` в `#filter` пресета не
+входит, переключатели `allow_*` у узла Tailscale не показываются; значения,
+если они уже были в записи, остаются в ней (состояние, бэкап), обход их у
+`tailscale` не читает. `skip_tailscale_presets` (§6.5.1) не меняется.
 
 Тело одинаковое на обеих сторонах; оболочка — в диалекте стороны (лаунчер:
 `id`, `label`, `description`, `default_enabled`, `num`, `vars[].default`;
@@ -958,7 +967,7 @@ LxBox: `preset_id`, `ui{}`, `vars[].default_value`), D-046. Тело в форм
 {
   "id": "tunnel-ingress",
   "label": "Tunnel ingress",
-  "description": "Connections arriving from a client tunnel (WireGuard, AWG, OpenVPN, OpenConnect, Tailscale) are rejected unless the node's own switches allow them: access to this device, the local network, or using this device as a gateway. The lists below are filled from those switches; add tags by hand to extend them.",
+  "description": "Connections arriving from a client tunnel (WireGuard, AWG, OpenVPN, OpenConnect) are rejected unless the node's own switches allow them: access to this device, the local network, or using this device as a gateway. The lists below are filled from those switches; add tags by hand to extend them.",
   "default_enabled": true,
   "num": 940,
   "vars": [
@@ -975,7 +984,7 @@ LxBox: `preset_id`, `ui{}`, `vars[].default_value`), D-046. Тело в форм
       "tooltip": "Outbound for peers allowed to use this device as a gateway." }
   ],
   "for_each_node_do": {
-    "#filter": { "@node.body.type": { "#in": ["wireguard", "openvpn-client", "openconnect", "tailscale"] } },
+    "#filter": { "@node.body.type": { "#in": ["wireguard", "openvpn-client", "openconnect"] } },
     "#do": {
       "@all_nodes":           { "#append": "@node" },
       "@allow_local_nodes":   { "#if": ["@node.allow_local",   { "#append": "@node" }] },
@@ -1032,7 +1041,8 @@ LxBox: `preset_id`, `ui{}`, `vars[].default_value`), D-046. Тело в форм
   (§6.7.5).
 
 Итог для узлов `wg-home` (WireGuard, без полей), `oc-work` (OpenConnect,
-`allow_local` + `allow_lan`), `ts` (Tailscale, `allow_gateway`), `v1` (VLESS)
+`allow_local` + `allow_lan`), `ts` (Tailscale, `allow_gateway` — не
+учитывается, 1.1.129), `wg-exit` (WireGuard, `allow_gateway`), `v1` (VLESS)
 и ручного тега `manual-wg` в «Tunnel endpoints» (кейс
 `tunnel_ingress_mixed`):
 
@@ -1040,8 +1050,8 @@ LxBox: `preset_id`, `ui{}`, `vars[].default_value`), D-046. Тело в форм
 "route.rules": [
   { "inbound": ["oc-work"], "ip_cidr": ["127.0.0.0/8", "::1/128"], "outbound": "direct-out" },
   { "inbound": ["oc-work"], "ip_is_private": true, "outbound": "direct-out" },
-  { "inbound": ["ts"], "outbound": "proxy-out" },
-  { "inbound": ["manual-wg", "wg-home", "oc-work", "ts"], "action": "reject" }
+  { "inbound": ["wg-exit"], "outbound": "proxy-out" },
+  { "inbound": ["manual-wg", "wg-home", "oc-work", "wg-exit"], "action": "reject" }
 ]
 "dns.rules": [ { "inbound": ["wg-home", "oc-work"], "action": "reject" } ]
 ```
@@ -1524,6 +1534,7 @@ C7 = D-012):
 | D-133 | короткая форма `#if` и `#if` на операции `#do` (контракт 1.1.125, SPEC 169) | значение `#if…` читается по типу: массив `[cond, V]` / `[cond, V, E]` — канон, объект с `#value` — длинная форма бессрочно, иное — ошибка загрузки; `cond` без обёртки (грамматика `#filter`), сахар-список в `cond` запрещён, чтение позиционное, длина 2–3, `null`-ветки запрещены; операция `#do` может быть `#if` с ветками-глаголами, `{}` на узле = пропуск; плоский гейт `#if` и условие внутри `#append` отвергнуты, `#enable` и D-044 без изменений (§4.1, §4.3–4.6, §6.7.1, §7.4) | Go ✅ (SPEC 169); Dart — TASKS_LXBOX §122 | `if_engine.dart`, валидатор загрузки, `evalIfScalar`, `default_value`, `preset_expand.dart` |
 | D-134 | поля записи узла `allow_local` / `allow_lan` / `allow_gateway`, `skip_presets` → `skip_tailscale_presets`, пресет `tunnel-ingress` (контракт 1.1.126, SPEC 170) | bool записи своего сервера и члена папки, пишется только `true`, у узла подписки всегда ложь; видны обходу как `@node.<поле>` (§6.6); старый ключ `skip_presets` читается терпимо в состоянии и бэкапе, пишется только новый; пресет `tunnel-ingress` (`num: 940`, поздний дефолт) отбрасывает входящее из клиентских туннелей кроме разрешённого полями (§6.5.2) | Go ✅ (SPEC 170); Dart — TASKS_LXBOX §123 | модель узла и бэкапа, форма узла, `preset_expand.dart` (поля записи в пространстве узла), шаблон, `kLateDefaultPresetIds` |
 | D-135 | DNS-слот пресета появляется по оси маршрутного правила (контракт 1.1.127, SPEC 171) | новая запись `dns.rules[] {kind: preset}` встаёт перед первым слотом пресета с бо́льшим `num` маршрутного правила, иначе в конец; пользовательские DNS-правила не учитываются и не двигаются; уже стоящие слоты не переупорядочиваются (§6.10) | Go ✅ (SPEC 171); Dart — TASKS_LXBOX §124 | `seedLateDefaultPresets`, включение пресета, синхронизация DNS-записей пресетов |
+| D-136 | Tailscale выведен из пресета `tunnel-ingress` (контракт 1.1.129, SPEC 170, изменение 15.10.2026) | `#filter` пресета — `wireguard`, `openvpn-client`, `openconnect`; пиров tailnet ограничивают ACL Tailscale и фильтр control-plane (наши адреса и явно анонсированное `advertise_routes` / `advertise_exit_node`), reject по умолчанию отрезал бы устройства пользователя; переключатели `allow_*` у узла `tailscale` не показываются, значения в записи остаются и обходом не читаются; `skip_tailscale_presets` без изменений (§6.5.2) | Go ✅ (SPEC 170); Dart — TASKS_LXBOX §126 | шаблон (`#filter`, `description`), форма узла |
 | C8 | @var-подстановка в RHS предикатов отсутствует в Dart | RHS equality / элементы `#in` / паттерн `#matches` проходят подстановку (§4.2) | ✅ **закрыт** (D-056): `_substRhs` | — |
 | C9 | наборы полей объявления var расходятся | ядро = name/type/default_value/options/title/tooltip/wizard_ui; остальное — задекларированные расширения + правило толерантности (§2.1, §7, §8) | ✅ **зафиксирован тестом** — `corpus/template/grammar/tolerant_unknown_var_field`, проходит с обеих сторон; наборы полей остаются разными по D-046 | — |
 

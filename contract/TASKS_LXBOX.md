@@ -9385,9 +9385,9 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 
 ### Зачем
 
-Клиентский endpoint — `wireguard` (и AWG), `openvpn-client`, `openconnect`, `tailscale` — двусторонний канал. Входящий поток из туннеля ядро отдаёт в роутер как обычное inbound-соединение с `metadata.Inbound = <тег endpoint'а>`. Адресат, равный нашему туннельному адресу, endpoint переписывает в loopback; любой другой идёт по `route.rules` и в `final`. gVisor-стек принимает пакеты на **любой** адрес: сервер WG/AWG, OpenVPN или OpenConnect с той стороны может послать SYN на `192.168.1.1` или на внешний IP — и телефон откроет соединение: при `final = direct` это доступ к LAN пользователя и выход с его IP, при `final = proxy` сервер катается по его цепочке. Tailscale фильтрует адресатов control-plane'ом, но пропущенное дальше тоже идёт по нашим правилам.
+Клиентский endpoint — `wireguard` (и AWG), `openvpn-client`, `openconnect` — двусторонний канал. Входящий поток из туннеля ядро отдаёт в роутер как обычное inbound-соединение с `metadata.Inbound = <тег endpoint'а>`. Адресат, равный нашему туннельному адресу, endpoint переписывает в loopback; любой другой идёт по `route.rules` и в `final`. gVisor-стек принимает пакеты на **любой** адрес: сервер WG/AWG, OpenVPN или OpenConnect с той стороны может послать SYN на `192.168.1.1` или на внешний IP — и телефон откроет соединение: при `final = direct` это доступ к LAN пользователя и выход с его IP, при `final = proxy` сервер катается по его цепочке. Tailscale в пресет не входит (контракт 1.1.129, **§126**): пиры tailnet — свои устройства пользователя, их ограничивают ACL Tailscale и фильтр control-plane.
 
-Ядро не меняется (поведение upstream: endpoint задуман как «inbound + outbound», в том числе чтобы публиковать локальные сервисы в WG-сеть). Закрывает генератор конфига: условие `inbound` правила маршрута и DNS-правила матчится по тегу endpoint'а (`route/rule/rule_item_inbound.go` ядра), хотя документация sing-box описывает поле как «Tags of Inbound». `inbound` уже есть в `registry/allowlists.json` → `route_rule_conditions` и `dns_rule_conditions`, гейт «правило без условий» такие правила не трогает. **Автоматики нет:** ни `advertise_routes`/`advertise_exit_node` Tailscale, ни включённый `private-ip` пиру ничего не открывают — доступ дают только поля записи узла (п. 1).
+Ядро не меняется (поведение upstream: endpoint задуман как «inbound + outbound», в том числе чтобы публиковать локальные сервисы в WG-сеть). Закрывает генератор конфига: условие `inbound` правила маршрута и DNS-правила матчится по тегу endpoint'а (`route/rule/rule_item_inbound.go` ядра), хотя документация sing-box описывает поле как «Tags of Inbound». `inbound` уже есть в `registry/allowlists.json` → `route_rule_conditions` и `dns_rule_conditions`, гейт «правило без условий» такие правила не трогает. **Автоматики нет:** включённый `private-ip` пиру ничего не открывает — доступ дают только поля записи узла (п. 1).
 
 ### 1. Три поля записи узла (§6.6, BACKUP.md)
 
@@ -9400,7 +9400,7 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 - Тип bool; **пишется только `true`**, отсутствие = `false` — ровно как у прежнего `skip_presets` (в состоянии и в LX Backup).
 - Носитель — свой сервер в корне `sources[]` и член папки (`kind: server`). У узла подписки записи нет: значения всегда ложь, поле не ставится и не читается.
 - В пространстве обхода пресета (`for_each_node`, `for_each_node_do`: `#filter`, `#do`, тело `for_each_node`) — `@node.allow_local`, `@node.allow_lan`, `@node.allow_gateway`, тип bool; у узла подписки — `false`. Закрытый перечень полей записи теперь: `skip_tailscale_presets`, `allow_local`, `allow_lan`, `allow_gateway`; иное имя `@node.<x>` вне `body.` — пустое значение без предупреждения (как сегодня).
-- Тумблеры показываются **только** у узлов с `body.type` ∈ {`wireguard`, `openvpn-client`, `openconnect`, `tailscale`} (у AWG `type` тот же `wireguard`). У Tailscale рядом подсказка: `advertise_routes` / `advertise_exit_node` анонсируют устройство в tailnet, а пропускает пира галка здесь. Строки — в вашей локализации; английские тексты лаунчера: «Incoming connections from this tunnel» (заголовок), «Peers on the other side of this tunnel can open connections to this device. Without the switches below they are rejected.», подсказки — «Peers reach services on this device's tunnel address. The service sees them as 127.0.0.1, so everything that trusts localhost becomes reachable.», «Peers reach private networks behind this device.», «Peers route any traffic through this device; it leaves through the outbound chosen in the Tunnel ingress preset.», у Tailscale — «advertise_routes and advertise_exit_node only announce this device in the tailnet; whether a peer gets through is decided by the switches here.»
+- Тумблеры показываются **только** у узлов с `body.type` ∈ {`wireguard`, `openvpn-client`, `openconnect`} (у AWG `type` тот же `wireguard`). У Tailscale тумблеров нет (1.1.129, §126); значения, если уже стоят в записи, хранятся и переносятся бэкапом, но пресет их у `tailscale` не читает. Строки — в вашей локализации; английские тексты лаунчера: «Incoming connections from this tunnel» (заголовок), «Peers on the other side of this tunnel can open connections to this device. Without the switches below they are rejected.», подсказки — «Peers reach services on this device's tunnel address. The service sees them as 127.0.0.1, so everything that trusts localhost becomes reachable.», «Peers reach private networks behind this device.», «Peers route any traffic through this device; it leaves through the outbound chosen in the Tunnel ingress preset.» (прежняя подсказка у Tailscale про `advertise_routes` снята вместе с тумблерами, 1.1.129).
 - **Импорт бэкапа**: новый узел — значения из файла; узел, совпавший по телу с уже имеющимся (свой сервер — по всему состоянию, член папки — в пределах папки), получает `true` из файла; отсутствие поля в файле своё `true` **не сбрасывает**. Экспорт — только `true`.
 
 ### 2. `skip_presets` → `skip_tailscale_presets` (терпимое чтение)
@@ -9426,7 +9426,7 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 {
   "id": "tunnel-ingress",
   "label": "Tunnel ingress",
-  "description": "Connections arriving from a client tunnel (WireGuard, AWG, OpenVPN, OpenConnect, Tailscale) are rejected unless the node's own switches allow them: access to this device, the local network, or using this device as a gateway. The lists below are filled from those switches; add tags by hand to extend them.",
+  "description": "Connections arriving from a client tunnel (WireGuard, AWG, OpenVPN, OpenConnect) are rejected unless the node's own switches allow them: access to this device, the local network, or using this device as a gateway. The lists below are filled from those switches; add tags by hand to extend them.",
   "default_enabled": true,
   "num": 940,
   "vars": [
@@ -9443,7 +9443,7 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
       "tooltip": "Outbound for peers allowed to use this device as a gateway." }
   ],
   "for_each_node_do": {
-    "#filter": { "@node.body.type": { "#in": ["wireguard", "openvpn-client", "openconnect", "tailscale"] } },
+    "#filter": { "@node.body.type": { "#in": ["wireguard", "openvpn-client", "openconnect"] } },
     "#do": {
       "@all_nodes":           { "#append": "@node" },
       "@allow_local_nodes":   { "#if": ["@node.allow_local",   { "#append": "@node" }] },
@@ -9477,14 +9477,14 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 - **Поздний дефолт** (§6.7.5): пресет включён по умолчанию и у существующих пользователей появляется сам, один раз; удалённый пользователем — не возвращается. Добавьте `tunnel-ingress` в `kLateDefaultPresetIds` (лаунчер: `LateDefaultPresetIDs = ["tailscale", "tunnel-ingress"]`).
 - `registry/presets.json`: `tunnel-ingress` объявлен `in: desktop` до вашей реализации; после неё — сообщите, переведём в `both` (ссылка `{kind: preset, ref: tunnel-ingress}` станет переносимой).
 
-Итог для узлов `wg-home` (WireGuard, без полей), `oc-work` (OpenConnect, `allow_local` + `allow_lan`), `ts` (Tailscale, `allow_gateway`), `v1` (VLESS, `allow_lan` — не туннель, не учитывается) и ручного тега `manual-wg` в «Tunnel endpoints»:
+Итог для узлов `wg-home` (WireGuard, без полей), `oc-work` (OpenConnect, `allow_local` + `allow_lan`), `ts` (Tailscale, `allow_gateway` — не учитывается, 1.1.129), `wg-exit` (WireGuard, `allow_gateway`), `v1` (VLESS, `allow_lan` — не туннель, не учитывается) и ручного тега `manual-wg` в «Tunnel endpoints»:
 
 ```json
 "route.rules": [
   { "inbound": ["oc-work"], "ip_cidr": ["127.0.0.0/8", "::1/128"], "outbound": "direct-out" },
   { "inbound": ["oc-work"], "ip_is_private": true, "outbound": "direct-out" },
-  { "inbound": ["ts"], "outbound": "proxy-out" },
-  { "inbound": ["manual-wg", "wg-home", "oc-work", "ts"], "action": "reject" }
+  { "inbound": ["wg-exit"], "outbound": "proxy-out" },
+  { "inbound": ["manual-wg", "wg-home", "oc-work", "wg-exit"], "action": "reject" }
 ]
 "dns.rules": [ { "inbound": ["wg-home", "oc-work"], "action": "reject" } ]
 ```
@@ -9495,12 +9495,12 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 - Бэкап: экспорт новых ключей (только `true`); импорт — терпимое чтение `skip_presets`, слияние «только `true`» для всех четырёх полей у узла, совпавшего по телу; `skip_presets` не писать никогда.
 - `preset_expand.dart` (пространство узла обхода): положить `@node.skip_tailscale_presets`, `@node.allow_local`, `@node.allow_lan`, `@node.allow_gateway` (bool; у узла подписки — `false`); `@node.skip_presets` из пространства убрать.
 - Шаблон: фильтр пресета `tailscale` на новое имя; новый пресет `tunnel-ingress` (тело выше, `num` — между вашей запертой головой и `tailscale`); `kLateDefaultPresetIds` += `tunnel-ingress`.
-- Форма узла: три тумблера у четырёх типов (п. 1), «Skip Tailscale presets» — только у `tailscale`.
+- Форма узла: три тумблера у трёх типов (п. 1; без `tailscale` — 1.1.129), «Skip Tailscale presets» — только у `tailscale`.
 
 ### Корпус — критерий паритета (обязателен)
 
 - `corpus/template/for_each_node/*` и `corpus/template/for_each_node_do/do_if_*`: поле `nodes[].skip_presets` → `nodes[].skip_tailscale_presets`, фильтры `@node.skip_presets` → `@node.skip_tailscale_presets`; ожидания не менялись. Формат `nodes[]` в README корпуса: `{tag, body, enabled?, in_config?, skip_tailscale_presets?, allow_local?, allow_lan?, allow_gateway?}` — раннер кладёт поля записи в пространство узла.
-- Новые: `for_each_node_do/tunnel_ingress_mixed` (тело §6.5.2 в форме ядра — `default_value` вместо `default`, без оболочки; узлы `wg-home`, `oc-work`, `ts`, `v1`; `vars.json` — `{"all_nodes": "manual-wg"}`; ожидание — четыре правила и DNS-правило выше, `manual-wg` первым в `all_nodes`, `warnings` пусты) и `for_each_node_do/tunnel_ingress_no_nodes` (один узел VLESS, ввода нет — `rules`, `dns_rules` пусты, `warnings` пусты: каждое правило снято своим `#notEmpty`, без `template_fragment_dropped`).
+- Новые: `for_each_node_do/tunnel_ingress_mixed` (тело §6.5.2 в форме ядра — `default_value` вместо `default`, без оболочки; узлы `wg-home`, `oc-work`, `ts`, `wg-exit`, `v1`; `vars.json` — `{"all_nodes": "manual-wg"}`; ожидание — четыре правила и DNS-правило выше, `manual-wg` первым в `all_nodes`, `ts` нигде нет, `warnings` пусты) и `for_each_node_do/tunnel_ingress_no_nodes` (один узел VLESS, ввода нет — `rules`, `dns_rules` пусты, `warnings` пусты: каждое правило снято своим `#notEmpty`, без `template_fragment_dropped`).
 - Бэкап-корпус не менялся: старый ключ в существующих фикстурах `corpus/backup/` не встречается; терпимое чтение проверяйте своим тестом (у лаунчера — `TestLoadLegacySkipPresetsKey` в состоянии и в импорте).
 
 Расхождение — сюда.
@@ -9530,5 +9530,22 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 ## 125. Контракт 1.1.128 — пресет `split-all-traffic` снят (desktop-only)
 
 Решение владельца 15.10.2026: пресет «Split all traffic 50/50 across two outbounds» не актуален и снят из шаблона лаунчера и из `registry/presets.json`. Он был `in: desktop` — у LxBox работы нет. Если в бэкапе встретится правило `{kind: "preset", ref: "split-all-traffic"}`, действует общая норма TEMPLATE_LANG §6.1 для неизвестного id: правило выключено + warning, не потеря.
+
+Расхождение — сюда.
+
+## 126. Контракт 1.1.129 — Tailscale выведен из `tunnel-ingress`
+
+Решение владельца 15.10.2026 (SPEC 170 лаунчера, изменение; D-136). Норма — `docs/TEMPLATE_LANG.md` §6.5.2 (абзац «Почему без Tailscale», тело пресета), `docs/BACKUP.md` и `schema/backup.schema.json` (описания `allow_*`), `registry/presets.json` (note). Тело пресета и итог кейса в **§123** поправлены по месту — переносите оттуда.
+
+### Почему
+
+Пиры tailnet — свои устройства пользователя, доступ к ним уже ограничивают ACL Tailscale и фильтр control-plane: он пропускает к нам только наши адреса и анонсированное `advertise_routes` / `advertise_exit_node`, которые пользователь задаёт явно в узле. Под reject по умолчанию устройства пользователя перестали бы доставать эту машину по tailnet.
+
+### Что меняется
+
+- `#filter` пресета `tunnel-ingress`: `{"@node.body.type": {"#in": ["wireguard", "openvpn-client", "openconnect"]}}`; в `description` — «(WireGuard, AWG, OpenVPN, OpenConnect)».
+- Тумблеры `allow_local` / `allow_lan` / `allow_gateway` у узла `tailscale` не показываются (подсказка про `advertise_routes` у Tailscale снята). Значения, если уже стоят в записи, **остаются** (хранилище, экспорт/импорт бэкапа как прежде), обход их у `tailscale` просто не читает — фильтр узел не берёт.
+- `skip_tailscale_presets` и пресет `tailscale` — без изменений.
+- Корпус: `for_each_node_do/tunnel_ingress_mixed` — узел `ts` (tailscale, `allow_gateway`) оставлен как доказательство исключения, добавлен `wg-exit` (wireguard, `allow_gateway`): правило шлюза `{"inbound": ["wg-exit"], "outbound": "proxy-out"}`, reject по `["manual-wg", "wg-home", "oc-work", "wg-exit"]`, DNS-reject по `["wg-home", "oc-work"]`; `tunnel_ingress_no_nodes` — фильтр в теле, ожидание то же. Оба кейса — критерий паритета.
 
 Расхождение — сюда.

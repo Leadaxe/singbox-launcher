@@ -19,7 +19,7 @@
     },
     {
       "inbound": [
-        "ts"
+        "wg-exit"
       ],
       "outbound": "proxy-out"
     },
@@ -28,7 +28,7 @@
         "manual-wg",
         "wg-home",
         "oc-work",
-        "ts"
+        "wg-exit"
       ],
       "action": "reject"
     }

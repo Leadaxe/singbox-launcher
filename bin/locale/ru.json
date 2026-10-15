@@ -4064,9 +4064,6 @@
   "Peers route any traffic through this device; it leaves through the outbound chosen in the Tunnel ingress preset.": {
     "value": "Пиры пускают через это устройство любой трафик; он уходит в outbound, выбранный в пресете Tunnel ingress."
   },
-  "advertise_routes and advertise_exit_node only announce this device in the tailnet; whether a peer gets through is decided by the switches here.": {
-    "value": "advertise_routes и advertise_exit_node только анонсируют это устройство в tailnet; пропустить ли пира, решают переключатели здесь."
-  },
   "No matching nodes": {
     "value": "Нет подходящих узлов"
   },

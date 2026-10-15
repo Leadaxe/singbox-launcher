@@ -1,5 +1,5 @@
 {
-  "_comment": "SPEC 170, контракт 1.1.126, D-134: пресет tunnel-ingress (тело из TEMPLATE_LANG §6.5.2) по узлам с полями записи allow_*. wg-home без галок — только reject и DNS-reject; oc-work allow_local+allow_lan — loopback и private в direct-out, DNS закрыт (нет allow_gateway); ts allow_gateway — в gateway_out (по умолчанию proxy-out), DNS открыт; v1 (vless) не туннель — #filter его не берёт, его allow_lan ничего не открывает. Ручной тег manual-wg в all_nodes — база ввода пользователя, собранное добавляется после него.",
+  "_comment": "SPEC 170, контракт 1.1.126, D-134; Tailscale выведен — 1.1.129, D-136: пресет tunnel-ingress (тело из TEMPLATE_LANG §6.5.2) по узлам с полями записи allow_*. wg-home без галок — только reject и DNS-reject; oc-work allow_local+allow_lan — loopback и private в direct-out, DNS закрыт (нет allow_gateway); wg-exit allow_gateway — в gateway_out (по умолчанию proxy-out), DNS открыт; ts (tailscale) с allow_gateway — #filter его не берёт: пиров tailnet ограничивают ACL Tailscale и фильтр control-plane, поля allow_* у него не читаются; v1 (vless) не туннель — #filter его не берёт, его allow_lan ничего не открывает. Ручной тег manual-wg в all_nodes — база ввода пользователя, собранное добавляется после него в порядке узлов.",
   "preset": {
     "for_each_node_do": {
       "#filter": {
@@ -7,8 +7,7 @@
           "#in": [
             "wireguard",
             "openvpn-client",
-            "openconnect",
-            "tailscale"
+            "openconnect"
           ]
         }
       },
@@ -199,6 +198,28 @@
         "type": "tailscale",
         "tag": "ts",
         "hostname": "ts-host"
+      }
+    },
+    {
+      "tag": "wg-exit",
+      "allow_gateway": true,
+      "body": {
+        "type": "wireguard",
+        "tag": "wg-exit",
+        "address": [
+          "10.9.0.2/32"
+        ],
+        "private_key": "k2",
+        "peers": [
+          {
+            "address": "203.0.113.2",
+            "port": 51820,
+            "public_key": "p2",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ]
+          }
+        ]
       }
     },
     {

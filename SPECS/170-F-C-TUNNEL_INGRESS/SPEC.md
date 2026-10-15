@@ -140,3 +140,16 @@
 - SPEC 169 — короткая форма `#if`, `#if` на операции `#do` (контракт 1.1.125).
 - SPEC 166 — обходы узлов, `for_each_node_do`, `unique`, `wizard_ui: internal`, поздние дефолты.
 - LxBox §578 — `skip_presets` (контракт 1.1.86); SPEC 024 — loop guard на уровне приложения (тот же принцип: защиту даёт генератор конфига, не ядро).
+
+---
+
+## Изменение 15.10.2026 (контракт 1.1.129): Tailscale исключён
+
+Решение владельца 15.10.2026, D-136. Пресет `tunnel-ingress` обслуживает `wireguard` (и AWG), `openvpn-client`, `openconnect`; `tailscale` из `#filter` и из `description` снят.
+
+**Почему.** Пиры tailnet — свои устройства пользователя, доступ к ним уже ограничивают ACL Tailscale и фильтр control-plane: он пропускает к нам только наши адреса и анонсированное `advertise_routes` / `advertise_exit_node`, которые пользователь задаёт явно в узле. Под reject по умолчанию устройства пользователя перестали бы доставать эту машину по tailnet.
+
+- Переключатели `allow_local` / `allow_lan` / `allow_gateway` у узла Tailscale не показываются, подсказка про `advertise_*` снята вместе с ключом локали. Значения, если уже стоят в записи, остаются в ней (состояние, бэкап); обход их у `tailscale` не читает — узел не проходит `#filter`.
+- `skip_tailscale_presets` и пресет `tailscale` — без изменений.
+- Норма: `TEMPLATE_LANG.md` §6.5.2 (абзац «Почему без Tailscale», тело, итог кейса), §9 (D-136); `BACKUP.md`, `schema/backup.schema.json` (описания `allow_*`); `registry/presets.json` (note); `TASKS_LXBOX.md` §123 по месту и §126.
+- Корпус `for_each_node_do/tunnel_ingress_mixed`: узел `ts` (tailscale, `allow_gateway`) оставлен доказательством исключения, добавлен `wg-exit` (wireguard, `allow_gateway`) — правило шлюза по нему; `all_nodes` = `manual-wg`, `wg-home`, `oc-work`, `wg-exit`; DNS-reject — `wg-home`, `oc-work`. `tunnel_ingress_no_nodes` — фильтр в теле, ожидание прежнее.

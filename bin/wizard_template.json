@@ -1176,7 +1176,7 @@
   {
    "id": "tunnel-ingress",
    "label": "Tunnel ingress",
-   "description": "Connections arriving from a client tunnel (WireGuard, AWG, OpenVPN, OpenConnect, Tailscale) are rejected unless the node's own switches allow them: access to this device, the local network, or using this device as a gateway. The lists below are filled from those switches; add tags by hand to extend them.",
+   "description": "Connections arriving from a client tunnel (WireGuard, AWG, OpenVPN, OpenConnect) are rejected unless the node's own switches allow them: access to this device, the local network, or using this device as a gateway. The lists below are filled from those switches; add tags by hand to extend them.",
    "default_enabled": true,
    "num": 940,
    "vars": [
@@ -1227,8 +1227,7 @@
       "#in": [
        "wireguard",
        "openvpn-client",
-       "openconnect",
-       "tailscale"
+       "openconnect"
       ]
      }
     },

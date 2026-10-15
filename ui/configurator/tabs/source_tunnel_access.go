@@ -17,30 +17,30 @@ import (
 
 // tunnelIngressTypes — типы клиентских endpoint'ов, чей входящий поток ядро
 // отдаёт в роутер (SPEC 170 §1): ровно `#filter` пресета `tunnel-ingress`.
+// Tailscale исключён (контракт 1.1.129, D-136): его пиров ограничивают ACL
+// tailnet и фильтр control-plane.
 var tunnelIngressTypes = map[string]bool{
 	"wireguard":      true,
 	"openvpn-client": true,
 	"openconnect":    true,
-	"tailscale":      true,
 }
 
 // Подписи и подсказки переключателей полей записи allow_* (D-134).
 const (
-	tunnelAccessTitle     = "Incoming connections from this tunnel"
-	tunnelAccessHint      = "Peers on the other side of this tunnel can open connections to this device. Without the switches below they are rejected."
-	allowLocalText        = "Allow access to this device"
-	allowLocalTip         = "Peers reach services on this device's tunnel address. The service sees them as 127.0.0.1, so everything that trusts localhost becomes reachable."
-	allowLanText          = "Expose local network"
-	allowLanTip           = "Peers reach private networks behind this device."
-	allowGatewayText      = "Allow as gateway"
-	allowGatewayTip       = "Peers route any traffic through this device; it leaves through the outbound chosen in the Tunnel ingress preset."
-	tunnelAccessTailscale = "advertise_routes and advertise_exit_node only announce this device in the tailnet; whether a peer gets through is decided by the switches here."
+	tunnelAccessTitle = "Incoming connections from this tunnel"
+	tunnelAccessHint  = "Peers on the other side of this tunnel can open connections to this device. Without the switches below they are rejected."
+	allowLocalText    = "Allow access to this device"
+	allowLocalTip     = "Peers reach services on this device's tunnel address. The service sees them as 127.0.0.1, so everything that trusts localhost becomes reachable."
+	allowLanText      = "Expose local network"
+	allowLanTip       = "Peers reach private networks behind this device."
+	allowGatewayText  = "Allow as gateway"
+	allowGatewayTip   = "Peers route any traffic through this device; it leaves through the outbound chosen in the Tunnel ingress preset."
 )
 
 // tunnelAccessBlock — переключатели allow_local / allow_lan / allow_gateway
-// формы узла-сервера (SPEC 170, контракт 1.1.126). Виден у своего сервера и
-// члена папки (у узла подписки записи нет) с типом тела клиентского
-// туннеля. Правит рабочую копию узла; в модель она уходит по Save окна
+// формы узла-сервера (SPEC 170, контракт 1.1.126; без Tailscale — 1.1.129).
+// Виден у своего сервера и члена папки (у узла подписки записи нет) с типом
+// тела клиентского туннеля. Правит рабочую копию узла; в модель она уходит по Save окна
 // целиком. nil — показывать нечего.
 func tunnelAccessBlock(m *wizardmodels.WizardModel, link wizardmodels.NodeLink, node *wizardmodels.Node) fyne.CanvasObject {
 	if m == nil || node == nil || node.Kind != wizardmodels.SourceKindServer || inSubscription(m, link) {
@@ -64,18 +64,11 @@ func tunnelAccessBlock(m *wizardmodels.WizardModel, link wizardmodels.NodeLink, 
 	hint := widget.NewLabel(locale.T(tunnelAccessHint))
 	hint.Wrapping = fyne.TextWrapWord
 	hint.Importance = widget.LowImportance
-	box := container.NewVBox(title, hint,
+	return container.NewVBox(title, hint,
 		check(locale.T(allowLocalText), locale.T(allowLocalTip), &node.AllowLocal),
 		check(locale.T(allowLanText), locale.T(allowLanTip), &node.AllowLan),
 		check(locale.T(allowGatewayText), locale.T(allowGatewayTip), &node.AllowGateway),
 	)
-	if typ == "tailscale" {
-		ts := widget.NewLabel(locale.T(tunnelAccessTailscale))
-		ts.Wrapping = fyne.TextWrapWord
-		ts.Importance = widget.LowImportance
-		box.Add(ts)
-	}
-	return box
 }
 
 // inSubscription — узел адресован в подписку (записи у него нет).

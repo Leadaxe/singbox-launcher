@@ -173,12 +173,15 @@ TEMPLATE_LANG §6.7.4). Прежний ключ `for_each` (`node_type`, `as`) �
 | `allow_gateway` | Allow as gateway | `tunnel-ingress`: пиры ходят через нас куда угодно, в `gateway_out` пресета (по умолчанию `proxy-out`); их DNS не отбрасывается |
 
 Переключатели `allow_*` показываются у узлов `wireguard` (и AWG),
-`openvpn-client`, `openconnect` и `tailscale`. Штатный пресет `tunnel-ingress`
+`openvpn-client` и `openconnect`. Штатный пресет `tunnel-ingress`
 (`num: 940`, включён по умолчанию, у существующих настроек появляется один раз)
 собирает endpoint'ы этих типов и отклоняет всё, что приходит из их туннелей,
 кроме разрешённого переключателями, плюс DNS-reject для пиров без
 `allow_gateway`. Четыре видимых списка можно дополнить руками (например тегом
-endpoint'а из своего шаблона). TEMPLATE_LANG §6.5.2.
+endpoint'а из своего шаблона). Tailscale пресет не обслуживает (контракт
+1.1.129): пиры tailnet — свои устройства пользователя, их уже ограничивают ACL
+Tailscale и фильтр control-plane, пропускающий только наши адреса и
+анонсированное `advertise_routes` / `advertise_exit_node`. TEMPLATE_LANG §6.5.2.
 
 ---
 

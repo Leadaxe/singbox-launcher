@@ -246,7 +246,7 @@
         },
         "allow_local": {
           "type": "boolean",
-          "description": "server only (свой сервер в корне и член папки; контракт 1.1.126, D-134): пир клиентского туннеля этого узла (body.type wireguard / openvpn-client / openconnect / tailscale) достаёт сервисы на нашем туннельном адресе — пресет tunnel-ingress читает @node.allow_local (TEMPLATE_LANG §6.5.2). Пишется только true; импорт совпавшего по телу узла берёт только true. У узла подписки поля нет. Поддержка: обе стороны."
+          "description": "server only (свой сервер в корне и член папки; контракт 1.1.126, D-134): пир клиентского туннеля этого узла (body.type wireguard / openvpn-client / openconnect; у tailscale с контракта 1.1.129 поле хранится, но пресетом не читается, D-136) достаёт сервисы на нашем туннельном адресе — пресет tunnel-ingress читает @node.allow_local (TEMPLATE_LANG §6.5.2). Пишется только true; импорт совпавшего по телу узла берёт только true. У узла подписки поля нет. Поддержка: обе стороны."
         },
         "allow_lan": {
           "type": "boolean",
@@ -660,7 +660,7 @@
         },
         "allow_local": {
           "type": "boolean",
-          "description": "server only (свой сервер в корне и член папки; контракт 1.1.126, D-134): пир клиентского туннеля этого узла (body.type wireguard / openvpn-client / openconnect / tailscale) достаёт сервисы на нашем туннельном адресе — пресет tunnel-ingress читает @node.allow_local (TEMPLATE_LANG §6.5.2). Пишется только true; импорт совпавшего по телу узла берёт только true. У узла подписки поля нет. Поддержка: обе стороны."
+          "description": "server only (свой сервер в корне и член папки; контракт 1.1.126, D-134): пир клиентского туннеля этого узла (body.type wireguard / openvpn-client / openconnect; у tailscale с контракта 1.1.129 поле хранится, но пресетом не читается, D-136) достаёт сервисы на нашем туннельном адресе — пресет tunnel-ingress читает @node.allow_local (TEMPLATE_LANG §6.5.2). Пишется только true; импорт совпавшего по телу узла берёт только true. У узла подписки поля нет. Поддержка: обе стороны."
         },
         "allow_lan": {
           "type": "boolean",
