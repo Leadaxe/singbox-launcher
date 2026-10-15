@@ -8,7 +8,7 @@ require (
 	github.com/dweymouth/fyne-tooltip v0.4.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-gl/glfw/v3.4/glfw v0.1.0-pre.2
-	github.com/godbus/dbus/v5 v5.2.2
+	github.com/godbus/dbus/v5 v5.2.4
 	github.com/ideaconnect/go-fyne-pretty-view/v2 v2.7.0
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/muhammadmuzzammil1998/jsonc v1.0.0
