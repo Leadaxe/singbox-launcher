@@ -12,7 +12,8 @@
 - Detour picker and rule/DNS target lists no longer offer template Direction stubs you deleted (`vpn ①`, `vpn ②`): they are not in the config, so picking one pointed to nothing. `block-out` is no longer offered as a detour either — chaining through a block makes no sense.
 
 ### Technical / Internal
--
+- Fyne 2.8.1 → 2.8.2 ([#142](https://github.com/Leadaxe/singbox-launcher/pull/142)); GLFW 3.4 moves to the tagged `pre.2`.
+- golangci-lint CI takes Go from `go.mod` (it was pinned to 1.25 and failed `go mod tidy` on every PR), golangci-lint 2.14.0, action v9; the 36 errcheck/unused/bodyclose findings it reported are fixed. The stale Dependabot ignore for `golang.org/x/sys` ≥ 0.48 is removed (the toolchain is already Go 1.26).
 
 ## RU
 ### Основное
@@ -24,4 +25,5 @@
 - Выбор detour и списки целей правил/DNS больше не предлагают удалённые вами заготовки Направлений шаблона (`vpn ①`, `vpn ②`): в конфиге их нет, и выбор указывал в пустоту. `block-out` из detour тоже убран — цепочки через блокировку не бывает.
 
 ### Техническое / Внутреннее
--
+- Fyne 2.8.1 → 2.8.2 ([#142](https://github.com/Leadaxe/singbox-launcher/pull/142)); GLFW 3.4 переходит на тег `pre.2`.
+- CI golangci-lint берёт Go из `go.mod` (был пин 1.25, и `go mod tidy` падал на каждом PR), golangci-lint 2.14.0, action v9; 36 его замечаний (errcheck/unused/bodyclose) исправлены. Снят устаревший запрет Dependabot на `golang.org/x/sys` ≥ 0.48 (тулчейн уже Go 1.26).

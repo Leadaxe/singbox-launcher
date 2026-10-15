@@ -130,8 +130,8 @@ type ProcessService struct {
 	// повышенного старта на Windows (SPEC 150): до закрытия лаунчера ядро
 	// берётся из bin\ (копия не прошла проверку) и/или пишет в лог
 	// лаунчера (каталог classic.log не прошёл проверку). Не сохраняются.
-	runAnywayCopy atomic.Bool
-	runAnywayLog  atomic.Bool
+	runAnywayCopy atomic.Bool //nolint:unused // читается только в classic_privileged_windows.go (//go:build windows)
+	runAnywayLog  atomic.Bool //nolint:unused // читается только в classic_privileged_windows.go (//go:build windows)
 }
 
 // Куда пишет вывод classic-ядро (ProcessService.coreLog).

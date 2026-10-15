@@ -32,7 +32,7 @@ func FlushDNSCache(baseURL, token string) error {
 		writeLog(debuglog.LevelInfo, "[%s] Error executing DNS flush request: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
 		return classifyRequestError(err, "failed to execute DNS flush request: %w")
 	}
-	defer debuglog.RunAndLog("FlushDNSCache: close response body", resp.Body.Close)
+	defer func() { debuglog.RunAndLog("FlushDNSCache: close response body", resp.Body.Close) }()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("unexpected status code for DNS flush: %d, body: %s", resp.StatusCode, string(bodyBytes))

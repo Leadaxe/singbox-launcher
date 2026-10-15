@@ -71,19 +71,6 @@ func mapGetInt(m map[string]interface{}, k string) int {
 	}
 }
 
-// splitAndTrim режет строку по разделителю, снимая пробелы и пустые куски.
-func splitAndTrim(s string, sep string) []string {
-	parts := strings.Split(s, sep)
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
 // wireGuardPeerMaps приводит массив пиров к срезу карт.
 //
 // Тело бывает построено кодом (`[]map[string]interface{}`) и разобрано из
