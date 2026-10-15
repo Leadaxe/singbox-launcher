@@ -377,7 +377,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			urlLabel.Hide()
 			urlContainer.Hide()
 			domainRegexEntry.Hide()
-			domainModeSelect.Hide() // показываем только при выборе Domains/URLs
+			domainModeRow.Hide() // показываем только при выборе Domains/URLs (подпись вместе со списком)
 			processesLabel.Hide()
 			processesContainerWrap.Hide()
 			selectProcessesButton.Hide()
@@ -422,6 +422,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		}
 		showDomain := func() {
 			hideAllFormTypeSpecific()
+			domainModeRow.Show()
 			domainModeSelect.Show()
 			urlLabel.Show()
 			updateDomainLabel()
