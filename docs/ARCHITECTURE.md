@@ -580,7 +580,11 @@ build.BuildConfig  (pure)
             │      attach metadata (Source / Required / Locked / Active / Enabled);
             │      dns.rules are walked as a synced copy: an active preset with no
             │      state entry yet gets its slot by the rule axis (state.PresetDNSSlotIndex,
-            │      SPEC 171) — the same rule the Configurator and Debug API apply
+            │      SPEC 171) — the same rule the Configurator and Debug API apply;
+            │      DNS mirrors of own rules (rules[].dns, SPEC 172) are derived from the
+            │      resolved route (RuleDNSMirrorMatch: registry allowlists) and inserted
+            │      before the first preset slot with a higher axis number
+            │      (RuleDNSMirrorIndex) — never stored in state.DNS.Rules
             │
             └─► MergeRouteSection → MergePresetsIntoRoute → ResolveRoute (pure)
                    walk state.Rules kind switch (preset / inline / srs),

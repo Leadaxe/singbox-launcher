@@ -27,5 +27,5 @@
 
 ## Этап 5 — тест, доки
 - [x] T15 `core/build/rule_dns_mirror_test.go` — `TestRuleDNSMirror` (+ подтест круга данных)
-- [ ] T16 `docs/release_notes/upcoming.md` (EN/RU), `RELEASE_NOTES.md`, `docs/ARCHITECTURE.md`, `IMPLEMENTATION_REPORT.md`
+- [x] T16 `docs/release_notes/upcoming.md` (EN/RU), `RELEASE_NOTES.md`, `docs/ARCHITECTURE.md`, `IMPLEMENTATION_REPORT.md`
 - [ ] T17 `go build ./...`; тесты по имени; CI `run_mode=tests` зелёный; живая проверка ядра (риск «IP-наборы»); показ UI владельцу; папка → `172-F-C-…`
