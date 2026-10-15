@@ -24,6 +24,7 @@
 package models
 
 import (
+	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 )
 
@@ -39,4 +40,6 @@ type RuleState struct {
 	// Живёт рядом с Enabled/SelectedOutbound по той же причине: это состояние
 	// правила, а не данные шаблона. nil — не размечено (ось доразметит).
 	Num *int
+	// DNS — DNS-зеркало правила (state.Rule.DNS, SPEC 172). nil — опций нет.
+	DNS *corestate.RuleDNS
 }

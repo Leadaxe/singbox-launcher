@@ -128,7 +128,8 @@ var (
 	}
 	lxboxGroupKeys10 = map[string]bool{"members_rule": true, "pool_badge": true}
 	lxboxRuleKeys10  = map[string]map[string]bool{
-		"*":      {"dns": true, "resolve": true},
+		// dns — поле канона с контракта 1.1.130 (state.Rule.DNS).
+		"*":      {"resolve": true},
 		"srs":    {"update_interval_hours": true},
 		"inline": {"verbatim": true},
 	}

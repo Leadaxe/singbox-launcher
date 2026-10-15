@@ -142,6 +142,7 @@ func PersistedCustomRuleToRuleState(pcr *PersistedCustomRule) *RuleState {
 		Rule:             tsr,
 		Enabled:          pcr.Enabled,
 		SelectedOutbound: pcr.SelectedOutbound,
+		DNS:              corestate.CloneRuleDNS(pcr.DNS),
 	}
 }
 
@@ -157,6 +158,7 @@ func ToPersistedCustomRule(ruleState *RuleState) PersistedCustomRule {
 		Rule:             ruleState.Rule.Rule,
 		DefaultOutbound:  ruleState.Rule.DefaultOutbound,
 		HasOutbound:      ruleState.Rule.HasOutbound,
+		DNS:              corestate.CloneRuleDNS(ruleState.DNS),
 	}
 	if len(ruleState.Rule.Params) > 0 {
 		p.Params = make(map[string]interface{}, len(ruleState.Rule.Params))

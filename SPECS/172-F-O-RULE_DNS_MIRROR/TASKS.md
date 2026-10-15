@@ -9,9 +9,9 @@
 - [x] T3 `contract/schema/backup.schema.json` (`$defs/rule/properties/dns`); `contract/VERSION`; `contract/README.md`; `contract/TASKS_LXBOX.md` §127; `go generate ./contract/...`
 
 ## Этап 2 — данные
-- [ ] T4 `core/state/rule_types.go`: `RuleDNS`, `Rule.DNS`; `core/state/record_clone.go`
-- [ ] T5 `core/backup/file_keys_10.go` (`dns` из ключей LxBox); импорт/экспорт `1.0`; решение по 0.12
-- [ ] T6 `core/state/legacy_types.go`, `core/state/load_v6.go`, `ui/configurator/models/rule_state.go`, загрузка визарда, `ui/configurator/models/preset_ref_sync.go` — поле проходит круг без потерь
+- [x] T4 `core/state/rule_types.go`: `RuleDNS`, `Rule.DNS`; `core/state/record_clone.go`
+- [x] T5 `core/backup/file_keys_10.go` (`dns` из ключей LxBox); импорт/экспорт `1.0`; решение по 0.12
+- [x] T6 `core/state/legacy_types.go`, `core/state/load_v6.go`, `ui/configurator/models/rule_state.go`, загрузка визарда, `ui/configurator/models/preset_ref_sync.go` — поле проходит круг без потерь
 
 ## Этап 3 — сборка
 - [ ] T7 `core/build/rule_dns_mirror.go`: `ruleDNSMatch`, `ruleDNSMirrors`

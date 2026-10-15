@@ -273,6 +273,7 @@ func customRuleStateToV6Rule(rs *RuleState) *state.Rule {
 			r := state.NewSrsRule(label, urls, outbound)
 			r.Enabled = rs.Enabled
 			r.Num = copyNum(rs.Num)
+			r.DNS = state.CloneRuleDNS(rs.DNS)
 			return &r
 		}
 	}
@@ -285,6 +286,7 @@ func customRuleStateToV6Rule(rs *RuleState) *state.Rule {
 	r := state.NewInlineRule(label, match, outbound)
 	r.Enabled = rs.Enabled
 	r.Num = copyNum(rs.Num)
+	r.DNS = state.CloneRuleDNS(rs.DNS)
 	return &r
 }
 

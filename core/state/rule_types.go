@@ -63,7 +63,8 @@ const (
 //	  "num":     1000,             // позиция на оси; nil = не размечено
 //	  "refs":    ["https://…"],    // только srs
 //	  "vars":    {"out":"direct"}, // только preset
-//	  "body":    { … }             // inline|srs: правило sing-box как есть
+//	  "body":    { … },            // inline|srs: правило sing-box как есть
+//	  "dns":     { … }             // inline|srs: DNS-зеркало, RuleDNS
 //	}
 type Rule struct {
 	// Kind — discriminator. Required.
@@ -111,6 +112,36 @@ type Rule struct {
 	// RawMessage, а не карта: порядок ключей тела в файле сохраняется
 	// побайтно (SubstituteSelf работает по сырому JSON ради того же).
 	Body json.RawMessage `json:"body,omitempty"`
+
+	// DNS — DNS-зеркало правила (inline|srs; контракт 1.1.130, D-137,
+	// TEMPLATE_LANG §6.11): зеркало и глушилку AAAA выводит сборка, в
+	// dns.rules состояния они не пишутся. nil — опций нет.
+	DNS *RuleDNS `json:"dns,omitempty"`
+}
+
+// RuleDNS — поле записи правила `dns`, форма LxBox (ключи camelCase —
+// исключение контракта ради уже записанных данных, BACKUP.md таблица rules[]).
+type RuleDNS struct {
+	// Enabled — DNS-запросы под правило отвечает сервер ServerTag.
+	Enabled bool `json:"enabled"`
+	// ServerTag — тег DNS-сервера; хранится и при Enabled == false.
+	ServerTag string `json:"serverTag"`
+	// ForceIPv4 — AAAA-запросы под правило получают пустой ответ.
+	ForceIPv4 bool `json:"forceIpv4,omitempty"`
+}
+
+// IsZero — ни одна опция не включена и тег пуст: объект можно не писать.
+func (d *RuleDNS) IsZero() bool {
+	return d == nil || (!d.Enabled && !d.ForceIPv4 && d.ServerTag == "")
+}
+
+// CloneRuleDNS — копия поля; пустое (IsZero) даёт nil.
+func CloneRuleDNS(d *RuleDNS) *RuleDNS {
+	if d.IsZero() {
+		return nil
+	}
+	v := *d
+	return &v
 }
 
 // PresetBody — ВИД записи kind=preset.

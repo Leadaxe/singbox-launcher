@@ -454,6 +454,14 @@ func importRule(r Rule, index int, presets tagSet) ([]state.Rule, []Warning, err
 	// Конструкторы задают вид и тело; метаданные записи дописываются поверх.
 	out.Enabled = enabled
 	out.Num = num
+	// DNS-зеркало правила (контракт 1.1.130): форма у 0.x та же, что у 1.0.
+	// Нечитаемый объект — как отсутствующий: опция, а не данные правила.
+	if out.Kind != state.RuleKindPreset && len(r.DNS) > 0 {
+		var d state.RuleDNS
+		if json.Unmarshal(r.DNS, &d) == nil {
+			out.DNS = state.CloneRuleDNS(&d)
+		}
+	}
 
 	return []state.Rule{out}, warns, nil
 }

@@ -227,6 +227,7 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 				SelectedOutbound: ib.Outbound,
 				HasOutbound:      true,
 				Rule:             cloneJSONMap(ib.Match),
+				DNS:              CloneRuleDNS(r.DNS),
 			}
 			// Restore outbound в Rule для legacy build-pipeline (он ожидает rule.outbound).
 			if cr.Rule == nil {
@@ -279,6 +280,7 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 				SelectedOutbound: sb.Outbound,
 				HasOutbound:      true,
 				RuleSet:          ruleSets,
+				DNS:              CloneRuleDNS(r.DNS),
 				Rule: map[string]interface{}{
 					"rule_set": ruleSetHint,
 					"outbound": sb.Outbound,

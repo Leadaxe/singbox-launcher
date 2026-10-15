@@ -34,12 +34,9 @@
 
 Для каждого правила `inline|srs`, которое **сборка выпускает в `route.rules`** (включено, наборы `srs` скачаны), при `dns.enabled` и непустом `serverTag` выпускается DNS-правило-зеркало, при `dns.forceIpv4` — правило-глушилка.
 
-**Матчер зеркала** `M`:
-- `srs` — `rule_set`: те же теги, что у маршрутного правила (`user:<id>`, `user:<id>:N`);
-- `inline` — ключи тела из списка DNS-совместимых: `domain`, `domain_suffix`, `domain_keyword`, `domain_regex`, `process_name`, `process_path`, `process_path_regex`, `package_name`, `user`, `user_id`, `wifi_ssid`, `wifi_bssid`, `network_type`, `source_ip_cidr`, `source_ip_is_private`, `inbound`. IP-матчеры (`ip_cidr`, `ip_is_private`) в зеркало не идут: у DNS-запроса адреса назначения нет;
-- у `srs` к `rule_set` добавляются те же DNS-совместимые ключи тела, если они там есть.
+**Матчер зеркала** `M` — ключи выпущенного маршрутного тела из списка реестра `allowlists.json` **`rule_dns_mirror_match`**: `rule_set` (у `srs` его вписала сборка — `user:<id>`, `user:<id>:N`), `domain`, `domain_suffix`, `domain_keyword`, `domain_regex`, `process_name`, `process_path`, `process_path_regex`, `package_name`, `package_name_regex`, `user`, `user_id`, `wifi_ssid`, `wifi_bssid`, `network_type`, `source_ip_cidr`, `source_ip_is_private`, `inbound`. IP-матчеры (`ip_cidr`, `ip_is_private`) в зеркало не идут: у DNS-запроса адреса назначения нет. Вид правила на матчер не влияет — имён полей и видов в коде движка нет.
 
-**Гейт:** тело содержит `port`, `port_range`, `protocol` или `network` — зеркала и глушилки нет (DNS-запрос под такие условия не подходит; так у LxBox). Пустой `M` — зеркала и глушилки нет: пустое тело DNS-правила ловит **всё**.
+**Гейт** — список реестра **`rule_dns_mirror_gate`**: тело содержит `port`, `port_range`, `protocol` или `network` с ненулевым значением — зеркала и глушилки нет (DNS-запрос под такие условия не подходит; так у LxBox). Пустой `M` — зеркала и глушилки нет: пустое тело DNS-правила ловит **всё**.
 
 **Тела:**
 - глушилка: `M + {"ip_version": 6, "action": "predefined", "rcode": "NOERROR"}`;
@@ -79,7 +76,7 @@
 - `contract/VERSION` → следующий; `contract/README.md` — changelog.
 - `ONE_NAMESPACE.md` §1, строка «расширения приложения»: `dns{}` — поле обеих сторон, `resolve{}` — LxBox.
 - `BACKUP.md`: таблица `rules[]` — строка `dns` (обе, форма §2.1) отдельно от `resolve` (LxBox, «игнорирует молча» без «провозит»); раздел «Поля стороны LxBox» — `rules[].dns` убрать; импорт — `rules[]` замещаются целиком (§9), отсутствие `dns` в файле = опций нет.
-- `schema/backup.schema.json` `$defs/rule/properties/dns`: объект с `enabled`, `serverTag`, `forceIpv4` (`additionalProperties: true`), «Поддержка: обе»; `go generate ./contract/...`.
+- `schema/backup.schema.json` `$defs/rule/properties/dns`: объект с `enabled`, `serverTag`, `forceIpv4` (`additionalProperties: true`), «Поддержка: обе»; `registry/allowlists.json` — списки `rule_dns_mirror_match`, `rule_dns_mirror_gate`; `go generate ./contract/...`.
 - `TEMPLATE_LANG.md` §6.11 «DNS-зеркало правила маршрута» — норма §2.2, ссылка из §6.10; §9 — строка D-137.
 - `TASKS_LXBOX.md` §127: поле стало общим в форме LxBox; норма места §6.11 (что у LxBox сверить: совпадение с их решением №6 при уплотнённом блоке; список DNS-совместимых ключей inline против их headless rule_set; гейт по `network`); лаунчер пишет `dns` на экспорте.
 

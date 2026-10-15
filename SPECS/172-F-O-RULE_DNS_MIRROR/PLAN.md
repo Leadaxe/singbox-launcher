@@ -19,7 +19,7 @@
 ## Этап 3 — сборка
 
 7. **Зеркала.** `core/build/rule_dns_mirror.go` (новый):
-   - `ruleDNSMatch(rule state.Rule, routeBody map) (map, bool)` — гейт (`port`, `port_range`, `protocol`, `network`) и матчер: `srs` — `rule_set` из выпущенного маршрутного тела + DNS-совместимые ключи; `inline` — allowlist ключей SPEC §2.2. Пустой матчер → `false`.
+   - матчер и гейт — по спискам реестра `rule_dns_mirror_match` / `rule_dns_mirror_gate` над выпущенным маршрутным телом (у `srs` в нём уже `rule_set`); имён полей в коде нет. Пустой матчер → зеркала нет. Та же функция нужна окну правила (п. 11) — живёт в `core/build` экспортированной (`RuleDNSMirrorMatch`).
    - `ruleDNSMirrors(resolvedRoute *ResolvedRoute, rules []state.Rule) []ruleDNSMirror` — по выпущенным маршрутным правилам (`Active && Enabled`, не `Skipped`; источник `inline|srs`, номер — `ResolvedRouteRule.Num`), в порядке оси; у каждого — глушилка и/или зеркало (тело без `server`) и `ServerTag`.
    - `ResolvedRouteRule` получает ссылку на запись (`StableRuleID` уже есть в `InlineID`/`SrsID`) — по ней находится `Rule.DNS`.
 8. **Место.** `core/build/resolve_dns.go` Pass 4 (обход синхронизированной копии `dns.rules`): перед каждым слотом пресета с номером `S` выпускаются ещё не выпущенные зеркала с номером `N < S` (это и есть «перед первым слотом с номером больше `N`»); оставшиеся — сразу после последнего слота пресета; слотов нет — все в конец. Номер слота — та же карта `presetRuleNums`, что у `PresetDNSSlotIndex` (`core/state/sync_dns.go`; экспортировать при необходимости). Источник правила — новый `DNSSourceRuleMirror` с именем правила для отчёта (`dnsRuleOwner`).
