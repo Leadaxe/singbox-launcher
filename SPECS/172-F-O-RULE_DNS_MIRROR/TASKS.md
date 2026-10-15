@@ -14,10 +14,10 @@
 - [x] T6 `core/state/legacy_types.go`, `core/state/load_v6.go`, `ui/configurator/models/rule_state.go`, загрузка визарда, `ui/configurator/models/preset_ref_sync.go` — поле проходит круг без потерь
 
 ## Этап 3 — сборка
-- [ ] T7 `core/build/rule_dns_mirror.go`: `ruleDNSMatch`, `ruleDNSMirrors`
-- [ ] T8 `core/build/resolve_dns.go` Pass 4: место зеркал по норме; `DNSSourceRuleMirror`; маршрут разрешается один раз
-- [ ] T9 Сервер: принудительное включение выключенного; предупреждение об удалённом (`preset_merge.go` `repairDanglingDNSRefs`)
-- [ ] T10 Превью Конфигуратора показывает зеркала
+- [x] T7 `core/build/rule_dns_mirror.go`: `ruleDNSMatch`, `ruleDNSMirrors`
+- [x] T8 `core/build/resolve_dns.go` Pass 4: место зеркал по норме; `DNSSourceRuleMirror`; маршрут разрешается один раз
+- [x] T9 Сервер: принудительное включение выключенного; предупреждение об удалённом (`preset_merge.go` `repairDanglingDNSRefs`)
+- [x] T10 Превью Конфигуратора показывает зеркала
 
 ## Этап 4 — интерфейс
 - [ ] T11 `ui/configurator/dialogs/add_rule_dialog.go`: блок DNS, гейт общим `ruleDNSMatch`, SRS-подсказка, JSON-вкладка
@@ -26,6 +26,6 @@
 - [ ] T14 `bin/locale/ru.json`
 
 ## Этап 5 — тест, доки
-- [ ] T15 `core/build/rule_dns_mirror_test.go` — `TestRuleDNSMirror` (+ подтест круга данных)
+- [x] T15 `core/build/rule_dns_mirror_test.go` — `TestRuleDNSMirror` (+ подтест круга данных)
 - [ ] T16 `docs/release_notes/upcoming.md` (EN/RU), `RELEASE_NOTES.md`, `docs/ARCHITECTURE.md`, `IMPLEMENTATION_REPORT.md`
 - [ ] T17 `go build ./...`; тесты по имени; CI `run_mode=tests` зелёный; живая проверка ядра (риск «IP-наборы»); показ UI владельцу; папка → `172-F-C-…`

@@ -193,8 +193,13 @@ func PresetDNSSlotIndex(n int, num int, slotNum func(i int) (int, bool)) int {
 	return n
 }
 
-// presetRuleNums — номер оси маршрутного правила каждого preset-ref'а
-// (неразмеченное — DefaultRuleNum, как при сортировке).
+// PresetRuleNums — номер оси маршрутного правила каждого preset-ref'а
+// (неразмеченное — DefaultRuleNum, как при сортировке). Номер DNS-слота
+// пресета (§6.10) и место DNS-зеркала правила (§6.11) считаются по нему.
+func PresetRuleNums(rules []Rule) map[string]int {
+	return presetRuleNums(rules)
+}
+
 func presetRuleNums(rules []Rule) map[string]int {
 	nums := make(map[string]int)
 	for _, r := range rules {

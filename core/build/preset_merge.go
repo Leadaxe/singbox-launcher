@@ -440,6 +440,11 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	resolved := ResolveDNS(st, &tdVal, ctx.globalVarValues(), ctx.Target)
 	ctx.noteTemplateWarnings(resolved.Warnings)
 
+	// DNS-зеркала собственных правил (SPEC 172, TEMPLATE_LANG §6.11). Сервер,
+	// на который ссылается выпускаемое зеркало, эмитится и выключенным.
+	mirrors := ruleDNSMirrorsForMerge(ctx)
+	mirrorServers := ruleDNSMirrorServers(mirrors)
+
 	if len(resolved.Servers) == 0 && len(resolved.Rules) == 0 && !hasAnyV6Rule(ctx.Rules) {
 		return dnsRaw, nil
 	}
@@ -467,7 +472,7 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 
 	// Emit servers: Active && Enabled, skip Source=Core (уже в template).
 	for _, srv := range resolved.Servers {
-		if !srv.Active || !srv.Enabled {
+		if !srv.Active || (!srv.Enabled && !mirrorServers[srv.Tag]) {
 			continue
 		}
 		// (SPEC unify: больше нет CORE источника — required entries имеют
@@ -480,6 +485,32 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 			emittedTags[srv.Tag] = true
 		}
 	}
+
+	// Зеркала встают среди DNS-правил по оси (§6.11). Зеркало на сервер,
+	// которого в конфиге нет (удалён), не выпускается — с предупреждением:
+	// ниже repairDanglingDNSRefs снял бы его молча.
+	var mirrorRules []ResolvedDNSRule
+	var mirrorNums []int
+	var mirrorDropped []template.TemplateWarning
+	for _, m := range mirrors {
+		if m.ForceIPv4 != nil {
+			mirrorRules = append(mirrorRules, ResolvedDNSRule{Body: m.ForceIPv4, Source: DNSSourceRule, Name: m.Name, Active: true, Enabled: true})
+			mirrorNums = append(mirrorNums, m.Num)
+		}
+		if m.Server == nil {
+			continue
+		}
+		if !emittedTags[m.ServerTag] {
+			mirrorDropped = append(mirrorDropped, fragmentDropped(m.Name, fragmentKindDNSRule, "server").templateWarning())
+			continue
+		}
+		body := m.Server
+		body["server"] = m.ServerTag
+		mirrorRules = append(mirrorRules, ResolvedDNSRule{Body: body, Source: DNSSourceRule, Name: m.Name, Active: true, Enabled: true})
+		mirrorNums = append(mirrorNums, m.Num)
+	}
+	ctx.noteTemplateWarnings(mirrorDropped)
+	resolved.Rules = insertRuleDNSMirrors(resolved.Rules, mirrorRules, mirrorNums, state.PresetRuleNums(ctx.Rules))
 
 	// Множество валидных rule_set-тегов для dangling-cleanup в DNS rules.
 	// Боевой путь передаёт его готовым (посчитано по ВСЕМ источникам

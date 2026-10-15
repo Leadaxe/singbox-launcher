@@ -46,6 +46,11 @@ const (
 	// DNSSourceUser — state.DNS.Servers[kind=user] (genuinely user-added).
 	// Полное тело в state. Юзер edit/delete.
 	DNSSourceUser DNSSource = "user"
+
+	// DNSSourceRule — DNS-зеркало собственного правила маршрута
+	// (rules[].dns, TEMPLATE_LANG §6.11): выводится сборкой, в state.DNS не
+	// хранится. Name — имя правила.
+	DNSSourceRule DNSSource = "rule"
 )
 
 // ResolvedDNSServer — одна entry финального DNS-server list'а.
