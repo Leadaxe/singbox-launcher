@@ -30,6 +30,13 @@ developers and for understanding the template ↔ state relationship.
   otherwise local development would break on every run. See SPEC 046 (the
   mechanism) and SPEC 067 (the breaking template format — `#if` plus `@`-only
   outer `if[]` — triggered by the same `AppVersion` bump).
+- **Formatting:** the file is kept in `tplfmt` form — two-space indent, an
+  object or array on one line (`{"a": 1, "b": ["x", "y"]}`) when that line is
+  at most 100 characters, otherwise one element per line, key order and number
+  literals as written. After editing: `go run ./tools/tplfmt -w
+  bin/wizard_template.json` (`-check` exits 1 if the file is off; the test
+  `internal/jsonfmt` `TestWizardTemplateFormatted` guards it). The Preset tab of
+  the preset window shows the preset in the same form.
 
 ---
 

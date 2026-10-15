@@ -33,7 +33,9 @@ import (
 	"singbox-launcher/core/build"
 	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
+	"singbox-launcher/internal/jsonfmt"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
@@ -446,7 +448,8 @@ func showEditPresetRefDialog(
 
 // presetSourceJSON — исходная запись presets[] шаблона для вкладки Preset:
 // берётся из сырого JSON файла (TemplateData.RawTemplate) и только
-// переформатируется отступами — порядок ключей, @var, #if/#tpl и dns_servers
+// переформатируется (jsonfmt.FormatCompact — тот же канон, что у файла
+// шаблона) — порядок ключей, @var, #if/#tpl и dns_servers
 // пресетов с обходом узлов остаются как в шаблоне. При одинаковых id берётся
 // первая запись — как у LoadPresets. Сырого текста нет или запись не нашлась —
 // запасной путь: сериализация разобранной структуры (порядок ключей и
@@ -464,6 +467,13 @@ func presetSourceJSON(td *wizardtemplate.TemplateData, tpl *wizardtemplate.Prese
 				if json.Unmarshal(raw, &head) != nil || head.ID != tpl.ID {
 					continue
 				}
+				// Компактный канон шаблона (короткие конструкции в строку);
+				// не разобралось — прежнее построчное оформление.
+				out, err := jsonfmt.FormatCompact(raw)
+				if err == nil {
+					return strings.TrimSuffix(string(out), "\n")
+				}
+				debuglog.DebugLog("presetSourceJSON: compact format of %q failed: %v", tpl.ID, err)
 				var buf bytes.Buffer
 				if json.Indent(&buf, raw, "", "  ") == nil {
 					return buf.String()
