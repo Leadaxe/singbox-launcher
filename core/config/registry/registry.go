@@ -711,7 +711,7 @@ type Registry struct {
 // нового файла — осознанным (линтер реестра держит тот же список).
 var protocolFiles = []string{
 	"anytls", "chain", "http", "hysteria", "hysteria2", "masque",
-	"naive", "openvpn-client", "shadowsocks", "socks", "ssh", "tailscale",
+	"naive", "openconnect", "openvpn-client", "shadowsocks", "socks", "ssh", "tailscale",
 	"trojan", "tuic", "vless", "vmess", "wireguard",
 }
 

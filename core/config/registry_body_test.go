@@ -465,7 +465,7 @@ func loadWarningCodes(t *testing.T) map[string]bool {
 // осознанным, а не подхватываться обходом каталога молча.
 var registryProtocolSchemes = []string{
 	"anytls", "chain", "http", "hysteria", "hysteria2", "masque",
-	"naive", "openvpn-client", "shadowsocks", "socks", "ssh", "tailscale",
+	"naive", "openconnect", "openvpn-client", "shadowsocks", "socks", "ssh", "tailscale",
 	"trojan", "tuic", "vless", "vmess", "wireguard",
 }
 

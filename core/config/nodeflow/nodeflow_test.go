@@ -425,7 +425,7 @@ func TestGateForCore(t *testing.T) {
 // emitter-parser-pairing: схема без эмиссии молча теряет поля).
 func TestEmitEveryScheme(t *testing.T) {
 	schemes := []string{"anytls", "chain", "http", "hysteria", "hysteria2", "masque",
-		"naive", "openvpn-client", "shadowsocks", "socks", "ssh", "tailscale",
+		"naive", "openconnect", "openvpn-client", "shadowsocks", "socks", "ssh", "tailscale",
 		"trojan", "tuic", "vless", "vmess", "wireguard"}
 	base := map[string]interface{}{
 		"server": "a.e.com", "server_port": float64(443),
