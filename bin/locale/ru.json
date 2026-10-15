@@ -5654,8 +5654,8 @@
   "SSO for this gateway type is not supported yet": {
     "value": "SSO для этого типа шлюза пока не поддерживается"
   },
-  "Cannot listen on 127.0.0.1:%d: the port is busy or blocked. Close the program that uses it, or set lx_sso_callback_port in the node.": {
-    "value": "Не удалось открыть 127.0.0.1:%d: порт занят или запрещён. Закройте программу, которая его использует, или задайте lx_sso_callback_port в узле."
+  "Cannot listen on 127.0.0.1:%d: the port is busy or blocked. Close the program that uses it and try again.": {
+    "value": "Не удалось открыть 127.0.0.1:%d: порт занят или запрещён. Закройте программу, которая его использует, и повторите попытку."
   },
   "Sign in in your browser": {
     "value": "Войдите в браузере"

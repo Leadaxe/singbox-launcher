@@ -28,10 +28,6 @@ import (
 // DefaultSSOCallbackPort — порт по умолчанию, как у FortiClient.
 const DefaultSSOCallbackPort = 8020
 
-// SSOCallbackNodePortKey — ключ тела узла с портом слушателя, когда шлюз
-// не называет порт в префиксе.
-const SSOCallbackNodePortKey = "lx_sso_callback_port"
-
 // SSOCallbackLoopbackOnly — все префиксы ведут на этот компьютер (и их
 // больше нуля): только тогда callback-режим поддержан.
 func SSOCallbackLoopbackOnly(prefixes []string) bool {
@@ -61,9 +57,9 @@ func ssoLoopbackHost(h string) bool {
 }
 
 // SSOCallbackPort — порт слушателя: из префикса, если шлюз его назвал;
-// иначе nodePort (поле lx_sso_callback_port узла, 0 — не задано); иначе
-// DefaultSSOCallbackPort.
-func SSOCallbackPort(prefixes []string, nodePort int) int {
+// иначе DefaultSSOCallbackPort. Ключа в теле узла под порт нет: тело
+// уходит в ядро как есть, а незнакомые поля ядро отвергает.
+func SSOCallbackPort(prefixes []string) int {
 	for _, p := range prefixes {
 		u, err := url.Parse(strings.TrimSpace(p))
 		if err != nil {
@@ -72,9 +68,6 @@ func SSOCallbackPort(prefixes []string, nodePort int) int {
 		if n, err := strconv.Atoi(u.Port()); err == nil && n > 0 && n <= 65535 {
 			return n
 		}
-	}
-	if nodePort > 0 && nodePort <= 65535 {
-		return nodePort
 	}
 	return DefaultSSOCallbackPort
 }

@@ -370,19 +370,6 @@ func openConnectWebURL(s string) bool {
 	return scheme == "http" || scheme == "https"
 }
 
-// openConnectNodeCallbackPort — поле lx_sso_callback_port тела узла
-// (0 — не задано или не число).
-func openConnectNodeCallbackPort(ac *core.AppController, scope services.ProxyScope, tag string) int {
-	node := wizardbusiness.LoadConfigNodes(effectiveNodeConfigPath(ac, scope)).Lookup(tag)
-	if node == nil || node.Raw == nil {
-		return 0
-	}
-	if f, ok := node.Raw[core.SSOCallbackNodePortKey].(float64); ok && f > 0 && f <= 65535 && f == float64(int(f)) {
-		return int(f)
-	}
-	return 0
-}
-
 // showOpenConnectBrowser — SSO через браузер. Callback-режим (префиксы на
 // loopback): слушатель на этом компьютере, пока открыт диалог. Иначе
 // (cookie/header) — не поддержано в этой версии, только Close.
@@ -402,10 +389,10 @@ func showOpenConnectBrowser(ac *core.AppController, t core.OpenConnectTarget, st
 		return d
 	}
 
-	port := core.SSOCallbackPort(br.CallbackURLPrefixes, openConnectNodeCallbackPort(ac, t.Scope, st.Tag))
+	port := core.SSOCallbackPort(br.CallbackURLPrefixes)
 	listener, err := core.StartSSOCallbackListener(port, br.CallbackURLPrefixes)
 	if err != nil {
-		msg := widget.NewLabel(locale.Tf("Cannot listen on 127.0.0.1:%d: the port is busy or blocked. Close the program that uses it, or set lx_sso_callback_port in the node.", port))
+		msg := widget.NewLabel(locale.Tf("Cannot listen on 127.0.0.1:%d: the port is busy or blocked. Close the program that uses it and try again.", port))
 		msg.Wrapping = fyne.TextWrapWord
 		d := dialogs.NewCustom(title, msg, nil, locale.T("Close"), win)
 		d.Resize(fyne.NewSize(420, 0))
