@@ -320,7 +320,8 @@ func TestCommandsRecipe(t *testing.T) {
 		{"linux", "amd64", "linux-arm64", "linux-arm64.tar.gz"},
 		{"windows", "amd64", "windows-amd64", "windows-amd64.zip"},
 		{"linux", "arm64", "", "linux-arm64.tar.gz"},
-		{"linux", "386", "", ""},
+		{"linux", "riscv64", "", "linux-riscv64.tar.gz"},
+		{"linux", "loong64", "", ""},
 	} {
 		if got := assetSuffixFor(c.goos, c.goarch, c.platform); got != c.want {
 			t.Errorf("assetSuffixFor(%s/%s, %q) = %q, want %q", c.goos, c.goarch, c.platform, got, c.want)
