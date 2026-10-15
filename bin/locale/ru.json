@@ -1297,8 +1297,8 @@
   "(none — direct)": {
     "value": "(нет — напрямую)"
   },
-  "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server, tracked by that server and its node tag — editing the server's settings or tag prefix keeps the link, renaming its node tag clears it.": {
-    "value": "Пускать узлы этого источника через другой outbound, чтобы построить цепочку прокси. Теги групп ведут через селектор; пункты с » — через один конкретный сервер; ссылка держится за сам сервер и за его тег узла: правка настроек сервера или префикса тегов её не рвёт, а переименование тега узла сбрасывает."
+  "Dial this source's nodes through another outbound to build a proxy chain. Directions chain through a selector; Nodes chain through one concrete server, tracked by that server and its node tag — editing the server's settings or tag prefix keeps the link, renaming its node tag clears it.": {
+    "value": "Пускать узлы этого источника через другой outbound, чтобы построить цепочку прокси. Направления ведут через селектор; Узлы — через один конкретный сервер; ссылка держится за сам сервер и за его тег узла: правка настроек сервера или префикса тегов её не рвёт, а переименование тега узла сбрасывает."
   },
   "Tag postfix": {
     "value": "Суффикс тэга"
@@ -5767,5 +5767,11 @@
   },
   "host:port or full URL; port 443 if omitted": {
     "value": "хост:порт или полный URL; без порта — 443"
+  },
+  "Nodes": {
+    "value": "Узлы"
+  },
+  "(missing)": {
+    "value": "(нет в конфиге)"
   }
 }

@@ -41,10 +41,31 @@ type DetourChoice struct {
 	Link *corestate.NodeLink
 	// Label — подпись выбранного узла для текстов формы.
 	Label string
+	// Kind — ветка пикера-дерева: Направление или узел.
+	Kind DetourKind
+	// Display — строка внутри ветки: без маркера узла, с номером дубля.
+	Display string
+	// Missing — действующий выбор, цели которого больше нет в конфиге
+	// (удалена, выключена, папка пропала). Показывается, чтобы его было
+	// видно и можно было сменить.
+	Missing bool
 }
 
-// detourNodeMarker prefixes single-node options so they read differently from
-// group tags in the same dropdown.
+// DetourKind — ветка дерева, в которой стоит опция.
+type DetourKind int
+
+const (
+	// DetourKindNone — «без detour», стоит вне веток.
+	DetourKindNone DetourKind = iota
+	// DetourKindDirection — Направление или группа пресета.
+	DetourKindDirection
+	// DetourKindNode — конкретный узел.
+	DetourKindNode
+)
+
+// detourNodeMarker prefixes single-node option keys so a node labelled like a
+// Direction tag never collides with it. The tree picker shows nodes without
+// it (DetourChoice.Display) — the branch tells them apart.
 const detourNodeMarker = "» "
 
 // DetourOptions строит опции пикера «Detour server» и текущий выбор.
@@ -142,7 +163,7 @@ func detourOptionsFor(model *wizardmodels.WizardModel, holder detourHolder, none
 		}
 		options = append(options, tag)
 		inOptions[tag] = struct{}{}
-		choices[tag] = DetourChoice{Link: &corestate.NodeLink{Tag: tag}, Label: tag}
+		choices[tag] = DetourChoice{Link: &corestate.NodeLink{Tag: tag}, Label: tag, Kind: DetourKindDirection, Display: tag}
 	}
 
 	cur := holder.cur
@@ -185,15 +206,10 @@ func detourOptionsFor(model *wizardmodels.WizardModel, holder detourHolder, none
 			if label == "" {
 				label = nodeTag
 			}
-			display := detourNodeMarker + label
-			for n := 2; ; n++ {
-				if _, dup := choices[display]; !dup {
-					break
-				}
-				display = detourNodeMarker + label + " (" + strconv.Itoa(n) + ")"
-			}
+			display := uniqueNodeDisplay(choices, label)
 			options = append(options, display)
-			choices[display] = DetourChoice{Link: &corestate.NodeLink{Tag: nodeTag}, Label: label}
+			choices[display] = DetourChoice{Link: &corestate.NodeLink{Tag: nodeTag}, Label: label,
+				Kind: DetourKindNode, Display: strings.TrimPrefix(display, detourNodeMarker)}
 			if selectedDisplay == "" && cur != nil && cur.FolderID == "" && cur.Tag == nodeTag {
 				selectedDisplay = display
 			}
@@ -211,7 +227,14 @@ func detourOptionsFor(model *wizardmodels.WizardModel, holder detourHolder, none
 		selected = cur.Tag
 		if _, ok := inOptions[selected]; !ok {
 			options = append(options, selected) // dangling — keep visible/clearable
-			choices[selected] = DetourChoice{Link: &corestate.NodeLink{Tag: cur.Tag}, Label: cur.Tag}
+			// Ветку повисшей цели определяет то, чем тег был: выключенный
+			// верхний узел остаётся в «Узлах», остальное — Направление.
+			kind := DetourKindDirection
+			if modelHasRootNodeTag(model, cur.Tag) {
+				kind = DetourKindNode
+			}
+			choices[selected] = DetourChoice{Link: &corestate.NodeLink{Tag: cur.Tag}, Label: cur.Tag,
+				Kind: kind, Display: cur.Tag, Missing: true}
 		}
 	default:
 		// Ссылка на узел ПАПКИ. Узлы папок пикер не перечисляет (их сотни),
@@ -223,19 +246,62 @@ func detourOptionsFor(model *wizardmodels.WizardModel, holder detourHolder, none
 				label = folder.Name + " / " + cur.Tag
 			}
 		}
-		display := detourNodeMarker + label
-		for n := 2; ; n++ {
-			if _, dup := choices[display]; !dup {
-				break
-			}
-			display = detourNodeMarker + label + " (" + strconv.Itoa(n) + ")"
-		}
+		display := uniqueNodeDisplay(choices, label)
 		options = append(options, display)
 		link := *cur
-		choices[display] = DetourChoice{Link: &link, Label: label}
+		choices[display] = DetourChoice{Link: &link, Label: label, Kind: DetourKindNode,
+			Display: strings.TrimPrefix(display, detourNodeMarker), Missing: !folderHasNode(model, cur)}
 		selected = display
 	}
 	return options, selected, choices
+}
+
+// uniqueNodeDisplay — строка опции узла: маркер + подпись, дубль подписи
+// получает номер.
+func uniqueNodeDisplay(choices map[string]DetourChoice, label string) string {
+	display := detourNodeMarker + label
+	for n := 2; ; n++ {
+		if _, dup := choices[display]; !dup {
+			return display
+		}
+		display = detourNodeMarker + label + " (" + strconv.Itoa(n) + ")"
+	}
+}
+
+// modelHasRootNodeTag — есть ли среди верхних узлов-серверов узел с таким
+// тегом (включённый или нет).
+func modelHasRootNodeTag(model *wizardmodels.WizardModel, tag string) bool {
+	if model == nil {
+		return false
+	}
+	for i := range model.Sources {
+		s := &model.Sources[i]
+		if s.Kind == wizardmodels.SourceKindServer && strings.TrimSpace(s.NodeTagOrLabel()) == tag {
+			return true
+		}
+	}
+	return false
+}
+
+// folderHasNode — жива ли цель «папка + сырой тег»: папка есть, включена и
+// держит узел с этим тегом.
+//
+// Пустой список узлов — не «узла нет»: у подписки он может быть ещё не
+// загружен (ленивый кэш), и пометка «пропала» там была бы ложной.
+func folderHasNode(model *wizardmodels.WizardModel, link *corestate.NodeLink) bool {
+	folder := findSourceByID(model, link.FolderID)
+	if folder == nil || !folder.Enabled {
+		return false
+	}
+	if len(folder.Nodes) == 0 {
+		return true
+	}
+	for i := range folder.Nodes {
+		if folder.Nodes[i].Tag == link.Tag {
+			return true
+		}
+	}
+	return false
 }
 
 // findSourceByID — источник модели по ULID (nil, если такого нет).

@@ -33,7 +33,7 @@ import (
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
-	sourceDetourHintText         = "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server, tracked by that server and its node tag — editing the server's settings or tag prefix keeps the link, renaming its node tag clears it."
+	sourceDetourHintText         = "Dial this source's nodes through another outbound to build a proxy chain. Directions chain through a selector; Nodes chain through one concrete server, tracked by that server and its node tag — editing the server's settings or tag prefix keeps the link, renaming its node tag clears it."
 	sourcePreviewNoCacheHintText = "Disabled subscriptions are not auto-fetched, so this one has no nodes yet. Click below to fetch it once without enabling it."
 	sourceTagVarsHintText        = "Variables (work in both fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1"
 )
@@ -941,7 +941,7 @@ func showSourceEditWindowAt(
 	var clearAWGAfterDetour func()
 
 	detourNone := locale.T("(none — direct)")
-	detourSelect := widget.NewSelect(nil, nil)
+	detourSelect := newDetourTreePicker(win, detourNone)
 	detourHint := widget.NewLabel(locale.T(sourceDetourHintText))
 	detourHint.Wrapping = fyne.TextWrapWord
 	detourChoices := map[string]wizardbusiness.DetourChoice{}
@@ -980,15 +980,11 @@ func showSourceEditWindowAt(
 			rebuildSettingsAfterDetour()
 		}
 	}
-	detourSelect.OnChanged = detourOnChanged
+	detourSelect.onChanged = detourOnChanged
 	refreshDetourOptions := func() {
 		opts, sel, choices := wizardbusiness.DetourOptionsWithNodes(presenter.Model(), srcRef(), detourNone)
 		detourChoices = choices
-		detourSelect.OnChanged = nil // avoid feedback while repopulating
-		detourSelect.Options = opts
-		detourSelect.SetSelected(sel)
-		detourSelect.OnChanged = detourOnChanged
-		detourSelect.Refresh()
+		detourSelect.SetOptions(opts, sel, choices) // onChanged не зовётся
 	}
 
 	// tagSpec* — правка prefix/postfix рабочей копии. TagPolicy живёт
@@ -1241,7 +1237,7 @@ func showSourceEditWindowAt(
 
 	detourBlock := func() {
 		settingsContent.Add(widget.NewLabel(locale.T("Detour server (chain)")))
-		settingsContent.Add(detourSelect)
+		settingsContent.Add(detourSelect.widget)
 		settingsContent.Add(detourHint)
 	}
 
