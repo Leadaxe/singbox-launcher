@@ -67,7 +67,7 @@ func OpenAddMachineWindow(ac *core.AppController, onAdded func()) {
 	// пришлось искать это в правке после первого же Deploy.
 	goosSelect := widget.NewSelect([]string{"linux", "darwin", "windows"}, nil)
 	goosSelect.SetSelected("linux")
-	goarchSelect := widget.NewSelect([]string{"amd64", "arm64", "arm", "386", "mips", "mipsle"}, nil)
+	goarchSelect := widget.NewSelect([]string{"amd64", "arm64", "arm", "386", "mips", "mipsle", "riscv64"}, nil)
 	goarchSelect.SetSelected("amd64")
 
 	// Секрет нужен только plain-h2c демону (dev на loopback); при mTLS

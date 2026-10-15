@@ -324,8 +324,10 @@ func SingboxAssetSuffix() string {
 }
 
 // SingboxAssetSuffixFor — the release asset suffix for goos/goarch; "" when
-// the fork publishes no build for that platform (e.g. linux/386). Routers on
-// MIPS get the softfloat builds: their SoCs have no FPU.
+// the fork publishes no build for that platform. Routers on MIPS get the
+// softfloat builds: their SoCs have no FPU. UPX-packed copies
+// (linux-*.upx.tar.gz) are never chosen here: a daemon reports its exact
+// asset in the passport, and the table only covers machines without one.
 func SingboxAssetSuffixFor(goos, goarch string) string {
 	switch goos + "/" + goarch {
 	case "windows/amd64":
@@ -340,6 +342,10 @@ func SingboxAssetSuffixFor(goos, goarch string) string {
 		return "linux-arm64.tar.gz"
 	case "linux/arm":
 		return "linux-armv7.tar.gz"
+	case "linux/386":
+		return "linux-386.tar.gz"
+	case "linux/riscv64":
+		return "linux-riscv64.tar.gz"
 	case "linux/mips":
 		return "linux-mips-softfloat.tar.gz"
 	case "linux/mipsle":
@@ -355,7 +361,8 @@ func SingboxAssetSuffixFor(goos, goarch string) string {
 // assetSuffixFor — суффикс релизного ассета ядра под машину: platform из
 // паспорта демона (SPEC 127/162: демон сам называет свой ассет, включая
 // mips softfloat) + ".tar.gz" (".zip" для windows); без паспорта — таблица
-// SingboxAssetSuffixFor, новых строк в которую не добавляется.
+// SingboxAssetSuffixFor: строки в неё добавляются только вместе с новой
+// сборкой в релизах форка (linux-386 и linux-riscv64 — issue #146).
 func assetSuffixFor(goos, goarch, platform string) string {
 	if platform = strings.TrimSpace(platform); platform != "" {
 		if goos == "windows" {

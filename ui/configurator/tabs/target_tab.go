@@ -61,7 +61,7 @@ func CreateTargetTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 				presenter.SetTargetPlatform(goos, model.Target.Normalized().GOARCH)
 			}
 
-			archSelect := widget.NewSelect([]string{"amd64", "arm64", "arm", "386"}, nil)
+			archSelect := widget.NewSelect([]string{"amd64", "arm64", "arm", "386", "mips", "mipsle", "riscv64"}, nil)
 			arch := tgt.GOARCH
 			if arch == "" {
 				arch = runtime.GOARCH

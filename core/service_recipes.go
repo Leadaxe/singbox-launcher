@@ -73,9 +73,11 @@ type ServicePlatform struct {
 	Service      bool
 }
 
-// DefaultServiceInit — init-система по платформе: Linux на arm/arm64/mips —
-// роутер на OpenWrt (procd), прочий Linux — systemd; macOS — launchd,
-// Windows — SCM.
+// DefaultServiceInit — init-система по платформе: Linux не на amd64 —
+// роутер на OpenWrt (procd; сборки форка под 386 и riscv64 musl-статичные
+// как раз под i386_pentium4 и riscv64_generic), Linux на amd64 — systemd;
+// macOS — launchd, Windows — SCM. Паспорт демона и выбор в записи машины
+// важнее (NormalizeInitChoice).
 func DefaultServiceInit(goos, goarch string) ServiceInit {
 	switch goos {
 	case "darwin":
@@ -84,7 +86,7 @@ func DefaultServiceInit(goos, goarch string) ServiceInit {
 		return ServiceInitSCM
 	}
 	switch goarch {
-	case "arm", "arm64", "mips", "mipsle":
+	case "arm", "arm64", "mips", "mipsle", "386", "riscv64":
 		return ServiceInitProcd
 	}
 	return ServiceInitSystemd
