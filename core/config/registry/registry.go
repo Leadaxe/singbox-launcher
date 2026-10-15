@@ -289,6 +289,10 @@ type FieldForm struct {
 	// внутри секции (от её корня), которые форма схемы не рисует, хотя
 	// схеме они разрешены (у http нет REALITY и uTLS в форме).
 	ExcludeFields []string `json:"exclude_fields"`
+	// Implies — путь от корня тела → значение (контракт 1.1.123): форма,
+	// записав поле непустым, пишет и эти пути; очистив поле — снимает их
+	// (uTLS: ядро не читает fingerprint без utls.enabled). ApplyFormImplies.
+	Implies map[string]interface{} `json:"implies"`
 }
 
 // FormSection — секция `form` тела протокола: блоки, группы выбора и

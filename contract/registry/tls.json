@@ -993,6 +993,9 @@
             "form": {
               "visible_when": {
                 "tls.enabled": true
+              },
+              "implies": {
+                "tls.utls.enabled": true
               }
             },
             "desc_en": "Browser fingerprint used for the ClientHello.",

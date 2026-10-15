@@ -26,11 +26,14 @@ type formCorpusRange struct {
 }
 
 type formCorpusExpect struct {
-	Visible    []string          `json:"visible"`
-	Required   []string          `json:"required"`
-	Missing    []string          `json:"missing"`
-	Choices    map[string]string `json:"choices"`
-	OutOfRange []formCorpusRange `json:"out_of_range"`
+	// Body — тело после записи `write` (контракт 1.1.123); без write не
+	// сверяется.
+	Body       map[string]interface{} `json:"body,omitempty"`
+	Visible    []string               `json:"visible"`
+	Required   []string               `json:"required"`
+	Missing    []string               `json:"missing"`
+	Choices    map[string]string      `json:"choices"`
+	OutOfRange []formCorpusRange      `json:"out_of_range"`
 }
 
 type formCorpusFile struct {
@@ -40,8 +43,18 @@ type formCorpusFile struct {
 		Name    string                 `json:"name"`
 		Comment string                 `json:"comment"`
 		Body    map[string]interface{} `json:"body"`
+		Write   *formCorpusWrite       `json:"write"`
 		Expect  formCorpusExpect       `json:"expect"`
 	} `json:"cases"`
+}
+
+// formCorpusWrite — что форма пишет в тело перед вычислением (контракт
+// 1.1.123, `form.implies`): set — путь поля формы → значение, clear — пути
+// очищенных полей. Запись — SetFormValue/DeleteFormValue и ApplyFormImplies
+// поля.
+type formCorpusWrite struct {
+	Set   map[string]interface{} `json:"set"`
+	Clear []string               `json:"clear"`
 }
 
 func TestContractCorpusForm(t *testing.T) {
@@ -67,7 +80,11 @@ func TestContractCorpusForm(t *testing.T) {
 		for _, c := range f.Cases {
 			c := c
 			t.Run(strings.TrimSuffix(filepath.Base(path), ".json")+"/"+c.Name, func(t *testing.T) {
-				st, ok := reg.FormState(f.Scheme, c.Body)
+				body := c.Body
+				if c.Write != nil {
+					body = applyFormCorpusWrite(t, reg, f.Scheme, body, c.Write)
+				}
+				st, ok := reg.FormState(f.Scheme, body)
 				if !ok {
 					t.Fatalf("у схемы %q нет формы в реестре", f.Scheme)
 				}
@@ -76,6 +93,9 @@ func TestContractCorpusForm(t *testing.T) {
 					Required: st.Required,
 					Missing:  st.Missing,
 					Choices:  st.Choices,
+				}
+				if c.Write != nil {
+					got.Body = body
 				}
 				for _, r := range st.OutOfRange {
 					got.OutOfRange = append(got.OutOfRange, formCorpusRange{Path: r.Path, Value: r.Value})
@@ -88,6 +108,50 @@ func TestContractCorpusForm(t *testing.T) {
 			})
 		}
 	}
+}
+
+// applyFormCorpusWrite пишет в тело то, что набрала бы форма: значения set и
+// снятие clear по полям формы схемы, вместе с их `form.implies`.
+func applyFormCorpusWrite(t *testing.T, reg *registry.Registry, scheme string, body map[string]interface{}, w *formCorpusWrite) map[string]interface{} {
+	t.Helper()
+	out := map[string]interface{}{}
+	if body != nil {
+		raw, _ := json.Marshal(body)
+		_ = json.Unmarshal(raw, &out)
+	}
+	field := func(path string) *registry.Field {
+		var found *registry.Field
+		for _, ff := range reg.FormFields(scheme) {
+			if ff.Path == path {
+				if ff.Variant == "" {
+					return ff.Field
+				}
+				if found == nil {
+					found = ff.Field
+				}
+			}
+		}
+		if found == nil {
+			t.Fatalf("write: %q — не поле формы схемы %s", path, scheme)
+		}
+		return found
+	}
+	keys := make([]string, 0, len(w.Set))
+	for p := range w.Set {
+		keys = append(keys, p)
+	}
+	sort.Strings(keys)
+	for _, p := range keys {
+		f := field(p)
+		registry.SetFormValue(out, p, w.Set[p])
+		registry.ApplyFormImplies(f, out, true)
+	}
+	for _, p := range w.Clear {
+		f := field(p)
+		registry.DeleteFormValue(out, p)
+		registry.ApplyFormImplies(f, out, false)
+	}
+	return out
 }
 
 // normalizeFormExpect — пустой список и отсутствие списка одно и то же.

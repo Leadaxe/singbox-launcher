@@ -7,8 +7,8 @@ import (
 )
 
 // Состояние формы узла по реестру (контракт 1.1.122, REGISTRY_DESIGN §3 SPEC
-// 167; общие секции, варианты, fixed и массив [0] — контракт 1.1.123, SPEC
-// 168 §2.4).
+// 167; общие секции, варианты, fixed, массив [0] и implies — контракт
+// 1.1.123, SPEC 168 §2.4).
 //
 // Чистые функции от тела узла: ни Fyne, ни имён схем. Их читают форма
 // лаунчера и раннер корпуса contract/corpus/form — одна трактовка атрибутов
@@ -309,6 +309,23 @@ func setFormPath(m map[string]interface{}, parts []string, v interface{}) {
 		m[key] = child
 	}
 	setFormPath(child, parts[1:], v)
+}
+
+// ApplyFormImplies исполняет `form.implies` поля f (контракт 1.1.123):
+// written — форма записала поле непустым, и пути implies пишутся своими
+// значениями; иначе (поле очищено) они снимаются вместе с опустевшими
+// предками. Поле без implies тело не меняет.
+func ApplyFormImplies(f *Field, body map[string]interface{}, written bool) {
+	if f == nil || f.Form == nil || len(f.Form.Implies) == 0 || body == nil {
+		return
+	}
+	for _, p := range sortedSetKeys(f.Form.Implies) {
+		if written {
+			SetFormValue(body, p, copyFormValue(f.Form.Implies[p]))
+		} else {
+			DeleteFormValue(body, p)
+		}
+	}
 }
 
 // DeleteFormValue снимает ключ по пути тела формы и чистит ставших пустыми

@@ -274,6 +274,8 @@ type bodyFieldForm struct {
 	// Контракт 1.1.123: только у ref-поля общей секции.
 	ExcludeVariants []string `json:"exclude_variants"`
 	ExcludeFields   []string `json:"exclude_fields"`
+	// Контракт 1.1.123: пути, которые форма пишет вместе с полем.
+	Implies map[string]interface{} `json:"implies"`
 }
 
 // bodyFormSection — секция `form` тела протокола (контракт 1.1.122;
@@ -689,7 +691,7 @@ var registryWildcardKeys = map[string]bool{"desc_en": true, "desc_ru": true, "im
 // молча перестало бы действовать.
 var registryFieldFormKeys = map[string]bool{
 	"block": true, "visible_when": true, "required": true, "required_unless": true, "min": true, "max": true,
-	"exclude_variants": true, "exclude_fields": true,
+	"exclude_variants": true, "exclude_fields": true, "implies": true,
 }
 var registryBodyFormKeys = map[string]bool{"blocks": true, "choices": true, "fixed": true}
 
@@ -834,7 +836,7 @@ func hasWildcardSegment(p string) bool {
 // поля, которое рисует группа choices; пути visible_when, choices и fixed
 // описаны (с учётом общих секций и сегмента 0 массива); set варианта пишет
 // только пути своей группы; exclude_variants ⊆ values секции, exclude_fields
-// описаны в секции; min <= max.
+// описаны в секции; пути implies описаны и формой не рисуются; min <= max.
 func checkBodyForm(t *testing.T, where string, protocolBody bool, scheme string, sec *bodySection, files map[string]*registryBodyFile) {
 	t.Helper()
 	walkFields("", sec.Order, sec.Fields, func(path string, fl *bodyField) {
@@ -929,8 +931,25 @@ func checkBodyForm(t *testing.T, where string, protocolBody bool, scheme string,
 			t.Errorf("%s: form.fixed: путь %q занят группой выбора", where, p)
 		}
 	}
+	drawn := map[string]bool{}
+	for _, e := range ex.entries {
+		drawn[e.path] = true
+	}
 	for _, e := range ex.entries {
 		fw := where + " " + e.path + ".form"
+		if e.f != nil && e.f.Form != nil {
+			for p := range e.f.Form.Implies {
+				if !ex.known[p] {
+					t.Errorf("%s: implies: путь %q не описан в fields", fw, p)
+				}
+				if drawn[p] || inChoice[p] {
+					t.Errorf("%s: implies: путь %q рисует форма — его перезапишет поле", fw, p)
+				}
+				if _, fixed := sec.Form.Fixed[p]; fixed {
+					t.Errorf("%s: implies: путь %q — в form.fixed", fw, p)
+				}
+			}
+		}
 		if _, fixed := sec.Form.Fixed[e.path]; fixed {
 			continue
 		}
