@@ -20,4 +20,4 @@
 - [x] T13 `bin/wizard_template.json`: пресет `tunnel-ingress`; фильтр `tailscale` на новое имя; golden проверены
 - [x] T14 UI: `source_skip_presets.go` (только tailscale, «Skip Tailscale presets»), новый `source_tunnel_access.go`, подключение в `source_edit_window.go`, локаль `bin/locale/ru.json`
 - [x] T15 `docs/release_notes/upcoming.md` (EN/RU), `RELEASE_NOTES.md`, `docs/TEMPLATE_REFERENCE*.md`, `docs/ARCHITECTURE.md` при необходимости, `IMPLEMENTATION_REPORT.md`
-- [ ] T16 `go build ./...`; тесты по имени; CI `run_mode=tests` зелёный; папка → `170-F-C-…`
+- [x] T16 `go build ./...`; тесты по имени; CI `run_mode=tests` зелёный; папка → `170-F-C-…`
