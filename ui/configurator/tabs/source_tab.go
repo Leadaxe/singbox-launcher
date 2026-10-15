@@ -167,7 +167,14 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		guiState.SourceURLsProgrammatic = false
 	}
 
+	// Add при пустом поле открывает форму «Add server»: вставлять нечего,
+	// значит человек заводит сервер руками.
+	var addServerAction func()
 	addURLButton := widget.NewButton(locale.T("Add"), func() {
+		if strings.TrimSpace(guiState.SourceURLEntry.Text) == "" {
+			addServerAction()
+			return
+		}
 		applyAddedSources(guiState.SourceURLEntry.Text)
 	})
 
@@ -247,7 +254,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// ещё и нестандартный префикс (proxy-http://), который человеку негде
 	// подсмотреть. Форма собирает вход и отдаёт в тот же путь Add; вручную
 	// отредактированный JSON идёт своей веткой, чтобы сохраниться побайтово.
-	addServerAction := func() {
+	addServerAction = func() {
 		wizarddialogs.ShowAddServerDialog(presenter, nil, func(res wizarddialogs.AddServerResult) {
 			presenter.MergeGUIToModel()
 			// SPEC 116 W13: в режиме папки оба исхода формы едут в ПАПКУ, и
