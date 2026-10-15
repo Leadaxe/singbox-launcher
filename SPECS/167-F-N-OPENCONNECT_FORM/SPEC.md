@@ -58,10 +58,10 @@ Password  [ •••••••• 👁 ]                 If the gateway asks 
 - Пустое поле ключ в JSON **не пишет** (дефолт остаётся за шлюзом/ядром). MTU пустой, не 0.
 - `visible_when` из реестра: `fortinet_host_check` только при `flavor = fortinet`; `auth_group` скрыт при `fortinet`.
 - Группа выбора сертификата — из `form.choices` реестра: `system` (ничего не пишет), `pinned` (`tls.peer_fingerprint`, список через запятую → массив), `insecure` (`tls.insecure: true`, окрашено предупреждением `tls_insecure`).
-- Server: принимается `host:port` или URL; `https://` лаунчер не дописывает — ядро делает это само.
+- Server: принимается `host:port` или URL; `https://` лаунчер не дописывает — ядро делает это само. Форма НЕ разбирает адрес в `ParsedNode.Server/Port`: у openconnect нет поля `server_port`, и сборка его не материализует (правило по реестру в `node_materialize.go`).
 - `detour` формой не правится (цепочка — отдельный механизм). Что пришло в JSON, остаётся.
-- Форма пишет только поля с `form` в реестре; прочие ключи тела (cookie, token, client cert, mobile, csd/hip/tncc, form_entries, compression_*, system…) не трогает. Правка узла — тот же набор полей из тела.
-- Сохранение — как у всех узлов: `sing-box check` кандидата (core-reject) плюс правила реестра (формат отпечатка, конфликты) до записи.
+- Форма (Add server в `ui/configurator/dialogs/add_server_dialog.go` и правка узла в `tabs/`) берёт раскладку и соответствие «поле ↔ путь тела» из одной общей модели `ui/configurator/business/openconnect_form_model.go`, построенной по `reg.Form("openconnect")`, чтобы Add и правка не разошлись. Форма пишет только поля с `form` в реестре; прочие ключи тела (cookie, token, client cert, mobile, csd/hip/tncc, form_entries, compression_*, system…) не трогает. Правка узла — тот же набор полей из тела.
+- Проверка при сохранении — как у всех форм узлов: санитайзер по правилам реестра (формат отпечатка, конфликты, обязательность) с показом предупреждений; проверка ядром (`sing-box check` кандидата, core-reject) — на сборке и Save, как сегодня.
 - В классическом режиме на узле подсказка «Second-factor prompts need the daemon mode».
 
 **Не в форме (ручной JSON):** `token.*`, клиентский сертификат, `cookie`, `system`, компрессия, `csd`/`hip`/`tncc`, `form_entries`, `mca_*`. Кнопка «Fetch fingerprint» и импорт из FortiClient — не в этой SPEC.
@@ -87,7 +87,7 @@ Password  [ •••••••• 👁 ]                 If the gateway asks 
 
 ## 3. Контракт
 
-Версия **1.1.122**: примитивы §2.1, запись `openconnect.json`, `openvpn-client.json` на `*`, удаление `fields_unchecked` из схемы, четыре кода, роль `variant` в enum ролей, корпус (см. `REGISTRY_DESIGN.md` §6: 8 кейсов тела + 1 авторский + корпус формы `corpus/form/openconnect_form.json`), `go generate`, `README.md` changelog, `TASKS_LXBOX.md` §118. Поддержка `*` входит в одну версию для обеих сторон: сторона без wildcard снимет сквозные ключи с `unknown_key`.
+Версия **1.1.122**: примитивы §2.1, запись `openconnect.json`, `openvpn-client.json` на `*`, удаление `fields_unchecked` из схемы, четыре кода, роль `variant` в enum ролей, корпус (см. `REGISTRY_DESIGN.md` §6: 8 кейсов тела + 1 авторский + корпус формы `corpus/form/openconnect_form.json`), `go generate`, `README.md` changelog, `TASKS_LXBOX.md` §119. Поддержка `*` входит в одну версию для обеих сторон: сторона без wildcard снимет сквозные ключи с `unknown_key`.
 
 ## 4. Вне scope
 

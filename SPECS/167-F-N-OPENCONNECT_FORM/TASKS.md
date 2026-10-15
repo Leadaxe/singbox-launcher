@@ -5,7 +5,7 @@
 - [ ] T2 `contract/registry/protocols/openconnect.json` по `REGISTRY_DESIGN.md` §5; `openvpn-client.json` → `*`
 - [ ] T3 `contract/registry/warnings.json` — `openconnect_flavor_invalid`, `openconnect_fingerprint_invalid`, `openconnect_mtu_invalid`, `openconnect_insecure_crypto`
 - [ ] T4 корпус тела (8 кейсов), авторский кейс, корпус формы `contract/corpus/form/` с README
-- [ ] T5 `contract/VERSION` 1.1.122, `contract/README.md`, `contract/TASKS_LXBOX.md` §118, `contract/docs/PARSING_PRINCIPLES.md`
+- [ ] T5 `contract/VERSION` 1.1.122, `contract/README.md`, `contract/TASKS_LXBOX.md` §119, `contract/docs/PARSING_PRINCIPLES.md`
 
 ## Этап 2 — движок
 - [ ] T6 `core/config/registry/registry.go` — `Wildcard`, `FieldForm`/`FormSection`/`Form()`, роль `variant`, удалить `FieldsUnchecked`
@@ -15,7 +15,7 @@
 
 ## Этап 3 — UI: подпись и форма
 - [ ] T10 `ui/configurator/business/config_node_labels.go` — роль `variant`
-- [ ] T11 `ui/configurator/tabs/source_openconnect_edit.go` — форма Add server и правка узла по `reg.Form`, `bin/locale/ru.json`
+- [ ] T11 `ui/configurator/business/openconnect_form_model.go` (общая модель по `reg.Form`), ветка OpenConnect в `ui/configurator/dialogs/add_server_dialog.go`, правка узла `ui/configurator/tabs/source_openconnect_edit.go`, `bin/locale/ru.json`
 - [ ] T12 подключение в меню Add server и Settings узла; подсказка классического режима
 
 ## Этап 4 — второй фактор и SSO

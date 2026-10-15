@@ -7,7 +7,7 @@
 - `contract/registry/protocols/openconnect.json` — по `REGISTRY_DESIGN.md` §5; `openvpn-client.json` → `order: ["*"]`.
 - `contract/registry/warnings.json` — четыре кода.
 - Корпус: `contract/corpus/body/singbox/openconnect_*` (8), `contract/corpus/authored/hard_openconnect_token_without_secret`, `contract/corpus/form/openconnect_form.json` (+ README формата).
-- `contract/VERSION` → 1.1.122; `contract/README.md` строка changelog; `contract/TASKS_LXBOX.md` §118; `docs/PARSING_PRINCIPLES.md` §3 (wildcard).
+- `contract/VERSION` → 1.1.122; `contract/README.md` строка changelog; `contract/TASKS_LXBOX.md` §119; `docs/PARSING_PRINCIPLES.md` §3 (wildcard).
 
 ## Этап 2 — движок реестра и nodeflow (Go)
 - `core/config/registry/registry.go`: `Wildcard` у секции/поля, `FieldForm`/`FormSection`, `Form(scheme)`, роль `variant`, пропуск `*` в `Field()`/`fieldsAtBodyPath`/resolveSection; удалить `FieldsUnchecked`.
@@ -18,7 +18,9 @@
 
 ## Этап 3 — подпись узла и форма (UI)
 - `ui/configurator/business/config_node_labels.go`: ветка роли `variant` в `TransportLabel`.
-- Новая форма `ui/configurator/tabs/source_openconnect_edit.go` (+ `_form.go` при необходимости): конструктор Add server и правка узла; раскладка по `reg.Form("openconnect")` (блоки, видимость, выбор сертификата, обязательность, диапазоны); пустое поле ключ не пишет; `bin/locale/ru.json`.
+- Общая модель `ui/configurator/business/openconnect_form_model.go`: раскладка и соответствие «поле ↔ путь тела» по `reg.Form("openconnect")` (блоки, видимость, выбор сертификата, обязательность, диапазоны, advisory, secret); пустое поле ключ не пишет.
+- Конструктор в `ui/configurator/dialogs/add_server_dialog.go` (новая вкладка/ветка OpenConnect) и правка узла `ui/configurator/tabs/source_openconnect_edit.go` — оба на общей модели; `bin/locale/ru.json`.
+- `core/config/node_materialize.go`: `server`/`server_port` дописываются только если описаны у схемы (этап 2).
 - Подключение в меню Add server (`source_tab.go`, `folder_add_nodes.go`) и в Settings узла.
 - Подсказка классического режима на узле.
 
