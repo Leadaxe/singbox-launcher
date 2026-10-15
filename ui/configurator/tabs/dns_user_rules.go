@@ -122,6 +122,82 @@ func showEditUserDNSRuleDialog(
 		working = map[string]interface{}{}
 	}
 
+	ed := newDNSRuleEditor(model, working)
+
+	titleStr := locale.T("Add DNS Rule")
+	if idx >= 0 {
+		titleStr = locale.T("Edit DNS Rule")
+	}
+
+	controller := presenter.Controller()
+	if controller == nil || controller.UIService == nil {
+		return
+	}
+	editWin := controller.UIService.Application.NewWindow(titleStr)
+	ed.win = editWin
+
+	cancelBtn := widget.NewButton(locale.T("Cancel"), func() { editWin.Close() })
+	saveBtn := widget.NewButton(locale.T("Save"), func() {
+		finalRule, err := ed.rule()
+		if err != nil {
+			dialog.ShowError(err, editWin)
+			return
+		}
+		if len(finalRule) == 0 {
+			dialog.ShowError(fmt.Errorf("%s", locale.T("Rule is empty")), editWin)
+			return
+		}
+		// Strip top-level kind/ref/enabled if user pasted state-shape JSON in raw mode.
+		clean := make(map[string]interface{}, len(finalRule))
+		for k, v := range finalRule {
+			switch k {
+			case "kind", "ref", "enabled":
+				continue
+			}
+			clean[k] = v
+		}
+		m := presenter.Model()
+		if idx >= 0 && idx < len(m.DNSUserRules) {
+			m.DNSUserRules[idx].Body = clean
+		} else {
+			addDNSUserRule(m, clean)
+		}
+		// Keep DNSRulesText synced (raw-JSON toggle reads it).
+		m.DNSRulesText = wizardmodels.DNSUserRulesToText(m.DNSUserRules)
+		syncDNSRulesTextToHiddenEntry(presenter)
+		presenter.MarkAsChanged()
+		editWin.Close()
+		if onChanged != nil {
+			onChanged()
+		}
+	})
+	saveBtn.Importance = widget.HighImportance
+
+	buttons := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn)
+	dialogContent := container.NewBorder(nil, buttons, nil, nil, ed.tabs)
+	editWin.Resize(fyne.NewSize(500, 600))
+	fynewidget.CenterOnScreen(editWin)
+	editWin.SetContent(dialogContent)
+	editWin.SetCloseIntercept(func() { editWin.Close() })
+	editWin.Show()
+}
+
+// dnsRuleEditor — содержимое окна DNS-правила: вкладки Form/JSON над рабочей
+// копией правила. Окно, кнопки и запись в модель — у showEditUserDNSRuleDialog;
+// сам редактор контроллера не требует.
+type dnsRuleEditor struct {
+	tabs         *container.AppTabs
+	formTab      *container.TabItem
+	jsonTab      *container.TabItem
+	ruleSetCheck *widget.CheckGroup
+	typeRadio    *widget.RadioGroup
+	jsonEntry    fynewidget.JSONEditor
+	win          fyne.Window // родитель для ошибки битого JSON; задаётся после создания окна
+	rule         func() (map[string]interface{}, error)
+}
+
+// newDNSRuleEditor — редактор над working (меняет его на месте).
+func newDNSRuleEditor(model *wizardmodels.WizardModel, working map[string]interface{}) *dnsRuleEditor {
 	const (
 		typeSRS    = "SRS (existing rule_set)"
 		typeInline = "Inline (match fields)"
@@ -265,7 +341,7 @@ func showEditUserDNSRuleDialog(
 	tabs := container.NewAppTabs(formTab, jsonTab)
 	// JSON → Form: правка в JSON переносится в форму, а не затирается ею
 	// при следующем возврате на вкладку JSON. Битый JSON оставляем на месте.
-	var editWin fyne.Window
+	ed := &dnsRuleEditor{ruleSetCheck: ruleSetCheck, typeRadio: typeRadio, jsonEntry: jsonEntry, formTab: formTab, jsonTab: jsonTab, tabs: tabs}
 	keepJSON := false
 	tabs.OnSelected = func(t *container.TabItem) {
 		switch t {
@@ -280,7 +356,9 @@ func showEditUserDNSRuleDialog(
 			if err := json.Unmarshal([]byte(jsonEntry.Text()), &parsed); err != nil {
 				keepJSON = true
 				tabs.Select(jsonTab)
-				dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Invalid JSON"), err), editWin)
+				if ed.win != nil {
+					dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Invalid JSON"), err), ed.win)
+				}
 				return
 			}
 			if parsed == nil {
@@ -291,68 +369,19 @@ func showEditUserDNSRuleDialog(
 		}
 	}
 
-	titleStr := locale.T("Add DNS Rule")
-	if idx >= 0 {
-		titleStr = locale.T("Edit DNS Rule")
-	}
-
-	controller := presenter.Controller()
-	if controller == nil || controller.UIService == nil {
-		return
-	}
-	editWin = controller.UIService.Application.NewWindow(titleStr)
-
-	cancelBtn := widget.NewButton(locale.T("Cancel"), func() { editWin.Close() })
-	saveBtn := widget.NewButton(locale.T("Save"), func() {
-		// Final: parse current tab. Если на JSON tab юзер редактировал — берём
-		// его JSON. Иначе — собираем из form.
-		var finalRule map[string]interface{}
+	// Итог по текущей вкладке: на JSON — её текст, на форме — форма.
+	ed.rule = func() (map[string]interface{}, error) {
 		if tabs.Selected() == jsonTab {
+			var finalRule map[string]interface{}
 			if err := json.Unmarshal([]byte(jsonEntry.Text()), &finalRule); err != nil {
-				dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Invalid JSON"), err), editWin)
-				return
+				return nil, fmt.Errorf("%s: %w", locale.T("Invalid JSON"), err)
 			}
-		} else {
-			updateFromForm(working, currentRuleType(), ruleSetCheck, domainSuffixEntry, domainEntry, keywordEntry, ipCIDREntry, serverSelect)
-			finalRule = working
+			return finalRule, nil
 		}
-		if len(finalRule) == 0 {
-			dialog.ShowError(fmt.Errorf("%s", locale.T("Rule is empty")), editWin)
-			return
-		}
-		// Strip top-level kind/ref/enabled if user pasted state-shape JSON in raw mode.
-		clean := make(map[string]interface{}, len(finalRule))
-		for k, v := range finalRule {
-			switch k {
-			case "kind", "ref", "enabled":
-				continue
-			}
-			clean[k] = v
-		}
-		m := presenter.Model()
-		if idx >= 0 && idx < len(m.DNSUserRules) {
-			m.DNSUserRules[idx].Body = clean
-		} else {
-			addDNSUserRule(m, clean)
-		}
-		// Keep DNSRulesText synced (raw-JSON toggle reads it).
-		m.DNSRulesText = wizardmodels.DNSUserRulesToText(m.DNSUserRules)
-		syncDNSRulesTextToHiddenEntry(presenter)
-		presenter.MarkAsChanged()
-		editWin.Close()
-		if onChanged != nil {
-			onChanged()
-		}
-	})
-	saveBtn.Importance = widget.HighImportance
-
-	buttons := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn)
-	dialogContent := container.NewBorder(nil, buttons, nil, nil, tabs)
-	editWin.Resize(fyne.NewSize(500, 600))
-	fynewidget.CenterOnScreen(editWin)
-	editWin.SetContent(dialogContent)
-	editWin.SetCloseIntercept(func() { editWin.Close() })
-	editWin.Show()
+		updateFromForm(working, currentRuleType(), ruleSetCheck, domainSuffixEntry, domainEntry, keywordEntry, ipCIDREntry, serverSelect)
+		return working, nil
+	}
+	return ed
 }
 
 // dnsInlineMatchKeys — поля режима Inline формы DNS-правила.
