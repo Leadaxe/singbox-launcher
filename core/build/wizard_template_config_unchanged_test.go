@@ -69,7 +69,6 @@ func wizardTemplateCases() []wizardTemplateCase {
 		{name: "presets_nondefault", presetVars: map[string]map[string]string{
 			"traffic-processing": {"hijack_dns_enabled": "false", "sniff_timeout": "300ms"},
 			"russian":            {"dns_ip": "77.88.8.1", "out": "proxy-out"},
-			"split-all-traffic":  {"out_b": "direct-out"},
 		}},
 		// Ловушка RECON §2: пустая глобаль, на которую ссылается тело пресета
 		// ("strategy": "@resolve_strategy" в traffic-processing). В штатном

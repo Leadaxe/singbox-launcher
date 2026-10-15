@@ -22,7 +22,6 @@
     "games": {"in": "desktop", "label": "Games", "note": "geosite-category-games → direct"},
     "gaming-ports": {"in": "desktop", "label": "Gaming ports", "note": "игровые порты + Steam-диапазон → direct"},
     "stop-http3": {"in": "desktop", "label": "Stop HTTP/3", "note": "UDP/443 → drop"},
-    "split-all-traffic": {"in": "desktop", "label": "Split all traffic 50/50 across two outbounds", "note": "деление по source_port_range; per-platform диапазоны через @runtime.platform"},
 
     "traffic-processing": {"in": "mobile", "label": "Traffic Processing", "note": "sniff/hijack-dns/resolve первым правилом; locked, num=0, isSortable=false (mobile-расширения §264/§370); на desktop эта роль зашита в params[] route.rules"},
     "unknown-traffic": {"in": "mobile", "label": "Unknown traffic", "note": "invert+package_name_regex — Android-специфика (атрибуция по приложению)"},

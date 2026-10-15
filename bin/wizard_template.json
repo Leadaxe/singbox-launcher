@@ -2118,56 +2118,6 @@
     }
    ],
    "num": 1130
-  },
-  {
-   "id": "split-all-traffic",
-   "label": "Split all traffic 50/50 across two outbounds",
-   "description": "Distribute proxy-bound traffic across two outbounds by OS source-port (ephemeral range split in half). Per-connection sticky: one TCP/UDP session stays on one side, one origin (HTTP/2 multiplex) → one outbound. Heavy single-stream traffic (video, large download) does NOT split across both. Enable AFTER all direct/reject presets — this preset acts as catch-all for proxy-bound traffic. Ephemeral range: macOS/Windows 49152-65535, Linux 32768-60999.",
-   "vars": [
-    {
-     "name": "out_a",
-     "type": "outbound",
-     "default": "proxy-out",
-     "title": "Outbound A"
-    },
-    {
-     "name": "out_b",
-     "type": "outbound",
-     "default": "proxy-out",
-     "title": "Outbound B"
-    }
-   ],
-   "rules": [
-    {
-     "source_port_range": [
-      {
-       "#if": [
-        {
-         "@runtime.platform": "linux"
-        },
-        "32768:46883",
-        "49152:57343"
-       ]
-      }
-     ],
-     "outbound": "@out_a"
-    },
-    {
-     "source_port_range": [
-      {
-       "#if": [
-        {
-         "@runtime.platform": "linux"
-        },
-        "46884:60999",
-        "57344:65535"
-       ]
-      }
-     ],
-     "outbound": "@out_b"
-    }
-   ],
-   "num": 1150
   }
  ],
  "params": [

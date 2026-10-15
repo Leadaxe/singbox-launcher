@@ -9526,3 +9526,9 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 - Критерий: состояние с включённым `fakeip`, своим DNS-правилом первым и `late_presets_seeded: [tailscale]` → после засева `tunnel-ingress` и сборки с узлом WireGuard без `allow_*`: в `dns.rules` конфига правило пользователя первым, `{"action":"reject","inbound":[…]}` раньше `query_type: [A, AAAA]` (у лаунчера — `TestLatePresetDNSRuleTakesAxisPosition`).
 
 Расхождение — сюда.
+
+## 125. Контракт 1.1.128 — пресет `split-all-traffic` снят (desktop-only)
+
+Решение владельца 15.10.2026: пресет «Split all traffic 50/50 across two outbounds» не актуален и снят из шаблона лаунчера и из `registry/presets.json`. Он был `in: desktop` — у LxBox работы нет. Если в бэкапе встретится правило `{kind: "preset", ref: "split-all-traffic"}`, действует общая норма TEMPLATE_LANG §6.1 для неизвестного id: правило выключено + warning, не потеря.
+
+Расхождение — сюда.
