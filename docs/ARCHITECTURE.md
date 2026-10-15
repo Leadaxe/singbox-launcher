@@ -577,7 +577,10 @@ build.BuildConfig  (pure)
             │
             ├─► MergeDNSSection → MergePresetsIntoDNS → ResolveDNS (pure)
             │      walk state.DNS kind switch (template / preset / user),
-            │      attach metadata (Source / Required / Locked / Active / Enabled)
+            │      attach metadata (Source / Required / Locked / Active / Enabled);
+            │      dns.rules are walked as a synced copy: an active preset with no
+            │      state entry yet gets its slot by the rule axis (state.PresetDNSSlotIndex,
+            │      SPEC 171) — the same rule the Configurator and Debug API apply
             │
             └─► MergeRouteSection → MergePresetsIntoRoute → ResolveRoute (pure)
                    walk state.Rules kind switch (preset / inline / srs),

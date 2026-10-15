@@ -430,7 +430,9 @@ var LateDefaultPresetIDs = []string{"tailscale", "tunnel-ingress"}
 // шаблоне, не отмечается: засев случится, когда шаблон его получит.
 //
 // Возвращает правила и новый список отметок (seeded плюс отмеченные сейчас).
-// Входной слайс правил не мутируется.
+// Входной слайс правил не мутируется. DNS-слот засеянного пресета создаёт
+// синхронизация DNS (SyncDNSOptionsWithActivePresets / ReconcileDNSRuleOrder
+// визарда) — по той же оси, что и это правило (SPEC 171, D-135).
 func SeedLateDefaultRules(rules []Rule, specs map[string]RuleOrderSpec, seeded []string) ([]Rule, []string) {
 	done := make(map[string]bool, len(seeded))
 	for _, id := range seeded {
