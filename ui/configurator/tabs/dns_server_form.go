@@ -5,9 +5,11 @@
 // domain_resolver, detour). Ядро поддерживает двенадцать типов, форм не было
 // ни для одного.
 //
-// Формы покрывают шесть типов, осмысленных для пользователя: udp, tcp, tls
-// (DoT), https (DoH), group и tailscale (MagicDNS узла tailnet, SPEC 122).
-// Прочие (quic, h3, hosts, fakeip, dhcp, legacy*) правятся на вкладке JSON —
+// Формы покрывают восемь типов, осмысленных для пользователя: udp, tcp, tls
+// (DoT), https (DoH), quic (DoQ), h3 (DoH3), group и tailscale (MagicDNS
+// узла tailnet, SPEC 122). DoQ и DoH3 — как в LxBox (§411): DoQ устроен как
+// DoT (порт 853, SNI), DoH3 — как DoH (порт 443, путь, SNI).
+// Прочие (hosts, fakeip, dhcp, legacy*) правятся на вкладке JSON —
 // она остаётся запасным путём, как у Направления, иначе типы без формы
 // стали бы недоступны.
 //
@@ -39,6 +41,8 @@ const (
 	dnsTypeTCP   = "tcp"
 	dnsTypeTLS   = "tls"
 	dnsTypeHTTPS = "https"
+	dnsTypeQUIC  = "quic"
+	dnsTypeH3    = "h3"
 	dnsTypeGroup = "group"
 	// SPEC 122: MagicDNS узла tailnet. Полей всего два — ссылка на узел
 	// (endpoint) и галка «спрашивать и обычные резолверы»; адреса и порта
@@ -47,20 +51,34 @@ const (
 )
 
 // dnsFormTypes — порядок в выпадающем списке: от простого к составному.
-var dnsFormTypes = []string{dnsTypeUDP, dnsTypeTCP, dnsTypeTLS, dnsTypeHTTPS, dnsTypeGroup, dnsTypeTailscale}
+var dnsFormTypes = []string{dnsTypeUDP, dnsTypeTCP, dnsTypeTLS, dnsTypeHTTPS, dnsTypeQUIC, dnsTypeH3, dnsTypeGroup, dnsTypeTailscale}
 
 // dnsDefaultPort — порт по умолчанию для типа. Пользователь его почти
 // никогда не меняет, но подставить обязаны: сервер без порта ядро
 // отвергает.
 func dnsDefaultPort(typ string) int {
 	switch typ {
-	case dnsTypeTLS:
+	case dnsTypeTLS, dnsTypeQUIC:
 		return 853
-	case dnsTypeHTTPS:
+	case dnsTypeHTTPS, dnsTypeH3:
 		return 443
 	default:
 		return 53
 	}
+}
+
+// dnsTypeHasTLS — тип шифрованный, у него есть tls.server_name.
+func dnsTypeHasTLS(typ string) bool {
+	switch typ {
+	case dnsTypeTLS, dnsTypeHTTPS, dnsTypeQUIC, dnsTypeH3:
+		return true
+	}
+	return false
+}
+
+// dnsTypeHasPath — у типа есть HTTP-путь (/dns-query): DoH и DoH3.
+func dnsTypeHasPath(typ string) bool {
+	return typ == dnsTypeHTTPS || typ == dnsTypeH3
 }
 
 // dnsNoDetour — подпись пункта «без детура» в списке Направлений.
@@ -245,7 +263,7 @@ func (f *dnsServerForm) syncRows() {
 	// детура и резолвера у него нет — как у группы, но по другой причине.
 	tailscale := typ == dnsTypeTailscale
 	plain := !group && !tailscale
-	tlsLike := typ == dnsTypeTLS || typ == dnsTypeHTTPS
+	tlsLike := dnsTypeHasTLS(typ)
 
 	show := func(key string, on bool) {
 		if o := f.rows[key]; o != nil {
@@ -258,7 +276,7 @@ func (f *dnsServerForm) syncRows() {
 	}
 	show("server", plain)
 	show("port", plain)
-	show("path", typ == dnsTypeHTTPS)
+	show("path", dnsTypeHasPath(typ))
 	show("sni", tlsLike)
 	// Группа не ходит в сеть — ходят её участники, и каждый своим детуром.
 	// Детур на самой группе ядро не применяет; поле здесь означало бы
@@ -506,10 +524,10 @@ func (f *dnsServerForm) Collect() map[string]interface{} {
 	if n, err := strconv.Atoi(strings.TrimSpace(f.portEntry.Text)); err == nil && n > 0 {
 		out["server_port"] = n
 	}
-	if typ == dnsTypeHTTPS {
+	if dnsTypeHasPath(typ) {
 		putIfSet(out, "path", f.pathEntry.Text)
 	}
-	if typ == dnsTypeTLS || typ == dnsTypeHTTPS {
+	if dnsTypeHasTLS(typ) {
 		setTLS(strings.TrimSpace(f.sniEntry.Text))
 	}
 	if d := f.detourSelect.Selected; d != "" && d != dnsNoDetour() {
