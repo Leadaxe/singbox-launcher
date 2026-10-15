@@ -1107,7 +1107,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	formTabItem := container.NewTabItem(locale.T("Form"), formScroll)
 	rawTabItem := container.NewTabItem(locale.T("JSON"), rawScroll)
 	dnsTabItem := container.NewTabItem(locale.T("DNS"), components.WrapInScrollWithGutter(dnsBlock))
-	tabs := container.NewAppTabs(formTabItem, rawTabItem, dnsTabItem)
+	tabs := container.NewAppTabs(formTabItem, dnsTabItem, rawTabItem)
 	syncFormToRaw := func() {
 		ob := outboundSelect.Selected
 		if ob == "" {
