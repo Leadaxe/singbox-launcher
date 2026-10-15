@@ -243,6 +243,13 @@ type Field struct {
 	// (transports): выбор варианта — по значению дискриминатора в карте.
 	Variants      map[string]*Field `json:"-"`
 	Discriminator string            `json:"-"`
+	// VariantValues — имена вариантов в порядке `values` секции (карта
+	// Variants порядка не держит, а форма рисует выбор по нему).
+	VariantValues []string `json:"-"`
+	// DiscriminatorField — поле-дискриминатор для формы (контракт 1.1.123):
+	// enum из "" (вариант не задан, объект не пишется) и VariantValues без
+	// `form.exclude_variants` ref-поля. Строится только у ref-поля с `form`.
+	DiscriminatorField *Field `json:"-"`
 
 	// Wildcard — это запись "*" в fields объекта (контракт 1.1.122), а не
 	// поле: неописанные ключи ЭТОГО объекта проходят насквозь. Ставится при
@@ -275,12 +282,23 @@ type FieldForm struct {
 	// Min/Max — диапазон формы; пустое поле ключ не пишет.
 	Min *float64 `json:"min"`
 	Max *float64 `json:"max"`
+	// ExcludeVariants — у ref-поля на вариантную секцию (transport,
+	// контракт 1.1.123): варианты, которых форма схемы не предлагает.
+	ExcludeVariants []string `json:"exclude_variants"`
+	// ExcludeFields — у ref-поля на общую секцию (контракт 1.1.123): пути
+	// внутри секции (от её корня), которые форма схемы не рисует, хотя
+	// схеме они разрешены (у http нет REALITY и uTLS в форме).
+	ExcludeFields []string `json:"exclude_fields"`
 }
 
-// FormSection — секция `form` тела протокола: блоки и группы выбора.
+// FormSection — секция `form` тела протокола: блоки, группы выбора и
+// значения, которые форма пишет всегда.
 type FormSection struct {
 	Blocks  []string     `json:"blocks"`
 	Choices []FormChoice `json:"choices"`
+	// Fixed — путь → значение (контракт 1.1.123): форма всегда пишет его в
+	// тело и поле не рисует (tls.enabled у протоколов, где TLS обязателен).
+	Fixed map[string]interface{} `json:"fixed"`
 }
 
 // FormChoice — группа взаимоисключающих вариантов формы.
@@ -807,6 +825,13 @@ func Load() (*Registry, error) {
 			return nil, fmt.Errorf("registry: %s.json: нет секции body", name)
 		}
 		markWildcards(f.Body.Fields)
+		for _, v := range f.Body.Variants {
+			// Wildcard внутри полей варианта (headers у ws/httpupgrade,
+			// контракт 1.1.123) помечается так же, как в обычной секции.
+			if v != nil {
+				markWildcards(v.Fields)
+			}
+		}
 		subs[name] = f.Body
 		if f.Common != nil {
 			markWildcards(f.Common.Fields)
@@ -1063,6 +1088,9 @@ func refAsObject(src *Field, sub *section) (*Field, error) {
 		DescEn:   src.DescEn,
 		DescRu:   src.DescRu,
 		Impl:     src.Impl,
+		// `form` ref-поля подключает секцию к форме схемы (контракт
+		// 1.1.123): без него поля общей секции в форму схемы не входят.
+		Form: src.Form,
 		// Условие «секции нет» объявлено один раз, у самой суб-схемы, и
 		// переезжает в каждое поле, которое её подключает: tls:{enabled:false}
 		// значит «TLS не задан» у любой схемы, а не у той, где не забыли
@@ -1082,7 +1110,31 @@ func refAsObject(src *Field, sub *section) (*Field, error) {
 	for name, v := range sub.Variants {
 		f.Variants[name] = &Field{Type: "object", Order: v.Order, Fields: v.Fields}
 	}
+	for _, name := range sub.Values {
+		if f.Variants[name] != nil {
+			f.VariantValues = append(f.VariantValues, name)
+		}
+	}
+	if src.Form != nil {
+		f.DiscriminatorField = discriminatorField(f.VariantValues, src.Form)
+	}
 	return f, nil
+}
+
+// discriminatorField — поле-дискриминатор формы: enum из "" и вариантов
+// без `exclude_variants` ref-поля, в блоке ref-поля.
+func discriminatorField(values []string, form *FieldForm) *Field {
+	excluded := make(map[string]bool, len(form.ExcludeVariants))
+	for _, v := range form.ExcludeVariants {
+		excluded[v] = true
+	}
+	vals := []interface{}{""}
+	for _, v := range values {
+		if !excluded[v] {
+			vals = append(vals, v)
+		}
+	}
+	return &Field{Type: "enum", Values: vals, Form: &FieldForm{Block: form.Block}}
 }
 
 // sectionOfRef — имя секции суб-схемы в ссылке. Ссылка бывает двух форм:
@@ -1131,10 +1183,15 @@ func resolveNamedRef(name string, src *Field, sub *section) *Field {
 // mergeRefAttrs накладывает атрибуты ссылки на поле суб-схемы: ссылка может
 // ужесточить обязательность (naive: tls required), но не подменяет правила.
 func mergeRefAttrs(src, target *Field) *Field {
-	if !src.Required && src.Code == "" && len(src.ForbiddenFor) == 0 && len(src.AllowedFor) == 0 && len(src.ForbiddenCodes) == 0 {
+	if !src.Required && src.Code == "" && len(src.ForbiddenFor) == 0 && len(src.AllowedFor) == 0 && len(src.ForbiddenCodes) == 0 && src.Form == nil {
 		return target
 	}
 	cp := *target
+	if src.Form != nil {
+		// Правила формы — у ref-поля схемы (контракт 1.1.123): server у
+		// одной схемы обязателен в форме, у другой его в форме нет вовсе.
+		cp.Form = src.Form
+	}
 	if src.Required {
 		cp.Required = true
 	}
@@ -1404,6 +1461,11 @@ func (r *Registry) Field(scheme, path string) (*Field, bool) {
 		if p == WildcardKey {
 			// Wildcard — не поле: путь через "*" не адресует ничего.
 			return nil, false
+		}
+		if cur != nil && cur.Type == "array" && isIndexSegment(p) {
+			// Элемент массива ("peers.0.address", контракт 1.1.123): поля
+			// элемента уже в fields (Items).
+			continue
 		}
 		var next *Field
 		if fields != nil {
@@ -1806,10 +1868,19 @@ func (c *Condition) HoldsOn(body map[string]interface{}) bool {
 }
 
 // bodyValue — значение по пути от корня тела; пустая (из пробелов) строка и
-// nil — «не задано».
+// nil — «не задано». Числовой сегмент у массива — индекс элемента
+// ("peers.0.address", контракт 1.1.123).
 func bodyValue(body map[string]interface{}, path string) (interface{}, bool) {
 	var cur interface{} = body
 	for _, part := range strings.Split(path, ".") {
+		if list, isList := cur.([]interface{}); isList {
+			i, err := strconv.Atoi(part)
+			if err != nil || !isIndexSegment(part) || i >= len(list) {
+				return nil, false
+			}
+			cur = list[i]
+			continue
+		}
 		m, ok := cur.(map[string]interface{})
 		if !ok {
 			return nil, false

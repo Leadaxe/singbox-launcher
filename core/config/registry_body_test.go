@@ -271,11 +271,16 @@ type bodyFieldForm struct {
 	} `json:"required_unless"`
 	Min *float64 `json:"min"`
 	Max *float64 `json:"max"`
+	// Контракт 1.1.123: только у ref-поля общей секции.
+	ExcludeVariants []string `json:"exclude_variants"`
+	ExcludeFields   []string `json:"exclude_fields"`
 }
 
-// bodyFormSection — секция `form` тела протокола (контракт 1.1.122).
+// bodyFormSection — секция `form` тела протокола (контракт 1.1.122;
+// fixed — 1.1.123).
 type bodyFormSection struct {
-	Blocks  []string `json:"blocks"`
+	Blocks  []string               `json:"blocks"`
+	Fixed   map[string]interface{} `json:"fixed"`
 	Choices []struct {
 		ID      string `json:"id"`
 		Block   string `json:"block"`
@@ -456,10 +461,12 @@ type bodySection struct {
 		Order  []string              `json:"order"`
 		Fields map[string]*bodyField `json:"fields"`
 	} `json:"variants"`
-	Discriminator string `json:"discriminator"`
+	Discriminator string   `json:"discriminator"`
+	Values        []string `json:"values"`
 }
 
 type registryBodyFile struct {
+	Scheme string       `json:"scheme"`
 	Body   *bodySection `json:"body"`
 	Common *bodySection `json:"common"`
 }
@@ -647,6 +654,9 @@ func TestRegistryBodyStructure(t *testing.T) {
 					checkOrderCoversFields(t, vWhere, variant.Order, variant.Fields)
 					walkFields("", variant.Order, variant.Fields, func(path string, fl *bodyField) {
 						checkField(t, vWhere, path, fl, codes)
+						if fl.Form != nil {
+							checkFieldFormSanity(t, vWhere+" "+path+".form", fl)
+						}
 					})
 				}
 				continue
@@ -659,7 +669,7 @@ func TestRegistryBodyStructure(t *testing.T) {
 			if sec.FieldsUnchecked != nil {
 				t.Errorf("%s: атрибут fields_unchecked снят в 1.1.122 — эквивалент order: [\"*\"]", where)
 			}
-			checkBodyForm(t, where, strings.HasPrefix(name, "protocols/") && secName == "body", sec)
+			checkBodyForm(t, where, strings.HasPrefix(name, "protocols/") && secName == "body", f.Scheme, sec, files)
 		}
 	}
 	checkFieldRoles(t, files)
@@ -679,8 +689,9 @@ var registryWildcardKeys = map[string]bool{"desc_en": true, "desc_ru": true, "im
 // молча перестало бы действовать.
 var registryFieldFormKeys = map[string]bool{
 	"block": true, "visible_when": true, "required": true, "required_unless": true, "min": true, "max": true,
+	"exclude_variants": true, "exclude_fields": true,
 }
-var registryBodyFormKeys = map[string]bool{"blocks": true, "choices": true}
+var registryBodyFormKeys = map[string]bool{"blocks": true, "choices": true, "fixed": true}
 
 // checkWildcards — линтер wildcard по СЫРОМУ JSON (контракт 1.1.122):
 // запись "*" несёт только тексты и обязана стоять в order своего объекта;
@@ -708,7 +719,7 @@ func checkWildcards(t *testing.T, files map[string]*registryBodyFile) {
 			if f, ok := sec["form"].(map[string]interface{}); ok {
 				for k := range f {
 					if !registryBodyFormKeys[k] {
-						t.Errorf("%s: form.%s — вне словаря секции form (blocks|choices)", where, k)
+						t.Errorf("%s: form.%s — вне словаря секции form (blocks|choices|fixed)", where, k)
 					}
 				}
 			}
@@ -817,30 +828,40 @@ func hasWildcardSegment(p string) bool {
 }
 
 // checkBodyForm — линтер секции `form` и атрибутов `form` полей (контракт
-// 1.1.122): форма — только у тела протокола; блоки объявлены и уникальны;
-// `block` поля из blocks (пустой — только у поля, которое рисует группа
-// choices); пути visible_when и choices описаны; set варианта пишет только
-// свои paths; min <= max.
-func checkBodyForm(t *testing.T, where string, protocolBody bool, sec *bodySection) {
+// 1.1.122, общие секции, fixed и exclude_* — 1.1.123): форма — только у тела
+// протокола; блоки объявлены, уникальны и не пусты; `block` поля (свой или
+// унаследованный от ref-поля общей секции) из blocks, пустой — только у
+// поля, которое рисует группа choices; пути visible_when, choices и fixed
+// описаны (с учётом общих секций и сегмента 0 массива); set варианта пишет
+// только пути своей группы; exclude_variants ⊆ values секции, exclude_fields
+// описаны в секции; min <= max.
+func checkBodyForm(t *testing.T, where string, protocolBody bool, scheme string, sec *bodySection, files map[string]*registryBodyFile) {
 	t.Helper()
-	known := map[string]bool{}
-	walkFields("", sec.Order, sec.Fields, func(path string, fl *bodyField) {
-		known[path] = true
-	})
-	var hasFieldForm bool
 	walkFields("", sec.Order, sec.Fields, func(path string, fl *bodyField) {
 		if fl.Form != nil {
-			hasFieldForm = true
+			checkFieldFormSanity(t, where+" "+path+".form", fl)
 		}
 	})
-	if sec.Form == nil {
-		if hasFieldForm {
-			t.Errorf("%s: у полей есть form, а у тела нет секции form (blocks)", where)
+	if !protocolBody {
+		// Общая секция (tls, dialer.common): `form` у полей допустим —
+		// блок им даёт ref-поле схемы; своей раскладки у секции нет.
+		if sec.Form != nil {
+			t.Errorf("%s: секция form ставится только у тела протокола", where)
 		}
 		return
 	}
-	if !protocolBody {
-		t.Errorf("%s: секция form ставится только у тела протокола", where)
+	if scheme == "" {
+		scheme = strings.TrimSuffix(strings.TrimPrefix(where, "protocols/"), ".json body")
+	}
+	ex := expandFormFields(t, where, scheme, sec, files)
+	if sec.Form == nil {
+		for _, e := range ex.entries {
+			if !e.shared {
+				t.Errorf("%s: у поля %s есть form, а у тела нет секции form (blocks)", where, e.path)
+				return
+			}
+		}
+		return
 	}
 	blocks := map[string]bool{}
 	if len(sec.Form.Blocks) == 0 {
@@ -852,6 +873,7 @@ func checkBodyForm(t *testing.T, where string, protocolBody bool, sec *bodySecti
 		}
 		blocks[b] = true
 	}
+	used := map[string]bool{}
 	inChoice := map[string]bool{}
 	choiceIDs := map[string]bool{}
 	for _, c := range sec.Form.Choices {
@@ -860,6 +882,7 @@ func checkBodyForm(t *testing.T, where string, protocolBody bool, sec *bodySecti
 			t.Errorf("%s: пустой или повторный id группы", cw)
 		}
 		choiceIDs[c.ID] = true
+		used[c.Block] = true
 		if !blocks[c.Block] {
 			t.Errorf("%s: block %q не объявлен в form.blocks", cw, c.Block)
 		}
@@ -868,6 +891,12 @@ func checkBodyForm(t *testing.T, where string, protocolBody bool, sec *bodySecti
 		}
 		empty := 0
 		optIDs := map[string]bool{}
+		group := map[string]bool{}
+		for _, o := range c.Options {
+			for _, p := range o.Paths {
+				group[p] = true
+			}
+		}
 		for _, o := range c.Options {
 			if o.ID == "" || optIDs[o.ID] {
 				t.Errorf("%s: пустой или повторный id варианта %q", cw, o.ID)
@@ -876,17 +905,15 @@ func checkBodyForm(t *testing.T, where string, protocolBody bool, sec *bodySecti
 			if len(o.Paths) == 0 {
 				empty++
 			}
-			own := map[string]bool{}
 			for _, p := range o.Paths {
-				own[p] = true
 				inChoice[p] = true
-				if !known[p] {
+				if !ex.known[p] {
 					t.Errorf("%s: вариант %q: путь %q не описан в fields", cw, o.ID, p)
 				}
 			}
 			for p := range o.Set {
-				if !own[p] {
-					t.Errorf("%s: вариант %q пишет %q вне своих paths — смена варианта его не очистит", cw, o.ID, p)
+				if !group[p] {
+					t.Errorf("%s: вариант %q пишет %q вне paths группы — смена варианта его не очистит", cw, o.ID, p)
 				}
 			}
 		}
@@ -894,45 +921,230 @@ func checkBodyForm(t *testing.T, where string, protocolBody bool, sec *bodySecti
 			t.Errorf("%s: %d вариантов с пустыми paths — активный по умолчанию неоднозначен", cw, empty)
 		}
 	}
-	walkFields("", sec.Order, sec.Fields, func(path string, fl *bodyField) {
-		ff := fl.Form
-		if ff == nil {
-			return
+	for p := range sec.Form.Fixed {
+		if !ex.known[p] {
+			t.Errorf("%s: form.fixed: путь %q не описан в fields", where, p)
 		}
-		fw := where + " " + path + ".form"
-		if ff.Block == "" {
-			if !inChoice[path] {
-				t.Errorf("%s: без block и вне form.choices — форма поле не нарисует", fw)
-			}
-		} else if !blocks[ff.Block] {
-			t.Errorf("%s: block %q не объявлен в form.blocks", fw, ff.Block)
+		if inChoice[p] {
+			t.Errorf("%s: form.fixed: путь %q занят группой выбора", where, p)
 		}
-		if vw := ff.VisibleWhen; vw != nil {
-			if len(vw.SourceKind) > 0 {
-				t.Errorf("%s: visible_when.source_kind — у формы рода входа нет", fw)
+	}
+	for _, e := range ex.entries {
+		fw := where + " " + e.path + ".form"
+		if _, fixed := sec.Form.Fixed[e.path]; fixed {
+			continue
+		}
+		if !e.container || e.discriminator {
+			used[e.block] = true
+		}
+		if e.block == "" {
+			if !inChoice[e.path] {
+				t.Errorf("%s: без block (своего и от ref-поля) и вне form.choices — форма поле не нарисует", fw)
 			}
-			checkBodyCondition(t, fw+".visible_when", vw)
+		} else if !blocks[e.block] {
+			t.Errorf("%s: block %q не объявлен в form.blocks", fw, e.block)
+		}
+		if e.f == nil || e.f.Form == nil {
+			continue
+		}
+		if vw := e.f.Form.VisibleWhen; vw != nil {
 			for _, p := range vw.AnySet {
-				if !known[p] {
+				if !ex.known[p] {
 					t.Errorf("%s: visible_when.any_set: путь %q не описан в fields", fw, p)
 				}
 			}
 			for p := range vw.Values {
-				if !known[p] {
+				if !ex.known[p] {
 					t.Errorf("%s: visible_when: путь %q не описан в fields", fw, p)
 				}
 			}
 		}
-		if ff.RequiredUnless != nil && !ff.Required {
-			t.Errorf("%s: required_unless без required — снимать нечего", fw)
+	}
+	for _, b := range sec.Form.Blocks {
+		if !used[b] {
+			t.Errorf("%s: блок %q объявлен, но в нём нет ни одного поля формы схемы", where, b)
 		}
-		if ff.Min != nil && ff.Max != nil && *ff.Min > *ff.Max {
-			t.Errorf("%s: min %v больше max %v", fw, *ff.Min, *ff.Max)
+	}
+}
+
+// checkFieldFormSanity — правила атрибута `form` одного поля, не зависящие
+// от схемы.
+func checkFieldFormSanity(t *testing.T, fw string, fl *bodyField) {
+	t.Helper()
+	ff := fl.Form
+	if vw := ff.VisibleWhen; vw != nil {
+		if len(vw.SourceKind) > 0 {
+			t.Errorf("%s: visible_when.source_kind — у формы рода входа нет", fw)
 		}
-		if (ff.Min != nil || ff.Max != nil) && fl.Type != "int" && fl.Type != "uint16" {
-			t.Errorf("%s: min/max формы у поля типа %q — диапазон осмыслен только у числа", fw, fl.Type)
+		checkBodyCondition(t, fw+".visible_when", vw)
+	}
+	if ff.RequiredUnless != nil && !ff.Required {
+		t.Errorf("%s: required_unless без required — снимать нечего", fw)
+	}
+	if ff.Min != nil && ff.Max != nil && *ff.Min > *ff.Max {
+		t.Errorf("%s: min %v больше max %v", fw, *ff.Min, *ff.Max)
+	}
+	if (ff.Min != nil || ff.Max != nil) && fl.Type != "int" && fl.Type != "uint16" {
+		t.Errorf("%s: min/max формы у поля типа %q — диапазон осмыслен только у числа", fw, fl.Type)
+	}
+	if len(ff.ExcludeVariants) > 0 && fl.Ref != "transports" {
+		t.Errorf("%s: exclude_variants — только у ref-поля на вариантную секцию", fw)
+	}
+	if len(ff.ExcludeFields) > 0 && (fl.Type != "ref" || fl.Ref == "transports" || strings.Contains(fl.Ref, ".")) {
+		t.Errorf("%s: exclude_fields — только у ref-поля на общую секцию-объект", fw)
+	}
+	if fl.Type == "array" && (fl.Items == nil || fl.Items.Type != "object") {
+		t.Errorf("%s: form у массива — только у массива объектов (форма правит элемент [0])", fw)
+	}
+}
+
+// formEntry — поле формы схемы после раскрытия общих секций.
+type formEntry struct {
+	path          string
+	f             *bodyField
+	block         string
+	shared        bool
+	container     bool
+	discriminator bool
+}
+
+type formExpansion struct {
+	known   map[string]bool
+	entries []formEntry
+}
+
+// expandFormFields раскрывает тело схемы так, как его видит форма: ref на
+// общую секцию подставляется её полями (в форму они входят, только если у
+// ref-поля есть form, и схема не в их forbidden_for), вариантная секция —
+// дискриминатором и полями всех вариантов, массив объектов — элементом 0.
+// known — все описанные пути (для проверки путей условий, choices, fixed).
+func expandFormFields(t *testing.T, where, scheme string, sec *bodySection, files map[string]*registryBodyFile) formExpansion {
+	t.Helper()
+	ex := formExpansion{known: map[string]bool{}}
+	shared := func(name string) *bodySection {
+		if f := files[name+".json"]; f != nil {
+			return f.Body
 		}
-	})
+		return nil
+	}
+	allowed := func(fl *bodyField) bool {
+		for _, s := range fl.ForbiddenFor {
+			if s == scheme {
+				return false
+			}
+		}
+		if len(fl.AllowedFor) > 0 {
+			for _, s := range fl.AllowedFor {
+				if s == scheme {
+					return true
+				}
+			}
+			return false
+		}
+		return true
+	}
+	var walk func(prefix string, order []string, fields map[string]*bodyField, inForm bool, block string, inShared bool, excluded map[string]bool)
+	walk = func(prefix string, order []string, fields map[string]*bodyField, inForm bool, block string, inShared bool, excluded map[string]bool) {
+		for _, name := range order {
+			fl := fields[name]
+			if fl == nil || name == registryWildcard {
+				continue
+			}
+			path := name
+			if prefix != "" {
+				path = prefix + "." + name
+			}
+			ex.known[path] = true
+			take := inForm && allowed(fl) && !excluded[path]
+			if fl.Type == "ref" && !fl.Inline && !strings.HasPrefix(fl.Ref, "dialer.common") {
+				sub := shared(fl.Ref)
+				if sub == nil {
+					continue
+				}
+				connected := take && fl.Form != nil
+				subBlock := ""
+				if connected {
+					subBlock = fl.Form.Block
+					ex.entries = append(ex.entries, formEntry{path: path, f: fl, block: fl.Form.Block, container: true})
+				}
+				excl := map[string]bool{}
+				if fl.Form != nil {
+					for _, x := range fl.Form.ExcludeFields {
+						excl[path+"."+x] = true
+						if !hasFieldPath(sub.Order, sub.Fields, x) {
+							t.Errorf("%s %s.form.exclude_fields: путь %q не описан в секции %s", where, path, x, fl.Ref)
+						}
+					}
+				}
+				if len(sub.Variants) > 0 {
+					dpath := path + "." + sub.Discriminator
+					ex.known[dpath] = true
+					if connected {
+						ex.entries = append(ex.entries, formEntry{path: dpath, block: subBlock, shared: true, discriminator: true})
+					}
+					values := map[string]bool{}
+					for _, v := range sub.Values {
+						values[v] = true
+					}
+					if fl.Form != nil {
+						for _, v := range fl.Form.ExcludeVariants {
+							if !values[v] {
+								t.Errorf("%s %s.form.exclude_variants: %q вне values секции %s", where, path, v, fl.Ref)
+							}
+						}
+					}
+					names := make([]string, 0, len(sub.Variants))
+					for n := range sub.Variants {
+						names = append(names, n)
+					}
+					sort.Strings(names)
+					for _, n := range names {
+						v := sub.Variants[n]
+						walk(path, v.Order, v.Fields, connected, subBlock, true, excl)
+					}
+					continue
+				}
+				walk(path, sub.Order, sub.Fields, connected, subBlock, true, excl)
+				continue
+			}
+			if take && fl.Form != nil {
+				b := fl.Form.Block
+				if b == "" {
+					b = block
+				}
+				ex.entries = append(ex.entries, formEntry{
+					path: path, f: fl, block: b, shared: inShared,
+					container: fl.Type == "object" || fl.Type == "array",
+				})
+			}
+			if len(fl.Fields) > 0 {
+				walk(path, fl.Order, fl.Fields, take, block, inShared, excluded)
+			}
+			if fl.Items != nil && len(fl.Items.Fields) > 0 {
+				// Массив объектов: форма правит элемент 0 (только при form у массива).
+				walk(path+".0", fl.Items.Order, fl.Items.Fields, take && fl.Form != nil, block, inShared, excluded)
+			}
+		}
+	}
+	walk("", sec.Order, sec.Fields, true, "", false, map[string]bool{})
+	return ex
+}
+
+// hasFieldPath — описан ли путь (от корня секции) в её полях.
+func hasFieldPath(order []string, fields map[string]*bodyField, path string) bool {
+	parts := strings.Split(path, ".")
+	cur := fields
+	for i, p := range parts {
+		fl := cur[p]
+		if fl == nil {
+			return false
+		}
+		if i == len(parts)-1 {
+			return true
+		}
+		cur = fl.Fields
+	}
+	return false
 }
 
 // checkCoreGates — линтер узлового гейта ядра и уровней (контракт 1.1.60):
