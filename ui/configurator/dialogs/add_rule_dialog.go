@@ -521,6 +521,38 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		return ruleSets, tags, nil
 	}
 
+	// srsRuleSetsForRawBody — наборы формы, на которые ссылается тело с вкладки
+	// JSON. Тег SRS-набора — производное от URL, адреса в теле нет: без этого
+	// правило, сохранённое (или показанное в Preview) с вкладки JSON, теряло
+	// наборы и ссылалось на несуществующие теги. nil — тело ссылается не
+	// только на наборы формы (или без rule_set): тогда это Custom JSON.
+	srsRuleSetsForRawBody := func(body map[string]interface{}) []json.RawMessage {
+		refs := ExtractStringArray(body["rule_set"])
+		if s, ok := body["rule_set"].(string); ok && s != "" {
+			refs = []string{s}
+		}
+		if len(refs) == 0 {
+			return nil
+		}
+		ruleSets, tags, err := buildSRSRuleSetsAndTags()
+		if err != nil {
+			return nil
+		}
+		byTag := make(map[string]json.RawMessage, len(tags))
+		for i, tag := range tags {
+			byTag[tag] = ruleSets[i]
+		}
+		out := make([]json.RawMessage, 0, len(refs))
+		for _, ref := range refs {
+			rs, ok := byTag[ref]
+			if !ok {
+				return nil
+			}
+			out = append(out, rs)
+		}
+		return out
+	}
+
 	// buildRuleRaw возвращает (rule, ruleSets для SRS или nil, error).
 	buildRuleRaw := func(selectedType string, selectedOutbound string) (rule map[string]interface{}, ruleSets []json.RawMessage, err error) {
 		switch selectedType {
@@ -866,6 +898,10 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				ruleRaw["outbound"] = selectedOutbound
 			}
 			selectedType = wizardmodels.RuleTypeRaw
+			if rs := srsRuleSetsForRawBody(ruleRaw); rs != nil {
+				srsRuleSets = rs
+				selectedType = wizardmodels.RuleTypeSRS
+			}
 		} else {
 			var err error
 			ruleRaw, srsRuleSets, err = buildRuleRaw(selectedType, selectedOutbound)
@@ -1125,6 +1161,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			outbound: outboundSelect.Selected,
 			raw:      activeTabIsRaw,
 			rawText:  rawTabEntry.Text(),
+			rawSRS:   srsRuleSetsForRawBody,
 			form: func() (map[string]interface{}, []json.RawMessage, error) {
 				return buildRuleRaw(ruleSel.Type(), outboundSelect.Selected)
 			},
@@ -1347,6 +1384,7 @@ type rulePreviewInput struct {
 	outbound string
 	raw      bool   // тело — с вкладки JSON (последняя из Form/JSON)
 	rawText  string // текст вкладки JSON
+	rawSRS   func(map[string]interface{}) []json.RawMessage
 	form     func() (map[string]interface{}, []json.RawMessage, error)
 	dns      *corestate.RuleDNS
 }
@@ -1368,6 +1406,8 @@ func rulePreviewText(model *wizardmodels.WizardModel, in rulePreviewInput) strin
 	if in.raw {
 		if json.Unmarshal([]byte(strings.TrimSpace(in.rawText)), &body) != nil {
 			body = nil
+		} else if in.rawSRS != nil {
+			ruleSets = in.rawSRS(body)
 		}
 	} else if b, rs, err := in.form(); err == nil {
 		body, ruleSets = b, rs
