@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v2.3.11
+
+Патч после v2.3.10, ядро `sing-box-lx 1.14.3-lx.20` (было 1.14.3-lx.18), контракт 1.1.124. **«Add server»:** формы для VLESS (None / TLS / Reality, транспорты), Hysteria2, Trojan, WireGuard (AWG) с блоком AmneziaWG, Naive и MASQUE; SOCKS5, HTTP и WireGuard — на той же форме; та же форма правит готовый узел; Add при пустом поле открывает форму. **OpenConnect (SSL VPN):** форма шлюза (FortiGate, AnyConnect, GlobalProtect, F5, Pulse, NC), второй фактор и вход через браузер под демоном; узлы OpenConnect из JSON больше не ломают конфиг. **DNS:** DoQ и DoH3 в форме сервера. **Detour:** выбор деревом «Направления / Узлы». **Ядро lx.19–lx.20:** кнопка Update демона больше не откатывается (с lx.17/18 первый раз — остановить ядро, обновить, запустить), прогресс скачивания в окне Service. Подробнее: [docs/release_notes/2-3-11.md](docs/release_notes/2-3-11.md).
+
+### Highlights (EN) — v2.3.11
+
+A patch after v2.3.10, core `sing-box-lx 1.14.3-lx.20` (was 1.14.3-lx.18), contract 1.1.124. **Add server:** forms for VLESS (None / TLS / Reality, transports), Hysteria2, Trojan, WireGuard (AWG) with an AmneziaWG block, Naive and MASQUE; SOCKS5, HTTP and WireGuard on the same form; the same form edits an existing node; Add with an empty field opens the form. **OpenConnect (SSL VPN):** a gateway form (FortiGate, AnyConnect, GlobalProtect, F5, Pulse, NC), second factor and browser sign-in under the daemon; OpenConnect nodes from JSON no longer break the config. **DNS:** DoQ and DoH3 in the server form. **Detour:** a Directions / Nodes tree picker. **Core lx.19–lx.20:** the daemon's Update button no longer rolls back (from lx.17/18 the first time: stop the core, update, start), download progress in the Service window. Details: [docs/release_notes/2-3-11.md](docs/release_notes/2-3-11.md).
+
 ### Выжимка (RU) — v2.3.10
 
 Патч после v2.3.9, ядро `sing-box-lx 1.14.3-lx.18` и контракт 1.1.119 без изменений. **Tailscale → Network:** список устройств оформлен как список серверов — имя и IPv4, ОС и IPv6, третьей строкой путь (зелёная молния — direct, оранжевое облако — relay, `no traffic yet`) с подсказкой при наведении; раскрытие `+N` и копирование любого адреса у устройства с несколькими адресами. Пока вкладка открыта, она раз в 3 с спрашивает у ядра живой статус, так что путь актуален. **macOS:** скрипт установки сразу отказывается работать не на macOS. Подробнее: [docs/release_notes/2-3-10.md](docs/release_notes/2-3-10.md).
