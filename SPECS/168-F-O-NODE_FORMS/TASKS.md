@@ -13,10 +13,10 @@
 - [x] T8 `core/config/registry_body_test.go`, `core/config/contract_form_test.go`
 
 ## Этап 3 — UI
-- [ ] T9 `ui/configurator/business/node_form_model.go`, `node_form_labels.go` (из openconnect_form_model.go)
-- [ ] T10 `ui/configurator/dialogs/node_form_view.go` (из add_server_openconnect.go), `add_server_dialog.go` — modeForm, список типов, удаление ручных веток и их тестов
-- [ ] T11 `ui/configurator/tabs/source_form_edit.go` (из source_openconnect_edit.go), `source_edit_window.go`
-- [ ] T12 `bin/locale/ru.json`, `l10n_check --strict`
+- [x] T9 `ui/configurator/business/node_form_model.go`, `node_form_labels.go` (из openconnect_form_model.go)
+- [x] T10 `ui/configurator/dialogs/node_form_view.go` (из add_server_openconnect.go), `add_server_dialog.go` — modeForm, список типов, удаление ручных веток и их тестов
+- [x] T11 `ui/configurator/tabs/source_form_edit.go` (из source_openconnect_edit.go), `source_edit_window.go`
+- [x] T12 `bin/locale/ru.json`, `l10n_check --strict`
 
 ## Этап 4 — доки и закрытие
 - [ ] T13 `docs/release_notes/upcoming.md`, `RELEASE_NOTES.md`, `docs/ARCHITECTURE.md`, `IMPLEMENTATION_REPORT.md`
