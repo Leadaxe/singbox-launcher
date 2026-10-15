@@ -3308,18 +3308,6 @@
   "HTTP": {
     "value": "HTTP"
   },
-  "HTTPS (TLS to proxy)": {
-    "value": "HTTPS (TLS до прокси)"
-  },
-  "Host required": {
-    "value": "Укажите хост"
-  },
-  "Port 1..65535": {
-    "value": "Порт 1..65535"
-  },
-  "Connect to the proxy over TLS (HTTPS proxy). Fine TLS settings — SNI, ALPN — can be adjusted later in the source editor.": {
-    "value": "Подключаться к прокси по TLS (HTTPS-прокси). Тонкие настройки TLS — SNI, ALPN — можно поправить позже в редакторе источника."
-  },
   "Source": {
     "value": "Источник"
   },
@@ -3364,24 +3352,6 @@
   },
   "Keepalive": {
     "value": "Keepalive"
-  },
-  "base64 private key": {
-    "value": "приватный ключ base64"
-  },
-  "base64 peer public key": {
-    "value": "публичный ключ пира base64"
-  },
-  "Private key required": {
-    "value": "Укажите приватный ключ"
-  },
-  "Peer public key required": {
-    "value": "Укажите публичный ключ пира"
-  },
-  "Address required": {
-    "value": "Укажите адрес"
-  },
-  "Keys are base64, as in a wg-quick .conf. MTU above 1380 breaks AmneziaWG endpoints — for those the parser clamps it down. A whole .conf can be pasted on the Source tab instead.": {
-    "value": "Ключи в base64, как в .conf для wg-quick. MTU выше 1380 ломает узлы AmneziaWG — для них парсер сам понижает значение. Целый .conf можно вставить на вкладке Source."
   },
   "Tailscale": {
     "value": "Tailscale"
@@ -5729,12 +5699,6 @@
   "Only if it differs from the server host": {
     "value": "Только если отличается от хоста сервера"
   },
-  "OpenConnect form is unavailable": {
-    "value": "Форма OpenConnect недоступна"
-  },
-  "OpenConnect": {
-    "value": "OpenConnect"
-  },
   "Pinned fingerprint": {
     "value": "Закреплённый отпечаток"
   },
@@ -5773,5 +5737,119 @@
   },
   "(missing)": {
     "value": "(нет в конфиге)"
+  },
+  "VLESS": {
+    "value": "VLESS"
+  },
+  "Hysteria2": {
+    "value": "Hysteria2"
+  },
+  "Trojan": {
+    "value": "Trojan"
+  },
+  "WireGuard (AWG)": {
+    "value": "WireGuard (AWG)"
+  },
+  "naive": {
+    "value": "naive"
+  },
+  "masque": {
+    "value": "masque"
+  },
+  "OpenConnect (SSL VPN)": {
+    "value": "OpenConnect (SSL VPN)"
+  },
+  "UUID": {
+    "value": "UUID"
+  },
+  "Flow": {
+    "value": "Flow"
+  },
+  "Encryption": {
+    "value": "Шифрование"
+  },
+  "Packet encoding": {
+    "value": "Кодирование пакетов"
+  },
+  "Version": {
+    "value": "Версия"
+  },
+  "Profile": {
+    "value": "Профиль"
+  },
+  "Public key": {
+    "value": "Публичный ключ"
+  },
+  "IPv4 address": {
+    "value": "Адрес IPv4"
+  },
+  "IPv6 address": {
+    "value": "Адрес IPv6"
+  },
+  "URI": {
+    "value": "URI"
+  },
+  "HTTP version": {
+    "value": "Версия HTTP"
+  },
+  "QUIC": {
+    "value": "QUIC"
+  },
+  "Congestion control": {
+    "value": "Управление перегрузкой"
+  },
+  "Port hopping": {
+    "value": "Смена портов"
+  },
+  "Ranges, comma-separated: 20000:30000": {
+    "value": "Диапазоны через запятую: 20000:30000"
+  },
+  "Hop interval": {
+    "value": "Интервал смены порта"
+  },
+  "e.g. 30s": {
+    "value": "например, 30s"
+  },
+  "Upload, Mbps": {
+    "value": "Отдача, Мбит/с"
+  },
+  "Download, Mbps": {
+    "value": "Загрузка, Мбит/с"
+  },
+  "Obfuscation": {
+    "value": "Обфускация"
+  },
+  "Off": {
+    "value": "Выкл."
+  },
+  "Obfuscation password": {
+    "value": "Пароль обфускации"
+  },
+  "UDP over TCP": {
+    "value": "UDP поверх TCP"
+  },
+  "Allow insecure ⚠": {
+    "value": "Не проверять сертификат ⚠"
+  },
+  "ALPN": {
+    "value": "ALPN"
+  },
+  "REALITY": {
+    "value": "REALITY"
+  },
+  "Host header": {
+    "value": "Заголовок Host"
+  },
+  "Seconds": {
+    "value": "Секунды"
+  },
+  "AmneziaWG": {
+    "value": "AmneziaWG"
+  },
+  "Default (%s)": {
+    "value": "По умолчанию (%s)"
+  },
+  "The form for this server type is unavailable": {
+    "value": "Форма для этого типа сервера недоступна"
   }
 }

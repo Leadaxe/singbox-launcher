@@ -764,8 +764,8 @@ func showSourceEditWindowAt(
 	var refreshAWGAfterRegen func()
 	// refreshTailscaleAfterRegen — то же для блока роли Tailscale (SPEC 157).
 	var refreshTailscaleAfterRegen func()
-	// refreshOpenConnectAfterRegen — то же для формы OpenConnect (SPEC 167).
-	var refreshOpenConnectAfterRegen func()
+	// refreshNodeFormAfterRegen — то же для формы схемы узла (SPEC 167/168).
+	var refreshNodeFormAfterRegen func()
 	var originBtnRow *fyne.Container
 	var setOriginMode func(editing bool)
 
@@ -1192,8 +1192,8 @@ func showSourceEditWindowAt(
 		if refreshTailscaleAfterRegen != nil {
 			refreshTailscaleAfterRegen()
 		}
-		if refreshOpenConnectAfterRegen != nil {
-			refreshOpenConnectAfterRegen()
+		if refreshNodeFormAfterRegen != nil {
+			refreshNodeFormAfterRegen()
 		}
 		originTextAtOpen = raw
 		setOriginMode(false)
@@ -1280,12 +1280,19 @@ func showSourceEditWindowAt(
 	})
 	tsUI.load(&scratch.Node)
 	refreshTailscaleAfterRegen = func() { tsUI.load(&scratch.Node) }
-	// Форма узла OpenConnect (source_openconnect_edit.go, SPEC 167): те же
-	// поля, что у конструктора Add server. После записи — то же, что у блока
-	// Tailscale: JSON, поле Origin узла-тела, пометка изменений.
-	var ocUI *openConnectBlock
-	if openConnectEditableNode(&scratch.Node) {
-		ocUI = newOpenConnectBlock(func() *wizardmodels.Node { return &scratch.Node }, win, func() {
+	// Форма схемы узла (source_form_edit.go, SPEC 167/168): те же поля, что
+	// у конструктора Add server. Блок строится на схему тела при первом
+	// показе — Regen может сменить схему узла. После записи — то же, что у
+	// блока Tailscale: JSON, поле Origin узла-тела, пометка изменений.
+	formUIs := map[string]*nodeFormBlock{}
+	formUIFor := func(scheme string) *nodeFormBlock {
+		if scheme == "" {
+			return nil
+		}
+		if ui, ok := formUIs[scheme]; ok {
+			return ui
+		}
+		ui := newNodeFormBlock(scheme, func() *wizardmodels.Node { return &scratch.Node }, func() {
 			if refreshJSONAfterOriginRegen != nil {
 				refreshJSONAfterOriginRegen()
 			}
@@ -1299,8 +1306,13 @@ func showSourceEditWindowAt(
 			}
 			presenter.MarkAsChanged()
 		})
-		ocUI.load(&scratch.Node)
-		refreshOpenConnectAfterRegen = func() { ocUI.load(&scratch.Node) }
+		formUIs[scheme] = ui
+		return ui
+	}
+	refreshNodeFormAfterRegen = func() {
+		if ui := formUIFor(nodeFormEditableNode(&scratch.Node)); ui != nil {
+			ui.load(&scratch.Node)
+		}
 	}
 	clearAWGAfterDetour = func() {
 		if !awgEditableNode(&scratch.Node) {
@@ -1389,10 +1401,10 @@ func showSourceEditWindowAt(
 				tsUI.load(&scratch.Node)
 				settingsContent.Add(tsUI.content)
 			}
-			if ocUI != nil && openConnectEditableNode(&scratch.Node) {
+			if formUI := formUIFor(nodeFormEditableNode(&scratch.Node)); formUI != nil {
 				settingsContent.Add(widget.NewSeparator())
-				ocUI.load(&scratch.Node)
-				settingsContent.Add(ocUI.content)
+				formUI.load(&scratch.Node)
+				settingsContent.Add(formUI.content)
 			}
 			if awgVisibleFor() {
 				settingsContent.Add(widget.NewSeparator())
