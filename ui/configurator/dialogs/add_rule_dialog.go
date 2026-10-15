@@ -662,9 +662,10 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	}
 
 	// DNS-зеркало правила (SPEC 172, TEMPLATE_LANG §6.11): сервер для
-	// DNS-запросов под правило и глушилка AAAA. Блок общий для вкладок Form и
-	// JSON — это поле записи, а не тела sing-box. Доступность считает тот же
-	// матчер, что у сборки: опция недоступна ровно там, где зеркала не будет.
+	// DNS-запросов под правило и глушилка AAAA. Своя вкладка DNS: это поле
+	// записи, а не тела sing-box, и к Form/JSON оно не относится. Доступность
+	// считает тот же матчер, что у сборки, по телу последней из вкладок
+	// Form/JSON: опция недоступна ровно там, где зеркала не будет.
 	// Сохранённые значения при недоступности не сбрасываются.
 	var initialDNS *corestate.RuleDNS
 	if isEdit {
@@ -753,8 +754,6 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		updateDNSAvailability()
 	}
 	dnsBlock := container.NewVBox(
-		widget.NewSeparator(),
-		widget.NewLabel(locale.T("DNS:")),
 		dnsServerCheck,
 		dnsServerSelect,
 		forceIPv4Check,
@@ -1107,7 +1106,8 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	rawScroll := components.WrapInScrollWithGutter(rawTabEntry.Object())
 	formTabItem := container.NewTabItem(locale.T("Form"), formScroll)
 	rawTabItem := container.NewTabItem(locale.T("JSON"), rawScroll)
-	tabs := container.NewAppTabs(formTabItem, rawTabItem)
+	dnsTabItem := container.NewTabItem(locale.T("DNS"), components.WrapInScrollWithGutter(dnsBlock))
+	tabs := container.NewAppTabs(formTabItem, rawTabItem, dnsTabItem)
 	syncFormToRaw := func() {
 		ob := outboundSelect.Selected
 		if ob == "" {
@@ -1196,13 +1196,22 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			}
 		}
 	}
+	// activeTabIsRaw — последняя из вкладок Form/JSON: вкладка DNS её не
+	// меняет, тело правила (для Save и доступности DNS) берётся оттуда.
+	// Синхронизация — только при переходе между Form и JSON, в том числе
+	// через DNS: Form → DNS → Form не перечитывает форму из устаревшего JSON.
 	tabs.OnSelected = func(t *container.TabItem) {
-		if t == rawTabItem {
-			activeTabIsRaw = true
-			syncFormToRaw()
-		} else {
-			activeTabIsRaw = false
-			syncRawToForm()
+		switch t {
+		case rawTabItem:
+			if !activeTabIsRaw {
+				activeTabIsRaw = true
+				syncFormToRaw()
+			}
+		case formTabItem:
+			if activeTabIsRaw {
+				activeTabIsRaw = false
+				syncRawToForm()
+			}
 		}
 		updateDNSAvailability()
 	}
@@ -1210,7 +1219,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	// Border: сверху Rule name, снизу кнопки, центр — вкладки на всю оставшуюся высоту
 	mainContent := container.NewBorder(
 		ruleNameBlock,
-		container.NewVBox(dnsBlock, buttonsContainer),
+		buttonsContainer,
 		nil,
 		nil,
 		tabs,
@@ -1230,7 +1239,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		content := container.NewVBox(msg, openBtn)
 		dialog.ShowCustom(locale.T("SRS rule-sets"), locale.T("Close"), content, dialogWindow)
 	}
-	dialogWindow.Resize(fyne.NewSize(500, 760))
+	dialogWindow.Resize(fyne.NewSize(500, 640))
 	fynewidget.CenterOnScreen(dialogWindow)
 	dialogWindow.SetContent(mainContent)
 
