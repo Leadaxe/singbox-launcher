@@ -368,6 +368,7 @@ func resolveSrsRouteRule(
 		SrsID:   id,
 		Active:  true,
 		Enabled: rule.Enabled,
+		Num:     ruleNum(rule),
 	})
 }
 
