@@ -979,7 +979,15 @@ jobs:
             - Fix macOS quarantine attributes and permissions
             - Launch the application automatically
 
-            **Option 2: Manual Installation**
+            **Option 2: Homebrew** (stable releases only, available a few hours after the release)
+
+            ```bash
+            brew install --cask leadaxe/tap/singbox-launcher
+            ```
+
+            Update later with `brew upgrade --cask singbox-launcher`. The Cask installs the latest stable release, not a pre-release.
+
+            **Option 3: Manual Installation**
 
             1. Download: `singbox-launcher-${{ needs.meta.outputs.version }}-macos.zip`
             2. Extract the ZIP file
