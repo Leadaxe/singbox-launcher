@@ -5750,11 +5750,8 @@
   "WireGuard (AWG)": {
     "value": "WireGuard (AWG)"
   },
-  "naive": {
-    "value": "naive"
-  },
-  "masque": {
-    "value": "masque"
+  "Naive": {
+    "value": "Naive"
   },
   "OpenConnect (SSL VPN)": {
     "value": "OpenConnect (SSL VPN)"

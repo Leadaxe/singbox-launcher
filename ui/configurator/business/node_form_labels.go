@@ -414,9 +414,9 @@ var NodeFormSchemes = []NodeFormScheme{
 	{Scheme: "wireguard",
 		Label: "WireGuard (AWG)"}, // l10n-key
 	{Scheme: "naive",
-		Label: "naive"}, // l10n-key
+		Label: "Naive"}, // l10n-key
 	{Scheme: "masque",
-		Label: "masque"}, // l10n-key
+		Label: "MASQUE"}, // l10n-key
 	{Scheme: "socks",
 		Label: "SOCKS5"}, // l10n-key
 	{Scheme: "http",
