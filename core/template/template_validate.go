@@ -338,11 +338,10 @@ func validateDefaultValueIf(dv VarDefaultValue, earlierVars map[string]TemplateV
 		return validateIfBody(body, earlierVars, ctx+".default_value.#if")
 	}
 	for k, node := range dv.PerPlatform {
-		tree, ok := node.(map[string]interface{})
-		if !ok {
+		if _, isStr := node.(string); isStr {
 			continue // обычное строковое значение
 		}
-		if err := walkValidateIf(tree, earlierVars, fmt.Sprintf("%s.default_value[%s]", ctx, k)); err != nil {
+		if err := walkValidateIf(node, earlierVars, fmt.Sprintf("%s.default_value[%s]", ctx, k)); err != nil {
 			return err
 		}
 	}
@@ -366,9 +365,9 @@ func walkValidateIf(v interface{}, varByName map[string]TemplateVar, context str
 		//
 		// isIfKey, а не литерал "#if": рантайм принимает суффиксные формы
 		// (`#if1`, `#if tun-only`, SPEC 103 D-045), и валидатор обязан
-		// покрывать всё, что рантайм исполнит. Иначе условие без and/or
-		// проходит загрузку молча, а легаси-обходчик трактует его как TRUE —
-		// ветка вливается в конфиг безусловно (ровно ловушка D-058).
+		// покрывать всё, что рантайм исполнит. Иначе невалидное условие
+		// проходит загрузку молча, а обходчик на нём fail-closed выбрасывает
+		// ветку — молчаливая противоположность задуманному (ловушка D-058).
 		for k, raw := range x {
 			if !strings.HasPrefix(k, "#") {
 				continue
@@ -401,8 +400,9 @@ func walkValidateIf(v interface{}, varByName map[string]TemplateVar, context str
 	case []interface{}:
 		for i, elem := range x {
 			subCtx := fmt.Sprintf("%s[%d]", context, i)
-			// Array-element mode: single-key {"#if…": {...}} wrapper —
-			// суффиксные ключи принимаются как и в рантайме (ifKeysSorted).
+			// Array-element mode: single-key {"#if…": …} wrapper с телом любой
+			// формы §4.1 — суффиксные ключи принимаются как и в рантайме
+			// (ifKeysSorted).
 			if m, ok := elem.(map[string]interface{}); ok && len(m) == 1 {
 				if ks := ifKeysSorted(m); len(ks) == 1 {
 					if err := validateIfBody(m[ks[0]], varByName, subCtx+"."+ks[0]); err != nil {
@@ -481,35 +481,49 @@ func validateCondObjLists(body map[string]interface{}, varByName map[string]Temp
 	return nil
 }
 
-// validateIfBody проверяет тело #if construct (and/or/value/else).
+// validateIfBody проверяет тело #if любой формы (§4.1, D-133): форму
+// разбирает parseIfForm — то же место, что у рантайма, — а здесь сверх
+// структуры проверяются условие и обе ветки.
+//
+//   - короткая `[cond, V, E?]`: cond — полное условие языка без обёртки
+//     (validateCondNode, как у #enable; сахар-список отвергнут уже
+//     parseIfForm), ветки — рекурсивно;
+//   - длинная: and/or — непустой список валидных предикатов
+//     (validateCondObjLists; канон "#and"/"#or" и легаси без "#" — SPEC 107),
+//     value обязателен, null в value/else — ошибка.
 func validateIfBody(raw interface{}, varByName map[string]TemplateVar, ctx string) error {
-	body, ok := raw.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("%s: body must be an object", ctx)
+	f, msg := parseIfForm(raw)
+	if msg != "" {
+		return fmt.Errorf("%s: %s", ctx, msg)
 	}
-	// SPEC 107: ключевые слова читаются в обеих формах — канонической
-	// "#and"/"#or" и легаси без "#". Валидатор обязан знать обе, иначе
-	// канонический шаблон не загрузится вовсе.
+	if f.Short {
+		if err := validateCondNode(f.Cond, varByName, ctx+"[0]"); err != nil {
+			return err
+		}
+		if err := walkValidateIf(f.Value, varByName, ctx+"[1]"); err != nil {
+			return err
+		}
+		if f.HasElse {
+			return walkValidateIf(f.Else, varByName, ctx+"[2]")
+		}
+		return nil
+	}
+	body := raw.(map[string]interface{})
 	if err := validateCondObjLists(body, varByName, ctx); err != nil {
 		return err
 	}
-	// value required, not nil.
-	valField, hasVal := condKey(body, "value")
-	if !hasVal {
-		return fmt.Errorf("%s: missing required \"value\" field", ctx)
-	}
-	if valField == nil {
+	if f.Value == nil {
 		return fmt.Errorf("%s.value: must not be null", ctx)
 	}
 	// Recurse into value (it may itself contain nested #if).
-	if err := walkValidateIf(valField, varByName, ctx+".value"); err != nil {
+	if err := walkValidateIf(f.Value, varByName, ctx+".value"); err != nil {
 		return err
 	}
-	if elseField, hasElse := condKey(body, "else"); hasElse {
-		if elseField == nil {
+	if f.HasElse {
+		if f.Else == nil {
 			return fmt.Errorf("%s.else: must not be null", ctx)
 		}
-		if err := walkValidateIf(elseField, varByName, ctx+".else"); err != nil {
+		if err := walkValidateIf(f.Else, varByName, ctx+".else"); err != nil {
 			return err
 		}
 	}

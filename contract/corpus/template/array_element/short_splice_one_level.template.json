@@ -1,0 +1,5 @@
+{
+  "_comment": "D-133 (§4.4, D-123): ветка-массив короткой формы вливается на один уровень; пара к literal_array_branch_splices",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"servers": ["1.1.1.1", {"#if": ["@flag", ["2606:4700::1111", "2606:4700::1001"]]}]}
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "D-133 (§4.1): E = null — ошибка загрузки (как #else: null); форма невалидна целиком — рантайм не берёт и V",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"out": {"type": "x", "#if": ["@flag", {"hit": true}, null]}}
+}

@@ -138,35 +138,51 @@ Control-construct: включает/исключает поля или элем�
 
 ### 4.1 Форма
 
+Две формы, различаются типом JSON-значения тела `#if` (контракт 1.1.125):
+
 ```json
-"#if": {
-  "and":   [ <predicate>, ... ],   // ИЛИ "or" — ровно один из and/or
-  "value": <любой JSON>,           // подставляется при истинном условии
-  "else":  <любой JSON>            // опционально — при ложном
+"#if": [ <cond>, <value> ]            // короткая форма — канон
+"#if": [ <cond>, <value>, <else> ]
+
+"#if": {                              // длинная форма — читается бессрочно
+  "#and":   [ <predicate>, ... ],     // ИЛИ "#or" — ровно один из них
+  "#value": <любой JSON>,             // подставляется при истинном условии
+  "#else":  <любой JSON>              // опционально — при ложном
 }
 ```
 
-- Ровно один из `and` / `or` (оба или ни одного → ошибка). `value` обязателен.
-- `and` — все predicate'ы `true`; `or` — хотя бы один.
+- Короткая форма: позиционно — элемент 0 — условие, 1 — значение, 2 — иначе.
+  `cond` — голое условие (`"@flag"`, `{"@x": "#notEmpty"}`, `{"#not": …}`,
+  `{"#and": [...]}`, `{"#or": [...]}`); список `["@a", "@b"]` в позиции
+  условия — ошибка загрузки. 2 или 3 элемента; `null` в ветках — ошибка.
+- Длинная форма: ровно один из `#and` / `#or` (оба или ни одного → ошибка).
+  `#value` обязателен. Ключи без `#` (`and`, `or`, `value`, `else`) —
+  легаси-написание, читается бессрочно.
+- `and` — все predicate'ы `true`; `or` — хотя бы один. Иное тело (строка,
+  число, объект без `#value`) — ошибка загрузки.
 
 ### 4.2 Два режима размещения
 
 **Map-spread** — `#if` как ключ внутри объекта; при истине поля ветви **мерджатся в родителя**:
 ```json
 {"type": "tun", "tag": "tun-in",
- "#if": {"and": [{"@runtime.platform": {"#in": ["windows", "linux"]}}], "value": {
+ "#if": [{"@runtime.platform": {"#in": ["windows", "linux"]}}, {
    "interface_name": "singbox-tun0"
- }}}
+ }]}
 ```
 
-**Array-element** — одиночный `{"#if": {...}}` как элемент массива; элемент
-**заменяется** ветвью или **выбрасывается** (если ложь и нет `else`):
+**Array-element** — одиночный `{"#if": …}` как элемент массива; элемент
+**заменяется** ветвью или **выбрасывается** (если ложь и нет ветки иначе):
 ```json
 "inbound": [
-  {"#if": {"and": ["@tun"],             "value": "tun-in"}},
-  {"#if": {"and": ["@enable_proxy_in"], "value": "proxy-in"}}
+  {"#if": ["@tun",             "tun-in"]},
+  {"#if": ["@enable_proxy_in", "proxy-in"]}
 ]
 ```
+
+Фрагмент пресета целиком (`rules[]`, `rule_set[]`, `dns_servers[]`) — тот же
+случай элемента массива: `{"#if": ["@geoip_enabled", {"tag": "geoip-ru", …}]}`.
+`#enable` остаётся гейтом объявлений переменных и `params[]`.
 
 ### 4.3 Predicate'ы (элементы `and` / `or`)
 
@@ -358,33 +374,33 @@ diff'ы. Кастомные шаблоны могут игнорировать �
 
 ### 8.3 `#if`
 
-| `value` / `else` | Оформление |
+| ветки | Оформление |
 |---|---|
-| скаляр | одна строка: `"#if": {"and": [...], "value": "…", "else": "…"}` |
-| объект | условие + `"value": {` на строке 1; тело ниже; закрытие `}}` (с `else` → `}, "else": {` … `}}}`) |
+| скаляр | одна строка: `"#if": [cond, "…", "…"]` |
+| объект | `"#if": [cond, {` на строке 1; тело ниже; закрытие `}]` (с веткой иначе → `}, {` … `}]`) |
 
 Скалярная ветвь (array-element) — одна строка:
 ```jsonc
 "inbound": [
-  {"#if": {"and": ["@tun"], "value": "tun-in"}},
-  {"#if": {"and": ["@enable_proxy_in"], "value": "proxy-in"}}
+  {"#if": ["@tun", "tun-in"]},
+  {"#if": ["@enable_proxy_in", "proxy-in"]}
 ]
 ```
 
-Объектная ветвь (map-spread) — условие + `"value": {` на первой строке, тело ниже:
+Объектная ветвь (map-spread) — условие + `{` на первой строке, тело ниже:
 ```jsonc
-"#if": {"and": [{"@runtime.platform": {"#in": ["windows", "linux"]}}], "value": {
+"#if": [{"@runtime.platform": {"#in": ["windows", "linux"]}}, {
   "interface_name": "singbox-tun0"
-}}
+}]
 ```
 
-С `else` (обе ветви — объекты); массивы значений пишутся **как есть**, без выравнивания колонками:
+С веткой иначе (обе ветви — объекты); массивы значений пишутся **как есть**, без выравнивания по колонкам:
 ```jsonc
-{"#if": {"and": [{"@runtime.platform": "windows"}], "value": {
+{"#if": [{"@runtime.platform": "windows"}, {
   "process_name": ["Telegram.exe", "Discord.exe", "WhatsApp.exe", "Signal.exe", "Zoom.exe"]
-}, "else": {
+}, {
   "process_name": ["Telegram", "Discord", "WhatsApp", "Signal", "zoom.us"]
-}}}
+}]}
 ```
 
 ### 8.4 Presets
@@ -431,8 +447,10 @@ diff'ы. Кастомные шаблоны могут игнорировать �
 | `bare var-ref "x" in if[]; use "@x"` | элемент `if`/`if_or` без `@`. |
 | `vars[].name "runtime" is reserved` | имя занято namespace'ом `@runtime.*`. |
 | `@x is not declared in vars` | `@var` в `config`/`params` без объявления в `vars`. |
-| `#if has both "and" and "or"` | в теле `#if` оба — допустим один. |
-| `#if missing "value"` | в теле `#if` нет обязательного `value`. |
+| `#if has both "and" and "or"` | в теле длинной формы `#if` оба — допустим один. |
+| `#if missing "value"` | в теле длинной формы `#if` нет обязательного `value`. |
+| `#if: array form needs 2 or 3 elements` | короткая форма `#if` с одним элементом или с четырьмя и более. |
+| `#if: condition (element 0) must not be an array` | список в позиции условия — нужен `{"#and": [...]}`. |
 | `predicate key "x" must start with @ or be #not` | неверная форма predicate'а (var — это ключ `@var`, предикат — значение). |
 | `unknown runtime global @runtime.x` | поле namespace вне `platform`/`arch`. |
 

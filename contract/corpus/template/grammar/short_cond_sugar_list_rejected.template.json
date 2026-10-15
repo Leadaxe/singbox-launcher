@@ -1,0 +1,5 @@
+{
+  "_comment": "D-133 (§4.1): сахар-список в позиции cond запрещён (cond никогда не массив) — ошибка загрузки; рантайм — ветка не выбрана + warning",
+  "vars": [{"name": "a", "type": "bool", "default_value": "false"}, {"name": "b", "type": "bool", "default_value": "false"}],
+  "config": {"out": {"type": "x", "#if": [["@a", "@b"], {"hit": true}]}}
+}

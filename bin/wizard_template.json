@@ -98,15 +98,13 @@
    "tooltip": "sing-box tun interface_name — explicit TUN device name. Always set: the core default cannot be relied on, and on a router the name is needed for firewall rules and routes. Defaults to lxd-tun0 for a remote target (lxd daemon).",
    "default_value": {
     "default": {
-     "#if": {
-      "#and": [
-       {
-        "@runtime.target": "remote"
-       }
-      ],
-      "#value": "lxd-tun0",
-      "#else": "singbox-tun0"
-     }
+     "#if": [
+      {
+       "@runtime.target": "remote"
+      },
+      "lxd-tun0",
+      "singbox-tun0"
+     ]
     }
    },
    "#enable": [
@@ -149,22 +147,18 @@
    "#on_change": {
     "#set": {
      "@dns_strategy": {
-      "#if": {
-       "#and": [
-        "@ipv6_enabled"
-       ],
-       "#value": "prefer_ipv4",
-       "#else": "ipv4_only"
-      }
+      "#if": [
+       "@ipv6_enabled",
+       "prefer_ipv4",
+       "ipv4_only"
+      ]
      },
      "@resolve_strategy": {
-      "#if": {
-       "#and": [
-        "@ipv6_enabled"
-       ],
-       "#value": "prefer_ipv4",
-       "#else": "ipv4_only"
-      }
+      "#if": [
+       "@ipv6_enabled",
+       "prefer_ipv4",
+       "ipv4_only"
+      ]
      }
     }
    }
@@ -222,18 +216,20 @@
    "tooltip": "sing-box inbound tun stack (system, gvisor, mixed). Mixed uses system TCP stack and gvisor UDP stack.",
    "default_value": {
     "default": {
-     "#if": {
-      "#and": [
-       {
-        "@runtime.platform": "windows"
-       },
-       {
-        "@runtime.arch": "386"
-       }
-      ],
-      "#value": "gvisor",
-      "#else": "system"
-     }
+     "#if": [
+      {
+       "#and": [
+        {
+         "@runtime.platform": "windows"
+        },
+        {
+         "@runtime.arch": "386"
+        }
+       ]
+      },
+      "gvisor",
+      "system"
+     ]
     }
    },
    "options": [
@@ -267,13 +263,11 @@
    "tooltip": "Listen address for mixed inbound proxy-in. Defaults to 0.0.0.0 only in gateway mode (clients from the LAN); otherwise 127.0.0.1 — on a server an unauthenticated proxy on 0.0.0.0 would be wide open.",
    "default_value": {
     "default": {
-     "#if": {
-      "#and": [
-       "@gateway_mode"
-      ],
-      "#value": "0.0.0.0",
-      "#else": "127.0.0.1"
-     }
+     "#if": [
+      "@gateway_mode",
+      "0.0.0.0",
+      "127.0.0.1"
+     ]
     }
    },
    "#enable": [
@@ -299,18 +293,20 @@
    "tooltip": "Set the system proxy through mixed inbound proxy-in. Local target only: a remote machine has no user session whose proxy settings we could change.",
    "default_value": {
     "default": {
-     "#if": {
-      "#and": [
-       {
-        "@runtime.target": "local"
-       },
-       {
-        "@runtime.platform": "darwin"
-       }
-      ],
-      "#value": "true",
-      "#else": "false"
-     }
+     "#if": [
+      {
+       "#and": [
+        {
+         "@runtime.target": "local"
+        },
+        {
+         "@runtime.platform": "darwin"
+        }
+       ]
+      },
+      "true",
+      "false"
+     ]
     }
    },
    "#enable": [
@@ -680,44 +676,38 @@
    "rules": [],
    "final": "@route_final",
    "auto_detect_interface": "@auto_detect_interface",
-   "#if": {
-    "#and": [
-     {
-      "#not": "@gateway_mode"
-     }
-    ],
-    "#value": {
+   "#if": [
+    {
+     "#not": "@gateway_mode"
+    },
+    {
      "find_process": true
     },
-    "#else": {
+    {
      "find_process": false
     }
-   },
-   "#if_bind_interface": {
-    "#and": [
-     {
-      "@bind_interface": "#notEmpty"
-     }
-    ],
-    "#value": {
+   ],
+   "#if_bind_interface": [
+    {
+     "@bind_interface": "#notEmpty"
+    },
+    {
      "default_interface": "@bind_interface"
     }
-   }
+   ]
   },
   "experimental": {
-   "#if": {
-    "#and": [
-     {
-      "@runtime.target": "local"
-     }
-    ],
-    "#value": {
+   "#if": [
+    {
+     "@runtime.target": "local"
+    },
+    {
      "clash_api": {
       "external_controller": "@clash_api",
       "secret": "@clash_secret"
      }
     }
-   },
+   ],
    "cache_file": {
     "enabled": true,
     "path": "cache.db",
@@ -1065,11 +1055,9 @@
    ],
    "rules": [
     {
-     "#if": {
-      "#and": [
-       "@sniff_enabled"
-      ],
-      "#value": {
+     "#if": [
+      "@sniff_enabled",
+      {
        "network": [
         "tcp",
         "udp"
@@ -1077,25 +1065,21 @@
        "action": "sniff",
        "timeout": "@sniff_timeout"
       }
-     }
+     ]
     },
     {
-     "#if": {
-      "#and": [
-       "@hijack_dns_enabled"
-      ],
-      "#value": {
+     "#if": [
+      "@hijack_dns_enabled",
+      {
        "protocol": "dns",
        "action": "hijack-dns"
       }
-     }
+     ]
     },
     {
-     "#if": {
-      "#and": [
-       "@resolve_enabled"
-      ],
-      "#value": {
+     "#if": [
+      "@resolve_enabled",
+      {
        "network": [
         "tcp",
         "udp"
@@ -1103,7 +1087,7 @@
        "action": "resolve",
        "strategy": "@resolve_strategy"
       }
-     }
+     ]
     }
    ]
   },
@@ -1135,11 +1119,9 @@
    ],
    "rules": [
     {
-     "#if": {
-      "#and": [
-       "@dns_enable"
-      ],
-      "#value": {
+     "#if": [
+      "@dns_enable",
+      {
        "preferred_by": [
         "@node"
        ],
@@ -1148,7 +1130,7 @@
         "#tpl": "@{node}-dns"
        }
       }
-     }
+     ]
     },
     {
      "preferred_by": [
@@ -1159,11 +1141,9 @@
    ],
    "dns_servers": [
     {
-     "#if": {
-      "#and": [
-       "@dns_enable"
-      ],
-      "#value": {
+     "#if": [
+      "@dns_enable",
+      {
        "type": "tailscale",
        "tag": {
         "#tpl": "@{node}-dns"
@@ -1171,26 +1151,24 @@
        "endpoint": "@node",
        "description": "MagicDNS of the tailnet"
       }
-     }
+     ]
     }
    ],
    "dns_rules": [
     {
-     "#if": {
-      "#and": [
-       "@dns_enable"
-      ],
-      "#value": {
+     "#if": [
+      "@dns_enable",
+      {
        "preferred_by": [
         {
-          "#tpl": "@{node}-dns"
+         "#tpl": "@{node}-dns"
         }
        ],
        "server": {
         "#tpl": "@{node}-dns"
        }
       }
-     }
+     ]
     }
    ],
    "num": 945
@@ -1778,13 +1756,11 @@
        ]
       },
       {
-       "#if": {
-        "#and": [
-         {
-          "@runtime.platform": "windows"
-         }
-        ],
-        "#value": {
+       "#if": [
+        {
+         "@runtime.platform": "windows"
+        },
+        {
          "process_name": [
           "Telegram.exe",
           "Discord.exe",
@@ -1793,7 +1769,7 @@
           "Zoom.exe"
          ]
         },
-        "#else": {
+        {
          "process_name": [
           "Telegram",
           "Discord",
@@ -1802,7 +1778,7 @@
           "zoom.us"
          ]
         }
-       }
+       ]
       }
      ]
     }
@@ -2001,15 +1977,13 @@
     {
      "source_port_range": [
       {
-       "#if": {
-        "#and": [
-         {
-          "@runtime.platform": "linux"
-         }
-        ],
-        "#value": "32768:46883",
-        "#else": "49152:57343"
-       }
+       "#if": [
+        {
+         "@runtime.platform": "linux"
+        },
+        "32768:46883",
+        "49152:57343"
+       ]
       }
      ],
      "outbound": "@out_a"
@@ -2017,15 +1991,13 @@
     {
      "source_port_range": [
       {
-       "#if": {
-        "#and": [
-         {
-          "@runtime.platform": "linux"
-         }
-        ],
-        "#value": "46884:60999",
-        "#else": "57344:65535"
-       }
+       "#if": [
+        {
+         "@runtime.platform": "linux"
+        },
+        "46884:60999",
+        "57344:65535"
+       ]
       }
      ],
      "outbound": "@out_b"
@@ -2049,33 +2021,29 @@
      "address": [
       "@tun_address",
       {
-       "#if": {
-        "#and": [
-         "@ipv6_enabled"
-        ],
-        "#value": "@tun_address6"
-       }
+       "#if": [
+        "@ipv6_enabled",
+        "@tun_address6"
+       ]
       }
      ],
      "mtu": "@tun_mtu",
      "strict_route": "@strict_route",
      "stack": "@tun_stack",
      "include_interface": "@gateway_include_interface",
-     "#if": {
-      "#and": [
-       {
-        "@runtime.platform": {
-         "#in": [
-          "windows",
-          "linux"
-         ]
-        }
+     "#if": [
+      {
+       "@runtime.platform": {
+        "#in": [
+         "windows",
+         "linux"
+        ]
        }
-      ],
-      "#value": {
+      },
+      {
        "interface_name": "@tun_interface_name"
       }
-     }
+     ]
     }
    ]
   },
@@ -2091,14 +2059,16 @@
      "listen": "@proxy_in_listen",
      "listen_port": "@proxy_in_listen_port",
      "set_system_proxy": "@proxy_in_set_system_proxy",
-     "#if": {
-      "#and": [
-       "@proxy_in_auth_enabled",
-       {
-        "@proxy_in_username": "#notEmpty"
-       }
-      ],
-      "#value": {
+     "#if": [
+      {
+       "#and": [
+        "@proxy_in_auth_enabled",
+        {
+         "@proxy_in_username": "#notEmpty"
+        }
+       ]
+      },
+      {
        "users": [
         {
          "username": "@proxy_in_username",
@@ -2106,7 +2076,7 @@
         }
        ]
       }
-     }
+     ]
     }
    ],
    "mode": "prepend"

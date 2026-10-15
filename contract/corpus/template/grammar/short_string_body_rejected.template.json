@@ -1,0 +1,5 @@
+{
+  "_comment": "D-133 (§4.1): значение #if не массив и не объект с #value (строка) — ошибка загрузки; рантайм — ветка не выбрана + warning",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"out": {"type": "x", "#if": "@flag"}}
+}

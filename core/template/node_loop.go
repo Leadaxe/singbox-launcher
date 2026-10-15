@@ -81,13 +81,24 @@ type NodeLoopDo struct {
 	invalid string
 }
 
-// NodeDoOp — одна операция `#do`: `"@<Var>": {"#append": <Append>}`.
+// NodeDoOp — одна операция `#do`: `"@<Var>": {"#append": <Append>}` либо,
+// под условием (TEMPLATE_LANG §6.7.1, контракт 1.1.125),
+// `"@<Var>": {"#if…": [<Cond>, {"#append": <Value>}, {"#append": <Else>}]}`
+// — тело `#if` любой формы §4.1.
 type NodeDoOp struct {
 	// Var — имя переменной пресета без "@".
 	Var string
-	// Append — правая часть `#append`: строка (`"@node…"`, `"@var"` или
-	// литерал) либо `{"#tpl": "…"}`.
+	// Append — правая часть `#append` безусловной операции: строка
+	// (`"@node…"`, `"@var"` или литерал) либо `{"#tpl": "…"}`. У условной
+	// операции — nil (см. If).
 	Append interface{}
+	// If — операция условная: Cond — условие (как написано, без обёртки у
+	// короткой формы), Value/Else — правые части `#append` веток.
+	If      bool
+	Cond    interface{}
+	Value   interface{}
+	Else    interface{}
+	HasElse bool
 }
 
 // NodeFinalOps — глаголы `#final` одной переменной. Порядок применения
@@ -231,7 +242,9 @@ func allowedLoopKeys(key string) string {
 	return nodeFilterKey + ", " + nodeDoKey + ", " + nodeFinalKey
 }
 
-// parseNodeDo — `#do`: объект `"@имя" → {"#append": значение}`.
+// parseNodeDo — `#do`: объект `"@имя" → операция`. Операция — объект ровно с
+// одним глаголом либо объект с единственным ключом `#if…`, обе ветки
+// которого — объекты ровно с одним глаголом (§6.7.1).
 func parseNodeDo(v interface{}) ([]NodeDoOp, string) {
 	m, ok := v.(map[string]interface{})
 	if !ok || len(m) == 0 {
@@ -244,20 +257,70 @@ func parseNodeDo(v interface{}) ([]NodeDoOp, string) {
 			return nil, msg
 		}
 		op, ok := m[k].(map[string]interface{})
-		if !ok || len(op) != 1 {
+		if !ok {
 			return nil, fmt.Sprintf("%s: %s.%s must be an object with exactly one verb", NodeLoopDoKey, nodeDoKey, k)
 		}
-		for verb, rhs := range op {
-			if verb != nodeDoAppend {
-				return nil, fmt.Sprintf("%s: %s.%s: unknown verb %q (allowed: %s)", NodeLoopDoKey, nodeDoKey, k, verb, nodeDoAppend)
-			}
-			if msg := validAppendValue(rhs); msg != "" {
-				return nil, fmt.Sprintf("%s: %s.%s.%s: %s", NodeLoopDoKey, nodeDoKey, k, nodeDoAppend, msg)
+		ctx := nodeDoKey + "." + k
+		ifKeys := ifKeysSorted(op)
+		if len(ifKeys) == 0 {
+			rhs, msg := parseDoVerb(op, ctx)
+			if msg != "" {
+				return nil, msg
 			}
 			ops = append(ops, NodeDoOp{Var: name, Append: rhs})
+			continue
 		}
+		// Условная операция: ровно один ключ #if… и ничего рядом — условие
+		// без веток (плоский гейт) и ветки без условия не смешиваются.
+		if len(ifKeys) > 1 {
+			return nil, fmt.Sprintf("%s: %s: an operation allows exactly one %q key, got %d", NodeLoopDoKey, ctx, "#if…", len(ifKeys))
+		}
+		if len(op) != 1 {
+			return nil, fmt.Sprintf("%s: %s: no other keys are allowed next to %s (put the verb inside its branches)", NodeLoopDoKey, ctx, ifKeys[0])
+		}
+		f, msg := parseIfForm(op[ifKeys[0]])
+		if msg != "" {
+			return nil, fmt.Sprintf("%s: %s.%s: %s", NodeLoopDoKey, ctx, ifKeys[0], msg)
+		}
+		cond := NodeDoOp{Var: name, If: true, Cond: f.Cond, HasElse: f.HasElse}
+		if cond.Value, msg = parseDoBranch(f.Value, ctx+"."+ifKeys[0]+" value"); msg != "" {
+			return nil, msg
+		}
+		if f.HasElse {
+			if cond.Else, msg = parseDoBranch(f.Else, ctx+"."+ifKeys[0]+" else"); msg != "" {
+				return nil, msg
+			}
+		}
+		ops = append(ops, cond)
 	}
 	return ops, ""
+}
+
+// parseDoBranch — ветка условной операции: объект ровно с одним глаголом.
+func parseDoBranch(v interface{}, ctx string) (interface{}, string) {
+	op, ok := v.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Sprintf("%s: %s must be an object with exactly one verb", NodeLoopDoKey, ctx)
+	}
+	return parseDoVerb(op, ctx)
+}
+
+// parseDoVerb — объект операции без условия: ровно один глагол из закрытого
+// списка (`#append`) с валидной правой частью.
+func parseDoVerb(op map[string]interface{}, ctx string) (interface{}, string) {
+	if len(op) != 1 {
+		return nil, fmt.Sprintf("%s: %s must be an object with exactly one verb", NodeLoopDoKey, ctx)
+	}
+	for verb, rhs := range op {
+		if verb != nodeDoAppend {
+			return nil, fmt.Sprintf("%s: %s: unknown verb %q (allowed: %s)", NodeLoopDoKey, ctx, verb, nodeDoAppend)
+		}
+		if msg := validAppendValue(rhs); msg != "" {
+			return nil, fmt.Sprintf("%s: %s.%s: %s", NodeLoopDoKey, ctx, nodeDoAppend, msg)
+		}
+		return rhs, ""
+	}
+	return nil, ""
 }
 
 // validAppendValue — правая часть `#append`: строка или `{"#tpl": строка}`.
@@ -532,33 +595,72 @@ func EvalNodeFilter(filter interface{}, scope *NodeScope, varsMap map[string]str
 	return evaluateCond(filter, types, resolved, target.Normalized())
 }
 
+// NodeDoValue — значение операции `#do` на одном узле (TEMPLATE_LANG §6.7.1):
+// "" — узел пропускается молча. Безусловная операция — NodeAppendValue;
+// условная прогоняется тем же обходчиком как map-spread `#if` объекта
+// операции с пространством узла: `{"#if": [cond, {"#append": V}, {"#append":
+// E}]}` даёт `{"#append": …}` (операция выполняется) либо `{}` (условие
+// ложно без else — узел пропущен без предупреждения). Правые части веток
+// читаются как у безусловной операции (ссылка — вставкой `#tpl`).
+func NodeDoValue(op NodeDoOp, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec, node *NodeScope) (string, []TemplateWarning) {
+	if !op.If {
+		return NodeAppendValue(op.Append, vars, resolved, target, node)
+	}
+	// Глагол ветки в обёртке — под нейтральным ключом: ключ на "#" обходчик
+	// выбросил бы как неизвестную директиву, а глагол уже разобран на загрузке.
+	const verb = "append"
+	body := []interface{}{op.Cond, map[string]interface{}{verb: appendAsTpl(op.Value)}}
+	if op.HasElse {
+		body = append(body, map[string]interface{}{verb: appendAsTpl(op.Else)})
+	}
+	wrapped, warns := substituteWrapped(map[string]interface{}{"#if": body}, vars, resolved, target, node)
+	result, _ := wrapped.(map[string]interface{})
+	rhs, present := result[verb]
+	if !present {
+		return "", warns
+	}
+	return appendScalarText(rhs), warns
+}
+
 // NodeAppendValue — значение правой части `#append` на одном узле (TEMPLATE_LANG
 // §6.7.1): подстановка тем же обходчиком, что у тела, по правилу вставки
 // `#tpl` (§4.8) — скаляр (строка, число, bool) идёт текстом. Пустое значение
 // (нет пути, null, "", Dropped), объект и список — "": узел пропускается
 // молча.
 func NodeAppendValue(rhs interface{}, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec, node *NodeScope) (string, []TemplateWarning) {
-	// Ссылка "@имя" вычисляется как вставка `@{имя}`: необъявленное имя
-	// снимает значение (с template_var_undeclared), а не оставляет
-	// плейсхолдер элементом списка.
+	out, warns := substituteWrapped(appendAsTpl(rhs), vars, resolved, target, node)
+	return appendScalarText(out), warns
+}
+
+// appendAsTpl — ссылка "@имя" в правой части `#append` вычисляется как
+// вставка `@{имя}`: необъявленное имя снимает значение (с
+// template_var_undeclared), а не оставляет плейсхолдер элементом списка.
+func appendAsTpl(rhs interface{}) interface{} {
 	if ref, ok := rhs.(string); ok && strings.HasPrefix(ref, "@") && len(ref) > 1 {
-		rhs = map[string]interface{}{tplKey: "@{" + ref[1:] + "}"}
+		return map[string]interface{}{tplKey: "@{" + ref[1:] + "}"}
 	}
-	data, err := json.Marshal(map[string]interface{}{"v": rhs})
+	return rhs
+}
+
+// substituteWrapped прогоняет одно значение через канонический обход с
+// пространством узла и возвращает результат (nil — значение снято или
+// подстановка не удалась).
+func substituteWrapped(v interface{}, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec, node *NodeScope) (interface{}, []TemplateWarning) {
+	data, err := json.Marshal(map[string]interface{}{"v": v})
 	if err != nil {
-		return "", nil
+		return nil, nil
 	}
 	out, warns, _, err := SubstituteVarsInJSONCanonScoped(data, vars, resolved, target, node)
 	if err != nil {
-		return "", warns
+		return nil, warns
 	}
 	dec := json.NewDecoder(bytes.NewReader(out))
 	dec.UseNumber()
 	var wrapped map[string]interface{}
 	if err := dec.Decode(&wrapped); err != nil {
-		return "", warns
+		return nil, warns
 	}
-	return appendScalarText(wrapped["v"]), warns
+	return wrapped["v"], warns
 }
 
 // appendScalarText — текст скаляра для text_list; "" — не скаляр или пусто.

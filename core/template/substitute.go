@@ -233,8 +233,8 @@ func ifKeysSorted(m map[string]interface{}) []string {
 	return keys
 }
 
-// EvalIfScalar вычисляет одиночную конструкцию `{"#if": {...}}` до строкового
-// скаляра ВНЕ дерева конфига (паритет с mobile evalIfScalar, if_engine.dart:
+// EvalIfScalar вычисляет одиночную конструкцию `{"#if": …}` (тело любой формы
+// §4.1: `["@a", "x", "y"]` или объект) до строкового скаляра ВНЕ дерева конфига (паритет с mobile evalIfScalar, if_engine.dart:
 // 224-229; SPEC 103, §4.5/§4.6 TEMPLATE_LANG.md). Используется исключительно
 // механизмом on_change.set (on_change.go) — переиспользует тот же движок
 // предикатов и тот же канонический обходчик (selectIfBranchCanon,
@@ -261,16 +261,7 @@ func EvalIfScalar(node json.RawMessage, vars []TemplateVar, stateVars map[string
 		debuglog.WarnLog("EvalIfScalar: the node must be an object with exactly one key \"#if…\"")
 		return "", false
 	}
-	rawBody, ok := outer[ifKeys[0]]
-	if !ok {
-		debuglog.WarnLog("EvalIfScalar: the node does not contain \"#if…\"")
-		return "", false
-	}
-	body, ok := rawBody.(map[string]interface{})
-	if !ok {
-		debuglog.WarnLog("EvalIfScalar: #if body is not an object")
-		return "", false
-	}
+	rawBody := outer[ifKeys[0]]
 
 	varTypes := make(map[string]string, len(vars))
 	declared := make(map[string]bool, len(vars))
@@ -293,7 +284,7 @@ func EvalIfScalar(node json.RawMessage, vars []TemplateVar, stateVars map[string
 			debuglog.WarnLog("EvalIfScalar: %s %v", w.Code, w.Params)
 		}
 	}()
-	branch, take := selectIfBranchCanon(ifKeys[0], body, ctx)
+	branch, take := selectIfBranchCanon(ifKeys[0], rawBody, ctx)
 	if !take {
 		return "", false
 	}
@@ -319,43 +310,17 @@ func EvalIfScalar(node json.RawMessage, vars []TemplateVar, stateVars map[string
 	return s, true
 }
 
-// selectIfBranch evaluates the condition and picks the value/else branch.
-// Returns (branch, take=true) when a branch was selected; (nil, false) when
-// condition is false and no else is present.
-func selectIfBranch(body map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec) (interface{}, bool) {
-	cond := evaluateIfCondition(body, varTypes, resolved, target)
-	if cond {
-		val, hasVal := condKey(body, "value")
-		if !hasVal {
-			debuglog.WarnLog("substitute: #if missing required \"value\" field — skipping")
-			return nil, false
-		}
-		return val, true
+// selectIfBranch разбирает тело #if любой формы (§4.1) и выбирает ветку вне
+// канонического обхода (default_value переменной): (branch, true) — ветка
+// выбрана; (nil, false) — условие ложно без else либо форма невалидна
+// (невалидная форма до рантайма не доходит — её отвергает валидатор загрузки).
+func selectIfBranch(rawBody interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec) (interface{}, bool) {
+	f, msg := parseIfForm(rawBody)
+	if msg != "" {
+		debuglog.WarnLog("substitute: #if %s — skipping", msg)
+		return nil, false
 	}
-	if elseVal, hasElse := condKey(body, "else"); hasElse {
-		return elseVal, true
-	}
-	return nil, false
-}
-
-// evaluateIfCondition вычисляет тело #if (ключи and/or) — тонкая обёртка над
-// evaluateCond: тело #if есть cond-obj плюс value/else (TEMPLATE_LANG §5.2).
-//
-// Defensive: оба ключа сразу → false + warn; ни одного → true + warn (тело #if
-// без условия исторически трактовалось как безусловное; строгую форму держит
-// канонический обходчик и load-валидатор).
-func evaluateIfCondition(body map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec) bool {
-	_, hasAnd := condKey(body, "and")
-	_, hasOr := condKey(body, "or")
-	if hasAnd && hasOr {
-		debuglog.WarnLog("substitute: #if has both \"and\" and \"or\" — treating as false")
-		return false
-	}
-	if !hasAnd && !hasOr {
-		debuglog.WarnLog("substitute: #if has neither \"and\" nor \"or\" — treating as true")
-		return true
-	}
-	return evaluateCondObj(body, varTypes, resolved, target)
+	return evalIfForm(f, varTypes, resolved, target)
 }
 
 // evaluateCond вычисляет ЛЮБОЕ условие языка (TEMPLATE_LANG §5.1, SPEC 107):

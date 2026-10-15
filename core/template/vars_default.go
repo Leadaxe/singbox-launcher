@@ -15,8 +15,9 @@ import (
 type VarDefaultValue struct {
 	Scalar string
 	// PerPlatform: нормализованные ключи (нижний регистр) → значение. Значение —
-	// строка ИЛИ #if-дерево (map[string]interface{}), вычисляемое в ForTarget по
-	// @runtime.* globals (SPEC 067). Единственный спец-ключ "#if" = top-level выражение.
+	// строка ИЛИ #if-дерево (объект {"#if": …}), вычисляемое в ForTarget по
+	// @runtime.* globals (SPEC 067). Единственный спец-ключ "#if" = top-level
+	// выражение; его значение — тело #if любой формы §4.1 (массив или объект).
 	PerPlatform map[string]interface{}
 }
 
@@ -62,8 +63,9 @@ func (v VarDefaultValue) ForTargetIn(target TargetSpec, varTypes map[string]stri
 
 // resolveDefaultNode разрешает узел default_value:
 //   - строка → trimmed;
-//   - объект {"#if": {...}} → вычисляет #if (@runtime.* globals + user-vars,
-//     объявленные раньше — см. ForTargetIn) и рекурсивно разрешает ветку;
+//   - объект {"#if": …} (тело любой формы §4.1) → вычисляет #if (@runtime.*
+//     globals + user-vars, объявленные раньше — см. ForTargetIn) и рекурсивно
+//     разрешает ветку;
 //   - число/bool → строковое представление; иначе → "".
 func resolveDefaultNode(node interface{}, target TargetSpec, varTypes map[string]string, resolved map[string]ResolvedVar) string {
 	switch x := node.(type) {
@@ -74,11 +76,7 @@ func resolveDefaultNode(node interface{}, target TargetSpec, varTypes map[string
 		if !ok {
 			return ""
 		}
-		bodyMap, ok := body.(map[string]interface{})
-		if !ok {
-			return ""
-		}
-		branch, take := selectIfBranch(bodyMap, varTypes, resolved, target)
+		branch, take := selectIfBranch(body, varTypes, resolved, target)
 		if !take {
 			return ""
 		}
@@ -135,11 +133,13 @@ func (v *VarDefaultValue) UnmarshalJSON(data []byte) error {
 			if sk == "" {
 				continue
 			}
-			// #if-дерево сохраняем как есть (вычислится в ForTarget по @runtime.*);
-			// скаляры приводим к строке.
-			if tree, ok := val.(map[string]interface{}); ok {
-				v.PerPlatform[sk] = tree
-			} else {
+			// #if-дерево сохраняем как есть (вычислится в ForTarget по @runtime.*):
+			// объект — per-platform ветка или длинная форма, массив — короткая
+			// форма под ключом "#if" (§4.1); скаляры приводим к строке.
+			switch val.(type) {
+			case map[string]interface{}, []interface{}:
+				v.PerPlatform[sk] = val
+			default:
 				v.PerPlatform[sk] = defaultValueStringify(val)
 			}
 		}

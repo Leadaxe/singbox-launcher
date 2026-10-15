@@ -462,6 +462,42 @@ caught by that same mechanism.
 
 ### 9.2 Shape
 
+The body of `#if…` is read **by its JSON type** (SPEC 169, contract 1.1.125,
+D-133):
+
+| Body | Form | Status |
+|---|---|---|
+| array `[cond, V]` / `[cond, V, E]` | short ternary | **canonical** |
+| object with `#value` (legacy `value`) | long `{"#and"\|"#or": […], "#value": V, "#else": E}` | read indefinitely |
+| anything else (string, number, bool, null, object without `#value`) | — | load error; tolerant runtime: no branch + warning |
+
+**Short form (canonical)** — the stock template is written this way:
+
+```jsonc
+"#if": [<cond>, <V>]          // if cond then V
+"#if": [<cond>, <V>, <E>]     // if cond then V else E
+```
+
+* Reading is positional: element 0 is the condition, 1 the value, 2 the else.
+  `["@a", "@b"]` means "if `a`, then the string `"@b"`" (substituted), not
+  "`a` and `b`".
+* `cond` is a condition **without a wrapper** — the same grammar as `#filter`
+  and the body of `#enable`: `"@flag"`, `{"@x": "#notEmpty"}`, `{"#not": …}`,
+  `{"#and": [...]}`, `{"#or": [...]}`, nested to any depth. A single predicate
+  is **not** wrapped into `#and`.
+* `cond` is never an array: the list shorthand `["@a", "@b"]` allowed in
+  `#enable` is a load error here (`[["@a", "@b"], V]`) — otherwise the
+  condition could not be told apart from the value. Several predicates go
+  into `{"#and": [...]}` / `{"#or": [...]}`.
+* 2 or 3 elements; `null` as V or E is a load error.
+
+```jsonc
+"#if": ["@ipv6_enabled", {"strategy": "prefer_ipv4"}, {"strategy": "ipv4_only"}]
+"#if": [{"#or": ["@tun", {"#and": [{"@runtime.platform": "windows"}, "@enable_proxy_in"]}]}, { "...": "..." }]
+```
+
+**Long form (read indefinitely):**
+
 ```jsonc
 "#if": {
   "#or":    [<cond>, <cond>, ...],   // mutually exclusive with "#and"
@@ -471,31 +507,20 @@ caught by that same mechanism.
 }
 ```
 
-An element of `#and`/`#or` is a predicate **or a nested cond-obj**; depth is
-unlimited (SPEC 107 lifted the earlier restriction):
+* Exactly one of `#and` / `#or` with a non-empty list. Neither or both → load
+  error. `#value` is required; `null` in `#value`/`#else` is a load error.
+* The same keys spelled without `#` (`and`, `or`, `value`, `else`) are
+  supported indefinitely.
 
-```jsonc
-"#if": {
-  "#or": [
-    "@tun",
-    {"#and": [{"@runtime.platform": "windows"}, "@enable_proxy_in"]}
-  ],
-  "#value": { "...": "..." }
-}
-```
-
-`#not` negates any condition, including `#and`/`#or`, not just a predicate.
-
-Load-time validation:
-* Exactly one of `#and` / `#or`. Neither or both → load error.
-* `#value` is required (not nil).
-* `#else` is optional; null in `#value`/`#else` is an error in map-spread
-  (nothing to merge), legal in array-element position.
-* An invalid shape evaluates to **false** plus a warning at runtime
-  (fail-closed): a typo in a condition must never silently enable a node.
-
-The same keys spelled without `#` (`and`, `or`, `value`, `else`) are supported
-indefinitely.
+Both forms: an element of `#and`/`#or` is a predicate **or a nested cond-obj**,
+depth unlimited; `#not` negates any condition, including `#and`/`#or`. Forms
+may be mixed (a short `#if` inside a long branch and vice versa); the
+semantics are identical and the shared corpus checks it with paired cases.
+An invalid shape evaluates to **no branch** plus a warning at runtime
+(fail-closed): a typo in a condition must never silently enable a node.
+`#enable` (§9.2.1) stays the only gate form: a flat `{"#if": cond, …}` gate was
+rejected (D-133); a conditional preset fragment is written as an array
+element `{"#if": [cond, fragment]}`.
 
 ### 9.2.1 `#enable` — node existence gate
 
@@ -535,19 +560,20 @@ Difference from `#if`: `#if` substitutes one of the `#value`/`#else` branches;
   "listen": "@proxy_in_listen",
   "listen_port": "@proxy_in_listen_port",
   "set_system_proxy": "@proxy_in_set_system_proxy",
-  "#if": {"and": ["@proxy_in_auth_enabled"], "value": {
+  "#if": ["@proxy_in_auth_enabled", {
     "users": [{
       "username": "@proxy_in_username",
       "password": "@proxy_in_password"
     }]
-  }}
+  }]
 }
 ```
 
-* condition true → `value` must be an object; its fields are merged into the
-  parent object (on a collision the branch wins). The `#if` key is removed.
-* condition false: with an `else`, its fields are merged; without one the key is
-  simply removed (the parent is unchanged).
+* condition true → the value branch must be an object; its fields are merged
+  into the parent object (on a collision the branch wins). The `#if` key is
+  removed.
+* condition false: with an else branch, its fields are merged; without one the
+  key is simply removed (the parent is unchanged).
 
 **Array-element mode** — `#if` as the sole key of an object that is an array
 element:
@@ -555,18 +581,22 @@ element:
 ```jsonc
 "options": [
   "always",
-  {"#if": {"and": ["@dark_mode"], "value": "extra-dark", "else": "extra-light"}},
+  {"#if": ["@dark_mode", "extra-dark", "extra-light"]},
   "regular"
 ]
 ```
 
-* condition true → the element is replaced with `value` (of any type).
-* condition false: with an `else` it is replaced with `else`; without one the
+* condition true → the element is replaced with the value branch (of any type).
+* condition false: with an else branch it is replaced with it; without one the
   element is **removed** from the array (length −1).
+* a branch that is an array is spliced into the parent array one level deep
+  (`[[…]]` keeps a nested array).
 
 Detection rule: an element is an `#if` wrapper when it is an object with EXACTLY
-one key, `#if`. Otherwise it is an ordinary element (possibly containing a
-spread-mode `#if` inside).
+one key, `#if…` — its body may be an array (short form) or an object (long
+form). Otherwise it is an ordinary element (possibly containing a spread-mode
+`#if` inside). The long form reads the same in both modes:
+`{"#if": {"and": ["@dark_mode"], "value": "extra-dark", "else": "extra-light"}}`.
 
 ### 9.4 Expression language — predicates
 
@@ -711,13 +741,11 @@ depend on resolution order.
 Two forms:
 
 ```jsonc
-// top-level: the whole default_value is an #if
-"default_value": {"#if": {"and": [{"@runtime.platform": "windows"}, {"@runtime.arch": "386"}],
-                          "value": "gvisor", "else": "system"}}
+// top-level: the whole default_value is an #if (short form; the long form reads the same)
+"default_value": {"#if": [{"#and": [{"@runtime.platform": "windows"}, {"@runtime.arch": "386"}]}, "gvisor", "system"]}
 
 // per-platform: a platform key's value is an #if tree (mixable with plain strings)
-"default_value": {"default": {"#if": {"and": [{"@runtime.platform": "windows"}, {"@runtime.arch": "386"}],
-                                      "value": "gvisor", "else": "system"}}}
+"default_value": {"default": {"#if": [{"@runtime.target": "remote"}, "lxd-tun0", "singbox-tun0"]}}
 ```
 
 The chosen branch is resolved recursively down to a scalar (string / number /
@@ -782,17 +810,17 @@ An example of urltest `options`:
 
 ### 10.4 `#if` construct
 
-| `value` / `else` | Formatting |
+| `V` / `E` | Formatting |
 |------------------|------------|
-| **A scalar** | `"#if": {"and": [...], "value": "…"}` — a single line |
-| **An object** | the condition + `"value": {` on line 1; the object body below; closing with `}}` |
+| **A scalar** | `"#if": [cond, "…", "…"]` — a single line |
+| **An object** | `"#if": [cond, {` on line 1; the object body below; closing with `}]` |
 
-A map-spread example:
+A map-spread example (short form, the canon since SPEC 169):
 
 ```jsonc
-"#if": {"and": [{"@runtime.platform": {"#in": ["windows", "linux"]}}], "value": {
+"#if": [{"@runtime.platform": {"#in": ["windows", "linux"]}}, {
   "interface_name": "singbox-tun0"
-}}
+}]
 ```
 
 ### 10.5 Presets

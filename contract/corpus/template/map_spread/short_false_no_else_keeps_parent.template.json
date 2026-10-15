@@ -1,0 +1,5 @@
+{
+  "_comment": "D-133 (§4.3): короткая форма без E при false — родитель как есть, ключ #if снят; пара к false_without_else_no_merge",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"tun": {"type": "tun", "#if": ["@flag", {"mtu": 1400}]}}
+}

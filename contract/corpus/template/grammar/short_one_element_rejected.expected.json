@@ -1,0 +1,1 @@
+{"load": "reject", "config": {"out": {"type": "x"}}, "warnings": ["template_unknown_directive"]}

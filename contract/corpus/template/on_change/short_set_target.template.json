@@ -1,0 +1,6 @@
+{
+  "_comment": "D-133 (§4.5, §4.7): цель on_change.set в короткой форме — массив строк читается позиционно; пара к basic_set_on_change",
+  "_changed": "flag",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false", "on_change": {"set": {"@strategy": {"#if": ["@flag", "prefer_ipv4", "ipv4_only"]}}}}, {"name": "strategy", "type": "enum", "default_value": "ipv4_only", "options": ["ipv4_only", "prefer_ipv4"]}],
+  "config": {"strategy": "@strategy"}
+}
