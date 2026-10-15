@@ -66,20 +66,16 @@ func xrayUnsupportedProtocol(err error) (string, bool) {
 	return "", false
 }
 
-// xrayNodeFromOutbound конвертирует любой поддерживаемый Xray outbound в узел.
+// xrayNodeFromOutboundInDoc конвертирует любой поддерживаемый Xray outbound в
+// узел. Соседи по документу (массив outbounds) нужны записям реестра с `deref`:
+// они читают соседа, на которого ссылается элемент (служебный freedom с
+// fragment по dialerProxy).
 //
 // Возвращает (nil, nil) для служебных протоколов — это не ошибка, они просто
 // не узлы. Для неподдерживаемых возвращает *xrayUnsupportedProtocolError, чтобы
 // вызывающий записал протокол в список пропущенных, а не потерял его молча (C1);
 // для поддерживаемого протокола с битым содержимым — обычную ошибку с настоящей
 // причиной.
-func xrayNodeFromOutbound(ob map[string]interface{}, label string) (*configtypes.ParsedNode, error) {
-	return xrayNodeFromOutboundInDoc(ob, nil, label)
-}
-
-// xrayNodeFromOutboundInDoc — то же для элемента с соседями по документу
-// (массив outbounds): записи реестра с `deref` читают соседа, на которого
-// ссылается элемент (служебный freedom с fragment по dialerProxy).
 func xrayNodeFromOutboundInDoc(ob map[string]interface{}, doc []interface{}, label string) (*configtypes.ParsedNode, error) {
 	// Разбор ведёт ДВИЖОК реестра (xray_element_engine.go): какая схема
 	// забирает элемент, решает `detect` секции по полю `protocol`.

@@ -16,13 +16,10 @@ jobs:
         include:
           - os: ubuntu-24.04
             cgo: '1'
-            go: 1.25
           - os: macos-latest
             cgo: '1'
-            go: 1.25
           - os: windows-latest
             cgo: '1'
-            go: 1.25
     name: golangci-lint on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     steps:
@@ -44,7 +41,9 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: ${{ matrix.go }}
+          # Same toolchain go.mod requires (as in ci.yml): a hardcoded version
+          # falls behind go.mod and fails `go mod tidy` on every PR.
+          go-version-file: go.mod
           cache: false
 
       - name: Verify Go Version
@@ -58,11 +57,11 @@ jobs:
         run: go mod tidy
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           # Pinned: `latest` silently turns new linter releases into red CI on
           # untouched code. Bump deliberately.
-          version: v2.12.2
+          version: v2.14.0
           args: --verbose
           skip-cache: true
         env:

@@ -30,17 +30,6 @@ func parseInlineBody(t *testing.T, body string, skip []map[string]string) *Parse
 	return pb
 }
 
-// entryNodes — узлы принятых записей в порядке тела (группы включительно).
-func entryNodes(pb *ParsedBody) []*configtypes.ParsedNode {
-	out := make([]*configtypes.ParsedNode, 0, len(pb.Entries))
-	for _, e := range pb.Entries {
-		if e != nil && e.Node != nil {
-			out = append(out, e.Node)
-		}
-	}
-	return out
-}
-
 // rawTagsOf — сырые (уникализированные) теги принятых записей.
 func rawTagsOf(pb *ParsedBody) []string {
 	out := make([]string, 0, len(pb.Entries))

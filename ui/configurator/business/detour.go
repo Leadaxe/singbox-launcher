@@ -120,9 +120,22 @@ func detourOptionsFor(model *wizardmodels.WizardModel, holder detourHolder, none
 		own[holder.replaceTag+"-auto"] = struct{}{}
 	}
 
+	// Системные outbound'ы шаблона (`direct-out`, `block-out`) хопом цепочки
+	// не бывают: через блокировку дозвона нет, через direct — это «без
+	// detour». Список выше их не знает: имя блокировки задаёт шаблон.
+	system := map[string]struct{}{}
+	if model != nil && model.TemplateData != nil {
+		for _, tag := range model.TemplateData.SystemOutboundTags() {
+			system[tag] = struct{}{}
+		}
+	}
+
 	for _, tag := range GetAvailableOutbounds(model) {
 		if _, isBuiltin := detourExcludedBuiltins[tag]; isBuiltin {
 			continue // service/auto outbound — never a chain hop
+		}
+		if _, isSystem := system[tag]; isSystem {
+			continue
 		}
 		if _, isOwn := own[tag]; isOwn {
 			continue

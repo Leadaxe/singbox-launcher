@@ -217,7 +217,7 @@ var errDaemonCopyMissing = errors.New("root-owned copy is missing")
 // не симлинк, владелец ownerUID, без записи для группы и остальных;
 // каталоги — каталоги, file — обычный файл. Отсутствующее звено под целым
 // родителем — errDaemonCopyMissing.
-func checkRootOwnedChain(file, root string, ownerUID uint32) error {
+func checkRootOwnedChain(file, root string, ownerUID uint32) error { //nolint:unused // вызывается только из daemon_service_state_darwin.go
 	file = filepath.Clean(file)
 	root = filepath.Clean(root)
 	rel, err := filepath.Rel(root, filepath.Dir(file))

@@ -1,8 +1,10 @@
 package business
 
 import (
+	"encoding/json"
 	"testing"
 
+	"singbox-launcher/core/config/configtypes"
 	wizardtemplate "singbox-launcher/core/template"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -13,14 +15,25 @@ import (
 // — единственная цель «заблокировать соединение», которую объявляет шаблон, —
 // в него не попадала: пользователь не мог выбрать блокировку, хотя outbound
 // в конфиг уезжал и работал.
+//
+// Заготовки Направлений (`parser_config.outbounds[]`) целью становятся только
+// записью состояния: удалённая пользователем `vpn ①` в конфиг не идёт, и
+// выбор её в detour или правиле указал бы в пустоту.
 func TestAvailableOutboundsIncludeTemplateGlobals(t *testing.T) {
 	model := &wizardmodels.WizardModel{
 		TemplateData: &wizardtemplate.TemplateData{
 			ParserConfig: `{"ParserConfig":{"outbounds":[
-				{"type":"direct","tag":"direct-out"},
-				{"type":"block","tag":"block-out"}
+				{"type":"selector","tag":"proxy-out"},
+				{"type":"selector","tag":"vpn ①"}
 			]}}`,
+			Config: map[string]json.RawMessage{
+				"outbounds": json.RawMessage(`[
+					{"type":"direct","tag":"direct-out"},
+					{"type":"block","tag":"block-out"}
+				]`),
+			},
 		},
+		GlobalOutbounds: []configtypes.Direction{{Tag: "proxy-out", Type: "selector"}},
 	}
 
 	got := GetAvailableOutbounds(model)
@@ -30,6 +43,12 @@ func TestAvailableOutboundsIncludeTemplateGlobals(t *testing.T) {
 	}
 	if !containsTag(got, "direct-out") {
 		t.Errorf("в списке нет direct-out: %v", got)
+	}
+	if !containsTag(got, "proxy-out") {
+		t.Errorf("пропало живое Направление proxy-out: %v", got)
+	}
+	if containsTag(got, "vpn ①") {
+		t.Errorf("удалённая заготовка шаблона vpn ① предложена целью: %v", got)
 	}
 	// Псевдо-цели остаются: они не outbound'ы, а действия правила.
 	for _, want := range []string{"reject", "drop"} {
