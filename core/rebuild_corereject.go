@@ -350,7 +350,9 @@ func (l *coreRejectLoop) run(first buildRound, rebuild func() (buildRound, error
 		removeCandidate(candidate)
 		out.CheckErr = checkErr
 
-		rej, named2, stop := l.nextVictim(checkErr, round.NodeLinks, named)
+		// Отправленный конфиг — тот, что видело ядро: для формы
+		// декодирования индекс сопоставляется по его массивам (§9.3).
+		rej, named2, stop := l.nextVictim(checkErr, round.NodeLinks, corereject.SentConfigFromJSON(checkJSON), named)
 		if stop {
 			return out, nil
 		}
@@ -413,13 +415,14 @@ type coreRejectVictim struct {
 func (l *coreRejectLoop) nextVictim(
 	checkErr error,
 	links map[string]state.NodeLink,
+	sent corereject.SentConfig,
 	named map[string]bool,
 ) (coreRejectVictim, map[string]bool, bool) {
 	tags := make(map[string]bool, len(links))
 	for tag := range links {
 		tags[tag] = true
 	}
-	rej, ok := corereject.Parse(checkErr.Error(), corereject.TagsOf(tags))
+	rej, ok := corereject.ParseSent(checkErr.Error(), corereject.TagsOf(tags), sent)
 	if !ok {
 		debuglog.InfoLog("corereject: the core error does not name a node of ours — no automatic action")
 		return coreRejectVictim{}, named, true
@@ -661,7 +664,13 @@ func (ac *AppController) disableNodeNamedByCoreAt(errText, statePath string) boo
 	for tag := range links {
 		tags[tag] = true
 	}
-	rej, ok := corereject.Parse(errText, corereject.TagsOf(tags))
+	// Отправленный демону конфиг — config.json: подготовка для демона
+	// массивы outbounds/endpoints не трогает, порядок совпадает (§9.3).
+	var sent corereject.SentConfig
+	if data, rerr := os.ReadFile(ac.FileService.ConfigPath); rerr == nil {
+		sent = corereject.SentConfigFromJSON(data)
+	}
+	rej, ok := corereject.ParseSent(errText, corereject.TagsOf(tags), sent)
 	if !ok {
 		return false
 	}
