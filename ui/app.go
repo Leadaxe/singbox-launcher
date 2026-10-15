@@ -72,6 +72,9 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// SPEC 100 §3.8: Debug API получает Connect/Disconnect вкладки Remote.
 	// Строго после создания вкладок — подписчики OnOverrideChanged уже стоят.
 	RegisterOverrideAPIHooks(controller)
+	// SPEC 167 §2.5: диалоги второго фактора и SSO openconnect по стриму
+	// статуса (только daemon-режим и удалённые машины).
+	installOpenConnectAuthHooks(controller)
 	coreTabItem := container.NewTabItem(locale.T("Local"), localContent)
 	app.clashAPITab = container.NewTabItem(locale.T("🌐 Remote"), remoteContent)
 	// Settings — обычная вкладка со своим содержимым.

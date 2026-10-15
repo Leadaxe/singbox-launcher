@@ -57,6 +57,10 @@ type LxdRemoteTransport struct {
 	// ts — ленивый стрим статуса tailnet и его кеш (SPEC 130,
 	// lxd_remote_tailscale.go).
 	ts tailscaleStream
+
+	// oc — ленивый стрим статуса openconnect и его кеш (SPEC 167,
+	// lxd_remote_openconnect.go).
+	oc openConnectStream
 }
 
 // clientsInfoTTL — срок жизни кэша справочника устройств.
@@ -138,6 +142,7 @@ func (t *LxdRemoteTransport) Close() error {
 	// иначе runResilientStream переподпишется на закрытом conn и будет
 	// молотить ошибки до отмены контекста.
 	t.stopTailscaleStream()
+	t.stopOpenConnectStream()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.conn == nil {

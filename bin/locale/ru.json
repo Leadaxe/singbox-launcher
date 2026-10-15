@@ -5629,5 +5629,50 @@
   },
   "%dd ago": {
     "value": "%d дн назад"
+  },
+  "Each wrong code triggers a new sign-in on the gateway": {
+    "value": "Каждый неверный код запускает на шлюзе новый вход"
+  },
+  "If the password for %s has changed, update it in the node settings so the next sign-in does not ask again.": {
+    "value": "Если пароль для %s изменился, обновите его в настройках узла, чтобы при следующем входе его не спрашивали снова."
+  },
+  "Submit": {
+    "value": "Отправить"
+  },
+  "Request a new code": {
+    "value": "Запросить новый код"
+  },
+  "The gateway will send a new code": {
+    "value": "Шлюз пришлёт новый код"
+  },
+  "Sign in: %s": {
+    "value": "Вход: %s"
+  },
+  "Not now": {
+    "value": "Не сейчас"
+  },
+  "SSO for this gateway type is not supported yet": {
+    "value": "SSO для этого типа шлюза пока не поддерживается"
+  },
+  "Cannot listen on 127.0.0.1:%d: the port is busy or blocked. Close the program that uses it, or set lx_sso_callback_port in the node.": {
+    "value": "Не удалось открыть 127.0.0.1:%d: порт занят или запрещён. Закройте программу, которая его использует, или задайте lx_sso_callback_port в узле."
+  },
+  "Sign in in your browser": {
+    "value": "Войдите в браузере"
+  },
+  "The sign-in link is not a web address, so it is not opened automatically.": {
+    "value": "Ссылка для входа — не веб-адрес, поэтому она не открывается автоматически."
+  },
+  "Waiting for the browser to come back…": {
+    "value": "Ждём возврата из браузера…"
+  },
+  "Signing in…": {
+    "value": "Выполняется вход…"
+  },
+  "Waiting for sign-in": {
+    "value": "Ждёт входа"
+  },
+  "sign in": {
+    "value": "войти"
   }
 }

@@ -19,9 +19,9 @@
 - [ ] T12 подключение в меню Add server и Settings узла; подсказка классического режима
 
 ## Этап 4 — второй фактор и SSO
-- [ ] T13 `core/backend_daemon_openconnect.go`, `core/services/lxd_remote_openconnect.go`, `core/openconnect_status.go` — стрим, submit, cancel
-- [ ] T14 `core/openconnect_sso_callback.go` — loopback-слушатель на время диалога
-- [ ] T15 `ui/servers_openconnect_auth.go` — диалоги формы и браузера, статус узла, ru.json
+- [x] T13 `core/backend_daemon_openconnect.go`, `core/services/lxd_remote_openconnect.go`, `core/openconnect_status.go` — стрим, submit, cancel
+- [x] T14 `core/openconnect_sso_callback.go` — loopback-слушатель на время диалога
+- [x] T15 `ui/servers_openconnect_auth.go` — диалоги формы и браузера, статус узла, ru.json
 
 ## Этап 5 — доки и закрытие
 - [ ] T16 `docs/release_notes/upcoming.md`, `docs/ARCHITECTURE.md`, `IMPLEMENTATION_REPORT.md`
