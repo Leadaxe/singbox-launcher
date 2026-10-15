@@ -2,9 +2,9 @@
 
 Полный черновик следующего релиза: [docs/release_notes/upcoming.md](docs/release_notes/upcoming.md)
 
-**Черновик (следующий релиз), кратко:** пункты накапливайте в [upcoming.md](docs/release_notes/upcoming.md).
+**Черновик (следующий релиз), кратко:** защита от входящих из туннеля — пиры WireGuard/AWG, OpenVPN, OpenConnect и Tailscale больше не могут открыть соединение в вашу локальную сеть или выйти в интернет через вас: новый пресет **Tunnel ingress** (включён по умолчанию) отклоняет такие соединения, а в окне узла этих типов три переключателя — **Allow access to this device**, **Expose local network**, **Allow as gateway** — открывают ровно то, что нужно; «Skip presets» стал **Skip Tailscale presets** и показывается только у Tailscale — подробности в [upcoming.md](docs/release_notes/upcoming.md).
 
-**Draft (next release), short:** add items in [upcoming.md](docs/release_notes/upcoming.md).
+**Draft (next release), short:** protection from tunnel ingress — peers of WireGuard/AWG, OpenVPN, OpenConnect and Tailscale nodes can no longer open connections into your local network or reach the internet through you: the new **Tunnel ingress** preset (on by default) rejects them, and the node window of these types gets three switches — **Allow access to this device**, **Expose local network**, **Allow as gateway** — that open exactly what you need; "Skip presets" became **Skip Tailscale presets** and is shown for Tailscale nodes only — see [upcoming.md](docs/release_notes/upcoming.md).
 
 ---
 

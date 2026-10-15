@@ -1,0 +1,47 @@
+{
+  "rules": [
+    {
+      "inbound": [
+        "oc-work"
+      ],
+      "ip_cidr": [
+        "127.0.0.0/8",
+        "::1/128"
+      ],
+      "outbound": "direct-out"
+    },
+    {
+      "inbound": [
+        "oc-work"
+      ],
+      "ip_is_private": true,
+      "outbound": "direct-out"
+    },
+    {
+      "inbound": [
+        "ts"
+      ],
+      "outbound": "proxy-out"
+    },
+    {
+      "inbound": [
+        "manual-wg",
+        "wg-home",
+        "oc-work",
+        "ts"
+      ],
+      "action": "reject"
+    }
+  ],
+  "dns_servers": [],
+  "dns_rules": [
+    {
+      "inbound": [
+        "wg-home",
+        "oc-work"
+      ],
+      "action": "reject"
+    }
+  ],
+  "warnings": []
+}

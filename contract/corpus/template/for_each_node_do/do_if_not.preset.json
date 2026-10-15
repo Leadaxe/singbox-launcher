@@ -1,12 +1,12 @@
 {
-  "_comment": "D-133 (§6.7.1): cond — предикат #not без обёртки над полем записи узла; узел с skip_presets отпадает.",
+  "_comment": "D-133 (§6.7.1): cond — предикат #not без обёртки над полем записи узла; узел с skip_tailscale_presets отпадает.",
   "preset": {
     "for_each_node_do": {
       "#do": {
         "@list": {
           "#if": [
             {
-              "#not": "@node.skip_presets"
+              "#not": "@node.skip_tailscale_presets"
             },
             {
               "#append": "@node"
@@ -40,7 +40,7 @@
     },
     {
       "tag": "home-ts",
-      "skip_presets": true,
+      "skip_tailscale_presets": true,
       "body": {
         "type": "tailscale",
         "tag": "home-ts",

@@ -241,11 +241,19 @@ type Node struct {
 	// предлагается в выборе Направлений. В конфиг он попадает как всякий
 	// другой — иначе detour на него повис бы.
 	Service bool `json:"service,omitempty"`
-	// SkipPresets — LxBox §578, контракт 1.1.86: пресеты с for_each_node* не
-	// обслуживают этот узел (@node.skip_presets). Носитель — свой сервер в
-	// корне и член папки; у узла подписки поле не ставится и не читается.
-	// Хранится только true (omitempty): отсутствие равно false.
-	SkipPresets bool `json:"skip_presets,omitempty"`
+	// NodeRecordFlags — поля записи, видимые пресетам как @node.<поле>
+	// (контракт 1.1.126, D-134): skip_tailscale_presets (пресет `tailscale`
+	// узел не обслуживает, LxBox §578), allow_local / allow_lan /
+	// allow_gateway (что пиру клиентского туннеля разрешает пресет
+	// `tunnel-ingress`). Носитель — свой сервер в корне и член папки; у узла
+	// подписки поля не ставятся и не читаются. Хранится только true
+	// (omitempty): отсутствие равно false.
+	configtypes.NodeRecordFlags
+	// LegacySkipPresets — ключ `skip_presets` до 1.1.126. Только чтение:
+	// загрузка состояния и импорт бэкапа переносят true в
+	// SkipTailscalePresets и обнуляют поле (LiftLegacyRecordFlags), поэтому
+	// запись его никогда не пишет.
+	LegacySkipPresets bool `json:"skip_presets,omitempty"`
 	// Reason — unsupported only: почему запись не разобралась. Текст
 	// парсера (английский, как и прочие per-record деградации): он же едет
 	// в диагностику fetch, и переводить его на месте значило бы завести две
@@ -293,6 +301,17 @@ type NodeWarning struct {
 	// Applied — false: мягкое правило реестра не применено к авторскому телу
 	// (контракт 1.1.87). nil = применено; пишется только false.
 	Applied *bool `json:"applied,omitempty"`
+}
+
+// LiftLegacyRecordFlags переносит легаси-ключ `skip_presets` (до контракта
+// 1.1.126) в `skip_tailscale_presets` и обнуляет его. true — узел изменён.
+func (n *Node) LiftLegacyRecordFlags() bool {
+	if n == nil || !n.LegacySkipPresets {
+		return false
+	}
+	n.SkipTailscalePresets = true
+	n.LegacySkipPresets = false
+	return true
 }
 
 // IsUnsupported — узел является нематериализованной записью тела.

@@ -72,6 +72,12 @@ func parseV8(data []byte) (*State, error) {
 			return nil, err
 		}
 	}
+	// Контракт 1.1.126: ключ записи skip_presets → skip_tailscale_presets.
+	// Здесь, а не в Load: путь общий для Load, Parse и мигрированного v7;
+	// файл перепишется новым ключом при следующем Save.
+	if n := normalizeNodeRecordFlags(raw.Sources); n > 0 {
+		debuglog.InfoLog("state v8: %d node records: skip_presets read as skip_tailscale_presets", n)
+	}
 	// Dev-формы ссылок сборок 1.6.0 до выпуска поднимаются до нормы NodeLink
 	// здесь, при чтении (nodelink_normalize.go). Путь общий для v8 и
 	// мигрированного v7; правило идемпотентно, поэтому перезапись файла на

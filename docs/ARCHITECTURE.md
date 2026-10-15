@@ -610,8 +610,18 @@ Key properties:
   once, so the same fragment gate drops a rule whose collected list came out
   empty. The wizard uses the same functions on the nodes of the last emission
   (`business.PresetNodesForView`, `build.PresetForEachNodes` for the
-  "served nodes" label and the node's Skip presets toggle). The legacy
+  "served nodes" label and the node's Skip Tailscale presets toggle). The legacy
   `for_each` key is a load error (preset skipped).
+- **Node record fields (SPEC 170, contract 1.1.126).** `skip_tailscale_presets`,
+  `allow_local`, `allow_lan`, `allow_gateway` of an own server / folder member
+  travel as one `configtypes.NodeRecordFlags`: `state.Node` (embedded, JSON
+  keys of the record; legacy `skip_presets` lifted on load and backup import)
+  → `CanonicalNode.Record` (zero for subscription nodes) → `ParsedNode.Record`
+  → `OutboundGenerationResult.RecordFlags` → `ParsedCache.RecordFlags` /
+  `WizardModel.GeneratedRecordFlags` → `template.PresetNode.Record` →
+  `@node.<field>` (`PresetNodeRecordFields`). The stock `tunnel-ingress` preset
+  (`for_each_node_do`, num 940) reads the `allow_*` fields to reject inbound
+  connections from client tunnel endpoints by `inbound` tag.
 - **One template walker (SPEC 143).** Every `@var` / `#if` substitution goes
   through the canonical walker `template.SubstituteVarsInJSONCanonWarnings`
   (`core/template/substitute_canon.go`, rules of `contract/docs/TEMPLATE_LANG.md`):

@@ -4034,11 +4034,38 @@
   "Endpoints": {
     "value": "Endpoints"
   },
-  "Skip presets": {
-    "value": "Не применять пресеты"
+  "Skip Tailscale presets": {
+    "value": "Не применять пресеты Tailscale"
   },
-  "Presets will not add routing or DNS rules for this node.": {
-    "value": "Пресеты не добавят для этого узла правил маршрутизации и DNS."
+  "Tailscale presets will not add routing or DNS rules for this node.": {
+    "value": "Пресеты Tailscale не добавят для этого узла правил маршрутизации и DNS."
+  },
+  "Incoming connections from this tunnel": {
+    "value": "Входящие соединения из этого туннеля"
+  },
+  "Peers on the other side of this tunnel can open connections to this device. Without the switches below they are rejected.": {
+    "value": "Пиры на той стороне туннеля могут открывать соединения к этому устройству. Без переключателей ниже такие соединения отклоняются."
+  },
+  "Allow access to this device": {
+    "value": "Разрешить доступ к этому устройству"
+  },
+  "Peers reach services on this device's tunnel address. The service sees them as 127.0.0.1, so everything that trusts localhost becomes reachable.": {
+    "value": "Пиры достают сервисы на туннельном адресе этого устройства. Сервис видит их как 127.0.0.1 — доступно всё, что доверяет localhost."
+  },
+  "Expose local network": {
+    "value": "Открыть локальную сеть"
+  },
+  "Peers reach private networks behind this device.": {
+    "value": "Пиры видят частные сети за этим устройством."
+  },
+  "Allow as gateway": {
+    "value": "Разрешить как шлюз"
+  },
+  "Peers route any traffic through this device; it leaves through the outbound chosen in the Tunnel ingress preset.": {
+    "value": "Пиры пускают через это устройство любой трафик; он уходит в outbound, выбранный в пресете Tunnel ingress."
+  },
+  "advertise_routes and advertise_exit_node only announce this device in the tailnet; whether a peer gets through is decided by the switches here.": {
+    "value": "advertise_routes и advertise_exit_node только анонсируют это устройство в tailnet; пропустить ли пира, решают переключатели здесь."
   },
   "No matching nodes": {
     "value": "Нет подходящих узлов"

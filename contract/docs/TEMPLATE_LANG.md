@@ -779,7 +779,7 @@ warning (`preset_expand.dart:473-526`). Миграция LxBox меняет те
 
 ```json
 "for_each_node":    { "#filter": { "#and": [ { "@node.body.type": "tailscale" },
-                                             { "#not": "@node.skip_presets" } ] } }
+                                             { "#not": "@node.skip_tailscale_presets" } ] } }
 
 "for_each_node_do": { "#filter": { "@node.body.server": "#notEmpty" },
                       "#do":     { "@domains": { "#append": "@node.body.server" } },
@@ -863,11 +863,12 @@ warning (`preset_expand.dart:473-526`). Миграция LxBox меняет те
   `duplicates_without_final`, `final_unique_sort_limit`,
   `final_key_order_irrelevant`, `append_tpl`, `empty_result_rule_dropped`,
   `internal_ignores_state`, `user_value_plus_collected`,
-  `unique_declaration`.
+  `unique_declaration`; пресет `tunnel-ingress` (§6.5.2, контракт 1.1.126) —
+  `tunnel_ingress_mixed`, `tunnel_ingress_no_nodes`.
 
 Корпус обязателен для обеих сторон.
 
-#### 6.5.1 Пресет `tailscale` (обе стороны, контракт 1.1.86, обход — 1.1.119)
+#### 6.5.1 Пресет `tailscale` (обе стороны, контракт 1.1.86, обход — 1.1.119, имя поля записи — 1.1.126)
 
 Связку узла Tailscale (маршрут в tailnet и MagicDNS) даёт пресет шаблона, а
 не секции узла (упразднены, 1.1.85). Тело одинаковое на обеих сторонах;
@@ -878,7 +879,7 @@ warning (`preset_expand.dart:473-526`). Миграция LxBox меняет те
 ```json
 "for_each_node": { "#filter": { "#and": [
   { "@node.body.type": "tailscale" },
-  { "#not": "@node.skip_presets" }
+  { "#not": "@node.skip_tailscale_presets" }
 ] } },
 "vars": [ { "name": "dns_enable", "type": "bool", "default": "true" } ],
 "rules": [
@@ -901,7 +902,11 @@ warning (`preset_expand.dart:473-526`). Миграция LxBox меняет те
 
 До 1.1.119 тот же отбор писался `"for_each": {"node_type": "tailscale",
 "as": "node", "filter": {"#not": "@node.skip_presets"}}`; результат сборки
-не изменился.
+не изменился. До 1.1.126 поле записи называлось `skip_presets` (§6.6, D-134):
+шаблон стороны переписывает фильтр на `@node.skip_tailscale_presets`, старое
+имя обход больше не видит (поле вне перечня — пустое значение, `#not` даёт
+истину, и узел с прежним флагом снова обслуживался бы — поэтому записи со
+старым ключом переносятся при чтении, §6.6).
 
 Позиция на оси правил — `num: 945` (раньше `private-ips` 950), включён по
 умолчанию. Что попадает в конфиг для узлов `home-ts`, `work-ts`:
@@ -927,6 +932,117 @@ DNS-правиле — через менеджер DNS-серверов (`rule_i
 отказ `DNS server not found: <тег>`). Тег узла в DNS-правиле валит старт ядра,
 поэтому там стоит `<тег>-dns` — тот же сервер, что в `server`.
 
+#### 6.5.2 Пресет `tunnel-ingress` (контракт 1.1.126, D-134)
+
+**Задача.** Клиентский endpoint — `wireguard` (и AWG), `openvpn-client`,
+`openconnect`, `tailscale` — двусторонний канал: входящий поток из туннеля
+ядро отдаёт в роутер как обычное inbound-соединение с
+`metadata.Inbound = <тег endpoint'а>`. Адресат, равный нашему туннельному
+адресу, endpoint переписывает в loopback; любой другой идёт по `route.rules`
+и в `final`. gVisor-стек принимает пакеты на любой адрес: сервер той стороны
+может открыть соединение в нашу LAN или выйти в интернет с нашего IP (при
+`final = proxy` — через нашу цепочку). Ядро это поведение не меняет (оно
+upstream: endpoint задуман как «inbound + outbound»), закрывает генератор
+конфига: правило маршрута и DNS-правило с условием `inbound` матчатся по тегу
+endpoint'а (`rule_item_inbound.go` ядра). Автоматики нет: ни
+`advertise_routes` Tailscale, ни включённый `private-ips` пиру ничего не
+открывают — только поля записи узла `allow_local`, `allow_lan`,
+`allow_gateway` (§6.6).
+
+Тело одинаковое на обеих сторонах; оболочка — в диалекте стороны (лаунчер:
+`id`, `label`, `description`, `default_enabled`, `num`, `vars[].default`;
+LxBox: `preset_id`, `ui{}`, `vars[].default_value`), D-046. Тело в форме
+лаунчера:
+
+```json
+{
+  "id": "tunnel-ingress",
+  "label": "Tunnel ingress",
+  "description": "Connections arriving from a client tunnel (WireGuard, AWG, OpenVPN, OpenConnect, Tailscale) are rejected unless the node's own switches allow them: access to this device, the local network, or using this device as a gateway. The lists below are filled from those switches; add tags by hand to extend them.",
+  "default_enabled": true,
+  "num": 940,
+  "vars": [
+    { "name": "all_nodes", "type": "text_list", "unique": true, "title": "Tunnel endpoints",
+      "tooltip": "Every client tunnel endpoint in the config. Anything from them not allowed below is rejected." },
+    { "name": "allow_local_nodes", "type": "text_list", "unique": true, "title": "May reach this device",
+      "tooltip": "Peers of these endpoints reach services on this device's tunnel address. The service sees them as 127.0.0.1." },
+    { "name": "allow_lan_nodes", "type": "text_list", "unique": true, "title": "May reach the local network",
+      "tooltip": "Peers of these endpoints reach private networks behind this device." },
+    { "name": "allow_gateway_nodes", "type": "text_list", "unique": true, "title": "May use this device as a gateway",
+      "tooltip": "Peers of these endpoints route everything else through the outbound chosen below." },
+    { "name": "closed_nodes", "type": "text_list", "wizard_ui": "internal" },
+    { "name": "gateway_out", "type": "outbound", "default": "proxy-out", "title": "Gateway traffic goes to",
+      "tooltip": "Outbound for peers allowed to use this device as a gateway." }
+  ],
+  "for_each_node_do": {
+    "#filter": { "@node.body.type": { "#in": ["wireguard", "openvpn-client", "openconnect", "tailscale"] } },
+    "#do": {
+      "@all_nodes":           { "#append": "@node" },
+      "@allow_local_nodes":   { "#if": ["@node.allow_local",   { "#append": "@node" }] },
+      "@allow_lan_nodes":     { "#if": ["@node.allow_lan",     { "#append": "@node" }] },
+      "@allow_gateway_nodes": { "#if": ["@node.allow_gateway", { "#append": "@node" }] },
+      "@closed_nodes":        { "#if": [{ "#not": "@node.allow_gateway" }, { "#append": "@node" }] }
+    }
+  },
+  "rules": [
+    { "#if": [{ "@allow_local_nodes": "#notEmpty" },   { "inbound": "@allow_local_nodes",   "ip_cidr": ["127.0.0.0/8", "::1/128"], "outbound": "direct-out" }] },
+    { "#if": [{ "@allow_lan_nodes": "#notEmpty" },     { "inbound": "@allow_lan_nodes",     "ip_is_private": true, "outbound": "direct-out" }] },
+    { "#if": [{ "@allow_gateway_nodes": "#notEmpty" }, { "inbound": "@allow_gateway_nodes", "outbound": "@gateway_out" }] },
+    { "#if": [{ "@all_nodes": "#notEmpty" },           { "inbound": "@all_nodes",           "action": "reject" }] }
+  ],
+  "dns_rules": [
+    { "#if": [{ "@closed_nodes": "#notEmpty" }, { "inbound": "@closed_nodes", "action": "reject" }] }
+  ]
+}
+```
+
+- **Пять списков** — переменные пресета. Четыре видимых: ввод
+  пользователя — база, собранное по узлам добавляется на время сборки,
+  `unique` снимает дубли (§6.7.3) — так тег endpoint'а, которого нет среди
+  узлов (свой WG-интерфейс в шаблоне), можно вписать руками. `closed_nodes`
+  — служебный (`wizard_ui: internal`, §2.1): только для DNS-правила.
+- **`#filter` по типу тела**, поле `skip_tailscale_presets` пресет **не
+  читает**: исключение узла из пресета `tailscale` не открывает его пирам
+  шлюз. Узел подписки обходится как любой другой (у него записи нет — все
+  `allow_*` ложны, пир закрыт целиком).
+- **`num: 940`** — сразу после запертой головы правил (`traffic-processing`,
+  0; на desktop — `params[] route.rules`) и раньше `tailscale` (945) и
+  `private-ips` (950): иначе «private → direct» пропустил бы пира в LAN, а
+  `preferred_by` пресета `tailscale` — в tailnet. Нетерминальные `sniff` и
+  `resolve` головы ничего не решают; терминальный `hijack-dns` закрывает
+  DNS-правило пресета.
+- **DNS-reject по `closed_nodes`, а не по `all_nodes`:** пир шлюза обязан
+  резолвить имена, а `hijack-dns` перехватит даже его запрос к внешнему DNS.
+- **`#notEmpty` на каждом правиле обязателен:** пустой список без него —
+  правило без условий, `template_fragment_dropped` (§6.7.3) и деградация в
+  отчёте у каждого, у кого туннельных узлов нет. С `#notEmpty` правило
+  снимается молча (кейс `tunnel_ingress_no_nodes`).
+- **Правило без `network`** отбрасывает и ICMP: пинг через нас в LAN
+  закрыт вместе с TCP/UDP. Намеренно.
+- **`gateway_out`** по умолчанию `proxy-out`, как `route.final`: пир шлюза
+  едет в выбранный outbound, минуя остальные правила.
+- `inbound` — в `route_rule_conditions` и `dns_rule_conditions` реестра:
+  гейт «правило без условий» правила с непустым списком не трогает.
+- WireGuard с `system: true` (кернельный интерфейс) пресет не защищает:
+  входящий поток решает ОС, правило просто не срабатывает.
+- Включён по умолчанию и появляется у существующих пользователей один раз
+  (§6.7.5).
+
+Итог для узлов `wg-home` (WireGuard, без полей), `oc-work` (OpenConnect,
+`allow_local` + `allow_lan`), `ts` (Tailscale, `allow_gateway`), `v1` (VLESS)
+и ручного тега `manual-wg` в «Tunnel endpoints» (кейс
+`tunnel_ingress_mixed`):
+
+```json
+"route.rules": [
+  { "inbound": ["oc-work"], "ip_cidr": ["127.0.0.0/8", "::1/128"], "outbound": "direct-out" },
+  { "inbound": ["oc-work"], "ip_is_private": true, "outbound": "direct-out" },
+  { "inbound": ["ts"], "outbound": "proxy-out" },
+  { "inbound": ["manual-wg", "wg-home", "oc-work", "ts"], "action": "reject" }
+]
+"dns.rules": [ { "inbound": ["wg-home", "oc-work"], "action": "reject" } ]
+```
+
 ### 6.6 Доступ к узлу `@node` (ядро, контракт 1.1.86; имя фиксировано — 1.1.119)
 
 В `#filter` обоих ключей, в правых частях `#do` и в теле пресета с
@@ -942,9 +1058,24 @@ DNS-правиле — через менеджер DNS-серверов (`rule_i
   `node.*` зарезервированы: переменная с таким именем — глобальная или
   пресета — ошибка загрузки (§6.5). Вложенных обходов нет, второе имя не
   нужно.
-- Поля записи, видимые пресету: **`skip_presets`** (bool, BACKUP.md
-  «Поддержка»). Перечень закрытый, расширяется контрактом.
-- У узла подписки записи нет: `@node.skip_presets` всегда ложь.
+- Поля записи, видимые пресету (все bool, BACKUP.md «Поддержка»; перечень
+  закрытый, расширяется контрактом):
+
+  | Поле | С версии | Значение |
+  |---|---|---|
+  | `skip_tailscale_presets` | 1.1.86 (имя — 1.1.126) | пресет `tailscale` узел не обслуживает (§6.5.1) |
+  | `allow_local` | 1.1.126 | пир endpoint'а достаёт сервисы на нашем туннельном адресе (§6.5.2) |
+  | `allow_lan` | 1.1.126 | пир видит наши частные сети (`ip_is_private`) |
+  | `allow_gateway` | 1.1.126 | пир ходит через нас куда угодно, в `gateway_out` пресета |
+
+- **`skip_presets` → `skip_tailscale_presets` (контракт 1.1.126, D-134).**
+  Поле сужено до того, для чего вводилось (LxBox §578): общее «пресеты с
+  обходом узел не обслуживают» сняло бы и защитный пресет `tunnel-ingress`,
+  тихо открыв шлюз. **Чтение терпимое:** старый ключ `skip_presets` в
+  состоянии и в импортируемом LX Backup читается как
+  `skip_tailscale_presets` (`true` → `true`), пишется только новый. Имени
+  `@node.skip_presets` в обходе нет (вне перечня — пустое значение).
+- У узла подписки записи нет: все `@node.<поле записи>` всегда ложь.
 - Значение поля тела — любого JSON-типа: строка, число и bool подставляются
   как есть, объект и массив — копией.
 - **Отсутствующее поле** (нет пути, null, пустая строка, поле записи вне
@@ -998,7 +1129,7 @@ DNS-правиле — через менеджер DNS-серверов (`rule_i
 "#do": {
   "@all_nodes": { "#append": "@node" },
   "@ts_nodes":  { "#if": [{ "@node.body.type": "tailscale" }, { "#append": "@node" }] },
-  "@own_nodes": { "#if": [{ "#not": "@node.skip_presets" }, { "#append": "@node" }] },
+  "@own_nodes": { "#if": [{ "#not": "@node.skip_tailscale_presets" }, { "#append": "@node" }] },
   "@named":     { "#if": [{ "@node.body.server": "#notEmpty" }, { "#append": "@node.body.server" }, { "#append": "@node" }] }
 }
 ```
@@ -1157,12 +1288,13 @@ DNS-правиле — через менеджер DNS-серверов (`rule_i
 
 #### 6.7.5 Появление у существующих пользователей
 
-Пресет, включённый по умолчанию и добавленный в шаблон позже (например `tailscale`,
-§6.5.1), появляется в состоянии сам, один
-раз; удалённый пользователем — не возвращается. Механизм у каждой стороны
+Пресет, включённый по умолчанию и добавленный в шаблон позже (`tailscale`,
+§6.5.1; `tunnel-ingress`, §6.5.2, контракт 1.1.126), появляется в состоянии
+сам, один раз; удалённый пользователем — не возвращается. Механизм у каждой стороны
 свой (LxBox — `seedLateDefaultPresets`, ключ `late_presets_seeded`; лаунчер —
 `state.SeedLateDefaultRules`, отметка `meta.late_presets_seeded` в
-`state.json`); список поздних дефолтов только растёт.
+`state.json`); список поздних дефолтов только растёт (с 1.1.126 —
+`tailscale`, `tunnel-ingress`).
 
 ### 6.8 Кэш DNS: три переменные (обе стороны, контракт 1.1.93, LxBox §580)
 
@@ -1354,6 +1486,7 @@ C7 = D-012):
 | D-131 | сбор значений по узлам (контракт 1.1.119) | `#do`: `"@имя"` своего пресета → один глагол из закрытого списка (`#append`, только `text_list`, без дедупа); `#final`: `#unique` → `#sort` → `#limit` в порядке нормы, не JSON; слова обхода без непомеченных алиасов (§4.5.1, §6.7) | обе стороны | Go — SPEC 166; Dart — TASKS_LXBOX §116 |
 | D-132 | поля объявления `unique` и `wizard_ui: "internal"` (контракт 1.1.119) | `unique` — только `text_list`, дедуп ввода, `default_value` и собранного; `internal` — не в форме, значение состояния и бэкапа игнорируется, не пишется, не экспортируется, импорт — `backup_var_skipped {reason: internal}` (§2.1, §6.4) | обе стороны | Go — SPEC 166; Dart — TASKS_LXBOX §116 |
 | D-133 | короткая форма `#if` и `#if` на операции `#do` (контракт 1.1.125, SPEC 169) | значение `#if…` читается по типу: массив `[cond, V]` / `[cond, V, E]` — канон, объект с `#value` — длинная форма бессрочно, иное — ошибка загрузки; `cond` без обёртки (грамматика `#filter`), сахар-список в `cond` запрещён, чтение позиционное, длина 2–3, `null`-ветки запрещены; операция `#do` может быть `#if` с ветками-глаголами, `{}` на узле = пропуск; плоский гейт `#if` и условие внутри `#append` отвергнуты, `#enable` и D-044 без изменений (§4.1, §4.3–4.6, §6.7.1, §7.4) | Go ✅ (SPEC 169); Dart — TASKS_LXBOX §122 | `if_engine.dart`, валидатор загрузки, `evalIfScalar`, `default_value`, `preset_expand.dart` |
+| D-134 | поля записи узла `allow_local` / `allow_lan` / `allow_gateway`, `skip_presets` → `skip_tailscale_presets`, пресет `tunnel-ingress` (контракт 1.1.126, SPEC 170) | bool записи своего сервера и члена папки, пишется только `true`, у узла подписки всегда ложь; видны обходу как `@node.<поле>` (§6.6); старый ключ `skip_presets` читается терпимо в состоянии и бэкапе, пишется только новый; пресет `tunnel-ingress` (`num: 940`, поздний дефолт) отбрасывает входящее из клиентских туннелей кроме разрешённого полями (§6.5.2) | Go ✅ (SPEC 170); Dart — TASKS_LXBOX §123 | модель узла и бэкапа, форма узла, `preset_expand.dart` (поля записи в пространстве узла), шаблон, `kLateDefaultPresetIds` |
 | C8 | @var-подстановка в RHS предикатов отсутствует в Dart | RHS equality / элементы `#in` / паттерн `#matches` проходят подстановку (§4.2) | ✅ **закрыт** (D-056): `_substRhs` | — |
 | C9 | наборы полей объявления var расходятся | ядро = name/type/default_value/options/title/tooltip/wizard_ui; остальное — задекларированные расширения + правило толерантности (§2.1, §7, §8) | ✅ **зафиксирован тестом** — `corpus/template/grammar/tolerant_unknown_var_field`, проходит с обеих сторон; наборы полей остаются разными по D-046 | — |
 

@@ -290,7 +290,7 @@ type PresetMergeContext struct {
 	templateWarnings *[]template.TemplateWarning
 
 	// PresetNodes — узлы конфига для for_each_node* (LxBox §578): финальные теги,
-	// тела и skip_presets. Заполняет BuildConfig после граф-санитайзера —
+	// тела и поля записи (D-134). Заполняет BuildConfig после граф-санитайзера —
 	// состав узлов окончателен. nil — пресеты с for_each_node* пусты.
 	PresetNodes []template.PresetNode
 }

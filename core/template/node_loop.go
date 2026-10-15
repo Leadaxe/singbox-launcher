@@ -28,6 +28,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"singbox-launcher/core/config/configtypes"
 )
 
 // NodeLoopVar — фиксированное имя узла в теле и в `#filter` (§6.6). Имя
@@ -493,16 +495,22 @@ func (p *Preset) NodeFilter() (filter interface{}, ok bool) {
 }
 
 // PresetNode — узел конфига для обхода: финальный тег, тело в конфиге и
-// поле записи `skip_presets` (у узла подписки записи нет — false).
+// поля записи (у узла подписки записи нет — все ложь).
 type PresetNode struct {
-	Tag         string
-	Body        map[string]interface{}
-	SkipPresets bool
+	Tag    string
+	Body   map[string]interface{}
+	Record configtypes.NodeRecordFlags
 }
 
-// PresetNodeRecordFields — поля записи узла, видимые пресету. Перечень
-// закрытый, расширяется контрактом.
-var PresetNodeRecordFields = map[string]bool{"skip_presets": true}
+// PresetNodeRecordFields — поля записи узла, видимые пресету как
+// `@node.<поле>`, со значением из записи. Перечень закрытый, расширяется
+// контрактом (TEMPLATE_LANG §6.6; 1.1.126, D-134).
+var PresetNodeRecordFields = map[string]func(configtypes.NodeRecordFlags) bool{
+	"skip_tailscale_presets": func(f configtypes.NodeRecordFlags) bool { return f.SkipTailscalePresets },
+	"allow_local":            func(f configtypes.NodeRecordFlags) bool { return f.AllowLocal },
+	"allow_lan":              func(f configtypes.NodeRecordFlags) bool { return f.AllowLan },
+	"allow_gateway":          func(f configtypes.NodeRecordFlags) bool { return f.AllowGateway },
+}
 
 // NodeScope — имена одного узла под именем `node` для обходчика.
 type NodeScope struct {
@@ -520,12 +528,11 @@ func NewNodeScope(n PresetNode) *NodeScope {
 	s := &NodeScope{As: as, Resolved: map[string]ResolvedVar{}, Types: map[string]string{}}
 	s.Resolved[as] = ResolvedVar{Scalar: n.Tag, Raw: n.Tag}
 	s.Types[as] = "text"
-	skip := "false"
-	if n.SkipPresets {
-		skip = "true"
+	for field, get := range PresetNodeRecordFields {
+		on := get(n.Record)
+		s.Resolved[as+"."+field] = ResolvedVar{Scalar: strconv.FormatBool(on), Raw: on}
+		s.Types[as+"."+field] = "bool"
 	}
-	s.Resolved[as+".skip_presets"] = ResolvedVar{Scalar: skip, Raw: n.SkipPresets}
-	s.Types[as+".skip_presets"] = "bool"
 	flattenNodeBody(as+".body", n.Body, s.Resolved)
 	return s
 }

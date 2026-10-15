@@ -142,3 +142,23 @@ func isAllEmptyPatch(patch map[string]interface{}) bool {
 	}
 	return true
 }
+
+// normalizeNodeRecordFlags — терпимое чтение ключа записи `skip_presets`
+// (до контракта 1.1.126): true переносится в `skip_tailscale_presets` у
+// корневых узлов и членов папок, легаси-поле обнуляется и больше не пишется.
+// Узлы подписки тоже проходят: флаг у них не читается сборкой, но и мусорный
+// ключ в файле не остаётся. Возвращает число перенесённых узлов.
+func normalizeNodeRecordFlags(sources []Source) int {
+	n := 0
+	for i := range sources {
+		if sources[i].LiftLegacyRecordFlags() {
+			n++
+		}
+		for j := range sources[i].Nodes {
+			if sources[i].Nodes[j].LiftLegacyRecordFlags() {
+				n++
+			}
+		}
+	}
+	return n
+}

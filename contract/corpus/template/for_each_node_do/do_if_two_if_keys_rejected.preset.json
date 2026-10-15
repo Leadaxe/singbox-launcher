@@ -6,7 +6,7 @@
         "@list": {
           "#if a": [
             {
-              "#not": "@node.skip_presets"
+              "#not": "@node.skip_tailscale_presets"
             },
             {
               "#append": "@node"
@@ -48,7 +48,7 @@
     },
     {
       "tag": "home-ts",
-      "skip_presets": true,
+      "skip_tailscale_presets": true,
       "body": {
         "type": "tailscale",
         "tag": "home-ts",

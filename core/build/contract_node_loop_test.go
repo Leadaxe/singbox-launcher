@@ -4,7 +4,7 @@ package build
 // corpus/template/for_each_node_do/ (SPEC 166, контракт 1.1.119,
 // TEMPLATE_LANG §4.8, §6.5–§6.7). Формат кейса — contract/corpus/template/README.md:
 //
-//	<case>.preset.json    {"preset": {...}, "nodes": [{tag, body, enabled?, in_config?, skip_presets?}]}
+//	<case>.preset.json    {"preset": {...}, "nodes": [{tag, body, enabled?, in_config?, skip_tailscale_presets?, allow_local?, allow_lan?, allow_gateway?}]}
 //	<case>.vars.json      значения переменных пресета строками
 //	<case>.expected.json  {"load"?, "rules", "dns_servers", "dns_rules", "warnings"}
 //
@@ -20,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/template"
 )
 
@@ -30,11 +31,12 @@ var nodeLoopCorpusSections = []string{
 }
 
 type forEachCaseNode struct {
-	Tag         string                 `json:"tag"`
-	Body        map[string]interface{} `json:"body"`
-	Enabled     *bool                  `json:"enabled"`
-	InConfig    *bool                  `json:"in_config"`
-	SkipPresets bool                   `json:"skip_presets"`
+	Tag      string                 `json:"tag"`
+	Body     map[string]interface{} `json:"body"`
+	Enabled  *bool                  `json:"enabled"`
+	InConfig *bool                  `json:"in_config"`
+	// Поля записи (TEMPLATE_LANG §6.6, контракт 1.1.126): отсутствие = false.
+	configtypes.NodeRecordFlags
 }
 
 type forEachExpected struct {
@@ -106,7 +108,7 @@ func runNodeLoopSection(t *testing.T, dir string) {
 					if (n.Enabled != nil && !*n.Enabled) || (n.InConfig != nil && !*n.InConfig) {
 						continue
 					}
-					nodes = append(nodes, template.PresetNode{Tag: n.Tag, Body: n.Body, SkipPresets: n.SkipPresets})
+					nodes = append(nodes, template.PresetNode{Tag: n.Tag, Body: n.Body, Record: n.NodeRecordFlags})
 				}
 				frags, warns, _ := ExpandPresetForNodes(&presets[0], vars, nil, nil, template.LocalTarget(), nodes)
 				for _, r := range frags.RoutingRules {

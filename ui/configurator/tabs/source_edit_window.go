@@ -1391,8 +1391,14 @@ func showSourceEditWindowAt(
 			settingsContent.Add(nodeTagEntry)
 			settingsContent.Add(widget.NewSeparator())
 			detourBlock()
-			// LxBox §578: исключение узла из пресетов с обходом узлов (#filter читает skip_presets).
+			// LxBox §578: исключение узла Tailscale из пресета `tailscale`
+			// (#filter читает skip_tailscale_presets).
 			if blk := skipPresetsBlock(m, nodeLink, &scratch.Node); blk != nil {
+				settingsContent.Add(widget.NewSeparator())
+				settingsContent.Add(blk)
+			}
+			// SPEC 170: что пиру клиентского туннеля разрешено (allow_*).
+			if blk := tunnelAccessBlock(m, nodeLink, &scratch.Node); blk != nil {
 				settingsContent.Add(widget.NewSeparator())
 				settingsContent.Add(blk)
 			}

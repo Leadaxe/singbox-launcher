@@ -415,8 +415,9 @@ func placeRuleAt(rules []Rule, movedIdx int, want int, sortable func(Rule) bool)
 
 // LateDefaultPresetIDs — пресеты шаблона, включённые по умолчанию и
 // появившиеся после того, как у пользователя уже было состояние (LxBox §578,
-// `kLateDefaultPresetIds`). Список только растёт.
-var LateDefaultPresetIDs = []string{"tailscale"}
+// `kLateDefaultPresetIds`). Список только растёт: `tunnel-ingress` — SPEC 170,
+// контракт 1.1.126.
+var LateDefaultPresetIDs = []string{"tailscale", "tunnel-ingress"}
 
 // SeedLateDefaultRules — разовый засев поздних дефолтных пресетов.
 //

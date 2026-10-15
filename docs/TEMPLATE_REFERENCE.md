@@ -152,16 +152,38 @@ State stores **only the diff** against the template defaults in `rule.body.vars`
 ### 4.5.1 Node loops — `for_each_node` / `for_each_node_do` (SPEC 166)
 
 A preset may walk the nodes of the built config (enabled, not dropped, in
-config order); the node is `@node` (`@node.body.<path>`, `@node.skip_presets`),
-`#filter` selects nodes with an `#if` condition. `for_each_node` repeats the
-preset body per node (stock preset `tailscale`); `for_each_node_do` walks the
-nodes only to collect values — `#do: {"@list": {"#append": "@node.body.server"}}`
-into the preset's own `text_list` variables, optional
+config order); the node is `@node` (`@node.body.<path>`, record fields
+`@node.<field>`), `#filter` selects nodes with an `#if` condition.
+`for_each_node` repeats the preset body per node (stock preset `tailscale`);
+`for_each_node_do` walks the nodes only to collect values —
+`#do: {"@list": {"#append": "@node.body.server"}}` into the preset's own
+`text_list` variables (an operation may be conditional:
+`{"#if": ["@node.allow_lan", {"#append": "@node"}]}`), optional
 `#final: {"@list": {"#unique": true, "#sort": true, "#limit": N}}` — and then
-expands the body once (no stock preset uses it; worked example —
+expands the body once (stock preset `tunnel-ingress`; another worked example —
 TEMPLATE_LANG §6.7.4). The old `for_each` key (`node_type`, `as`) is a
 load error: the preset is skipped. The norm is `contract/docs/TEMPLATE_LANG.md`
 §6.5–6.7.
+
+**Node record fields** (contract 1.1.126, TEMPLATE_LANG §6.6) — bool fields of
+an own server or a folder member, stored only when `true`; a subscription node
+has no record, so they are always false there. They are switched in the node
+window:
+
+| Field | Switch | Read by |
+|---|---|---|
+| `skip_tailscale_presets` | Skip Tailscale presets (Tailscale nodes only) | `tailscale`: the node gets no route / MagicDNS rules. Was `skip_presets` before 1.1.126 — the old key in `state.json` and in a backup is still read, only the new one is written |
+| `allow_local` | Allow access to this device | `tunnel-ingress`: peers of this tunnel reach services on our tunnel address (they appear as `127.0.0.1`) |
+| `allow_lan` | Expose local network | `tunnel-ingress`: peers reach private networks (`ip_is_private`) |
+| `allow_gateway` | Allow as gateway | `tunnel-ingress`: peers route anything through us, into the preset's `gateway_out` (default `proxy-out`); their DNS is not rejected |
+
+The `allow_*` switches are shown for `wireguard` (and AWG), `openvpn-client`,
+`openconnect` and `tailscale` nodes. The stock preset `tunnel-ingress`
+(`num: 940`, on by default, added once to existing setups) collects the
+endpoints of these types and rejects every connection arriving from their
+tunnels except what the switches allow, plus a DNS reject for peers without
+`allow_gateway`. Its four visible lists can be extended by hand (e.g. a tag of
+an endpoint written in your own template). TEMPLATE_LANG §6.5.2.
 
 ---
 

@@ -2,6 +2,8 @@ package build
 
 import (
 	"encoding/json"
+
+	"singbox-launcher/core/config/configtypes"
 )
 
 // ParsedCache — in-memory результат парсинга подписок: готовые к вставке
@@ -38,10 +40,11 @@ type ParsedCache struct {
 	// не ошибка: узел тогда назовут собственным тегом.
 	NodeOrigins map[string]NodeOrigin
 
-	// SkipPresets — финальные теги узлов, чья запись несёт skip_presets=true
-	// (LxBox §578): пресеты с for_each_node* читают поле как @node.skip_presets.
-	// У узла подписки записи нет — его тега здесь не бывает.
-	SkipPresets map[string]bool
+	// RecordFlags — финальный тег узла → поля его записи
+	// (skip_tailscale_presets, allow_*; D-134): пресеты с for_each_node*
+	// читают их как @node.<поле>. Только узлы с поднятым флагом; у узла
+	// подписки записи нет — его тега здесь не бывает.
+	RecordFlags map[string]configtypes.NodeRecordFlags
 }
 
 // NodeOrigin — чей это узел: ULID источника и его человеческая подпись.

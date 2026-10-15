@@ -7,12 +7,13 @@ import (
 	"strings"
 	"testing"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 )
 
 // LxBox §578: пресет tailscale из боевого шаблона даёт каждому узлу Tailscale
-// в конфиге маршрут и MagicDNS через preferred_by; узел со skip_presets и
+// в конфиге маршрут и MagicDNS через preferred_by; узел со skip_tailscale_presets и
 // узел, не попавший в кэш сборки, не обслуживаются; постоянных подсетей
 // tailnet в выводе нет.
 func TestTailscalePresetBuild_TwoNodes(t *testing.T) {
@@ -41,7 +42,7 @@ func TestTailscalePresetBuild_TwoNodes(t *testing.T) {
 			json.RawMessage(`{"type":"tailscale","tag":"skip-ts"}`),
 			json.RawMessage(`{"type":"tailscale","tag":"work-ts"}`),
 		},
-		SkipPresets: map[string]bool{"skip-ts": true},
+		RecordFlags: map[string]configtypes.NodeRecordFlags{"skip-ts": {SkipTailscalePresets: true}},
 	}
 	ctx := PresetMergeContext{
 		Presets:     []template.Preset{*ts},

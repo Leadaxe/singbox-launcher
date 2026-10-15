@@ -1,5 +1,5 @@
 {
-  "_comment": "filter ложен у узла со skip_presets: true — повтора нет; узел без поля (узел подписки) обслуживается.",
+  "_comment": "filter ложен у узла со skip_tailscale_presets: true — повтора нет; узел без поля (узел подписки) обслуживается.",
   "preset": {
     "for_each_node": {
       "#filter": {
@@ -8,7 +8,7 @@
             "@node.body.type": "tailscale"
           },
           {
-            "#not": "@node.skip_presets"
+            "#not": "@node.skip_tailscale_presets"
           }
         ]
       }
@@ -89,7 +89,7 @@
         "tag": "home-ts",
         "hostname": "home-ts-host"
       },
-      "skip_presets": true
+      "skip_tailscale_presets": true
     },
     {
       "tag": "sub-ts",
