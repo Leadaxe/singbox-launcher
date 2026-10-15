@@ -18,6 +18,9 @@
 - **The "Split all traffic 50/50" preset is gone.** It was no longer relevant; a saved rule that referenced it is kept disabled with a warning rather than lost.
 - **Compact JSON in the Preset tab.** The preset window's Preset tab shows short constructs on one line (`{"#if": ["@node.allow_local", {"#append": "@node"}]}`, `"#in": [...]`) instead of spreading them over five to eight lines; objects and arrays up to 100 characters stay on one line.
 
+### Core
+- `sing-box-lx 1.14.3-lx.21` (was 1.14.3-lx.20). Router builds for `linux-386` (SSE2) and `linux-riscv64`; UPX-packed copies for `linux-arm64` and `linux-mipsle-softfloat` (~17 MB on flash instead of 75–90 MB, at the cost of RAM and a slower start). `lxd update` keeps a packed core packed and checks free space against the new binary before writing; the daemon reports `packed`, which the launcher's "Download core" uses. The core also gains an experimental `trusttunnel` outbound/inbound (AdGuard TrustTunnel); the launcher does not offer it yet.
+
 ### Technical / Internal
 - `internal/jsonfmt.FormatCompact` — order-preserving compact JSON printer (one-line containers up to 100 characters, number literals as written, no HTML escaping); `bin/wizard_template.json` is kept in this form (`go run ./tools/tplfmt -w|-check`, guarded by `TestWizardTemplateFormatted`), 2250 → 1383 lines with the same content.
 - The `#if` body is parsed in one place (`core/template/if_form.go`); map-spread, array-element, `EvalIfScalar`, `default_value`, the load validator and `#do` all go through it. Corpus: 28 new cases (`short_*`, `do_if_*`), paired with the long form.
@@ -39,6 +42,9 @@
 - **Сборки ядра linux/386 и linux/riscv64.** «Download core» находит их и для машины, чей демон ещё не сообщил платформу; `riscv64` есть в выборе архитектуры машины и вкладки Target (там же добавлены `mips`/`mipsle`); Linux-машина на 386 или riscv64 без паспорта по умолчанию получает рецепт службы procd — эти сборки под OpenWrt. Машина, чей демон сообщает `packed` (ядро 1.14.3-lx.21+, работающее ядро сжато UPX), получает в «Download core» копию `.upx.tar.gz` — файл с суффиксом `-upx` рядом с обычным; если сжатой копии в релизе нет, качается обычный бинарь с предупреждением, что он в 4–5 раз крупнее.
 - **Пресет «Split all traffic 50/50» снят.** Он потерял актуальность; сохранённое правило с ссылкой на него остаётся выключенным с предупреждением, а не теряется.
 - **Компактный JSON на вкладке Preset.** Вкладка Preset окна пресета показывает короткие конструкции в строку (`{"#if": ["@node.allow_local", {"#append": "@node"}]}`, `"#in": [...]`), а не на пяти–восьми строках; объекты и массивы до 100 символов остаются в одной строке.
+
+### Ядро
+- `sing-box-lx 1.14.3-lx.21` (было 1.14.3-lx.20). Роутерные сборки `linux-386` (нужен SSE2) и `linux-riscv64`; копии `linux-arm64` и `linux-mipsle-softfloat`, сжатые UPX (~17 МБ на флеше вместо 75–90 МБ ценой RAM и более долгого старта). `lxd update` оставляет сжатое ядро сжатым и до записи проверяет место под новый бинарь; демон сообщает `packed`, по нему «Download core» в лаунчере выбирает сжатую копию. В ядре также появились экспериментальные outbound/inbound `trusttunnel` (AdGuard TrustTunnel); в лаунчере их пока нет.
 
 ### Техническое / Внутреннее
 - `internal/jsonfmt.FormatCompact` — компактный печатник JSON с сохранением порядка ключей (контейнер в строку до 100 символов, литералы чисел как в исходнике, без HTML-экранирования); `bin/wizard_template.json` держится в этом виде (`go run ./tools/tplfmt -w|-check`, стережёт `TestWizardTemplateFormatted`), 2250 → 1383 строки при том же содержимом.
