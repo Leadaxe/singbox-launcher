@@ -562,6 +562,10 @@ type InfoData struct {
 	Platform   string `json:"platform,omitempty"`
 	InitSystem string `json:"init_system,omitempty"`
 	Service    bool   `json:"service,omitempty"`
+	// Packed — работающий бинарь сжат UPX (lx.21+): ядро для машины —
+	// ассет <platform>.upx.tar.gz, как его берёт lxd update. У ядер старше
+	// поля нет — false.
+	Packed bool `json:"packed,omitempty"`
 }
 
 // Info возвращает паспорт демона.

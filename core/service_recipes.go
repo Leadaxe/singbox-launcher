@@ -67,6 +67,9 @@ type ServicePlatform struct {
 	// ("linux-arm64", "linux-mipsle-softfloat"; SPEC 127); "" — паспорт его
 	// не сообщил, ассет — по таблице SingboxAssetSuffixFor.
 	Platform string
+	// Packed — паспорт сообщил, что ядро машины сжато UPX: Download core
+	// берёт <Platform>.upx.tar.gz (откат на обычный архив, если копии нет).
+	Packed bool
 	// ServiceKnown — паспорт сообщил, работает ли демон под init-системой;
 	// Service — сам ответ (false — запущен руками, службы нет).
 	ServiceKnown bool

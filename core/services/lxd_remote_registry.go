@@ -157,6 +157,9 @@ type RemotePassport struct {
 	Platform   string `json:"platform,omitempty"`
 	InitSystem string `json:"init_system,omitempty"`
 	Service    *bool  `json:"service,omitempty"`
+	// Packed — работающий бинарь сжат UPX (lx.21+): Download core берёт
+	// .upx.tar.gz-копию релиза.
+	Packed bool `json:"packed,omitempty"`
 	// SeenAt — когда демон сообщил паспорт (RFC3339).
 	SeenAt string `json:"seen_at,omitempty"`
 }
@@ -171,7 +174,7 @@ func samePassportFields(a, b RemotePassport) bool {
 	if a.Version != b.Version || a.Executable != b.Executable || a.LogPath != b.LogPath || a.Listen != b.Listen {
 		return false
 	}
-	if a.GOOS != b.GOOS || a.GOARCH != b.GOARCH || a.Platform != b.Platform || a.InitSystem != b.InitSystem {
+	if a.GOOS != b.GOOS || a.GOARCH != b.GOARCH || a.Platform != b.Platform || a.InitSystem != b.InitSystem || a.Packed != b.Packed {
 		return false
 	}
 	return sameBoolPtr(a.TLS, b.TLS) && sameBoolPtr(a.Service, b.Service)
@@ -1165,7 +1168,8 @@ func (r *RemoteRegistry) healthCtx(ctx context.Context, id string) RemoteHealth 
 			debuglog.WarnLog("remote registry: cache state_dir for %q: %v", id, err)
 		}
 		passport := RemotePassport{Version: info.Version, Executable: info.Executable, LogPath: info.LogPath, Listen: info.Listen, TLS: &tls,
-			GOOS: info.GOOS, GOARCH: info.GOARCH, Platform: info.Platform, InitSystem: info.InitSystem, Service: out.Service}
+			GOOS: info.GOOS, GOARCH: info.GOARCH, Platform: info.Platform, InitSystem: info.InitSystem, Service: out.Service,
+			Packed: info.Packed}
 		if err := r.SetPassport(id, passport); err != nil {
 			debuglog.WarnLog("remote registry: cache passport for %q: %v", id, err)
 		}

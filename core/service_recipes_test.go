@@ -244,6 +244,20 @@ func TestServiceRecipes(t *testing.T) {
 				t.Errorf("SingboxAssetSuffixFor(%s/%s) = %q, want %q", c.goos, c.goarch, got, c.want)
 			}
 		}
+		// UPX-копия (issue #146): только по platform из паспорта и только linux.
+		for _, c := range []struct{ goos, platform, want string }{
+			{"linux", "linux-arm64", "linux-arm64.upx.tar.gz"},
+			{"linux", "linux-mipsle-softfloat", "linux-mipsle-softfloat.upx.tar.gz"},
+			{"linux", "", ""},
+			{"windows", "windows-amd64", ""},
+		} {
+			if got := upxAssetSuffix(c.goos, c.platform); got != c.want {
+				t.Errorf("upxAssetSuffix(%s, %q) = %q, want %q", c.goos, c.platform, got, c.want)
+			}
+		}
+		if got := TargetCoreFileName("1.0", "linux", "arm64", true); got != "sing-box-1.0-linux-arm64-upx" {
+			t.Errorf("TargetCoreFileName(packed) = %q", got)
+		}
 	})
 }
 

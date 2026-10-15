@@ -1334,7 +1334,10 @@ Rules the split keeps:
   machine record's `goos`/`goarch`/`init_system` from them (one `mutate`, logged);
   the local passport cache keeps the same `InfoData`. `DownloadCoreForTarget` names
   the asset by `platform` and falls back to the goos/goarch table only without a
-  passport. A known `init_system` hides the header selector; `service:false` moves
+  passport. `packed` (core lx.21+, issue #146: the running core is UPX-packed) is
+  cached in the passport and switches the asset to `<platform>.upx.tar.gz`; a
+  release without that copy (absent from SHA256SUMS, or its download fails) gives
+  the plain archive with `PackedFallback` and a warning in the window. A known `init_system` hides the header selector; `service:false` moves
   "install the service" to the top of Not running.
 - `/admin/commands` (SPEC 128) is reached through `lxdclient/commands.go` and the
   registry's `Commands/Command/RunCommand` (local: `DaemonAdminClient`). The window

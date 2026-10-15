@@ -5279,6 +5279,9 @@
   "The core release has no build for %s/%s — build the core for this machine yourself.": {
     "value": "В релизе ядра нет сборки под %s/%s — соберите ядро для этой машины сами."
   },
+  "The machine runs a UPX-packed core, but this release has no packed copy for it: this is the plain binary, 4–5 times larger. Check free space on the machine before uploading.": {
+    "value": "На машине ядро, сжатое UPX, но в этом релизе сжатой копии для неё нет: это обычный бинарь, в 4–5 раз крупнее. Перед загрузкой проверьте свободное место на машине."
+  },
   "The core's log, live, while the daemon answers": {
     "value": "Лог ядра вживую, пока демон отвечает"
   },

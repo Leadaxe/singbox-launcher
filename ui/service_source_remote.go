@@ -112,7 +112,7 @@ func remoteServicePlatform(d services.RemoteDaemon) (core.ServicePlatform, bool)
 	if pp == nil {
 		return platform, false
 	}
-	platform.Platform = pp.Platform
+	platform.Platform, platform.Packed = pp.Platform, pp.Packed
 	init, initKnown := core.ParseInitSystem(pp.InitSystem)
 	if initKnown {
 		platform.Init = init
