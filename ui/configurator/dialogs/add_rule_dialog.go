@@ -45,6 +45,8 @@ import (
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/process"
 
+	"singbox-launcher/core/build"
+	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
@@ -658,6 +660,106 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		}
 	}
 
+	// DNS-зеркало правила (SPEC 172, TEMPLATE_LANG §6.11): сервер для
+	// DNS-запросов под правило и глушилка AAAA. Блок общий для вкладок Form и
+	// JSON — это поле записи, а не тела sing-box. Доступность считает тот же
+	// матчер, что у сборки: опция недоступна ровно там, где зеркала не будет.
+	// Сохранённые значения при недоступности не сбрасываются.
+	var initialDNS *corestate.RuleDNS
+	if isEdit {
+		initialDNS = editRule.DNS
+	}
+	dnsServerOptions := wizardbusiness.DNSEnabledTagOptions(model)
+	if initialDNS != nil && initialDNS.ServerTag != "" {
+		known := false
+		for _, o := range dnsServerOptions {
+			if o == initialDNS.ServerTag {
+				known = true
+				break
+			}
+		}
+		if !known {
+			dnsServerOptions = append(dnsServerOptions, initialDNS.ServerTag)
+		}
+	}
+	dnsServerSelect := widget.NewSelect(dnsServerOptions, nil)
+	dnsServerCheck := widget.NewCheck(locale.T("Send DNS to a dedicated server"), nil)
+	forceIPv4Check := widget.NewCheck(locale.T("Force IPv4 (drop AAAA)"), nil)
+	dnsHint := widget.NewLabel("")
+	dnsHint.Wrapping = fyne.TextWrapWord
+	dnsHint.Importance = widget.LowImportance
+	if initialDNS != nil {
+		dnsServerCheck.SetChecked(initialDNS.Enabled)
+		dnsServerSelect.SetSelected(initialDNS.ServerTag)
+		forceIPv4Check.SetChecked(initialDNS.ForceIPv4)
+	}
+	// currentRuleBody — тело правила, каким его увидит сборка: с JSON-вкладки
+	// или собранное формой; nil — правило ещё не заполнено.
+	currentRuleBody := func() map[string]interface{} {
+		ob := outboundSelect.Selected
+		if ob == "" {
+			ob = availableOutbounds[0]
+		}
+		if activeTabIsRaw {
+			var obj map[string]interface{}
+			if json.Unmarshal([]byte(strings.TrimSpace(rawTabEntry.Text())), &obj) != nil {
+				return nil
+			}
+			return obj
+		}
+		body, _, err := buildRuleRaw(ruleSel.Type(), ob)
+		if err != nil {
+			return nil
+		}
+		return body
+	}
+	updateDNSAvailability := func() {
+		body := currentRuleBody()
+		_, ok := build.RuleDNSMirrorMatch(body)
+		hint := ""
+		switch {
+		case ok:
+			dnsServerCheck.Enable()
+			forceIPv4Check.Enable()
+			if dnsServerCheck.Checked {
+				dnsServerSelect.Enable()
+			} else {
+				dnsServerSelect.Disable()
+			}
+			if !activeTabIsRaw && ruleSel.Type() == wizardmodels.RuleTypeSRS {
+				hint = locale.T("Works only if the rule set contains domains.")
+			}
+		default:
+			dnsServerCheck.Disable()
+			forceIPv4Check.Disable()
+			dnsServerSelect.Disable()
+			if body != nil {
+				hint = locale.T("Unavailable for rules with ports, protocols or network, and for rules that match only IP addresses.")
+			}
+		}
+		dnsHint.SetText(hint)
+		if hint == "" {
+			dnsHint.Hide()
+		} else {
+			dnsHint.Show()
+		}
+	}
+	rawTabEntry.SetOnChanged(func(string) { updateDNSAvailability() })
+	dnsServerCheck.OnChanged = func(on bool) {
+		if on && dnsServerSelect.Selected == "" && len(dnsServerOptions) > 0 {
+			dnsServerSelect.SetSelected(dnsServerOptions[0])
+		}
+		updateDNSAvailability()
+	}
+	dnsBlock := container.NewVBox(
+		widget.NewSeparator(),
+		widget.NewLabel(locale.T("DNS:")),
+		dnsServerCheck,
+		dnsServerSelect,
+		forceIPv4Check,
+		dnsHint,
+	)
+
 	updateButtonState = func() {
 		if confirmButton != nil {
 			if validateFields() {
@@ -666,6 +768,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				confirmButton.Disable()
 			}
 		}
+		updateDNSAvailability()
 	}
 
 	onRuleTypeChange := func(s string) {
@@ -787,7 +890,14 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			params["domain_mode"] = domainModeSelect.Selected
 		}
 
+		ruleDNS := corestate.CloneRuleDNS(&corestate.RuleDNS{
+			Enabled:   dnsServerCheck.Checked,
+			ServerTag: dnsServerSelect.Selected,
+			ForceIPv4: forceIPv4Check.Checked,
+		})
+
 		if isEdit {
+			editRule.DNS = ruleDNS
 			editRule.Rule.Label = label
 			editRule.Rule.Rule = ruleRaw
 			editRule.Rule.HasOutbound = true
@@ -819,6 +929,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				// не хардкод: новое правило встаёт последним среди
 				// пользовательских и не вытесняет шаблонные якоря.
 				Num: wizardmodels.NextRuleNum(model),
+				DNS: ruleDNS,
 			}
 			if model.CustomRules == nil {
 				model.CustomRules = make([]*wizardmodels.RuleState, 0)
@@ -1092,12 +1203,13 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			activeTabIsRaw = false
 			syncRawToForm()
 		}
+		updateDNSAvailability()
 	}
 
 	// Border: сверху Rule name, снизу кнопки, центр — вкладки на всю оставшуюся высоту
 	mainContent := container.NewBorder(
 		ruleNameBlock,
-		buttonsContainer,
+		container.NewVBox(dnsBlock, buttonsContainer),
 		nil,
 		nil,
 		tabs,
@@ -1117,7 +1229,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		content := container.NewVBox(msg, openBtn)
 		dialog.ShowCustom(locale.T("SRS rule-sets"), locale.T("Close"), content, dialogWindow)
 	}
-	dialogWindow.Resize(fyne.NewSize(500, 640))
+	dialogWindow.Resize(fyne.NewSize(500, 760))
 	fynewidget.CenterOnScreen(dialogWindow)
 	dialogWindow.SetContent(mainContent)
 

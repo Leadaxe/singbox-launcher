@@ -5875,5 +5875,32 @@
   },
   "The form for this server type is unavailable": {
     "value": "Форма для этого типа сервера недоступна"
+  },
+  "Send DNS to a dedicated server": {
+    "value": "Отправлять DNS на отдельный сервер"
+  },
+  "Force IPv4 (drop AAAA)": {
+    "value": "Только IPv4 (сбрасывать AAAA)"
+  },
+  "Works only if the rule set contains domains.": {
+    "value": "Работает, только если в наборе правил есть домены."
+  },
+  "Unavailable for rules with ports, protocols or network, and for rules that match only IP addresses.": {
+    "value": "Недоступно для правил с портами, протоколами или network, а также для правил только по IP-адресам."
+  },
+  "DNS:": {
+    "value": "DNS:"
+  },
+  "DNS: %s": {
+    "value": "DNS: %s"
+  },
+  "IPv4 only": {
+    "value": "только IPv4"
+  },
+  "From the rule's DNS options. Edit the rule on the Rules tab.": {
+    "value": "Из DNS-настроек правила. Правится в окне правила на вкладке Rules."
+  },
+  "Used by rule %s: kept in the config while the rule needs it.": {
+    "value": "Нужен правилу %s: остаётся в конфиге, пока правило на него ссылается."
   }
 }

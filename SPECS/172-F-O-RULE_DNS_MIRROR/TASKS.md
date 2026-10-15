@@ -20,10 +20,10 @@
 - [x] T10 Превью Конфигуратора показывает зеркала
 
 ## Этап 4 — интерфейс
-- [ ] T11 `ui/configurator/dialogs/add_rule_dialog.go`: блок DNS, гейт общим `ruleDNSMatch`, SRS-подсказка, JSON-вкладка
-- [ ] T12 `ui/configurator/tabs/rules_unified_rows.go`: метка DNS
-- [ ] T13 `ui/configurator/tabs/dns_unified_rules.go`: строки-зеркала только для чтения; подсказка у сервера
-- [ ] T14 `bin/locale/ru.json`
+- [x] T11 `ui/configurator/dialogs/add_rule_dialog.go`: блок DNS, гейт общим `ruleDNSMatch`, SRS-подсказка, JSON-вкладка
+- [x] T12 `ui/configurator/tabs/rules_unified_rows.go`: метка DNS
+- [x] T13 `ui/configurator/tabs/dns_unified_rules.go`: строки-зеркала только для чтения; подсказка у сервера
+- [x] T14 `bin/locale/ru.json`
 
 ## Этап 5 — тест, доки
 - [x] T15 `core/build/rule_dns_mirror_test.go` — `TestRuleDNSMirror` (+ подтест круга данных)
