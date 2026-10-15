@@ -207,10 +207,24 @@
       "record_fragment",
       "__dialer"
     ],
+    "form": {
+      "blocks": [
+        "connection",
+        "tls",
+        "advanced"
+      ],
+      "fixed": {
+        "tls.enabled": true
+      }
+    },
     "fields": {
       "server": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server address: domain or IP.",
         "desc_ru": "Адрес сервера: домен или IP.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -218,6 +232,10 @@
       "server_port": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server port.",
         "desc_ru": "Порт сервера.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -236,6 +254,9 @@
           "core_rejects": true
         },
         "default": "cloudflare",
+        "form": {
+          "block": "connection"
+        },
         "desc_en": "MASQUE server profile.",
         "desc_ru": "Профиль сервера MASQUE.",
         "impl": "Иное значение = ошибка старта. Для cloudflare сертификат пинится по публичному ключу, обычная валидация цепочки отключена. С ядра 1.14.1-lx.6 (SPEC 091): profile=standard без uri — один текст «masque: uri is required for the standard profile — set it to the server's CONNECT-IP request URI, e.g. https://<host>/.well-known/masque/ip/*/*/» при любом vhttp; «vhttp h2 is not implemented for the standard profile» только при заданном uri; ядро в uri ничего не подставляет."
@@ -255,6 +276,9 @@
           "code": "masque_vhttp_invalid"
         },
         "default": "auto",
+        "form": {
+          "block": "advanced"
+        },
         "desc_en": "HTTP version carrying the MASQUE tunnel.",
         "desc_ru": "Версия HTTP, несущая туннель MASQUE.",
         "impl": "SPEC 062/074. Для profile=standard h2 не реализован — «vhttp h2 is not implemented for the standard profile» (protocol/masque/outbound.go resolveVHTTP). Код masque_vhttp_invalid."
@@ -275,6 +299,9 @@
             "code": "field_requires"
           }
         ],
+        "form": {
+          "block": "connection"
+        },
         "desc_en": "Client private key, base64 DER EC.",
         "desc_ru": "Закрытый ключ клиента, base64 DER EC.",
         "impl": "Обязателен при profile=cloudflare вместе с public_key — «private_key and public_key are required for the cloudflare profile» (protocol/masque/outbound.go NewOutbound). Секрет."
@@ -293,6 +320,9 @@
             "code": "field_requires"
           }
         ],
+        "form": {
+          "block": "connection"
+        },
         "desc_en": "Client public key, base64 DER PKIX.",
         "desc_ru": "Публичный ключ клиента, base64 DER PKIX.",
         "impl": "Обязателен при profile=cloudflare вместе с private_key (protocol/masque/outbound.go NewOutbound)."
@@ -303,6 +333,9 @@
         "on_invalid": {
           "action": "drop",
           "code": "type_invalid"
+        },
+        "form": {
+          "block": "advanced"
         },
         "desc_en": "IPv4 address assigned inside the tunnel.",
         "desc_ru": "Адрес IPv4, назначенный внутри туннеля.",
@@ -315,12 +348,18 @@
           "action": "drop",
           "code": "type_invalid"
         },
+        "form": {
+          "block": "advanced"
+        },
         "desc_en": "IPv6 address assigned inside the tunnel.",
         "desc_ru": "Адрес IPv6, назначенный внутри туннеля.",
         "impl": "Без маски трактуется как /128. Минимум один из ip/ipv6 обязателен."
       },
       "uri": {
         "type": "string",
+        "form": {
+          "block": "advanced"
+        },
         "desc_en": "MASQUE endpoint URI.",
         "desc_ru": "URI точки подключения MASQUE.",
         "impl": "Обязателен при profile=standard; для cloudflare дефолт https://cloudflareaccess.com. С ядра 1.14.1-lx.6 (SPEC 091): profile=standard без uri — один текст «masque: uri is required for the standard profile — set it to the server's CONNECT-IP request URI, e.g. https://<host>/.well-known/masque/ip/*/*/» при любом vhttp; «vhttp h2 is not implemented for the standard profile» только при заданном uri; ядро в uri ничего не подставляет."
@@ -334,6 +373,9 @@
           "code": "type_invalid"
         },
         "default": 1280,
+        "form": {
+          "block": "advanced"
+        },
         "desc_en": "Tunnel MTU in bytes.",
         "desc_ru": "MTU туннеля в байтах.",
         "impl": "uint32, дефолт ядра 1280; при vhttp=h2 максимум 16000."
@@ -362,6 +404,9 @@
       "tls": {
         "type": "ref",
         "ref": "tls",
+        "form": {
+          "block": "tls"
+        },
         "desc_en": "TLS settings.",
         "desc_ru": "Настройки TLS.",
         "impl": "Для profile=cloudflare server_name по умолчанию www.cloudflare.com. utls и reality снимаются целиком (tls.json forbidden_for). Контракт 1.1.64 (решение владельца): alpn, ech, reality, kernel_tx, kernel_rx снимаются на любом vhttp кодом masque_tls_field_ignored; fragment и record_fragment — только при vhttp = h3 (masque_tls_fragment_h3); server_name, disable_sni, insecure остаются. Факты ядра — sing-box-lx protocol/masque/legacy_options_lx.go warnUnsupportedTLSOptions."

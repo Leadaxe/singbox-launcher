@@ -22,6 +22,8 @@
 //   - DNSRuleOrder — в каком порядке отображается/эмитится
 package models
 
+import "singbox-launcher/core/state"
+
 // DNSRuleSlotKind — тип ссылки на правило в DNSUserRules / PresetRefs.
 type DNSRuleSlotKind int
 
@@ -104,19 +106,44 @@ func ReconcileDNSRuleOrder(m *WizardModel) {
 		}
 	}
 
-	// Pass 2: append slots for items not yet ordered.
+	// Pass 2: add slots for items not yet ordered. User rules go to the end
+	// (addDNSUserRule creates them, the user places them). A preset slot
+	// takes its place BY THE RULE AXIS (SPEC 171, D-135): before the first
+	// ordered preset slot whose route-rule num is greater, else at the end —
+	// the same rule as state.SyncDNSOptionsWithActivePresets, so a late
+	// default (`tunnel-ingress`, 940) seeded on load lands above `fakeip`
+	// (1130) instead of behind every rule the user already has.
 	for i := range m.DNSUserRules {
 		if !userSeen[i] {
 			kept = append(kept, DNSRuleSlot{Kind: DNSSlotKindUser, Index: i})
 		}
 	}
+	slotNum := func(i int) (int, bool) {
+		s := kept[i]
+		if s.Kind != DNSSlotKindPresetRef {
+			return 0, false
+		}
+		return presetRefNum(m.PresetRefs[s.Index]), true
+	}
 	for i := range m.PresetRefs {
 		if !presetSeen[i] && presetHasDNSRuleInModel(m, m.PresetRefs[i].Ref) {
-			kept = append(kept, DNSRuleSlot{Kind: DNSSlotKindPresetRef, Index: i})
+			at := state.PresetDNSSlotIndex(len(kept), presetRefNum(m.PresetRefs[i]), slotNum)
+			kept = append(kept, DNSRuleSlot{})
+			copy(kept[at+1:], kept[at:])
+			kept[at] = DNSRuleSlot{Kind: DNSSlotKindPresetRef, Index: i}
 		}
 	}
 
 	m.DNSRuleOrder = kept
+}
+
+// presetRefNum — номер оси preset-ref'а; неразмеченный — state.DefaultRuleNum,
+// как при сортировке правил.
+func presetRefNum(pr *PresetRefState) int {
+	if pr == nil || pr.Num == nil {
+		return state.DefaultRuleNum
+	}
+	return *pr.Num
 }
 
 // presetHasDNSRuleInModel — true if the template-preset with given ref ID

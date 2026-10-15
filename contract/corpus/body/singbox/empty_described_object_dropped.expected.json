@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "a.example.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "a.example.com"
+        },
+        "type": "vless",
+        "uuid": "b831381d-6324-4d53-ad4f-8cda48b30811"
+      },
+      "kind": "outbound",
+      "label": "vl-empty",
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "field_missing",
+          "path": "transport.type"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

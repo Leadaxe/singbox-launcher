@@ -1,0 +1,190 @@
+{
+  "_comment": "SPEC 170, контракт 1.1.126 (форма и Tailscale — 1.1.129, D-136): пресет tunnel-ingress без узлов клиентских туннелей — все пять списков пусты, каждое правило снято своим #notEmpty-условием молча: ни правил, ни template_fragment_dropped.",
+  "preset": {
+    "for_each_node_do": {
+      "#filter": {
+        "@node.body.type": {
+          "#in": [
+            "wireguard",
+            "openvpn-client",
+            "openconnect"
+          ]
+        }
+      },
+      "#do": {
+        "@all_nodes": {
+          "#append": "@node"
+        },
+        "@allow_local_nodes": {
+          "#if": [
+            "@node.allow_local",
+            {
+              "#append": "@node"
+            }
+          ]
+        },
+        "@allow_lan_nodes": {
+          "#if": [
+            "@node.allow_lan",
+            {
+              "#append": "@node"
+            }
+          ]
+        },
+        "@allow_gateway_nodes": {
+          "#if": [
+            "@node.allow_gateway",
+            {
+              "#append": "@node"
+            }
+          ]
+        },
+        "@closed_nodes": {
+          "#if": [
+            {
+              "#not": "@node.allow_gateway"
+            },
+            {
+              "#append": "@node"
+            }
+          ]
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "all_nodes",
+        "type": "text_list",
+        "wizard_ui": "internal"
+      },
+      {
+        "name": "allow_local_nodes",
+        "type": "text_list",
+        "wizard_ui": "internal"
+      },
+      {
+        "name": "allow_lan_nodes",
+        "type": "text_list",
+        "wizard_ui": "internal"
+      },
+      {
+        "name": "allow_gateway_nodes",
+        "type": "text_list",
+        "wizard_ui": "internal"
+      },
+      {
+        "name": "closed_nodes",
+        "type": "text_list",
+        "wizard_ui": "internal"
+      },
+      {
+        "name": "closed_out",
+        "type": "outbound",
+        "default_value": "reject",
+        "title": "Incoming from tunnels",
+        "tooltip": "What happens to connections arriving from a tunnel that the node's switches did not allow. reject (default) and drop close them; an outbound forwards them."
+      },
+      {
+        "name": "allowed_out",
+        "type": "outbound",
+        "default_value": "direct-out",
+        "title": "Device and local network go to",
+        "tooltip": "Outbound for peers allowed to reach this device or the local network."
+      },
+      {
+        "name": "gateway_out",
+        "type": "outbound",
+        "default_value": "proxy-out",
+        "title": "Gateway traffic goes to",
+        "tooltip": "Outbound for peers allowed to use this device as a gateway."
+      }
+    ],
+    "rules": [
+      {
+        "#if": [
+          {
+            "@allow_local_nodes": "#notEmpty"
+          },
+          {
+            "inbound": "@allow_local_nodes",
+            "ip_cidr": [
+              "127.0.0.0/8",
+              "::1/128"
+            ],
+            "outbound": "@allowed_out"
+          }
+        ]
+      },
+      {
+        "#if": [
+          {
+            "@allow_lan_nodes": "#notEmpty"
+          },
+          {
+            "inbound": "@allow_lan_nodes",
+            "ip_is_private": true,
+            "outbound": "@allowed_out"
+          }
+        ]
+      },
+      {
+        "#if": [
+          {
+            "@allow_gateway_nodes": "#notEmpty"
+          },
+          {
+            "inbound": "@allow_gateway_nodes",
+            "outbound": "@gateway_out"
+          }
+        ]
+      },
+      {
+        "#if": [
+          {
+            "@all_nodes": "#notEmpty"
+          },
+          {
+            "inbound": "@all_nodes",
+            "outbound": "@closed_out"
+          }
+        ]
+      }
+    ],
+    "dns_rules": [
+      {
+        "#if": [
+          {
+            "#and": [
+              {
+                "@closed_nodes": "#notEmpty"
+              },
+              {
+                "@closed_out": {
+                  "#in": [
+                    "reject",
+                    "drop"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "inbound": "@closed_nodes",
+            "action": "reject"
+          }
+        ]
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "v1",
+      "body": {
+        "type": "vless",
+        "tag": "v1",
+        "server": "v1.example",
+        "server_port": 443
+      }
+    }
+  ]
+}

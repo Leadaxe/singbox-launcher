@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "mode": "tls",
+        "password": "pass",
+        "servers": [
+          {
+            "server": "vpn.example.com",
+            "server_port": 1194
+          }
+        ],
+        "tls": {},
+        "type": "openvpn-client",
+        "username": "user"
+      },
+      "kind": "endpoint",
+      "label": "ovpn-empty-tls",
+      "scheme": "openvpn-client"
+    }
+  ],
+  "v": 1
+}

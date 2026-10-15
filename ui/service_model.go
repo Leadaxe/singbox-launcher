@@ -48,7 +48,7 @@ type serviceCommandsState int
 
 const (
 	// serviceCommandsUnknown — список ещё не читали.
-	serviceCommandsUnknown serviceCommandsState = iota
+	serviceCommandsUnknown serviceCommandsState = iota //nolint:unused // нулевое значение состояния, по имени не сравнивается
 	// serviceCommandsUnsupported — 404 на списке: старое ядро или ключа
 	// "commands" в daemon.json нет.
 	serviceCommandsUnsupported

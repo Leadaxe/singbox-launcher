@@ -140,8 +140,9 @@ type OutboundGenerationResult struct {
 	// пользователю ИСТОЧНИК, у которого сломался переход. Селекторы и
 	// Направления сюда не попадают — у них источника нет.
 	NodeOrigins map[string]NodeOrigin
-	// SkipPresetsTags — финальные теги узлов с skip_presets=true (LxBox §578).
-	SkipPresetsTags map[string]bool
+	// RecordFlags — финальный тег узла → поля его записи (D-134), только у
+	// узлов, где поднят хотя бы один флаг.
+	RecordFlags map[string]configtypes.NodeRecordFlags
 
 	// NodeLinks — финальный тег узла → его идентичность в состоянии
 	// ({FolderID, сырой тег}), SPEC 132.
@@ -1187,13 +1188,13 @@ func GenerateOutboundsFromParserConfig(
 	// эмиссия не выпустила, ядро назвать не может, и запись о нём завела бы
 	// сопоставление на узел, которого в конфиге нет.
 	nodeLinks := make(map[string]configtypes.NodeLink, len(allNodes))
-	var skipPresets map[string]bool
+	var recordFlags map[string]configtypes.NodeRecordFlags
 	for _, node := range allNodes {
-		if node != nil && node.SkipPresets && node.Tag != "" {
-			if skipPresets == nil {
-				skipPresets = make(map[string]bool)
+		if node != nil && node.Record.Any() && node.Tag != "" {
+			if recordFlags == nil {
+				recordFlags = make(map[string]configtypes.NodeRecordFlags)
 			}
-			skipPresets[node.Tag] = true
+			recordFlags[node.Tag] = node.Record
 		}
 	}
 	for _, node := range allNodes {
@@ -1261,7 +1262,7 @@ func GenerateOutboundsFromParserConfig(
 		ParseFailedSources:   parseFailedSources,
 		EmissionWarnings:     emissionWarnings,
 		NodeOrigins:          nodeOrigins,
-		SkipPresetsTags:      skipPresets,
+		RecordFlags:          recordFlags,
 		NodeLinks:            nodeLinks,
 	}, nil
 }

@@ -1,0 +1,81 @@
+{
+  "v": 1,
+  "scheme": "wireguard",
+  "cases": [
+    {
+      "name": "awg_peer",
+      "comment": "WireGuard (AWG) с одним пиром. Массив peers с form: форма правит элемент 0, пути peers.0.*. Блок amnezia виден целиком (jc…i5), AWG3-полей в форме нет. Все обязательные заданы.",
+      "body": {
+        "address": ["10.0.0.2/32"],
+        "private_key": "k",
+        "peers": [
+          {
+            "address": "w.example.com",
+            "port": 51820,
+            "public_key": "pk",
+            "allowed_ips": ["0.0.0.0/0"]
+          }
+        ],
+        "jc": 4,
+        "jmin": 40,
+        "jmax": 70
+      },
+      "expect": {
+        "visible": [
+          "mtu", "address", "private_key", "peers", "peers.0.address", "peers.0.port", "peers.0.public_key",
+          "peers.0.pre_shared_key", "peers.0.allowed_ips", "peers.0.persistent_keepalive_interval", "jc",
+          "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5"
+        ],
+        "required": ["address", "private_key", "peers.0.address", "peers.0.port", "peers.0.public_key"],
+        "missing": [],
+        "choices": {},
+        "out_of_range": []
+      }
+    },
+    {
+      "name": "empty",
+      "comment": "Пустая форма WireGuard: элемент 0 массива peers виден и без массива в теле (форма его создаст). Не заданы address, private_key, peers.0.address, peers.0.port, peers.0.public_key.",
+      "body": {},
+      "expect": {
+        "visible": [
+          "mtu", "address", "private_key", "peers", "peers.0.address", "peers.0.port", "peers.0.public_key",
+          "peers.0.pre_shared_key", "peers.0.allowed_ips", "peers.0.persistent_keepalive_interval", "jc",
+          "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5"
+        ],
+        "required": ["address", "private_key", "peers.0.address", "peers.0.port", "peers.0.public_key"],
+        "missing": ["address", "private_key", "peers.0.address", "peers.0.port", "peers.0.public_key"],
+        "choices": {},
+        "out_of_range": []
+      }
+    },
+    {
+      "name": "second_peer_ignored",
+      "comment": "Два пира: форма судит только элемент 0 — у него нет address и port (Missing), второй пир форма не видит и не трогает.",
+      "body": {
+        "address": ["10.0.0.2/32"],
+        "private_key": "k",
+        "peers": [
+          {
+            "public_key": "pk"
+          },
+          {
+            "address": "b.example.com",
+            "port": 1,
+            "public_key": "pk2"
+          }
+        ]
+      },
+      "expect": {
+        "visible": [
+          "mtu", "address", "private_key", "peers", "peers.0.address", "peers.0.port", "peers.0.public_key",
+          "peers.0.pre_shared_key", "peers.0.allowed_ips", "peers.0.persistent_keepalive_interval", "jc",
+          "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5"
+        ],
+        "required": ["address", "private_key", "peers.0.address", "peers.0.port", "peers.0.public_key"],
+        "missing": ["peers.0.address", "peers.0.port"],
+        "choices": {},
+        "out_of_range": []
+      }
+    }
+  ]
+}

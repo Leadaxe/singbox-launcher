@@ -51,6 +51,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
 - <a id="body-enabled"></a>**`enabled`** — Enable TLS for this outbound.
   - Type: bool
   - Default: `false`
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-engine"></a>**`engine`** — TLS implementation used for the handshake.
   - Type: enum, `""`, `go`, `apple`, `windows`, normalized: `trim_lower`
   - Default: `go`
@@ -64,14 +65,17 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
 - <a id="body-server-name"></a>**`server_name`** — Server name sent in SNI and verified in the certificate.
   - Type: string, format `host`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-insecure"></a>**`insecure`** — Skip server certificate verification.
   - Type: bool
   - Default: `false`
   - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
   - Not supported by: `naive`
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-alpn"></a>**`alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string, normalized: `trim`
   - Not supported by: `naive`, `masque`
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-min-version"></a>**`min_version`** — Minimum accepted TLS version.
   - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -182,6 +186,7 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
   - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
   - Replaced: `random` → `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.enabled` is `true`
 - <a id="body-reality"></a>**`reality`** — REALITY settings.
   - Type: object, dropped entirely and silently when `enabled` is `false` (the object then counts as "not set" for every presence check)
   - Not supported by: `naive`, `hysteria`, `hysteria2`, `tuic`, `masque`
@@ -193,15 +198,18 @@ These are repeated on the page of every scheme that carries a TLS block, togethe
   - Conflicts with: `tls.disable_sni`
   - Conflicts with: `tls.spoof`
   - Requires: `tls.utls.enabled` — if missing, filled in with `true`
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-reality-public-key"></a>**`reality.public_key`** — Server REALITY public key (x25519).
   - Type: string, format `base64_32`, normalized: `base64_rawurl`
   - Required: the node is dropped without it
   - If invalid: removed → [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
+  - Form: block of the connecting `ref` field, or drawn by a choice group, required, shown when `tls.reality.enabled` is `true`
 - <a id="body-reality-short-id"></a>**`reality.short_id`** — REALITY short ID (hex, even length).
   - Type: string, format `hex`, `…–16`, len `even`, normalized: `hex_only`
   - If invalid: removed → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
   - If the value had to be cleaned up: [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
   - Meaningless without: `tls.reality.public_key`
+  - Form: block of the connecting `ref` field, or drawn by a choice group, shown when `tls.reality.enabled` is `true`
 - <a id="body-reality-key-share"></a>**`reality.key_share`** — Key exchange used in the REALITY ClientHello.
   - Type: enum, `""`, `hybrid`, `classical`, normalized: `trim_lower`
   - Default: `""`

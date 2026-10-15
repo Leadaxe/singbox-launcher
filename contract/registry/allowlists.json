@@ -195,6 +195,38 @@
         "response_extra"
       ],
       "note": "Поля-условия правила dns.rules: зеркало RawDefaultDNSRule ядра (option/rule_dns.go) без invert и модификаторов (match_response, rule_set_ip_cidr_match_source, rule_set_ip_cidr_accept_empty), плюс rules логического правила. outbound здесь — условие (исходящий, от имени которого идёт запрос), а не цель. Тот же гейт, что у route_rule_conditions: DNS-правило без единого ключа из списка перехватывает все запросы; выпадает с template_fragment_dropped, если условия снял сбой (висячий rule_set, пустая переменная), и идёт в конфиг с template_rule_unconditional, если так написал автор (в том числе action-правило без условий). Контракт 1.1.81, 1.1.100."
+    },
+    "rule_dns_mirror_match": {
+      "values": [
+        "rule_set",
+        "domain",
+        "domain_suffix",
+        "domain_keyword",
+        "domain_regex",
+        "process_name",
+        "process_path",
+        "process_path_regex",
+        "package_name",
+        "package_name_regex",
+        "user",
+        "user_id",
+        "wifi_ssid",
+        "wifi_bssid",
+        "network_type",
+        "source_ip_cidr",
+        "source_ip_is_private",
+        "inbound"
+      ],
+      "note": "Ключи тела собственного правила маршрута (rules[] inline|srs), которые DNS-зеркало правила переносит в своё тело (TEMPLATE_LANG §6.11, контракт 1.1.130, D-137). rule_set — теги наборов, вписанные сборкой (srs) или написанные в теле. IP назначения (ip_cidr, ip_is_private) не переносятся: у DNS-запроса адреса назначения нет. Каждый ключ обязан быть в dns_rule_conditions. Ключ из тела, которого нет ни здесь, ни в rule_dns_mirror_gate, в зеркало не идёт и его не блокирует."
+    },
+    "rule_dns_mirror_gate": {
+      "values": [
+        "port",
+        "port_range",
+        "protocol",
+        "network"
+      ],
+      "note": "Ключи тела собственного правила маршрута, при которых DNS-зеркало и глушилка AAAA не выпускаются вовсе (TEMPLATE_LANG §6.11, контракт 1.1.130, D-137): DNS-запрос под такие условия не подходит, а зеркало без них расширило бы правило. Нулевое значение ключа (null, \"\", [], {}) гейтом не считается."
     }
   }
 }

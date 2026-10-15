@@ -142,6 +142,16 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				if tag != "" && len(dnsServerVarsFor(presenter, tag)) > 0 {
 					sum += "  ⚙"
 				}
+				// 📎 — выключенный сервер нужен DNS-зеркалу правила: сборка
+				// включит его принудительно (SPEC 172, TEMPLATE_LANG §6.11).
+				if users := ruleDNSServerUsers(m, tag); len(users) > 0 && !wizardbusiness.DNSServerWizardEnabledRaw(raw) {
+					sum += "  📎"
+					note := fmt.Sprintf(locale.T("Used by rule %s: kept in the config while the rule needs it."), strings.Join(users, ", "))
+					if desc != "" {
+						desc += "\n"
+					}
+					desc += note
+				}
 
 				// Не вызывать SyncModelToGUI здесь — он пересобирает весь список и все вкладки; только обновить селекты.
 				sumLabel := ttwidget.NewLabel(sum)

@@ -401,6 +401,44 @@ primitives came out of that work:
   `nodeflow.Repairs`, with the code going to the log instead of a stored
   warning.
 
+Contract 1.1.123 (SPEC 168) makes `form` the single source of every node
+form. A scheme opts into a shared section by putting `form` on its ref field
+(`server`/`server_port` → `dialer.common`, `tls`, `transport`); fields of
+`tls.json` and of `transports.json` variants carry their own `form`, minus
+the scheme's `forbidden_for` and the ref field's `exclude_fields` /
+`exclude_variants`. The transport discriminator becomes a selector, variant
+fields are visible only for their variant, an array of objects is edited as
+its element `[0]` (`peers.0.address`), `form.fixed` values are always written
+and never drawn (`tls.enabled` for Hysteria2, Trojan, naive, masque), and
+`form.implies` writes companion keys (`tls.utls.enabled` with a fingerprint).
+`registry.FormFields` lists the drawn fields; the UI side is one model
+(`ui/configurator/business/node_form_model.go`, labels by body path in
+`node_form_labels.go`) and one view (`ui/configurator/dialogs/node_form_view.go`)
+used by Add server and by the node window (`tabs/source_form_edit.go`). The
+form hands out a body already run through the sanitizer and emitter, so
+registry defaults (WireGuard `allowed_ips`, the AmneziaWG MTU) are in the
+stored body.
+
+Contract 1.1.122 (SPEC 167) added three registry primitives for protocols
+whose core config is large and mostly pass-through (OpenConnect). **Wildcard
+`*`** — an entry `"*"` in an object's `fields` (listed in `order`) lets the
+keys the registry does not describe pass through that object untouched, with
+no `unknown_key`, while the described ones keep their own rules. It is not
+inherited: a `*` at the body root leaves a described `tls` object strict, and
+a loose `tls` needs its own `*` in `tls.fields`. The position of `*` in
+`order` is the emission slot of the pass-through keys (alphabetical). It
+replaced `fields_unchecked`, which was exactly `order: ["*"]`; the sanitizer
+and emitter lost their `FieldsUnchecked` branches. The **`form` attribute**
+(`form { block, visible_when, required, required_unless, min, max }` on a
+field, `form { blocks[], choices[] }` on a body, loaded by
+`core/config/registry/form.go`) is read by the node forms only; the
+sanitizer, emitter, gate and mapper do not see it, and a field hidden by the
+form is not removed from the body. The **`variant` role** names the one field
+whose value becomes the second part of the node label after `transport` and
+`vhttp` (`openconnect·fortinet`). `server`/`server_port` are materialised
+into a body (`core/config/node_materialize.go`) only when the scheme
+describes them.
+
 Warnings are derived data — recomputable from `origin.raw` — and are stored only
 so the UI can draw ⚠ without re-parsing. `nil` means "never counted" and an empty
 list means "counted, clean"; a one-time pass at load turns the former into the
@@ -539,7 +577,14 @@ build.BuildConfig  (pure)
             │
             ├─► MergeDNSSection → MergePresetsIntoDNS → ResolveDNS (pure)
             │      walk state.DNS kind switch (template / preset / user),
-            │      attach metadata (Source / Required / Locked / Active / Enabled)
+            │      attach metadata (Source / Required / Locked / Active / Enabled);
+            │      dns.rules are walked as a synced copy: an active preset with no
+            │      state entry yet gets its slot by the rule axis (state.PresetDNSSlotIndex,
+            │      SPEC 171) — the same rule the Configurator and Debug API apply;
+            │      DNS mirrors of own rules (rules[].dns, SPEC 172) are derived from the
+            │      resolved route (RuleDNSMirrorMatch: registry allowlists) and inserted
+            │      before the first preset slot with a higher axis number
+            │      (RuleDNSMirrorIndex) — never stored in state.DNS.Rules
             │
             └─► MergeRouteSection → MergePresetsIntoRoute → ResolveRoute (pure)
                    walk state.Rules kind switch (preset / inline / srs),
@@ -572,8 +617,18 @@ Key properties:
   once, so the same fragment gate drops a rule whose collected list came out
   empty. The wizard uses the same functions on the nodes of the last emission
   (`business.PresetNodesForView`, `build.PresetForEachNodes` for the
-  "served nodes" label and the node's Skip presets toggle). The legacy
+  "served nodes" label and the node's Skip Tailscale presets toggle). The legacy
   `for_each` key is a load error (preset skipped).
+- **Node record fields (SPEC 170, contract 1.1.126).** `skip_tailscale_presets`,
+  `allow_local`, `allow_lan`, `allow_gateway` of an own server / folder member
+  travel as one `configtypes.NodeRecordFlags`: `state.Node` (embedded, JSON
+  keys of the record; legacy `skip_presets` lifted on load and backup import)
+  → `CanonicalNode.Record` (zero for subscription nodes) → `ParsedNode.Record`
+  → `OutboundGenerationResult.RecordFlags` → `ParsedCache.RecordFlags` /
+  `WizardModel.GeneratedRecordFlags` → `template.PresetNode.Record` →
+  `@node.<field>` (`PresetNodeRecordFields`). The stock `tunnel-ingress` preset
+  (`for_each_node_do`, num 940) reads the `allow_*` fields to reject inbound
+  connections from client tunnel endpoints by `inbound` tag.
 - **One template walker (SPEC 143).** Every `@var` / `#if` substitution goes
   through the canonical walker `template.SubstituteVarsInJSONCanonWarnings`
   (`core/template/substitute_canon.go`, rules of `contract/docs/TEMPLATE_LANG.md`):
@@ -1286,7 +1341,10 @@ Rules the split keeps:
   machine record's `goos`/`goarch`/`init_system` from them (one `mutate`, logged);
   the local passport cache keeps the same `InfoData`. `DownloadCoreForTarget` names
   the asset by `platform` and falls back to the goos/goarch table only without a
-  passport. A known `init_system` hides the header selector; `service:false` moves
+  passport. `packed` (core lx.21+, issue #146: the running core is UPX-packed) is
+  cached in the passport and switches the asset to `<platform>.upx.tar.gz`; a
+  release without that copy (absent from SHA256SUMS, or its download fails) gives
+  the plain archive with `PackedFallback` and a warning in the window. A known `init_system` hides the header selector; `service:false` moves
   "install the service" to the top of Not running.
 - `/admin/commands` (SPEC 128) is reached through `lxdclient/commands.go` and the
   registry's `Commands/Command/RunCommand` (local: `DaemonAdminClient`). The window
@@ -1348,3 +1406,58 @@ a second build or delivery path:
   it; one attempt per tick per machine, a failed fetch gets one 15-second
   refresh retry that never deploys by itself.
 
+### 11.10 OpenConnect: second-factor challenge and SSO (SPEC 167)
+
+An `openconnect` endpoint can stop in `auth-pending` while the gateway waits
+for a code or a browser sign-in. The core exposes that over the same gRPC
+control plane as Tailscale; the classic engine has no channel (no `api`
+service is added to a classic config — no extra ports), so there the node only
+shows a hint that code prompts need the daemon mode.
+
+```
+core: SubscribeOpenConnectStatus (stream)
+   │  first frame = current state, so a pending challenge shows on launch
+   ▼
+services.OpenConnectStatusCache.Apply   (core/services/openconnect_status.go)
+   │  notify(newChallenges, changed) — fires on a new challenge.id
+   ▼
+core.dispatchOpenConnect → SetOnOpenConnectChallenge / SetOnOpenConnectChange
+   │  (core/openconnect_status.go, AppController facade over a per-target source)
+   ▼
+ui.openConnectOnChallenge → form or browser dialog   (ui/servers_openconnect_auth.go)
+   ▼
+OpenConnectSubmitForm / OpenConnectSubmitBrowser / OpenConnectCancel
+   → SubmitOpenConnectAuthResponse / CancelOpenConnectAuthChallenge
+```
+
+- **Two sources, one interface.** `openConnectSource` (in
+  `core/openconnect_status.go`) is implemented by the local `DaemonBackend`
+  (`core/backend_daemon_openconnect.go`: `superviseOpenConnect` holds the
+  subscription with backoff modelled on `superviseTailscale`, the backoff
+  resets only after a received frame) and by the remote `LxdRemoteTransport`
+  (`core/services/lxd_remote_openconnect.go`: `ensureOpenConnectStream` starts
+  the stream lazily on first read, `stopOpenConnectStream` runs from `Close`).
+  The UI addresses them through `core.OpenConnectTarget` (= `CoreTarget`), so
+  Local and a machine take the same path; the cache is shared code.
+- **Unimplemented stops the stream.** A core built without `with_openconnect`
+  (or an older daemon) answers `Unimplemented`; `MarkUnsupported` is set and
+  the subscription ends for that backend/transport instead of resubscribing
+  every few seconds. A new core arrives with a new backend, and the supervisor
+  starts again.
+- **Dialog rules.** A dialog opens once per new `challenge.id` and again on a
+  click on the node's status; it does not reopen on every tick. A form
+  challenge renders the gateway's `Form.Fields` as they are; *Not now* closes
+  the dialog and sends nothing (the core holds the challenge without a
+  timeout); *Request a new code* is an explicit Cancel — the core logs in
+  again after about a second with a backoff up to 60 s, which makes the
+  gateway send a new code.
+- **Browser (SAML) in callback mode.** When the challenge's
+  `callbackURLPrefixes` all point to loopback (FortiGate),
+  `core.StartSSOCallbackListener` (`core/openconnect_sso_callback.go`) binds a
+  temporary listener on `127.0.0.1:<port>` for the lifetime of the dialog;
+  the port comes from the prefix, else `DefaultSSOCallbackPort` (8020, as
+  FortiClient), and no node key is involved. The redirect URL it catches goes
+  back as `BrowserResult.finalURL`. For a remote machine the browser and the
+  listener are on this computer and the machine's core receives only the URL
+  string. Cookie/header SSO (AnyConnect) is not supported: the dialog says so
+  and sends nothing.

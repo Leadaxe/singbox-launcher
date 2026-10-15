@@ -51,16 +51,22 @@ const (
 type Rejection struct {
 	// Kind — outbound или endpoint.
 	Kind Kind
-	// Index — `<i>` из строки. ТОЛЬКО диагностика: сопоставлять по нему
-	// запрещено (PARSING_PRINCIPLES §9.1). -1 = не прочитан.
+	// Index — `<i>` из строки. В форме initialize ТОЛЬКО диагностика:
+	// сопоставлять по нему запрещено (PARSING_PRINCIPLES §9.1). В форме
+	// декодирования (decode.go) он и дал тег — по отправленному конфигу.
+	// -1 = не прочитан.
 	Index int
 	// Type — тип sing-box (`vless`, `wireguard`, …).
 	Type string
 	// Tag — ФИНАЛЬНЫЙ тег записи в собранном конфиге, сопоставившийся с
 	// переданным множеством тегов.
 	Tag string
-	// Text — дословный текст ядра без префикса с тегом. Он же едет в
-	// `disabled_reason` узла (PARSING_PRINCIPLES §9.4).
+	// Path — путь внутри тела узла из формы декодирования (`network`,
+	// `peers[1].public_key`); "" — форма initialize или ошибка на самой записи.
+	Path string
+	// Text — дословный текст ядра без префикса с тегом; для формы
+	// декодирования — `<path>: <text>` без `outbounds[i].` (§9.4). Он же едет
+	// в `reason` записи `core_rejected` узла.
 	Text string
 }
 

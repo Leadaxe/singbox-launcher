@@ -12,6 +12,10 @@
 package tabs
 
 import (
+	"fmt"
+	"sort"
+	"strings"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
@@ -19,6 +23,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
+	"singbox-launcher/core/build"
+	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
@@ -42,7 +48,14 @@ func buildUnifiedDNSRuleRows(
 	dragGroup := fynewidget.NewDragReorderGroup(func(from, to int) {
 		moveDNSSlot(presenter, model, from, to, refreshAll)
 	})
+	// DNS-зеркала правил (SPEC 172) — строки только для чтения на том месте,
+	// где их поставит сборка. В перетаскивании не участвуют: группа считает
+	// место по зарегистрированным строкам.
+	mirrors := ruleDNSMirrorRowsByPos(model)
 	for slotIdx, slot := range model.DNSRuleOrder {
+		for _, cr := range mirrors[slotIdx] {
+			buildRuleDNSMirrorRow(dnsRulesBox, cr)
+		}
 		switch slot.Kind {
 		case wizardmodels.DNSSlotKindUser:
 			if slot.Index < 0 || slot.Index >= len(model.DNSUserRules) {
@@ -56,6 +69,97 @@ func buildUnifiedDNSRuleRows(
 			buildSingleDNSPresetRuleRow(presenter, model, parentWindow, dnsRulesBox, slot.Index, slotIdx, refreshAll, dragGroup)
 		}
 	}
+	for _, cr := range mirrors[len(model.DNSRuleOrder)] {
+		buildRuleDNSMirrorRow(dnsRulesBox, cr)
+	}
+}
+
+// ruleDNSMirrorRowsByPos — включённые правила с действующим DNS-зеркалом,
+// разложенные по месту в model.DNSRuleOrder (TEMPLATE_LANG §6.11): ключ —
+// индекс слота, перед которым встаёт зеркало; len(DNSRuleOrder) — в конце.
+func ruleDNSMirrorRowsByPos(model *wizardmodels.WizardModel) map[int][]*wizardmodels.RuleState {
+	order := model.DNSRuleOrder
+	presetNum := func(i int) (int, bool) {
+		s := order[i]
+		if s.Kind != wizardmodels.DNSSlotKindPresetRef || s.Index < 0 || s.Index >= len(model.PresetRefs) {
+			return 0, false
+		}
+		if n := model.PresetRefs[s.Index].Num; n != nil {
+			return *n, true
+		}
+		return corestate.DefaultRuleNum, true
+	}
+	inSlot := func(i int) bool { return order[i].Kind == wizardmodels.DNSSlotKindPresetRef }
+
+	var rules []*wizardmodels.RuleState
+	for _, cr := range model.CustomRules {
+		if cr != nil && cr.Enabled && ruleDNSMirrorText(cr) != "" {
+			rules = append(rules, cr)
+		}
+	}
+	ruleNum := func(cr *wizardmodels.RuleState) int {
+		if cr.Num != nil {
+			return *cr.Num
+		}
+		return corestate.DefaultRuleNum
+	}
+	sort.SliceStable(rules, func(i, j int) bool { return ruleNum(rules[i]) < ruleNum(rules[j]) })
+
+	out := make(map[int][]*wizardmodels.RuleState)
+	for _, cr := range rules {
+		pos := build.RuleDNSMirrorIndex(len(order), ruleNum(cr), presetNum, inSlot)
+		out[pos] = append(out[pos], cr)
+	}
+	return out
+}
+
+// ruleDNSMirrorText — что делает DNS-опция правила («DNS: tag · IPv4 only»);
+// пусто — опций нет или сборка зеркала не выпустит (гейт, пустой матчер).
+func ruleDNSMirrorText(cr *wizardmodels.RuleState) string {
+	if cr == nil || cr.DNS.IsZero() {
+		return ""
+	}
+	if _, ok := build.RuleDNSMirrorMatch(cr.Rule.Rule); !ok {
+		return ""
+	}
+	var parts []string
+	if cr.DNS.Enabled && cr.DNS.ServerTag != "" {
+		parts = append(parts, fmt.Sprintf(locale.T("DNS: %s"), cr.DNS.ServerTag))
+	}
+	if cr.DNS.ForceIPv4 {
+		parts = append(parts, locale.T("IPv4 only"))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// ruleDNSServerUsers — имена включённых правил, чьё DNS-зеркало ведёт на
+// сервер tag.
+func ruleDNSServerUsers(model *wizardmodels.WizardModel, tag string) []string {
+	if tag == "" {
+		return nil
+	}
+	var out []string
+	for _, cr := range model.CustomRules {
+		if cr == nil || !cr.Enabled || cr.DNS == nil || !cr.DNS.Enabled || cr.DNS.ServerTag != tag {
+			continue
+		}
+		if ruleDNSMirrorText(cr) != "" {
+			out = append(out, cr.Rule.Label)
+		}
+	}
+	return out
+}
+
+// buildRuleDNSMirrorRow — строка DNS-зеркала правила: только для чтения,
+// правится в окне правила на вкладке Rules.
+func buildRuleDNSMirrorRow(dnsRulesBox *fyne.Container, cr *wizardmodels.RuleState) {
+	label := ttwidget.NewLabel("📎 " + cr.Rule.Label + "  ·  " + ruleDNSMirrorText(cr))
+	label.Truncation = fyne.TextTruncateClip
+	label.SetToolTip(locale.T("From the rule's DNS options. Edit the rule on the Rules tab."))
+	check := widget.NewCheck("", nil)
+	check.SetChecked(true)
+	check.Disable()
+	finalizeRow(dnsRulesBox, buildRowDragLead(nil, check), buildRowEditDelCluster(nil, nil), label, label)
 }
 
 // buildSingleDNSUserRuleRow — один tile для DNSUserRules[userIdx].

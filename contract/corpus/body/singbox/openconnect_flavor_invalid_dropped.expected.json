@@ -1,0 +1,15 @@
+{
+  "dropped": [
+    {
+      "code": "openconnect_flavor_invalid",
+      "index": 0,
+      "reason": "emit_error",
+      "ref": "forti-typo"
+    }
+  ],
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [],
+  "v": 1
+}

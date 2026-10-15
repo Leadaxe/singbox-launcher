@@ -1,0 +1,5 @@
+{
+  "_comment": "D-133 (§4.4): короткая форма — элемент заменяется V; пара к true_replaces_element",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}, {"name": "addr6", "type": "text", "default_value": ""}],
+  "config": {"address": ["10.0.0.1/30", {"#if": ["@flag", "@addr6"]}]}
+}

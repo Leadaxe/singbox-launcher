@@ -1,0 +1,5 @@
+# sing-box: openconnect, в tls.peer_fingerprint один годный отпечаток sha256:
+# и один записанный через двоеточия (контракт 1.1.122). Формат элемента — по
+# parsePeerFingerprint ядра: негодный элемент снят с кодом
+# openconnect_fingerprint_invalid, годный остался.
+{"endpoints":[{"type":"openconnect","tag":"forti-pin","server":"fw.example.com","flavor":"fortinet","username":"user","tls":{"peer_fingerprint":["sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","AA:BB:CC:DD"]}}]}

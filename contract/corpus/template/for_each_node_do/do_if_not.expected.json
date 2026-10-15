@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "domain": [
+        "a",
+        "e"
+      ],
+      "outbound": "direct-out"
+    }
+  ],
+  "dns_servers": [],
+  "dns_rules": [],
+  "warnings": []
+}

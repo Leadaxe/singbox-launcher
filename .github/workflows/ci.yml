@@ -789,6 +789,9 @@ jobs:
           MACOS_APP=$(find . -name "singbox-launcher.app" -type d | head -1 || true)
           if [ -n "${MACOS_APP:-}" ]; then
             echo "✓ Found singbox-launcher.app, creating ZIP..."
+            # upload/download-artifact не сохраняет права: без chmod бинарь
+            # уезжает в ZIP как 0644, и распакованный .app не запускается.
+            chmod +x "$MACOS_APP/Contents/MacOS/singbox-launcher"
             zip -r "singbox-launcher-${VERSION}-macos.zip" "$MACOS_APP"
             echo "✓ Created: singbox-launcher-${VERSION}-macos.zip"
           else
@@ -799,6 +802,7 @@ jobs:
           MACOS_APP_CATALINA=$(find . -name "singbox-launcher-macos-catalina.app" -type d | head -1 || true)
           if [ -n "${MACOS_APP_CATALINA:-}" ]; then
             echo "✓ Found Catalina-targeted app, creating ZIP..."
+            chmod +x "$MACOS_APP_CATALINA/Contents/MacOS/singbox-launcher"
             zip -r "singbox-launcher-${VERSION}-macos-catalina.zip" "$MACOS_APP_CATALINA"
             echo "✓ Created: singbox-launcher-${VERSION}-macos-catalina.zip"
           fi
@@ -975,7 +979,15 @@ jobs:
             - Fix macOS quarantine attributes and permissions
             - Launch the application automatically
 
-            **Option 2: Manual Installation**
+            **Option 2: Homebrew** (stable releases only, available a few hours after the release)
+
+            ```bash
+            brew install --cask leadaxe/tap/singbox-launcher
+            ```
+
+            Update later with `brew upgrade --cask singbox-launcher`. The Cask installs the latest stable release, not a pre-release.
+
+            **Option 3: Manual Installation**
 
             1. Download: `singbox-launcher-${{ needs.meta.outputs.version }}-macos.zip`
             2. Extract the ZIP file

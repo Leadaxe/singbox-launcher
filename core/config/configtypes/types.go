@@ -224,6 +224,42 @@ type CanonicalSource struct {
 	RelaysInDirections bool
 }
 
+// NodeRecordFlags — поля ЗАПИСИ узла, видимые пресетам шаблона как
+// `@node.<поле>` (TEMPLATE_LANG §6.6, контракт 1.1.126, D-134). Носитель —
+// свой сервер в корне и член папки; у узла подписки записи нет, флаги всегда
+// ложь. В состоянии и в бэкапе хранится только true (omitempty).
+//
+// Один тип на весь путь «состояние → эмиссия → кэш сборки → обход пресета»:
+// новое поле записи добавляется сюда и в PresetNodeRecordFields, а не
+// параллельной картой на каждом шаге.
+type NodeRecordFlags struct {
+	// SkipTailscalePresets — пресет `tailscale` узел не обслуживает
+	// (до 1.1.126 — `skip_presets`, читается терпимо; LxBox §578).
+	SkipTailscalePresets bool `json:"skip_tailscale_presets,omitempty"`
+	// AllowLocal — пир клиентского туннеля этого узла достаёт сервисы на
+	// нашем туннельном адресе (пресет `tunnel-ingress`).
+	AllowLocal bool `json:"allow_local,omitempty"`
+	// AllowLan — пир видит наши частные сети.
+	AllowLan bool `json:"allow_lan,omitempty"`
+	// AllowGateway — пир ходит через нас куда угодно.
+	AllowGateway bool `json:"allow_gateway,omitempty"`
+}
+
+// Any — хотя бы один флаг поднят.
+func (f NodeRecordFlags) Any() bool {
+	return f.SkipTailscalePresets || f.AllowLocal || f.AllowLan || f.AllowGateway
+}
+
+// MergeTrue — слияние импорта: флаг из файла переносится, только если он
+// true; отсутствие поля неотличимо от false и своё значение не сбрасывает
+// (BACKUP.md, норма поля записи).
+func (f *NodeRecordFlags) MergeTrue(in NodeRecordFlags) {
+	f.SkipTailscalePresets = f.SkipTailscalePresets || in.SkipTailscalePresets
+	f.AllowLocal = f.AllowLocal || in.AllowLocal
+	f.AllowLan = f.AllowLan || in.AllowLan
+	f.AllowGateway = f.AllowGateway || in.AllowGateway
+}
+
 // CanonicalNode — один готовый узел канона в сборочной форме.
 type CanonicalNode struct {
 	// Kind: "server" | "chain" | "auto" (значения state.SourceKind).
@@ -245,9 +281,8 @@ type CanonicalNode struct {
 	// Service — узел служебный (релей BYPASS, SPEC 120): в конфиг идёт, в
 	// пользовательский выбор — нет.
 	Service bool
-	// SkipPresets — поле записи skip_presets (LxBox §578); у узла подписки
-	// всегда false.
-	SkipPresets bool
+	// Record — поля записи узла (D-134); у узла подписки всегда нули.
+	Record NodeRecordFlags
 	// Authored — тело авторское (контракт 1.1.87, PARSING_PRINCIPLES
 	// §10.1). Считает state (state.Node.Authored): контейнер известен
 	// только ему.
@@ -738,9 +773,9 @@ type ParsedNode struct {
 	// показал его шестерёнкой, а выбор Направлений не предлагал.
 	// В конфиг попадает как всякий другой — detour на него иначе повис бы.
 	Service bool
-	// SkipPresets — поле записи skip_presets (LxBox §578): пресеты с
-	// for_each_node* узел не обслуживают.
-	SkipPresets bool
+	// Record — поля записи узла (skip_tailscale_presets, allow_*; D-134),
+	// которые пресеты с for_each_node* читают как @node.<поле>.
+	Record NodeRecordFlags
 	// Chain is the ordered detour path from the nearest hop outwards
 	// (SPEC 094 B1). Empty means the node dials directly.
 	//

@@ -42,7 +42,7 @@ sing-box), тогда всё будет проще и отлаживать, и �
 выносится в метаданные — это исключение, потому что тег и имя одно и то же,
 он уникален и уникальным делается на лету часто».
 Метаданные — `kind`, `id`, `tag`|`name`, `enabled`, `num`, `refs`, `origin`,
-local-only расширения стороны (`dns{}`, `resolve{}` у LxBox).
+расширения записи вне `body` (`dns{}` — обе стороны, контракт 1.1.130; `resolve{}` — local-only у LxBox).
 `body` — ровно тот объект, который уходит в конфиг (без `tag`: единственное
 исключение, тег — метаданные),
 ключи sing-box (snake_case), никаких переизобретённых имён и никакого
@@ -104,7 +104,7 @@ local-only расширения стороны (`dns{}`, `resolve{}` у LxBox).
 | srs-наборы | `body.srs_url` | `srsUrl` | `ref` / `refs[]` | `refs[]` — снаружи `body`: это источники наборов, не sing-box. Сборка регистрирует `rule_set` на каждый `ref` и сама вписывает список тегов в `body.rule_set` при эмиссии (## 12, вариант А, D-100) |
 | preset | `body.vars` | — | `ref` + `vars` | `ref` + `vars` (тела нет — оно у пресета) |
 | ключи sing-box, которые вторая сторона не применяет | — | `packages`, `wifi`, `inbounds`, `ipIsPrivate` | не едут | в `body` под именами sing-box (`package_name`, `wifi_ssid`, `wifi_bssid`, `inbound`, `ip_is_private`, `source_ip_cidr`, …), типы sing-box (`port` — int[], `port_range` — строки); вторая сторона игнорирует по allowlist |
-| расширения приложения (не sing-box) | — | `dns{}`, `resolve{}` | `dns`, `resolve` (LxBox) | поля ЗАПИСИ вне `body`: `dns{}`, `resolve{}` — LxBox; вторая сторона игнорирует молча |
+| расширения приложения (не sing-box) | — | `dns{}`, `resolve{}` | `dns`, `resolve` (LxBox) | поля ЗАПИСИ вне `body`: `dns{}` — обе стороны с контракта 1.1.130 (DNS-зеркало правила, `TEMPLATE_LANG.md` §6.11, форма LxBox); `resolve{}` — LxBox, вторая сторона игнорирует молча |
 
 Целевая запись правила: `{ "kind": "inline", "name": "…", "enabled": true, "num": 1000, "body": { "domain_suffix": ["example.com"], "outbound": "proxy" } }`;
 srs: `{ "kind": "srs", "name": "…", "enabled": true, "num": 1010, "refs": ["https://…/a.srs", "https://…/b.srs"], "body": { "outbound": "proxy" } }` — `rule_set` в `body` пишет сборка.

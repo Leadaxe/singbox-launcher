@@ -9,11 +9,17 @@
 // происхождения, на которой узел ломался (origin JSON записывался как
 // `uri`, Regen падал на «no scheme»).
 //
-// Что редактируется. Ровно три поля роли:
+// Что редактируется. Ровно два поля роли:
 //
-//	advertise_exit_node        — быть выходом для других машин tailnet;
-//	exit_node                  — чей выход использовать (имя или IP машины);
-//	exit_node_allow_lan_access — не заворачивать локальную сеть в этот выход.
+//	advertise_exit_node — быть выходом для других машин tailnet;
+//	exit_node           — чей выход использовать (имя или IP машины).
+//
+// `exit_node_allow_lan_access` формой не правится: форк tailscale в ядре
+// маршрутов выхода и «LAN-защиты» в систему не ставит (sing-box ведёт
+// маршрутизацию сам), так что поле на трафик не влияет. Локальную сеть мимо
+// выхода пускает пресет шаблона «Private IPs» — пакет до неё в узел вообще
+// не попадает. Пришедшее из JSON значение форма не трогает, пока у узла есть
+// exit_node (см. applyTailscaleRole).
 //
 // Две роли исключают друг друга: ядро отказывается стартовать с
 // `advertise_exit_node` и непустым `exit_node` разом (protocol/tailscale/
@@ -22,8 +28,7 @@
 // ловит — падает только запуск (ловушка chain-check-misses-start-errors).
 // Поэтому форма не даёт собрать такую пару: галка «быть выходом» гасит
 // строку «пользоваться выходом» и снимает её поля с тела, как и
-// конструктор. Связь `exit_node_allow_lan_access` → `exit_node` держит
-// реестр (`requires`): без выхода поле не пишется.
+// конструктор.
 //
 // Остальные поля узла (ключ, hostname, маршруты, теги ACL) здесь не
 // правятся: они задаются при создании или в JSON, и менять их у живого узла
@@ -63,18 +68,20 @@ const tailscaleSingboxType = "tailscale"
 const (
 	tailscaleKeyAdvertiseExit = "advertise_exit_node"
 	tailscaleKeyExitNode      = "exit_node"
-	tailscaleKeyExitLAN       = "exit_node_allow_lan_access"
 )
+
+// tailscaleKeyExitLAN — спутник exit_node из JSON; форма его не пишет, только
+// снимает вместе с выходом (см. applyTailscaleRole).
+const tailscaleKeyExitLAN = "exit_node_allow_lan_access"
 
 // tailscaleRoleKeys — те же ключи списком: порядок = порядок проверки
 // отказа санитайзера.
-var tailscaleRoleKeys = []string{tailscaleKeyAdvertiseExit, tailscaleKeyExitNode, tailscaleKeyExitLAN}
+var tailscaleRoleKeys = []string{tailscaleKeyAdvertiseExit, tailscaleKeyExitNode}
 
 // tailscaleRole — роль узла в tailnet в виде, пригодном для формы.
 type tailscaleRole struct {
 	AdvertiseExit bool
 	ExitNode      string
-	ExitLAN       bool
 }
 
 // tailscaleSchemeOfBody — схема реестра по типу тела, если это Tailscale.
@@ -123,7 +130,6 @@ func readTailscaleRole(node *wizardmodels.Node) tailscaleRole {
 	out.AdvertiseExit, _ = ob[tailscaleKeyAdvertiseExit].(bool)
 	out.ExitNode, _ = ob[tailscaleKeyExitNode].(string)
 	out.ExitNode = strings.TrimSpace(out.ExitNode)
-	out.ExitLAN, _ = ob[tailscaleKeyExitLAN].(bool)
 	return out
 }
 
@@ -134,6 +140,9 @@ func readTailscaleRole(node *wizardmodels.Node) tailscaleRole {
 // их бы потеряла. Снятое с формы поле УДАЛЯЕТСЯ из тела, а не пишется
 // false/"": дефолт ядра тот же, а лишний ключ в теле — лишняя строка в
 // конфиге и в JSON-вкладке.
+//
+// `exit_node_allow_lan_access` из JSON остаётся, пока у узла есть выход, и
+// снимается вместе с ним: без exit_node его снял бы реестр (`requires`).
 //
 // Ошибка = ОТКАТ: узел остаётся прежним, вызывающий показывает причину.
 func applyTailscaleRole(node *wizardmodels.Node, r tailscaleRole) error {
@@ -146,16 +155,15 @@ func applyTailscaleRole(node *wizardmodels.Node, r tailscaleRole) error {
 	}
 	delete(ob, tailscaleKeyAdvertiseExit)
 	delete(ob, tailscaleKeyExitNode)
-	delete(ob, tailscaleKeyExitLAN)
 	if r.AdvertiseExit {
 		// Роли взаимоисключающие: на анонсе чужой выход в тело не пишется,
 		// даже если строка осталась заполненной с прошлого состояния галки.
 		ob[tailscaleKeyAdvertiseExit] = true
 	} else if exit := strings.TrimSpace(r.ExitNode); exit != "" {
 		ob[tailscaleKeyExitNode] = exit
-		if r.ExitLAN {
-			ob[tailscaleKeyExitLAN] = true
-		}
+	}
+	if _, hasExit := ob[tailscaleKeyExitNode]; !hasExit {
+		delete(ob, tailscaleKeyExitLAN)
 	}
 	return writeTailscaleBody(node, ob)
 }
@@ -221,9 +229,8 @@ func writeTailscaleBody(node *wizardmodels.Node, ob map[string]interface{}) erro
 type tailscaleBlock struct {
 	advExit  *widget.Check
 	exitNode *widget.Entry
-	exitLAN  *widget.Check
-	// exitRows — строки, которые гасит галка «быть выходом».
-	exitRows []fyne.CanvasObject
+	// exitRow — строка, которую гасит галка «быть выходом».
+	exitRow fyne.CanvasObject
 	// content — всё, что блок добавляет в форму, одним объектом.
 	content *fyne.Container
 	// syncing — идёт программная запись значений; обработчики не считают её
@@ -268,7 +275,6 @@ func newTailscaleBlock(
 		}
 	}
 	b.exitNode.OnChanged = func(string) { commit() }
-	b.exitLAN = widget.NewCheck(locale.T("Keep local network reachable while using the exit node"), func(bool) { commit() })
 	b.advExit = widget.NewCheck(locale.T("Advertise this node as an exit node"), func(bool) {
 		b.syncExitRole()
 		commit()
@@ -278,15 +284,13 @@ func newTailscaleBlock(
 	note.Wrapping = fyne.TextWrapWord
 	note.Importance = widget.LowImportance
 
-	exitRow := container.NewBorder(nil, nil, widget.NewLabel(locale.T("Exit node")), nil, b.exitNode)
-	b.exitRows = []fyne.CanvasObject{exitRow, b.exitLAN}
-	// Галка-переключатель роли стоит НАД тем, что от неё зависит: скрытые ею
-	// строки лежат ниже, и переключение не двигает саму галку под курсором.
+	b.exitRow = container.NewBorder(nil, nil, widget.NewLabel(locale.T("Exit node")), nil, b.exitNode)
+	// Галка-переключатель роли стоит НАД тем, что от неё зависит: скрытая ею
+	// строка лежит ниже, и переключение не двигает саму галку под курсором.
 	b.content = container.NewVBox(
 		sectionHeader(locale.T("Tailscale")),
 		b.advExit,
-		exitRow,
-		b.exitLAN,
+		b.exitRow,
 		note,
 	)
 	return b
@@ -297,7 +301,6 @@ func (b *tailscaleBlock) values() tailscaleRole {
 	return tailscaleRole{
 		AdvertiseExit: b.advExit.Checked,
 		ExitNode:      b.exitNode.Text,
-		ExitLAN:       b.exitLAN.Checked,
 	}
 }
 
@@ -308,19 +311,16 @@ func (b *tailscaleBlock) load(node *wizardmodels.Node) {
 	b.syncing = true
 	b.advExit.SetChecked(r.AdvertiseExit)
 	b.exitNode.SetText(r.ExitNode)
-	b.exitLAN.SetChecked(r.ExitLAN)
 	b.syncing = false
 	b.syncExitRole()
 }
 
-// syncExitRole гасит строки чужого выхода, пока узел сам анонсируется
+// syncExitRole гасит строку чужого выхода, пока узел сам анонсируется
 // выходом: ядро обе роли разом не принимает (см. шапку файла).
 func (b *tailscaleBlock) syncExitRole() {
-	for _, row := range b.exitRows {
-		if b.advExit.Checked {
-			row.Hide()
-			continue
-		}
-		row.Show()
+	if b.advExit.Checked {
+		b.exitRow.Hide()
+		return
 	}
+	b.exitRow.Show()
 }

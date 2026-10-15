@@ -1,0 +1,60 @@
+{
+  "_comment": "D-133 (§6.7.1): операция #do под условием короткой формы — #append только на узлах, где cond истинен; пара к do_if_long_form_accepted.",
+  "preset": {
+    "for_each_node_do": {
+      "#do": {
+        "@list": {
+          "#if": [
+            {
+              "@node.body.type": "tailscale"
+            },
+            {
+              "#append": "@node"
+            }
+          ]
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "list",
+        "type": "text_list"
+      }
+    ],
+    "rules": [
+      {
+        "domain": "@list",
+        "outbound": "direct-out"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "a",
+      "body": {
+        "type": "vless",
+        "tag": "a",
+        "server": "a.example",
+        "server_port": 443
+      }
+    },
+    {
+      "tag": "home-ts",
+      "skip_tailscale_presets": true,
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    },
+    {
+      "tag": "e",
+      "body": {
+        "type": "vless",
+        "tag": "e",
+        "server": "b.example",
+        "server_port": 443
+      }
+    }
+  ]
+}

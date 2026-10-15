@@ -160,7 +160,6 @@ func InvalidateNodePool(model *wizardmodels.WizardModel) {
 	// Счётчики узлов выведены из пула и пережить его не могут: иначе список
 	// Sources показывал бы числа от прошлого состава.
 	model.SourceNodeCounts = nil
-
 }
 
 // TailscaleEndpointTags — финальные теги узлов схемы `tailscale` в пуле

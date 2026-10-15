@@ -10,6 +10,7 @@ import (
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/configtypes"
 	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/locale"
@@ -20,7 +21,7 @@ import (
 // же путём, что сборка. Из одной эмиссии: кэш боевой сборки (как его строит
 // rebuild_snapshot) и кэш превью визарда дают один список, и пресет tailscale
 // обслуживает включённый свой сервер и узел подписки, но не узел со
-// skip_presets и не выключенный узел. Узел подписки со skip_presets в
+// skip_tailscale_presets и не выключенный узел. Узел подписки с этим флагом в
 // состоянии всё равно обслуживается: у него нет записи.
 func TestPresetNodesForView_MatchesBuildSelection(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "bin", "wizard_template.json"))
@@ -48,8 +49,8 @@ func TestPresetNodesForView_MatchesBuildSelection(t *testing.T) {
 	tsNode := func(tag string, enabled, skip bool) corestate.Node {
 		return corestate.Node{
 			Kind: corestate.SourceKindServer, Enabled: enabled, Tag: tag,
-			Body:        json.RawMessage(`{"type":"tailscale","tag":"` + tag + `","auth_key":"tskey-auth-example"}`),
-			SkipPresets: skip,
+			Body:            json.RawMessage(`{"type":"tailscale","tag":"` + tag + `","auth_key":"tskey-auth-example"}`),
+			NodeRecordFlags: configtypes.NodeRecordFlags{SkipTailscalePresets: skip},
 		}
 	}
 	m := wizardmodels.NewWizardModel()
@@ -74,7 +75,7 @@ func TestPresetNodesForView_MatchesBuildSelection(t *testing.T) {
 	// Превью: поля модели, как их заполняет ParseAndPreview.
 	m.GeneratedOutbounds = res.OutboundsJSON
 	m.GeneratedEndpoints = res.EndpointsJSON
-	m.GeneratedSkipPresets = res.SkipPresetsTags
+	m.GeneratedRecordFlags = res.RecordFlags
 
 	// Сборка: кэш, как его строит rebuild_snapshot.
 	toRaw := func(in []string) []json.RawMessage {
@@ -87,7 +88,7 @@ func TestPresetNodesForView_MatchesBuildSelection(t *testing.T) {
 	buildCache := &build.ParsedCache{
 		Outbounds:   toRaw(res.OutboundsJSON),
 		Endpoints:   toRaw(res.EndpointsJSON),
-		SkipPresets: res.SkipPresetsTags,
+		RecordFlags: res.RecordFlags,
 	}
 	buildNodes := build.PresetForEachNodes(ts, nil, PresetGlobalVars(m), m.Target,
 		build.CollectPresetNodes(buildCache, td.ConfigOrder))

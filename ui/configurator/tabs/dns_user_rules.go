@@ -24,6 +24,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	internaldialogs "singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
@@ -121,125 +122,7 @@ func showEditUserDNSRuleDialog(
 		working = map[string]interface{}{}
 	}
 
-	// Type detection: SRS vs Inline.
-	const (
-		typeSRS    = "SRS (existing rule_set)"
-		typeInline = "Inline (match fields)"
-	)
-	initialType := typeInline
-	if _, ok := working["rule_set"]; ok {
-		initialType = typeSRS
-	}
-
-	// === SRS section ===
-	availableRuleSetTags := collectAllRuleSetTags(model)
-	ruleSetSelect := widget.NewSelect(availableRuleSetTags, nil)
-	if rs, ok := working["rule_set"].(string); ok && rs != "" {
-		ruleSetSelect.SetSelected(rs)
-	} else if rsArr, ok := working["rule_set"].([]interface{}); ok && len(rsArr) > 0 {
-		if first, ok := rsArr[0].(string); ok {
-			ruleSetSelect.SetSelected(first)
-		}
-	}
-	srsSection := container.NewVBox(
-		widget.NewLabel(locale.T("Rule set tag:")),
-		ruleSetSelect,
-	)
-
-	// === Inline section ===
-	domainSuffixEntry := widget.NewMultiLineEntry()
-	domainSuffixEntry.SetPlaceHolder(locale.T("one suffix per line (e.g. example.com)"))
-	domainSuffixEntry.SetText(joinStringList(working, "domain_suffix"))
-
-	domainEntry := widget.NewMultiLineEntry()
-	domainEntry.SetPlaceHolder(locale.T("one exact domain per line"))
-	domainEntry.SetText(joinStringList(working, "domain"))
-
-	keywordEntry := widget.NewMultiLineEntry()
-	keywordEntry.SetPlaceHolder(locale.T("one keyword per line"))
-	keywordEntry.SetText(joinStringList(working, "domain_keyword"))
-
-	ipCIDREntry := widget.NewMultiLineEntry()
-	ipCIDREntry.SetPlaceHolder(locale.T("one CIDR per line (e.g. 10.0.0.0/8)"))
-	ipCIDREntry.SetText(joinStringList(working, "ip_cidr"))
-
-	inlineSection := container.NewVBox(
-		widget.NewLabel(locale.T("Domain suffix:")),
-		domainSuffixEntry,
-		widget.NewLabel(locale.T("Domain (exact):")),
-		domainEntry,
-		widget.NewLabel(locale.T("Domain keyword:")),
-		keywordEntry,
-		widget.NewLabel(locale.T("IP CIDR:")),
-		ipCIDREntry,
-	)
-
-	// === Server picker (общий) ===
-	serverOptions := wizardbusiness.DNSEnabledTagOptions(model)
-	if len(serverOptions) == 0 {
-		serverOptions = []string{""}
-	}
-	serverSelect := widget.NewSelect(serverOptions, nil)
-	if cur, ok := working["server"].(string); ok && cur != "" {
-		serverSelect.SetSelected(cur)
-	}
-
-	// === Type radio ===
-	currentType := initialType
-	currentRuleType := func() string {
-		if currentType == typeSRS {
-			return "srs"
-		}
-		return "inline"
-	}
-	updateSectionVisibility := func() {
-		if currentType == typeSRS {
-			srsSection.Show()
-			inlineSection.Hide()
-		} else {
-			srsSection.Hide()
-			inlineSection.Show()
-		}
-	}
-	typeRadio := widget.NewRadioGroup(
-		[]string{typeSRS, typeInline},
-		func(sel string) {
-			currentType = sel
-			updateSectionVisibility()
-		},
-	)
-	typeRadio.Horizontal = true
-	typeRadio.SetSelected(currentType)
-
-	formContent := container.NewVBox(
-		widget.NewLabel(locale.T("Type:")),
-		typeRadio,
-		widget.NewSeparator(),
-		srsSection,
-		inlineSection,
-		widget.NewSeparator(),
-		widget.NewLabel(locale.T("Server:")),
-		serverSelect,
-	)
-	updateSectionVisibility()
-
-	// === JSON tab ===
-	jsonEntry := fynewidget.NewJSONEditor("")
-	refreshJSON := func() {
-		updateFromForm(working, currentRuleType(), ruleSetSelect, domainSuffixEntry, domainEntry, keywordEntry, ipCIDREntry, serverSelect)
-		b, _ := json.MarshalIndent(working, "", "  ")
-		jsonEntry.SetText(string(b))
-	}
-	refreshJSON()
-
-	formTab := container.NewTabItem(locale.T("Form"), container.NewScroll(container.NewPadded(formContent)))
-	jsonTab := container.NewTabItem(locale.T("JSON"), container.NewScroll(container.NewPadded(jsonEntry.Object())))
-	tabs := container.NewAppTabs(formTab, jsonTab)
-	tabs.OnSelected = func(t *container.TabItem) {
-		if t == jsonTab {
-			refreshJSON()
-		}
-	}
+	ed := newDNSRuleEditor(model, working)
 
 	titleStr := locale.T("Add DNS Rule")
 	if idx >= 0 {
@@ -251,20 +134,14 @@ func showEditUserDNSRuleDialog(
 		return
 	}
 	editWin := controller.UIService.Application.NewWindow(titleStr)
+	ed.win = editWin
 
 	cancelBtn := widget.NewButton(locale.T("Cancel"), func() { editWin.Close() })
 	saveBtn := widget.NewButton(locale.T("Save"), func() {
-		// Final: parse current tab. Если на JSON tab юзер редактировал — берём
-		// его JSON. Иначе — собираем из form.
-		var finalRule map[string]interface{}
-		if tabs.Selected() == jsonTab {
-			if err := json.Unmarshal([]byte(jsonEntry.Text()), &finalRule); err != nil {
-				dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Invalid JSON"), err), editWin)
-				return
-			}
-		} else {
-			updateFromForm(working, currentRuleType(), ruleSetSelect, domainSuffixEntry, domainEntry, keywordEntry, ipCIDREntry, serverSelect)
-			finalRule = working
+		finalRule, err := ed.rule()
+		if err != nil {
+			dialog.ShowError(err, editWin)
+			return
 		}
 		if len(finalRule) == 0 {
 			dialog.ShowError(fmt.Errorf("%s", locale.T("Rule is empty")), editWin)
@@ -297,7 +174,7 @@ func showEditUserDNSRuleDialog(
 	saveBtn.Importance = widget.HighImportance
 
 	buttons := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn)
-	dialogContent := container.NewBorder(nil, buttons, nil, nil, tabs)
+	dialogContent := container.NewBorder(nil, buttons, nil, nil, ed.tabs)
 	editWin.Resize(fyne.NewSize(500, 600))
 	fynewidget.CenterOnScreen(editWin)
 	editWin.SetContent(dialogContent)
@@ -305,36 +182,242 @@ func showEditUserDNSRuleDialog(
 	editWin.Show()
 }
 
+// dnsRuleEditor — содержимое окна DNS-правила: вкладки Form/JSON над рабочей
+// копией правила. Окно, кнопки и запись в модель — у showEditUserDNSRuleDialog;
+// сам редактор контроллера не требует.
+type dnsRuleEditor struct {
+	tabs         *container.AppTabs
+	formTab      *container.TabItem
+	jsonTab      *container.TabItem
+	ruleSetCheck *widget.CheckGroup
+	typeRadio    *widget.RadioGroup
+	jsonEntry    fynewidget.JSONEditor
+	win          fyne.Window // родитель для ошибки битого JSON; задаётся после создания окна
+	rule         func() (map[string]interface{}, error)
+}
+
+// newDNSRuleEditor — редактор над working (меняет его на месте).
+func newDNSRuleEditor(model *wizardmodels.WizardModel, working map[string]interface{}) *dnsRuleEditor {
+	const (
+		typeSRS    = "SRS (existing rule_set)"
+		typeInline = "Inline (match fields)"
+	)
+
+	// Виджеты формы создаются пустыми и заполняются из working в loadForm —
+	// при открытии и при переходе JSON → Form. Значения, которых нет среди
+	// вариантов (выключенное правило, сервер, ручной ввод в JSON), добавляются
+	// в варианты, а не теряются: форма не должна молча урезать правило (#140).
+
+	// === SRS section ===
+	// Мульти-выбор: rule_set в sing-box — список, правило может ссылаться
+	// на несколько наборов.
+	availableRuleSetTags := collectAllRuleSetTags(model)
+	ruleSetCheck := widget.NewCheckGroup(availableRuleSetTags, nil)
+	srsSection := container.NewVBox(
+		widget.NewLabel(locale.T("Rule set tag:")),
+		ruleSetCheck,
+	)
+
+	// === Inline section ===
+	domainSuffixEntry := widget.NewMultiLineEntry()
+	domainSuffixEntry.SetPlaceHolder(locale.T("one suffix per line (e.g. example.com)"))
+
+	domainEntry := widget.NewMultiLineEntry()
+	domainEntry.SetPlaceHolder(locale.T("one exact domain per line"))
+
+	keywordEntry := widget.NewMultiLineEntry()
+	keywordEntry.SetPlaceHolder(locale.T("one keyword per line"))
+
+	ipCIDREntry := widget.NewMultiLineEntry()
+	ipCIDREntry.SetPlaceHolder(locale.T("one CIDR per line (e.g. 10.0.0.0/8)"))
+
+	inlineSection := container.NewVBox(
+		widget.NewLabel(locale.T("Domain suffix:")),
+		domainSuffixEntry,
+		widget.NewLabel(locale.T("Domain (exact):")),
+		domainEntry,
+		widget.NewLabel(locale.T("Domain keyword:")),
+		keywordEntry,
+		widget.NewLabel(locale.T("IP CIDR:")),
+		ipCIDREntry,
+	)
+
+	// === Server picker (общий) ===
+	serverOptions := wizardbusiness.DNSEnabledTagOptions(model)
+	if len(serverOptions) == 0 {
+		serverOptions = []string{""}
+	}
+	serverSelect := widget.NewSelect(serverOptions, nil)
+
+	// === Type radio ===
+	currentType := typeInline
+	currentRuleType := func() string {
+		if currentType == typeSRS {
+			return "srs"
+		}
+		return "inline"
+	}
+	updateSectionVisibility := func() {
+		if currentType == typeSRS {
+			srsSection.Show()
+			inlineSection.Hide()
+		} else {
+			srsSection.Hide()
+			inlineSection.Show()
+		}
+	}
+	// Поля другого режима вычищаются только при ручной смене типа: правило
+	// из JSON может сочетать rule_set с domain_suffix, и открытие формы
+	// его не урезает.
+	loading := false
+	typeRadio := widget.NewRadioGroup(
+		[]string{typeSRS, typeInline},
+		func(sel string) {
+			if sel == "" {
+				return
+			}
+			currentType = sel
+			updateSectionVisibility()
+			if loading {
+				return
+			}
+			if currentType == typeSRS {
+				for _, k := range dnsInlineMatchKeys {
+					delete(working, k)
+				}
+			} else {
+				delete(working, "rule_set")
+			}
+		},
+	)
+	typeRadio.Horizontal = true
+
+	loadForm := func() {
+		loading = true
+		defer func() { loading = false }()
+		rs := stringListValues(working, "rule_set")
+		ruleSetCheck.Options = withMissingOptions(availableRuleSetTags, rs)
+		ruleSetCheck.SetSelected(rs)
+		domainSuffixEntry.SetText(joinStringList(working, "domain_suffix"))
+		domainEntry.SetText(joinStringList(working, "domain"))
+		keywordEntry.SetText(joinStringList(working, "domain_keyword"))
+		ipCIDREntry.SetText(joinStringList(working, "ip_cidr"))
+		server, _ := working["server"].(string)
+		if server != "" {
+			serverSelect.Options = withMissingOptions(serverOptions, []string{server})
+		}
+		serverSelect.SetSelected(server)
+		currentType = typeInline
+		if _, ok := working["rule_set"]; ok {
+			currentType = typeSRS
+		}
+		typeRadio.SetSelected(currentType)
+		updateSectionVisibility()
+	}
+	loadForm()
+
+	formContent := container.NewVBox(
+		widget.NewLabel(locale.T("Type:")),
+		typeRadio,
+		widget.NewSeparator(),
+		srsSection,
+		inlineSection,
+		widget.NewSeparator(),
+		widget.NewLabel(locale.T("Server:")),
+		serverSelect,
+	)
+
+	// === JSON tab ===
+	jsonEntry := fynewidget.NewJSONEditor("")
+	refreshJSON := func() {
+		updateFromForm(working, currentRuleType(), ruleSetCheck, domainSuffixEntry, domainEntry, keywordEntry, ipCIDREntry, serverSelect)
+		b, _ := json.MarshalIndent(working, "", "  ")
+		jsonEntry.SetText(string(b))
+	}
+	refreshJSON()
+
+	formTab := container.NewTabItem(locale.T("Form"), container.NewScroll(container.NewPadded(formContent)))
+	jsonTab := container.NewTabItem(locale.T("JSON"), container.NewScroll(container.NewPadded(jsonEntry.Object())))
+	tabs := container.NewAppTabs(formTab, jsonTab)
+	// JSON → Form: правка в JSON переносится в форму, а не затирается ею
+	// при следующем возврате на вкладку JSON. Битый JSON оставляем на месте.
+	ed := &dnsRuleEditor{ruleSetCheck: ruleSetCheck, typeRadio: typeRadio, jsonEntry: jsonEntry, formTab: formTab, jsonTab: jsonTab, tabs: tabs}
+	keepJSON := false
+	tabs.OnSelected = func(t *container.TabItem) {
+		switch t {
+		case jsonTab:
+			if keepJSON {
+				keepJSON = false
+				return
+			}
+			refreshJSON()
+		case formTab:
+			var parsed map[string]interface{}
+			if err := json.Unmarshal([]byte(jsonEntry.Text()), &parsed); err != nil {
+				keepJSON = true
+				tabs.Select(jsonTab)
+				if ed.win != nil {
+					dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Invalid JSON"), err), ed.win)
+				}
+				return
+			}
+			if parsed == nil {
+				parsed = map[string]interface{}{}
+			}
+			working = parsed
+			loadForm()
+		}
+	}
+
+	// Итог по текущей вкладке: на JSON — её текст, на форме — форма.
+	ed.rule = func() (map[string]interface{}, error) {
+		if tabs.Selected() == jsonTab {
+			var finalRule map[string]interface{}
+			if err := json.Unmarshal([]byte(jsonEntry.Text()), &finalRule); err != nil {
+				return nil, fmt.Errorf("%s: %w", locale.T("Invalid JSON"), err)
+			}
+			return finalRule, nil
+		}
+		updateFromForm(working, currentRuleType(), ruleSetCheck, domainSuffixEntry, domainEntry, keywordEntry, ipCIDREntry, serverSelect)
+		return working, nil
+	}
+	return ed
+}
+
+// dnsInlineMatchKeys — поля режима Inline формы DNS-правила.
+var dnsInlineMatchKeys = []string{"domain_suffix", "domain", "domain_keyword", "ip_cidr"}
+
 // updateFromForm — read form widgets → write into working map.
 // ruleType: "srs" → используется только ruleSetSel (rule_set field в working).
+// Один набор пишется строкой, несколько — списком.
 //
 //	"inline" → используются domain_suffix / domain / keyword / ip_cidr entry'и.
 //
 // Server общий для обоих режимов.
 //
-// При переключении типа поля противоположного режима **очищаются** из working,
-// чтобы JSON не содержал смешанных полей.
+// Поля противоположного режима не трогает — их вычищает ручная смена типа
+// в форме (#140).
 func updateFromForm(
 	working map[string]interface{},
 	ruleType string,
-	ruleSetSel *widget.Select,
+	ruleSetSel *widget.CheckGroup,
 	dsEntry, dEntry, kEntry, ipEntry *widget.Entry,
 	serverSel *widget.Select,
 ) {
 	if ruleType == "srs" {
-		// Очищаем inline поля.
-		delete(working, "domain")
-		delete(working, "domain_suffix")
-		delete(working, "domain_keyword")
-		delete(working, "ip_cidr")
-		if rs := strings.TrimSpace(ruleSetSel.Selected); rs != "" {
-			working["rule_set"] = rs
-		} else {
+		switch sel := ruleSetSel.Selected; len(sel) {
+		case 0:
 			delete(working, "rule_set")
+		case 1:
+			working["rule_set"] = sel[0]
+		default:
+			list := make([]interface{}, len(sel))
+			for i, rs := range sel {
+				list[i] = rs
+			}
+			working["rule_set"] = list
 		}
 	} else {
-		// Очищаем rule_set, заполняем inline.
-		delete(working, "rule_set")
 		setStringList(working, "domain_suffix", dsEntry.Text)
 		setStringList(working, "domain", dEntry.Text)
 		setStringList(working, "domain_keyword", kEntry.Text)
@@ -368,6 +451,43 @@ func joinStringList(m map[string]interface{}, key string) string {
 	return ""
 }
 
+// stringListValues — значения map[key] (string или []string) списком.
+func stringListValues(m map[string]interface{}, key string) []string {
+	switch x := m[key].(type) {
+	case string:
+		if x != "" {
+			return []string{x}
+		}
+	case []interface{}:
+		out := make([]string, 0, len(x))
+		for _, v := range x {
+			if str, ok := v.(string); ok && str != "" {
+				out = append(out, str)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// withMissingOptions — options плюс значения из values, которых в них нет.
+func withMissingOptions(options, values []string) []string {
+	out := append([]string(nil), options...)
+	for _, v := range values {
+		found := false
+		for _, o := range out {
+			if o == v {
+				found = true
+				break
+			}
+		}
+		if !found {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 // setStringList — парсит multi-line text → []string и пишет в map[key].
 // Пустые строки игнорируются. Если в результате пусто — ключ удаляется.
 func setStringList(m map[string]interface{}, key, text string) {
@@ -396,7 +516,7 @@ func cloneRuleMap(r map[string]interface{}) map[string]interface{} {
 
 // collectAllRuleSetTags — список всех доступных rule_set tag'ов для DNS-rule:
 //   - bundled rule_set tag'и от active preset-ref'ов (ru-direct:ru-domains, ...)
-//   - user inline/srs правил из state.CustomRules (user:<id>)
+//   - наборы пользовательских srs-правил (user:<id>, user:<id>:N)
 //
 // Возвращает sorted unique list.
 func collectAllRuleSetTags(m *wizardmodels.WizardModel) []string {
@@ -440,16 +560,19 @@ func collectAllRuleSetTags(m *wizardmodels.WizardModel) []string {
 		}
 	}
 
-	// User inline/srs rules tag'и (id-based — формат `user:<id>`).
-	for _, cr := range m.CustomRules {
-		if cr == nil {
+	// Наборы пользовательских srs-правил — те же теги, что эмитит сборка
+	// (resolve_route.go): `user:<id>`, `user:<id>:2`, … по одному на URL.
+	// Inline-правила rule_set не порождают. Ссылку на набор, который не попал
+	// в route.rule_set (правило выключено, .srs не скачан), сборка вычищает
+	// из DNS-правила сама (SPEC 153). Issue #140.
+	for _, r := range wizardmodels.EmitStateRulesWithoutOrder(nil, m.CustomRules) {
+		if r.Kind != state.RuleKindSrs {
 			continue
 		}
-		// CustomRule имеет rule_set (для srs) или генерированный inline tag.
-		// Используем generated tag pattern из MergeRulesAndDNS — `user:<id>`.
-		// Здесь у нас нет ID, поэтому используем label-based heuristic.
-		// Реально юзер ссылается на rule_set от user-rule редко — fallback на пустой.
-		_ = cr
+		id := state.StableRuleID(r)
+		for i := range r.Refs {
+			add(state.SrsRuleSetTag(id, i))
+		}
 	}
 
 	sort.Strings(out)

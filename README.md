@@ -314,7 +314,15 @@ Installs to `/Applications/`, removes quarantine attributes, fixes permissions, 
 curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- v1.1.0
 ```
 
-#### Option 2: manual install
+#### Option 2: Homebrew
+
+```bash
+brew install --cask leadaxe/tap/singbox-launcher
+```
+
+The Cask lives in [Leadaxe/homebrew-tap](https://github.com/Leadaxe/homebrew-tap) and follows stable releases (updated within a few hours of a release); `brew upgrade --cask singbox-launcher` updates the app, data in `~/Library/Application Support/singbox-launcher` stays. It installs only the `.app` and clears its quarantine attribute, like the script; the core and template are downloaded on the first start. `brew uninstall --zap --cask singbox-launcher` also removes the data and logs.
+
+#### Option 3: manual install
 
 1. Download the macOS ZIP from [Releases](https://github.com/Leadaxe/singbox-launcher/releases) and extract it.
 2. Remove quarantine:

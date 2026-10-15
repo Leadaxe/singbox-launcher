@@ -6,7 +6,7 @@ These pages are generated from the `contract/registry/` registry by `go generate
 
 |  | Version |
 |---|---|
-| Contract (`contract/VERSION`) | `1.1.119` |
+| Contract (`contract/VERSION`) | `1.1.130` |
 | Core (`body.core`) | `1.14.3-lx.17` |
 
 ## How to read these pages
@@ -42,6 +42,7 @@ The normative text is [`contract/docs/PARSING_PRINCIPLES.md` §8](../PARSING_PRI
 | [`hysteria2`](protocols/hysteria2.md) | `hysteria2` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
 | [`masque`](protocols/masque.md) | `masque` | `outbound` | share link, sing-box JSON | yes |
 | [`naive`](protocols/naive.md) | `naive` | `outbound` | share link, sing-box JSON | yes |
+| [`openconnect`](protocols/openconnect.md) | `openconnect` | `endpoint` | sing-box JSON | no |
 | [`openvpn-client`](protocols/openvpn-client.md) | `openvpn-client` | `endpoint` | sing-box JSON | no |
 | [`shadowsocks`](protocols/shadowsocks.md) | `shadowsocks` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
 | [`socks`](protocols/socks.md) | `socks` | `outbound` | share link, sing-box JSON, Xray JSON | yes |

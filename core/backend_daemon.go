@@ -68,6 +68,10 @@ type DaemonBackend struct {
 	// стрим держит superviseTailscale.
 	tailscale services.TailscaleStatusCache
 
+	// openconnect — кеш последнего снимка SubscribeOpenConnectStatus
+	// (SPEC 167); стрим держит superviseOpenConnect.
+	openconnect services.OpenConnectStatusCache
+
 	// link — состояние канала к демону для индикатора у «Core Status».
 	// Считается по кадрам статус-стрима: отдельного heartbeat нет, чтобы не
 	// добавлять трафик ради кружка.
@@ -181,6 +185,7 @@ func newDaemonBackend(ac *AppController) (CoreBackend, error) {
 	go b.superviseLogs()
 	go b.superviseConnections()
 	go b.superviseTailscale()
+	go b.superviseOpenConnect()
 	return b, nil
 }
 

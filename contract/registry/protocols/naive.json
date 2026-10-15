@@ -98,10 +98,24 @@
       "tls",
       "__dialer"
     ],
+    "form": {
+      "blocks": [
+        "connection",
+        "tls",
+        "advanced"
+      ],
+      "fixed": {
+        "tls.enabled": true
+      }
+    },
     "fields": {
       "server": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server address: domain or IP.",
         "desc_ru": "Адрес сервера: домен или IP.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -109,6 +123,10 @@
       "server_port": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server port.",
         "desc_ru": "Порт сервера.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -116,6 +134,9 @@
       "username": {
         "type": "string",
         "role": "credential",
+        "form": {
+          "block": "connection"
+        },
         "desc_en": "Account user name.",
         "desc_ru": "Имя пользователя учётной записи.",
         "impl": "option/naive.go Username."
@@ -123,6 +144,9 @@
       "password": {
         "type": "string",
         "secret": true,
+        "form": {
+          "block": "connection"
+        },
         "desc_en": "Account password.",
         "desc_ru": "Пароль учётной записи.",
         "impl": "option/naive.go Password. Секрет."
@@ -193,6 +217,9 @@
       "quic": {
         "type": "bool",
         "default": false,
+        "form": {
+          "block": "advanced"
+        },
         "desc_en": "Use QUIC instead of TCP.",
         "desc_ru": "Использовать QUIC вместо TCP.",
         "impl": "option/naive.go QUIC."
@@ -213,6 +240,12 @@
           "core_rejects": true
         },
         "default": "",
+        "form": {
+          "block": "advanced",
+          "visible_when": {
+            "quic": true
+          }
+        },
         "desc_en": "QUIC congestion control algorithm.",
         "desc_ru": "Алгоритм управления перегрузкой QUIC.",
         "impl": "Иное значение = ошибка старта."
@@ -232,6 +265,9 @@
         "type": "ref",
         "ref": "tls",
         "required": true,
+        "form": {
+          "block": "tls"
+        },
         "desc_en": "TLS settings.",
         "desc_ru": "Настройки TLS.",
         "impl": "C.ErrTLSRequired без tls.enabled=true. ПОДМНОЖЕСТВО: cronet читает только enabled/server_name/certificate/certificate_path и блок ech; остальные поля помечены в registry/tls.json как forbidden_for naive с кодом tls_field_unsupported_naive (16 фатальных на старте + 6 молча игнорируемых, CORE_SCHEMA §5). Требует libcronet.* рядом с бинарём — код naive_unavailable."

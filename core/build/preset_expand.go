@@ -296,7 +296,9 @@ func collectNodeLoopDo(preset *template.Preset, loop *template.NodeLoopDo, varsM
 			if _, ok := lists[op.Var]; !ok {
 				continue
 			}
-			val, ws := template.NodeAppendValue(op.Append, decls, resolved, target, scope)
+			// Операция под условием (§6.7.1) даёт "" на узле, где условие
+			// ложно без else, — пропуск без предупреждения, как пустое значение.
+			val, ws := template.NodeDoValue(op, decls, resolved, target, scope)
 			for _, w := range substitutionWarnings(preset.ID, ws) {
 				if k := w.String(); !seen[k] {
 					seen[k] = true

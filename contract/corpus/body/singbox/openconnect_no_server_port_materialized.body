@@ -1,0 +1,7 @@
+# sing-box: openconnect с портом внутри server (контракт 1.1.122). У схемы
+# описан server, но не server_port: сборка дописывает server_port только
+# схемам, у которых это поле описано (node_materialize.go:outboundMapOf,
+# проверка по реестру отдельно для server и server_port). Под wildcard `*`
+# дописанный ключ ушёл бы в ядро и уронил бы весь конфиг — в ожидании
+# server_port нет.
+{"endpoints":[{"type":"openconnect","tag":"forti-port","server":"fw.example.com:8443","flavor":"fortinet","username":"user"}]}

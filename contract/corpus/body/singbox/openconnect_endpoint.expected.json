@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "flavor": "fortinet",
+        "password": "pass",
+        "server": "https://fw.example.com:42319",
+        "tls": {
+          "insecure": true
+        },
+        "type": "openconnect",
+        "username": "user",
+        "x_future_key": 1
+      },
+      "kind": "endpoint",
+      "label": "forti-office",
+      "scheme": "openconnect",
+      "warnings": [
+        {
+          "code": "tls_insecure",
+          "path": "tls.insecure",
+          "value": "true"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

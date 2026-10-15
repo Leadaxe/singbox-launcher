@@ -1,0 +1,5 @@
+{
+  "_comment": "D-133 (§4.1): чтение позиционное — [\"@a\", \"@b\"] значит «если a, то строка @b» (подстановка §3), а не «a и b»",
+  "vars": [{"name": "a", "type": "bool", "default_value": "false"}, {"name": "b", "type": "text", "default_value": ""}],
+  "config": {"list": [{"#if": ["@a", "@b"]}]}
+}

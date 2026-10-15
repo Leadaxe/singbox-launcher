@@ -1,0 +1,60 @@
+{
+  "_comment": "D-133 (§6.7.1): cond ложен на всех узлах, E нет — результат {} на каждом узле, узлы пропущены молча (без предупреждения); остаётся только ввод пользователя.",
+  "preset": {
+    "for_each_node_do": {
+      "#do": {
+        "@list": {
+          "#if": [
+            {
+              "@node.body.type": "hysteria2"
+            },
+            {
+              "#append": "@node"
+            }
+          ]
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "list",
+        "type": "text_list"
+      }
+    ],
+    "rules": [
+      {
+        "domain": "@list",
+        "outbound": "direct-out"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "a",
+      "body": {
+        "type": "vless",
+        "tag": "a",
+        "server": "a.example",
+        "server_port": 443
+      }
+    },
+    {
+      "tag": "home-ts",
+      "skip_tailscale_presets": true,
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    },
+    {
+      "tag": "e",
+      "body": {
+        "type": "vless",
+        "tag": "e",
+        "server": "b.example",
+        "server_port": 443
+      }
+    }
+  ]
+}

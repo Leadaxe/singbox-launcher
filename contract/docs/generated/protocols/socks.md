@@ -61,21 +61,26 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Required: the node is dropped without it
   - Set by link parameter: [`host`](#link-common-host)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+  - Form: block `connection`, required
 - <a id="body-server-port"></a>**`server_port`** — Server port.
   - Type: uint16, format `port`, `1–65535`
   - Required: the node is dropped without it
   - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
+  - Form: block `connection`, required
 - <a id="body-version"></a>**`version`** — SOCKS protocol version.
   - Type: enum, `""`, `4`, `4a`, `5`, normalized: `trim_lower`
   - Default: `5`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+  - Form: block `connection`
 - <a id="body-username"></a>**`username`** — Account user name.
   - Type: string, role `credential`
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
+  - Form: block `connection`
 - <a id="body-password"></a>**`password`** — Account password.
   - Type: string, secret
   - Set by link parameter: [`userinfo`](#link-common-userinfo)
+  - Form: block `connection`
 - <a id="body-network"></a>**`network`** — Networks this outbound handles.
   - Type: listable_string, `tcp`, `udp`, normalized: `trim_lower`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -84,6 +89,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-udp-over-tcp-enabled"></a>**`udp_over_tcp.enabled`** — Tunnel UDP over the TCP connection.
   - Type: bool
   - Default: `false`
+  - Form: block `advanced`
 - <a id="body-udp-over-tcp-version"></a>**`udp_over_tcp.version`** — UDP-over-TCP protocol version.
   - Type: enum, `1`, `2`
   - Default: `2`
@@ -121,6 +127,12 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: listable_string
 - <a id="body-fallback-delay"></a>**`fallback_delay`** — Delay before falling back to the secondary network type.
   - Type: duration
+
+### Form layout
+
+Read by the node forms only; the sanitizer ignores it. A hidden field stays in the body as written.
+
+- Blocks: `connection`, `advanced`
 
 ## Diagnosed problems
 

@@ -64,10 +64,20 @@
       "udp_over_tcp",
       "__dialer"
     ],
+    "form": {
+      "blocks": [
+        "connection",
+        "advanced"
+      ]
+    },
     "fields": {
       "server": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server address: domain or IP.",
         "desc_ru": "Адрес сервера: домен или IP.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -75,6 +85,10 @@
       "server_port": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server port.",
         "desc_ru": "Порт сервера.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -93,6 +107,9 @@
           "code": "type_invalid"
         },
         "default": "5",
+        "form": {
+          "block": "connection"
+        },
         "desc_en": "SOCKS protocol version.",
         "desc_ru": "Версия протокола SOCKS.",
         "impl": "Пустое значение = 5. Из ссылки значение приходит от СХЕМЫ (mapper socks_scheme_is_version), из тела sing-box — как написано: явное \"5\" проходит как есть (дефолт ядра не снимается, равно как и не материализуется — PARSING_PRINCIPLES §2.4). Негодное значение снимается кодом type_invalid, и узел работает как socks5 по дефолту ядра."
@@ -100,6 +117,9 @@
       "username": {
         "type": "string",
         "role": "credential",
+        "form": {
+          "block": "connection"
+        },
         "desc_en": "Account user name.",
         "desc_ru": "Имя пользователя учётной записи.",
         "impl": "option/socks.go Username."
@@ -107,6 +127,9 @@
       "password": {
         "type": "string",
         "secret": true,
+        "form": {
+          "block": "connection"
+        },
         "desc_en": "Account password.",
         "desc_ru": "Пароль учётной записи.",
         "impl": "option/socks.go Password. Секрет."
@@ -128,6 +151,9 @@
           "enabled": {
             "type": "bool",
             "default": false,
+            "form": {
+              "block": "advanced"
+            },
             "desc_en": "Tunnel UDP over the TCP connection.",
             "desc_ru": "Передавать UDP внутри TCP-соединения.",
             "impl": "option/shadowsocks.go UDPOverTCPOptions.Enabled."

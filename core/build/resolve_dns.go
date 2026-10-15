@@ -46,6 +46,11 @@ const (
 	// DNSSourceUser — state.DNS.Servers[kind=user] (genuinely user-added).
 	// Полное тело в state. Юзер edit/delete.
 	DNSSourceUser DNSSource = "user"
+
+	// DNSSourceRule — DNS-зеркало собственного правила маршрута
+	// (rules[].dns, TEMPLATE_LANG §6.11): выводится сборкой, в state.DNS не
+	// хранится. Name — имя правила.
+	DNSSourceRule DNSSource = "rule"
 )
 
 // ResolvedDNSServer — одна entry финального DNS-server list'а.
@@ -373,10 +378,13 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 	// 4b — DNS rules в порядке state.DNS.Rules slice. SPEC 062 даёт юзеру
 	//      контроль над приоритетом (sing-box first-match wins): сюда мы
 	//      эмитим preset и user правила в том же порядке, в котором они лежат
-	//      в state.DNS.Rules. Отсутствие kind=preset entry в state (например
-	//      legacy state до SPEC 062) — defensive fallback: после прохода по
-	//      state.DNS.Rules дочерним проходом append'нем preset DNS rules,
-	//      которые активны но не были эмитнуты.
+	//      в state.DNS.Rules. Активный пресет, у которого kind=preset entry
+	//      в state ещё нет (legacy state до SPEC 062; сборка до первого
+	//      сохранения визардом — в том числе после lateSeededRules), получает
+	//      слот той же синхронизацией, что и сохранение, — на КОПИИ списка
+	//      (state не мутируется, memory == disk): место — по оси маршрутных
+	//      правил (SPEC 171, D-135), а не хвост, иначе поздний дефолт
+	//      `tunnel-ingress` вставал после `A/AAAA → fakeip`.
 	if state != nil {
 		for i := range state.DNS.Servers {
 			srv := &state.DNS.Servers[i]
@@ -400,9 +408,10 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 			})
 		}
 
-		emittedPresetRules := make(map[string]bool, len(presetDNSRulesByID))
-		for i := range state.DNS.Rules {
-			r := &state.DNS.Rules[i]
+		synced := corestate.DNSOptions{Rules: append([]corestate.DNSRule(nil), state.DNS.Rules...)}
+		corestate.SyncDNSOptionsWithActivePresets(state.Rules, &synced, template.PresetLiteMap(td.Presets))
+		for i := range synced.Rules {
+			r := &synced.Rules[i]
 			switch r.Kind {
 			case corestate.DNSRuleKindPreset:
 				prList, ok := presetDNSRulesByID[r.Ref]
@@ -417,7 +426,6 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 					pr.Enabled = pr.Enabled && r.Enabled
 					out.Rules = append(out.Rules, pr)
 				}
-				emittedPresetRules[r.Ref] = true
 			case corestate.DNSRuleKindUser:
 				body := make(map[string]interface{}, len(r.Body))
 				for k, v := range r.Body {
@@ -430,15 +438,6 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 					Active:  true,
 					Enabled: r.Enabled,
 				})
-			}
-		}
-		// Defensive fallback: emit any preset DNS rule that's active but
-		// not represented in state.DNS.Rules (legacy state / first-load
-		// before SyncDNSByOrderToState ran). Append at the end so the
-		// user's existing drag order isn't shuffled.
-		for refID, prList := range presetDNSRulesByID {
-			if !emittedPresetRules[refID] {
-				out.Rules = append(out.Rules, prList...)
 			}
 		}
 	}

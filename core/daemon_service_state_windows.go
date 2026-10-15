@@ -106,12 +106,6 @@ func checkDaemonCopyChain(l daemonServiceLayout) error {
 	return err
 }
 
-// checkRootOwnedEntry — звено цепочки по uid (macOS); на Windows цепочку
-// проверяет checkDaemonCopyChain по DACL.
-func checkRootOwnedEntry(path string, _ uint32, _ bool) error {
-	return fmt.Errorf("%s: unix ownership is not available on Windows", path)
-}
-
 // daemonServiceDefined — служба есть у SCM.
 func daemonServiceDefined(_ daemonServiceLayout) bool {
 	info, err := platform.QueryService(daemonServiceName)

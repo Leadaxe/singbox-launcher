@@ -61,6 +61,8 @@ func TestServiceRecipes(t *testing.T) {
 			{"linux", "arm64", ServiceInitProcd},
 			{"linux", "arm", ServiceInitProcd},
 			{"linux", "mipsle", ServiceInitProcd},
+			{"linux", "riscv64", ServiceInitProcd},
+			{"linux", "386", ServiceInitProcd},
 			{"linux", "amd64", ServiceInitSystemd},
 			{"darwin", "arm64", ServiceInitLaunchd},
 			{"windows", "amd64", ServiceInitSCM},
@@ -232,13 +234,29 @@ func TestServiceRecipes(t *testing.T) {
 			{"linux", "arm64", "linux-arm64.tar.gz"},
 			{"linux", "arm", "linux-armv7.tar.gz"},
 			{"linux", "mipsle", "linux-mipsle-softfloat.tar.gz"},
-			{"linux", "386", ""},
+			{"linux", "386", "linux-386.tar.gz"},
+			{"linux", "riscv64", "linux-riscv64.tar.gz"},
+			{"linux", "loong64", ""},
 			{"windows", "amd64", "windows-amd64.zip"},
 		}
 		for _, c := range cases {
 			if got := SingboxAssetSuffixFor(c.goos, c.goarch); got != c.want {
 				t.Errorf("SingboxAssetSuffixFor(%s/%s) = %q, want %q", c.goos, c.goarch, got, c.want)
 			}
+		}
+		// UPX-копия (issue #146): только по platform из паспорта и только linux.
+		for _, c := range []struct{ goos, platform, want string }{
+			{"linux", "linux-arm64", "linux-arm64.upx.tar.gz"},
+			{"linux", "linux-mipsle-softfloat", "linux-mipsle-softfloat.upx.tar.gz"},
+			{"linux", "", ""},
+			{"windows", "windows-amd64", ""},
+		} {
+			if got := upxAssetSuffix(c.goos, c.platform); got != c.want {
+				t.Errorf("upxAssetSuffix(%s, %q) = %q, want %q", c.goos, c.platform, got, c.want)
+			}
+		}
+		if got := TargetCoreFileName("1.0", "linux", "arm64", true); got != "sing-box-1.0-linux-arm64-upx" {
+			t.Errorf("TargetCoreFileName(packed) = %q", got)
 		}
 	})
 }
@@ -316,7 +334,8 @@ func TestCommandsRecipe(t *testing.T) {
 		{"linux", "amd64", "linux-arm64", "linux-arm64.tar.gz"},
 		{"windows", "amd64", "windows-amd64", "windows-amd64.zip"},
 		{"linux", "arm64", "", "linux-arm64.tar.gz"},
-		{"linux", "386", "", ""},
+		{"linux", "riscv64", "", "linux-riscv64.tar.gz"},
+		{"linux", "loong64", "", ""},
 	} {
 		if got := assetSuffixFor(c.goos, c.goarch, c.platform); got != c.want {
 			t.Errorf("assetSuffixFor(%s/%s, %q) = %q, want %q", c.goos, c.goarch, c.platform, got, c.want)

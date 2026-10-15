@@ -60,7 +60,7 @@ func TestBuildPresetJSONPreview_ForEachNodes(t *testing.T) {
 		}
 		m.GeneratedOutbounds = res.OutboundsJSON
 		m.GeneratedEndpoints = res.EndpointsJSON
-		m.GeneratedSkipPresets = res.SkipPresetsTags
+		m.GeneratedRecordFlags = res.RecordFlags
 
 		got := buildPresetJSONPreview(m, ts, map[string]string{})
 		if strings.Contains(got, locale.T("No matching nodes.")) || strings.HasPrefix(got, "// preset expansion failed") {

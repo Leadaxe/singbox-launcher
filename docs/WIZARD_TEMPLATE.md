@@ -139,35 +139,52 @@ A control construct: includes/excludes fields or elements by condition. The `#if
 
 ### 4.1 Form
 
+Two forms, told apart by the JSON type of the `#if` body (contract 1.1.125):
+
 ```json
-"#if": {
-  "and":   [ <predicate>, ... ],   // OR "or" — exactly one of and/or
-  "value": <any JSON>,             // substituted when the condition is true
-  "else":  <any JSON>              // optional — when false
+"#if": [ <cond>, <value> ]            // short form — the canon
+"#if": [ <cond>, <value>, <else> ]
+
+"#if": {                              // long form — read indefinitely
+  "#and":   [ <predicate>, ... ],     // OR "#or" — exactly one of them
+  "#value": <any JSON>,               // substituted when the condition is true
+  "#else":  <any JSON>                // optional — when false
 }
 ```
 
-- Exactly one of `and` / `or` (both or neither → error). `value` is required.
-- `and` — all predicates `true`; `or` — at least one.
+- Short form: positional — element 0 is the condition, 1 the value, 2 the
+  else. `cond` is a bare condition (`"@flag"`, `{"@x": "#notEmpty"}`,
+  `{"#not": …}`, `{"#and": [...]}`, `{"#or": [...]}`); a list `["@a", "@b"]`
+  in the condition position is a load error. 2 or 3 elements; `null` branches
+  are an error.
+- Long form: exactly one of `#and` / `#or` (both or neither → error). `#value`
+  is required. The keys without `#` (`and`, `or`, `value`, `else`) are legacy
+  spellings, read indefinitely.
+- `and` — all predicates `true`; `or` — at least one. Anything else as the
+  body (a string, a number, an object without `#value`) is a load error.
 
 ### 4.2 Two placement modes
 
 **Map-spread** — `#if` as a key inside an object; when true the branch fields are **merged into the parent**:
 ```json
 {"type": "tun", "tag": "tun-in",
- "#if": {"and": [{"@runtime.platform": {"#in": ["windows", "linux"]}}], "value": {
+ "#if": [{"@runtime.platform": {"#in": ["windows", "linux"]}}, {
    "interface_name": "singbox-tun0"
- }}}
+ }]}
 ```
 
-**Array-element** — a lone `{"#if": {...}}` as an array element; the element is
-**replaced** by the branch or **dropped** (if false and there is no `else`):
+**Array-element** — a lone `{"#if": …}` as an array element; the element is
+**replaced** by the branch or **dropped** (if false and there is no else):
 ```json
 "inbound": [
-  {"#if": {"and": ["@tun"],             "value": "tun-in"}},
-  {"#if": {"and": ["@enable_proxy_in"], "value": "proxy-in"}}
+  {"#if": ["@tun",             "tun-in"]},
+  {"#if": ["@enable_proxy_in", "proxy-in"]}
 ]
 ```
+
+A preset fragment as a whole (`rules[]`, `rule_set[]`, `dns_servers[]`) is the
+same array-element case: `{"#if": ["@geoip_enabled", {"tag": "geoip-ru", …}]}`.
+`#enable` stays the gate for variable declarations and `params[]`.
 
 ### 4.3 Predicates (elements of `and` / `or`)
 
@@ -359,33 +376,33 @@ expressions (`@…`, `#if`, outer `if[]`) and long lists.
 
 ### 8.3 `#if`
 
-| `value` / `else` | Layout |
+| branches | Layout |
 |---|---|
-| scalar | one line: `"#if": {"and": [...], "value": "…", "else": "…"}` |
-| object | condition + `"value": {` on line 1; body below; closing `}}` (with `else` → `}, "else": {` … `}}}`) |
+| scalar | one line: `"#if": [cond, "…", "…"]` |
+| object | `"#if": [cond, {` on line 1; body below; closing `}]` (with else → `}, {` … `}]`) |
 
 A scalar branch (array-element) — one line:
 ```jsonc
 "inbound": [
-  {"#if": {"and": ["@tun"], "value": "tun-in"}},
-  {"#if": {"and": ["@enable_proxy_in"], "value": "proxy-in"}}
+  {"#if": ["@tun", "tun-in"]},
+  {"#if": ["@enable_proxy_in", "proxy-in"]}
 ]
 ```
 
-An object branch (map-spread) — condition + `"value": {` on the first line, body below:
+An object branch (map-spread) — condition + `{` on the first line, body below:
 ```jsonc
-"#if": {"and": [{"@runtime.platform": {"#in": ["windows", "linux"]}}], "value": {
+"#if": [{"@runtime.platform": {"#in": ["windows", "linux"]}}, {
   "interface_name": "singbox-tun0"
-}}
+}]
 ```
 
-With `else` (both branches are objects); value arrays are written **as is**, without column alignment:
+With an else branch (both branches are objects); value arrays are written **as is**, without column alignment:
 ```jsonc
-{"#if": {"and": [{"@runtime.platform": "windows"}], "value": {
+{"#if": [{"@runtime.platform": "windows"}, {
   "process_name": ["Telegram.exe", "Discord.exe", "WhatsApp.exe", "Signal.exe", "Zoom.exe"]
-}, "else": {
+}, {
   "process_name": ["Telegram", "Discord", "WhatsApp", "Signal", "zoom.us"]
-}}}
+}]}
 ```
 
 ### 8.4 Presets
@@ -432,8 +449,10 @@ With `else` (both branches are objects); value arrays are written **as is**, wit
 | `bare var-ref "x" in if[]; use "@x"` | an `if`/`if_or` element without `@`. |
 | `vars[].name "runtime" is reserved` | name taken by the `@runtime.*` namespace. |
 | `@x is not declared in vars` | `@var` in `config`/`params` without a declaration in `vars`. |
-| `#if has both "and" and "or"` | both present in an `#if` body — only one allowed. |
-| `#if missing "value"` | no required `value` in the `#if` body. |
+| `#if has both "and" and "or"` | both present in a long-form `#if` body — only one allowed. |
+| `#if missing "value"` | no required `value` in a long-form `#if` body. |
+| `#if: array form needs 2 or 3 elements` | a short-form `#if` with one element or four and more. |
+| `#if: condition (element 0) must not be an array` | a list in the condition position — use `{"#and": [...]}`. |
 | `predicate key "x" must start with @ or be #not` | wrong predicate form (the var is the `@var` key, the predicate is the value). |
 | `unknown runtime global @runtime.x` | a namespace field other than `platform`/`arch`. |
 

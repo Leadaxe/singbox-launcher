@@ -1,0 +1,5 @@
+{
+  "_comment": "D-133 (§4.1): короткая форма [cond, V] — пара к map_spread/merge_into_parent, expected тот же",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"tun": {"type": "tun", "#if": ["@flag", {"mtu": 1400}]}}
+}

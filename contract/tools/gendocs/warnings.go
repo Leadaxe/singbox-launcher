@@ -225,7 +225,7 @@ func walkSection(out map[string][]usage, scheme, prefix string, sec *rawSection)
 		sort.Strings(names)
 	}
 	for _, name := range names {
-		if f := sec.Fields[name]; f != nil {
+		if f := sec.Fields[name]; f != nil && name != registry.WildcardKey {
 			walkField(out, scheme, joinPath(prefix, name), f)
 		}
 	}
@@ -316,7 +316,7 @@ func walkField(out map[string][]usage, scheme, path string, f *registry.Field) {
 			sort.Strings(names)
 		}
 		for _, name := range names {
-			if child := inner.Fields[name]; child != nil {
+			if child := inner.Fields[name]; child != nil && name != registry.WildcardKey {
 				walkField(out, scheme, joinPath(path, name), child)
 			}
 		}

@@ -113,7 +113,7 @@ func CloseServiceWindow(key string) {
 // buildServiceView — тело окна Service для встраивания (панель Local окна
 // подключения). dispose останавливает опрос источника; звать при закрытии
 // окна-хозяина.
-func buildServiceView(ac *core.AppController, win fyne.Window, src serviceSource, tab serviceTab) (fyne.CanvasObject, func()) {
+func buildServiceView(ac *core.AppController, win fyne.Window, src serviceSource, tab serviceTab) (fyne.CanvasObject, func()) { //nolint:unused // вызывается только из connection_local_daemon.go (//go:build darwin || windows)
 	v := newServiceView(ac, win, src, tab)
 	return v.root, v.dispose
 }
@@ -229,7 +229,7 @@ func (v *serviceView) render() {
 	if remote {
 		in.SSH = ssh
 	}
-	if v.download != nil && v.download.matches(s.Platform.GOOS, s.Platform.GOARCH) {
+	if v.download != nil && v.download.matches(s.Platform.GOOS, s.Platform.GOARCH, s.Platform.Packed) {
 		in.Uploaded = v.download.path()
 	}
 	c := &serviceTabCtx{
@@ -462,13 +462,14 @@ func (v *serviceView) section(key, title string, content fyne.CanvasObject) fyne
 }
 
 // coreDownload — шаг скачивания ядра под платформу машины (один на окно;
-// пересоздаётся, если платформу машины поменяли). platform — суффикс ассета
-// из паспорта: приехал позже — подхватывается до следующего скачивания.
-func (v *serviceView) coreDownload(goos, goarch, platform string) *targetCoreDownload {
-	if v.download == nil || !v.download.matches(goos, goarch) {
-		v.download = newTargetCoreDownload(v.ac, v.win, goos, goarch, platform, v.render)
+// пересоздаётся, если платформу машины или сжатость её ядра поменяли).
+// Суффикс ассета из паспорта приехал позже — подхватывается до следующего
+// скачивания.
+func (v *serviceView) coreDownload(p core.ServicePlatform) *targetCoreDownload {
+	if v.download == nil || !v.download.matches(p.GOOS, p.GOARCH, p.Packed) {
+		v.download = newTargetCoreDownload(v.ac, v.win, p.GOOS, p.GOARCH, p.Platform, p.Packed, v.render)
 	} else if !v.download.busy {
-		v.download.platform = platform
+		v.download.platform = p.Platform
 	}
 	return v.download
 }

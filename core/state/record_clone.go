@@ -56,6 +56,7 @@ func cloneRule(r Rule) Rule {
 		}
 		out.Vars = vars
 	}
+	out.DNS = CloneRuleDNS(r.DNS)
 	if len(r.Body) > 0 {
 		out.Body = append(json.RawMessage(nil), r.Body...)
 	}

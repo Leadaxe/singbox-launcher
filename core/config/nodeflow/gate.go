@@ -197,7 +197,8 @@ type gate struct {
 func (g *gate) object(prefix string, order []string, fields map[string]*registry.Field, m map[string]interface{}) {
 	for _, name := range order {
 		f := fields[name]
-		if f == nil {
+		if f == nil || f.Wildcard {
+			// Сквозные ключи wildcard гейт не судит: у них нет атрибутов.
 			continue
 		}
 		if _, ok := m[name]; !ok {

@@ -1,0 +1,5 @@
+{
+  "_comment": "D-133 (§4.4, §4.6): фрагмент пресета целиком под условием — канон условного фрагмента; пара к branch_object_element",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"rules": [{"#if": ["@flag", {"protocol": "dns", "outbound": "dns-out"}]}]}
+}

@@ -991,6 +991,13 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			suffix := " · " + word
 			subtitle = truncateRunes(subtitle, serversSubtitleMaxRunes-len([]rune(suffix))) + suffix
 		}
+		// Статус openconnect под демоном (SPEC 167 §2.5): ожидание входа или
+		// ошибка — тем же суффиксом; «sign in» на месте замера открывает диалог.
+		ocSuffix, ocPending := openConnectRowState(ac, panel.scope, proxyInfo.Name)
+		if ocSuffix != "" && subtitle != "" {
+			suffix := " · " + ocSuffix
+			subtitle = truncateRunes(subtitle, serversSubtitleMaxRunes-len([]rune(suffix))) + suffix
+		}
 		subtitleText.Text = truncateSubtitle(subtitle)
 		subtitleText.Color = theme.Color(theme.ColorNamePlaceHolder)
 		subtitleText.Refresh()
@@ -1014,6 +1021,10 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		noExit := tailscaleHasNoExit(ac, panel.scope, proxyInfo)
 		if noExit {
 			delayText.Text = locale.T("no exit")
+			delayText.Color = theme.Color(theme.ColorNameWarning)
+		}
+		if ocPending {
+			delayText.Text = locale.T("sign in")
 			delayText.Color = theme.Color(theme.ColorNameWarning)
 		}
 		delayText.Refresh()
@@ -1080,6 +1091,10 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		}
 		if noExit {
 			delayTappable.OnTapped = nil
+		}
+		if ocPending {
+			ocScope, ocTag := panel.scope, proxyNameForCallback
+			delayTappable.OnTapped = func() { ShowOpenConnectChallengeFor(ac, ocScope, ocTag) }
 		}
 
 		switchButton.OnTapped = func() {

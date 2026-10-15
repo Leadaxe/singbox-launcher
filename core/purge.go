@@ -141,38 +141,38 @@ func PurgeCLI(l paths.Layout, exe string, yes bool, out io.Writer) int {
 	// этот exe.
 	autostart := runtime.GOOS == "windows" && autostartOwned(exe)
 
-	fmt.Fprint(out, plan.Text())
+	_, _ = fmt.Fprint(out, plan.Text())
 	if autostart {
-		fmt.Fprintf(out, "[autostart] %s\n", platform.AutostartLocation)
+		_, _ = fmt.Fprintf(out, "[autostart] %s\n", platform.AutostartLocation)
 	}
 	switch {
 	case hint != "" && hintSurvives:
-		fmt.Fprintf(out, "The daemon service is installed and is not removed by this command; it runs from its own root-owned copy of the core, which the data removal does not touch. To remove the service as well:\n  %s\n", hint)
+		_, _ = fmt.Fprintf(out, "The daemon service is installed and is not removed by this command; it runs from its own root-owned copy of the core, which the data removal does not touch. To remove the service as well:\n  %s\n", hint)
 	case hint != "":
-		fmt.Fprintf(out, "The daemon service is installed and is not removed by this command. Remove it first, while the core binary still exists:\n  %s\n", hint)
+		_, _ = fmt.Fprintf(out, "The daemon service is installed and is not removed by this command. Remove it first, while the core binary still exists:\n  %s\n", hint)
 	}
 	if !yes {
-		fmt.Fprintln(out, "Dry run. Add -yes to remove.")
+		_, _ = fmt.Fprintln(out, "Dry run. Add -yes to remove.")
 		return 0
 	}
 
 	if msg := purgeBlockingProcess(l, exe); msg != "" {
-		fmt.Fprintf(out, "%s. Quit it first; nothing was removed.\n", msg)
+		_, _ = fmt.Fprintf(out, "%s. Quit it first; nothing was removed.\n", msg)
 		return 1
 	}
 	if pid, alive := purgeCoreAliveByPidFile(l.Data); alive {
-		fmt.Fprintf(out, "sing-box is running (pid %d). Stop the VPN first; nothing was removed.\n", pid)
+		_, _ = fmt.Fprintf(out, "sing-box is running (pid %d). Stop the VPN first; nothing was removed.\n", pid)
 		return 1
 	}
 
 	rep := paths.ExecutePurge(plan)
-	fmt.Fprint(out, rep.Text())
+	_, _ = fmt.Fprint(out, rep.Text())
 	if autostart {
-		fmt.Fprint(out, removeAutostartText(exe))
+		_, _ = fmt.Fprint(out, removeAutostartText(exe))
 	}
 	if runtime.GOOS == "windows" {
 		adapters, rules, err := networkCleanup()
-		fmt.Fprint(out, networkCleanupText(exe, adapters, rules, err))
+		_, _ = fmt.Fprint(out, networkCleanupText(exe, adapters, rules, err))
 	}
 	if len(rep.Failed) > 0 {
 		return 1

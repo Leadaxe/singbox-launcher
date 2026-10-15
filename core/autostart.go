@@ -96,31 +96,31 @@ func (ac *AppController) AutostartOwned() bool {
 // 2 — сборка без автозапуска (AutostartSupported).
 func AutostartCLI(mode, exe string, out io.Writer) int {
 	if !AutostartSupported {
-		fmt.Fprintln(out, "Autostart: not supported on this build")
+		_, _ = fmt.Fprintln(out, "Autostart: not supported on this build")
 		return 2
 	}
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "on":
 		if err := writeAutostart(exe, false); err != nil {
-			fmt.Fprintf(out, "Autostart: failed: %v\n", err)
+			_, _ = fmt.Fprintf(out, "Autostart: failed: %v\n", err)
 			return 1
 		}
-		fmt.Fprintf(out, "Autostart: on (%s = %s)\n", platform.AutostartLocation, platform.AutostartEntry{Exe: exe}.Command())
+		_, _ = fmt.Fprintf(out, "Autostart: on (%s = %s)\n", platform.AutostartLocation, platform.AutostartEntry{Exe: exe}.Command())
 		return 0
 	case "off":
 		removed, err := removeOwnAutostart(exe)
 		if err != nil {
-			fmt.Fprintf(out, "Autostart: failed: %v\n", err)
+			_, _ = fmt.Fprintf(out, "Autostart: failed: %v\n", err)
 			return 1
 		}
 		if removed {
-			fmt.Fprintf(out, "Autostart: off (%s removed)\n", platform.AutostartLocation)
+			_, _ = fmt.Fprintf(out, "Autostart: off (%s removed)\n", platform.AutostartLocation)
 		} else {
-			fmt.Fprintln(out, "Autostart: off (no entry for this program)")
+			_, _ = fmt.Fprintln(out, "Autostart: off (no entry for this program)")
 		}
 		return 0
 	}
-	fmt.Fprintf(out, "Autostart: unknown value %q, use -%s=on or -%s=off\n", mode, AutostartFlagName, AutostartFlagName)
+	_, _ = fmt.Fprintf(out, "Autostart: unknown value %q, use -%s=on or -%s=off\n", mode, AutostartFlagName, AutostartFlagName)
 	return 1
 }
 

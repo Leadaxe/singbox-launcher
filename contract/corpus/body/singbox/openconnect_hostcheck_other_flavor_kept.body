@@ -1,0 +1,5 @@
+# sing-box: openconnect с flavor gp и fortinet_host_check (контракт 1.1.122).
+# visible_when поля — правило ФОРМЫ: санитайзер скрытое поле не снимает и
+# кодов не ставит, ядро при другом flavor его игнорирует. Поле на месте,
+# check_virtual_desktop проходит через свой `*`.
+{"endpoints":[{"type":"openconnect","tag":"gp-hostcheck","server":"gp.example.com","flavor":"gp","username":"user","fortinet_host_check":{"hostcheck":"abc","check_virtual_desktop":"no"}}]}

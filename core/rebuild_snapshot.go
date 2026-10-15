@@ -111,7 +111,7 @@ func buildSnapshotFromState(s *state.State, l paths.Layout, subst config.VarSubs
 		Endpoints:   jsonStringsToRawMessages(result.EndpointsJSON),
 		Warnings:    warnings,
 		NodeOrigins: buildNodeOrigins(result.NodeOrigins),
-		SkipPresets: result.SkipPresetsTags,
+		RecordFlags: result.RecordFlags,
 	}, result, nil
 }
 

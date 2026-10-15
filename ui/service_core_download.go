@@ -24,6 +24,7 @@ const (
 	serviceCoreVerifiedText    = "%s  ✓ sha256 matches SHA256SUMS"
 	serviceCoreUnverifiedText  = "%s — sha256 %s. SHA256SUMS is unavailable: compare this sum with the one step 3 prints on the machine."
 	serviceCoreNoAssetText     = "The core release has no build for %s/%s — build the core for this machine yourself."
+	serviceCorePackedFallback  = "The machine runs a UPX-packed core, but this release has no packed copy for it: this is the plain binary, 4–5 times larger. Check free space on the machine before uploading."
 	serviceCoreDownloadTimeout = 10 * time.Minute
 )
 
@@ -43,12 +44,15 @@ type targetCoreDownload struct {
 	// platform — суффикс ассета из паспорта демона (SPEC 162 §4.1); "" —
 	// ассет по таблице goos/goarch.
 	platform string
+	// packed — паспорт сообщил, что ядро машины сжато UPX: качается
+	// .upx.tar.gz-копия релиза (issue #146).
+	packed bool
 }
 
 // newTargetCoreDownload строит шаг и в фоне проверяет, не скачано ли ядро
 // раньше (файл и сайдкар в ~/Downloads совпали — сразу ✓, без сети).
-func newTargetCoreDownload(ac *core.AppController, win fyne.Window, goos, goarch, platform string, onReady func()) *targetCoreDownload {
-	d := &targetCoreDownload{ac: ac, win: win, goos: goos, goarch: goarch, platform: platform, onReady: onReady}
+func newTargetCoreDownload(ac *core.AppController, win fyne.Window, goos, goarch, platform string, packed bool, onReady func()) *targetCoreDownload {
+	d := &targetCoreDownload{ac: ac, win: win, goos: goos, goarch: goarch, platform: platform, packed: packed, onReady: onReady}
 	d.bar = widget.NewProgressBar()
 	d.bar.Hide()
 	d.result = widget.NewLabel("")
@@ -63,7 +67,7 @@ func newTargetCoreDownload(ac *core.AppController, win fyne.Window, goos, goarch
 		return d
 	}
 	go func() {
-		got, ok := core.CheckTargetCore(constants.RequiredCoreVersion, goos, goarch)
+		got, ok := core.CheckTargetCore(constants.RequiredCoreVersion, goos, goarch, platform, packed)
 		if !ok {
 			return
 		}
@@ -77,9 +81,10 @@ func newTargetCoreDownload(ac *core.AppController, win fyne.Window, goos, goarch
 	return d
 }
 
-// matches — шаг собран под эту платформу (машине могли поменять платформу).
-func (d *targetCoreDownload) matches(goos, goarch string) bool {
-	return d.goos == goos && d.goarch == goarch
+// matches — шаг собран под эту платформу (машине могли поменять платформу,
+// а ядро на ней — со сжатого на обычное и обратно).
+func (d *targetCoreDownload) matches(goos, goarch string, packed bool) bool {
+	return d.goos == goos && d.goarch == goarch && d.packed == packed
 }
 
 // path — путь скачанного ядра для шага загрузки; "" — ещё нет.
@@ -109,7 +114,7 @@ func (d *targetCoreDownload) start() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), serviceCoreDownloadTimeout)
 		defer cancel()
-		got, err := d.ac.DownloadCoreForTarget(ctx, constants.RequiredCoreVersion, d.goos, d.goarch, d.platform, progress)
+		got, err := d.ac.DownloadCoreForTarget(ctx, constants.RequiredCoreVersion, d.goos, d.goarch, d.platform, d.packed, progress)
 		fyne.Do(func() {
 			d.busy = false
 			d.btn.Enable()
@@ -131,11 +136,14 @@ func (d *targetCoreDownload) start() {
 // finish — ядро на месте: итог и перестройка рецептов (путь в шаге 2).
 func (d *targetCoreDownload) finish(got core.TargetCoreDownload) {
 	d.got = got
-	if got.SumsVerified {
-		d.showResult(locale.Tf(serviceCoreVerifiedText, got.Path), widget.SuccessImportance)
-	} else {
-		d.showResult(locale.Tf(serviceCoreUnverifiedText, got.Path, got.BinarySHA), widget.WarningImportance)
+	text, importance := locale.Tf(serviceCoreVerifiedText, got.Path), widget.SuccessImportance
+	if !got.SumsVerified {
+		text, importance = locale.Tf(serviceCoreUnverifiedText, got.Path, got.BinarySHA), widget.WarningImportance
 	}
+	if got.PackedFallback {
+		text, importance = text+"\n"+locale.T(serviceCorePackedFallback), widget.WarningImportance
+	}
+	d.showResult(text, importance)
 	if d.onReady != nil {
 		d.onReady()
 	}

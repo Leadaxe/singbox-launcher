@@ -33,7 +33,7 @@ import (
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
-	sourceDetourHintText         = "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server, tracked by that server and its node tag — editing the server's settings or tag prefix keeps the link, renaming its node tag clears it."
+	sourceDetourHintText         = "Dial this source's nodes through another outbound to build a proxy chain. Directions chain through a selector; Nodes chain through one concrete server, tracked by that server and its node tag — editing the server's settings or tag prefix keeps the link, renaming its node tag clears it."
 	sourcePreviewNoCacheHintText = "Disabled subscriptions are not auto-fetched, so this one has no nodes yet. Click below to fetch it once without enabling it."
 	sourceTagVarsHintText        = "Variables (work in both fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1"
 )
@@ -764,6 +764,8 @@ func showSourceEditWindowAt(
 	var refreshAWGAfterRegen func()
 	// refreshTailscaleAfterRegen — то же для блока роли Tailscale (SPEC 157).
 	var refreshTailscaleAfterRegen func()
+	// refreshNodeFormAfterRegen — то же для формы схемы узла (SPEC 167/168).
+	var refreshNodeFormAfterRegen func()
 	var originBtnRow *fyne.Container
 	var setOriginMode func(editing bool)
 
@@ -939,7 +941,7 @@ func showSourceEditWindowAt(
 	var clearAWGAfterDetour func()
 
 	detourNone := locale.T("(none — direct)")
-	detourSelect := widget.NewSelect(nil, nil)
+	detourSelect := newDetourTreePicker(win, detourNone)
 	detourHint := widget.NewLabel(locale.T(sourceDetourHintText))
 	detourHint.Wrapping = fyne.TextWrapWord
 	detourChoices := map[string]wizardbusiness.DetourChoice{}
@@ -978,15 +980,11 @@ func showSourceEditWindowAt(
 			rebuildSettingsAfterDetour()
 		}
 	}
-	detourSelect.OnChanged = detourOnChanged
+	detourSelect.onChanged = detourOnChanged
 	refreshDetourOptions := func() {
 		opts, sel, choices := wizardbusiness.DetourOptionsWithNodes(presenter.Model(), srcRef(), detourNone)
 		detourChoices = choices
-		detourSelect.OnChanged = nil // avoid feedback while repopulating
-		detourSelect.Options = opts
-		detourSelect.SetSelected(sel)
-		detourSelect.OnChanged = detourOnChanged
-		detourSelect.Refresh()
+		detourSelect.SetOptions(opts, sel, choices) // onChanged не зовётся
 	}
 
 	// tagSpec* — правка prefix/postfix рабочей копии. TagPolicy живёт
@@ -1194,6 +1192,9 @@ func showSourceEditWindowAt(
 		if refreshTailscaleAfterRegen != nil {
 			refreshTailscaleAfterRegen()
 		}
+		if refreshNodeFormAfterRegen != nil {
+			refreshNodeFormAfterRegen()
+		}
 		originTextAtOpen = raw
 		setOriginMode(false)
 		// Вид происхождения мог смениться (ссылка → JSON): подпись поля и
@@ -1236,7 +1237,7 @@ func showSourceEditWindowAt(
 
 	detourBlock := func() {
 		settingsContent.Add(widget.NewLabel(locale.T("Detour server (chain)")))
-		settingsContent.Add(detourSelect)
+		settingsContent.Add(detourSelect.widget)
 		settingsContent.Add(detourHint)
 	}
 
@@ -1279,6 +1280,40 @@ func showSourceEditWindowAt(
 	})
 	tsUI.load(&scratch.Node)
 	refreshTailscaleAfterRegen = func() { tsUI.load(&scratch.Node) }
+	// Форма схемы узла (source_form_edit.go, SPEC 167/168): те же поля, что
+	// у конструктора Add server. Блок строится на схему тела при первом
+	// показе — Regen может сменить схему узла. После записи — то же, что у
+	// блока Tailscale: JSON, поле Origin узла-тела, пометка изменений.
+	formUIs := map[string]*nodeFormBlock{}
+	formUIFor := func(scheme string) *nodeFormBlock {
+		if scheme == "" {
+			return nil
+		}
+		if ui, ok := formUIs[scheme]; ok {
+			return ui
+		}
+		ui := newNodeFormBlock(scheme, func() *wizardmodels.Node { return &scratch.Node }, func() {
+			if refreshJSONAfterOriginRegen != nil {
+				refreshJSONAfterOriginRegen()
+			}
+			if !originEditing {
+				if raw := sourceOriginURI(&scratch); raw != uriEntry.Text {
+					uriEntry.OnChanged = nil
+					uriEntry.SetText(raw)
+					originTextAtOpen = raw
+					setOriginMode(false)
+				}
+			}
+			presenter.MarkAsChanged()
+		})
+		formUIs[scheme] = ui
+		return ui
+	}
+	refreshNodeFormAfterRegen = func() {
+		if ui := formUIFor(nodeFormEditableNode(&scratch.Node)); ui != nil {
+			ui.load(&scratch.Node)
+		}
+	}
 	clearAWGAfterDetour = func() {
 		if !awgEditableNode(&scratch.Node) {
 			return
@@ -1356,8 +1391,14 @@ func showSourceEditWindowAt(
 			settingsContent.Add(nodeTagEntry)
 			settingsContent.Add(widget.NewSeparator())
 			detourBlock()
-			// LxBox §578: исключение узла из пресетов с обходом узлов (#filter читает skip_presets).
+			// LxBox §578: исключение узла Tailscale из пресета `tailscale`
+			// (#filter читает skip_tailscale_presets).
 			if blk := skipPresetsBlock(m, nodeLink, &scratch.Node); blk != nil {
+				settingsContent.Add(widget.NewSeparator())
+				settingsContent.Add(blk)
+			}
+			// SPEC 170: что пиру клиентского туннеля разрешено (allow_*).
+			if blk := tunnelAccessBlock(m, nodeLink, &scratch.Node); blk != nil {
 				settingsContent.Add(widget.NewSeparator())
 				settingsContent.Add(blk)
 			}
@@ -1365,6 +1406,11 @@ func showSourceEditWindowAt(
 				settingsContent.Add(widget.NewSeparator())
 				tsUI.load(&scratch.Node)
 				settingsContent.Add(tsUI.content)
+			}
+			if formUI := formUIFor(nodeFormEditableNode(&scratch.Node)); formUI != nil {
+				settingsContent.Add(widget.NewSeparator())
+				formUI.load(&scratch.Node)
+				settingsContent.Add(formUI.content)
 			}
 			if awgVisibleFor() {
 				settingsContent.Add(widget.NewSeparator())

@@ -142,10 +142,21 @@
       "tls",
       "__dialer"
     ],
+    "form": {
+      "blocks": [
+        "connection",
+        "tls",
+        "advanced"
+      ]
+    },
     "fields": {
       "server": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server address: domain or IP.",
         "desc_ru": "Адрес сервера: домен или IP.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -153,6 +164,10 @@
       "server_port": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server port.",
         "desc_ru": "Порт сервера.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -160,6 +175,9 @@
       "username": {
         "type": "string",
         "role": "credential",
+        "form": {
+          "block": "connection"
+        },
         "desc_en": "Account user name.",
         "desc_ru": "Имя пользователя учётной записи.",
         "impl": "option/http.go Username."
@@ -167,12 +185,18 @@
       "password": {
         "type": "string",
         "secret": true,
+        "form": {
+          "block": "connection"
+        },
         "desc_en": "Account password.",
         "desc_ru": "Пароль учётной записи.",
         "impl": "option/http.go Password. Секрет."
       },
       "path": {
         "type": "string",
+        "form": {
+          "block": "advanced"
+        },
         "desc_en": "Request path of the CONNECT request.",
         "desc_ru": "Путь запроса CONNECT.",
         "impl": "option/http.go Path."
@@ -186,6 +210,14 @@
       "tls": {
         "type": "ref",
         "ref": "tls",
+        "form": {
+          "block": "tls",
+          "exclude_fields": [
+            "alpn",
+            "utls",
+            "reality"
+          ]
+        },
         "desc_en": "TLS settings.",
         "desc_ru": "Настройки TLS.",
         "impl": "OutboundTLSOptions; поля — registry/tls.json."

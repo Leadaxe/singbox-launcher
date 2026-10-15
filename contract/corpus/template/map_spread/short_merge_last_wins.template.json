@@ -1,0 +1,5 @@
+{
+  "_comment": "D-133 (§4.3): короткая форма — ветка перетирает сиблинга (last-wins); пара к branch_overwrites_sibling",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"tun": {"mtu": 1500, "#if": ["@flag", {"mtu": 1400}]}}
+}

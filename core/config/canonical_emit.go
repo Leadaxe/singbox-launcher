@@ -195,7 +195,7 @@ func buildCanonicalServer(cs *configtypes.CanonicalSource, cn *configtypes.Canon
 		EmitBody:    cn.Body,
 		IdentityTag: cn.Tag,
 		Service:     cn.Service,
-		SkipPresets: cn.SkipPresets,
+		Record:      cn.Record,
 		Authored:    cn.Authored,
 		SourceIndex: configtypes.UnsetSourceIndex,
 	}

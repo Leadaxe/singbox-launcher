@@ -67,15 +67,20 @@ type ServicePlatform struct {
 	// ("linux-arm64", "linux-mipsle-softfloat"; SPEC 127); "" — паспорт его
 	// не сообщил, ассет — по таблице SingboxAssetSuffixFor.
 	Platform string
+	// Packed — паспорт сообщил, что ядро машины сжато UPX: Download core
+	// берёт <Platform>.upx.tar.gz (откат на обычный архив, если копии нет).
+	Packed bool
 	// ServiceKnown — паспорт сообщил, работает ли демон под init-системой;
 	// Service — сам ответ (false — запущен руками, службы нет).
 	ServiceKnown bool
 	Service      bool
 }
 
-// DefaultServiceInit — init-система по платформе: Linux на arm/arm64/mips —
-// роутер на OpenWrt (procd), прочий Linux — systemd; macOS — launchd,
-// Windows — SCM.
+// DefaultServiceInit — init-система по платформе: Linux не на amd64 —
+// роутер на OpenWrt (procd; сборки форка под 386 и riscv64 musl-статичные
+// как раз под i386_pentium4 и riscv64_generic), Linux на amd64 — systemd;
+// macOS — launchd, Windows — SCM. Паспорт демона и выбор в записи машины
+// важнее (NormalizeInitChoice).
 func DefaultServiceInit(goos, goarch string) ServiceInit {
 	switch goos {
 	case "darwin":
@@ -84,7 +89,7 @@ func DefaultServiceInit(goos, goarch string) ServiceInit {
 		return ServiceInitSCM
 	}
 	switch goarch {
-	case "arm", "arm64", "mips", "mipsle":
+	case "arm", "arm64", "mips", "mipsle", "386", "riscv64":
 		return ServiceInitProcd
 	}
 	return ServiceInitSystemd

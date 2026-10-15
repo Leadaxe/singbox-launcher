@@ -94,7 +94,7 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 	tgt := d.Target()
 	goosSelect := widget.NewSelect([]string{"linux", "darwin", "windows"}, nil)
 	goosSelect.SetSelected(tgt.GOOS)
-	goarchSelect := widget.NewSelect([]string{"amd64", "arm64", "arm", "386", "mips", "mipsle"}, nil)
+	goarchSelect := widget.NewSelect([]string{"amd64", "arm64", "arm", "386", "mips", "mipsle", "riscv64"}, nil)
 	goarchSelect.SetSelected(tgt.GOARCH)
 	// Паспорт важнее ввода (SPEC 162 §4.1): платформу сообщил демон, и
 	// каждый здоровый ответ перепишет выбор обратно — селекторы неактивны.

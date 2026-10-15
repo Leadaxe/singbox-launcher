@@ -249,7 +249,7 @@ func (p *WizardPresenter) invalidateParsedNodes() {
 	p.model.GeneratedOutbounds = nil
 	p.model.GeneratedEndpoints = nil
 	p.model.NodeLinks = nil
-	p.model.GeneratedSkipPresets = nil
+	p.model.GeneratedRecordFlags = nil
 	p.model.OutboundStats = wizardmodels.OutboundStats{}
 	p.model.BumpRevision()
 	p.model.PreviewNeedsParse = true

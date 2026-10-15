@@ -2,11 +2,15 @@
 
 Полный черновик следующего релиза: [docs/release_notes/upcoming.md](docs/release_notes/upcoming.md)
 
-**Черновик (следующий релиз), кратко:** пункты накапливайте в [upcoming.md](docs/release_notes/upcoming.md).
-
-**Draft (next release), short:** add items in [upcoming.md](docs/release_notes/upcoming.md).
-
 ---
+
+### Выжимка (RU) — v2.4.0
+
+Минорный релиз после v2.3.10, ядро `sing-box-lx 1.14.3-lx.21` (было 1.14.3-lx.18), контракт 1.1.130. **Защита от входящих из туннеля:** новый пресет **Tunnel ingress** (включён по умолчанию) не даёт пирам WireGuard/AWG, OpenVPN и OpenConnect открыть соединение к роутеру, в LAN или в интернет через вас; в окне узла — **Allow access to this device**, **Expose local network**, **Allow as gateway**; «Skip presets» стал **Skip Tailscale presets**. **DNS следует за правилом:** вкладки DNS и Preview в окне своего правила — DNS-запросы правила на отдельный сервер и «только IPv4», как в LxBox. **«Add server»:** формы по реестру для VLESS, Hysteria2, Trojan, WireGuard (AWG), Naive, MASQUE, SOCKS5, HTTP; **OpenConnect** (FortiGate, AnyConnect, GlobalProtect, F5, Pulse, NC) со вторым фактором и входом через браузер под демоном. **DNS:** DoQ и DoH3; редактор DNS-правил больше не теряет `rule_set`. **Detour:** выбор деревом «Направления / Узлы». **Изменено:** собственные SRS-правила стоят на своём месте в порядке правил (раньше всплывали выше всех — проверьте список после обновления); пресет «Split all traffic 50/50» снят. **Ядро lx.19–lx.21:** Update демона больше не откатывается, сборки linux/386 и riscv64, сжатые UPX копии для роутеров с маленьким флешем. **macOS:** `brew install --cask leadaxe/tap/singbox-launcher`. Подробнее: [docs/release_notes/2-4-0.md](docs/release_notes/2-4-0.md).
+
+### Highlights (EN) — v2.4.0
+
+A minor release after v2.3.10, core `sing-box-lx 1.14.3-lx.21` (was 1.14.3-lx.18), contract 1.1.130. **Tunnel ingress protection:** the new **Tunnel ingress** preset (on by default) stops peers of WireGuard/AWG, OpenVPN and OpenConnect nodes from opening connections to your router, your LAN or the internet through you; the node window gets **Allow access to this device**, **Expose local network**, **Allow as gateway**; "Skip presets" became **Skip Tailscale presets**. **DNS follows the rule:** DNS and Preview tabs in your own rule's window — the rule's DNS queries to a dedicated server and forced IPv4, as in LxBox. **Add server:** registry-driven forms for VLESS, Hysteria2, Trojan, WireGuard (AWG), Naive, MASQUE, SOCKS5, HTTP; **OpenConnect** (FortiGate, AnyConnect, GlobalProtect, F5, Pulse, NC) with second factor and browser sign-in under the daemon. **DNS:** DoQ and DoH3; the DNS rule editor no longer drops `rule_set`. **Detour:** a Directions / Nodes tree picker. **Changed:** your SRS rules keep their place in the rule order (they used to jump above everything — check the list after updating); the "Split all traffic 50/50" preset is gone. **Core lx.19–lx.21:** the daemon's Update no longer rolls back, linux/386 and riscv64 builds, UPX-packed copies for small-flash routers. **macOS:** `brew install --cask leadaxe/tap/singbox-launcher`. Details: [docs/release_notes/2-4-0.md](docs/release_notes/2-4-0.md).
 
 ### Выжимка (RU) — v2.3.10
 

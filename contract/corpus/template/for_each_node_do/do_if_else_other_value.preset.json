@@ -1,0 +1,63 @@
+{
+  "_comment": "D-133 (§6.7.1): ветка E — другой глагол с другой правой частью: сервер узла, если он есть, иначе тег.",
+  "preset": {
+    "for_each_node_do": {
+      "#do": {
+        "@list": {
+          "#if": [
+            {
+              "@node.body.server": "#notEmpty"
+            },
+            {
+              "#append": "@node.body.server"
+            },
+            {
+              "#append": "@node"
+            }
+          ]
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "list",
+        "type": "text_list"
+      }
+    ],
+    "rules": [
+      {
+        "domain": "@list",
+        "outbound": "direct-out"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "a",
+      "body": {
+        "type": "vless",
+        "tag": "a",
+        "server": "a.example",
+        "server_port": 443
+      }
+    },
+    {
+      "tag": "home-ts",
+      "skip_tailscale_presets": true,
+      "body": {
+        "type": "tailscale",
+        "tag": "home-ts",
+        "hostname": "home-ts-host"
+      }
+    },
+    {
+      "tag": "e",
+      "body": {
+        "type": "vless",
+        "tag": "e",
+        "server": "b.example",
+        "server_port": 443
+      }
+    }
+  ]
+}

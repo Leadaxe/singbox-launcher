@@ -1,0 +1,5 @@
+{
+  "_comment": "D-133 (§4.3): короткая форма — третий элемент (E) мержится при false; пара к else_merge",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"tun": {"type": "tun", "#if": ["@flag", {"mtu": 1400}, {"mtu": 1280}]}}
+}

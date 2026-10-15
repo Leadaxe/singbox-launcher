@@ -168,6 +168,7 @@ Discriminator: `type` — `http`, `ws`, `quic`, `grpc`, `httpupgrade`, `xhttp`
 - <a id="body-grpc-service-name"></a>**`grpc.service_name`** — gRPC service name in the request path. A leading "/" makes the value a ready-made request path in Xray's absolute-path form (core >= 1.14.1-lx.8): "/a/b/Tun" goes on the wire as "/a/b/Tun", each segment escaped on its own. Without a leading "/" it is a service name and the core appends "/Tun" itself ("a/b" -> "/a%2Fb/Tun"). The value is passed to the core unchanged in either form.
   - Type: string
   - Default: `""`
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-grpc-idle-timeout"></a>**`grpc.idle_timeout`** — Close the stream after this idle period.
   - Type: duration
 - <a id="body-grpc-ping-timeout"></a>**`grpc.ping_timeout`** — Timeout waiting for a keepalive ping reply.
@@ -180,9 +181,11 @@ Discriminator: `type` — `http`, `ws`, `quic`, `grpc`, `httpupgrade`, `xhttp`
 
 - <a id="body-http-host"></a>**`http.host`** — Host header values, picked at random per request.
   - Type: listable_string
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-http-path"></a>**`http.path`** — Request path.
   - Type: string, format `url_path`
   - Default: `/`
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-http-method"></a>**`http.method`** — HTTP method of the request.
   - Type: string
   - Default: `GET`
@@ -197,11 +200,17 @@ Discriminator: `type` — `http`, `ws`, `quic`, `grpc`, `httpupgrade`, `xhttp`
 
 - <a id="body-httpupgrade-host"></a>**`httpupgrade.host`** — Host header value.
   - Type: string
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-httpupgrade-path"></a>**`httpupgrade.path`** — Request path.
   - Type: string, format `url_path`
   - Default: `/`
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-httpupgrade-headers"></a>**`httpupgrade.headers`** — Extra HTTP headers sent with each request.
   - Type: object
+- <a id="body-httpupgrade-headers-host"></a>**`httpupgrade.headers.Host`** — Host header value.
+  - Type: listable_string
+- <a id="body-httpupgrade-headers-other-keys"></a>**`httpupgrade.headers.*`** — Other headers pass through as written.
+  - Other keys of this object pass through as written: no rules, no `unknown_key`; emitted here in alphabetical order. Not inherited by nested objects
 
 ### `quic`
 
@@ -211,8 +220,14 @@ Discriminator: `type` — `http`, `ws`, `quic`, `grpc`, `httpupgrade`, `xhttp`
 - <a id="body-ws-path"></a>**`ws.path`** — WebSocket request path.
   - Type: string, format `url_path`
   - Default: `/`
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-ws-headers"></a>**`ws.headers`** — Extra HTTP headers sent with each request.
   - Type: object
+- <a id="body-ws-headers-host"></a>**`ws.headers.Host`** — Host header value.
+  - Type: listable_string
+  - Form: block of the connecting `ref` field, or drawn by a choice group
+- <a id="body-ws-headers-other-keys"></a>**`ws.headers.*`** — Other headers pass through as written.
+  - Other keys of this object pass through as written: no rules, no `unknown_key`; emitted here in alphabetical order. Not inherited by nested objects
 - <a id="body-ws-max-early-data"></a>**`ws.max_early_data`** — Maximum bytes of WebSocket early data.
   - Type: int, `0–4294967295`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -226,13 +241,16 @@ Discriminator: `type` — `http`, `ws`, `quic`, `grpc`, `httpupgrade`, `xhttp`
 - <a id="body-xhttp-host"></a>**`xhttp.host`** — Host header value.
   - Type: string
   - Default: `""`
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-xhttp-path"></a>**`xhttp.path`** — Base request path. Anything after the first `?` is sent as the request query, as Xray does.
   - Type: string
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-xhttp-mode"></a>**`xhttp.mode`** — XHTTP transfer mode.
   - Type: enum, `""`, `auto`, `packet-up`, `stream-up`, `stream-one`
   - Default: `auto`
   - If invalid: removed → [`xhttp_param_reset`](../warnings.md#xhttp_param_reset)
   - If absent: filled in with `packet-up` when `transport.uplink_data_placement` is one of `header`, `cookie` → [`xhttp_mode_forced_packet_up`](../warnings.md#xhttp_mode_forced_packet_up)
+  - Form: block of the connecting `ref` field, or drawn by a choice group
 - <a id="body-xhttp-headers"></a>**`xhttp.headers`** — Extra HTTP headers sent with each request.
   - Type: object
 - <a id="body-xhttp-x-padding-bytes"></a>**`xhttp.x_padding_bytes`** — Size range of the padding block.

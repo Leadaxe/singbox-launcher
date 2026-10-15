@@ -1,0 +1,254 @@
+{
+  "_comment": "SPEC 170, контракт 1.1.126, D-134; форма и Tailscale — 1.1.129, D-136: пресет tunnel-ingress (тело из TEMPLATE_LANG §6.5.2) по узлам с полями записи allow_*, настройки по умолчанию (closed_out = reject, allowed_out = direct-out, gateway_out = proxy-out). wg-home без галок — только reject и DNS-reject; oc-work allow_local+allow_lan — loopback и private в allowed_out, DNS закрыт (нет allow_gateway); wg-exit allow_gateway — в gateway_out, DNS открыт; ts (tailscale) с allow_gateway — #filter его не берёт: пиров tailnet ограничивают ACL Tailscale и фильтр control-plane, поля allow_* у него не читаются; v1 (vless) не туннель — #filter его не берёт, его allow_lan ничего не открывает. closed_out = reject превращается в action: reject (сентинел переменной outbound).",
+  "preset": {
+    "for_each_node_do": {
+      "#filter": {
+        "@node.body.type": {
+          "#in": [
+            "wireguard",
+            "openvpn-client",
+            "openconnect"
+          ]
+        }
+      },
+      "#do": {
+        "@all_nodes": {
+          "#append": "@node"
+        },
+        "@allow_local_nodes": {
+          "#if": [
+            "@node.allow_local",
+            {
+              "#append": "@node"
+            }
+          ]
+        },
+        "@allow_lan_nodes": {
+          "#if": [
+            "@node.allow_lan",
+            {
+              "#append": "@node"
+            }
+          ]
+        },
+        "@allow_gateway_nodes": {
+          "#if": [
+            "@node.allow_gateway",
+            {
+              "#append": "@node"
+            }
+          ]
+        },
+        "@closed_nodes": {
+          "#if": [
+            {
+              "#not": "@node.allow_gateway"
+            },
+            {
+              "#append": "@node"
+            }
+          ]
+        }
+      }
+    },
+    "vars": [
+      {
+        "name": "all_nodes",
+        "type": "text_list",
+        "wizard_ui": "internal"
+      },
+      {
+        "name": "allow_local_nodes",
+        "type": "text_list",
+        "wizard_ui": "internal"
+      },
+      {
+        "name": "allow_lan_nodes",
+        "type": "text_list",
+        "wizard_ui": "internal"
+      },
+      {
+        "name": "allow_gateway_nodes",
+        "type": "text_list",
+        "wizard_ui": "internal"
+      },
+      {
+        "name": "closed_nodes",
+        "type": "text_list",
+        "wizard_ui": "internal"
+      },
+      {
+        "name": "closed_out",
+        "type": "outbound",
+        "default_value": "reject",
+        "title": "Incoming from tunnels",
+        "tooltip": "What happens to connections arriving from a tunnel that the node's switches did not allow. reject (default) and drop close them; an outbound forwards them."
+      },
+      {
+        "name": "allowed_out",
+        "type": "outbound",
+        "default_value": "direct-out",
+        "title": "Device and local network go to",
+        "tooltip": "Outbound for peers allowed to reach this device or the local network."
+      },
+      {
+        "name": "gateway_out",
+        "type": "outbound",
+        "default_value": "proxy-out",
+        "title": "Gateway traffic goes to",
+        "tooltip": "Outbound for peers allowed to use this device as a gateway."
+      }
+    ],
+    "rules": [
+      {
+        "#if": [
+          {
+            "@allow_local_nodes": "#notEmpty"
+          },
+          {
+            "inbound": "@allow_local_nodes",
+            "ip_cidr": [
+              "127.0.0.0/8",
+              "::1/128"
+            ],
+            "outbound": "@allowed_out"
+          }
+        ]
+      },
+      {
+        "#if": [
+          {
+            "@allow_lan_nodes": "#notEmpty"
+          },
+          {
+            "inbound": "@allow_lan_nodes",
+            "ip_is_private": true,
+            "outbound": "@allowed_out"
+          }
+        ]
+      },
+      {
+        "#if": [
+          {
+            "@allow_gateway_nodes": "#notEmpty"
+          },
+          {
+            "inbound": "@allow_gateway_nodes",
+            "outbound": "@gateway_out"
+          }
+        ]
+      },
+      {
+        "#if": [
+          {
+            "@all_nodes": "#notEmpty"
+          },
+          {
+            "inbound": "@all_nodes",
+            "outbound": "@closed_out"
+          }
+        ]
+      }
+    ],
+    "dns_rules": [
+      {
+        "#if": [
+          {
+            "#and": [
+              {
+                "@closed_nodes": "#notEmpty"
+              },
+              {
+                "@closed_out": {
+                  "#in": [
+                    "reject",
+                    "drop"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "inbound": "@closed_nodes",
+            "action": "reject"
+          }
+        ]
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "wg-home",
+      "body": {
+        "type": "wireguard",
+        "tag": "wg-home",
+        "address": [
+          "10.8.0.2/32"
+        ],
+        "private_key": "k",
+        "peers": [
+          {
+            "address": "203.0.113.1",
+            "port": 51820,
+            "public_key": "p",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "tag": "oc-work",
+      "allow_local": true,
+      "allow_lan": true,
+      "body": {
+        "type": "openconnect",
+        "tag": "oc-work",
+        "server": "vpn.example.com",
+        "username": "u"
+      }
+    },
+    {
+      "tag": "ts",
+      "allow_gateway": true,
+      "body": {
+        "type": "tailscale",
+        "tag": "ts",
+        "hostname": "ts-host"
+      }
+    },
+    {
+      "tag": "wg-exit",
+      "allow_gateway": true,
+      "body": {
+        "type": "wireguard",
+        "tag": "wg-exit",
+        "address": [
+          "10.9.0.2/32"
+        ],
+        "private_key": "k2",
+        "peers": [
+          {
+            "address": "203.0.113.2",
+            "port": 51820,
+            "public_key": "p2",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "tag": "v1",
+      "allow_lan": true,
+      "body": {
+        "type": "vless",
+        "tag": "v1",
+        "server": "v1.example",
+        "server_port": 443
+      }
+    }
+  ]
+}

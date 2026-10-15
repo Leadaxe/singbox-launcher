@@ -331,7 +331,12 @@ func buildSingleCustomRuleRow(
 	var srsButton *ttwidget.Button
 	enableRuleOnSRSSuccess := new(bool)
 	checkbox := createRuleEnableCheckbox(presenter, model, guiState, customRule, customIdx, outboundSelect, &srsButton, enableRuleOnSRSSuccess)
-	label := ttwidget.NewLabel(customRule.Rule.Label)
+	labelText := customRule.Rule.Label
+	// DNS-зеркало правила (SPEC 172): метка, если сборка его выпустит.
+	if mark := ruleDNSMirrorText(customRule); mark != "" {
+		labelText += "  ·  " + mark
+	}
+	label := ttwidget.NewLabel(labelText)
 	label.Wrapping = fyne.TextWrapOff
 	label.Truncation = fyne.TextTruncateEllipsis
 	if d := strings.TrimSpace(customRule.Rule.Description); d != "" {

@@ -231,10 +231,25 @@
       "disable_path_mtu_discovery",
       "__dialer"
     ],
+    "form": {
+      "blocks": [
+        "connection",
+        "obfs",
+        "tls",
+        "advanced"
+      ],
+      "fixed": {
+        "tls.enabled": true
+      }
+    },
     "fields": {
       "server": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server address: domain or IP.",
         "desc_ru": "Адрес сервера: домен или IP.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -242,6 +257,10 @@
       "server_port": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server port.",
         "desc_ru": "Порт сервера.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -260,12 +279,18 @@
             "code": "field_conflict"
           }
         ],
+        "form": {
+          "block": "advanced"
+        },
         "desc_en": "Port ranges used for port hopping.",
         "desc_ru": "Диапазоны портов для прыжков по портам.",
         "impl": "Конфликт с realm: «realm conflicts with server, server_port, and server_ports» (protocol/hysteria2/outbound.go:172). item_pattern — формат ЭЛЕМЕНТА (запрос LxBox 19.09.2026, их починка 44f26d11): ядро разбирает каждый элемент как пару `low:high` и на «198.51.100.24:443» отвечает «bad port range» отказом ВСЕГО конфига. Такой элемент приезжает из mport, где адрес и порты записаны одной строкой (`mport=198.51.100.24:443,20000-30000`). Годные элементы остаются — прыжки по портам продолжают работать по тем диапазонам, которые провайдер записал правильно. С 1.1.49 элемент судится как пара uint16 без ведущих нулей (0–65535): прежний ^[0-9]{1,5}:[0-9]{1,5}$ пропускал 99999:99999, 65536:65536 и 00443:00444, и ядро отвечало «bad port range» отказом ВСЕГО конфига (ревью LxBox). Тот же паттерн стоит у hysteria (v1) — продублирован намеренно: ref на общее определение (dialer.common) переносит поверх только required/code/forbidden_for/allowed_for/forbidden_codes, и on_item_invalid со своим кодом и conflicts с realm на ссылке терялись бы."
       },
       "hop_interval": {
         "type": "duration",
+        "form": {
+          "block": "advanced"
+        },
         "desc_en": "Interval between port hops.",
         "desc_ru": "Интервал между прыжками по портам.",
         "impl": "option/hysteria2.go HopInterval."
@@ -283,6 +308,9 @@
           "action": "drop",
           "code": "type_invalid"
         },
+        "form": {
+          "block": "advanced"
+        },
         "desc_en": "Upload bandwidth in Mbps.",
         "desc_ru": "Скорость отдачи в Мбит/с.",
         "impl": "Из JSON приезжает float64 — приведение обязательно."
@@ -293,6 +321,9 @@
         "on_invalid": {
           "action": "drop",
           "code": "type_invalid"
+        },
+        "form": {
+          "block": "advanced"
         },
         "desc_en": "Download bandwidth in Mbps.",
         "desc_ru": "Скорость приёма в Мбит/с.",
@@ -320,6 +351,9 @@
               "core_rejects": true
             },
             "required": true,
+            "form": {
+              "block": "obfs"
+            },
             "desc_en": "Obfuscation algorithm.",
             "desc_ru": "Алгоритм обфускации.",
             "impl": "Дискриминатор объекта; иное значение = ошибка разбора JSON, код obfs_unknown."
@@ -330,6 +364,15 @@
             "code": "obfs_password_missing",
             "core_rejects": true,
             "secret": true,
+            "form": {
+              "block": "obfs",
+              "required": true,
+              "visible_when": {
+                "any_set": [
+                  "obfs.type"
+                ]
+              }
+            },
             "desc_en": "Obfuscation password.",
             "desc_ru": "Пароль обфускации.",
             "impl": "Пустой = «missing obfs password» на весь конфиг; отсутствие пароля снимает блок obfs целиком (узел живёт без обфускации), код obfs_password_missing — он же объявлен здесь через `code`, иначе санитайзер поставил бы общий field_missing. Секрет."
@@ -379,6 +422,9 @@
         "type": "string",
         "role": "credential",
         "secret": true,
+        "form": {
+          "block": "connection"
+        },
         "desc_en": "Account password.",
         "desc_ru": "Пароль учётной записи.",
         "impl": "option/hysteria2.go Password. Секрет."
@@ -394,6 +440,9 @@
         "type": "ref",
         "ref": "tls",
         "required": true,
+        "form": {
+          "block": "tls"
+        },
         "desc_en": "TLS settings.",
         "desc_ru": "Настройки TLS.",
         "impl": "C.ErrTLSRequired без tls.enabled=true. На QUIC-типе utls и reality вычищаются целиком."

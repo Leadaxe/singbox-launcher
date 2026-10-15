@@ -165,10 +165,24 @@
       "transport",
       "__dialer"
     ],
+    "form": {
+      "blocks": [
+        "connection",
+        "tls",
+        "transport"
+      ],
+      "fixed": {
+        "tls.enabled": true
+      }
+    },
     "fields": {
       "server": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server address: domain or IP.",
         "desc_ru": "Адрес сервера: домен или IP.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -176,6 +190,10 @@
       "server_port": {
         "type": "ref",
         "ref": "dialer.common",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Server port.",
         "desc_ru": "Порт сервера.",
         "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
@@ -185,6 +203,10 @@
         "role": "credential",
         "required": true,
         "secret": true,
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "desc_en": "Account password.",
         "desc_ru": "Пароль учётной записи.",
         "impl": "json-тег без omitempty. Секрет."
@@ -199,6 +221,12 @@
       "tls": {
         "type": "ref",
         "ref": "tls",
+        "form": {
+          "block": "tls",
+          "exclude_fields": [
+            "reality"
+          ]
+        },
         "desc_en": "TLS settings.",
         "desc_ru": "Настройки TLS.",
         "impl": "OutboundTLSOptions; поля — registry/tls.json."
@@ -213,6 +241,12 @@
       "transport": {
         "type": "ref",
         "ref": "transports",
+        "form": {
+          "block": "transport",
+          "exclude_variants": [
+            "quic"
+          ]
+        },
         "desc_en": "V2Ray transport settings.",
         "desc_ru": "Настройки транспорта V2Ray.",
         "impl": "V2RayTransportOptions; варианты по transport.type — registry/transports.json."

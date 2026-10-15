@@ -40,12 +40,30 @@ type TargetCoreDownload struct {
 	// SumsMissing — SHA256SUMS не скачался или ассета в нём нет: sha256
 	// бинаря надо сверить руками (шаг core_check).
 	SumsMissing bool
+	// Packed — скачана UPX-копия (<platform>.upx.tar.gz). PackedFallback —
+	// ядро машины сжато, но копии в релизе нет: скачан обычный бинарь, в
+	// 4–5 раз крупнее (CI форка выпускает копию не всегда).
+	Packed, PackedFallback bool
+}
+
+// upxAssetSuffix — суффикс UPX-копии ядра машины (lx.21+: копии есть только
+// у роутерных linux-сборок): platform из паспорта + ".upx.tar.gz"; "" — без
+// паспорта или не linux. Сжатость знает только демон (паспорт, packed).
+func upxAssetSuffix(goos, platform string) string {
+	if platform = strings.TrimSpace(platform); goos != "linux" || platform == "" {
+		return ""
+	}
+	return platform + ".upx.tar.gz"
 }
 
 // TargetCoreFileName — имя бинаря в ~/Downloads: версия и платформа в имени,
-// чтобы ядра разных машин и версий не затирали друг друга.
-func TargetCoreFileName(version, goos, goarch string) string {
+// чтобы ядра разных машин и версий не затирали друг друга; UPX-копия — с
+// суффиксом -upx, чтобы не подменять обычный бинарь той же версии.
+func TargetCoreFileName(version, goos, goarch string, packed bool) string {
 	name := fmt.Sprintf("sing-box-%s-%s-%s", version, goos, goarch)
+	if packed {
+		name += "-upx"
+	}
 	if goos == "windows" {
 		name += ".exe"
 	}
@@ -66,17 +84,21 @@ func DownloadsDir() (string, error) {
 }
 
 // CheckTargetCore — ядро уже скачано и проверено: файл и сайдкар есть, sha256
-// файла совпадает с сайдкаром. Без сети; читает файл целиком — звать из
-// горутины.
-func CheckTargetCore(version, goos, goarch string) (TargetCoreDownload, bool) {
+// файла совпадает с сайдкаром. packed — искать UPX-копию (ядро машины
+// сжато). Без сети; читает файл целиком — звать из горутины.
+func CheckTargetCore(version, goos, goarch, platform string, packed bool) (TargetCoreDownload, bool) {
 	var out TargetCoreDownload
 	dir, err := DownloadsDir()
 	if err != nil {
 		return out, false
 	}
-	out.Path = filepath.Join(dir, TargetCoreFileName(version, goos, goarch))
+	suffix := assetSuffixFor(goos, goarch, platform)
+	if upx := upxAssetSuffix(goos, platform); packed && upx != "" {
+		suffix, out.Packed = upx, true
+	}
+	out.Path = filepath.Join(dir, TargetCoreFileName(version, goos, goarch, out.Packed))
 	out.SidecarPath = out.Path + ".sha256"
-	if suffix := SingboxAssetSuffixFor(goos, goarch); suffix != "" {
+	if suffix != "" {
 		out.Asset = fmt.Sprintf("sing-box-%s-%s", version, suffix)
 	}
 	raw, err := os.ReadFile(out.SidecarPath)
@@ -95,13 +117,15 @@ func CheckTargetCore(version, goos, goarch string) (TargetCoreDownload, bool) {
 
 // DownloadCoreForTarget скачивает ядро version под goos/goarch машины в
 // ~/Downloads (ассет — по platform из паспорта демона, "" — по таблице
-// SingboxAssetSuffixFor): архив (оригинал → зеркала, прогресс 15–75) → SHA256SUMS
+// SingboxAssetSuffixFor; packed — ядро машины сжато UPX, берётся
+// <platform>.upx.tar.gz, а без такой копии в релизе — обычный архив с
+// PackedFallback, как в lxd update): архив (оригинал → зеркала, прогресс 15–75) → SHA256SUMS
 // (best-effort) → сверка sha архива (несовпадение — ошибка, файл не
 // кладётся) → распаковка → копия в ~/Downloads, chmod 0755 → сайдкар.
 // Канал progress закрывает сама функция, как DownloadCore.
-func (ac *AppController) DownloadCoreForTarget(ctx context.Context, version, goos, goarch, platform string, progress chan DownloadProgress) (TargetCoreDownload, error) {
+func (ac *AppController) DownloadCoreForTarget(ctx context.Context, version, goos, goarch, platform string, packed bool, progress chan DownloadProgress) (TargetCoreDownload, error) {
 	defer close(progress)
-	out, err := ac.downloadCoreForTarget(ctx, version, goos, goarch, platform, progress)
+	out, err := ac.downloadCoreForTarget(ctx, version, goos, goarch, platform, packed, progress)
 	if err != nil {
 		debuglog.WarnLog("DownloadCoreForTarget %s %s/%s: %v", version, goos, goarch, err)
 		progress <- DownloadProgress{Message: err.Error(), Status: "error", Error: err}
@@ -111,20 +135,21 @@ func (ac *AppController) DownloadCoreForTarget(ctx context.Context, version, goo
 	return out, nil
 }
 
-func (ac *AppController) downloadCoreForTarget(ctx context.Context, version, goos, goarch, platform string, progress chan DownloadProgress) (TargetCoreDownload, error) {
+func (ac *AppController) downloadCoreForTarget(ctx context.Context, version, goos, goarch, platform string, packed bool, progress chan DownloadProgress) (TargetCoreDownload, error) {
 	var out TargetCoreDownload
 	suffix := assetSuffixFor(goos, goarch, platform)
 	if suffix == "" {
 		return out, fmt.Errorf("%s/%s: %w", goos, goarch, ErrNoTargetAsset)
 	}
-	asset := fmt.Sprintf("sing-box-%s-%s", version, suffix)
-	out.Asset = asset
+	plainAsset := fmt.Sprintf("sing-box-%s-%s", version, suffix)
+	packedAsset := ""
+	if upx := upxAssetSuffix(goos, platform); packed && upx != "" {
+		packedAsset = fmt.Sprintf("sing-box-%s-%s", version, upx)
+	}
 	dir, err := DownloadsDir()
 	if err != nil {
 		return out, err
 	}
-	out.Path = filepath.Join(dir, TargetCoreFileName(version, goos, goarch))
-	out.SidecarPath = out.Path + ".sha256"
 
 	// Свой каталог в системном temp, а не temp лаунчера: DownloadCore по
 	// завершении сносит тот целиком и задел бы параллельное скачивание.
@@ -139,14 +164,41 @@ func (ac *AppController) downloadCoreForTarget(ctx context.Context, version, goo
 	}()
 
 	progress <- DownloadProgress{Progress: 5, Message: "Getting release checksums...", Status: "downloading"}
-	wantSHA := ac.fetchReleaseSum(ctx, version, asset, filepath.Join(tempDir, targetCoreSumsFile))
-	out.SumsMissing = wantSHA == ""
+	sums := ac.fetchReleaseSums(ctx, version, filepath.Join(tempDir, targetCoreSumsFile))
 
-	archive := filepath.Join(tempDir, asset)
+	// UPX-копия — если ядро машины сжато и копия в релизе есть. Суммы её не
+	// знают — копии нет (её шаг в CI форка необязателен), берётся обычный
+	// архив; сумм нет вовсе — пробуем копию и откатываемся по ошибке.
+	asset := plainAsset
+	if packedAsset != "" {
+		if sums == nil || sums[packedAsset] != "" {
+			asset, out.Packed = packedAsset, true
+		} else {
+			debuglog.WarnLog("DownloadCoreForTarget: %s has no %s, falling back to %s", targetCoreSumsFile, packedAsset, plainAsset)
+			out.PackedFallback = true
+		}
+	}
 	progress <- DownloadProgress{Progress: 15, Message: "Downloading " + asset + "...", Status: "downloading"}
-	if err := ac.downloadFile(ctx, releaseDownloadURL(version, asset), archive, progress); err != nil {
+	archive := filepath.Join(tempDir, asset)
+	err = ac.downloadFile(ctx, releaseDownloadURL(version, asset), archive, progress)
+	if err != nil && out.Packed && ctx.Err() == nil {
+		debuglog.WarnLog("DownloadCoreForTarget: %s: %v; falling back to %s", asset, err, plainAsset)
+		asset, out.Packed, out.PackedFallback = plainAsset, false, true
+		progress <- DownloadProgress{Progress: 15, Message: "Downloading " + asset + "...", Status: "downloading"}
+		archive = filepath.Join(tempDir, asset)
+		err = ac.downloadFile(ctx, releaseDownloadURL(version, asset), archive, progress)
+	}
+	if err != nil {
 		return out, err
 	}
+	out.Asset = asset
+	out.Path = filepath.Join(dir, TargetCoreFileName(version, goos, goarch, out.Packed))
+	out.SidecarPath = out.Path + ".sha256"
+	wantSHA := sums[asset]
+	if sums != nil && wantSHA == "" {
+		debuglog.WarnLog("DownloadCoreForTarget: %s has no line for %s", targetCoreSumsFile, asset)
+	}
+	out.SumsMissing = wantSHA == ""
 	if out.ArchiveSHA, err = sha256File(archive); err != nil {
 		return out, err
 	}
@@ -190,10 +242,10 @@ func (ac *AppController) downloadCoreForTarget(ctx context.Context, version, goo
 	return out, nil
 }
 
-// fetchReleaseSum — sha256 ассета из SHA256SUMS релиза; "" — файла нет, он
-// не скачался или ассета в нём нет (best-effort: ядро всё равно скачается,
-// sha бинаря покажется для ручной сверки).
-func (ac *AppController) fetchReleaseSum(ctx context.Context, version, asset, dest string) string {
+// fetchReleaseSums — SHA256SUMS релиза как имя ассета → sha256; nil — файл
+// не скачался (best-effort: ядро всё равно скачается, sha бинаря покажется
+// для ручной сверки).
+func (ac *AppController) fetchReleaseSums(ctx context.Context, version, dest string) map[string]string {
 	// downloadFile шлёт прогресс в канал — свой, сливаемый: полоса скачивания
 	// архива не должна прыгать от крошечного файла сумм.
 	sink := make(chan DownloadProgress, 10)
@@ -208,22 +260,21 @@ func (ac *AppController) fetchReleaseSum(ctx context.Context, version, asset, de
 	<-drained
 	if err != nil {
 		debuglog.WarnLog("DownloadCoreForTarget: %s unavailable: %v", targetCoreSumsFile, err)
-		return ""
+		return nil
 	}
 	f, err := os.Open(dest)
 	if err != nil {
-		return ""
+		return nil
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
+	sums := map[string]string{}
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
-		fields := strings.Fields(sc.Text())
-		if len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == asset {
-			return fields[0]
+		if fields := strings.Fields(sc.Text()); len(fields) == 2 {
+			sums[strings.TrimPrefix(fields[1], "*")] = fields[0]
 		}
 	}
-	debuglog.WarnLog("DownloadCoreForTarget: %s has no line for %s", targetCoreSumsFile, asset)
-	return ""
+	return sums
 }
 
 // copyFileAtomic копирует src в dst через dst.tmp + rename: недописанный
@@ -233,28 +284,28 @@ func copyFileAtomic(src, dst string, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	tmp := dst + ".tmp"
 	outFile, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", tmp, err)
 	}
 	if _, err := io.Copy(outFile, in); err != nil {
-		outFile.Close()
-		os.Remove(tmp)
+		_ = outFile.Close()
+		_ = os.Remove(tmp)
 		return fmt.Errorf("write %s: %w", tmp, err)
 	}
 	if err := outFile.Close(); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("write %s: %w", tmp, err)
 	}
 	// OpenFile не меняет права уже существующего tmp, а umask режет новые.
 	if err := os.Chmod(tmp, mode); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("chmod %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, dst); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename %s: %w", dst, err)
 	}
 	return nil

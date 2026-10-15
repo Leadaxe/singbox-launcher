@@ -1,0 +1,5 @@
+{
+  "_comment": "D-133 + D-045: именованные ключи #if… с массивами на одном объекте — пара к map_spread/named_if_two_on_one_object",
+  "vars": [{"name": "a", "type": "bool", "default_value": "false"}, {"name": "b", "type": "bool", "default_value": "false"}],
+  "config": {"tun": {"type": "tun", "#if a": ["@a", {"x": 1}], "#if 2": ["@b", {"y": 2}]}}
+}

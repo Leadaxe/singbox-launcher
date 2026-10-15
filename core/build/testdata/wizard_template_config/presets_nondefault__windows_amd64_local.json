@@ -346,18 +346,6 @@
           "russian:ru-domains",
           "russian:ru-services"
         ]
-      },
-      {
-        "outbound": "proxy-out",
-        "source_port_range": [
-          "49152:57343"
-        ]
-      },
-      {
-        "outbound": "direct-out",
-        "source_port_range": [
-          "57344:65535"
-        ]
       }
     ]
   }

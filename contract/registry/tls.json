@@ -342,6 +342,7 @@
       "enabled": {
         "type": "bool",
         "default": false,
+        "form": {},
         "desc_en": "Enable TLS for this outbound.",
         "desc_ru": "Включить TLS для этого узла.",
         "impl": "false = TLS НЕ ЗАДАН: конструктор ядра возвращает (nil, nil), и блок в тело не пишется вовсе — это правило секции absent_when, а не код парсера (SPEC 045: явный disabled-блок ронял ядра 1.14.0-lx.5..lx.18 SIGSEGV'ом на первом dial). Обязателен (=true) у hysteria/hysteria2/tuic/anytls/naive — C.ErrTLSRequired."
@@ -394,6 +395,11 @@
           "action": "drop",
           "code": "type_invalid"
         },
+        "form": {
+          "visible_when": {
+            "tls.enabled": true
+          }
+        },
         "desc_en": "Server name sent in SNI and verified in the certificate.",
         "desc_ru": "Имя сервера в SNI и при проверке сертификата.",
         "impl": "Пусто → берётся адрес сервера; пусто при пустом адресе и insecure=false = ошибка «missing server_name or insecure=true» (common/tls/client.go). Для masque profile=cloudflare дефолт www.cloudflare.com."
@@ -414,6 +420,11 @@
             "code": "tls_insecure"
           }
         ],
+        "form": {
+          "visible_when": {
+            "tls.enabled": true
+          }
+        },
         "desc_en": "Skip server certificate verification.",
         "desc_ru": "Не проверять сертификат сервера.",
         "impl": "Код tls_insecure (info) — узел работает, но защита от MITM снята; значение СОХРАНЯЕТСЯ, это осознанный выбор провайдера. Правило живёт в реестре (advisory на значении true, контракт 1.1.6), а не рукописно в парсерах, — как reality_fp_not_chrome у utls.fingerprint. Условие по значению, а не `except`: у bool «не задано» и false — одно и то же, и код должен ставиться ровно на true. У naive — фатал старта, там поле снимает forbidden_for с другим кодом."
@@ -434,6 +445,11 @@
         "core_rejects": true,
         "forbidden_codes": {
           "masque": "masque_tls_field_ignored"
+        },
+        "form": {
+          "visible_when": {
+            "tls.enabled": true
+          }
         },
         "desc_en": "ALPN protocols offered in the handshake.",
         "desc_ru": "Список протоколов ALPN, предлагаемых в рукопожатии.",
@@ -974,6 +990,14 @@
                 "code": "reality_fp_not_chrome"
               }
             ],
+            "form": {
+              "visible_when": {
+                "tls.enabled": true
+              },
+              "implies": {
+                "tls.utls.enabled": true
+              }
+            },
             "desc_en": "Browser fingerprint used for the ClientHello.",
             "desc_ru": "Отпечаток браузера для ClientHello.",
             "impl": "Канонический список — uTLSClientHelloID в common/tls/utls_client.go; неизвестное значение = ошибка старта. Гибридный шар X25519MLKEM768 есть у chrome/firefox/safari (lx.3+), см. tls.reality.key_share=hybrid. Код reality_fp_not_chrome ставит advisory «любой отпечаток, кроме гибридных, при заданном tls.reality.enabled». `random` ПОД REALITY (контракт 1.1.61, SPEC 142 C4): ядро выбирает его ОДИН раз при старте процесса из chrome/firefox/edge/safari/ios (common/tls/utls_client.go); edge = Edge 85, ios = iOS 14 (utls: u_common и спеки u_parrots — без X25519MLKEM768) гибридного шара не несут — узел в двух запусках из пяти не проходит серверы Xray >= v26.9.8, а при key_share=hybrid ядро отказывает на рукопожатии (common/tls/reality_client.go). Поэтому coerce_when: random при tls.reality.enabled → chrome с кодом reality_fp_random_pinned — chrome входит в набор, из которого random выбирает. Неявный дефолт D-009 (маппер vless/anytls пишет random вместо пустого fp) от явного в теле неотличим, и правило одно для обоих. Суд по ГОТОВОМУ телу: REALITY, снятый своим правилом (pbk=enabled на TLS-узле), замены не вызывает — такой узел остаётся с random. Прежде замену делала сборка (HealRealityFingerprints) молча, без кода на узле; снята. Тела, которые сборка не прогоняет через санитайзер (замороженное тело состояния канона v7, ручной config_json), получают те же правки на сборке по тому же правилу (nodeflow.Repairs: из результата санитайзера берутся только пути, записанные починками), код — в лог. `random` в исключениях advisory — его заменяет coerce_when.",
@@ -1052,6 +1076,7 @@
                 "core_rejects": true
               }
             ],
+            "form": {},
             "desc_en": "Enable REALITY handshake camouflage.",
             "desc_ru": "Включить маскировку рукопожатия REALITY.",
             "impl": "Требует tls.utls.enabled=true (common/tls/reality_client.go «uTLS is required by reality client» — отказ ВСЕГО конфига). ЕДИНОЕ ПРАВИЛО REALITY ↔ uTLS (контракт 1.1.61, SPEC 142 C4): связь requires с `set: true` — uTLS не задан или выключен, значит он ДОПИСЫВАЕТСЯ ({enabled: true}, отпечаток пустой = chrome у ядра, common/tls/utls_client.go) с кодом reality_utls_enabled, а REALITY остаётся. Прежде реестр здесь снимал reality.enabled (field_requires), а сборка (HealRealityFingerprints) тот же блок чинила — два ответа на один вопрос; сборочная копия снята. Тела, которые сборка не прогоняет через санитайзер (замороженное тело состояния канона v7, ручной config_json), получают те же правки на сборке по тому же правилу (nodeflow.Repairs: из результата санитайзера берутся только пути, записанные починками), код — в лог. Суд по готовому телу: REALITY, снятый своим правилом (негодный public_key), uTLS не получает. Каталог strip цепочки не снимает tls.utls у тела с этой связью (chain.json strip.tls.utls.on_hop_required). Конфликты: с ech.enabled «Reality is conflict with ECH» (common/tls/utls_client.go), с disable_sni (common/tls/utls_client.go), со spoof (common/tls/reality_client.go). У naive — фатал старта."
@@ -1066,6 +1091,12 @@
               "core_rejects": true
             },
             "required": true,
+            "form": {
+              "required": true,
+              "visible_when": {
+                "tls.reality.enabled": true
+              }
+            },
             "desc_en": "Server REALITY public key (x25519).",
             "desc_ru": "Публичный ключ REALITY сервера (x25519).",
             "impl": "normalize base64_rawurl (запрос LxBox 19.09.2026, у них кодом 9b072ca7; симметрия к base64_std у ключей wireguard): ядро декодирует ЭТОТ ключ только base64.RawURLEncoding, и написание со «+», «/», «=» проходит format base64_32 — 32 байта после декода там правда, — а ядро отвечает «decode public_key: illegal base64 data» отказом ВСЕГО конфига. Канонизация обязательна и ради identity: один и тот же ключ в двух написаниях давал бы узлу два разных хеша (тот же довод, что у D133-22). base64 (любое из четырёх написаний), ровно 32 байта ПОСЛЕ декода — format base64_32; невалидный = «invalid public_key» на весь конфиг. Длину считаем по декоду, а не по строке: `enabled` и `true` — валидный base64 на 5 и 3 байта, и прежний format base64 их пропускал (DRIFT §2(b2), целевое = вариант Dart). Гейт всего блока reality: public_key здесь required, поэтому мусорный pbk снимает блок целиком и узел деградирует до plain TLS (broken-list-pbk-junk, v1.1.7)."
@@ -1088,6 +1119,11 @@
                 "code": "field_requires"
               }
             ],
+            "form": {
+              "visible_when": {
+                "tls.reality.enabled": true
+              }
+            },
             "desc_en": "REALITY short ID (hex, even length).",
             "desc_ru": "Короткий идентификатор REALITY (hex, чётной длины).",
             "impl": "Пустой short_id легален (нулевой [8]byte). Нечётная длина = encoding/hex odd length на старте; целевое поведение — drop значения, не обрезка (см. uri.reality.sid, §343). С ядра 1.14.1-lx.5 (SPEC 090) паники на >16 hex нет — ошибка конфигурации invalid short_id; гард остаётся как UX-код."

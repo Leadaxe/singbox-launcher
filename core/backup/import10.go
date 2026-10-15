@@ -110,13 +110,17 @@ func decode10Source(in Source10, ruleGroup func(node int) bool) (decodedSource, 
 		Service: in.Service,
 		Reason:  in.Reason,
 
-		SkipPresets: in.SkipPresets,
+		NodeRecordFlags:   in.NodeRecordFlags,
+		LegacySkipPresets: in.LegacySkipPresets,
 		// in.Warnings НЕ переносится намеренно (PARSING_PRINCIPLES §6): коды —
 		// производная тела, и чужой набор, посчитанный другой версией
 		// реестра, врал бы про наш узел. Поле прочитано (значит не
 		// «неизвестный ключ») и отброшено молча; пересчёт делает
 		// материализация/разовая миграция при загрузке.
 	}
+	// Контракт 1.1.126: ключ skip_presets старых файлов читается как
+	// skip_tailscale_presets.
+	node.LiftLegacyRecordFlags()
 	identity, iw := importIdentity10(in)
 	warns = append(warns, iw...)
 	src := state.Source{
@@ -168,6 +172,7 @@ func decode10Source(in Source10, ruleGroup func(node int) bool) (decodedSource, 
 				continue
 			}
 			member := cloneNode(n)
+			member.LiftLegacyRecordFlags()
 			// Коды деградации при импорте не переносятся — по той же причине,
 			// что и у корневого узла (PARSING_PRINCIPLES §6): они производная тела и
 			// посчитаны чужим реестром. Читаются и отбрасываются молча.

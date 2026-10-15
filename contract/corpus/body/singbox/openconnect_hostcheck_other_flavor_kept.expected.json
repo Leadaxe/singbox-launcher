@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "flavor": "gp",
+        "fortinet_host_check": {
+          "check_virtual_desktop": "no",
+          "hostcheck": "abc"
+        },
+        "server": "gp.example.com",
+        "type": "openconnect",
+        "username": "user"
+      },
+      "kind": "endpoint",
+      "label": "gp-hostcheck",
+      "scheme": "openconnect"
+    }
+  ],
+  "v": 1
+}

@@ -24,12 +24,13 @@ import (
 // работающий демон. Всё читается без повышенных прав.
 //
 // Здесь — то, что не зависит от ОС: состояния и гейт команд по версии ядра,
-// обход цепочки владения, сверка sha, вердикт по процессу, кэши sha и
-// версии. Платформенное — в daemon_service_state_<os>.go: раскладка
-// (systemDaemonServiceLayout, daemonServiceCorePath, сайдкар), чтение
-// определения службы (inspectDaemonServiceDefinition), проверка звена
-// цепочки (checkRootOwnedEntry), ключ файла для кэшей (fileHashKey,
-// statHashKey) и состояние у менеджера служб (compareDaemonServiceRunning).
+// сверка sha, вердикт по процессу, кэши sha и версии. Платформенное — в
+// daemon_service_state_<os>.go: раскладка (systemDaemonServiceLayout,
+// daemonServiceCorePath, сайдкар), чтение определения службы
+// (inspectDaemonServiceDefinition), проверка цепочки владения копии
+// (checkRootOwnedChain по uid на macOS, checkDaemonCopyChain по DACL на
+// Windows), ключ файла для кэшей (fileHashKey, statHashKey) и состояние у
+// менеджера служб (compareDaemonServiceRunning).
 
 const (
 	// daemonHashCacheCap — потолок кэша sha256: файлов в игре два-три, потолок
@@ -212,33 +213,6 @@ type daemonServiceLayout struct {
 // что выше, root-owned: создать недостающее пользователь не может, значит
 // это не дыра, а служба без бинаря (Stale).
 var errDaemonCopyMissing = errors.New("root-owned copy is missing")
-
-// checkRootOwnedChain проверяет каждое звено от root вниз до file по Lstat:
-// не симлинк, владелец ownerUID, без записи для группы и остальных;
-// каталоги — каталоги, file — обычный файл. Отсутствующее звено под целым
-// родителем — errDaemonCopyMissing.
-func checkRootOwnedChain(file, root string, ownerUID uint32) error {
-	file = filepath.Clean(file)
-	root = filepath.Clean(root)
-	rel, err := filepath.Rel(root, filepath.Dir(file))
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("%s is outside %s", file, root)
-	}
-	chain := []string{root}
-	if rel != "." {
-		cur := root
-		for _, part := range strings.Split(rel, string(filepath.Separator)) {
-			cur = filepath.Join(cur, part)
-			chain = append(chain, cur)
-		}
-	}
-	for _, dir := range chain {
-		if err := checkRootOwnedEntry(dir, ownerUID, true); err != nil {
-			return err
-		}
-	}
-	return checkRootOwnedEntry(file, ownerUID, false)
-}
 
 // compareDaemonServiceFiles — второй шаг: sha256 копии против ядра лаунчера
 // (после EvalSymlinks: в DataDir бывает ссылка на dev-сборку). Работает

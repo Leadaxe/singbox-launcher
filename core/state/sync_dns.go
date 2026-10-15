@@ -17,7 +17,9 @@
 //	    по числу template.presets[id].DNSServers[].
 //	    Default Enabled=true. Если entry уже была — preserve её Enabled.
 //	  - ensure entry {Kind:preset, Ref:"<id>"} в DNS.Rules если у preset'а
-//	    определён dns_rule.
+//	    определён dns_rule. Новая запись встаёт ПО ОСИ ПРАВИЛ (SPEC 171,
+//	    D-135): перед первым слотом пресета с бо́льшим номером маршрутного
+//	    правила, иначе в конец; пользовательские правила не двигаются.
 //
 //	Drop entries с Ref на disabled/missing preset (auto-cleanup):
 //	  - DNS.Servers где Ref начинается с "<disabled_preset_id>:"
@@ -137,6 +139,7 @@ func SyncDNSOptionsWithActivePresets(
 		existingPresetRuleEnabled[r.Ref] = r.Enabled
 		keptRules = append(keptRules, r)
 	}
+	nums := presetRuleNums(rules)
 	for _, r := range rules {
 		if r.Kind != RuleKindPreset || !r.Enabled || r.Ref == "" {
 			continue
@@ -150,13 +153,75 @@ func SyncDNSOptionsWithActivePresets(
 		if findRuleRefIn(keptRules, r.Ref) >= 0 {
 			continue
 		}
-		keptRules = append(keptRules, DNSRule{
+		// SPEC 171 (D-135): место нового слота — по оси маршрутных правил,
+		// а не хвост списка. Иначе поздний дефолт `tunnel-ingress` (940)
+		// вставал после `fakeip` (1130), и DNS-reject закрытых пиров не
+		// срабатывал за «A/AAAA → fakeip».
+		at := PresetDNSSlotIndex(len(keptRules), nums[r.Ref], func(i int) (int, bool) {
+			if keptRules[i].Kind != DNSRuleKindPreset {
+				return 0, false
+			}
+			n, ok := nums[keptRules[i].Ref]
+			return n, ok
+		})
+		keptRules = insertDNSRule(keptRules, at, DNSRule{
 			Kind:    DNSRuleKindPreset,
 			Ref:     r.Ref,
 			Enabled: true,
 		})
 	}
 	dns.Rules = keptRules
+}
+
+// PresetDNSSlotIndex — место нового DNS-слота пресета с номером num среди n
+// уже стоящих слотов (SPEC 171, D-135, TEMPLATE_LANG §6.10): индекс первого
+// слота пресета, чей номер БОЛЬШЕ num; такого нет — n (в конец). slotNum(i)
+// возвращает номер слота i и ok=false у слота без номера (пользовательское
+// DNS-правило) — такие слоты не учитываются и не двигаются.
+//
+// Номер — `num` маршрутного правила пресета (`rules[]`), DNS-оси нет: ось
+// даёт только место появления, дальше слот живёт порядком пользователя
+// (SPEC 062). Равные номера — новый слот после (стабильно). Общая функция
+// для состояния (SyncDNSOptionsWithActivePresets) и модели визарда
+// (ReconcileDNSRuleOrder), чтобы место считалось одинаково.
+func PresetDNSSlotIndex(n int, num int, slotNum func(i int) (int, bool)) int {
+	for i := 0; i < n; i++ {
+		if got, ok := slotNum(i); ok && got > num {
+			return i
+		}
+	}
+	return n
+}
+
+// PresetRuleNums — номер оси маршрутного правила каждого preset-ref'а
+// (неразмеченное — DefaultRuleNum, как при сортировке). Номер DNS-слота
+// пресета (§6.10) и место DNS-зеркала правила (§6.11) считаются по нему.
+func PresetRuleNums(rules []Rule) map[string]int {
+	return presetRuleNums(rules)
+}
+
+func presetRuleNums(rules []Rule) map[string]int {
+	nums := make(map[string]int)
+	for _, r := range rules {
+		if r.Kind != RuleKindPreset || r.Ref == "" {
+			continue
+		}
+		if _, seen := nums[r.Ref]; seen {
+			continue
+		}
+		nums[r.Ref] = ruleNum(r)
+	}
+	return nums
+}
+
+func insertDNSRule(rules []DNSRule, at int, r DNSRule) []DNSRule {
+	if at < 0 || at >= len(rules) {
+		return append(rules, r)
+	}
+	rules = append(rules, DNSRule{})
+	copy(rules[at+1:], rules[at:])
+	rules[at] = r
+	return rules
 }
 
 // PresetIDFromServerRef — извлекает <preset_id> из "<preset_id>:<local_tag>".

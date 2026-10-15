@@ -42,6 +42,9 @@ type CustomRule struct {
 	HasOutbound      bool                   `json:"has_outbound"`
 	Params           map[string]interface{} `json:"params,omitempty"`
 	RuleSet          []json.RawMessage      `json:"rule_set,omitempty"`
+	// DNS — поле записи правила v8 (state.Rule.DNS) на пути в модель
+	// Конфигуратора и обратно; в легаси-форматы файла не пишется.
+	DNS *RuleDNS `json:"-"`
 }
 
 // LegacyDNSOptionsV5 — legacy v5 DNS-секция (servers + rules + scalars).

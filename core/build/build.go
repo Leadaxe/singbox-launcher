@@ -565,7 +565,7 @@ func splitEntryComment(entry string) (prefix, jsonPart string) {
 }
 
 // CollectPresetNodes — узлы конфига для раскрытия for_each_node* (LxBox §578) в
-// порядке секций шаблона: тег, тело и skip_presets записи. Выключенные узлы и
+// порядке секций шаблона: тег, тело и поля записи (D-134). Выключенные узлы и
 // снятые гейтами в кэш не попадают — и сюда тоже. Экспортирована для
 // визарда: превью и строки пресетов строят список этой же функцией
 // (SPEC 145 §7).
@@ -587,7 +587,7 @@ func CollectPresetNodes(c *ParsedCache, order []string) []template.PresetNode {
 			if tag == "" {
 				continue
 			}
-			out = append(out, template.PresetNode{Tag: tag, Body: body, SkipPresets: c.SkipPresets[tag]})
+			out = append(out, template.PresetNode{Tag: tag, Body: body, Record: c.RecordFlags[tag]})
 		}
 	}
 	endpointsFirst := false

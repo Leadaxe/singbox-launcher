@@ -1,0 +1,5 @@
+{
+  "_comment": "D-133 (§4.1): короткая форма [cond, V, E] с вложенным #or/#and в cond — пара к grammar/hashed_keywords_canonical",
+  "vars": [{"name": "a", "type": "bool", "default_value": "false"}, {"name": "b", "type": "bool", "default_value": "false"}],
+  "config": {"out": {"#if": [{"#or": ["@a", {"#and": ["@b", "@b"]}]}, {"hit": true}, {"hit": false}]}}
+}

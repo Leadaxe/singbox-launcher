@@ -1,0 +1,19 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "flavor": "fortinet",
+        "server": "fw.example.com:8443",
+        "type": "openconnect",
+        "username": "user"
+      },
+      "kind": "endpoint",
+      "label": "forti-port",
+      "scheme": "openconnect"
+    }
+  ],
+  "v": 1
+}

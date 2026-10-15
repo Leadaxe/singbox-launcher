@@ -87,6 +87,13 @@ type ResolvedRouteRule struct {
 	InlineID string
 	SrsID    string
 
+	// Name — имя записи inline/srs (владелец предупреждений DNS-зеркала).
+	Name string
+
+	// DNS — DNS-зеркало записи inline/srs (state.Rule.DNS, TEMPLATE_LANG
+	// §6.11); nil — опций нет.
+	DNS *corestate.RuleDNS
+
 	// Active — прошёл if/if_or (только для preset; inline/srs всегда true).
 	Active bool
 
@@ -288,6 +295,8 @@ func resolveInlineRouteRule(out *ResolvedRoute, rule corestate.Rule) {
 		Body:     routeRule,
 		Source:   RouteSourceInline,
 		InlineID: corestate.StableRuleID(rule),
+		Name:     rule.Name,
+		DNS:      rule.DNS,
 		Active:   true,
 		Enabled:  rule.Enabled,
 		Num:      ruleNum(rule),
@@ -366,8 +375,11 @@ func resolveSrsRouteRule(
 		Body:    routeRule,
 		Source:  RouteSourceSrs,
 		SrsID:   id,
+		Name:    rule.Name,
+		DNS:     rule.DNS,
 		Active:  true,
 		Enabled: rule.Enabled,
+		Num:     ruleNum(rule),
 	})
 }
 

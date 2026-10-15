@@ -1,0 +1,372 @@
+{
+  "v": 1,
+  "scheme": "openconnect",
+  "kind": "endpoint",
+  "singbox_type": "openconnect",
+  "aliases": [],
+  "sources": [
+    "singbox"
+  ],
+  "extension": null,
+  "note": "Endpoint форка (sing-box-lx protocol/openconnect, include/openconnect.go): узел живёт в endpoints[], не в outbounds[]. Ядро регистрирует тип только при теге сборки with_openconnect (форк с 1.14.0-lx.10, тем же коммитом, что openvpn); на ядре без тега узел снимается на сборке с warning openconnect_core_unsupported, иначе один такой узел валит sing-box check для ВСЕГО конфига. Контракт 1.1.120 (15.10.2026): запись добавлена, потому что без неё узел типа openconnect из sing-box JSON уходил в outbounds[] и ядро отвергало весь конфиг («unknown outbound type: openconnect»). Контракт 1.1.122 (SPEC 167, 15.10.2026): поля формы описаны с правилами ядра (сверено по option/openconnect.go, protocol/openconnect и sing-openconnect@cbd68c45), прочие ключи проходят насквозь через wildcard `*` в корне, `tls`, `token` и `fortinet_host_check` — без правил и без unknown_key (cookie, mobile, csd/hip/tncc, form_entries, mca_* и т.д.). Атрибут `fields_unchecked` снят: его точный эквивалент — `order: [\"*\"]`. Роль `variant` у `flavor` даёт подпись «openconnect·fortinet». URI-формы нет: узел приходит как sing-box JSON (своя запись, документ, подписка) или из формы Add server.",
+  "uri": null,
+  "emit": {
+    "share_uri": false,
+    "note": "Share-URI не эмитится — URI-формы у схемы нет. Описанные ключи эмитятся по body.order, сквозные — в слоте `*` по алфавиту."
+  },
+  "refs": {
+    "go": [
+      "core/config/nodeflow/sanitize.go:sanitizer.object (wildcard `*`: неописанный ключ копируется)",
+      "core/config/nodeflow/emit.go:emitObject (слот `*`)",
+      "core/config/registry/registry.go:Registry.Form",
+      "core/config/endpoint_schemes.go:IsEndpointScheme"
+    ],
+    "dart": [
+      "lib/models/node_spec.dart (узел известного типа без своей модели)"
+    ]
+  },
+  "body": {
+    "core": "1.14.3-lx.17",
+    "lx_only": true,
+    "min_core": "1.14.0-lx.10",
+    "build_tag": "with_openconnect",
+    "on_core_unsupported": { "action": "drop_node", "code": "openconnect_core_unsupported" },
+    "order": [
+      "server", "flavor", "username", "password", "auth_group", "token", "user_agent", "fortinet_host_check",
+      "no_udp", "ipv6_disabled", "external_auth_disabled", "mtu", "dpd_interval", "reconnect_timeout",
+      "allow_insecure_crypto", "tls", "__dialer", "*"
+    ],
+    "form": {
+      "blocks": ["connection", "security", "advanced"],
+      "choices": [
+        {
+          "id": "server_cert_check",
+          "block": "security",
+          "options": [
+            { "id": "system", "paths": [] },
+            { "id": "pinned", "paths": ["tls.peer_fingerprint"] },
+            { "id": "insecure", "paths": ["tls.insecure"], "set": { "tls.insecure": true } }
+          ]
+        }
+      ]
+    },
+    "fields": {
+      "server": {
+        "type": "string",
+        "required": true,
+        "core_rejects": true,
+        "form": { "block": "connection", "required": true },
+        "desc_en": "Gateway address: host, host:port or URL.",
+        "desc_ru": "Адрес шлюза: хост, хост:порт или URL.",
+        "impl": "option/openconnect.go Server, json-тег без omitempty; пустой — NewClient: ErrMissingServer. Схему https:// ядро дописывает само, порт по умолчанию 443."
+      },
+      "flavor": {
+        "type": "enum",
+        "values": ["fortinet", "anyconnect", "gp", "f5", "pulse", "nc"],
+        "default": "anyconnect",
+        "role": "variant",
+        "on_invalid": { "action": "drop_node", "code": "openconnect_flavor_invalid", "core_rejects": true },
+        "form": { "block": "connection", "required": true },
+        "desc_en": "Gateway protocol flavor.",
+        "desc_ru": "Разновидность протокола шлюза.",
+        "impl": "enum ядра anyconnect,gp,fortinet,f5,pulse,nc; неизвестное значение отвергает newFlavorFrontend. Без ключа ядро берёт anyconnect, поэтому негодное значение снимает УЗЕЛ (drop_node), а не поле: снятое поле молча сменило бы протокол шлюза. Роль variant — вторая часть подписи узла."
+      },
+      "username": {
+        "type": "string",
+        "form": {
+          "block": "connection",
+          "required": true,
+          "required_unless": { "set": ["tls.client_certificate_path", "tls.client_certificate", "cookie"] }
+        },
+        "desc_en": "Account name on the gateway.",
+        "desc_ru": "Имя учётной записи на шлюзе.",
+        "impl": "Ядром не требуется (вход бывает по cookie или клиентскому сертификату); обязательность — правило формы, его снимают cookie и клиентский сертификат (решение владельца 15.10.2026, OIDC не считается)."
+      },
+      "password": {
+        "type": "string",
+        "secret": true,
+        "form": { "block": "connection" },
+        "desc_en": "Account password.",
+        "desc_ru": "Пароль учётной записи.",
+        "impl": "Неверный пароль ядро стирает из кэша и просит заново через челлендж формы (только под демоном). Секрет."
+      },
+      "auth_group": {
+        "type": "string",
+        "form": { "block": "security", "visible_when": { "flavor": { "not_in": ["fortinet"] } } },
+        "desc_en": "Authentication group (realm) on the gateway.",
+        "desc_ru": "Группа аутентификации (realm) на шлюзе.",
+        "impl": "У flavor fortinet не используется — форма поле скрывает, из тела оно не снимается."
+      },
+      "token": {
+        "type": "object",
+        "order": ["mode", "secret", "secret_path", "counter", "*"],
+        "fields": {
+          "mode": {
+            "type": "enum",
+            "values": ["totp", "hotp", "stoken", "oidc"],
+            "required": true,
+            "core_rejects": true,
+            "form": { "block": "security" },
+            "desc_en": "One-time code generator.",
+            "desc_ru": "Генератор одноразовых кодов.",
+            "impl": "validateClientOptions: неизвестный mode — отказ ядра. Без mode объект token снимается целиком (field_missing)."
+          },
+          "secret": {
+            "type": "string",
+            "secret": true,
+            "required": true,
+            "core_rejects": true,
+            "required_unless": { "set": ["token.secret_path"] },
+            "form": { "block": "security", "required": true, "visible_when": { "any_set": ["token.mode"] } },
+            "desc_en": "Token secret.",
+            "desc_ru": "Секрет токена.",
+            "impl": "validateClientOptions: token без secret (и без secret_path) — отказ ядра; объект token снимается целиком, узел живёт. Секрет."
+          },
+          "secret_path": {
+            "type": "string",
+            "conflicts": [{ "with": "token.secret", "code": "field_conflict", "core_rejects": true }],
+            "desc_en": "Path to a file with the token secret.",
+            "desc_ru": "Путь к файлу с секретом токена.",
+            "impl": "NewClient: secret и secret_path вместе — отказ ядра; снимается secret_path."
+          },
+          "counter": {
+            "type": "int",
+            "min": 0,
+            "form": { "block": "security", "visible_when": { "token.mode": "hotp" } },
+            "desc_en": "HOTP counter.",
+            "desc_ru": "Счётчик HOTP.",
+            "impl": "uint64; осмыслен только при mode=hotp."
+          },
+          "*": {
+            "desc_en": "Other token keys pass through as written.",
+            "desc_ru": "Прочие ключи токена проходят как написаны.",
+            "impl": "pin, password, device_id"
+          }
+        },
+        "desc_en": "Built-in one-time code generator.",
+        "desc_ru": "Встроенный генератор одноразовых кодов.",
+        "impl": "option/openconnect.go OpenConnectTokenOptions."
+      },
+      "user_agent": {
+        "type": "string",
+        "pattern": "^[^\\r\\n\\x00]*$",
+        "core_rejects": true,
+        "on_invalid": { "action": "drop", "code": "type_invalid" },
+        "form": { "block": "advanced" },
+        "desc_en": "User-Agent the client presents to the gateway.",
+        "desc_ru": "User-Agent, которым клиент представляется шлюзу.",
+        "impl": "validateClientOptions: CR, LF или NUL в значении — отказ ядра. Пусто — дефолт ядра (у fortinet «Mozilla/5.0 SV1»)."
+      },
+      "fortinet_host_check": {
+        "type": "object",
+        "order": ["hostcheck", "*"],
+        "fields": {
+          "hostcheck": {
+            "type": "string",
+            "form": { "block": "advanced" },
+            "desc_en": "Host check answer FortiGate expects.",
+            "desc_ru": "Ответ проверки хоста, которого ждёт FortiGate.",
+            "impl": "OpenConnectFortinetHostCheckOptions.HostCheck."
+          },
+          "*": {
+            "desc_en": "Other host check keys pass through as written.",
+            "desc_ru": "Прочие ключи проверки хоста проходят как написаны.",
+            "impl": "check_virtual_desktop"
+          }
+        },
+        "form": { "block": "advanced", "visible_when": { "flavor": "fortinet" } },
+        "desc_en": "FortiGate host check.",
+        "desc_ru": "Проверка хоста FortiGate.",
+        "impl": "Ядро читает только при flavor fortinet и при другом игнорирует: санитайзер поле не снимает, форма его скрывает."
+      },
+      "no_udp": {
+        "type": "bool",
+        "form": { "block": "advanced" },
+        "desc_en": "Do not use DTLS: the tunnel runs over TCP only.",
+        "desc_ru": "Не использовать DTLS: туннель только поверх TCP.",
+        "impl": "OpenConnectEndpointOptions.NoUDP."
+      },
+      "ipv6_disabled": {
+        "type": "bool",
+        "form": { "block": "advanced" },
+        "desc_en": "Do not request IPv6 from the gateway.",
+        "desc_ru": "Не запрашивать IPv6 у шлюза.",
+        "impl": "OpenConnectEndpointOptions.IPv6Disabled."
+      },
+      "external_auth_disabled": {
+        "type": "bool",
+        "form": { "block": "security" },
+        "desc_en": "Disable SSO (external browser authentication).",
+        "desc_ru": "Отключить SSO (внешнюю аутентификацию в браузере).",
+        "impl": "OpenConnectEndpointOptions.ExternalAuthDisabled."
+      },
+      "mtu": {
+        "type": "int",
+        "min": 0,
+        "max": 65535,
+        "core_rejects": true,
+        "on_invalid": { "action": "drop", "code": "openconnect_mtu_invalid" },
+        "form": { "block": "advanced", "min": 576, "max": 1500 },
+        "desc_en": "Tunnel MTU in bytes.",
+        "desc_ru": "MTU туннеля в байтах.",
+        "impl": "uint32; выше cstpMaximumMTU (65535) — отказ ядра, отрицательное не декодируется в uint32 — тоже отказ. Ниже 576 ядро молча поднимает до 576; диапазон 576…1500 — правило формы. Пусто — значение шлюза."
+      },
+      "dpd_interval": {
+        "type": "duration",
+        "form": { "block": "advanced" },
+        "desc_en": "Dead peer detection interval.",
+        "desc_ru": "Период проверки живости шлюза.",
+        "impl": "badoption.Duration. Пусто — значение шлюза."
+      },
+      "reconnect_timeout": {
+        "type": "duration",
+        "form": { "block": "advanced" },
+        "desc_en": "How long to retry a dropped tunnel.",
+        "desc_ru": "Сколько пытаться восстановить оборванный туннель.",
+        "impl": "badoption.Duration. Пусто — дефолт ядра (5m)."
+      },
+      "allow_insecure_crypto": {
+        "type": "bool",
+        "advisory": [{ "values": [true], "code": "openconnect_insecure_crypto" }],
+        "form": { "block": "advanced" },
+        "desc_en": "Allow legacy crypto (TLS 1.0) for old gateways.",
+        "desc_ru": "Разрешить устаревшую криптографию (TLS 1.0) для старых шлюзов.",
+        "impl": "OpenConnectEndpointOptions.AllowInsecureCrypto; ядро принимает, узел получает info-код."
+      },
+      "tls": {
+        "type": "object",
+        "order": [
+          "insecure", "server_name", "peer_fingerprint", "certificate_authority", "certificate_authority_path",
+          "client_certificate", "client_certificate_path", "client_key", "client_key_path",
+          "client_key_password", "*"
+        ],
+        "fields": {
+          "insecure": {
+            "type": "bool",
+            "advisory": [{ "values": [true], "code": "tls_insecure" }],
+            "form": {},
+            "desc_en": "Do not verify the gateway certificate.",
+            "desc_ru": "Не проверять сертификат шлюза.",
+            "impl": "OpenConnectTLSOptions.Insecure; в форме — вариант insecure группы server_cert_check."
+          },
+          "server_name": {
+            "type": "string",
+            "form": { "block": "security" },
+            "desc_en": "SNI, if it differs from the server host.",
+            "desc_ru": "SNI, если он отличается от хоста сервера.",
+            "impl": "OpenConnectTLSOptions.ServerName."
+          },
+          "peer_fingerprint": {
+            "type": "listable_string",
+            "core_rejects": true,
+            "pattern": "^(?:[0-9A-Fa-f]{4,40}|sha1:[0-9A-Fa-f]{4,40}|sha256:[0-9A-Fa-f]{4,64}|pin-sha256:(?:[A-Za-z0-9+/]{4,43}|[A-Za-z0-9+/]{3,42}=|[A-Za-z0-9+/]{2,41}==|[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=))$",
+            "item_pattern": "^(?:[0-9A-Fa-f]{4,40}|sha1:[0-9A-Fa-f]{4,40}|sha256:[0-9A-Fa-f]{4,64}|pin-sha256:(?:[A-Za-z0-9+/]{4,43}|[A-Za-z0-9+/]{3,42}=|[A-Za-z0-9+/]{2,41}==|[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=))$",
+            "on_invalid": { "action": "drop", "code": "openconnect_fingerprint_invalid" },
+            "on_item_invalid": { "action": "drop_item", "code": "openconnect_fingerprint_invalid" },
+            "form": {},
+            "desc_en": "Pinned gateway certificate fingerprints.",
+            "desc_ru": "Закреплённые отпечатки сертификата шлюза.",
+            "impl": "parsePeerFingerprint (sing-openconnect, файл tls_config): без префикса — SHA-1 сертификата hex 4..40; sha1: hex 4..40; sha256: hex 4..64; pin-sha256: base64 4..44, при длине 44 строгий base64 на 32 байта. Негодный элемент — отказ ядра; снимается только он. В форме — вариант pinned группы server_cert_check."
+          },
+          "certificate_authority": {
+            "type": "listable_string",
+            "desc_en": "Trusted CA certificates (PEM).",
+            "desc_ru": "Доверенные сертификаты УЦ (PEM).",
+            "impl": "OpenConnectTLSOptions.CertificateAuthority."
+          },
+          "certificate_authority_path": {
+            "type": "string",
+            "form": { "block": "security" },
+            "conflicts": [{ "with": "tls.certificate_authority", "code": "field_conflict", "core_rejects": true }],
+            "desc_en": "Path to a trusted CA file.",
+            "desc_ru": "Путь к файлу доверенного УЦ.",
+            "impl": "Material.Validate: путь и inline-материал вместе — отказ ядра; снимается путь."
+          },
+          "client_certificate": {
+            "type": "listable_string",
+            "desc_en": "Client certificate (PEM).",
+            "desc_ru": "Клиентский сертификат (PEM).",
+            "impl": "OpenConnectTLSOptions.ClientCertificate."
+          },
+          "client_certificate_path": {
+            "type": "string",
+            "form": { "block": "security" },
+            "conflicts": [{ "with": "tls.client_certificate", "code": "field_conflict", "core_rejects": true }],
+            "requires": [{ "path": "tls.client_key_path", "unless_set": ["tls.client_key"], "code": "field_requires", "core_rejects": true }],
+            "desc_en": "Path to the client certificate file.",
+            "desc_ru": "Путь к файлу клиентского сертификата.",
+            "impl": "loadOptionalCertificate: сертификат без ключа — отказ ядра; Material.Validate: путь и inline вместе — отказ."
+          },
+          "client_key": {
+            "type": "listable_string",
+            "secret": true,
+            "desc_en": "Client private key (PEM).",
+            "desc_ru": "Закрытый ключ клиента (PEM).",
+            "impl": "OpenConnectTLSOptions.ClientKey. Секрет."
+          },
+          "client_key_path": {
+            "type": "string",
+            "form": { "block": "security" },
+            "conflicts": [{ "with": "tls.client_key", "code": "field_conflict", "core_rejects": true }],
+            "requires": [{ "path": "tls.client_certificate_path", "unless_set": ["tls.client_certificate"], "code": "field_requires", "core_rejects": true }],
+            "desc_en": "Path to the client private key file.",
+            "desc_ru": "Путь к файлу закрытого ключа клиента.",
+            "impl": "loadOptionalCertificate: ключ без сертификата — отказ ядра; Material.Validate: путь и inline вместе — отказ."
+          },
+          "client_key_password": {
+            "type": "string",
+            "secret": true,
+            "form": { "block": "security", "visible_when": { "any_set": ["tls.client_key_path", "tls.client_key"] } },
+            "desc_en": "Passphrase of the client private key.",
+            "desc_ru": "Парольная фраза закрытого ключа клиента.",
+            "impl": "OpenConnectTLSOptions.ClientKeyPassword. Секрет."
+          },
+          "*": {
+            "desc_en": "Other TLS keys pass through as written.",
+            "desc_ru": "Прочие ключи TLS проходят как написаны.",
+            "impl": "mca_certificate, mca_certificate_path, mca_key, mca_key_path, mca_key_password, system_trust_disabled"
+          }
+        },
+        "desc_en": "TLS settings of the gateway connection.",
+        "desc_ru": "Настройки TLS соединения со шлюзом.",
+        "impl": "option/openconnect.go OpenConnectTLSOptions — своя структура ядра, не общая суб-схема tls.json."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true
+      },
+      "*": {
+        "desc_en": "Other core keys pass through as written.",
+        "desc_ru": "Прочие ключи ядра проходят как написаны.",
+        "impl": "cookie, mobile, csd, hip, tncc, form_entries, compression_*, trojan_interval, queue_length, system, name, udp_*, reported_os, version, local_hostname, dtls_local_port, base_mtu, pfs, … — без правил и без unknown_key"
+      }
+    },
+    "note": "Описаны поля формы и поля, которые ядро проверяет (core_rejects); прочее идёт насквозь через `*` (контракт 1.1.122). Wildcard не наследуется: у tls, token и fortinet_host_check он стоит явно. Снимаются только tag и type (их пишет сборка) и managed detour."
+  },
+  "mappers": {
+    "singbox": {
+      "detect": {
+        "json": {
+          "value_in": {
+            "type": [
+              "openconnect"
+            ]
+          }
+        }
+      },
+      "body_source": "singbox",
+      "forms": [
+        {
+          "id": "endpoint",
+          "detect": {
+            "default": true
+          },
+          "space": "json",
+          "level": "endpoint"
+        }
+      ],
+      "params": {}
+    }
+  }
+}

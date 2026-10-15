@@ -310,7 +310,7 @@ func TestMigrateLegacyData(t *testing.T) {
 		if err := os.Chmod(secret, 0); err != nil {
 			t.Fatal(err)
 		}
-		defer os.Chmod(secret, 0o644)
+		defer func() { _ = os.Chmod(secret, 0o644) }()
 
 		res, err := MigrateLegacyData(migLayout(app, data, ModeSystem), nil)
 		if err != nil {

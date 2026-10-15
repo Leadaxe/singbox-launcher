@@ -123,9 +123,9 @@ func (s *Source) canonicalProjection() *configtypes.CanonicalSource {
 				continue
 			}
 			cn := canonicalNodeProjection(&s.Nodes[i])
-			// §578: у узла подписки записи нет — skip_presets всегда ложь.
+			// У узла подписки записи нет — её поля всегда ложь (D-134).
 			if s.Kind == SourceKindSubscription {
-				cn.SkipPresets = false
+				cn.Record = configtypes.NodeRecordFlags{}
 			} else {
 				cn.Authored = s.Nodes[i].Authored()
 			}
@@ -174,7 +174,7 @@ func canonicalNodeProjection(n *Node) configtypes.CanonicalNode {
 		Detour:  canonicalLink(n.Detour),
 		Service: n.Service,
 
-		SkipPresets: n.SkipPresets,
+		Record: n.NodeRecordFlags,
 	}
 	if n.Origin != nil {
 		out.OriginKind = n.Origin.Kind

@@ -1,33 +1,26 @@
 // Package dialogs — диалоги визарда конфигурации.
 //
 // Файл add_server_dialog.go: форма ручного добавления источника. Две вкладки —
-// «Параметры» (SOCKS5/HTTP формы либо Source: произвольный текст) и «JSON»
-// (во что это превратится в config.json).
+// «Параметры» (форма схемы по реестру, Tailscale либо Source: произвольный
+// текст) и «JSON» (во что это превратится в config.json).
 //
-// Мотив форм тот же, что у мобильного Add Server Wizard в LxBox: у SOCKS5 и
-// HTTP полей раз-два, и набрать их быстрее, чем вспоминать синтаксис share-URI
-// — тем более что у HTTP-прокси схема нестандартная (proxy-http://, потому что
-// голый http:// перехватывается как URL подписки).
+// Формы схем (VLESS … OpenConnect, SPEC 168) раскладываются по реестру —
+// wizardbusiness.NodeFormModel, виджет node_form_view.go — и отдают ДОКУМЕНТ
+// узла (тело после санитайзера и эмиттера реестра) в ConfigJSON: его
+// разбирает тот же AppendManualConfigJSON, что и вручную набранный документ.
+// Своих сборщиков share-URI и своих проверок у формы нет.
 //
-// Формы НЕ создают узел сами: они собирают share-URI и отдают его в тот же
-// onURI-колбэк, что и WARP-диалог, то есть в общий путь Add. Это осознанно —
-// свой путь записи разошёлся бы с парсером при первом же изменении схемы
-// (ловушка emitter-parser-pairing), а так вход проходит ровно те же стадии,
-// что и вставленный руками.
-//
-// Вкладка JSON — не имитация: превью считается через config.EmitNodeJSONs, ту
-// же точку эмиссии, что и реальная сборка (WYSIWYG, как во вкладке JSON окна
-// Source). Правка JSON побеждает: тронул руками — поля больше не
-// перезаписывают текст, и в конфиг уходит именно он.
+// Вкладка JSON — не имитация: превью формы — ParseNodeDocument →
+// RenderNodeDocument, превью Source — config.EmitNodeJSONs, та же точка
+// эмиссии, что и реальная сборка (WYSIWYG, как во вкладке JSON окна Source).
+// Правка JSON побеждает: тронул руками — поля больше не перезаписывают текст,
+// и в конфиг уходит именно он.
 package dialogs
 
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/url"
-	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -37,13 +30,10 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config"
-	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/core/config/linkmap"
 	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/nodewarn"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -52,20 +42,18 @@ import (
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
 	addServerTagNoteText    = "Shown as the server title in the Sources list. If empty, the host or the link fragment is used."
-	addServerTLSNoteText    = "Connect to the proxy over TLS (HTTPS proxy). Fine TLS settings — SNI, ALPN — can be adjusted later in the source editor."
 	addServerSourceNoteText = "Paste anything: share-URI (one per line), a sing-box outbound or config JSON, or [Interface]/[Peer] WireGuard conf."
 	addServerJSONHintText   = "Preview of what this source unpacks into. Edit it and your version wins — the fields above stop overwriting it."
 	addServerJSONDirtyText  = "Edited by hand — the fields no longer overwrite this JSON."
-	addServerWGNoteText     = "Keys are base64, as in a wg-quick .conf. MTU above 1380 breaks AmneziaWG endpoints — for those the parser clamps it down. A whole .conf can be pasted on the Source tab instead."
 )
 
 // AddServerResult — что форма отдала наружу. Ровно одно из полей непусто.
 type AddServerResult struct {
-	// Text — вход для общего пути Add: share-URI из формы либо содержимое
-	// вкладки Source (URI-список, JSON, INI — всё, что понимает Add).
+	// Text — вход для общего пути Add: содержимое вкладки Source (URI-список,
+	// JSON, INI — всё, что понимает Add).
 	Text string
-	// ConfigJSON — отредактированный вручную outbound. Заполняется только
-	// когда человек правил вкладку JSON: тогда его версия и есть истина.
+	// ConfigJSON — документ узла из формы (схема, Tailscale) либо
+	// отредактированный вручную outbound: тогда его версия и есть истина.
 	ConfigJSON []byte
 	// Label — тег из верхнего поля; для ConfigJSON становится Label источника.
 	Label string
@@ -127,30 +115,19 @@ type addServerForm struct {
 	tag *widget.Entry
 
 	// Вкладка «Параметры».
-	proto  *widget.Select
-	host   *widget.Entry
-	port   *widget.Entry
-	user   *widget.Entry
-	pass   *widget.Entry
-	tls    *widget.Check
-	tlsRow *fyne.Container
-	// fieldsBox — блок полей SOCKS5/HTTP; прячется при выборе Source.
-	fieldsBox *fyne.Container
-	// Поля WireGuard.
-	wgPrivate   *widget.Entry
-	wgPublic    *widget.Entry
-	wgPreshared *widget.Entry
-	wgAddress   *widget.Entry
-	wgAllowed   *widget.Entry
-	wgMTU       *widget.Entry
-	wgKeepalive *widget.Entry
-	wgDNS       *widget.Entry
-	wgBox       *fyne.Container
+	proto *widget.Select
+
+	// Формы схем по реестру (SPEC 168): строятся при первом выборе схемы и
+	// живут до закрытия окна — переключение типа набранное не теряет.
+	forms  map[string]*NodeForm
+	scheme string
+	// formBox — место формы выбранной схемы.
+	formBox *fyne.Container
 
 	// Поля Tailscale.
 	ts *tailscaleFields
 
-	// formsScroll — прокручиваемая область с формами SOCKS5/HTTP/WireGuard.
+	// formsScroll — прокручиваемая область с формой схемы или Tailscale.
 	formsScroll *container.Scroll
 
 	// source — многострочный ввод варианта Source.
@@ -161,9 +138,7 @@ type addServerForm struct {
 	jsonView   fynewidget.JSONEditor
 	jsonStatus *widget.Label
 
-	mode     addServerMode
-	tlsOn    bool
-	portEdit bool // порт правил человек — не перебивать его сменой протокола
+	mode addServerMode
 	// jsonDirty — JSON тронут руками; поля больше его не перезаписывают.
 	jsonDirty bool
 	// syncing — идёт программная запись в jsonView, OnChanged не считать правкой.
@@ -174,11 +149,11 @@ type addServerForm struct {
 type addServerMode int
 
 const (
-	modeSocks addServerMode = iota
-	modeHTTP
-	modeWireGuard
-	// SPEC 122: узел tailnet. Единственный вариант, который отдаёт не
-	// share-URI, а ДОКУМЕНТ узла (тело + секции) — см. add_server_tailscale.go.
+	// modeForm — форма схемы по реестру (addServerForm.scheme), отдаёт
+	// ДОКУМЕНТ узла.
+	modeForm addServerMode = iota
+	// SPEC 122: узел tailnet — тоже ДОКУМЕНТ узла (тело + секции), см.
+	// add_server_tailscale.go.
 	modeTailscale
 	modeSource
 )
@@ -198,7 +173,8 @@ func newAddServerForm() *addServerForm {
 	// (components.WrapInScrollWithGutter): Fyne рисует полосу ПОВЕРХ вьюпорта,
 	// и без зарезервированной полосы справа она наезжает на правый край полей.
 	// Заметнее всего на длинных строках варианта Tailscale.
-	f.formsScroll = components.WrapInScrollWithGutter(container.NewVBox(f.fieldsBox, f.wgBox, f.ts.box))
+	f.formsScroll = components.WrapInScrollWithGutter(container.NewVBox(f.formBox, f.ts.box))
+	f.applyModeVisibility()
 	f.buildJSONTab()
 
 	tabs := container.NewAppTabs(
@@ -225,49 +201,13 @@ func newAddServerForm() *addServerForm {
 }
 
 // buildParamsTab собирает виджеты вкладки «Параметры».
+//
+// Список типов — SPEC 168 §2.1: формы схем в порядке
+// wizardbusiness.NodeFormSchemes, затем Tailscale и Source. Схема, у которой
+// реестр формы не описал, в список не попадает.
 func (f *addServerForm) buildParamsTab() {
-	socksLabel := locale.T("SOCKS5")
-	httpLabel := locale.T("HTTP")
-	wgLabel := locale.T("WireGuard")
 	tsLabel := locale.T("Tailscale")
 	sourceLabel := locale.T("Source")
-
-	f.host = widget.NewEntry()
-	f.host.SetText("127.0.0.1")
-	f.host.OnChanged = func(string) { f.refreshJSON() }
-
-	f.port = numEntry("1080")
-	f.port.OnChanged = func(string) {
-		f.portEdit = true
-		f.refreshJSON()
-	}
-
-	f.user = widget.NewEntry()
-	f.user.SetPlaceHolder(locale.T("optional"))
-	f.user.OnChanged = func(string) { f.refreshJSON() }
-
-	f.pass = widget.NewPasswordEntry()
-	f.pass.SetPlaceHolder(locale.T("optional"))
-	f.pass.OnChanged = func(string) { f.refreshJSON() }
-
-	f.tls = widget.NewCheck(locale.T("HTTPS (TLS to proxy)"), nil)
-	tlsNote := widget.NewLabel(locale.T(addServerTLSNoteText))
-	tlsNote.Wrapping = fyne.TextWrapWord
-	f.tlsRow = container.NewVBox(f.tls, tlsNote)
-	f.tlsRow.Hide()
-	f.tls.OnChanged = func(on bool) {
-		f.tlsOn = on
-		f.applyDefaultPort()
-		f.refreshJSON()
-	}
-
-	f.fieldsBox = container.NewVBox(
-		labeledRow(locale.T("Host"), f.host),
-		labeledRow(locale.T("Port"), f.port),
-		labeledRow(locale.T("Username"), f.user),
-		labeledRow(locale.T("Password"), f.pass),
-		f.tlsRow,
-	)
 
 	// Source: многострочный ввод чего угодно, что понимает общий путь Add.
 	f.source = widget.NewMultiLineEntry()
@@ -288,101 +228,83 @@ func (f *addServerForm) buildParamsTab() {
 	)
 	f.sourceBox.Hide()
 
-	f.buildWGFields()
 	f.ts = buildTailscaleFields(func() { f.refreshJSON() })
+	f.forms = map[string]*NodeForm{}
+	f.formBox = container.NewVBox()
 
-	f.proto = widget.NewSelect(
-		[]string{socksLabel, httpLabel, wgLabel, tsLabel, sourceLabel}, nil)
-	f.proto.SetSelected(socksLabel)
+	reg, regErr := registry.Get()
+	types := []string{}
+	schemeByLabel := map[string]string{}
+	for _, s := range wizardbusiness.NodeFormSchemes {
+		if regErr != nil || reg.Form(s.Scheme) == nil {
+			continue
+		}
+		l := locale.T(s.Label)
+		types = append(types, l)
+		schemeByLabel[l] = s.Scheme
+	}
+	types = append(types, tsLabel, sourceLabel)
+
+	f.proto = widget.NewSelect(types, nil)
 	f.proto.OnChanged = func(sel string) {
 		switch sel {
-		case httpLabel:
-			f.mode = modeHTTP
-		case wgLabel:
-			f.mode = modeWireGuard
 		case tsLabel:
 			f.mode = modeTailscale
 		case sourceLabel:
 			f.mode = modeSource
 		default:
-			f.mode = modeSocks
+			f.mode = modeForm
+			f.scheme = schemeByLabel[sel]
 		}
 		f.applyModeVisibility()
-		f.applyDefaultPort()
 		f.refreshJSON()
 	}
+	// Дефолт — первый тип списка (VLESS).
+	f.proto.SetSelected(types[0])
 }
 
-// buildWGFields собирает поля WireGuard.
-//
-// Обязательны приватный ключ, сервер:порт, публичный ключ пира, адрес
-// интерфейса и allowed_ips; остальное опционально. Клампинг MTU под
-// AmneziaWG делает парсер (awgMaxMTU) — форме достаточно передать значение.
-func (f *addServerForm) buildWGFields() {
-	mk := func(placeholder string) *widget.Entry {
-		e := widget.NewEntry()
-		e.SetPlaceHolder(placeholder)
-		e.OnChanged = func(string) { f.refreshJSON() }
-		return e
+// currentNodeForm — форма выбранной схемы; строится при первом выборе. nil —
+// у реестра нет формы схемы.
+func (f *addServerForm) currentNodeForm() *NodeForm {
+	if f.mode != modeForm || f.scheme == "" {
+		return nil
 	}
-
-	f.wgPrivate = mk(locale.T("base64 private key"))
-	f.wgPublic = mk(locale.T("base64 peer public key"))
-	f.wgPreshared = mk(locale.T("optional"))
-	f.wgAddress = mk("10.0.0.2/32")
-	f.wgAllowed = mk(wgFieldHint("peers.allowed_ips", "0.0.0.0/0, ::/0"))
-	f.wgMTU = mk(wgFieldHint("mtu", ""))
-	f.wgKeepalive = mk(locale.T("optional"))
-	f.wgDNS = mk(locale.T("optional"))
-
-	wgNote := widget.NewLabel(locale.T(addServerWGNoteText))
-	wgNote.Wrapping = fyne.TextWrapWord
-
-	f.wgBox = container.NewVBox(
-		labeledRow(locale.T("Host"), f.host),
-		labeledRow(locale.T("Port"), f.port),
-		labeledRow(locale.T("Private key"), f.wgPrivate),
-		labeledRow(locale.T("Peer public key"), f.wgPublic),
-		labeledRow(locale.T("Pre-shared key"), f.wgPreshared),
-		labeledRow(locale.T("Address"), f.wgAddress),
-		labeledRow(locale.T("Allowed IPs"), f.wgAllowed),
-		labeledRow(locale.T("MTU"), f.wgMTU),
-		labeledRow(locale.T("Keepalive"), f.wgKeepalive),
-		labeledRow(locale.T("DNS"), f.wgDNS),
-		wgNote,
-	)
-	f.wgBox.Hide()
+	if form, ok := f.forms[f.scheme]; ok {
+		return form
+	}
+	form, err := NewNodeForm(f.scheme, wizardbusiness.NodeFormOptions{}, func() { f.refreshJSON() })
+	if err != nil {
+		f.forms[f.scheme] = nil
+		return nil
+	}
+	f.forms[f.scheme] = form
+	return form
 }
 
 // applyModeVisibility показывает блок, отвечающий выбранному варианту.
 func (f *addServerForm) applyModeVisibility() {
-	f.fieldsBox.Hide()
+	if f.formsScroll == nil {
+		return // первый SetSelected до сборки скролла
+	}
 	f.sourceBox.Hide()
-	f.wgBox.Hide()
 	f.ts.box.Hide()
+	f.formBox.Objects = nil
 
 	switch f.mode {
+	case modeForm:
+		f.formsScroll.Show()
+		if form := f.currentNodeForm(); form != nil {
+			f.formBox.Objects = []fyne.CanvasObject{form.Object()}
+		}
+		f.formBox.Refresh()
+		f.formsScroll.ScrollToTop()
 	case modeTailscale:
-		// Ни host, ни port: адреса у узла tailnet нет — в tailnet он входит
-		// сам, по auth_key.
+		// Адреса у узла tailnet нет — в tailnet он входит сам, по auth_key.
 		f.formsScroll.Show()
 		f.ts.box.Show()
 	case modeSource:
 		f.formsScroll.Hide()
 		f.sourceBox.Show()
-	case modeWireGuard:
-		// Host/Port живут в fieldsBox и переиспользуются WG-блоком, поэтому
-		// сам блок строится со своими строками Host/Port — см. buildWGFields.
-		f.formsScroll.Show()
-		f.wgBox.Show()
-	default:
-		f.formsScroll.Show()
-		f.fieldsBox.Show()
-		if f.mode == modeHTTP {
-			f.tlsRow.Show()
-		} else {
-			f.tlsRow.Hide()
-		}
 	}
 }
 
@@ -443,39 +365,6 @@ func (f *addServerForm) jsonContent() fyne.CanvasObject {
 	)
 }
 
-// defaultPort — порт по умолчанию для текущей комбинации протокол+TLS.
-func (f *addServerForm) defaultPort() string {
-	if f.mode == modeWireGuard {
-		return "51820"
-	}
-	if f.mode != modeHTTP {
-		return "1080"
-	}
-	if f.tlsOn {
-		return "443"
-	}
-	return "8080"
-}
-
-// applyDefaultPort подставляет дефолтный порт, пока человек не ввёл свой:
-// молча затирать набранное значение сменой радиокнопки — худший вид сюрприза.
-func (f *addServerForm) applyDefaultPort() {
-	if f.portEdit && strings.TrimSpace(f.port.Text) != "" && !f.portIsSomeDefault() {
-		return
-	}
-	f.port.SetText(f.defaultPort())
-	f.portEdit = false
-}
-
-// portIsSomeDefault — в поле стоит один из наших дефолтов, а не ручной ввод.
-func (f *addServerForm) portIsSomeDefault() bool {
-	switch strings.TrimSpace(f.port.Text) {
-	case "1080", "8080", "443", "51820":
-		return true
-	}
-	return false
-}
-
 // refreshJSON пересчитывает превью. Ручную правку не трогает — она победила.
 func (f *addServerForm) refreshJSON() {
 	if f.jsonDirty || f.jsonView == nil {
@@ -495,11 +384,11 @@ func (f *addServerForm) previewJSON() (string, string) {
 	if f.mode == modeTailscale {
 		return f.previewTailscaleDocument()
 	}
-
-	input, err := f.rawInput()
-	if err != nil {
-		return "", err.Error()
+	if f.mode == modeForm {
+		return f.previewNodeFormDocument()
 	}
+
+	input := f.source.Text
 	if strings.TrimSpace(input) == "" {
 		return "", locale.T(addServerJSONHintText)
 	}
@@ -605,14 +494,6 @@ func parseAddServerInput(input string) []*config.ParsedNode {
 	return nodes
 }
 
-// rawInput — вход для текущего варианта: собранный URI либо текст Source.
-func (f *addServerForm) rawInput() (string, error) {
-	if f.mode == modeSource {
-		return f.source.Text, nil
-	}
-	return f.buildURI()
-}
-
 // result — что уходит наружу по кнопке Add.
 func (f *addServerForm) result() (AddServerResult, error) {
 	label := strings.TrimSpace(f.tag.Text)
@@ -631,20 +512,15 @@ func (f *addServerForm) result() (AddServerResult, error) {
 		}
 		return AddServerResult{ConfigJSON: doc, Label: tailscaleTag(label)}, nil
 	}
-
-	if f.mode == modeSource {
-		text := strings.TrimSpace(f.source.Text)
-		if text == "" {
-			return AddServerResult{}, fmt.Errorf("%s", locale.T("Input is empty"))
-		}
-		return AddServerResult{Text: text, Label: label}, nil
+	if f.mode == modeForm {
+		return f.nodeFormResult()
 	}
 
-	uri, err := f.buildURI()
-	if err != nil {
-		return AddServerResult{}, err
+	text := strings.TrimSpace(f.source.Text)
+	if text == "" {
+		return AddServerResult{}, fmt.Errorf("%s", locale.T("Input is empty"))
 	}
-	return AddServerResult{Text: uri, Label: label}, nil
+	return AddServerResult{Text: text, Label: label}, nil
 }
 
 // manualJSONResult решает, чем стал отредактированный вручную JSON.
@@ -725,232 +601,6 @@ func manualDocDroppedKeys(text string) []string {
 		return nil
 	}
 	return dropped
-}
-
-// buildURI собирает share-URI из полей формы.
-func (f *addServerForm) buildURI() (string, error) {
-	if f.mode == modeWireGuard {
-		return buildWireGuardURI(wgURIInput{
-			Host:      f.host.Text,
-			Port:      f.port.Text,
-			Private:   f.wgPrivate.Text,
-			Public:    f.wgPublic.Text,
-			Preshared: f.wgPreshared.Text,
-			Address:   f.wgAddress.Text,
-			Allowed:   f.wgAllowed.Text,
-			MTU:       f.wgMTU.Text,
-			Keepalive: f.wgKeepalive.Text,
-			DNS:       f.wgDNS.Text,
-			Tag:       f.tag.Text,
-		})
-	}
-	return buildProxyURI(proxyURIInput{
-		Mode: f.mode,
-		TLS:  f.tlsOn,
-		Host: f.host.Text,
-		Port: f.port.Text,
-		User: f.user.Text,
-		Pass: f.pass.Text,
-		Tag:  f.tag.Text,
-	})
-}
-
-// wgRegistryScheme — схема реестра, по которой форма берёт подсказки полей.
-const wgRegistryScheme = "wireguard"
-
-// wgFieldHint — подсказка поля формы из реестра: дефолт ядра (`default`) или
-// значение, которое реестр подставит сам (`default_when`). Своих чисел и
-// списков у формы нет (SPEC 142 B6).
-func wgFieldHint(path, fallback string) string {
-	reg, err := registry.Get()
-	if err != nil {
-		return fallback
-	}
-	f, ok := reg.Field(wgRegistryScheme, path)
-	if !ok {
-		return fallback
-	}
-	v := f.Default
-	if f.DefaultWhen != nil && f.DefaultWhen.Absent && f.DefaultWhen.When == nil && f.DefaultWhen.Value != nil {
-		v = f.DefaultWhen.Value
-	}
-	switch t := v.(type) {
-	case nil:
-		return fallback
-	case []interface{}:
-		parts := make([]string, 0, len(t))
-		for _, it := range t {
-			parts = append(parts, fmt.Sprint(it))
-		}
-		return strings.Join(parts, ", ")
-	case float64:
-		return strconv.FormatFloat(t, 'f', -1, 64)
-	default:
-		return fmt.Sprint(t)
-	}
-}
-
-// engineVerdict прогоняет собранную ссылку через движок и санитайзер — тот же
-// путь, что у вставленной руками. Узел, который движок отверг, или поле,
-// которое санитайзер снял с кодом уровня warning/error, — отказ формы с
-// текстом кода реестра: иначе человек нажал бы Add и получил узел без
-// набранного значения (или не получил бы узла вовсе) без единого слова.
-func engineVerdict(uri string) error {
-	node, err := subscription.ParseNode(uri, nil)
-	if err != nil {
-		var rej *linkmap.RejectError
-		if errors.As(err, &rej) && rej.Code != "" {
-			if msg := nodewarn.Summary(nodewarn.FromParsed([]configtypes.Warning{{Code: rej.Code, Params: rej.Params}})); msg != "" {
-				return fmt.Errorf("%s", msg)
-			}
-		}
-		return err
-	}
-	if node == nil {
-		return nil
-	}
-	if msg := nodewarn.Summary(nodewarn.FromParsed(node.Warnings)); msg != "" {
-		return fmt.Errorf("%s", msg)
-	}
-	return nil
-}
-
-// wgURIInput — вход сборки wireguard:// URI, отвязанный от виджетов.
-type wgURIInput struct {
-	Host      string
-	Port      string
-	Private   string
-	Public    string
-	Preshared string
-	Address   string
-	Allowed   string
-	MTU       string
-	Keepalive string
-	DNS       string
-	Tag       string
-}
-
-// buildWireGuardURI собирает wireguard:// URI, который дальше разбирает
-// parseWireGuardURI — тот же путь, что у ссылки, вставленной руками.
-//
-// Приватный ключ уезжает в userinfo. Слэши base64 экранирует url.URL сам;
-// парсер их восстанавливает (percentEncodeWGUserinfoSlashes).
-func buildWireGuardURI(in wgURIInput) (string, error) {
-	host := strings.TrimSpace(in.Host)
-	if host == "" {
-		return "", fmt.Errorf("%s", locale.T("Host required"))
-	}
-	port, err := strconv.Atoi(strings.TrimSpace(in.Port))
-	if err != nil || port < 1 || port > 65535 {
-		return "", fmt.Errorf("%s", locale.T("Port 1..65535"))
-	}
-
-	priv := strings.TrimSpace(in.Private)
-	if priv == "" {
-		return "", fmt.Errorf("%s", locale.T("Private key required"))
-	}
-	pub := strings.TrimSpace(in.Public)
-	if pub == "" {
-		return "", fmt.Errorf("%s", locale.T("Peer public key required"))
-	}
-	addr := strings.TrimSpace(in.Address)
-	if addr == "" {
-		return "", fmt.Errorf("%s", locale.T("Address required"))
-	}
-
-	// Пустой allowed не подставляется: дефолт (0.0.0.0/0 и ::/0) ставит
-	// реестр (peers.allowed_ips.default_when). Формат ключей, границы MTU и
-	// keepalive судит тоже реестр — через engineVerdict ниже.
-	q := url.Values{}
-	q.Set("publickey", pub)
-	q.Set("address", addr)
-	if v := strings.TrimSpace(in.Allowed); v != "" {
-		q.Set("allowedips", v)
-	}
-	if v := strings.TrimSpace(in.Preshared); v != "" {
-		q.Set("presharedkey", v)
-	}
-	if v := strings.TrimSpace(in.MTU); v != "" {
-		q.Set("mtu", v)
-	}
-	if v := strings.TrimSpace(in.Keepalive); v != "" {
-		q.Set("keepalive", v)
-	}
-	if v := strings.TrimSpace(in.DNS); v != "" {
-		q.Set("dns", v)
-	}
-
-	u := &url.URL{
-		Scheme:   "wireguard",
-		User:     url.User(priv),
-		Host:     joinHostPort(host, port),
-		RawQuery: q.Encode(),
-		Fragment: strings.TrimSpace(in.Tag),
-	}
-	uri := u.String()
-	if err := engineVerdict(uri); err != nil {
-		return "", err
-	}
-	return uri, nil
-}
-
-// proxyURIInput — вход сборки URI, отвязанный от виджетов: логика схемы и
-// валидации тестируется без запуска Fyne.
-type proxyURIInput struct {
-	Mode addServerMode
-	TLS  bool
-	Host string
-	Port string
-	User string
-	Pass string
-	Tag  string
-}
-
-// buildProxyURI собирает share-URI. Ошибки — человеческие: пустой хост и
-// негодный порт ловятся здесь, а не в глубине парсера.
-func buildProxyURI(in proxyURIInput) (string, error) {
-	host := strings.TrimSpace(in.Host)
-	if host == "" {
-		return "", fmt.Errorf("%s", locale.T("Host required"))
-	}
-
-	port, err := strconv.Atoi(strings.TrimSpace(in.Port))
-	if err != nil || port < 1 || port > 65535 {
-		return "", fmt.Errorf("%s", locale.T("Port 1..65535"))
-	}
-
-	user := strings.TrimSpace(in.User)
-	pass := in.Pass // пароль не триммим: пробелы в нём легальны
-
-	scheme := "socks5"
-	if in.Mode == modeHTTP {
-		scheme = "proxy-http"
-		if in.TLS {
-			scheme = "proxy-https"
-		}
-	}
-
-	var userinfo *url.Userinfo
-	if user != "" || pass != "" {
-		userinfo = url.UserPassword(user, pass)
-	}
-
-	u := &url.URL{
-		Scheme:   scheme,
-		User:     userinfo,
-		Host:     joinHostPort(host, port),
-		Fragment: strings.TrimSpace(in.Tag),
-	}
-	return u.String(), nil
-}
-
-// joinHostPort — как net.JoinHostPort, но IPv6 берётся в скобки только если
-// их ещё нет (человек мог ввести адрес уже в скобках).
-func joinHostPort(host string, port int) string {
-	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
-		return fmt.Sprintf("[%s]:%d", host, port)
-	}
-	return fmt.Sprintf("%s:%d", host, port)
 }
 
 // stripEmitted снимает с эмитированной строки то, что делает её фрагментом

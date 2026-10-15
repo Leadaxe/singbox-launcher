@@ -3,9 +3,9 @@
 //
 // Сборка берёт список функцией build.CollectPresetNodes из кэша узлов после
 // граф-санитайзера. Визард строит его ТОЙ ЖЕ функцией из кэша последней
-// эмиссии (model.GeneratedOutbounds/.GeneratedEndpoints + GeneratedSkipPresets):
-// выключенный узел эмиссия не выпускает, skip_presets несёт карта, у узла
-// подписки поля нет. Отбор пресетом (#filter) — build.PresetForEachNodes,
+// эмиссии (model.GeneratedOutbounds/.GeneratedEndpoints + GeneratedRecordFlags):
+// выключенный узел эмиссия не выпускает, поля записи несёт карта, у узла
+// подписки их нет. Отбор пресетом (#filter) — build.PresetForEachNodes,
 // тот же, что у раскрытия в сборке.
 //
 // Допущение: до сборки готового конфига нет. Узел, который сборка потом

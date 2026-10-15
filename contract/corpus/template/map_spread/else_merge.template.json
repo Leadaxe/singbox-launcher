@@ -1,0 +1,5 @@
+{
+  "_comment": "§4.3: условие false с else — ветка else мержится в родителя (длинная форма; пара к short_else_merge)",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"tun": {"type": "tun", "#if": {"#and": ["@flag"], "#value": {"mtu": 1400}, "#else": {"mtu": 1280}}}}
+}

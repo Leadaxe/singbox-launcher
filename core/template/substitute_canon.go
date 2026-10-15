@@ -177,26 +177,26 @@ func substituteWalkCanon(v *interface{}, ctx *canonCtx) {
 			// (§4.4). Объект с #if среди других ключей — обычный map-spread.
 			if m, ok := elem.(map[string]interface{}); ok && len(m) == 1 {
 				if ks := ifKeysSorted(m); len(ks) == 1 {
-					if body, ok := m[ks[0]].(map[string]interface{}); ok {
-						branch, take := handleIfArrayElementCanon(ks[0], body, ctx)
-						if !take {
-							continue // условие false без else — элемент выпадает
-						}
-						if _, dropped := branch.(droppedValue); dropped {
-							continue
-						}
-						// Ветка-массив вливается в родительский массив на один
-						// уровень (§4.4): ["x", {#if… "value": ["a","b"]}] →
-						// ["x","a","b"]. Литерал и ссылка на text_list не
-						// различаются; вложение пишется двойными скобками
-						// [["a","b"]] — внешний уровень снимает сплайс.
-						if list, ok := branch.([]interface{}); ok {
-							out = append(out, list...)
-							continue
-						}
-						out = append(out, branch)
+					// Тело — любой формы §4.1 (массив или объект); форму
+					// разбирает нормализатор, невалидная — warning и выпадение.
+					branch, take := handleIfArrayElementCanon(ks[0], m[ks[0]], ctx)
+					if !take {
+						continue // условие false без else — элемент выпадает
+					}
+					if _, dropped := branch.(droppedValue); dropped {
 						continue
 					}
+					// Ветка-массив вливается в родительский массив на один
+					// уровень (§4.4): ["x", {"#if": ["@a", ["a","b"]]}] →
+					// ["x","a","b"]. Литерал и ссылка на text_list не
+					// различаются; вложение пишется двойными скобками
+					// [["a","b"]] — внешний уровень снимает сплайс.
+					if list, ok := branch.([]interface{}); ok {
+						out = append(out, list...)
+						continue
+					}
+					out = append(out, branch)
+					continue
 				}
 			}
 			// Голая ссылка "@text_list_var" в позиции элемента массива
@@ -342,12 +342,7 @@ func intCastCanon(name, s string, ctx *canonCtx) interface{} {
 // ветку в родителя (§4.3). Ключ #if удаляется всегда.
 func handleIfMapSpreadCanon(parent map[string]interface{}, key string, rawBody interface{}, ctx *canonCtx) {
 	defer delete(parent, key)
-	body, ok := rawBody.(map[string]interface{})
-	if !ok {
-		ctx.warnDirective(key)
-		return
-	}
-	branch, take := selectIfBranchCanon(key, body, ctx)
+	branch, take := selectIfBranchCanon(key, rawBody, ctx)
 	if !take {
 		return // false без else — родитель остаётся как есть
 	}
@@ -379,8 +374,8 @@ func handleIfMapSpreadCanon(parent map[string]interface{}, key string, rawBody i
 
 // handleIfArrayElementCanon вычисляет #if в позиции элемента массива (§4.4).
 // take=false означает «элемент выпадает». key — сам #if-ключ, для warning'а.
-func handleIfArrayElementCanon(key string, body map[string]interface{}, ctx *canonCtx) (interface{}, bool) {
-	branch, take := selectIfBranchCanon(key, body, ctx)
+func handleIfArrayElementCanon(key string, rawBody interface{}, ctx *canonCtx) (interface{}, bool) {
+	branch, take := selectIfBranchCanon(key, rawBody, ctx)
 	if !take {
 		return nil, false
 	}
@@ -388,47 +383,48 @@ func handleIfArrayElementCanon(key string, body map[string]interface{}, ctx *can
 	return branch, true
 }
 
-// selectIfBranchCanon вычисляет предикаты и возвращает выбранную ветку.
-// take=false — условие ложно и ветки else нет. key — #if-ключ, которым
-// помечается warning о невалидной форме.
+// selectIfBranchCanon разбирает тело #if любой формы (§4.1, D-133) и
+// возвращает выбранную ветку. take=false — условие ложно и ветки else нет
+// либо форма невалидна. key — #if-ключ, которым помечается warning.
 //
 // Движок предикатов (P1–P6, §4.2) общий (substitute.go, им же пользуются гейты и default_value):
 // он уже соответствует канону — все кейсы corpus/template/predicates проходят.
 // Канон меняет только политику unresolved и Dropped-каскад, но не грамматику
 // условий; своя копия предикатов дала бы два движка, расходящихся со временем.
-func selectIfBranchCanon(key string, body map[string]interface{}, ctx *canonCtx) (interface{}, bool) {
-	// Ссылка на НЕобъявленное имя внутри предиката = опечатка автора: предикат
+func selectIfBranchCanon(key string, rawBody interface{}, ctx *canonCtx) (interface{}, bool) {
+	f, msg := parseIfForm(rawBody)
+	if msg != "" {
+		// Невалидная форма до рантайма не доходит (валидатор загрузки);
+		// толерантный рантайм — warning и fail-closed: условие считается
+		// ложным, чтобы опечатка не втащила в конфиг блок, которого автор не
+		// просил (разрыв C3). У длинной формы с невалидным and/or ветка else,
+		// если она есть, берётся как при ложном условии (кейсы
+		// grammar/if_without_and_or_is_false, if_with_both_and_or_is_false);
+		// у короткой формы невалидность — свойство всего массива, ветка не
+		// выбирается (grammar/short_*_rejected).
+		ctx.warnDirective(key)
+		if body, ok := rawBody.(map[string]interface{}); ok {
+			ctx.notePredicateVars(body)
+			if _, hasVal := condKey(body, "value"); hasVal {
+				if elseVal, has := condKey(body, "else"); has {
+					return elseVal, true
+				}
+			}
+		}
+		return nil, false
+	}
+	// Ссылка на НЕобъявленное имя внутри условия = опечатка автора: предикат
 	// вычисляется в false (это делает сам движок), но факт обязан быть виден
 	// как warning (§4.2, §5.2, разрыв N9). Имена собираются до вычисления —
 	// протягивать накопитель через весь общий движок предикатов ради этого
 	// не нужно.
-	ctx.notePredicateVars(body)
-
-	// Грамматика §4.1: ровно один из and/or. Общий движок (evaluateIfCondition) на «ни одного»
-	// отвечает TRUE — то есть невалидное условие ВКЛЮЧАЕТ ветку, вместо того
-	// чтобы её пропустить. Канон здесь строгий: невалидная форма → false
-	// (разрыв C3), чтобы опечатка в условии не втащила в конфиг блок, которого
-	// автор не просил.
-	_, hasAnd := condKey(body, "and")
-	_, hasOr := condKey(body, "or")
-	if hasAnd == hasOr { // оба или ни одного
-		ctx.warnDirective(key)
-		if elseVal, has := condKey(body, "else"); has {
-			return elseVal, true
-		}
-		return nil, false
-	}
-	if _, has := condKey(body, "value"); !has {
-		// value обязателен (§4.1). Толерантный рантайм: пропуск + warning.
-		ctx.warnDirective(key)
-		return nil, false
-	}
-
-	return selectIfBranch(body, ctx.varTypes, ctx.resolved, ctx.target)
+	ctx.noteCondVars(f.Cond)
+	return evalIfForm(f, ctx.varTypes, ctx.resolved, ctx.target)
 }
 
-// notePredicateVars обходит дерево предикатов #if и помечает warning'ом каждую
-// ссылку на имя, которое не объявлено в vars и не является @runtime.*-global.
+// notePredicateVars обходит списки and/or тела длинной формы #if и помечает
+// warning'ом каждую ссылку на имя, которое не объявлено в vars и не является
+// @runtime.*-global.
 func (c *canonCtx) notePredicateVars(body map[string]interface{}) {
 	for _, key := range []string{"and", "or"} {
 		raw, _ := condKey(body, key)
@@ -441,8 +437,8 @@ func (c *canonCtx) notePredicateVars(body map[string]interface{}) {
 }
 
 // noteCondVars обходит ЛЮБОЕ условие (§5.1): сахар-список, cond-obj с and/or
-// на любой глубине, одиночный предикат. Используется гейтом #enable, где
-// условие приходит без обёртки-тела #if.
+// на любой глубине, одиночный предикат. Используется гейтом #enable и
+// условием #if любой формы (у длинной — cond-obj, собранный нормализатором).
 func (c *canonCtx) noteCondVars(cond interface{}) {
 	switch x := cond.(type) {
 	case []interface{}:

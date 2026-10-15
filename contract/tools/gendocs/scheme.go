@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -382,6 +383,10 @@ func renderBodyList(b *strings.Builder, scheme string, body *registry.BodySchema
 		if f == nil {
 			continue
 		}
+		if name == registry.WildcardKey {
+			writeWildcardItem(l, "", f)
+			continue
+		}
 		// Ссылочное поле (tls, transport, multiplex, dialer) РАЗВОРАЧИВАЕТСЯ
 		// здесь целиком, а не сводится к строке «см. общую страницу». Словарь
 		// ссылки выше по странице кладёт значения именно в эти поля и ссылается
@@ -392,10 +397,111 @@ func renderBodyList(b *strings.Builder, scheme string, body *registry.BodySchema
 			l.item(anchorTag(bodyAnchor(name))+"**`"+name+"`**", f.DescEn)
 			l.attr("Shared sub-schema, expanded below · reference page: [" +
 				strings.TrimSuffix(file, ".md") + "](" + file + ")")
+			if fl := formLine(f.Form); fl != "" {
+				l.attr(fl)
+			}
+			l.noForm = f.Form == nil
 			writeChildren(l, name, f, "../")
+			l.noForm = false
 			continue
 		}
 		writeBodyItems(l, "", name, f, "../")
+	}
+	b.WriteString("\n")
+	renderBodyForm(b, body.Form)
+}
+
+// writeWildcardItem — строка записи wildcard "*" (контракт 1.1.122): не поле,
+// а «прочие ключи этого объекта — насквозь».
+func writeWildcardItem(l *list, prefix string, f *registry.Field) {
+	path := registry.WildcardKey
+	anchor := "other-keys"
+	if prefix != "" {
+		path = prefix + "." + registry.WildcardKey
+		anchor = prefix + ".other-keys"
+	}
+	head := "**`" + path + "`**"
+	if l.anchors {
+		head = anchorTag(bodyAnchor(anchor)) + head
+	}
+	l.item(head, f.DescEn)
+	l.attr("Other keys of this object pass through as written: no rules, no `unknown_key`; emitted here in alphabetical order. Not inherited by nested objects")
+}
+
+// formLine — правила формы поля (атрибут `form`, контракт 1.1.122) одной
+// строкой; санитайзер их не читает.
+func formLine(ff *registry.FieldForm) string {
+	if ff == nil {
+		return ""
+	}
+	var parts []string
+	if ff.Block != "" {
+		parts = append(parts, "block "+code(ff.Block))
+	} else {
+		parts = append(parts, "block of the connecting `ref` field, or drawn by a choice group")
+	}
+	if ff.Required {
+		req := "required"
+		if ru := ff.RequiredUnless; ru != nil && len(ru.Set) > 0 {
+			req += " unless any of " + codeList(ru.Set) + " is set"
+		}
+		parts = append(parts, req)
+	}
+	if ff.VisibleWhen != nil {
+		parts = append(parts, "shown"+conditionPhrase(ff.VisibleWhen))
+	}
+	if ff.Min != nil || ff.Max != nil {
+		lo, hi := "…", "…"
+		if ff.Min != nil {
+			lo = trimFloat(*ff.Min)
+		}
+		if ff.Max != nil {
+			hi = trimFloat(*ff.Max)
+		}
+		parts = append(parts, "range "+code(lo+"–"+hi))
+	}
+	if len(ff.ExcludeVariants) > 0 {
+		parts = append(parts, "variants not offered "+codeList(ff.ExcludeVariants))
+	}
+	if len(ff.ExcludeFields) > 0 {
+		parts = append(parts, "not drawn "+codeList(ff.ExcludeFields))
+	}
+	return "Form: " + strings.Join(parts, ", ")
+}
+
+// renderBodyForm — раскладка формы тела (секция body.form): блоки и группы
+// выбора.
+func renderBodyForm(b *strings.Builder, form *registry.FormSection) {
+	if form == nil {
+		return
+	}
+	b.WriteString("### Form layout\n\n")
+	b.WriteString("Read by the node forms only; the sanitizer ignores it. A hidden field stays in the body as written.\n\n")
+	b.WriteString("- Blocks: " + codeList(form.Blocks) + "\n")
+	for _, c := range form.Choices {
+		opts := make([]string, 0, len(c.Options))
+		for _, o := range c.Options {
+			what := "nothing set"
+			if len(o.Paths) > 0 {
+				what = codeList(o.Paths)
+			}
+			opts = append(opts, code(o.ID)+" ("+what+")")
+		}
+		b.WriteString("- Choice " + code(c.ID) + " in block " + code(c.Block) + ": " + strings.Join(opts, " · ") +
+			". Active is the option with the most set paths (its paths and `set` keys) among those with a set path, " +
+			"the first on a tie; switching clears the other options' paths\n")
+	}
+	if len(form.Fixed) > 0 {
+		keys := make([]string, 0, len(form.Fixed))
+		for k := range form.Fixed {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		fixed := make([]string, 0, len(keys))
+		for _, k := range keys {
+			fixed = append(fixed, code(k+" = "+fmt.Sprint(form.Fixed[k])))
+		}
+		b.WriteString("- Always written, not drawn: " + strings.Join(fixed, ", ") + "\n")
 	}
 	b.WriteString("\n")
 }
@@ -451,6 +557,9 @@ func writeBodyItems(l *list, prefix, name string, f *registry.Field, linkPrefix 
 	for _, g := range bodyCoreGate(f) {
 		l.attr(g)
 	}
+	if fl := formLine(f.Form); fl != "" && !l.noForm && !l.banned {
+		l.attr(fl)
+	}
 
 	// Потомки запрещённого блока печатаются без своих правил: флаг снимается
 	// после обхода, чтобы соседний разрешённый блок его не унаследовал.
@@ -499,6 +608,10 @@ func writeNested(l *list, path string, f *registry.Field, linkPrefix string) {
 	for _, name := range order {
 		child := inner.Fields[name]
 		if child == nil {
+			continue
+		}
+		if name == registry.WildcardKey {
+			writeWildcardItem(l, path, child)
 			continue
 		}
 		writeBodyItems(l, path, name, child, linkPrefix)
@@ -751,7 +864,9 @@ func refPage(name string, f *registry.Field) (string, bool) {
 	if len(f.Variants) > 0 {
 		return subPageFile["transports"], true
 	}
-	if f.Type != "object" || len(f.Fields) == 0 {
+	if f.Type != "object" || len(f.Fields) == 0 || f.Ref == "" {
+		// Объект без ref — своя структура схемы (у openconnect tls — не
+		// общая суб-схема tls.json), страницы у него нет.
 		return "", false
 	}
 	if file, ok := subPageFile[name]; ok {

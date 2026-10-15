@@ -322,7 +322,15 @@ curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scrip
 curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- v1.1.0
 ```
 
-#### Вариант 2: ручная установка
+#### Вариант 2: Homebrew
+
+```bash
+brew install --cask leadaxe/tap/singbox-launcher
+```
+
+Cask лежит в [Leadaxe/homebrew-tap](https://github.com/Leadaxe/homebrew-tap) и идёт за стабильными релизами (обновляется в течение нескольких часов после релиза); `brew upgrade --cask singbox-launcher` обновляет приложение, данные в `~/Library/Application Support/singbox-launcher` остаются. Ставится только `.app` и, как и в скрипте, с него снимается атрибут карантина; ядро и шаблон скачиваются при первом запуске. `brew uninstall --zap --cask singbox-launcher` удаляет заодно данные и логи.
+
+#### Вариант 3: ручная установка
 
 1. Скачайте macOS ZIP с [Releases](https://github.com/Leadaxe/singbox-launcher/releases) и распакуйте.
 2. Снимите quarantine:

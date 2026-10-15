@@ -1,0 +1,7 @@
+# sing-box: endpoint openconnect со сквозными ключами (контракт 1.1.122, SPEC 167).
+# Wildcard `*` стоит в корне, tls и token: неописанные ключи этих объектов
+# (tls.mca_key_path, token.pin, mobile{…}, form_entries[…], x_future) уходят
+# в ядро как написаны, без unknown_key. Описанные поля (server, flavor,
+# username, token.mode/secret, tls.server_name) проверены своими правилами и
+# годны — кодов нет. Снят только tag.
+{"endpoints":[{"type":"openconnect","tag":"forti-wild","server":"fw.example.com:42319","flavor":"fortinet","username":"user","password":"pass","token":{"mode":"totp","secret":"JBSWY3DPEHPK3PXP","pin":"1234"},"tls":{"server_name":"fw.example.com","mca_key_path":"/etc/oc/mca.key"},"mobile":{"platform_version":"17","device_type":"iPhone","device_unique_id":"abc"},"form_entries":[{"form_id":"main","name":"realm","value":"corp"}],"x_future":1}]}

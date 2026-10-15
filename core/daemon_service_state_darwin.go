@@ -151,6 +151,34 @@ func inspectDaemonServiceDefinition(l daemonServiceLayout) DaemonServiceCheck {
 	return c
 }
 
+// checkRootOwnedChain проверяет каждое звено от root вниз до file по Lstat:
+// не симлинк, владелец ownerUID, без записи для группы и остальных;
+// каталоги — каталоги, file — обычный файл. Отсутствующее звено под целым
+// родителем — errDaemonCopyMissing.
+func checkRootOwnedChain(file, root string, ownerUID uint32) error {
+	file = filepath.Clean(file)
+	root = filepath.Clean(root)
+	rel, err := filepath.Rel(root, filepath.Dir(file))
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%s is outside %s", file, root)
+	}
+	chain := []string{root}
+	if rel != "." {
+		cur := root
+		for _, part := range strings.Split(rel, string(filepath.Separator)) {
+			cur = filepath.Join(cur, part)
+			chain = append(chain, cur)
+		}
+	}
+	for _, dir := range chain {
+		if err := checkRootOwnedEntry(dir, ownerUID, true); err != nil {
+			return err
+		}
+	}
+	return checkRootOwnedEntry(file, ownerUID, false)
+}
+
+// checkRootOwnedEntry — одно звено цепочки checkRootOwnedChain.
 func checkRootOwnedEntry(path string, ownerUID uint32, wantDir bool) error {
 	fi, err := os.Lstat(path)
 	if err != nil {

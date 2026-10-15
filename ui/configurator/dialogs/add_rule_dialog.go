@@ -45,6 +45,8 @@ import (
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/process"
 
+	"singbox-launcher/core/build"
+	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
@@ -375,7 +377,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			urlLabel.Hide()
 			urlContainer.Hide()
 			domainRegexEntry.Hide()
-			domainModeSelect.Hide() // показываем только при выборе Domains/URLs
+			domainModeRow.Hide() // показываем только при выборе Domains/URLs (подпись вместе со списком)
 			processesLabel.Hide()
 			processesContainerWrap.Hide()
 			selectProcessesButton.Hide()
@@ -420,6 +422,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		}
 		showDomain := func() {
 			hideAllFormTypeSpecific()
+			domainModeRow.Show()
 			domainModeSelect.Show()
 			urlLabel.Show()
 			updateDomainLabel()
@@ -516,6 +519,38 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			return nil, nil, errors.New(locale.T("enter at least one valid SRS URL"))
 		}
 		return ruleSets, tags, nil
+	}
+
+	// srsRuleSetsForRawBody — наборы формы, на которые ссылается тело с вкладки
+	// JSON. Тег SRS-набора — производное от URL, адреса в теле нет: без этого
+	// правило, сохранённое (или показанное в Preview) с вкладки JSON, теряло
+	// наборы и ссылалось на несуществующие теги. nil — тело ссылается не
+	// только на наборы формы (или без rule_set): тогда это Custom JSON.
+	srsRuleSetsForRawBody := func(body map[string]interface{}) []json.RawMessage {
+		refs := ExtractStringArray(body["rule_set"])
+		if s, ok := body["rule_set"].(string); ok && s != "" {
+			refs = []string{s}
+		}
+		if len(refs) == 0 {
+			return nil
+		}
+		ruleSets, tags, err := buildSRSRuleSetsAndTags()
+		if err != nil {
+			return nil
+		}
+		byTag := make(map[string]json.RawMessage, len(tags))
+		for i, tag := range tags {
+			byTag[tag] = ruleSets[i]
+		}
+		out := make([]json.RawMessage, 0, len(refs))
+		for _, ref := range refs {
+			rs, ok := byTag[ref]
+			if !ok {
+				return nil
+			}
+			out = append(out, rs)
+		}
+		return out
 	}
 
 	// buildRuleRaw возвращает (rule, ruleSets для SRS или nil, error).
@@ -658,6 +693,105 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		}
 	}
 
+	// DNS-зеркало правила (SPEC 172, TEMPLATE_LANG §6.11): сервер для
+	// DNS-запросов под правило и глушилка AAAA. Своя вкладка DNS: это поле
+	// записи, а не тела sing-box, и к Form/JSON оно не относится. Доступность
+	// считает тот же матчер, что у сборки, по телу последней из вкладок
+	// Form/JSON: опция недоступна ровно там, где зеркала не будет.
+	// Сохранённые значения при недоступности не сбрасываются.
+	var initialDNS *corestate.RuleDNS
+	if isEdit {
+		initialDNS = editRule.DNS
+	}
+	dnsServerOptions := wizardbusiness.DNSEnabledTagOptions(model)
+	if initialDNS != nil && initialDNS.ServerTag != "" {
+		known := false
+		for _, o := range dnsServerOptions {
+			if o == initialDNS.ServerTag {
+				known = true
+				break
+			}
+		}
+		if !known {
+			dnsServerOptions = append(dnsServerOptions, initialDNS.ServerTag)
+		}
+	}
+	dnsServerSelect := widget.NewSelect(dnsServerOptions, nil)
+	dnsServerCheck := widget.NewCheck(locale.T("Send DNS to a dedicated server"), nil)
+	forceIPv4Check := widget.NewCheck(locale.T("Force IPv4 (drop AAAA)"), nil)
+	dnsHint := widget.NewLabel("")
+	dnsHint.Wrapping = fyne.TextWrapWord
+	dnsHint.Importance = widget.LowImportance
+	if initialDNS != nil {
+		dnsServerCheck.SetChecked(initialDNS.Enabled)
+		dnsServerSelect.SetSelected(initialDNS.ServerTag)
+		forceIPv4Check.SetChecked(initialDNS.ForceIPv4)
+	}
+	// currentRuleBody — тело правила, каким его увидит сборка: с JSON-вкладки
+	// или собранное формой; nil — правило ещё не заполнено.
+	currentRuleBody := func() map[string]interface{} {
+		ob := outboundSelect.Selected
+		if ob == "" {
+			ob = availableOutbounds[0]
+		}
+		if activeTabIsRaw {
+			var obj map[string]interface{}
+			if json.Unmarshal([]byte(strings.TrimSpace(rawTabEntry.Text())), &obj) != nil {
+				return nil
+			}
+			return obj
+		}
+		body, _, err := buildRuleRaw(ruleSel.Type(), ob)
+		if err != nil {
+			return nil
+		}
+		return body
+	}
+	updateDNSAvailability := func() {
+		body := currentRuleBody()
+		_, ok := build.RuleDNSMirrorMatch(body)
+		hint := ""
+		switch {
+		case ok:
+			dnsServerCheck.Enable()
+			forceIPv4Check.Enable()
+			if dnsServerCheck.Checked {
+				dnsServerSelect.Enable()
+			} else {
+				dnsServerSelect.Disable()
+			}
+			if !activeTabIsRaw && ruleSel.Type() == wizardmodels.RuleTypeSRS {
+				hint = locale.T("Works only if the rule set contains domains.")
+			}
+		default:
+			dnsServerCheck.Disable()
+			forceIPv4Check.Disable()
+			dnsServerSelect.Disable()
+			if body != nil {
+				hint = locale.T("Unavailable for rules with ports, protocols or network, and for rules that match only IP addresses.")
+			}
+		}
+		dnsHint.SetText(hint)
+		if hint == "" {
+			dnsHint.Hide()
+		} else {
+			dnsHint.Show()
+		}
+	}
+	rawTabEntry.SetOnChanged(func(string) { updateDNSAvailability() })
+	dnsServerCheck.OnChanged = func(on bool) {
+		if on && dnsServerSelect.Selected == "" && len(dnsServerOptions) > 0 {
+			dnsServerSelect.SetSelected(dnsServerOptions[0])
+		}
+		updateDNSAvailability()
+	}
+	dnsBlock := container.NewVBox(
+		dnsServerCheck,
+		dnsServerSelect,
+		forceIPv4Check,
+		dnsHint,
+	)
+
 	updateButtonState = func() {
 		if confirmButton != nil {
 			if validateFields() {
@@ -666,6 +800,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				confirmButton.Disable()
 			}
 		}
+		updateDNSAvailability()
 	}
 
 	onRuleTypeChange := func(s string) {
@@ -763,6 +898,10 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				ruleRaw["outbound"] = selectedOutbound
 			}
 			selectedType = wizardmodels.RuleTypeRaw
+			if rs := srsRuleSetsForRawBody(ruleRaw); rs != nil {
+				srsRuleSets = rs
+				selectedType = wizardmodels.RuleTypeSRS
+			}
 		} else {
 			var err error
 			ruleRaw, srsRuleSets, err = buildRuleRaw(selectedType, selectedOutbound)
@@ -787,7 +926,14 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			params["domain_mode"] = domainModeSelect.Selected
 		}
 
+		ruleDNS := corestate.CloneRuleDNS(&corestate.RuleDNS{
+			Enabled:   dnsServerCheck.Checked,
+			ServerTag: dnsServerSelect.Selected,
+			ForceIPv4: forceIPv4Check.Checked,
+		})
+
 		if isEdit {
+			editRule.DNS = ruleDNS
 			editRule.Rule.Label = label
 			editRule.Rule.Rule = ruleRaw
 			editRule.Rule.HasOutbound = true
@@ -819,6 +965,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				// не хардкод: новое правило встаёт последним среди
 				// пользовательских и не вытесняет шаблонные якоря.
 				Num: wizardmodels.NextRuleNum(model),
+				DNS: ruleDNS,
 			}
 			if model.CustomRules == nil {
 				model.CustomRules = make([]*wizardmodels.RuleState, 0)
@@ -995,7 +1142,38 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	rawScroll := components.WrapInScrollWithGutter(rawTabEntry.Object())
 	formTabItem := container.NewTabItem(locale.T("Form"), formScroll)
 	rawTabItem := container.NewTabItem(locale.T("JSON"), rawScroll)
-	tabs := container.NewAppTabs(formTabItem, rawTabItem)
+	dnsTabItem := container.NewTabItem(locale.T("DNS"), components.WrapInScrollWithGutter(dnsBlock))
+
+	// Preview — что правило даёт в конфиге, по секциям (route.rule_set,
+	// route.rules, dns.rules), только для чтения. Строится тем же кодом, что
+	// сборка: запись правила из текущего состояния окна → ResolveRouteWithGlobals
+	// → build.RuleDNSMirrors. Тело для правки — по-прежнему вкладка JSON.
+	previewView := fynewidget.NewJSONView("")
+	previewContent := container.NewBorder(
+		container.NewHBox(layout.NewSpacer(), widget.NewLabel("🔒")),
+		nil, nil, nil,
+		container.NewScroll(previewView.Object()),
+	)
+	previewTabItem := container.NewTabItem(locale.T("Preview"), previewContent)
+	refreshPreview := func() {
+		previewView.SetText(rulePreviewText(model, rulePreviewInput{
+			label:    strings.TrimSpace(labelEntry.Text),
+			outbound: outboundSelect.Selected,
+			raw:      activeTabIsRaw,
+			rawText:  rawTabEntry.Text(),
+			rawSRS:   srsRuleSetsForRawBody,
+			form: func() (map[string]interface{}, []json.RawMessage, error) {
+				return buildRuleRaw(ruleSel.Type(), outboundSelect.Selected)
+			},
+			dns: corestate.CloneRuleDNS(&corestate.RuleDNS{
+				Enabled:   dnsServerCheck.Checked,
+				ServerTag: dnsServerSelect.Selected,
+				ForceIPv4: forceIPv4Check.Checked,
+			}),
+		}))
+	}
+
+	tabs := container.NewAppTabs(formTabItem, dnsTabItem, rawTabItem, previewTabItem)
 	syncFormToRaw := func() {
 		ob := outboundSelect.Selected
 		if ob == "" {
@@ -1084,14 +1262,26 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			}
 		}
 	}
+	// activeTabIsRaw — последняя из вкладок Form/JSON: вкладка DNS её не
+	// меняет, тело правила (для Save и доступности DNS) берётся оттуда.
+	// Синхронизация — только при переходе между Form и JSON, в том числе
+	// через DNS: Form → DNS → Form не перечитывает форму из устаревшего JSON.
 	tabs.OnSelected = func(t *container.TabItem) {
-		if t == rawTabItem {
-			activeTabIsRaw = true
-			syncFormToRaw()
-		} else {
-			activeTabIsRaw = false
-			syncRawToForm()
+		switch t {
+		case rawTabItem:
+			if !activeTabIsRaw {
+				activeTabIsRaw = true
+				syncFormToRaw()
+			}
+		case formTabItem:
+			if activeTabIsRaw {
+				activeTabIsRaw = false
+				syncRawToForm()
+			}
+		case previewTabItem:
+			refreshPreview()
 		}
+		updateDNSAvailability()
 	}
 
 	// Border: сверху Rule name, снизу кнопки, центр — вкладки на всю оставшуюся высоту
@@ -1186,4 +1376,124 @@ func dedupeProcessStrings(items []string) []string {
 		out = append(out, n)
 	}
 	return out
+}
+
+// rulePreviewInput — состояние окна правила для вкладки Preview.
+type rulePreviewInput struct {
+	label    string
+	outbound string
+	raw      bool   // тело — с вкладки JSON (последняя из Form/JSON)
+	rawText  string // текст вкладки JSON
+	rawSRS   func(map[string]interface{}) []json.RawMessage
+	form     func() (map[string]interface{}, []json.RawMessage, error)
+	dns      *corestate.RuleDNS
+}
+
+// rulePreviewSection — секция конфига в превью; ключи в порядке конфига.
+type rulePreviewSection struct {
+	RuleSet []interface{} `json:"rule_set,omitempty"`
+	Rules   []interface{} `json:"rules,omitempty"`
+}
+
+// rulePreviewText — что правило даёт в конфиге: route.rule_set, route.rules и
+// DNS-зеркала (SPEC 172), с пояснениями строками `//` над JSON — набор не
+// скачан, сервер зеркала выключен или не найден, опция DNS не применима.
+// Запись правила собирается так же, как при Save (EmitStateRulesWithoutOrder),
+// маршрут и зеркала — кодом сборки.
+func rulePreviewText(model *wizardmodels.WizardModel, in rulePreviewInput) string {
+	var body map[string]interface{}
+	var ruleSets []json.RawMessage
+	if in.raw {
+		if json.Unmarshal([]byte(strings.TrimSpace(in.rawText)), &body) != nil {
+			body = nil
+		} else if in.rawSRS != nil {
+			ruleSets = in.rawSRS(body)
+		}
+	} else if b, rs, err := in.form(); err == nil {
+		body, ruleSets = b, rs
+	}
+	outbound := in.outbound
+	if outbound == "" {
+		outbound = wizardmodels.DefaultOutboundTag
+	}
+	rs := &wizardmodels.RuleState{
+		Rule:             wizardtemplate.TemplateSelectableRule{Label: in.label, Rule: body, RuleSets: ruleSets, HasOutbound: true},
+		Enabled:          true,
+		SelectedOutbound: outbound,
+		DNS:              in.dns,
+	}
+	rules := wizardmodels.EmitStateRulesWithoutOrder(nil, []*wizardmodels.RuleState{rs})
+	if body == nil || len(rules) == 0 {
+		return "// " + locale.T("Fill in the rule to see what it adds to the config.")
+	}
+
+	srsCached := build.CollectSrsCachedPaths(rules, model.DataDir, model.ResourceDir)
+	route := build.ResolveRouteWithGlobals(&corestate.State{Rules: rules}, &wizardtemplate.TemplateData{}, model.DataDir, srsCached, model.Target, nil)
+
+	var notes []string
+	routeSec := &rulePreviewSection{}
+	for _, r := range route.RuleSets {
+		if r.Skipped {
+			notes = append(notes, locale.T("Rule set not downloaded yet: the rule stays out of the config until it is."))
+			continue
+		}
+		routeSec.RuleSet = append(routeSec.RuleSet, r.Body)
+	}
+	for _, r := range route.Rules {
+		routeSec.Rules = append(routeSec.Rules, r.Body)
+	}
+
+	dnsSec := &rulePreviewSection{}
+	mirrors := build.RuleDNSMirrors(route)
+	if !in.dns.IsZero() && len(route.Rules) > 0 && len(mirrors) == 0 {
+		notes = append(notes, locale.T("DNS options do not apply to this rule: it has ports, protocols or network, or matches only IP addresses."))
+	}
+	enabled := make(map[string]bool)
+	for _, t := range wizardbusiness.DNSEnabledTagOptions(model) {
+		enabled[t] = true
+	}
+	present := func(tag string) bool {
+		for _, raw := range model.DNSServers {
+			var m map[string]interface{}
+			if json.Unmarshal(raw, &m) == nil && m["tag"] == tag {
+				return true
+			}
+		}
+		return false
+	}
+	for _, m := range mirrors {
+		for _, r := range m.Rules {
+			if r["server"] != nil && !enabled[m.ServerTag] {
+				if !present(m.ServerTag) {
+					notes = append(notes, fmt.Sprintf(locale.T("DNS server %s not found: its DNS rule stays out of the config."), m.ServerTag))
+					continue
+				}
+				notes = append(notes, fmt.Sprintf(locale.T("DNS server %s is turned off: it is kept in the config because this rule uses it."), m.ServerTag))
+			}
+			dnsSec.Rules = append(dnsSec.Rules, r)
+		}
+	}
+
+	out := struct {
+		Route *rulePreviewSection `json:"route,omitempty"`
+		DNS   *rulePreviewSection `json:"dns,omitempty"`
+	}{}
+	if len(routeSec.RuleSet) > 0 || len(routeSec.Rules) > 0 {
+		out.Route = routeSec
+	}
+	if len(dnsSec.Rules) > 0 {
+		out.DNS = dnsSec
+	}
+	if out.Route == nil && out.DNS == nil && len(notes) > 0 {
+		return "// " + strings.Join(notes, "\n// ")
+	}
+	b, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return "// " + err.Error()
+	}
+	text := string(b)
+	if len(notes) > 0 {
+		text = "// " + strings.Join(notes, "\n// ") + "\n\n" + text
+	}
+	return text
 }

@@ -1,0 +1,136 @@
+{
+  "v": 1,
+  "scheme": "trojan",
+  "cases": [
+    {
+      "name": "ws_reality_excluded",
+      "comment": "Trojan: REALITY снят с формы exclude_fields ref-поля tls (схеме он разрешён, но форма его не предлагает) — в теле он есть, форма его не видит и не трогает. tls.enabled — fixed. Транспорт httpupgrade: transport.host и transport.path.",
+      "body": {
+        "server": "t.example.com",
+        "server_port": 443,
+        "password": "p",
+        "tls": {
+          "enabled": true,
+          "reality": {
+            "enabled": true,
+            "public_key": "x"
+          }
+        },
+        "transport": {
+          "type": "httpupgrade",
+          "host": "t.example.com",
+          "path": "/u"
+        }
+      },
+      "expect": {
+        "visible": [
+          "server", "server_port", "password", "tls", "tls.server_name", "tls.insecure", "tls.alpn",
+          "tls.utls.fingerprint", "transport", "transport.type", "transport.host", "transport.path"
+        ],
+        "required": ["server", "server_port", "password"],
+        "missing": [],
+        "choices": {},
+        "out_of_range": []
+      }
+    },
+    {
+      "name": "grpc_missing_password",
+      "comment": "Trojan + gRPC без пароля: password обязателен формой — Missing.",
+      "body": {
+        "server": "t.example.com",
+        "server_port": 443,
+        "transport": {
+          "type": "grpc"
+        }
+      },
+      "expect": {
+        "visible": [
+          "server", "server_port", "password", "tls", "tls.server_name", "tls.insecure", "tls.alpn",
+          "tls.utls.fingerprint", "transport", "transport.type", "transport.service_name"
+        ],
+        "required": ["server", "server_port", "password"],
+        "missing": ["password"],
+        "choices": {},
+        "out_of_range": []
+      }
+    },
+    {
+      "name": "utls_fingerprint_implies_enabled",
+      "comment": "form.implies (контракт 1.1.123): форма пишет tls.utls.fingerprint непустым — вместе с ним пишет tls.utls.enabled: true (ядро не читает отпечаток без включённого uTLS). utls.enabled формой не рисуется.",
+      "body": {
+        "server": "t.example.com",
+        "server_port": 443,
+        "password": "p",
+        "tls": {
+          "server_name": "t.example.com"
+        }
+      },
+      "write": {
+        "set": {
+          "tls.utls.fingerprint": "firefox"
+        }
+      },
+      "expect": {
+        "body": {
+          "server": "t.example.com",
+          "server_port": 443,
+          "password": "p",
+          "tls": {
+            "server_name": "t.example.com",
+            "utls": {
+              "enabled": true,
+              "fingerprint": "firefox"
+            }
+          }
+        },
+        "visible": [
+          "server", "server_port", "password", "tls", "tls.server_name", "tls.insecure", "tls.alpn",
+          "tls.utls.fingerprint", "transport", "transport.type"
+        ],
+        "required": ["server", "server_port", "password"],
+        "missing": [],
+        "choices": {},
+        "out_of_range": []
+      }
+    },
+    {
+      "name": "utls_fingerprint_clear_drops_enabled",
+      "comment": "form.implies, обратная сторона: форма очистила tls.utls.fingerprint — снимает и tls.utls.enabled; опустевший объект utls снимается целиком, соседи в tls остаются.",
+      "body": {
+        "server": "t.example.com",
+        "server_port": 443,
+        "password": "p",
+        "tls": {
+          "enabled": true,
+          "server_name": "t.example.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        }
+      },
+      "write": {
+        "clear": ["tls.utls.fingerprint"]
+      },
+      "expect": {
+        "body": {
+          "server": "t.example.com",
+          "server_port": 443,
+          "password": "p",
+          "tls": {
+            "enabled": true,
+            "server_name": "t.example.com"
+          }
+        },
+        "visible": [
+          "server", "server_port", "password", "tls", "tls.server_name", "tls.insecure", "tls.alpn",
+          "tls.utls.fingerprint", "transport", "transport.type"
+        ],
+        "required": ["server", "server_port", "password"],
+        "missing": [],
+        "choices": {},
+        "out_of_range": []
+      }
+    }
+  ]
+}

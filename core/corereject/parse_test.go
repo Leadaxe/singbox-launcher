@@ -210,3 +210,99 @@ func TestParseEmptyInputs(t *testing.T) {
 		t.Error("пустое множество тегов не должно называть узел")
 	}
 }
+
+// TestParseSentDecodeForm — таблица формы декодирования PARSING_PRINCIPLES
+// §9.2 (контракт 1.1.121): индекс → тег по ОТПРАВЛЕННОМУ конфигу, reason без
+// префикса `outbounds[i].`, индекс вне массива и ошибки вне outbounds/endpoints
+// узла не называют.
+func TestParseSentDecodeForm(t *testing.T) {
+	outs := make([]string, 13)
+	for i := range outs {
+		outs[i] = "o" + string(rune('a'+i))
+	}
+	outs[12] = "🇩🇪 masque"
+	sent := SentConfig{Outbounds: outs, Endpoints: []string{"wg: home"}}
+	all := map[string]bool{"wg: home": true}
+	for _, o := range outs {
+		all[o] = true
+	}
+	cases := []struct {
+		name     string
+		line     string
+		sent     SentConfig
+		tags     map[string]bool
+		wantOK   bool
+		wantKind Kind
+		wantTag  string
+		wantPath string
+		wantText string
+	}{
+		{
+			name: "outbounds + path, обёртки Go и libbox",
+			line: `start or reload service: decode config: outbounds[12].network: json: unknown field "network"`,
+			sent: sent, tags: all, wantOK: true,
+			wantKind: KindOutbound, wantTag: "🇩🇪 masque", wantPath: "network",
+			wantText: `network: json: unknown field "network"`,
+		},
+		{
+			name: "endpoints + вложенный путь",
+			line: "decode config: endpoints[0].peers[1].public_key: json: cannot unmarshal number into string",
+			sent: sent, tags: all, wantOK: true,
+			wantKind: KindEndpoint, wantTag: "wg: home", wantPath: "peers[1].public_key",
+			wantText: "peers[1].public_key: json: cannot unmarshal number into string",
+		},
+		{
+			name: "ошибка на самой записи, без path",
+			line: "decode config: outbounds[3]: unknown outbound type: openconnect",
+			sent: sent, tags: all, wantOK: true,
+			wantKind: KindOutbound, wantTag: "od",
+			wantText: "unknown outbound type: openconnect",
+		},
+		{
+			name: "экранированный ключ с `: ` внутри пути",
+			line: `decode config: outbounds[1].["a: b"]: bad`,
+			sent: sent, tags: all, wantOK: true,
+			wantKind: KindOutbound, wantTag: "ob", wantPath: `["a: b"]`,
+			wantText: `["a: b"]: bad`,
+		},
+		{
+			name: "не про узел: route",
+			line: "decode config: route.rules[3].outbound: json: cannot unmarshal",
+			sent: sent, tags: all,
+		},
+		{
+			name: "индекс вне массива",
+			line: "decode config: outbounds[99].foo: json: unknown field",
+			sent: SentConfig{Outbounds: []string{"a", "b", "c", "d", "e"}}, tags: map[string]bool{"a": true},
+		},
+		{
+			name: "тег служебной записи — не наш узел",
+			line: "decode config: outbounds[0].foo: bad",
+			sent: SentConfig{Outbounds: []string{"direct-out"}}, tags: map[string]bool{"x": true},
+		},
+		{
+			name: "форма initialize имеет приоритет",
+			line: "initialize outbound[5] vless[oa]: bad",
+			sent: sent, tags: all, wantOK: true,
+			wantKind: KindOutbound, wantTag: "oa", wantText: "bad",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r, ok := ParseSent(tc.line, TagsOf(tc.tags), tc.sent)
+			if ok != tc.wantOK {
+				t.Fatalf("ok=%v, want %v (%+v)", ok, tc.wantOK, r)
+			}
+			if !ok {
+				return
+			}
+			if r.Kind != tc.wantKind || r.Tag != tc.wantTag || r.Path != tc.wantPath || r.Text != tc.wantText {
+				t.Fatalf("got %+v, want kind=%s tag=%q path=%q text=%q", r, tc.wantKind, tc.wantTag, tc.wantPath, tc.wantText)
+			}
+		})
+	}
+	got := SentConfigFromJSON([]byte(`{"outbounds":[{"tag":"x"},{"type":"direct"}],"endpoints":[{"tag":"w"}]}`))
+	if len(got.Outbounds) != 2 || got.Outbounds[0] != "x" || got.Outbounds[1] != "" || len(got.Endpoints) != 1 {
+		t.Fatalf("SentConfigFromJSON: %+v", got)
+	}
+}

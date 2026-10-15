@@ -415,8 +415,9 @@ func placeRuleAt(rules []Rule, movedIdx int, want int, sortable func(Rule) bool)
 
 // LateDefaultPresetIDs — пресеты шаблона, включённые по умолчанию и
 // появившиеся после того, как у пользователя уже было состояние (LxBox §578,
-// `kLateDefaultPresetIds`). Список только растёт.
-var LateDefaultPresetIDs = []string{"tailscale"}
+// `kLateDefaultPresetIds`). Список только растёт: `tunnel-ingress` — SPEC 170,
+// контракт 1.1.126.
+var LateDefaultPresetIDs = []string{"tailscale", "tunnel-ingress"}
 
 // SeedLateDefaultRules — разовый засев поздних дефолтных пресетов.
 //
@@ -429,7 +430,9 @@ var LateDefaultPresetIDs = []string{"tailscale"}
 // шаблоне, не отмечается: засев случится, когда шаблон его получит.
 //
 // Возвращает правила и новый список отметок (seeded плюс отмеченные сейчас).
-// Входной слайс правил не мутируется.
+// Входной слайс правил не мутируется. DNS-слот засеянного пресета создаёт
+// синхронизация DNS (SyncDNSOptionsWithActivePresets / ReconcileDNSRuleOrder
+// визарда) — по той же оси, что и это правило (SPEC 171, D-135).
 func SeedLateDefaultRules(rules []Rule, specs map[string]RuleOrderSpec, seeded []string) ([]Rule, []string) {
 	done := make(map[string]bool, len(seeded))
 	for _, id := range seeded {
