@@ -7,6 +7,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -108,6 +109,9 @@ func DownloadSRS(ctx context.Context, url string, destPath string) error {
 		_ = resp.Body.Close()
 	}()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("DownloadSRS: HTTP 404: %w", ErrSRSNotFound)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("DownloadSRS: HTTP %d", resp.StatusCode)
 	}
@@ -261,8 +265,35 @@ func normalizeSRSURL(rawURL string) string {
 	return fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s", owner, repo, branch, filePath)
 }
 
-// DownloadSRSGroup скачивает по очереди все SRS из entries в bin/rule-sets/{tag}.srs.
-// Возвращает первую ошибку; при отмене ctx возвращает ctx.Err().
+// ErrSRSNotFound — сервер ответил 404: файла по этой ссылке нет. Повтор и
+// ручная загрузка не помогут, ссылку надо убрать из правила.
+var ErrSRSNotFound = errors.New("rule-set not found at URL")
+
+// SRSDownloadFailure — один файл группы, который не скачался.
+type SRSDownloadFailure struct {
+	Entry SRSEntry
+	Err   error
+}
+
+// SRSGroupError — итог группы, в которой скачалось не всё.
+type SRSGroupError struct {
+	Total  int
+	Failed []SRSDownloadFailure
+}
+
+func (e *SRSGroupError) Error() string {
+	parts := make([]string, len(e.Failed))
+	for i, f := range e.Failed {
+		parts[i] = fmt.Sprintf("tag=%q url=%s: %v", f.Entry.Tag, f.Entry.URL, f.Err)
+	}
+	return fmt.Sprintf("DownloadSRSGroup: %d of %d failed: %s", len(e.Failed), e.Total, strings.Join(parts, "; "))
+}
+
+// DownloadSRSGroupTo скачивает по очереди все SRS из entries в bin/rule-sets/{tag}.srs.
+// Сбой одного файла группу не останавливает: качаются все, а ошибка
+// (*SRSGroupError) перечисляет каждый нескачанный. Остановка на первом сбое
+// прятала остальные мёртвые ссылки — правило с битой седьмой строкой выглядело
+// как «больше семи наборов не работает». При отмене ctx возвращает ctx.Err().
 // destDir (SPEC 098) — каталог .srs той машины, для которой качаем. Пусто =
 // локальная, файлы ложатся в bin/rule-sets/ как раньше.
 //
@@ -270,14 +301,22 @@ func normalizeSRSURL(rawURL string) string {
 // наборы в общий каталог значило бы, что окно ресурсов машины их не видит, а
 // GC одной машины удаляет файлы другой.
 func DownloadSRSGroupTo(ctx context.Context, dataDir paths.DataDir, destDir string, entries []SRSEntry) error {
+	var failed []SRSDownloadFailure
 	for _, e := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		destPath := RuleSRSPath(dataDir, e.Tag)
 		if destDir != "" {
 			destPath = filepath.Join(destDir, e.Tag+".srs")
 		}
 		if err := DownloadSRS(ctx, e.URL, destPath); err != nil {
-			return fmt.Errorf("DownloadSRSGroup tag=%q url=%s: %w", e.Tag, e.URL, err)
+			debuglog.WarnLog("DownloadSRSGroup: tag=%q url=%s: %v", e.Tag, e.URL, err)
+			failed = append(failed, SRSDownloadFailure{Entry: e, Err: err})
 		}
+	}
+	if len(failed) > 0 {
+		return &SRSGroupError{Total: len(entries), Failed: failed}
 	}
 	return nil
 }

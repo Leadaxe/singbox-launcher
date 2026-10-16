@@ -1703,6 +1703,15 @@
   "Rule-set (SRS) download failed": {
     "value": "Не удалось скачать набор правил (SRS)"
   },
+  "%d of %d rule-set links do not exist (HTTP 404). Remove them from the rule:\n\n%s": {
+    "value": "Ссылок на наборы правил, которых не существует (HTTP 404): %d из %d. Уберите их из правила:\n\n%s"
+  },
+  "%d of %d rule-sets did not download.": {
+    "value": "Не скачалось наборов правил: %d из %d."
+  },
+  "%d of them do not exist (HTTP 404), see the log.": {
+    "value": "Из них не существуют (HTTP 404): %d, подробности в логе."
+  },
   "Add at least one source: use the Sources tab (Add) or add proxies in ParserConfig on the Outbounds tab.": {
     "value": "Добавьте хотя бы один источник: на вкладке «Источники» (Добавить) или в ParserConfig на вкладке «Outbound'ы»."
   },

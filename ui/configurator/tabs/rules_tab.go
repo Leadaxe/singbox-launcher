@@ -17,7 +17,9 @@ package tabs
 
 import (
 	"context"
+	"errors"
 	"image/color"
+	"path"
 	"strings"
 	"time"
 
@@ -143,22 +145,9 @@ func runSRSDownloadAsync(
 			btn.Enable()
 			if err != nil {
 				btn.SetText(srsBtnDownload())
-				ruleSetsDir := platform.GetRuleSetsDir(model.DataDir)
-				// Группа качается по очереди и встаёт на первой ошибке, так что
-				// первый отсутствующий файл и есть тот, что не скачался.
-				downloadURL := ""
-				for _, e := range srsEntries {
-					if !services.AllSRSDownloadedIn(model.DataDir, model.SrsDir(), []services.SRSEntry{e}) {
-						downloadURL = e.URL
-						break
-					}
-				}
-				if downloadURL == "" && len(srsEntries) > 0 {
-					downloadURL = srsEntries[0].URL
-				}
 				debuglog.WarnLog("rules_tab: SRS download failed: %v", err)
 				if !silent {
-					dialogs.ShowDownloadFailedManual(guiState.Window, locale.T("Rule-set (SRS) download failed"), downloadURL, ruleSetsDir)
+					showSRSDownloadFailed(guiState, model, srsEntries, err)
 				}
 				return
 			}
@@ -169,6 +158,43 @@ func runSRSDownloadAsync(
 			onSuccess()
 		})
 	}()
+}
+
+// showSRSDownloadFailed объясняет сбой группы. Если все сбои — 404, ручная
+// загрузка бессмысленна: окно перечисляет мёртвые ссылки, чтобы их убрали из
+// правила. Иначе — общее окно ручной загрузки с первым нескачанным файлом.
+func showSRSDownloadFailed(guiState *wizardpresentation.GUIState, model *wizardmodels.WizardModel, srsEntries []services.SRSEntry, err error) {
+	title := locale.T("Rule-set (SRS) download failed")
+	ruleSetsDir := platform.GetRuleSetsDir(model.DataDir)
+	var groupErr *services.SRSGroupError
+	if !errors.As(err, &groupErr) || len(groupErr.Failed) == 0 {
+		downloadURL := ""
+		if len(srsEntries) > 0 {
+			downloadURL = srsEntries[0].URL
+		}
+		dialogs.ShowDownloadFailedManual(guiState.Window, title, downloadURL, ruleSetsDir)
+		return
+	}
+	var notFound []string
+	downloadURL := ""
+	for _, f := range groupErr.Failed {
+		if errors.Is(f.Err, services.ErrSRSNotFound) {
+			notFound = append(notFound, path.Base(f.Entry.URL))
+		} else if downloadURL == "" {
+			downloadURL = f.Entry.URL
+		}
+	}
+	if downloadURL == "" {
+		dialogs.ShowInfo(guiState.Window, title, locale.Tf(
+			"%d of %d rule-set links do not exist (HTTP 404). Remove them from the rule:\n\n%s",
+			len(notFound), groupErr.Total, strings.Join(notFound, "\n")))
+		return
+	}
+	reason := locale.Tf("%d of %d rule-sets did not download.", len(groupErr.Failed), groupErr.Total)
+	if len(notFound) > 0 {
+		reason += " " + locale.Tf("%d of them do not exist (HTTP 404), see the log.", len(notFound))
+	}
+	dialogs.ShowDownloadFailedManualWithReason(guiState.Window, title, reason, downloadURL, ruleSetsDir)
 }
 
 // CreateRulesTab creates the Rules tab UI.
