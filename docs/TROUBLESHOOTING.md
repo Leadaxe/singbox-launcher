@@ -72,6 +72,27 @@ four actions) is in [issue #126](https://github.com/Leadaxe/singbox-launcher/iss
 administrator; the launcher does not install it, and the project has not verified it on
 other distributions.
 
+### The VPN starts, TUN and routes are up, but nothing loads; `gvisor` works
+
+Desktop with `firewalld` (or another host firewall with a default-deny `INPUT`
+policy). The `system` TUN stack forwards TCP through a local listener: packets come in
+from the synthetic TUN peer (`172.16.0.2`) to the TUN address (`172.16.0.1`), and the
+firewall treats that as a new inbound connection and drops it. `gvisor` does not use the
+host path, so it is unaffected. Confirmed on openSUSE in
+[issue #129](https://github.com/Leadaxe/singbox-launcher/issues/129).
+
+The narrow fix, as root (the addresses must match the TUN in your `config.json`):
+
+```bash
+firewall-cmd --permanent --zone=public \
+  --add-rich-rule='rule family="ipv4" source address="172.16.0.2/32" destination address="172.16.0.1/32" protocol value="tcp" accept'
+firewall-cmd --reload
+```
+
+`--reload` replaces runtime-only firewall settings; a runtime-only check without
+`--permanent` and without `--reload` is enough to test. Without touching the firewall,
+Wizard → Settings → "TUN stack" → `gvisor` works at the cost of CPU and throughput.
+
 ## Windows
 
 ### Start shows “TUN needs administrator rights”
