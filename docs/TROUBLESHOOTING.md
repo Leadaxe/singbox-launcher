@@ -90,8 +90,15 @@ firewall-cmd --reload
 ```
 
 `--reload` replaces runtime-only firewall settings; a runtime-only check without
-`--permanent` and without `--reload` is enough to test. Without touching the firewall,
-Wizard → Settings → "TUN stack" → `gvisor` works at the cost of CPU and throughput.
+`--permanent` and without `--reload` is enough to test.
+
+Without touching the firewall: Wizard → Settings → "TUN auto redirect (Linux)". It emits
+sing-box `auto_redirect`, which routes TCP into the core with nftables (or iptables) rules
+instead of the local forwarder, so the firewall never sees that connection. It is on by
+default for this computer (off for remote machines) and needs `auto_route` plus nftables or
+iptables on the host; confirmed on the same openSUSE setup in issue #129. If it is off in
+your profile, turn it on and press Start again. "TUN stack" → `gvisor` also works, at the
+cost of CPU and throughput.
 
 ## Windows
 

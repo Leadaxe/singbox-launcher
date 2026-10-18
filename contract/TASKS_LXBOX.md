@@ -9612,3 +9612,9 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 Закрытие §127 пп. 2, 4–5 по решению LxBox (§656 п. A7; владелец лаунчера передал решение LxBox). Критерий §127 переписан по месту: сравниваются порядок DNS-правил, серверы и действия; тела матчеров — нет (LxBox: headless `rule_set` правила плюс `inbound`; лаунчер: inline-ключи из `rule_dns_mirror_match`). Норма §6.11 TEMPLATE_LANG уточнена: форма матчера `M` — выбор стороны при равном результате. `network` в гейте — расхождения нет (у LxBox был в коде, дописан в STORAGE.md). Бампа норм у LxBox не требуется.
 
 Расхождение — сюда.
+
+## 130. Контракт 1.1.133 — переменная `auto_redirect` (desktop, только Linux)
+
+Для сведения, задачи у LxBox нет. В `registry/vars.json` добавлена desktop-переменная `auto_redirect` (`bool`, `portable: false`, `in: desktop`) — `tun.auto_redirect` sing-box. Повод — issue #129 лаунчера: firewalld на Linux-десктопе молча рубит локальный TCP-форвардер стека `system`, nftables-редирект ядра его обходит. Лаунчер эмитит ключ в tun-инбаунд только при `platform = linux` и `auto_route`; default `true` на `local`, `false` на `remote`. На Android ключ не применим — в бэкапе не ходит (непереносима), импорт у вас ничего нового не увидит.
+
+Расхождение — сюда.

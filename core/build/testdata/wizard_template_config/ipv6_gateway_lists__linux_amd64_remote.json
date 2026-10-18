@@ -94,6 +94,7 @@
         "172.16.0.1/30",
         "fdfe:dcba:9876::1/126"
       ],
+      "auto_redirect": false,
       "auto_route": true,
       "include_interface": [
         "en0",

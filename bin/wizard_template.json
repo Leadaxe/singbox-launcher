@@ -140,6 +140,15 @@
       "#enable": ["@tun"]
     },
     {
+      "name": "auto_redirect",
+      "type": "bool",
+      "wizard_ui": "edit",
+      "title": "TUN auto redirect (Linux)",
+      "tooltip": "sing-box tun auto_redirect, Linux only: TCP is redirected into the core with nftables (or iptables) rules instead of the system stack's local forwarder, which host firewalls such as firewalld silently drop (issue #129). Recommended by sing-box on Linux; needs auto_route and nftables or iptables on the machine. On by default for this computer, off for remote machines (routers).",
+      "default_value": {"default": {"#if": [{"@runtime.target": "local"}, "true", "false"]}},
+      "#enable": ["@tun", "@auto_route", "{\"@runtime.platform\": \"linux\"}"]
+    },
+    {
       "name": "tun_stack",
       "type": "enum",
       "wizard_ui": "edit",
@@ -1340,7 +1349,8 @@
           "strict_route": "@strict_route",
           "stack": "@tun_stack",
           "include_interface": "@gateway_include_interface",
-          "#if": [{"@runtime.platform": {"#in": ["windows", "linux"]}}, {"interface_name": "@tun_interface_name"}]
+          "#if": [{"@runtime.platform": {"#in": ["windows", "linux"]}}, {"interface_name": "@tun_interface_name"}],
+          "#if_auto_redirect": [{"#and": [{"@runtime.platform": "linux"}, "@auto_route"]}, {"auto_redirect": "@auto_redirect"}]
         }
       ]
     },

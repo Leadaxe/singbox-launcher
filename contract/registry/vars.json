@@ -176,6 +176,12 @@
       "in": "desktop",
       "note": "tun.strict_route; РАЗРЫВ N1: на mobile — tun_strict_route"
     },
+    "auto_redirect": {
+      "type": "bool",
+      "portable": false,
+      "in": "desktop",
+      "note": "tun.auto_redirect; только Linux: TCP заворачивается в ядро правилами nftables/iptables вместо локального форвардера стека system, который хост-файрвол (firewalld) молча рубит — issue #129. Эмитится только при platform=linux и auto_route. Default: true на local, false на remote (роутеры — не трогать работающие деплои). Непереносима: свойство хоста. 1.1.133"
+    },
     "tun_strict_route": {
       "type": "bool",
       "portable": false,
