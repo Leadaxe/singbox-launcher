@@ -469,7 +469,7 @@
       "final": "@route_final",
       "auto_detect_interface": "@auto_detect_interface",
       "#if": [{"#not": "@gateway_mode"}, {"find_process": true}, {"find_process": false}],
-      "#if_bind_interface": [{"@bind_interface": "#notEmpty"}, {"default_interface": "@bind_interface"}]
+      "#if bind_interface": [{"@bind_interface": "#notEmpty"}, {"default_interface": "@bind_interface"}]
     },
     "experimental": {
       "#if": [
@@ -1350,7 +1350,7 @@
           "stack": "@tun_stack",
           "include_interface": "@gateway_include_interface",
           "#if": [{"@runtime.platform": {"#in": ["windows", "linux"]}}, {"interface_name": "@tun_interface_name"}],
-          "#if_auto_redirect": [{"#and": [{"@runtime.platform": "linux"}, "@auto_route"]}, {"auto_redirect": "@auto_redirect"}]
+          "#if auto_redirect": [{"#and": [{"@runtime.platform": "linux"}, "@auto_route"]}, {"auto_redirect": "@auto_redirect"}]
         }
       ]
     },
