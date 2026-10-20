@@ -8,6 +8,9 @@
 - **Troubleshooting: Linux `system` TUN stack blocked by firewalld.** When the VPN is up but nothing loads and `gvisor` works, a host firewall drops the local TCP forwarder of the `system` stack. The troubleshooting guide now has the narrow `firewall-cmd` rule (issue #129).
 - **Linux: TUN auto redirect.** New setting Wizard → Settings → "TUN auto redirect (Linux)" (sing-box `auto_redirect`): TCP is routed into the core with nftables/iptables rules instead of the `system` stack's local forwarder, so a host firewall like firewalld no longer blocks the VPN. On by default on this computer, off for remote machines; emitted only on Linux with auto-route enabled. Confirmed by the reporter of issue #129 on openSUSE. Contract 1.1.133.
 
+### Core
+- `sing-box-lx 1.14.3-lx.22` (was 1.14.3-lx.21). Fixes: a masque `vhttp: auto` node no longer keeps the previous core instance in memory after every reload (Stop/Start, apply) — on a router the heap grew until the GC ate both CPU cores within days, affected since `v1.14.0-lx.27`; the core no longer waits 10–16 s on start for an unrelated mux handshake. New: `lxd` runs the admin's own scripts at the core's lifecycle boundaries (`pre_start`, `post_start`, `post_reload`, `post_stop` in `<state_dir>/hooks/`, off by default, `hooks.enabled` in `daemon.json`, Unix only); the launcher does not manage them.
+
 ### Technical / Internal
 -
 
@@ -16,6 +19,9 @@
 - **SRS-правило с множеством ссылок: мёртвые ссылки называются поимённо.** Настоящая причина «больше 7 SRS-ссылок не работает» — ссылка, отвечающая HTTP 404, а не дедлайн группы: загрузка вставала на первом битом файле, а окно писало только «подробности в логе». Теперь качаются все файлы правила, и если каких-то ссылок не существует, окно перечисляет их по имени файла, чтобы их убрали из правила.
 - **Troubleshooting: стек `system` на Linux режет firewalld.** Когда VPN поднят, но ничего не грузится, а с `gvisor` работает, хост-файрвол рубит локальный TCP-форвардер стека `system`. В руководстве по диагностике появилось точечное правило `firewall-cmd` (issue #129).
 - **Linux: TUN auto redirect.** Новая настройка Wizard → Settings → «TUN auto redirect (Linux)» (sing-box `auto_redirect`): TCP заворачивается в ядро правилами nftables/iptables вместо локального форвардера стека `system`, и хост-файрвол вроде firewalld больше не блокирует VPN. По умолчанию включена на этом компьютере, выключена для удалённых машин; эмитится только на Linux при включённом auto-route. Подтверждено автором issue #129 на openSUSE. Контракт 1.1.133.
+
+### Ядро
+- `sing-box-lx 1.14.3-lx.22` (было 1.14.3-lx.21). Исправлено: узел masque `vhttp: auto` больше не держит в памяти предыдущий экземпляр ядра после каждой пересборки (Stop/Start, apply) — на роутере куча росла, пока GC за несколько дней не съедал оба ядра CPU, затронуты версии с `v1.14.0-lx.27`; старт ядра больше не ждёт 10–16 с чужой mux-handshake. Новое: `lxd` запускает скрипты администратора на границах жизненного цикла ядра (`pre_start`, `post_start`, `post_reload`, `post_stop` в `<state_dir>/hooks/`, по умолчанию выключено, `hooks.enabled` в `daemon.json`, только Unix); лаунчер ими не управляет.
 
 ### Техническое / Внутреннее
 -
