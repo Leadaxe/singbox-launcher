@@ -84,9 +84,8 @@ The binary appears in the current directory.
 Once the dependencies are installed:
 
 ```bash
-export CGO_ENABLED=1
-export CGO_CFLAGS="$(pkg-config --cflags-only-I wayland-client wayland-cursor wayland-egl xkbcommon)"
-GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o singbox-launcher
+cmake -S . -B out
+cmake --build out -j 16
 ```
 
 ## Troubleshooting

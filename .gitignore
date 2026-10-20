@@ -8,6 +8,7 @@ singbox-launcher
 # macOS app bundle
 *.app
 *.app/
+out/
 
 # Test binary, built with `go test -c`
 *.test
