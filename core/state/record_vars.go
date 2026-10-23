@@ -62,10 +62,33 @@ type RecordVarDecls struct {
 	// создаётся запись, когда корневое имя нашло объявленный сервер, у
 	// которого записи ещё нет (Н8, своё хранение).
 	DNSServerEnabled map[string]bool
+	// DNSServerOrder — теги каталога (`dns_options.servers` шаблона) в
+	// порядке шаблона (SPEC 173): им засевается список и он же пишется в
+	// бэкап как `dns.template_catalog`. nil — секции в шаблоне нет: каталога
+	// нет, посева нет.
+	DNSServerOrder []string
+	// DNSServerRequired — `required: true` у сервера каталога: сборка эмитит
+	// его всегда, посев создаёт запись при отсутствии, удалить его нельзя.
+	DNSServerRequired map[string]bool
+	// DNSServerLinks — ссылки тела сервера каталога на другие DNS-серверы,
+	// как в шаблоне (`@имя` — переменная записи): удерживающие ссылки
+	// (DNSServerHolders).
+	DNSServerLinks map[string]DNSServerLinks
+	// PresetDNSRuleServers — значения `server` DNS-правил пресета по id, как
+	// в шаблоне (`@имя` — переменная пресета): удерживающие ссылки пресета.
+	PresetDNSRuleServers map[string][]string
 	// Presets — пресеты шаблона по id. nil — пресеты не нормализуются; id,
 	// которого здесь нет, — тоже: пресет мог отфильтроваться платформой
 	// хоста, а у удалённой машины и мобильного его может не быть вовсе.
 	Presets map[string][]RecordVarDecl
+}
+
+// DNSServerLinks — ссылки тела шаблонного DNS-сервера на другие серверы.
+type DNSServerLinks struct {
+	// DomainResolver — `domain_resolver` (строка или `server` объекта).
+	DomainResolver string
+	// Group — члены группы (`servers` у `type: group`).
+	Group []string
 }
 
 // Причины снятия имени — значения `reason` кода backup_var_skipped
@@ -160,14 +183,27 @@ func (d *RecordVarDecls) MatchRootDNSVar(name string) (tag, local string, ok boo
 	return tag, local, tag != ""
 }
 
-// ApplyRecordVars приводит состояние к нормам SPEC 129 на своём хранении:
-// переносит корневые `dns_<tag>_<var>` в записи серверов (Н8, записи нет —
+// ApplyRecordVars — посев каталога шаблонных DNS-серверов
+// (SeedDNSTemplateCatalog, SPEC 173) и нормы записи (NormalizeRecordVars) на
+// своём хранении. Посев — первым: перенос корневых имён должен видеть уже
+// засеянные записи. Возвращает true, если что-то изменилось.
+func ApplyRecordVars(s *State, decls *RecordVarDecls) bool {
+	if s == nil || decls == nil {
+		return false
+	}
+	seeded := SeedDNSTemplateCatalog(&s.DNS, decls, nil)
+	normalized := NormalizeRecordVars(s, decls)
+	return seeded || normalized
+}
+
+// NormalizeRecordVars приводит состояние к нормам SPEC 129 без посева
+// каталога (импорт бэкапа засевает сам, после слияния): переносит корневые `dns_<tag>_<var>` в записи серверов (Н8, записи нет —
 // создаётся), снимает сирот, необъявленные имена, пустые и равные умолчанию
 // значения у обоих носителей — молча (Н2–Н4).
 //
 // decls nil — шаблона нет, состояние не трогается. Возвращает true, если
 // что-то изменилось.
-func ApplyRecordVars(s *State, decls *RecordVarDecls) bool {
+func NormalizeRecordVars(s *State, decls *RecordVarDecls) bool {
 	if s == nil || decls == nil {
 		return false
 	}
@@ -198,6 +234,106 @@ func ApplyRecordVars(s *State, decls *RecordVarDecls) bool {
 		changed = true
 	}
 	return changed
+}
+
+// SeedDNSTemplateCatalog — посев каталога шаблонных DNS-серверов в список
+// (SPEC 173, D-139). Каталог (`dns_options.servers` шаблона) засевается
+// один раз: дальше список принадлежит пользователю, и тег каталога без
+// записи kind=template — удалённый сервер, который сюда не возвращается.
+//
+// Дописывается запись {kind: template, tag, enabled: умолчание шаблона}:
+//   - тегу каталога, которого dns.TemplateCatalog ещё не видел: всем тегам
+//     при первом посеве (это и есть миграция состояний до SPEC 173 — иначе
+//     первый экспорт прочитался бы как «пользователь удалил всё
+//     нетронутое»), новым серверам обновлённого шаблона — потом;
+//   - серверу с `required: true`, если записи нет: сборка эмитит его всегда.
+//
+// Новая запись встаёт среди шаблонных в порядке каталога (до первой с
+// бо́льшим номером каталога, иначе после последней шаблонной, а без
+// шаблонных — в начало списка), как у списка вкладки DNS. Затем
+// dns.TemplateCatalog = каталог шаблона. Идемпотентно; decls без каталога —
+// ничего.
+//
+// skip (может быть nil) — тег, которому запись дописывать нельзя: импорт
+// бэкапа передаёт так серверы, удалённые источником (BACKUP.md §9 п. 5), —
+// у приёмника без посева их записи ещё нет, и посев вернул бы их. Возвращает
+// true, если что-то изменилось.
+func SeedDNSTemplateCatalog(dns *DNSOptions, decls *RecordVarDecls, skip func(tag string) bool) bool {
+	if dns == nil || decls == nil || decls.DNSServerOrder == nil {
+		return false
+	}
+	offered := make(map[string]bool, len(dns.TemplateCatalog))
+	for _, tag := range dns.TemplateCatalog {
+		offered[tag] = true
+	}
+	pos := make(map[string]int, len(decls.DNSServerOrder))
+	for i, tag := range decls.DNSServerOrder {
+		pos[tag] = i
+	}
+	changed := false
+	for _, tag := range decls.DNSServerOrder {
+		if dns.FindTemplateServer(tag) >= 0 {
+			continue
+		}
+		if offered[tag] && !decls.DNSServerRequired[tag] {
+			continue // удалён пользователем
+		}
+		if skip != nil && skip(tag) {
+			continue
+		}
+		enabled, known := decls.DNSServerEnabled[tag]
+		if !known {
+			enabled = true
+		}
+		dns.Servers = insertTemplateServer(dns.Servers, DNSServer{
+			Kind:    DNSServerKindTemplate,
+			Tag:     tag,
+			Enabled: enabled,
+		}, pos)
+		changed = true
+	}
+	if !equalStringSlices(dns.TemplateCatalog, decls.DNSServerOrder) {
+		dns.TemplateCatalog = append([]string{}, decls.DNSServerOrder...)
+		changed = true
+	}
+	return changed
+}
+
+// insertTemplateServer — место новой шаблонной записи по номеру каталога pos.
+func insertTemplateServer(servers []DNSServer, srv DNSServer, pos map[string]int) []DNSServer {
+	at, last := -1, -1
+	for i, s := range servers {
+		if s.Kind != DNSServerKindTemplate {
+			continue
+		}
+		last = i
+		if p, ok := pos[s.Tag]; ok && p > pos[srv.Tag] {
+			at = i
+			break
+		}
+	}
+	switch {
+	case at < 0 && last >= 0:
+		at = last + 1
+	case at < 0:
+		at = 0
+	}
+	servers = append(servers, DNSServer{})
+	copy(servers[at+1:], servers[at:])
+	servers[at] = srv
+	return servers
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // RootVar — корневая переменная парой (порядок значим: при повторе имени

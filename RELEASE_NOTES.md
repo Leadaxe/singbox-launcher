@@ -4,6 +4,14 @@
 
 ---
 
+### Выжимка (RU) — следующий релиз (черновик)
+
+**DNS: шаблонные серверы удаляются.** Серверы шаблона засеваются в список один раз, дальше список ваш: **Del** у шаблонного сервера (кроме обязательных и используемых — подсказка называет, кто держит), **Добавить из шаблона** / **Вернуть все шаблонные** возвращают удалённые. Бэкап несёт каталог шаблона: удалённое на одном устройстве снимается импортом на другом, как у LxBox. После обновления все прежние серверы на месте.
+
+### Highlights (EN) — next release (draft)
+
+**DNS: template servers can be deleted.** Template servers are seeded into your list once, then the list is yours: **Del** on a template server (except required and used ones — the "Used by …" tooltip names the holder), **Add from template** / **Add all defaults** bring deleted ones back. Backups carry the template catalog: what you deleted on one device is removed by the import on another, the same way as in LxBox. After the update every server you had is still there.
+
 ### Выжимка (RU) — v2.4.0
 
 Минорный релиз после v2.3.10, ядро `sing-box-lx 1.14.3-lx.21` (было 1.14.3-lx.18), контракт 1.1.130. **Защита от входящих из туннеля:** новый пресет **Tunnel ingress** (включён по умолчанию) не даёт пирам WireGuard/AWG, OpenVPN и OpenConnect открыть соединение к роутеру, в LAN или в интернет через вас; в окне узла — **Allow access to this device**, **Expose local network**, **Allow as gateway**; «Skip presets» стал **Skip Tailscale presets**. **DNS следует за правилом:** вкладки DNS и Preview в окне своего правила — DNS-запросы правила на отдельный сервер и «только IPv4», как в LxBox. **«Add server»:** формы по реестру для VLESS, Hysteria2, Trojan, WireGuard (AWG), Naive, MASQUE, SOCKS5, HTTP; **OpenConnect** (FortiGate, AnyConnect, GlobalProtect, F5, Pulse, NC) со вторым фактором и входом через браузер под демоном. **DNS:** DoQ и DoH3; редактор DNS-правил больше не теряет `rule_set`. **Detour:** выбор деревом «Направления / Узлы». **Изменено:** собственные SRS-правила стоят на своём месте в порядке правил (раньше всплывали выше всех — проверьте список после обновления); пресет «Split all traffic 50/50» снят. **Ядро lx.19–lx.21:** Update демона больше не откатывается, сборки linux/386 и riscv64, сжатые UPX копии для роутеров с маленьким флешем. **macOS:** `brew install --cask leadaxe/tap/singbox-launcher`. Подробнее: [docs/release_notes/2-4-0.md](docs/release_notes/2-4-0.md).

@@ -5923,5 +5923,59 @@
   },
   "DNS server %s is turned off: it is kept in the config because this rule uses it.": {
     "value": "DNS-сервер %s выключен: он останется в конфиге, потому что его использует это правило."
+  },
+  "Add all defaults": {
+    "value": "Вернуть все шаблонные"
+  },
+  "Add from template": {
+    "value": "Добавить из шаблона"
+  },
+  "Required by the template: it cannot be deleted.": {
+    "value": "Обязателен по шаблону: удалить нельзя."
+  },
+  "Return a template DNS server you deleted, with the template's defaults.": {
+    "value": "Вернуть удалённый DNS-сервер шаблона с настройками шаблона по умолчанию."
+  },
+  "Return every deleted template DNS server, with the template's defaults.": {
+    "value": "Вернуть все удалённые DNS-серверы шаблона с настройками шаблона по умолчанию."
+  },
+  "This tag belongs to a template DNS server; return it with Add from template": {
+    "value": "Этот тег принадлежит DNS-серверу шаблона; верните его кнопкой «Добавить из шаблона»"
+  },
+  "Used as the domain resolver of DNS server \"%s\": delete that server first.": {
+    "value": "Используется как резолвер доменов DNS-сервера «%s»: сначала удалите тот сервер."
+  },
+  "Used by %s.": {
+    "value": "Используется: %s."
+  },
+  "Used by DNS group \"%s\": delete the group first.": {
+    "value": "Входит в DNS-группу «%s»: сначала удалите группу."
+  },
+  "Used by a DNS rule: change or remove the rule to delete this server.": {
+    "value": "Используется DNS-правилом: измените или удалите правило, чтобы удалить сервер."
+  },
+  "Used by preset \"%s\": change its DNS server or turn it off to delete this one.": {
+    "value": "Используется пресетом «%s»: смените в нём DNS-сервер или выключите пресет, чтобы удалить этот."
+  },
+  "Used by the DNS option of routing rule \"%s\": change it to delete this server.": {
+    "value": "Используется DNS-опцией правила маршрутизации «%s»: измените её, чтобы удалить сервер."
+  },
+  "Used by the Final DNS setting: pick another server there to delete this one.": {
+    "value": "Используется как Final DNS: выберите там другой сервер, чтобы удалить этот."
+  },
+  "Used by the default domain resolver: pick another server there to delete this one.": {
+    "value": "Используется как резолвер доменов по умолчанию: выберите там другой сервер, чтобы удалить этот."
+  },
+  "%s — deleted in the backup, kept here because it is still in use (%s)": {
+    "value": "%s — в бэкапе удалён, здесь оставлен: он ещё используется (%s)"
+  },
+  "%s — the backup's default domain resolver is not in the DNS server list here (or is turned off), the template default is used": {
+    "value": "%s — резолвера доменов по умолчанию из бэкапа здесь нет в списке DNS-серверов (или он выключен), действует умолчание шаблона"
+  },
+  "%s — the backup's Final DNS is not in the DNS server list here (or is turned off), the template default is used": {
+    "value": "%s — Final DNS из бэкапа здесь нет в списке DNS-серверов (или он выключен), действует умолчание шаблона"
+  },
+  "%s — none of this DNS group's servers exist here, the group is imported turned off": {
+    "value": "%s — ни одного сервера этой DNS-группы здесь нет, группа ввезена выключенной"
   }
 }

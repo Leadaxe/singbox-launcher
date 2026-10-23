@@ -41,6 +41,8 @@
 // См. SPECS/056-R-N-DNS_SCHEMA_REDESIGN/SPEC.md, SPECS/127-F-N-ONE_NAMESPACE_V8/.
 package state
 
+import "strings"
+
 // DNSServerKind — дискриминатор entry в dns_options.servers[].
 type DNSServerKind string
 
@@ -148,6 +150,18 @@ type DNSOptions struct {
 	Final                 string `json:"final,omitempty"`
 	DefaultDomainResolver string `json:"default_domain_resolver,omitempty"`
 
+	// TemplateCatalog — теги каталога (`dns_options.servers` шаблона) в
+	// порядке шаблона (SPEC 173, контракт 1.1.135, D-139). Одно поле на две
+	// формы с одним смыслом «какой каталог этот список уже видел»:
+	//   - в состоянии — каталог, которым список засеян. nil — посева ещё не
+	//     было (состояние до SPEC 173 или без шаблона): записи kind=template
+	//     дописывает SeedDNSTemplateCatalog. Тег каталога без записи после
+	//     посева — сервер удалён пользователем, а не «умолчание шаблона»;
+	//   - в бэкапе (`dns.template_catalog`) — каталог шаблона источника на
+	//     момент экспорта; по нему импорт снимает удалённое источником
+	//     (BACKUP.md §9 п. 5).
+	TemplateCatalog []string `json:"template_catalog,omitempty"`
+
 	Servers []DNSServer `json:"servers,omitempty"`
 	Rules   []DNSRule   `json:"rules,omitempty"`
 }
@@ -162,6 +176,19 @@ func (d *DNSOptions) FindServerByTag(tag string) int {
 	}
 	for i, s := range d.Servers {
 		if (s.Kind == DNSServerKindTemplate || s.Kind == DNSServerKindUser) && s.Tag == tag {
+			return i
+		}
+	}
+	return -1
+}
+
+// FindTemplateServer возвращает индекс записи kind=template с tag, или -1.
+func (d *DNSOptions) FindTemplateServer(tag string) int {
+	if d == nil {
+		return -1
+	}
+	for i, s := range d.Servers {
+		if s.Kind == DNSServerKindTemplate && s.Tag == tag {
 			return i
 		}
 	}
@@ -205,4 +232,215 @@ func (d *DNSOptions) IsEmpty() bool {
 		d.DefaultDomainResolver == "" &&
 		len(d.Servers) == 0 &&
 		len(d.Rules) == 0
+}
+
+// ── Удерживающие ссылки (SPEC 173) ────────────────────────────────
+
+// Порядок значимости удерживающих ссылок — порядок словаря `used_by`
+// контракта (BACKUP.md §9 п. 5): при нескольких ссылках называется первая.
+const (
+	dnsHoldFinal = iota
+	dnsHoldResolver
+	dnsHoldDNSRule
+	dnsHoldRule
+	dnsHoldGroup
+	dnsHoldServer
+	dnsHoldPreset
+	dnsHoldRequired
+)
+
+// Имена переменных состояния, в которых живут DNS-скаляры (источник истины;
+// поля DNSOptions — запасное значение, core/config_service_context.go).
+const (
+	dnsFinalVar    = "dns_final"
+	dnsResolverVar = "dns_default_domain_resolver"
+)
+
+// DNSServerHolders — кто держит каждый тег DNS-сервера: тег → первая
+// удерживающая ссылка в форме `used_by` контракта (`final`,
+// `default_domain_resolver`, `dns_rule:<server>`, `rule:<name>`,
+// `group:<tag>`, `server:<tag>`, `preset:<id>`, `required`). Тега без
+// ссылок в карте нет.
+//
+// Одна функция на вкладку DNS (Delete недоступен, подпись «Used by …») и на
+// импорт бэкапа (снятие удалённого источником шаблонного сервера): правило
+// «что держит сервер» обязано быть одним, иначе импорт снял бы то, что UI
+// удалить не даёт. Перечень закрытый (контракт 1.1.135/1.1.136):
+//   - `dns_final` / `dns_default_domain_resolver` (переменные и поля секции);
+//   - `server` DNS-правила списка `dns.rules` (правила пресетов — через
+//     пресет ниже, правил шаблона у лаунчера нет);
+//   - объект `dns` маршрутного правила с непустым `serverTag` — независимо
+//     от `enabled`: снятие необратимо, а выключенная опция, включённая
+//     потом, указала бы в пустоту;
+//   - сервер-группа списка (члены `servers`) и `domain_resolver` другого
+//     сервера списка; у шаблонного — по телу шаблона, `@имя` разрешается
+//     значением записи или умолчанием (decls.DNSServerLinks);
+//   - `server` DNS-правил включённого пресета (decls.PresetDNSRuleServers);
+//   - `required: true` у сервера шаблона.
+//
+// decls nil — шаблона нет: ссылок тела шаблона, пресетов и `required` не
+// видно, остаются ссылки самого состояния.
+func DNSServerHolders(s *State, decls *RecordVarDecls) map[string]string {
+	if s == nil {
+		return nil
+	}
+	best := map[string]int{}
+	used := map[string]string{}
+	hold := func(tag string, kind int, usedBy string) {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			return
+		}
+		if cur, ok := best[tag]; ok && cur <= kind {
+			return
+		}
+		best[tag] = kind
+		used[tag] = usedBy
+	}
+
+	for _, v := range s.Vars {
+		switch v.Name {
+		case dnsFinalVar:
+			hold(v.Value, dnsHoldFinal, "final")
+		case dnsResolverVar:
+			hold(v.Value, dnsHoldResolver, "default_domain_resolver")
+		}
+	}
+	hold(s.DNS.Final, dnsHoldFinal, "final")
+	hold(s.DNS.DefaultDomainResolver, dnsHoldResolver, "default_domain_resolver")
+
+	for _, r := range s.DNS.Rules {
+		if r.Kind != DNSRuleKindUser {
+			continue
+		}
+		if server, _ := r.Body["server"].(string); strings.TrimSpace(server) != "" {
+			hold(server, dnsHoldDNSRule, "dns_rule:"+strings.TrimSpace(server))
+		}
+	}
+
+	for _, r := range s.Rules {
+		if r.DNS == nil || strings.TrimSpace(r.DNS.ServerTag) == "" {
+			continue
+		}
+		name := strings.TrimSpace(r.Name)
+		if name == "" {
+			name = "rule"
+		}
+		hold(r.DNS.ServerTag, dnsHoldRule, "rule:"+name)
+	}
+
+	for _, srv := range s.DNS.Servers {
+		switch srv.Kind {
+		case DNSServerKindUser:
+			if t, _ := srv.Body["type"].(string); t == "group" {
+				members, _ := srv.Body["servers"].([]interface{})
+				for _, m := range members {
+					if tag, _ := m.(string); tag != srv.Tag {
+						hold(tag, dnsHoldGroup, "group:"+srv.Tag)
+					}
+				}
+			}
+			if tag := dnsResolverTarget(srv.Body["domain_resolver"]); tag != srv.Tag {
+				hold(tag, dnsHoldServer, "server:"+srv.Tag)
+			}
+		case DNSServerKindTemplate:
+			if decls == nil {
+				continue
+			}
+			links := decls.DNSServerLinks[srv.Tag]
+			for _, raw := range links.Group {
+				for _, tag := range decls.dnsServerLinkValues(srv, raw) {
+					if tag != srv.Tag {
+						hold(tag, dnsHoldGroup, "group:"+srv.Tag)
+					}
+				}
+			}
+			for _, tag := range decls.dnsServerLinkValues(srv, links.DomainResolver) {
+				if tag != srv.Tag {
+					hold(tag, dnsHoldServer, "server:"+srv.Tag)
+				}
+			}
+		}
+	}
+
+	if decls != nil {
+		for _, r := range s.Rules {
+			if r.Kind != RuleKindPreset || !r.Enabled || r.Ref == "" {
+				continue
+			}
+			for _, raw := range decls.PresetDNSRuleServers[r.Ref] {
+				hold(presetLinkValue(r, decls.Presets[r.Ref], raw), dnsHoldPreset, "preset:"+r.Ref)
+			}
+		}
+		for tag, req := range decls.DNSServerRequired {
+			if req {
+				hold(tag, dnsHoldRequired, "required")
+			}
+		}
+	}
+	return used
+}
+
+// dnsResolverTarget — тег из `domain_resolver`: строка или объект {server}.
+func dnsResolverTarget(v interface{}) string {
+	switch t := v.(type) {
+	case string:
+		return strings.TrimSpace(t)
+	case map[string]interface{}:
+		s, _ := t["server"].(string)
+		return strings.TrimSpace(s)
+	}
+	return ""
+}
+
+// dnsServerLinkValues — теги, на которые указывает ссылка тела шаблонного
+// сервера: литерал как есть, `@имя` — значение записи или умолчание
+// объявления (список — построчно).
+func (d *RecordVarDecls) dnsServerLinkValues(srv DNSServer, raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	if !strings.HasPrefix(raw, "@") {
+		return []string{raw}
+	}
+	name := raw[1:]
+	value, ok := srv.Vars[name]
+	if !ok {
+		decl, declared := d.DNSServerVarDecl(srv.Tag, name)
+		if !declared {
+			return nil
+		}
+		value = decl.Default
+	}
+	return splitLinkList(value)
+}
+
+// presetLinkValue — значение `server` DNS-правила пресета: литерал как есть,
+// `@имя` — значение правила или умолчание объявления пресета.
+func presetLinkValue(r Rule, declared []RecordVarDecl, raw string) string {
+	raw = strings.TrimSpace(raw)
+	if !strings.HasPrefix(raw, "@") {
+		return raw
+	}
+	name := raw[1:]
+	if v, ok := r.Vars[name]; ok {
+		return strings.TrimSpace(v)
+	}
+	for _, decl := range declared {
+		if decl.Name == name {
+			return decl.Default
+		}
+	}
+	return ""
+}
+
+func splitLinkList(value string) []string {
+	var out []string
+	for _, line := range strings.Split(value, "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }

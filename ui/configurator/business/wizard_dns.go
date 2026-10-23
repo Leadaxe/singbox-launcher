@@ -82,9 +82,10 @@ func DNSTagLocked(model *wizardmodels.WizardModel, tag string) bool {
 
 // DNSTagFromTemplate — true для любого tag'а присутствующего в
 // template.dns_options.servers[]. Template-owned entries нельзя
-// editировать/удалять (юзер может только toggle если не required).
+// editировать: тело задаёт шаблон. Удалять — можно (SPEC 173, D-139:
+// секция шаблона — каталог), кроме `required` и удерживаемых ссылкой.
 //
-// SPEC unify: семантика "edit/delete block" (все template entries).
+// SPEC unify: семантика "edit block" (все template entries).
 // Для "toggle block" (только required) используй DNSTagLocked.
 func DNSTagFromTemplate(model *wizardmodels.WizardModel, tag string) bool {
 	tag = strings.TrimSpace(tag)
@@ -97,6 +98,100 @@ func DNSTagFromTemplate(model *wizardmodels.WizardModel, tag string) bool {
 		}
 	}
 	return false
+}
+
+// DNSTemplateChoice — сервер каталога, которого нет в списке (SPEC 173).
+type DNSTemplateChoice struct {
+	Tag string
+	// Title — описание сервера в шаблоне, без него — тег.
+	Title string
+}
+
+// DNSTemplateServersMissing — серверы каталога (`dns_options.servers`
+// шаблона), которых нет среди строк модели, в порядке шаблона: их
+// предлагает «Add from template».
+func DNSTemplateServersMissing(model *wizardmodels.WizardModel) []DNSTemplateChoice {
+	have := make(map[string]bool, len(model.DNSServers))
+	for _, raw := range model.DNSServers {
+		have[tagFromServerJSON(raw)] = true
+	}
+	var out []DNSTemplateChoice
+	for _, s := range templateDNSServersOf(model) {
+		tag, _ := s["tag"].(string)
+		if tag = strings.TrimSpace(tag); tag == "" || have[tag] {
+			continue
+		}
+		have[tag] = true
+		title, _ := s["description"].(string)
+		if title = strings.TrimSpace(title); title == "" {
+			title = tag
+		}
+		out = append(out, DNSTemplateChoice{Tag: tag, Title: title})
+	}
+	return out
+}
+
+// AddDNSTemplateServer дописывает строку сервера каталога tag с умолчаниями
+// шаблона: тело и включённость — как у засеянной строки, значения
+// переменных — шаблона (выбор, оставшийся от удалённой записи, снят).
+// Строка встаёт среди шаблонных в порядке каталога — там же, где её
+// построила бы сверка. Возвращает false, если тега в каталоге нет или
+// строка уже есть.
+func AddDNSTemplateServer(model *wizardmodels.WizardModel, tag string) bool {
+	catalog := templateDNSServersOf(model)
+	pos := make(map[string]int, len(catalog))
+	var body map[string]interface{}
+	for i, s := range catalog {
+		t, _ := s["tag"].(string)
+		if _, dup := pos[t]; !dup {
+			pos[t] = i
+		}
+		if t == tag && body == nil {
+			body = s
+		}
+	}
+	if body == nil {
+		return false
+	}
+	at, last := -1, -1
+	for i, raw := range model.DNSServers {
+		t := tagFromServerJSON(raw)
+		if t == tag {
+			return false
+		}
+		p, ok := pos[t]
+		if !ok {
+			continue
+		}
+		last = i
+		if at < 0 && p > pos[tag] {
+			at = i
+		}
+	}
+	switch {
+	case at < 0 && last >= 0:
+		at = last + 1
+	case at < 0:
+		at = 0
+	}
+	b, err := json.Marshal(body)
+	if err != nil {
+		return false
+	}
+	model.DNSServers = append(model.DNSServers, nil)
+	copy(model.DNSServers[at+1:], model.DNSServers[at:])
+	model.DNSServers[at] = json.RawMessage(b)
+	delete(model.DNSTemplateOverrides, tag)
+	delete(model.DNSTemplateVars, tag)
+	return true
+}
+
+// ForgetDNSTemplateServer снимает выбор пользователя по серверу каталога,
+// чья строка удалена (SPEC 173): включённость и значения переменных
+// принадлежали записи и уходят вместе с ней.
+func ForgetDNSTemplateServer(model *wizardmodels.WizardModel, tag string) {
+	delete(model.DNSTemplateOverrides, tag)
+	delete(model.DNSTemplateVars, tag)
 }
 
 // templateDNSServersOf — общий helper для DNSTagLocked / DNSTagFromTemplate.

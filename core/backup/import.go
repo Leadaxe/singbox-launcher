@@ -102,6 +102,20 @@ const (
 	// шаблон приёмника не объявил: тела у неё здесь нет, и запись не
 	// ввозится (SPEC 129 §5.2). Detail — `template:<tag>`.
 	WarnBackupDNSEntrySkipped = "backup_dns_entry_skipped"
+	// WarnBackupDNSEntryKept — шаблонный DNS-сервер, который источник знал
+	// (тег в `dns.template_catalog` файла) и удалил (записи в файле нет), не
+	// снят: его держит ссылка состояния после импорта (SPEC 173, D-139).
+	// Detail — `template:<tag>`, Reason — `used_by` (state.DNSServerHolders).
+	WarnBackupDNSEntryKept = "backup_dns_entry_kept"
+	// WarnBackupDNSResolverReset — `final` / `default_domain_resolver` файла
+	// после импорта указывает на сервер, которого в списке нет или который
+	// выключен: значение снято, действует умолчание шаблона приёмника
+	// (SPEC 173). Detail — значение файла, Reason — поле.
+	WarnBackupDNSResolverReset = "backup_dns_resolver_reset"
+	// WarnBackupDNSGroupEmpty — приехавшая сервер-группа без единого члена из
+	// списка приёмника ввезена выключенной: включённая пустая группа роняет
+	// сборку (SPEC 173). Detail — тег группы.
+	WarnBackupDNSGroupEmpty = "backup_dns_group_empty"
 	// WarnBackupUnknownField — ключ вне схемы: в состояние не попадает (П3).
 	// Detail называет и ключ, и сущность, в которой он встретился.
 	WarnBackupUnknownField = "backup_unknown_field"
@@ -391,7 +405,11 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 	// с диска), ещё держит корневые `dns_<tag>_<var>`; наложи файл на запись
 	// без переноса — и при следующей загрузке запись «со своими vars» вытеснила
 	// бы корневое значение приёмника, которого файл не называл (dns_ip).
-	state.ApplyRecordVars(s, opts.RecordVars)
+	// Каталог DNS-серверов здесь НЕ засевается (SPEC 173): засеянная запись
+	// была бы «своей» и по правилу «своё сильнее» перебила бы включённость
+	// из файла — импорт в пустое состояние (ImportBackupFile fresh) снова
+	// уводил бы DNS мимо VPN. Посев — в importDNS, после слияния.
+	state.NormalizeRecordVars(s, opts.RecordVars)
 
 	// Источники СЛИВАЮТСЯ по идентичности, а не замещаются (D-095, §9):
 	// локальное, чего в файле нет, остаётся жить; совпавшее получает
@@ -534,7 +552,7 @@ func applyDecoded(s *state.State, dec *decodedFile, opts ImportOptions) (*Import
 
 	res.Warnings = append(res.Warnings, importVars(s, dec.Vars)...)
 
-	res.Warnings = append(res.Warnings, importDNS(s, dec.DNS, opts.RecordVars, known)...)
+	res.Warnings = append(res.Warnings, importDNS(s, dec.DNS, dec.Vars, opts.RecordVars, known)...)
 	importWarp(s, dec.Warp)
 
 	return res, nil
@@ -859,7 +877,16 @@ func reservedTargetLiteral(tag string) bool {
 //
 // final и strategy — ЗАМЕЩАЮТСЯ файлом: это одиночные значения, а не список,
 // и «слить» два взаимоисключающих ответа нечем.
-func importDNS(s *state.State, dns *decodedDNS, decls *state.RecordVarDecls, known tagSet) []Warning {
+//
+// Состав шаблонных серверов — каталог источника (SPEC 173, D-139): после
+// слияния запись kind=template снимается, если источник её знал и удалил
+// (sourceDeletedTemplateServers), каталог приёмника засевается
+// (state.SeedDNSTemplateCatalog — после слияния, чтобы включённость из файла
+// не уступила засеянным умолчаниям); затем резолверы файла на сервер вне
+// списка сбрасываются, а приехавшая группа без членов выключается. fileVars —
+// корневые переменные файла: у лаунчера `dns_final` и
+// `dns_default_domain_resolver` едут ими.
+func importDNS(s *state.State, dns *decodedDNS, fileVars map[string]string, decls *state.RecordVarDecls, known tagSet) []Warning {
 	if dns == nil {
 		// Нормы записи действуют и без секции в файле: приёмник мог нести
 		// сирот и умолчания — первая запись после импорта их снимает.
@@ -973,6 +1000,166 @@ func importDNS(s *state.State, dns *decodedDNS, decls *state.RecordVarDecls, kno
 	// строки писатель 1.0 клал ключ в файл, а читатель терял его молча.
 	if dns.DefaultDomainResolver != "" {
 		s.DNS.DefaultDomainResolver = dns.DefaultDomainResolver
+	}
+
+	// Тегами, а не индексами: снятие ниже сдвигает список.
+	var importedGroups []string
+	for _, i := range touchedOrder {
+		srv := s.DNS.Servers[i]
+		if t, _ := srv.Body["type"].(string); srv.Kind == state.DNSServerKindUser && t == "group" {
+			importedGroups = append(importedGroups, srv.Tag)
+		}
+	}
+	// Состав шаблонных серверов (SPEC 173): удерживающие ссылки — по
+	// состоянию после слияния, одним расчётом на снятие и посев.
+	deleted := sourceDeletedTemplateServers(dns)
+	holders := state.DNSServerHolders(s, decls)
+	keptWarning := func(tag string) Warning {
+		return Warning{Code: WarnBackupDNSEntryKept, Detail: "template:" + tag, Kind: warnKindDNSServer, Reason: holders[tag]}
+	}
+	kept := s.DNS.Servers[:0:0]
+	for _, srv := range s.DNS.Servers {
+		if srv.Kind == state.DNSServerKindTemplate && deleted[srv.Tag] {
+			if holders[srv.Tag] == "" {
+				continue // источник удалил, здесь не держит никто
+			}
+			warns = append(warns, keptWarning(srv.Tag))
+		}
+		kept = append(kept, srv)
+	}
+	s.DNS.Servers = kept
+	// Посев каталога приёмника — после слияния: записи файла уже на месте и
+	// несут его включённость, посев дописывает только недостающие. Сервер,
+	// удалённый источником, у приёмника без посева записи ещё не имел — посев
+	// его не возвращает, если его ничего не держит.
+	state.SeedDNSTemplateCatalog(&s.DNS, decls, func(tag string) bool {
+		if !deleted[tag] {
+			return false
+		}
+		if holders[tag] != "" {
+			warns = append(warns, keptWarning(tag))
+			return false
+		}
+		return true
+	})
+
+	warns = append(warns, resetDanglingDNSResolvers(s, dns, fileVars)...)
+	warns = append(warns, disableEmptyDNSGroups(s, importedGroups)...)
+	return warns
+}
+
+// sourceDeletedTemplateServers — теги шаблонных серверов, удалённых
+// источником (BACKUP.md §9 п. 5, «Состав шаблонных серверов — каталог
+// источника»): тег есть в `template_catalog` файла (источник сервер знал),
+// а записи kind=template с ним в файле нет (источник его удалил). Запись
+// приёмника с таким тегом снимается, если её не держит ссылка состояния
+// ПОСЛЕ импорта; удержанная остаётся с backup_dns_entry_kept. Тег вне
+// каталога файла не трогается: источник о нём не знал.
+//
+// Файл без каталога (до 1.1.135) — nil, слияние без снятия: у
+// лаунчера-приёмника переходная ветка не снимает ничего (снятие по каталогу
+// приёмника — только LxBox→LxBox). Файл без серверов — тоже: снимать по нему
+// значило бы стереть список файлом, где были одни скаляры.
+func sourceDeletedTemplateServers(dns *decodedDNS) map[string]bool {
+	if dns.TemplateCatalog == nil || len(dns.Servers) == 0 {
+		return nil
+	}
+	inFile := map[string]bool{}
+	for _, srv := range dns.Servers {
+		if srv.Kind == state.DNSServerKindTemplate {
+			inFile[srv.Tag] = true
+		}
+	}
+	out := map[string]bool{}
+	for _, tag := range dns.TemplateCatalog {
+		if !inFile[tag] {
+			out[tag] = true
+		}
+	}
+	return out
+}
+
+// resetDanglingDNSResolvers — `final` / `default_domain_resolver` файла на
+// тег, которого после импорта нет в списке или который выключен,
+// сбрасываются на умолчание шаблона приёмника: значение снимается с обоих
+// каналов (поле секции и переменная состояния), сборка берёт умолчание
+// шаблона. Иначе резолв молча уехал бы на сервер, которого нет.
+func resetDanglingDNSResolvers(s *state.State, dns *decodedDNS, fileVars map[string]string) []Warning {
+	active := map[string]bool{}
+	for _, srv := range s.DNS.Servers {
+		if !srv.Enabled {
+			continue
+		}
+		if srv.Kind == state.DNSServerKindPreset {
+			active[srv.Ref] = true
+		} else {
+			active[srv.Tag] = true
+		}
+	}
+	var warns []Warning
+	reset := func(field, varName string, field10 *string, values ...string) {
+		seen := map[string]bool{}
+		for _, v := range values {
+			v = strings.TrimSpace(v)
+			if v == "" || seen[v] || active[v] {
+				continue
+			}
+			seen[v] = true
+			if strings.TrimSpace(*field10) == v {
+				*field10 = ""
+			}
+			kept := s.Vars[:0:0]
+			for _, sv := range s.Vars {
+				if sv.Name == varName && strings.TrimSpace(sv.Value) == v {
+					continue
+				}
+				kept = append(kept, sv)
+			}
+			s.Vars = kept
+			warns = append(warns, Warning{Code: WarnBackupDNSResolverReset, Detail: v, Reason: field})
+		}
+	}
+	reset("final", "dns_final", &s.DNS.Final, dns.Final, fileVars["dns_final"])
+	reset("default_domain_resolver", "dns_default_domain_resolver", &s.DNS.DefaultDomainResolver,
+		dns.DefaultDomainResolver, fileVars["dns_default_domain_resolver"])
+	return warns
+}
+
+// disableEmptyDNSGroups — приехавшая сервер-группа (kind=user, `type:
+// group`), у которой после импорта нет ни одного члена из списка, ввозится
+// выключенной: включённая пустая группа роняет сборку. Отдельные неизвестные
+// члены снимает сборка.
+func disableEmptyDNSGroups(s *state.State, groups []string) []Warning {
+	if len(groups) == 0 {
+		return nil
+	}
+	listed := map[string]bool{}
+	for _, srv := range s.DNS.Servers {
+		if srv.Kind == state.DNSServerKindPreset {
+			listed[srv.Ref] = true
+		} else {
+			listed[srv.Tag] = true
+		}
+	}
+	var warns []Warning
+	for _, tag := range groups {
+		idx := s.DNS.FindServerByTag(tag)
+		if idx < 0 || !s.DNS.Servers[idx].Enabled {
+			continue
+		}
+		srv := &s.DNS.Servers[idx]
+		members, _ := srv.Body["servers"].([]interface{})
+		empty := true
+		for _, m := range members {
+			if t, _ := m.(string); t != "" && t != tag && listed[t] {
+				empty = false
+				break
+			}
+		}
+		if empty {
+			srv.Enabled = false
+			warns = append(warns, Warning{Code: WarnBackupDNSGroupEmpty, Detail: tag, Kind: warnKindDNSServer})
+		}
 	}
 	return warns
 }

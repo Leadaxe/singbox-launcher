@@ -400,14 +400,6 @@ func TestBackupWarningCodesAreActuallySet(t *testing.T) {
 	// целиком (контракт 1.1.80): его не ставит ни одна сторона. Список пуст,
 	// но остаётся местом для следующего такого кода.
 	retired := map[string]bool{}
-	// Коды контракта 1.1.135 (D-134), которые лаунчер начнёт ставить с
-	// каталогом DNS-серверов (SPEC 173). До неё их эмитит только LxBox;
-	// реализация SPEC 173 снимает код отсюда.
-	pending := map[string]bool{
-		"backup_dns_entry_kept":     true,
-		"backup_dns_resolver_reset": true,
-		"backup_dns_group_empty":    true,
-	}
 	consts := goBackupWarningConstants(t)
 	byCode := map[string]string{}
 	for name, code := range consts {
@@ -419,12 +411,6 @@ func TestBackupWarningCodesAreActuallySet(t *testing.T) {
 			continue
 		}
 		name, ok := byCode[code]
-		if pending[code] {
-			if ok {
-				t.Errorf("код %q заведён в Go (%s) — убрать его из списка ожидающих SPEC 173", code, name)
-			}
-			continue
-		}
 		if !ok {
 			t.Errorf("код %q объявлен в реестре, но в Go его нет — либо заводить, либо помечать стороной", code)
 			continue

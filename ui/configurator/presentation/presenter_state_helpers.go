@@ -210,12 +210,29 @@ func (p *WizardPresenter) restoreDNS(sf *wizardmodels.WizardStateFile) {
 			p.model.DefaultDomainResolverUnset = false
 		}
 	}
+	p.model.DNSTemplateListed = templateDNSListed(sf.DNS)
 	wizardbusiness.ApplyWizardDNSTemplate(p.model)
 	// Overlay saved enabled state for ALL servers (incl. template) from canonical
 	// sf.DNS — populateUserDNSFromState only handled kind=user, so template-server
 	// enable/disable overrides were otherwise lost on reopen (and reset the selects).
 	applyDNSServerEnabledFromState(p.model, sf.DNS)
 	wizardbusiness.ApplyDNSVarsFromSettingsToModel(p.model)
+}
+
+// templateDNSListed — теги записей kind=template засеянного списка (SPEC
+// 173). Список без посева (шаблона нет) — nil: сверка строит каталог целиком,
+// как до SPEC 173. LoadState засевает список раньше (ApplyRecordVars).
+func templateDNSListed(dns corestate.DNSOptions) map[string]bool {
+	if dns.TemplateCatalog == nil {
+		return nil
+	}
+	out := make(map[string]bool, len(dns.Servers))
+	for _, s := range dns.Servers {
+		if s.Kind == corestate.DNSServerKindTemplate {
+			out[s.Tag] = true
+		}
+	}
+	return out
 }
 
 // findConfigParamValue ищет значение параметра по имени.

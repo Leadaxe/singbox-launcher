@@ -132,6 +132,10 @@ type decodedDNS struct {
 	Final                 string
 	Strategy              string
 	DefaultDomainResolver string
+	// TemplateCatalog — `dns.template_catalog` файла: каталог шаблона
+	// источника (контракт 1.1.135, D-139). nil — ключа нет (файл до 1.1.135
+	// или формы 0.12): снятия удалённого источником нет.
+	TemplateCatalog []string
 }
 
 // moveFileRootDNSVars — Н8 для файла (SPEC 129): корневые `dns_<tag>_<var>`

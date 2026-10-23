@@ -138,6 +138,13 @@ type WizardModel struct {
 	// читают подпись строки, сборка превью и сохранение.
 	DNSTemplateVars map[string]map[string]string
 
+	// DNSTemplateListed — теги шаблонных DNS-серверов, которые есть в списке
+	// загруженного состояния (SPEC 173): по ним сверка с шаблоном
+	// (ApplyWizardDNSTemplate) строит строки серверов каталога. nil —
+	// состояния нет, список = каталог целиком. Дальше строки модели и есть
+	// список: удаление и «Add from template» меняют их, а не эту карту.
+	DNSTemplateListed map[string]bool
+
 	// SPEC 057-R-N: preset outbound binding live в state.connections.outbounds[]
 	// напрямую через `ref` field (см. configtypes.Direction.Ref + .Updates).
 	// Display order = natural slice order — больше нет вспомогательной in-memory

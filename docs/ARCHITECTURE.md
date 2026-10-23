@@ -584,7 +584,10 @@ build.BuildConfig  (pure)
             │      DNS mirrors of own rules (rules[].dns, SPEC 172) are derived from the
             │      resolved route (RuleDNSMirrorMatch: registry allowlists) and inserted
             │      before the first preset slot with a higher axis number
-            │      (RuleDNSMirrorIndex) — never stored in state.DNS.Rules
+            │      (RuleDNSMirrorIndex) — never stored in state.DNS.Rules;
+            │      template servers come from the catalog (SPEC 173, below): a catalog
+            │      server is emitted only when state.DNS.Servers has its kind=template
+            │      entry (required — always)
             │
             └─► MergeRouteSection → MergePresetsIntoRoute → ResolveRoute (pure)
                    walk state.Rules kind switch (preset / inline / srs),
@@ -594,6 +597,31 @@ build.BuildConfig  (pure)
             ▼
 concat final JSON → atomicWriteConfig(config.json)
 ```
+
+**Template DNS servers — catalog → list → build (SPEC 173, contract 1.1.135,
+D-139).** `dns_options.servers` of the template is a **catalog**, not the list.
+`state.SeedDNSTemplateCatalog` (first step of `state.ApplyRecordVars`, i.e. every
+place where state meets the template: Configurator load/save, build from file,
+export, import, Debug API) seeds the list once: each catalog tag that
+`state.DNS.TemplateCatalog` has not seen yet gets a `{kind: template, tag,
+enabled: template default}` entry (the first seed is also the migration of
+pre-173 states), a `required` server gets its entry back whenever it is missing,
+and `TemplateCatalog` is set to the catalog. After that a catalog tag without an
+entry means "deleted by the user": the build (`ResolveDNS`) skips it, the
+Configurator reconcile (`reconcileDNSServers`, `model.DNSTemplateListed`) does not
+rebuild its row, and `syncDNSServersOnly` writes exactly the model's rows. The DNS
+tab deletes template servers except `required` and those held by a reference, and
+returns them with "Add from template" / "Add all defaults". **Holders** are one
+pure function, `state.DNSServerHolders` (tag → `used_by` of the contract
+vocabulary: final, default resolver, DNS rule of the list, `rules[].dns`, group,
+`domain_resolver`, enabled preset, `required`), used by the DNS tab (Delete lock,
+"Used by …") and by the backup import. The backup carries
+`dns.template_catalog` = `state.DNS.TemplateCatalog` (the same field); import
+(`importDNS`, BACKUP.md §9 p. 5) removes a recipient template entry whose tag is
+in the file's catalog with no file entry and no holder (`backup_dns_entry_kept`
+otherwise), resets a dangling `final` / default resolver
+(`backup_dns_resolver_reset`) and turns off an imported group with no member in
+the list (`backup_dns_group_empty`); a file without a catalog only merges.
 
 Key properties:
 

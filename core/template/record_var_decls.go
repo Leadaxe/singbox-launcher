@@ -25,22 +25,33 @@ func RecordVarDeclsFor(td *TemplateData, globalValues map[string]string, target 
 	}
 	target = target.Normalized()
 	out := &state.RecordVarDecls{
-		DNSServers:       map[string][]state.RecordVarDecl{},
-		DNSServerEnabled: map[string]bool{},
-		Presets:          map[string][]state.RecordVarDecl{},
+		DNSServers:           map[string][]state.RecordVarDecl{},
+		DNSServerEnabled:     map[string]bool{},
+		DNSServerRequired:    map[string]bool{},
+		DNSServerLinks:       map[string]state.DNSServerLinks{},
+		PresetDNSRuleServers: map[string][]string{},
+		Presets:              map[string][]state.RecordVarDecl{},
 	}
 
 	var section struct {
 		Servers []map[string]interface{} `json:"servers"`
 	}
-	if len(td.DNSOptionsRaw) > 0 {
-		_ = json.Unmarshal(td.DNSOptionsRaw, &section)
+	if len(td.DNSOptionsRaw) > 0 && json.Unmarshal(td.DNSOptionsRaw, &section) == nil && section.Servers != nil {
+		// Каталог есть (SPEC 173): пустой — тоже каталог, посев сверит с ним.
+		out.DNSServerOrder = []string{}
 	}
 	for _, srv := range section.Servers {
 		tag, _ := srv["tag"].(string)
 		if tag == "" {
 			continue
 		}
+		if _, dup := out.DNSServers[tag]; !dup {
+			out.DNSServerOrder = append(out.DNSServerOrder, tag)
+		}
+		if req, ok := srv["required"].(bool); ok && req {
+			out.DNSServerRequired[tag] = true
+		}
+		out.DNSServerLinks[tag] = dnsServerLinks(srv)
 		decls := td.DNSServerVars[tag]
 		list := make([]state.RecordVarDecl, 0, len(decls))
 		if len(decls) > 0 {
@@ -64,8 +75,58 @@ func RecordVarDeclsFor(td *TemplateData, globalValues map[string]string, target 
 			continue
 		}
 		out.Presets[p.ID] = PresetRecordVarDecls(p)
+		var servers []string
+		collectRuleServers(p.DNSRule, &servers)
+		for _, r := range p.DNSRules {
+			collectRuleServers(r, &servers)
+		}
+		if len(servers) > 0 {
+			out.PresetDNSRuleServers[p.ID] = servers
+		}
 	}
 	return out
+}
+
+// dnsServerLinks — ссылки тела сервера шаблона на другие DNS-серверы
+// (удерживающие ссылки, SPEC 173): `domain_resolver` и члены группы.
+func dnsServerLinks(srv map[string]interface{}) state.DNSServerLinks {
+	var links state.DNSServerLinks
+	switch v := srv["domain_resolver"].(type) {
+	case string:
+		links.DomainResolver = v
+	case map[string]interface{}:
+		links.DomainResolver, _ = v["server"].(string)
+	}
+	if t, _ := srv["type"].(string); t == "group" {
+		members, _ := srv["servers"].([]interface{})
+		for _, m := range members {
+			if tag, ok := m.(string); ok && tag != "" {
+				links.Group = append(links.Group, tag)
+			}
+		}
+	}
+	return links
+}
+
+// collectRuleServers — строковые значения `server` в DNS-правиле пресета на
+// любой глубине: правило может прийти обёрнутым в `#if`.
+func collectRuleServers(v interface{}, out *[]string) {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		for k, val := range t {
+			if s, ok := val.(string); ok && k == "server" {
+				if s = strings.TrimSpace(s); s != "" {
+					*out = append(*out, s)
+				}
+				continue
+			}
+			collectRuleServers(val, out)
+		}
+	case []interface{}:
+		for _, val := range t {
+			collectRuleServers(val, out)
+		}
+	}
 }
 
 // PresetRecordVarDecls — объявления переменных пресета для норм записи

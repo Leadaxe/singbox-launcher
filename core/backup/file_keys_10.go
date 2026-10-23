@@ -77,10 +77,7 @@ var (
 	// sectionsKeySet — упразднённое поле секций узла (контракт 1.1.85).
 	sectionsKeySet = map[string]bool{"sections": true}
 	rule10Keys     = jsonKeys(reflect.TypeOf(state.Rule{}))
-	// template_catalog (контракт 1.1.135) — известный ключ: каталог источника
-	// читатель терпит, а пока лаунчер его не применяет (SPEC 173), импорт —
-	// слияние без снятия, как у файла без каталога от другого приложения.
-	dns10Keys = withKeys(jsonKeys(reflect.TypeOf(state.DNSOptions{})), map[string]bool{"template_catalog": true})
+	dns10Keys      = jsonKeys(reflect.TypeOf(state.DNSOptions{}))
 	// dnsServer10Keys и dnsRule10Keys объявлены порознь: у сервера есть
 	// `tag`, у правила — `name`/`id`, и общий список пропустил бы чужое поле
 	// в обе стороны. `vars` из общего списка сервера снят: ключ законен
