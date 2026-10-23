@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image/color"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -182,10 +183,9 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 					desc += note
 				}
 
-				usedBy := ""
-				if templateOwned {
-					usedBy = holders[tag]
-				}
+				// Замок по удерживающим ссылкам (SPEC 173, как у LxBox) — у
+				// любого сервера списка, шаблонного и своего.
+				usedBy := holders[tag]
 				if usedBy != "" {
 					if desc != "" {
 						desc += "\n"
@@ -206,7 +206,25 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				cwc := fynewidget.NewCheckWithContent(nil, sumLabel, fynewidget.CheckWithContentConfig{ContentToolTip: desc})
 				enCheck := cwc.Check
 				enCheck.SetChecked(wizardbusiness.DNSServerWizardEnabledRaw(raw))
+				reverting := false
 				enCheck.OnChanged = func(checked bool) {
+					if reverting {
+						return
+					}
+					// Используемый включённый сервер не выключается (SPEC 173,
+					// как у LxBox): галка активна, щелчок возвращает её и
+					// говорит, кто держит. Ссылки — на момент щелчка: сервер мог
+					// стать используемым после пересборки строки. Выключенный
+					// используемый включается как обычно.
+					if !checked {
+						if by := presenter.DNSServerHolders()[tag]; by != "" && !locked {
+							reverting = true
+							enCheck.SetChecked(true)
+							reverting = false
+							showDNSLockedHint(dialogParent(), enCheck, fmt.Sprintf(locale.T("Locked: used by %s. Remove the reference first."), by))
+							return
+						}
+					}
 					// Полная пересборка только когда изменились ДРУГИЕ строки
 					// (включение группы включает участников): она дороже, и
 					// на каждый щелчок галкой её звать незачем.
@@ -257,11 +275,16 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 						showDNSServerEditor(presenter, dialogParent(), idx)
 					}, rowGetter)
 					editBtn.Importance = widget.LowImportance
-					delBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("Del"), theme.DeleteIcon(), func() {
+					delBtn := fynewidget.NewHoverForwardTTButton(locale.T("Del"), func() {
 						deleteDNSServerAt(presenter, idx)
 						presenter.RefreshDNSListAndSelects()
 					}, rowGetter)
+					delBtn.Icon = theme.DeleteIcon()
 					delBtn.Importance = widget.LowImportance
+					if usedBy != "" {
+						delBtn.Disable()
+						delBtn.SetToolTip(dnsUsedByText(usedBy))
+					}
 					right = container.NewHBox(buildRowEditDelCluster(editBtn, delBtn), rowGutter)
 				}
 				// Border: check left, content center (tap/hover → check via fynewidget), buttons right — avoids zero-width label in HBox-only row.
@@ -843,6 +866,27 @@ func showDNSTemplateCatalogPopup(presenter *wizardpresentation.WizardPresenter, 
 	}
 	popup.Resize(fyne.NewSize(w, h))
 	popup.ShowAtPosition(pos)
+}
+
+// dnsLockedHintDuration — сколько висит подсказка о запертой галке.
+const dnsLockedHintDuration = 3 * time.Second
+
+// showDNSLockedHint — лёгкая подсказка под объектом (не модальная, без
+// кнопок, сама прячется): галка используемого сервера не снялась, и
+// пользователь должен узнать почему — как SnackBar у LxBox.
+func showDNSLockedHint(win fyne.Window, anchor fyne.CanvasObject, text string) {
+	if win == nil || anchor == nil {
+		return
+	}
+	label := widget.NewLabel(text)
+	pop := widget.NewPopUp(label, win.Canvas())
+	pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor)
+	pos.Y += anchor.Size().Height
+	pop.ShowAtPosition(pos)
+	go func() {
+		<-time.After(dnsLockedHintDuration)
+		fyne.Do(pop.Hide)
+	}()
 }
 
 // dnsUsedByText — подсказка «кто держит сервер» по `used_by` удерживающей

@@ -5980,5 +5980,8 @@
   },
   "in list · copy": {
     "value": "в списке · копия"
+  },
+  "Locked: used by %s. Remove the reference first.": {
+    "value": "Заблокировано: используется (%s). Сначала уберите ссылку."
   }
 }
