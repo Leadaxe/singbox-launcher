@@ -1043,7 +1043,7 @@ func importDNS(s *state.State, dns *decodedDNS, fileVars map[string]string, decl
 		return true
 	})
 
-	warns = append(warns, resetDanglingDNSResolvers(s, dns, fileVars)...)
+	warns = append(warns, resetDanglingDNSResolvers(s, dns, fileVars, decls)...)
 	warns = append(warns, disableEmptyDNSGroups(s, importedGroups)...)
 	return warns
 }
@@ -1084,7 +1084,14 @@ func sourceDeletedTemplateServers(dns *decodedDNS) map[string]bool {
 // сбрасываются на умолчание шаблона приёмника: значение снимается с обоих
 // каналов (поле секции и переменная состояния), сборка берёт умолчание
 // шаблона. Иначе резолв молча уехал бы на сервер, которого нет.
-func resetDanglingDNSResolvers(s *state.State, dns *decodedDNS, fileVars map[string]string) []Warning {
+//
+// Без каталога шаблона (decls nil) судить нечем: шаблонные серверы
+// состояния без посева в списке не записаны, а есть — как у проверки целей
+// при пустом списке известных.
+func resetDanglingDNSResolvers(s *state.State, dns *decodedDNS, fileVars map[string]string, decls *state.RecordVarDecls) []Warning {
+	if decls == nil || decls.DNSServerOrder == nil {
+		return nil
+	}
 	active := map[string]bool{}
 	for _, srv := range s.DNS.Servers {
 		if !srv.Enabled {
