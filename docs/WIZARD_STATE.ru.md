@@ -505,8 +505,9 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 | `strategy` | string (omitempty) | Fallback дубль `vars["dns_strategy"]` для in-memory. Source of truth — `vars`. На диск не пишется если == zero. |
 | `final` | string (omitempty) | То же, дубль `vars["dns_final"]`. |
 | `default_domain_resolver` | string (omitempty) | То же, дубль `vars["dns_default_domain_resolver"]`. |
-| `servers` | `[]DNSServer` | Энтрии с `kind` discriminator (см. ниже). |
+| `servers` | `[]DNSServer` | Энтрии с `kind` discriminator (см. ниже). Список принадлежит пользователю: шаблонные серверы засеваются в него один раз (SPEC 173, ниже). |
 | `rules` | `[]DNSRule` | Энтрии с `kind` discriminator. |
+| `template_catalog` | `[]string` (omitempty) | **SPEC 173, контракт 1.1.135.** Теги `template.dns_options.servers[]`, которыми список уже засеян, в порядке шаблона. Нет поля — список ни разу не засевался (состояние до 173; первая загрузка засевает). В файле бэкапа то же поле — каталог источника. |
 
 **`servers[i]` — `v6.DNSServer` (SPEC 056-R-N):**
 
@@ -529,6 +530,17 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 | `name` | string | Необязательное отображаемое имя. Лаунчер его не заполняет, провозит. |
 | `enabled` | bool | Toggle. |
 | `body` | `map[string]interface{}` | Только для `kind=user` — **DNS-правило sing-box как есть** (rule_set / server / domain_* / ip_cidr / port / network / ...), `server` внутри. nil для preset. До v8 эти поля лежали плоско рядом с `kind`. |
+
+**Шаблонные серверы — каталог (SPEC 173).** `template.dns_options.servers[]` —
+каталог, а не список. `state.SeedDNSTemplateCatalog` дописывает запись
+`{kind: template, tag, enabled: <умолчание шаблона>}` каждому тегу каталога,
+которого нет в `template_catalog` (новый сервер шаблона, а при первом посеве —
+все; это же миграция старых состояний), и `required`-серверу без записи, затем
+выставляет `template_catalog`. Дальше тег каталога без записи `kind=template`
+значит **удалён пользователем**: сборка его не эмитит, Конфигуратор не
+возвращает, вкладка DNS возвращает кнопками «Добавить из шаблона» / «Вернуть все
+шаблонные». `required`-серверы и удерживаемые ссылкой (`state.DNSServerHolders`)
+не удаляются.
 
 **Записи шаблона: две формы (SPEC 109).** `template.dns_options.servers[]`
 принимает запись в двух видах — плоском (наш) и вложенном

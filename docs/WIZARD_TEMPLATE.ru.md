@@ -29,7 +29,7 @@
 |---|---|---|
 | `parser_config` | object | Настройки парсера подписки + статические outbound-группы (selector/urltest). Сюда инжектятся ноды из подписки. |
 | `config` | object | Базовый скелет конфига sing-box (`route`, `experimental`, `inbounds`, …), в который подставляются `@var` и применяются `params`. |
-| `dns_options` | object | Дефолты DNS-вкладки: `servers[]` + `rules[]`. |
+| `dns_options` | object | Вкладка DNS: `servers[]` — каталог шаблонных серверов, засевается в список состояния один раз (SPEC 173); `rules[]` — правила по умолчанию. |
 | `vars` | array | Типизированные переменные шаблона → строки **Настроек**, источники `@`-плейсхолдеров. |
 | `params` | array | Патчи к `config` по dot-path с условиями (`if`) и режимом слияния. |
 | `presets` | array | Пресеты для вкладки **Rules** (правила, rule_set, DNS, outbounds). |
@@ -313,7 +313,8 @@ outbound sing-box (`options`, `filters`, `addOutbounds`, `preferredDefault`, `co
   (`selector`/`urltest` через `addOutbounds`/`filters`). Ноды из подписки инжектятся между маркерами.
 - **`config`** — скелет sing-box: `route` (rules, rule_set, final, …), `experimental` (clash_api, cache),
   `inbounds`, `log` и т.д. Принимает `@var`, патчится `params`, обходится `#if`.
-- **`dns_options`** — `servers[]` и `rules[]` (дефолты DNS-вкладки). Скаляры DNS задаются переменными
+- **`dns_options`** — `servers[]` (каталог: засевается в список состояния один раз, пользователь удаляет
+  шаблонные серверы и возвращает их из каталога — SPEC 173) и `rules[]` (дефолты DNS-вкладки). Скаляры DNS задаются переменными
   `vars` с `wizard_ui: "fix"` (`dns_strategy` → `config.dns.strategy`, `dns_final` → `config.dns.final`,
   `dns_default_domain_resolver` → `config.route.default_domain_resolver.server`,
   `dns_resolver_no_stale` → `config.route.default_domain_resolver.disable_optimistic_cache`).

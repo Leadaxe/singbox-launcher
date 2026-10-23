@@ -406,7 +406,10 @@ build.BuildConfig  (чистая)
             │
             ├─► MergeDNSSection → MergePresetsIntoDNS → ResolveDNS (чистая)
             │      обход state.DNS по kind (template / preset / user),
-            │      навешивание метаданных (Source / Required / Locked / Active / Enabled)
+            │      навешивание метаданных (Source / Required / Locked / Active / Enabled);
+            │      шаблонные серверы — из каталога (SPEC 173, ниже): сервер каталога
+            │      эмитится, только если в state.DNS.Servers есть его запись kind=template
+            │      (required — всегда)
             │
             └─► MergeRouteSection → MergePresetsIntoRoute → ResolveRoute (чистая)
                    обход state.Rules по kind (preset / inline / srs),
@@ -416,6 +419,31 @@ build.BuildConfig  (чистая)
             ▼
 конкатенация финального JSON → atomicWriteConfig(config.json)
 ```
+
+**Шаблонные DNS-серверы — каталог → список → сборка (SPEC 173, контракт
+1.1.135, D-139).** `dns_options.servers` шаблона — **каталог**, а не список.
+`state.SeedDNSTemplateCatalog` (первый шаг `state.ApplyRecordVars`, то есть во всех
+точках встречи состояния с шаблоном: загрузка и сохранение Конфигуратора, сборка
+из файла, экспорт, импорт, Debug API) засевает список один раз: каждый тег
+каталога, которого `state.DNS.TemplateCatalog` ещё не видел, получает запись
+`{kind: template, tag, enabled: умолчание шаблона}` (первый посев — это же миграция
+состояний до 173), `required`-сервер получает запись обратно всякий раз, когда её
+нет, и `TemplateCatalog` выставляется в каталог. Дальше тег каталога без записи
+значит «удалён пользователем»: сборка (`ResolveDNS`) его пропускает, reconcile
+Конфигуратора (`reconcileDNSServers`, `model.DNSTemplateListed`) строку не
+восстанавливает, `syncDNSServersOnly` пишет ровно строки модели. Вкладка DNS
+удаляет шаблонные серверы, кроме `required` и удерживаемых ссылкой, и возвращает
+их кнопками «Добавить из шаблона» / «Вернуть все шаблонные». **Удерживающие
+ссылки** — одна чистая функция `state.DNSServerHolders` (тег → `used_by` словаря
+контракта: final, резолвер по умолчанию, DNS-правило списка, `rules[].dns`,
+группа, `domain_resolver`, включённый пресет, `required`); её зовут вкладка DNS
+(замок Del, «Used by …») и импорт бэкапа. Бэкап несёт `dns.template_catalog` =
+`state.DNS.TemplateCatalog` (то же поле); импорт (`importDNS`, BACKUP.md §9 п. 5)
+снимает шаблонную запись приёмника, если её тег есть в каталоге файла, записи в
+файле нет и ссылки её не держат (иначе `backup_dns_entry_kept`), сбрасывает висячий
+`final` / резолвер по умолчанию (`backup_dns_resolver_reset`) и выключает
+ввезённую группу без членов из списка (`backup_dns_group_empty`); файл без
+каталога только сливается.
 
 Ключевые свойства:
 

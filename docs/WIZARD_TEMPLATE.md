@@ -30,7 +30,7 @@ choices.
 |---|---|---|
 | `parser_config` | object | Subscription parser settings + static outbound groups (selector/urltest). Subscription nodes are injected here. |
 | `config` | object | Base sing-box config skeleton (`route`, `experimental`, `inbounds`, …) into which `@var` are substituted and `params` are applied. |
-| `dns_options` | object | DNS-tab defaults: `servers[]` + `rules[]`. |
+| `dns_options` | object | DNS tab: `servers[]` — the template server catalog, seeded into the state list once (SPEC 173); `rules[]` — default rules. |
 | `vars` | array | Typed template variables → **Settings** rows, sources for `@`-placeholders. |
 | `params` | array | Patches to `config` by dot-path with conditions (`if`) and a merge mode. |
 | `presets` | array | Presets for the **Rules** tab (rules, rule_set, DNS, outbounds). |
@@ -315,7 +315,8 @@ sing-box outbound (`options`, `filters`, `addOutbounds`, `preferredDefault`, `co
   (`selector`/`urltest` via `addOutbounds`/`filters`). Subscription nodes are injected between markers.
 - **`config`** — the sing-box skeleton: `route` (rules, rule_set, final, …), `experimental` (clash_api, cache),
   `inbounds`, `log`, etc. Accepts `@var`, is patched by `params`, is walked for `#if`.
-- **`dns_options`** — `servers[]` and `rules[]` (DNS-tab defaults). DNS scalars are set by
+- **`dns_options`** — `servers[]` (the catalog: seeded into the state list once, the user deletes template
+  servers and returns them from the catalog — SPEC 173) and `rules[]` (DNS-tab defaults). DNS scalars are set by
   `vars` with `wizard_ui: "fix"` (`dns_strategy` → `config.dns.strategy`, `dns_final` → `config.dns.final`,
   `dns_default_domain_resolver` → `config.route.default_domain_resolver.server`,
   `dns_resolver_no_stale` → `config.route.default_domain_resolver.disable_optimistic_cache`).
