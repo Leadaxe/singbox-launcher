@@ -5885,9 +5885,6 @@
   "The form for this server type is unavailable": {
     "value": "Форма для этого типа сервера недоступна"
   },
-  "Send DNS to a dedicated server": {
-    "value": "Отправлять DNS на отдельный сервер"
-  },
   "Force IPv4 (drop AAAA)": {
     "value": "Только IPv4 (сбрасывать AAAA)"
   },
@@ -5983,5 +5980,29 @@
   },
   "Locked: used by %s. Remove the reference first.": {
     "value": "Заблокировано: используется (%s). Сначала уберите ссылку."
+  },
+  "Answer": {
+    "value": "Ответ"
+  },
+  "Default — queries go to DNS Final": {
+    "value": "По умолчанию — запросы идут в DNS Final"
+  },
+  "Dedicated server": {
+    "value": "Отдельный сервер"
+  },
+  "Fixed IP": {
+    "value": "Фиксированный IP"
+  },
+  "One address per line, IPv4 or IPv6.": {
+    "value": "По одному адресу в строке, IPv4 или IPv6."
+  },
+  "Line %d is not an IPv4 or IPv6 address.": {
+    "value": "Строка %d — не адрес IPv4 или IPv6."
+  },
+  "Enter an IP address.": {
+    "value": "Введите IP-адрес."
+  },
+  "Fixed IP: %s": {
+    "value": "Фиксированный IP: %s"
   }
 }

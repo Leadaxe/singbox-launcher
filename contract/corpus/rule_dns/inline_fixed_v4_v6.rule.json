@@ -1,0 +1,10 @@
+{
+  "_": "fixedIps с IPv4 и IPv6: оба правила с ответом, адреса в порядке записи; пустые и лишние пробелы не мешают",
+  "rule": {
+    "kind": "inline",
+    "name": "Lab",
+    "enabled": true,
+    "body": {"domain_suffix": ["lab.example"], "outbound": "direct"},
+    "dns": {"enabled": false, "serverTag": "", "fixedIps": [" fd00::10 ", "10.0.0.5"]}
+  }
+}

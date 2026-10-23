@@ -995,16 +995,12 @@
               "type": "boolean",
               "description": "AAAA-запросы под правило получают пустой ответ (NOERROR); пишется только true."
             },
-            "fixed": {
-              "type": "boolean",
-              "description": "Поддержка: LxBox (контракт 1.1.138, LxBox §683). DNS-запросы под правило получают локальный ответ адресами из fixedIps (DNS-правило action: predefined, записи `*. 300 IN A|AAAA <ip>` по query_type; семейство без адресов — пустой NOERROR); при true serverTag и forceIpv4 не эмитятся. Пишется только true. Лаунчер игнорирует молча и не пишет; отсутствие ключа значение у приёмника не сбрасывает (docs/BACKUP.md §2, «Поля стороны LxBox»)."
-            },
             "fixedIps": {
               "type": "array",
               "items": {
                 "type": "string"
               },
-              "description": "Поддержка: LxBox (контракт 1.1.138). Адреса IPv4/IPv6 локального ответа fixed; пишется только непустым, хранится и при fixed: false. Лаунчер игнорирует молча и не пишет."
+              "description": "Поддержка: обе (контракт 1.1.139). Адреса IPv4/IPv6 локального ответа: DNS-запросы под правило получают эти адреса (predefined, записи `*. 300 IN A|AAAA <ip>` по query_type; семейство без адресов — пустой NOERROR) вместо зеркала на serverTag и глушилки forceIpv4. Режим действует, когда хоть одна строка разбирается как IP; флага режима нет. Пишется только непустым. Норма — TEMPLATE_LANG.md §6.11."
             }
           },
           "description": "inline | srs. Поддержка: обе (контракт 1.1.130, D-137). DNS-зеркало правила — TEMPLATE_LANG.md §6.11. Ключи в форме LxBox (camelCase)."

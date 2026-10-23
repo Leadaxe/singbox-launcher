@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"regexp"
 	"sort"
 	"strings"
@@ -716,16 +717,81 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			dnsServerOptions = append(dnsServerOptions, initialDNS.ServerTag)
 		}
 	}
+	// Ответ на DNS-запросы под правило — один из трёх (контракт 1.1.139,
+	// как у LxBox): DNS Final, свой сервер (зеркало на serverTag) или
+	// локальный ответ адресами fixedIps. Тег сервера хранится при любом
+	// выборе; адреса пишутся только в режиме Fixed IP — непустой fixedIps и
+	// есть этот режим.
+	answerDefault := locale.T("Default — queries go to DNS Final")
+	answerServer := locale.T("Dedicated server")
+	answerFixed := locale.T("Fixed IP")
+	answerRadio := widget.NewRadioGroup([]string{answerDefault, answerServer, answerFixed}, nil)
+	answerRadio.Required = true
 	dnsServerSelect := widget.NewSelect(dnsServerOptions, nil)
-	dnsServerCheck := widget.NewCheck(locale.T("Send DNS to a dedicated server"), nil)
+	fixedIPEntry := widget.NewMultiLineEntry()
+	fixedIPEntry.SetPlaceHolder("192.168.1.10")
+	fixedIPEntry.SetMinRowsVisible(3)
+	fixedIPNote := widget.NewLabel(locale.T("One address per line, IPv4 or IPv6."))
+	fixedIPNote.Importance = widget.LowImportance
+	fixedIPError := widget.NewLabel("")
+	fixedIPError.Wrapping = fyne.TextWrapWord
+	fixedIPError.Importance = widget.DangerImportance
+	fixedIPError.Hide()
 	forceIPv4Check := widget.NewCheck(locale.T("Force IPv4 (drop AAAA)"), nil)
 	dnsHint := widget.NewLabel("")
 	dnsHint.Wrapping = fyne.TextWrapWord
 	dnsHint.Importance = widget.LowImportance
+	answerRadio.SetSelected(answerDefault)
 	if initialDNS != nil {
-		dnsServerCheck.SetChecked(initialDNS.Enabled)
 		dnsServerSelect.SetSelected(initialDNS.ServerTag)
 		forceIPv4Check.SetChecked(initialDNS.ForceIPv4)
+		fixedIPEntry.SetText(strings.Join(initialDNS.FixedIPs, "\n"))
+		switch {
+		case len(initialDNS.FixedIPs) > 0:
+			answerRadio.SetSelected(answerFixed)
+		case initialDNS.Enabled:
+			answerRadio.SetSelected(answerServer)
+		}
+	}
+	// fixedIPs — адреса поля по строкам без пустых; bad — номер первой
+	// строки поля (с 1), не разбираемой как IP, 0 — все годные.
+	fixedIPs := func() (ips []string, bad int) {
+		for i, line := range strings.Split(fixedIPEntry.Text, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			if net.ParseIP(line) == nil && bad == 0 {
+				bad = i + 1
+			}
+			ips = append(ips, line)
+		}
+		return ips, bad
+	}
+	// dnsAnswerError — почему Save недоступен из-за DNS; пусто — годно.
+	dnsAnswerError := func() string {
+		if answerRadio.Selected != answerFixed {
+			return ""
+		}
+		ips, bad := fixedIPs()
+		switch {
+		case bad > 0:
+			return fmt.Sprintf(locale.T("Line %d is not an IPv4 or IPv6 address."), bad)
+		case len(ips) == 0:
+			return locale.T("Enter an IP address.")
+		}
+		return ""
+	}
+	currentRuleDNS := func() *corestate.RuleDNS {
+		d := &corestate.RuleDNS{
+			Enabled:   answerRadio.Selected == answerServer,
+			ServerTag: dnsServerSelect.Selected,
+			ForceIPv4: forceIPv4Check.Checked,
+		}
+		if answerRadio.Selected == answerFixed {
+			d.FixedIPs, _ = fixedIPs()
+		}
+		return corestate.CloneRuleDNS(d)
 	}
 	// currentRuleBody — тело правила, каким его увидит сборка: с JSON-вкладки
 	// или собранное формой; nil — правило ещё не заполнено.
@@ -751,22 +817,44 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		body := currentRuleBody()
 		_, ok := build.RuleDNSMirrorMatch(body)
 		hint := ""
+		mode := answerRadio.Selected
+		if mode == answerServer {
+			dnsServerSelect.Show()
+		} else {
+			dnsServerSelect.Hide()
+		}
+		if mode == answerFixed {
+			fixedIPEntry.Show()
+			fixedIPNote.Show()
+		} else {
+			fixedIPEntry.Hide()
+			fixedIPNote.Hide()
+		}
+		if msg := dnsAnswerError(); msg != "" {
+			fixedIPError.SetText(msg)
+			fixedIPError.Show()
+		} else {
+			fixedIPError.Hide()
+		}
 		switch {
 		case ok:
-			dnsServerCheck.Enable()
-			forceIPv4Check.Enable()
-			if dnsServerCheck.Checked {
-				dnsServerSelect.Enable()
+			answerRadio.Enable()
+			dnsServerSelect.Enable()
+			fixedIPEntry.Enable()
+			// Ответ при Fixed IP даёт само правило: глушилке AAAA нечего глушить.
+			if mode == answerFixed {
+				forceIPv4Check.Disable()
 			} else {
-				dnsServerSelect.Disable()
+				forceIPv4Check.Enable()
 			}
-			if !activeTabIsRaw && ruleSel.Type() == wizardmodels.RuleTypeSRS {
+			if !activeTabIsRaw && ruleSel.Type() == wizardmodels.RuleTypeSRS && mode != answerDefault {
 				hint = locale.T("Works only if the rule set contains domains.")
 			}
 		default:
-			dnsServerCheck.Disable()
+			answerRadio.Disable()
 			forceIPv4Check.Disable()
 			dnsServerSelect.Disable()
+			fixedIPEntry.Disable()
 			if body != nil {
 				hint = locale.T("Unavailable for rules with ports, protocols or network, and for rules that match only IP addresses.")
 			}
@@ -779,22 +867,33 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		}
 	}
 	rawTabEntry.SetOnChanged(func(string) { updateDNSAvailability() })
-	dnsServerCheck.OnChanged = func(on bool) {
-		if on && dnsServerSelect.Selected == "" && len(dnsServerOptions) > 0 {
+	answerRadio.OnChanged = func(mode string) {
+		if mode == answerServer && dnsServerSelect.Selected == "" && len(dnsServerOptions) > 0 {
 			dnsServerSelect.SetSelected(dnsServerOptions[0])
 		}
-		updateDNSAvailability()
+		if updateButtonState != nil {
+			updateButtonState()
+		}
+	}
+	fixedIPEntry.OnChanged = func(string) {
+		if updateButtonState != nil {
+			updateButtonState()
+		}
 	}
 	dnsBlock := container.NewVBox(
-		dnsServerCheck,
+		widget.NewLabel(locale.T("Answer")),
+		answerRadio,
 		dnsServerSelect,
+		fixedIPEntry,
+		fixedIPNote,
+		fixedIPError,
 		forceIPv4Check,
 		dnsHint,
 	)
 
 	updateButtonState = func() {
 		if confirmButton != nil {
-			if validateFields() {
+			if validateFields() && dnsAnswerError() == "" {
 				confirmButton.Enable()
 			} else {
 				confirmButton.Disable()
@@ -926,11 +1025,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			params["domain_mode"] = domainModeSelect.Selected
 		}
 
-		ruleDNS := corestate.CloneRuleDNS(&corestate.RuleDNS{
-			Enabled:   dnsServerCheck.Checked,
-			ServerTag: dnsServerSelect.Selected,
-			ForceIPv4: forceIPv4Check.Checked,
-		})
+		ruleDNS := currentRuleDNS()
 
 		if isEdit {
 			editRule.DNS = ruleDNS
@@ -1165,11 +1260,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			form: func() (map[string]interface{}, []json.RawMessage, error) {
 				return buildRuleRaw(ruleSel.Type(), outboundSelect.Selected)
 			},
-			dns: corestate.CloneRuleDNS(&corestate.RuleDNS{
-				Enabled:   dnsServerCheck.Checked,
-				ServerTag: dnsServerSelect.Selected,
-				ForceIPv4: forceIPv4Check.Checked,
-			}),
+			dns: currentRuleDNS(),
 		}))
 	}
 

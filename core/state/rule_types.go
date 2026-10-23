@@ -29,6 +29,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
+	"strings"
 
 	"singbox-launcher/internal/outboundutil"
 )
@@ -128,11 +130,44 @@ type RuleDNS struct {
 	ServerTag string `json:"serverTag"`
 	// ForceIPv4 — AAAA-запросы под правило получают пустой ответ.
 	ForceIPv4 bool `json:"forceIpv4,omitempty"`
+	// FixedIPs — локальный ответ (контракт 1.1.139, TEMPLATE_LANG §6.11):
+	// DNS-запросы под правило получают эти адреса, IPv4/IPv6 строками как
+	// введены. Режим действует, когда хоть одна строка разбирается как IP
+	// (FixedActive); тогда Enabled/ServerTag и ForceIPv4 не эмитятся, но
+	// хранятся. Флага режима нет — пустой список и есть «выключено».
+	FixedIPs []string `json:"fixedIps,omitempty"`
 }
 
-// IsZero — ни одна опция не включена и тег пуст: объект можно не писать.
+// IsZero — ни одна опция не включена, тег и адреса пусты: объект можно не
+// писать.
 func (d *RuleDNS) IsZero() bool {
-	return d == nil || (!d.Enabled && !d.ForceIPv4 && d.ServerTag == "")
+	return d == nil || (!d.Enabled && !d.ForceIPv4 && d.ServerTag == "" && len(d.FixedIPs) == 0)
+}
+
+// FixedAddrs — адреса локального ответа по семействам, в порядке записи;
+// строки, не разбираемые как IP, пропускаются.
+func (d *RuleDNS) FixedAddrs() (v4, v6 []string) {
+	if d == nil {
+		return nil, nil
+	}
+	for _, raw := range d.FixedIPs {
+		s := strings.TrimSpace(raw)
+		ip := net.ParseIP(s)
+		switch {
+		case ip == nil:
+		case ip.To4() != nil:
+			v4 = append(v4, s)
+		default:
+			v6 = append(v6, s)
+		}
+	}
+	return v4, v6
+}
+
+// FixedActive — режим локального ответа действует: хоть один адрес.
+func (d *RuleDNS) FixedActive() bool {
+	v4, v6 := d.FixedAddrs()
+	return len(v4) > 0 || len(v6) > 0
 }
 
 // CloneRuleDNS — копия поля; пустое (IsZero) даёт nil.
@@ -141,6 +176,7 @@ func CloneRuleDNS(d *RuleDNS) *RuleDNS {
 		return nil
 	}
 	v := *d
+	v.FixedIPs = append([]string(nil), d.FixedIPs...)
 	return &v
 }
 

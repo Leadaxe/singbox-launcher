@@ -8,9 +8,13 @@
 
 **DNS: шаблонные серверы удаляются.** Серверы шаблона засеваются в список один раз, дальше список ваш: **Del** у шаблонного сервера (кроме обязательных и используемых — подсказка называет, кто держит), **Добавить из шаблона** / **Вернуть все шаблонные** возвращают удалённые. Бэкап несёт каталог шаблона: удалённое на одном устройстве снимается импортом на другом, как у LxBox. После обновления все прежние серверы на месте.
 
+**Правило: ответ DNS фиксированным IP.** Вкладка DNS окна правила — «Ответ»: по умолчанию, отдельный сервер или фиксированный IP (по адресу в строке) — как hosts, домены правила получают эти адреса прямо от ядра.
+
 ### Highlights (EN) — next release (draft)
 
 **DNS: template servers can be deleted.** Template servers are seeded into your list once, then the list is yours: **Del** on a template server (except required and used ones — the "Used by …" tooltip names the holder), **Add from template** / **Add all defaults** bring deleted ones back. Backups carry the template catalog: what you deleted on one device is removed by the import on another, the same way as in LxBox. After the update every server you had is still there.
+
+**Rule: answer DNS with a fixed IP.** The rule window's DNS tab has **Answer**: default, dedicated server or fixed IP (one address per line) — hosts-style, the rule's domains get these addresses straight from the core.
 
 ### Выжимка (RU) — v2.4.0
 

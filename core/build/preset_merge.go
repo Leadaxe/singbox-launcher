@@ -493,6 +493,10 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	var mirrorNums []int
 	var mirrorDropped []template.TemplateWarning
 	for _, m := range mirrors {
+		for _, body := range m.Fixed {
+			mirrorRules = append(mirrorRules, ResolvedDNSRule{Body: body, Source: DNSSourceRule, Name: m.Name, Active: true, Enabled: true})
+			mirrorNums = append(mirrorNums, m.Num)
+		}
 		if m.ForceIPv4 != nil {
 			mirrorRules = append(mirrorRules, ResolvedDNSRule{Body: m.ForceIPv4, Source: DNSSourceRule, Name: m.Name, Active: true, Enabled: true})
 			mirrorNums = append(mirrorNums, m.Num)

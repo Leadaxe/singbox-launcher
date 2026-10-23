@@ -113,7 +113,8 @@ func ruleDNSMirrorRowsByPos(model *wizardmodels.WizardModel) map[int][]*wizardmo
 	return out
 }
 
-// ruleDNSMirrorText — что делает DNS-опция правила («DNS: tag · IPv4 only»);
+// ruleDNSMirrorText — что делает DNS-опция правила («DNS: tag · IPv4 only»,
+// «Fixed IP: 192.168.1.10»);
 // пусто — опций нет или сборка зеркала не выпустит (гейт, пустой матчер).
 func ruleDNSMirrorText(cr *wizardmodels.RuleState) string {
 	if cr == nil || cr.DNS.IsZero() {
@@ -121,6 +122,10 @@ func ruleDNSMirrorText(cr *wizardmodels.RuleState) string {
 	}
 	if _, ok := build.RuleDNSMirrorMatch(cr.Rule.Rule); !ok {
 		return ""
+	}
+	if cr.DNS.FixedActive() {
+		v4, v6 := cr.DNS.FixedAddrs()
+		return fmt.Sprintf(locale.T("Fixed IP: %s"), strings.Join(append(v4, v6...), ", "))
 	}
 	var parts []string
 	if cr.DNS.Enabled && cr.DNS.ServerTag != "" {
@@ -140,7 +145,7 @@ func ruleDNSServerUsers(model *wizardmodels.WizardModel, tag string) []string {
 	}
 	var out []string
 	for _, cr := range model.CustomRules {
-		if cr == nil || !cr.Enabled || cr.DNS == nil || !cr.DNS.Enabled || cr.DNS.ServerTag != tag {
+		if cr == nil || !cr.Enabled || cr.DNS == nil || !cr.DNS.Enabled || cr.DNS.ServerTag != tag || cr.DNS.FixedActive() {
 			continue
 		}
 		if ruleDNSMirrorText(cr) != "" {

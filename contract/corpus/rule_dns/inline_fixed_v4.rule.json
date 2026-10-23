@@ -1,0 +1,10 @@
+{
+  "_": "fixedIps только с IPv4: правило A с ответом и AAAA пустым NOERROR; serverTag и forceIpv4 при активном Fixed IP не эмитятся",
+  "rule": {
+    "kind": "inline",
+    "name": "NAS",
+    "enabled": true,
+    "body": {"domain": ["nas.home"], "outbound": "direct"},
+    "dns": {"enabled": true, "serverTag": "google_doh", "forceIpv4": true, "fixedIps": ["192.168.1.10", "192.168.1.11"]}
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "_": "В fixedIps нет ни одного разбираемого адреса — режима Fixed IP нет: глушилка AAAA и зеркало на serverTag, как без fixedIps",
+  "rule": {
+    "kind": "inline",
+    "name": "Typo",
+    "enabled": true,
+    "body": {"domain": ["typo.example"], "outbound": "direct"},
+    "dns": {"enabled": true, "serverTag": "google_doh", "forceIpv4": true, "fixedIps": ["nas.home"]}
+  }
+}
