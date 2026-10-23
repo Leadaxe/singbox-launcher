@@ -128,6 +128,24 @@
       "side": "import",
       "desc": "DNS-запись файла не применена принимающей стороной: у неё нет такого вида записи или пресета, либо запись kind template несёт тег, которого шаблон принимающей стороны не объявил (SPEC 129 §5.2; entry — template:<tag>). Эмитируют обе стороны: лаунчер — на запись шаблонного сервера с необъявленным тегом (core/backup/import.go, importDNS)."
     },
+    "backup_dns_entry_kept": {
+      "severity": "warning",
+      "params": ["entry", "used_by"],
+      "side": "import",
+      "desc": "Шаблонный DNS-сервер, который источник знал (тег в dns.template_catalog файла) и удалил (записи kind template в файле нет), у приёмника НЕ снят: его держит ссылка состояния после импорта (контракт 1.1.135, D-139, docs/BACKUP.md §9 п. 5). entry — template:<tag>; used_by — первая удерживающая ссылка: final, default_domain_resolver, dns_rule:<server>, rule:<name>, group:<tag>, server:<tag>, preset:<id>, required. Снятие оставило бы ссылку висеть, и сборка молча увела бы резолв на другой сервер."
+    },
+    "backup_dns_resolver_reset": {
+      "severity": "warning",
+      "params": ["field", "value"],
+      "side": "import",
+      "desc": "dns.final или dns.default_domain_resolver после импорта указывает на тег, которого нет в списке DNS-серверов приёмника или который выключен: значение сброшено на умолчание шаблона приёмника (контракт 1.1.135, D-139). field — final | default_domain_resolver; value — значение файла."
+    },
+    "backup_dns_group_empty": {
+      "severity": "warning",
+      "params": ["tag"],
+      "side": "import",
+      "desc": "DNS-сервер-группа (kind user, body.type group) после импорта не имеет ни одного члена из списка приёмника: ввезена ВЫКЛЮЧЕННОЙ (контракт 1.1.135, D-139). Включённая пустая группа роняет сборку конфига целиком."
+    },
     "backup_warp_skipped": {
       "severity": "warning",
       "params": ["account"],

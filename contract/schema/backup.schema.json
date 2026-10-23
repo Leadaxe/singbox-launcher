@@ -1033,6 +1033,13 @@
           "type": "string",
           "description": "Тег сервера, которым резолвятся доменные адреса самих outbound'ов."
         },
+        "template_catalog": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Теги dns_options.servers шаблона источника на момент экспорта, в порядке шаблона (контракт 1.1.135, D-139). Запись kind template приёмника с тегом из каталога, которой нет в файле, снимается, если её не держит ссылка (docs/BACKUP.md §9 п. 5). Отсутствие поля — файл до 1.1.135."
+        },
         "servers": {
           "type": "array",
           "items": {
