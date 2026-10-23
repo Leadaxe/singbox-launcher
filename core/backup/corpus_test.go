@@ -412,6 +412,13 @@ func TestBackupCorpus(t *testing.T) {
 			// переменных записи проверяемы только против них, а шаблоны у
 			// сторон разные — поэтому только по фикстуре кейса.
 			recordVars := loadCorpusRecordVars(t, name)
+			// Пустое состояние — пустой список DNS-серверов (README корпуса):
+			// каталог фикстуры уже засеян, и посев импорта (SPEC 173) не
+			// дописывает его записи, — иначе «пустое» у лаунчера значило бы
+			// «весь каталог шаблона», а у LxBox — пустой список.
+			if recordVars != nil && recordVars.DNSServerOrder != nil {
+				dst.DNS.TemplateCatalog = append([]string{}, recordVars.DNSServerOrder...)
+			}
 			if pre := loadCorpusPre(t, name); pre != nil {
 				if _, err := ImportFile(dst, pre, ImportOptions{RecordVars: recordVars}); err != nil {
 					t.Fatalf("Import предсостояния: %v", err)

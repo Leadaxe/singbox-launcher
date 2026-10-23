@@ -1,0 +1,23 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "lxbox", "version": "corpus", "platform": "test" },
+  "exported_at": "2026-10-23T00:00:00Z",
+  "dns": {
+    "default_domain_resolver": "opendns_doh",
+    "template_catalog": ["google_udp", "google_dot", "cloudflare_dot", "opendns_doh"],
+    "servers": [
+      {
+        "kind": "user",
+        "tag": "my-dns",
+        "enabled": true,
+        "body": { "type": "udp", "server": "192.168.1.1" }
+      },
+      {
+        "kind": "user",
+        "tag": "shield",
+        "enabled": true,
+        "body": { "type": "group", "servers": ["opendns_doh", "yandex_dot"] }
+      }
+    ]
+  }
+}

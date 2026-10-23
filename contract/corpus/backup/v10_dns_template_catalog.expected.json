@@ -1,0 +1,20 @@
+{
+  "_": "Каталог источника (контракт 1.1.135, D-139, BACKUP.md §9 п. 5). Источник (LxBox) знал google_udp, google_dot, cloudflare_dot и удалил их (записей kind template в файле нет). google_udp снят; google_dot держит dns.final приёмника, cloudflare_dot — DNS-правило списка: оба остаются с backup_dns_entry_kept. quad9_doh вне каталога файла — не тронут. default_domain_resolver файла на opendns_doh, которого в списке нет, — сброшен (backup_dns_resolver_reset); группа shield без единого члена из списка ввезена выключенной (backup_dns_group_empty).",
+  "rules": [],
+  "warnings": [
+    "backup_dns_entry_kept",
+    "backup_dns_group_empty",
+    "backup_dns_resolver_reset"
+  ],
+  "dns": {
+    "servers": [
+      { "kind": "template", "tag": "google_dot", "enabled": true },
+      { "kind": "template", "tag": "cloudflare_dot", "enabled": false },
+      { "kind": "template", "tag": "quad9_doh", "enabled": false },
+      { "kind": "user", "tag": "my-dns", "enabled": true },
+      { "kind": "user", "tag": "shield", "enabled": false }
+    ],
+    "final": "google_dot",
+    "rules": 1
+  }
+}
