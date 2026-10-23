@@ -9677,5 +9677,7 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 
 Лаунчер реализовал: окно правила, вкладка DNS — «Answer»: Default / Dedicated server / Fixed IP (многострочное поле, одна строка — один адрес, неразбираемая строка блокирует Save); строка правила на вкладке DNS — `Fixed IP: <адреса>`.
 
+**Закрыто 24.10.2026.** LxBox: синк 1.1.139 (f48ac7c0), раннер корпуса `app/test/contract/rule_dns_corpus_test.dart` (c5c2842a) — все 4 кейса проходят, расхождений нет.
+
 Расхождение — сюда.
 
