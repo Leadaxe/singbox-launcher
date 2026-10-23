@@ -1,6 +1,6 @@
 # SPEC 173 — Каталог шаблонных DNS-серверов: посев один раз, удаление, бэкап по `template_catalog`
 
-Статус: **N** (написана 23.10.2026 по решению владельца, переданному LxBox: спека LxBox 681). Тип: Feature. Контракт: **1.1.135**, решение **D-139**, норма — `contract/docs/BACKUP.md` §9 п. 5 (блок «Состав шаблонных серверов — каталог источника»), поле `dns.template_catalog` (§2, `schema/backup.schema.json`), коды `backup_dns_entry_kept`, `backup_dns_resolver_reset`, `backup_dns_group_empty` (`registry/backup_warnings.json`). LxBox — `contract/TASKS_LXBOX.md` §132.
+Статус: **C** (написана 23.10.2026 по решению владельца, переданному LxBox: спека LxBox 681; принята владельцем 23.10.2026). Тип: Feature. Контракт: **1.1.135**, решение **D-139**, норма — `contract/docs/BACKUP.md` §9 п. 5 (блок «Состав шаблонных серверов — каталог источника»), поле `dns.template_catalog` (§2, `schema/backup.schema.json`), коды `backup_dns_entry_kept`, `backup_dns_resolver_reset`, `backup_dns_group_empty` (`registry/backup_warnings.json`). LxBox — `contract/TASKS_LXBOX.md` §132.
 
 ---
 

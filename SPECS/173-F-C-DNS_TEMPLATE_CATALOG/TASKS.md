@@ -20,4 +20,4 @@
 - [x] T10 Кейс корпуса `v10_dns_template_catalog`, раннер по имени
 
 ## Этап 4 — закрытие
-- [ ] T11 `docs/ARCHITECTURE.md`, `docs/release_notes/upcoming.md`, `RELEASE_NOTES.md`; показ владельцу; CI по `ci.yml`
+- [x] T11 `docs/ARCHITECTURE.md`, `docs/release_notes/upcoming.md`, `RELEASE_NOTES.md`; показ владельцу; CI по `ci.yml`
