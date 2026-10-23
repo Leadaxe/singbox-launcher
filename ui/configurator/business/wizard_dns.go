@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/build"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -100,35 +101,109 @@ func DNSTagFromTemplate(model *wizardmodels.WizardModel, tag string) bool {
 	return false
 }
 
-// DNSTemplateChoice — сервер каталога, которого нет в списке (SPEC 173).
+// DNSTemplateChoice — сервер каталога шаблона (SPEC 173).
 type DNSTemplateChoice struct {
 	Tag string
 	// Title — описание сервера в шаблоне, без него — тег.
 	Title string
+	// Listed — строка сервера уже есть в списке: «Add from template» тогда
+	// добавляет его копию своим сервером (DNSTemplateServerCopy).
+	Listed bool
 }
 
-// DNSTemplateServersMissing — серверы каталога (`dns_options.servers`
-// шаблона), которых нет среди строк модели, в порядке шаблона: их
-// предлагает «Add from template».
-func DNSTemplateServersMissing(model *wizardmodels.WizardModel) []DNSTemplateChoice {
+// DNSTemplateCatalog — весь каталог (`dns_options.servers` шаблона) в
+// порядке шаблона с отметкой, есть ли сервер в списке модели: его
+// показывает попап «Add from template».
+func DNSTemplateCatalog(model *wizardmodels.WizardModel) []DNSTemplateChoice {
 	have := make(map[string]bool, len(model.DNSServers))
 	for _, raw := range model.DNSServers {
 		have[tagFromServerJSON(raw)] = true
 	}
+	seen := map[string]bool{}
 	var out []DNSTemplateChoice
 	for _, s := range templateDNSServersOf(model) {
 		tag, _ := s["tag"].(string)
-		if tag = strings.TrimSpace(tag); tag == "" || have[tag] {
+		if tag = strings.TrimSpace(tag); tag == "" || seen[tag] {
 			continue
 		}
-		have[tag] = true
+		seen[tag] = true
 		title, _ := s["description"].(string)
 		if title = strings.TrimSpace(title); title == "" {
 			title = tag
 		}
-		out = append(out, DNSTemplateChoice{Tag: tag, Title: title})
+		out = append(out, DNSTemplateChoice{Tag: tag, Title: title, Listed: have[tag]})
 	}
 	return out
+}
+
+// DNSTemplateServersMissing — серверы каталога, которых нет среди строк
+// модели, в порядке шаблона: их возвращает «Add all defaults».
+func DNSTemplateServersMissing(model *wizardmodels.WizardModel) []DNSTemplateChoice {
+	var out []DNSTemplateChoice
+	for _, c := range DNSTemplateCatalog(model) {
+		if !c.Listed {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// DNSTemplateServerCopy дописывает в конец списка копию сервера каталога tag
+// своим сервером (kind=user) и возвращает индекс новой строки. Тело — то,
+// что сервер эмитит сейчас: переменные подставлены по значениям его записи
+// (build.ResolveDNS — тот же резолвер, что у сборки), служебных полей
+// шаблона нет. Тег — `<tag>_2`, `<tag>_3`…, свободный среди строк и каталога.
+// Включённость копии — включена: её заводят, чтобы пользоваться.
+func DNSTemplateServerCopy(model *wizardmodels.WizardModel, tag string) (int, bool) {
+	if model == nil || model.TemplateData == nil {
+		return -1, false
+	}
+	st := &state.State{DNS: state.DNSOptions{Servers: []state.DNSServer{{
+		Kind:    state.DNSServerKindTemplate,
+		Tag:     tag,
+		Enabled: true,
+		Vars:    model.DNSTemplateVars[tag],
+	}}}}
+	var body map[string]interface{}
+	for _, srv := range build.ResolveDNS(st, model.TemplateData, PresetGlobalVars(model), model.Target).Servers {
+		if srv.Source == build.DNSSourceTemplate && srv.Tag == tag {
+			body = srv.Body
+			break
+		}
+	}
+	if body == nil {
+		return -1, false
+	}
+	taken := map[string]bool{}
+	for _, raw := range model.DNSServers {
+		taken[tagFromServerJSON(raw)] = true
+	}
+	for _, s := range templateDNSServersOf(model) {
+		if t, _ := s["tag"].(string); t != "" {
+			taken[t] = true
+		}
+	}
+	newTag := ""
+	for n := 2; newTag == ""; n++ {
+		if candidate := fmt.Sprintf("%s_%d", tag, n); !taken[candidate] {
+			newTag = candidate
+		}
+	}
+	out := make(map[string]interface{}, len(body)+1)
+	for k, v := range body {
+		if k == "vars" {
+			continue
+		}
+		out[k] = v
+	}
+	out["tag"] = newTag
+	out["enabled"] = true
+	b, err := json.Marshal(out)
+	if err != nil {
+		return -1, false
+	}
+	model.DNSServers = append(model.DNSServers, json.RawMessage(b))
+	return len(model.DNSServers) - 1, true
 }
 
 // AddDNSTemplateServer дописывает строку сервера каталога tag с умолчаниями

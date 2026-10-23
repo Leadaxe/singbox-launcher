@@ -71,21 +71,29 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	}
 	serversBox := container.NewVBox()
 
-	// SPEC 173: серверы каталога шаблона, которых нет в списке, — по одному
-	// («Add from template») и все сразу («Add all defaults»). Доступность
-	// кнопок пересчитывает каждая пересборка списка.
+	// SPEC 173: «Add from template» — попап со всем каталогом шаблона
+	// (отсутствующий сервер возвращается, имеющийся копируется своим),
+	// «Add all defaults» — все отсутствующие сразу. Доступность кнопок
+	// пересчитывает каждая пересборка списка.
 	var addFromTemplateBtn, addAllDefaultsBtn *widget.Button
 	syncTemplateButtons := func() {
 		if addFromTemplateBtn == nil || addAllDefaultsBtn == nil {
 			return
 		}
-		if len(wizardbusiness.DNSTemplateServersMissing(presenter.Model())) == 0 {
-			addFromTemplateBtn.Disable()
-			addAllDefaultsBtn.Disable()
-			return
+		m := presenter.Model()
+		for _, b := range []struct {
+			btn *widget.Button
+			on  bool
+		}{
+			{addFromTemplateBtn, len(wizardbusiness.DNSTemplateCatalog(m)) > 0},
+			{addAllDefaultsBtn, len(wizardbusiness.DNSTemplateServersMissing(m)) > 0},
+		} {
+			if b.on {
+				b.btn.Enable()
+			} else {
+				b.btn.Disable()
+			}
 		}
-		addFromTemplateBtn.Enable()
-		addAllDefaultsBtn.Enable()
 	}
 
 	refreshList := func() {
@@ -276,27 +284,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	})
 	addFromTemplateBtn = widget.NewButton(locale.T("Add from template"), nil)
 	addFromTemplateBtn.OnTapped = func() {
-		missing := wizardbusiness.DNSTemplateServersMissing(presenter.Model())
-		if len(missing) == 0 {
-			return
-		}
-		items := make([]*fyne.MenuItem, 0, len(missing))
-		for _, c := range missing {
-			tag := c.Tag
-			label := c.Title
-			if label != tag {
-				label += " · " + tag
-			}
-			items = append(items, fyne.NewMenuItem(label, func() {
-				if wizardbusiness.AddDNSTemplateServer(presenter.Model(), tag) {
-					presenter.MarkAsChanged()
-					presenter.RefreshDNSListAndSelects()
-				}
-			}))
-		}
-		pop := widget.NewPopUpMenu(fyne.NewMenu("", items...), dialogParent().Canvas())
-		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(addFromTemplateBtn)
-		pop.ShowAtPosition(fyne.NewPos(pos.X, pos.Y+addFromTemplateBtn.MinSize().Height))
+		showDNSTemplateCatalogPopup(presenter, dialogParent(), addFromTemplateBtn)
 	}
 	addAllDefaultsBtn = widget.NewButton(locale.T("Add all defaults"), func() {
 		added := false
@@ -310,7 +298,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 			presenter.RefreshDNSListAndSelects()
 		}
 	})
-	setTooltip(addFromTemplateBtn, locale.T("Return a template DNS server you deleted, with the template's defaults."))
+	setTooltip(addFromTemplateBtn, locale.T("Pick a template DNS server: a deleted one comes back with the template's defaults, one already in the list is added as your own copy."))
 	setTooltip(addAllDefaultsBtn, locale.T("Return every deleted template DNS server, with the template's defaults."))
 	syncTemplateButtons()
 
@@ -759,6 +747,104 @@ func dnsGroupMembersSummary(obj map[string]interface{}, enabledByTag map[string]
 }
 
 // strikeThrough зачёркивает строку комбинирующим символом.
+// dnsCatalogPopupMaxRows / dnsCatalogPopupWidth — размер попапа каталога:
+// строк без прокрутки и ширина (кнопка уже строки «описание · тег»).
+const (
+	dnsCatalogPopupMaxRows = 12
+	dnsCatalogPopupWidth   = 440
+)
+
+// showDNSTemplateCatalogPopup — попап «Add from template» под кнопкой
+// (SPEC 173): весь каталог шаблона компактными строками «описание · тег».
+// Отсутствующий в списке сервер возвращается записью шаблона с его
+// умолчаниями; сервер, который уже в списке (справа — «in list»),
+// добавляется копией — своим сервером с телом, которое он эмитит сейчас, и
+// сразу открывается редактором. Попап — плоский widget.List, как у выбора
+// detour.
+func showDNSTemplateCatalogPopup(presenter *wizardpresentation.WizardPresenter, win fyne.Window, anchor fyne.CanvasObject) {
+	if win == nil {
+		return
+	}
+	choices := wizardbusiness.DNSTemplateCatalog(presenter.Model())
+	if len(choices) == 0 {
+		return
+	}
+	var popup *widget.PopUp
+	list := widget.NewList(
+		func() int { return len(choices) },
+		func() fyne.CanvasObject {
+			label := widget.NewLabel("")
+			label.Truncation = fyne.TextTruncateEllipsis
+			mark := widget.NewLabel("")
+			mark.Importance = widget.LowImportance
+			return container.NewBorder(nil, nil, nil, mark, label)
+		},
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			if id < 0 || id >= len(choices) {
+				return
+			}
+			c := choices[id]
+			row := obj.(*fyne.Container)
+			label := row.Objects[0].(*widget.Label)
+			mark := row.Objects[1].(*widget.Label)
+			text := c.Title
+			if text != c.Tag {
+				text += " · " + c.Tag
+			}
+			label.SetText(text)
+			if c.Listed {
+				mark.SetText(locale.T("in list · copy"))
+			} else {
+				mark.SetText("")
+			}
+		},
+	)
+	list.OnSelected = func(id widget.ListItemID) {
+		list.Unselect(id)
+		if id < 0 || id >= len(choices) {
+			return
+		}
+		popup.Hide()
+		c := choices[id]
+		m := presenter.Model()
+		if !c.Listed {
+			if wizardbusiness.AddDNSTemplateServer(m, c.Tag) {
+				presenter.MarkAsChanged()
+				presenter.RefreshDNSListAndSelects()
+			}
+			return
+		}
+		idx, ok := wizardbusiness.DNSTemplateServerCopy(m, c.Tag)
+		if !ok {
+			return
+		}
+		presenter.MarkAsChanged()
+		presenter.RefreshDNSListAndSelects()
+		showDNSServerEditor(presenter, win, idx)
+	}
+
+	popup = widget.NewPopUp(list, win.Canvas())
+	pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor)
+	pos.Y += anchor.Size().Height
+	pad := theme.Padding()
+	rowH := list.CreateItem().MinSize().Height + pad
+	n := len(choices)
+	if n > dnsCatalogPopupMaxRows {
+		n = dnsCatalogPopupMaxRows
+	}
+	h := float32(n)*rowH + pad
+	if room := win.Canvas().Size().Height - pos.Y - pad; room > rowH && h > room {
+		h = room
+	}
+	w := float32(dnsCatalogPopupWidth)
+	// Попап прижат правым краем к кнопке: она стоит у правого края вкладки.
+	if x := pos.X + anchor.Size().Width - w; x > 0 {
+		pos.X = x
+	}
+	popup.Resize(fyne.NewSize(w, h))
+	popup.ShowAtPosition(pos)
+}
+
 // dnsUsedByText — подсказка «кто держит сервер» по `used_by` удерживающей
 // ссылки (state.DNSServerHolders, словарь контракта).
 func dnsUsedByText(usedBy string) string {

@@ -5933,9 +5933,6 @@
   "Required by the template: it cannot be deleted.": {
     "value": "Обязателен по шаблону: удалить нельзя."
   },
-  "Return a template DNS server you deleted, with the template's defaults.": {
-    "value": "Вернуть удалённый DNS-сервер шаблона с настройками шаблона по умолчанию."
-  },
   "Return every deleted template DNS server, with the template's defaults.": {
     "value": "Вернуть все удалённые DNS-серверы шаблона с настройками шаблона по умолчанию."
   },
@@ -5977,5 +5974,11 @@
   },
   "%s — none of this DNS group's servers exist here, the group is imported turned off": {
     "value": "%s — ни одного сервера этой DNS-группы здесь нет, группа ввезена выключенной"
+  },
+  "Pick a template DNS server: a deleted one comes back with the template's defaults, one already in the list is added as your own copy.": {
+    "value": "Выберите DNS-сервер шаблона: удалённый вернётся с настройками шаблона, уже добавленный появится вашей копией."
+  },
+  "in list · copy": {
+    "value": "в списке · копия"
   }
 }
