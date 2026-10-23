@@ -1,6 +1,6 @@
 # SPEC 174 — Ответ DNS фиксированным IP у правила (`rules[].dns.fixedIps`)
 
-Статус: **N** (24.10.2026; решение владельца лаунчера «да делать» — паритет с LxBox §683; поправка владельца LxBox 24.10: поле одно, флага `fixed` нет). Тип: Feature. Контракт: **1.1.139**, норма — `contract/docs/TEMPLATE_LANG.md` §6.11 (блок «Локальный ответ — `fixedIps`»), `BACKUP.md` таблица `rules[]`, `schema/backup.schema.json`, корпус `contract/corpus/rule_dns/`; LxBox — `TASKS_LXBOX.md` §135.
+Статус: **C** (24.10.2026, принята владельцем; решение владельца лаунчера «да делать» — паритет с LxBox §683; поправка владельца LxBox 24.10: поле одно, флага `fixed` нет). Тип: Feature. Контракт: **1.1.139**, норма — `contract/docs/TEMPLATE_LANG.md` §6.11 (блок «Локальный ответ — `fixedIps`»), `BACKUP.md` таблица `rules[]`, `schema/backup.schema.json`, корпус `contract/corpus/rule_dns/`; LxBox — `TASKS_LXBOX.md` §135.
 
 ## Проблема
 
