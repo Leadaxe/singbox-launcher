@@ -668,8 +668,19 @@ func containsFold(list []string, want string) bool {
 // опознания этого довольно — предикат смотрит на имена секций и ключей,
 // которые во всех диалектах одни.
 func parseINI(text string) (map[string]map[string]string, bool) {
-	sections, _, ok := parseINIDialect(text, nil)
-	return sections, ok
+	doc, ok := parseINIDialect(text, nil)
+	return doc.Sections, ok
+}
+
+// iniDoc — разобранный ini-документ.
+type iniDoc struct {
+	// Sections — по одному экземпляру секции: слитые повторы (merge),
+	// первый (first_only) или первый из экземпляров (each).
+	Sections map[string]map[string]string
+	// Instances — все экземпляры секций с `repeat: each`, в порядке файла.
+	Instances map[string][]map[string]string
+	// Dropped — секции, чьи повторы отбросил `repeat: first_only`.
+	Dropped []iniRepeat
 }
 
 // iniRepeat — сколько раз встретилась секция с этим именем.
@@ -680,14 +691,15 @@ type iniRepeat struct {
 
 // parseINIDialect разбирает ini-текст правилами объявленного диалекта.
 //
-// Второй результат — секции, чьи ПОВТОРЫ отброшены правилом `repeat`,
-// вместе с общим числом вхождений: из него запись `on_extra` делает код с
-// параметром `count`. Пустой диалект (nil) = сегодняшний разбор wg-quick
-// дословно: ключи lower, значения as-is, комментарии `#`/`;` только целой
-// строкой, повторный ключ — последний выигрывает, секции сливаются.
-func parseINIDialect(text string, d *registry.IniDialect) (map[string]map[string]string, []iniRepeat, bool) {
+// Dropped — секции, чьи ПОВТОРЫ отброшены правилом `repeat`, вместе с общим
+// числом вхождений: из него запись `on_extra` делает код с параметром
+// `count`. Instances — экземпляры секций с `repeat: each`. Пустой диалект
+// (nil) = сегодняшний разбор wg-quick дословно: ключи lower, значения as-is,
+// комментарии `#`/`;` только целой строкой, повторный ключ — последний
+// выигрывает, секции сливаются.
+func parseINIDialect(text string, d *registry.IniDialect) (iniDoc, bool) {
 	if !strings.Contains(text, "[") {
-		return nil, nil, false
+		return iniDoc{}, false
 	}
 	prefixes := d.Prefixes()
 	keepKeyCase := d != nil && d.KeyCase == "preserve"
@@ -699,6 +711,10 @@ func parseINIDialect(text string, d *registry.IniDialect) (map[string]map[string
 	}
 
 	out := map[string]map[string]string{}
+	instances := map[string][]map[string]string{}
+	// target — карта, в которую идут ключи текущей секции: у `each` это
+	// последний экземпляр, у остальных — единственная запись секции.
+	var target map[string]string
 	counts := map[string]int{}
 	// closed — секции, добор ключей в которые запрещён правилом
 	// `repeat: first_only`: имя уже встречалось, и первое вхождение
@@ -715,10 +731,21 @@ func parseINIDialect(text string, d *registry.IniDialect) (map[string]map[string
 		if strings.HasPrefix(line, "[") {
 			section = strings.ToLower(strings.Trim(line, "[]"))
 			counts[section]++
+			rule := d.Section(section)
+			each := rule != nil && rule.Repeat == "each"
 			if _, ok := out[section]; !ok {
 				out[section] = map[string]string{}
-			} else if rule := d.Section(section); rule != nil && rule.Repeat == "first_only" {
+				target = out[section]
+				if each {
+					instances[section] = []map[string]string{target}
+				}
+			} else if each {
+				target = map[string]string{}
+				instances[section] = append(instances[section], target)
+			} else if rule != nil && rule.Repeat == "first_only" {
 				closed[section] = true
+			} else {
+				target = out[section]
 			}
 			any = true
 			continue
@@ -744,7 +771,7 @@ func parseINIDialect(text string, d *registry.IniDialect) (map[string]map[string
 		if key == "" || val == "" {
 			continue
 		}
-		if prev, seen := out[section][key]; seen {
+		if prev, seen := target[key]; seen {
 			switch repeatedKey {
 			case "first_wins":
 				continue
@@ -752,7 +779,7 @@ func parseINIDialect(text string, d *registry.IniDialect) (map[string]map[string
 				val = prev + "," + val
 			}
 		}
-		out[section][key] = val
+		target[key] = val
 	}
 
 	var dropped []iniRepeat
@@ -762,7 +789,7 @@ func parseINIDialect(text string, d *registry.IniDialect) (map[string]map[string
 		}
 	}
 	sort.Slice(dropped, func(i, j int) bool { return dropped[i].Name < dropped[j].Name })
-	return out, dropped, any
+	return iniDoc{Sections: out, Instances: instances, Dropped: dropped}, any
 }
 
 // hasAnyPrefix — начинается ли строка с любого из маркеров.

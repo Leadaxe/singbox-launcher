@@ -1,0 +1,13 @@
+# Две [Peer], у второй нет PublicKey (контракт 1.1.140). Норма: вторая
+# снимается одна с кодом wgconf_peer_dropped {index: 2, missing: PublicKey},
+# узел — с первым пиром.
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.0.0.2/32
+
+[Peer]
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+Endpoint = first.example.com:51820
+
+[Peer]
+Endpoint = second.example.com:51821

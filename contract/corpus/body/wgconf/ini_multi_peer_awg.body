@@ -1,0 +1,25 @@
+# AmneziaWG с двумя [Peer] (контракт 1.1.140): AWG-поля живут в [Interface]
+# и общие для узла, пиры их не касаются; peers[] — оба, в порядке файла.
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.0.0.2/32
+MTU = 1280
+Jc = 4
+Jmin = 40
+Jmax = 70
+S1 = 15
+S2 = 33
+H1 = 1234567
+H2 = 2345678
+H3 = 3456789
+H4 = 4567890
+
+[Peer]
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+Endpoint = awg1.example.com:51820
+AllowedIPs = 192.168.0.0/16
+
+[Peer]
+PublicKey = ccccccccccccccccccccccccccccccccccccccccccA=
+Endpoint = awg2.example.com:51820
+AllowedIPs = 0.0.0.0/0

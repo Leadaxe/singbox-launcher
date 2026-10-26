@@ -1400,28 +1400,49 @@
       "dart": null,
       "go": "правило реестра contract/registry/protocols/{vless,vmess,trojan,shadowsocks,hysteria2}.json mappers.xray.params.$extra_*.on_len_gt; исполнение — core/config/linkmap/exec.go:execState.applyOnLenGt"
     },
-    "wgconf_extra_peer_dropped": {
+    "wgconf_peer_dropped": {
       "severity": "warning",
       "params": [
-        "count"
+        "index",
+        "missing"
       ],
-      "title_en": "WireGuard: extra [Peer] sections dropped",
-      "title_ru": "WireGuard: лишние секции [Peer] отброшены",
-      "text_en": "The configuration holds {count} [Peer] sections. Only the first one became a node, because one node here is one peer; the rest were dropped, and any traffic those peers were meant to carry will not go through this node.",
-      "text_ru": "В конфигурации {count} секций [Peer]. Узлом стала только первая: один узел здесь — это один пир. Остальные отброшены, и трафик, который через них должен был идти, через этот узел не пойдёт.",
-      "cause_en": "wg-quick lets one interface hold several peers and splits traffic between them by AllowedIPs. A node in the launcher is a single server, so there is no place to put the second peer. Such a file usually comes from a site-to-site setup, or from a provider that packed several locations into one configuration.",
-      "cause_ru": "wg-quick разрешает одному интерфейсу держать несколько пиров и делит трафик между ними по AllowedIPs. Узел в лаунчере — это один сервер, и второму пиру просто некуда встать. Такой файл обычно приходит из site-to-site схемы или от провайдера, упаковавшего несколько локаций в одну конфигурацию.",
+      "title_en": "WireGuard: [Peer] section skipped",
+      "title_ru": "WireGuard: секция [Peer] пропущена",
+      "text_en": "[Peer] section {index} has no {missing}, so that peer was skipped. The other peers of the configuration are in the node.",
+      "text_ru": "В секции [Peer] №{index} нет {missing}, и этот пир пропущен. Остальные пиры конфигурации в узле есть.",
+      "cause_en": "Without the peer's public key the handshake cannot start, and without Endpoint there is nowhere to connect. Such a section usually comes from a hand-edited file or a cut-off copy.",
+      "cause_ru": "Без публичного ключа пира рукопожатие не начнётся, а без Endpoint подключаться некуда. Такая секция обычно бывает в файле, исправленном вручную, или в обрезанной копии.",
       "fix_en": [
-        "Check that the first peer is the one you need: it is the one that became the node.",
-        "If you need the others, import each peer as its own configuration, with the same [Interface] and one [Peer] each."
+        "Add the missing key to that [Peer] section and import the configuration again."
       ],
       "fix_ru": [
-        "Проверьте, что первый пир — тот, который вам нужен: именно он стал узлом.",
-        "Если нужны остальные, импортируйте каждый пир отдельной конфигурацией: та же [Interface] и по одной [Peer] в каждой."
+        "Допишите недостающий ключ в эту секцию [Peer] и импортируйте конфигурацию заново."
       ],
-      "desc": "Несколько [Peer] в .conf — берётся первая, остальные снимаются. Прежде Go делал это молча (рукописный разбор секций .conf, снят); код делает потерю видимой.",
+      "desc": "Контракт 1.1.140 (LxBox §136): несколько [Peer] в .conf — каждая свой элемент peers[]; секция без обязательного ключа снимается одна. index — номер секции [Peer] в файле с 1, missing — недостающие ключи, как их пишет реестр, через ', ' в алфавитном порядке. Не осталось ни одной секции — прежний отказ required, этого кода нет. Сменил wgconf_extra_peer_dropped (до 1.1.140 вторая [Peer] отбрасывалась).",
       "dart": null,
-      "go": "правило реестра contract/registry/protocols/wireguard.json mappers.conf.ini_dialect.sections.Peer.on_extra; исполнение — core/config/linkmap/exec.go:execState.noteINIDropped (все входы .conf, включая vpn://)"
+      "go": "правило реестра contract/registry/protocols/wireguard.json mappers.conf.ini_dialect.sections.Peer.on_drop; исполнение — core/config/linkmap/exec.go:execEach (все входы .conf, включая vpn:// и awg:// base64)"
+    },
+    "wg_peer_dropped": {
+      "severity": "warning",
+      "params": [
+        "index",
+        "reason"
+      ],
+      "title_en": "WireGuard: peer dropped",
+      "title_ru": "WireGuard: пир снят",
+      "text_en": "Peer {index} was dropped ({reason}). The other peers of the node remain.",
+      "text_ru": "Пир №{index} снят ({reason}). Остальные пиры узла остались.",
+      "cause_en": "One of the node's peers has a value the core rejects, such as a key that is not 32 bytes of base64, or no address to connect to. With a single peer the whole node would be dropped; with several, only the broken one is.",
+      "cause_ru": "У одного из пиров узла значение, которое ядро не примет: например, ключ не из 32 байт base64 или нет адреса подключения. Будь пир один, снялся бы весь узел; когда их несколько, снимается только сломанный.",
+      "fix_en": [
+        "Check that peer against the configuration your provider gave you and correct the value named in the reason."
+      ],
+      "fix_ru": [
+        "Сверьте этот пир с конфигурацией от провайдера и исправьте значение, названное в причине."
+      ],
+      "desc": "Контракт 1.1.140 (LxBox §136): у массива peers правило on_item_failure drop_item — отказ узла внутри элемента (on_invalid drop_node, незаполненное required) снимает элемент. Коды, поставленные при обходе снятого элемента, заменяются этим одним: путь — элемент (peers[1]), index — номер с 1, reason — код отказа (wg_key_invalid, field_missing, …). Не уцелел ни один пир — отказ узла прежний, этого кода нет. Все входы, включая sing-box JSON и авторское тело (core_rejects).",
+      "dart": null,
+      "go": "правило реестра contract/registry/protocols/wireguard.json body.fields.peers.on_item_failure; исполнение — core/config/nodeflow/sanitize.go:sanitizer.arrayItemsIsolated"
     },
     "amnezia_container_choice": {
       "severity": "info",

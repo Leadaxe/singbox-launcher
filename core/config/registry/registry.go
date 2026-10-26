@@ -67,6 +67,12 @@ type Field struct {
 	// Имя то же, что у одноимённого оператора маппера (`extract` по элементам
 	// списка): операция одна, словарей два.
 	OnItemInvalid *OnItemInvalid `json:"on_item_invalid"`
+	// OnItemFailure — что делать с ЭЛЕМЕНТОМ массива объектов, внутри
+	// которого сработал отказ узла (`on_invalid: drop_node` или незаполненное
+	// `required`), контракт 1.1.140. `drop_item` снимает элемент с кодом
+	// `code` (параметры `index` — номер элемента с 1, `reason` — код отказа);
+	// не осталось ни одного элемента — отказ узла прежний, первым отказом.
+	OnItemFailure *OnItemFailure `json:"on_item_failure"`
 	// ItemForbidden — ЗНАЧЕНИЯ элемента списка, которых ядро не примет, хотя
 	// форма у них годная (контракт 1.1.63). У tailscale дефолтный маршрут
 	// `0.0.0.0/0` / `::/0` в advertise_routes — это «быть выходом», и ядро
@@ -379,6 +385,15 @@ type OnInvalid struct {
 type OnItemInvalid struct {
 	Action string `json:"action"`
 	Code   string `json:"code"`
+}
+
+// OnItemFailure — снятие элемента массива объектов, в котором случился отказ
+// узла (Field.OnItemFailure). `core_rejects` — как у on_invalid: снятие
+// жёсткое и для авторского тела.
+type OnItemFailure struct {
+	Action      string `json:"action"`
+	Code        string `json:"code"`
+	CoreRejects bool   `json:"core_rejects"`
 }
 
 // ItemForbidden — запрещённые значения элемента списка (Field.ItemForbidden).
@@ -2154,6 +2169,9 @@ func (f *Field) ruleCoreRejects(code string) bool {
 	if f.OnInvalid != nil {
 		see(f.OnInvalid.Code, f.OnInvalid.CoreRejects)
 		see(f.OnInvalid.ElseCode, f.OnInvalid.CoreRejects)
+	}
+	if f.OnItemFailure != nil {
+		see(f.OnItemFailure.Code, f.OnItemFailure.CoreRejects)
 	}
 	if f.DefaultWhen != nil {
 		see(f.DefaultWhen.Code, f.DefaultWhen.CoreRejects)

@@ -1531,10 +1531,21 @@ func (s *sanitizer) variantObject(path string, f *registry.Field, m map[string]i
 }
 
 // arrayField обходит массив объектов (wireguard.peers).
+//
+// С `on_item_failure: drop_item` (контракт 1.1.140) отказ внутри элемента
+// снимает элемент, а не узел: его следы в накопителях откатываются, и
+// вместо них встаёт один код поля с номером элемента и кодом отказа. Не
+// уцелел ни один элемент — массив обходится заново без изоляции, и узел
+// получает ровно тот отказ, что и без правила.
 func (s *sanitizer) arrayField(path string, f *registry.Field, raw interface{}) (interface{}, bool) {
 	list, ok := asSlice(raw)
 	if !ok || f.Items == nil {
 		return s.onInvalid(path, f, raw)
+	}
+	if fail := f.OnItemFailure; fail != nil && fail.Action == "drop_item" && len(f.Items.Fields) > 0 && len(list) > 1 {
+		if out, ok := s.arrayItemsIsolated(path, f, list); ok {
+			return out, true
+		}
 	}
 	out := make([]interface{}, 0, len(list))
 	for i, item := range list {
@@ -1554,6 +1565,95 @@ func (s *sanitizer) arrayField(path string, f *registry.Field, raw interface{}) 
 		return nil, false
 	}
 	return out, true
+}
+
+// arrayItemsIsolated обходит элементы так, что отказ элемента снимает его
+// одного. false — не уцелел ни один, и следов обхода не осталось.
+func (s *sanitizer) arrayItemsIsolated(path string, f *registry.Field, list []interface{}) (interface{}, bool) {
+	out := make([]interface{}, 0, len(list))
+	var notes []Warning
+	for i, item := range list {
+		itemPath := path + "[" + strconv.Itoa(i) + "]"
+		m, ok := asObject(item)
+		if !ok {
+			s.warn("type_invalid", itemPath, item, false, map[string]string{"path": itemPath})
+			continue
+		}
+		mark := s.mark()
+		clean := s.object(itemPath, f.Items.Order, f.Items.Fields, m)
+		reason := s.failureSince(mark)
+		if reason == "" {
+			out = append(out, clean)
+			continue
+		}
+		s.rollback(mark)
+		params := map[string]string{"path": itemPath, "index": strconv.Itoa(i + 1), "reason": reason}
+		notes = append(notes, Warning{Code: f.OnItemFailure.Code, Path: itemPath, Params: params})
+		// Код встаёт на место элемента: порядок кодов — порядок обхода.
+		s.warn(f.OnItemFailure.Code, itemPath, nil, false, params)
+	}
+	if len(out) > 0 {
+		return out, true
+	}
+	// Ни одного элемента: коды снятия убираются, обход повторит вызывающий.
+	for _, n := range notes {
+		s.unwarn(n.Code, n.Path)
+	}
+	return nil, false
+}
+
+// sanitizerMark — длины накопителей перед обходом элемента массива.
+type sanitizerMark struct {
+	warnings, missing, deferred, implied, repaired, repairWarnings, hard int
+	drop                                                                 bool
+}
+
+func (s *sanitizer) mark() sanitizerMark {
+	return sanitizerMark{
+		warnings: len(s.res.Warnings), missing: len(s.missingRequired), deferred: len(s.deferred),
+		implied: len(s.res.Implied), repaired: len(s.res.Repaired), repairWarnings: len(s.res.RepairWarnings),
+		hard: len(s.res.HardPaths), drop: s.res.Drop != nil,
+	}
+}
+
+// failureSince — код отказа узла, случившегося после отметки: отказ по
+// значению (`drop_node`) или незаполненное обязательное поле.
+func (s *sanitizer) failureSince(m sanitizerMark) string {
+	if !m.drop && s.res.Drop != nil {
+		return s.res.Drop.Code
+	}
+	if len(s.missingRequired) > m.missing {
+		return s.missingRequired[m.missing].Code
+	}
+	return ""
+}
+
+// rollback снимает следы обхода элемента: его коды, отказ и отметки.
+func (s *sanitizer) rollback(m sanitizerMark) {
+	for _, w := range s.res.Warnings[m.warnings:] {
+		delete(s.seen, w.Code+"\x00"+w.Path)
+	}
+	s.res.Warnings = s.res.Warnings[:m.warnings]
+	s.missingRequired = s.missingRequired[:m.missing]
+	s.deferred = s.deferred[:m.deferred]
+	s.res.Implied = s.res.Implied[:m.implied]
+	s.res.Repaired = s.res.Repaired[:m.repaired]
+	s.res.RepairWarnings = s.res.RepairWarnings[:m.repairWarnings]
+	s.res.HardPaths = s.res.HardPaths[:m.hard]
+	if !m.drop {
+		s.res.Drop = nil
+	}
+}
+
+// unwarn убирает поставленный код (code, path).
+func (s *sanitizer) unwarn(code, path string) {
+	for i := range s.res.Warnings {
+		if s.res.Warnings[i].Code == code && s.res.Warnings[i].Path == path {
+			s.res.Warnings = append(s.res.Warnings[:i], s.res.Warnings[i+1:]...)
+			delete(s.seen, code+"\x00"+path)
+			return
+		}
+	}
 }
 
 // relationsOK проверяет conflicts / requires.

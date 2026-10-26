@@ -81,6 +81,10 @@ type Space struct {
 	// с общим числом вхождений. Решение принимает разборщик ini, а код
 	// ставит исполнитель записи `on_extra` — потеря едет отсюда туда.
 	iniDropped []iniRepeat
+	// iniInstances — экземпляры секций с `repeat: each` в порядке файла
+	// (контракт 1.1.140). Таблица исполняется на каждом отдельно: Exec
+	// подставляет экземпляр вместо секции копией пространства.
+	iniInstances map[string][]map[string]string
 }
 
 type kv struct {
@@ -147,6 +151,20 @@ func (s *Space) layerJSON(name string) (interface{}, string, bool) {
 func (s *Space) SetINI(sections map[string]map[string]string, comments map[string]string) {
 	s.ini = sections
 	s.iniComments = comments
+}
+
+// withINIInstance — копия пространства, в которой секция section — это
+// экземпляр inst. Остальное общее: экземпляры различаются только своей
+// секцией, а [Interface] и оболочка у них одни.
+func (s *Space) withINIInstance(section string, inst map[string]string) *Space {
+	c := *s
+	c.ini = make(map[string]map[string]string, len(s.ini))
+	for k, v := range s.ini {
+		c.ini[k] = v
+	}
+	c.ini[section] = inst
+	c.iniInstances = nil
+	return &c
 }
 
 // AddQuery добавляет параметр, сохраняя порядок появления.

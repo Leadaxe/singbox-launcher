@@ -96,6 +96,7 @@ func TestEngineVsConfCorpus(t *testing.T) {
 			if sr.Drop != nil {
 				t.Fatalf("санитайзер отверг узел: %s", sr.Drop.Code)
 			}
+			checkConfWarnings(t, bodyPath, res.Notes, sr.Warnings)
 			got := canonString(sr.Clean, reg.Order(scheme))
 			wantStr := canonString(want, reg.Order(scheme))
 			if got == wantStr {
@@ -167,6 +168,65 @@ func singleExpectedEntry(t *testing.T, bodyPath string) (map[string]interface{},
 	delete(body, "tag")
 	delete(body, "type")
 	return body, true
+}
+
+// confWarning — код из ожидания корпуса: путь и параметры сверяются, только
+// если ожидание их несёт.
+type confWarning struct {
+	Code   string            `json:"code"`
+	Path   string            `json:"path"`
+	Params map[string]string `json:"params"`
+}
+
+// checkConfWarnings сверяет коды ожидания с кодами движка и санитайзера.
+//
+// Сверка — ВКЛЮЧЕНИЕМ: каждый код ожидания обязан найтись среди
+// поставленных, лишние не ошибка. Тела корпуса сняты боевым путём, и коды
+// в них записаны не все; нормативны те, что записаны (контракт 1.1.140 —
+// первые кейсы, где код и есть предмет: снятый пир).
+func checkConfWarnings(t *testing.T, bodyPath string, notes []Note, warnings []nodeflow.Warning) {
+	t.Helper()
+	data, err := os.ReadFile(strings.TrimSuffix(bodyPath, ".body") + ".expected.json")
+	if err != nil {
+		return
+	}
+	var env struct {
+		Nodes []struct {
+			Warnings []confWarning `json:"warnings"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(data, &env); err != nil || len(env.Nodes) != 1 {
+		return
+	}
+	got := make([]confWarning, 0, len(notes)+len(warnings))
+	for _, n := range notes {
+		got = append(got, confWarning{Code: n.Code, Path: n.Path, Params: n.Params})
+	}
+	for _, w := range warnings {
+		got = append(got, confWarning{Code: w.Code, Path: w.Path, Params: w.Params})
+	}
+	for _, want := range env.Nodes[0].Warnings {
+		found := false
+		for _, g := range got {
+			if g.Code != want.Code || (want.Path != "" && g.Path != want.Path) {
+				continue
+			}
+			match := true
+			for k, v := range want.Params {
+				if g.Params[k] != v {
+					match = false
+					break
+				}
+			}
+			if match {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("нет кода %s (path %q, params %v); поставлены: %+v", want.Code, want.Path, want.Params, got)
+		}
+	}
 }
 
 // selectConfSection находит секцию вида `conf`, чей detect опознаёт текст.

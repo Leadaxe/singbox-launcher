@@ -1,0 +1,18 @@
+# Три [Peer], у второй негодный PublicKey (контракт 1.1.140). Норма: правило
+# тела peers.on_item_failure снимает вторую с кодом wg_peer_dropped
+# {index: 2, reason: wg_key_invalid}; узел — с первым и третьим пиром.
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.0.0.2/32
+
+[Peer]
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+Endpoint = first.example.com:51820
+
+[Peer]
+PublicKey = not-a-key
+Endpoint = second.example.com:51821
+
+[Peer]
+PublicKey = ddddddddddddddddddddddddddddddddddddddddddA=
+Endpoint = third.example.com:51822

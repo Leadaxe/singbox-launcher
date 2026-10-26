@@ -781,12 +781,24 @@ type IniDialect struct {
 // IniSection — правило ПОВТОРА секции с одним именем.
 type IniSection struct {
 	// Repeat — что делать со второй секцией того же имени:
-	// "merge" (по умолчанию) | "first_only".
+	// "merge" (по умолчанию) | "first_only" | "each".
+	//
+	// "each" (контракт 1.1.140): каждая секция — свой ЭКЗЕМПЛЯР. Таблица
+	// исполняется на каждом экземпляре отдельно, и элемент массива `into`
+	// из каждого прогона встаёт в тело узла в порядке секций файла.
 	Repeat string `json:"repeat"`
 	// OnExtra — код на отброшенные повторы. Параметр `count` получает
 	// ОБЩЕЕ число секций этого имени, как их написал человек.
 	OnExtra *IniOnExtra `json:"on_extra"`
-	Impl    string      `json:"impl"`
+	// Into — путь массива тела, который собирают экземпляры секции с
+	// `repeat: each` ("peers[]").
+	Into string `json:"into"`
+	// OnDrop — код на экземпляр, снятый за незаполненный обязательный ключ
+	// (`required` записи, чей источник — ключи этой секции). Параметры:
+	// `index` — номер секции в файле с 1, `missing` — недостающие ключи
+	// через ", " в алфавитном порядке.
+	OnDrop *IniOnExtra `json:"on_drop"`
+	Impl   string      `json:"impl"`
 }
 
 // IniOnExtra — код, которым отмечается отброшенный повтор секции.
@@ -1164,6 +1176,43 @@ func ProtocolFileNames() []string {
 // переезжает на новую грамматику волнами (SPEC 133), и до перевода схемы
 // секции у неё нет. Движок в этом случае просто не находит таблицу и схема
 // продолжает идти старым парсером.
+// shareIniDialect отдаёт диалект ini протокола секциям, у которых есть форма
+// с пространством `ini`, а своего `ini_dialect` нет (контракт 1.1.140).
+//
+// Текст `.conf` один и тот же, каким бы входом он ни приехал: голым файлом
+// (`mappers.conf`) или base64 под ссылкой (`mappers.uri`, форма `conf_b64`).
+// Без этого вторая форма читала его диалектом по умолчанию, и две [Peer]
+// сливались в одну ключами второй. Диалект у протокола объявлен один; секций
+// с ним несколько не бывает — берётся первая по имени.
+func shareIniDialect(byKind map[string]*Mapper) {
+	kinds := make([]string, 0, len(byKind))
+	for kind := range byKind {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+	var d *IniDialect
+	for _, kind := range kinds {
+		if m := byKind[kind]; m != nil && m.IniDialect != nil {
+			d = m.IniDialect
+			break
+		}
+	}
+	if d == nil {
+		return
+	}
+	for _, m := range byKind {
+		if m == nil || m.IniDialect != nil {
+			continue
+		}
+		for _, f := range m.Forms {
+			if f.Space == "ini" {
+				m.IniDialect = d
+				break
+			}
+		}
+	}
+}
+
 func LoadMappers() (*MapperSet, error) {
 	set := &MapperSet{
 		byScheme: map[string]map[string]*Mapper{},
@@ -1193,6 +1242,7 @@ func LoadMappers() (*MapperSet, error) {
 			m.kind = kind
 			m.scheme = scheme
 		}
+		shareIniDialect(byKind)
 		set.byScheme[scheme] = byKind
 	}
 

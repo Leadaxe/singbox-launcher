@@ -118,10 +118,11 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`vless_encryption_invalid`](#vless_encryption_invalid) · `error` — VLESS encryption string is malformed
 - [`vmess_security_unknown`](#vmess_security_unknown) · `warning` — VMess: unknown cipher replaced with auto
 - [`wg_key_invalid`](#wg_key_invalid) · `error` — WireGuard: invalid key
+- [`wg_peer_dropped`](#wg_peer_dropped) · `warning` — WireGuard: peer dropped
 - [`wg_peer_incoming`](#wg_peer_incoming) · `info` — Waits for an incoming connection
 - [`wgconf_dns_ignored`](#wgconf_dns_ignored) · `info` — WireGuard: DNS from the configuration not applied
-- [`wgconf_extra_peer_dropped`](#wgconf_extra_peer_dropped) · `warning` — WireGuard: extra [Peer] sections dropped
 - [`wgconf_param_unknown`](#wgconf_param_unknown) · `info` — WireGuard: unknown key {query_name}
+- [`wgconf_peer_dropped`](#wgconf_peer_dropped) · `warning` — WireGuard: [Peer] section skipped
 - [`ws_early_data_converted`](#ws_early_data_converted) · `info` — WebSocket: early data converted
 - [`xhttp_mode_forced_packet_up`](#xhttp_mode_forced_packet_up) · `warning` — XHTTP mode set to packet-up
 - [`xhttp_param_reset`](#xhttp_param_reset) · `warning` — XHTTP: field {field} removed
@@ -2239,6 +2240,22 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`peers.public_key`](protocols/wireguard.md#body-peers-public-key) — the value does not fit the field → node dropped
   - [`private_key`](protocols/wireguard.md#body-private-key) — the value does not fit the field → node dropped
 
+<a id="wg_peer_dropped"></a>
+### wg_peer_dropped
+
+**severity:** `warning` · **params:** `index`, `reason`
+
+**WireGuard: peer dropped**
+
+- **What happened:** Peer {index} was dropped ({reason}). The other peers of the node remain.
+- **Why it happens:** One of the node's peers has a value the core rejects, such as a key that is not 32 bytes of base64, or no address to connect to. With a single peer the whole node would be dropped; with several, only the broken one is.
+- **What you can do:**
+  - Check that peer against the configuration your provider gave you and correct the value named in the reason.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="wg_peer_incoming"></a>
 ### wg_peer_incoming
 
@@ -2273,23 +2290,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
-<a id="wgconf_extra_peer_dropped"></a>
-### wgconf_extra_peer_dropped
-
-**severity:** `warning` · **params:** `count`
-
-**WireGuard: extra [Peer] sections dropped**
-
-- **What happened:** The configuration holds {count} [Peer] sections. Only the first one became a node, because one node here is one peer; the rest were dropped, and any traffic those peers were meant to carry will not go through this node.
-- **Why it happens:** wg-quick lets one interface hold several peers and splits traffic between them by AllowedIPs. A node in the launcher is a single server, so there is no place to put the second peer. Such a file usually comes from a site-to-site setup, or from a provider that packed several locations into one configuration.
-- **What you can do:**
-  - Check that the first peer is the one you need: it is the one that became the node.
-  - If you need the others, import each peer as its own configuration, with the same [Interface] and one [Peer] each.
-
-**Where it comes from:**
-
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
-
 <a id="wgconf_param_unknown"></a>
 ### wgconf_param_unknown
 
@@ -2303,6 +2303,22 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - Nothing to do if the node works: the key had no effect here anyway.
   - If you edited the file yourself, check the spelling of the key.
   - If the key belongs to a newer AmneziaWG, update the core.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="wgconf_peer_dropped"></a>
+### wgconf_peer_dropped
+
+**severity:** `warning` · **params:** `index`, `missing`
+
+**WireGuard: [Peer] section skipped**
+
+- **What happened:** [Peer] section {index} has no {missing}, so that peer was skipped. The other peers of the configuration are in the node.
+- **Why it happens:** Without the peer's public key the handshake cannot start, and without Endpoint there is nowhere to connect. Such a section usually comes from a hand-edited file or a cut-off copy.
+- **What you can do:**
+  - Add the missing key to that [Peer] section and import the configuration again.
 
 **Where it comes from:**
 
