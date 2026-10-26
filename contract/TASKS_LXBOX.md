@@ -9681,3 +9681,23 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 
 Расхождение — сюда.
 
+
+## 136. Запрос LxBox — несколько `[Peer]` в WireGuard INI (26.10.2026)
+
+Запрос стороны LxBox лаунчеру (LxBox §686 п. 10, слово владельца 26.10.2026: «много peer допустимо в INI — снять ограничение»). Норму меняет лаунчер; LxBox делает свою сторону после синка.
+
+**Сейчас.** `registry/protocols/wireguard.json` → `mappers.conf.ini_dialect.sections.Peer`: `repeat: first_only`, `on_extra: wgconf_extra_peer_dropped`. Обоснование в `impl` — «узел sing-box — это ОДИН peer, и вторая [Peer] в него не помещается по построению». Это неверно для ядра: у endpoint `wireguard` поле `peers` — массив, трафик между пирами разводится по `allowed_ips` (docs/configuration/endpoint/wireguard.md форка). Тело JSON с двумя пирами уже сейчас уходит в ядро дословно и работает; режется только путь INI. Модель LxBox (`WireguardSpec.peers`) — список.
+
+**Что просим.**
+
+1. Реестр: у секции `Peer` — повторы разрешены; каждая секция `[Peer]` → свой элемент `peers[]` с параметрами таблицы `mappers.conf.params`, адресованными `ini.Peer.*` (PublicKey, PresharedKey, Endpoint с его `extract`/`on_no_match`, AllowedIPs, PersistentKeepalive, Reserved и прочие). Порядок элементов — порядок секций в файле. `[Interface]` — одна, как сейчас. Код `wgconf_extra_peer_dropped` для INI больше не выдаётся (из словаря — по вашему правилу снятия кодов).
+2. Движок разбора обеих сторон: `parseINIDialect` (`core/config/linkmap/detect.go:688`) отдаёт `map[string]map[string]string` — по одному экземпляру секции; нужен список экземпляров для повторяемой секции. У LxBox то же место — `services/parser/engine/ini_space.dart` (`repeat`).
+3. `required` у параметров `ini.Peer.*` — на каждый элемент: `[Peer]` без PublicKey или Endpoint — та же реакция реестра, что сейчас у единственной секции (на ваше решение: снять один элемент с кодом или весь узел).
+4. Ссылка (`wireguard://`, `awg://`, форма `conf_b64` — она декодируется в INI и пойдёт тем же путём, то есть тоже получит все пиры) — у формы `key@host` второго пира нет места, она остаётся с одним.
+5. Корпус: `conf/wireguard/multi_peer` — INI с двумя `[Peer]` (разные `AllowedIPs`), ожидание — `peers` из двух элементов в порядке файла; кейс с AWG-полями в `[Interface]` и двумя пирами — по желанию.
+
+**Открытый вопрос — ваш.** Пересекающиеся `AllowedIPs` у двух пиров: ядро решает само (wireguard-go: побеждает последний добавленный префикс). Предлагаем не валидировать в реестре и не предупреждать; если считаете, что предупреждение нужно — код и текст на вас.
+
+**LxBox после синка:** разбор INI с N пирами, вкладка INI в редакторе узла выводит все пиры тела (обратный ход по той же таблице `conf`), Edit INI ничего не теряет на теле с N пирами.
+
+Расхождение — сюда.
