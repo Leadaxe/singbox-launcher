@@ -37,10 +37,6 @@
       "warnings": [
         {
           "code": "wg_peer_dropped",
-          "params": {
-            "index": "2",
-            "reason": "wg_key_invalid"
-          },
           "path": "peers[1]"
         }
       ]

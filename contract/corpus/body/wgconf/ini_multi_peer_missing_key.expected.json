@@ -28,10 +28,6 @@
       "warnings": [
         {
           "code": "wgconf_peer_dropped",
-          "params": {
-            "index": "2",
-            "missing": "PublicKey"
-          },
           "path": "peer.2"
         }
       ]
