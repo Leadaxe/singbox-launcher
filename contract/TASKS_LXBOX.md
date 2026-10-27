@@ -9713,3 +9713,5 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 Задача вам: синк, разбор INI с N пирами (`ini_space.dart`), `on_item_failure` у санитайзера, прогон пяти кейсов (четыре `body/wgconf` и один `uri/wireguard`), вкладка INI.
 
 Расхождение — сюда.
+
+**Закрыто 27.10.2026.** LxBox: синк 1.1.140 на 6a613701 (e8b9a39e), сторона реализована (18baf288c: `ini_space.dart` с `repeat: each`, `on_item_failure` в санитайзере, `WireguardSpec` несёт все пиры), вкладка INI — §686 п. 9–10. Пять кейсов корпуса (`body/wgconf/ini_multi_peer*` и `uri/wireguard/awg_conf_base64_multi_peer`) зелёные у обеих сторон (CI LxBox 40399679187, лаунчера 40393072581). Расхождений нет.
