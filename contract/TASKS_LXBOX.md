@@ -9715,3 +9715,22 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 Расхождение — сюда.
 
 **Закрыто 27.10.2026.** LxBox: синк 1.1.140 на 6a613701 (e8b9a39e), сторона реализована (18baf288c: `ini_space.dart` с `repeat: each`, `on_item_failure` в санитайзере, `WireguardSpec` несёт все пиры), вкладка INI — §686 п. 9–10. Пять кейсов корпуса (`body/wgconf/ini_multi_peer*` и `uri/wireguard/awg_conf_base64_multi_peer`) зелёные у обеих сторон (CI LxBox 40399679187, лаунчера 40393072581). Расхождений нет.
+
+## 137. Контракт 1.1.141 — `trusttunnel` как известный тип outbound (29.10.2026)
+
+Повод — живой дефект лаунчера: узел `{"type":"trusttunnel", …}` (AdGuard TrustTunnel; ядро sing-box-lx с 1.14.3-lx.21, FEATURE 018: proxy CONNECT с Basic-auth внутри HTTP/2 поверх TLS либо HTTP/3 поверх QUIC) из sing-box JSON шёл слепой копией, а проверка кандидата локальным ядром старше lx.21 ложно сообщала «машина откажет на Deploy». Решение владельца: запись в реестре **без гейта по ядру** — «в новых лаунчерах будут новые ядра».
+
+Новая запись `registry/protocols/trusttunnel.json`: `kind: outbound`, источник только `singbox`, URI-формы нет, формы Add server нет (вторая очередь, как у OpenConnect до SPEC 167). Описаны все поля `option/trusttunnel.go` с правилами ядра — подробно в строке 1.1.141 `README.md`. Главное для вашей стороны:
+
+1. `username`, `password`, `tls` — `required` с `core_rejects`: узел без них снимается `field_missing` (ядро: «missing username» / «missing password» / `ErrTLSRequired`).
+2. `quic` conflicts `tls.utls.enabled` при `when {quic: true}` — `field_conflict` с `core_rejects`: снимается `quic`, узел идёт по HTTP/2, uTLS остаётся. Связь судится по собственному значению поля (`when`, контракт 1.1.56): `quic: false` рядом с uTLS ядро принимает.
+3. `quic_congestion_control` — enum `bbr|cubic|reno` (`bbr2` из naive здесь нет), `normalize: trim_lower`, негодное — `type_invalid` с `core_rejects`.
+4. `min_core` / `build_tag` — описание, не гейт: `on_core_unsupported` нет намеренно. На ядре без `with_trusttunnel` конфиг отвергается целиком, узел выключает страховка core-rejected по имени (PARSING_PRINCIPLES §9) — у вас тот же путь, что у любого «unknown outbound type».
+5. Wildcard `*` не стоит — неописанный ключ снимается `unknown_key`, как у naive/vless.
+6. Два правила ядра таблицей не выражены (записаны в `note` словами, ловит страховка): `tls.server_name` обязателен при server-IP; непустой `tls.alpn` обязан содержать `h2` (без quic) либо `h3` (с quic).
+
+Корпус `body/singbox`: `trusttunnel_outbound`, `trusttunnel_quic_utls_conflict`, `trusttunnel_missing_password_dropped`.
+
+Задача вам: синк 1.1.141, узел известного типа без своей модели (`node_spec.dart`, как openconnect/openvpn-client), прогон трёх кейсов. Норм и кодов 1.1.141 не добавляет.
+
+Расхождение — сюда.

@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "health_check": true,
+        "password": "pass",
+        "server": "tt.example.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "tt.example.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "trusttunnel",
+        "username": "user"
+      },
+      "kind": "outbound",
+      "label": "tt-h2",
+      "scheme": "trusttunnel",
+      "warnings": [
+        {
+          "code": "unknown_key",
+          "path": "x_future_key",
+          "value": "1"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

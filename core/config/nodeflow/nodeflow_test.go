@@ -426,7 +426,7 @@ func TestGateForCore(t *testing.T) {
 func TestEmitEveryScheme(t *testing.T) {
 	schemes := []string{"anytls", "chain", "http", "hysteria", "hysteria2", "masque",
 		"naive", "openconnect", "openvpn-client", "shadowsocks", "socks", "ssh", "tailscale",
-		"trojan", "tuic", "vless", "vmess", "wireguard"}
+		"trojan", "trusttunnel", "tuic", "vless", "vmess", "wireguard"}
 	base := map[string]interface{}{
 		"server": "a.e.com", "server_port": float64(443),
 		"uuid": testUUID, "password": "p", "method": "aes-256-gcm",

@@ -1,0 +1,186 @@
+{
+  "v": 1,
+  "scheme": "trusttunnel",
+  "kind": "outbound",
+  "singbox_type": "trusttunnel",
+  "aliases": [],
+  "sources": [
+    "singbox"
+  ],
+  "extension": null,
+  "note": "Outbound форка (sing-box-lx protocol/trusttunnel, option/trusttunnel.go, include/trusttunnel.go; FEATURE 018, ядро с 1.14.3-lx.21): AdGuard TrustTunnel — proxy CONNECT с Basic-auth внутри HTTP/2 поверх TLS либо HTTP/3 поверх QUIC. Ядро регистрирует тип только при теге сборки with_trusttunnel, но гейта по ядру у записи НЕТ (решение владельца 29.10.2026: «в новых лаунчерах будут новые ядра»): узел уходит в конфиг на любом ядре, старое ядро отвергает конфиг целиком («unknown outbound type: trusttunnel»), и страховка core-rejected (PARSING_PRINCIPLES §9) выключает узел по имени. Контракт 1.1.141 (29.10.2026): запись добавлена, потому что без неё узел из sing-box JSON шёл слепой копией, а проверка кандидата локальным ядром старше lx.21 ложно сообщала «машина откажет на Deploy». Описаны ВСЕ поля option/trusttunnel.go TrustTunnelOutboundOptions с правилами ядра (сверено по protocol/trusttunnel/outbound.go NewOutbound). Два правила ядра таблицей не выражены и записаны словами: (1) tls.server_name обязателен, когда server — IP-адрес (сервер маршрутизирует по SNI и рвёт ClientHello без него); (2) непустой tls.alpn обязан содержать протокол узла — h2 без quic, h3 с quic (пустой alpn ядро заполняет само). Оба — отказ старта ВСЕГО конфига; ловит страховка core-rejected. URI-формы у протокола нет: узел приходит как sing-box JSON (своя запись, документ, подписка). Формы Add server нет (вторая очередь, как у OpenConnect до SPEC 167).",
+  "uri": null,
+  "emit": {
+    "share_uri": false,
+    "note": "Share-URI не эмитится — URI-формы у схемы нет. Тело эмитится по body.order; wildcard `*` в корне нет — неописанный ключ снимается санитайзером (unknown_key)."
+  },
+  "refs": {
+    "go": [
+      "core/config/nodeflow/sanitize.go:Sanitize (правила полей и связь conflicts с when)",
+      "core/config/nodeflow/emit.go:emitObject",
+      "core/rebuild_corereject.go (узел на ядре без with_trusttunnel выключает страховка по имени)"
+    ],
+    "dart": [
+      "lib/models/node_spec.dart (узел известного типа без своей модели)"
+    ]
+  },
+  "body": {
+    "core": "1.14.3-lx.22",
+    "lx_only": true,
+    "min_core": "1.14.3-lx.21",
+    "build_tag": "with_trusttunnel",
+    "order": [
+      "server",
+      "server_port",
+      "username",
+      "password",
+      "network",
+      "quic",
+      "quic_congestion_control",
+      "health_check",
+      "idle_timeout",
+      "tls",
+      "__dialer"
+    ],
+    "fields": {
+      "server": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server address: domain or IP.",
+        "desc_ru": "Адрес сервера: домен или IP.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common. IP-адрес без tls.server_name — отказ ядра (NewOutbound: «tls.server_name is required when server is an IP address»): таблицей условие «значение — IP» не выражено, ловит страховка core-rejected."
+      },
+      "server_port": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Server port.",
+        "desc_ru": "Порт сервера.",
+        "impl": "ServerOptions; правило значения — registry/dialer.json, секция common."
+      },
+      "username": {
+        "type": "string",
+        "role": "credential",
+        "required": true,
+        "core_rejects": true,
+        "desc_en": "Account user name (HTTP Basic auth).",
+        "desc_ru": "Имя пользователя учётной записи (HTTP Basic auth).",
+        "impl": "option/trusttunnel.go Username. NewOutbound: пустое — «missing username», отказ старта всего конфига; узел снимается (field_missing)."
+      },
+      "password": {
+        "type": "string",
+        "secret": true,
+        "required": true,
+        "core_rejects": true,
+        "desc_en": "Account password (HTTP Basic auth).",
+        "desc_ru": "Пароль учётной записи (HTTP Basic auth).",
+        "impl": "option/trusttunnel.go Password. NewOutbound: пустой — «missing password», отказ старта всего конфига; узел снимается (field_missing). Секрет."
+      },
+      "network": {
+        "type": "ref",
+        "ref": "dialer.common",
+        "desc_en": "Networks this outbound handles.",
+        "desc_ru": "Сети, которые обслуживает этот узел.",
+        "impl": "NetworkList; правило значения — registry/dialer.json, секция common. NewOutbound принимает только tcp и udp («trusttunnel carries tcp and udp only») — то же множество, что у общего правила."
+      },
+      "quic": {
+        "type": "bool",
+        "default": false,
+        "conflicts": [
+          {
+            "with": "tls.utls.enabled",
+            "when": { "quic": true },
+            "code": "field_conflict",
+            "core_rejects": true
+          }
+        ],
+        "desc_en": "Use HTTP/3 over QUIC instead of HTTP/2 over TLS.",
+        "desc_ru": "Использовать HTTP/3 поверх QUIC вместо HTTP/2 поверх TLS.",
+        "impl": "option/trusttunnel.go QUIC: false — HTTP/2 (ALPN h2), true — HTTP/3 (ALPN h3). NewOutbound: quic вместе с tls.utls.enabled — «uTLS is not supported with quic», отказ старта всего конфига; снимается quic (узел идёт по HTTP/2, uTLS остаётся — подмена ClientHello и есть причина, по которой узел так настроен). `when` нужен, потому что связь судится по СОБСТВЕННОМУ значению: quic:false рядом с uTLS ядро принимает. Непустой tls.alpn обязан содержать протокол узла (h2/h3) — таблицей не выражено, см. note схемы."
+      },
+      "quic_congestion_control": {
+        "type": "enum",
+        "values": [
+          "",
+          "bbr",
+          "cubic",
+          "reno"
+        ],
+        "normalize": "trim_lower",
+        "on_invalid": {
+          "action": "drop",
+          "code": "type_invalid",
+          "core_rejects": true
+        },
+        "default": "",
+        "desc_en": "QUIC congestion control algorithm.",
+        "desc_ru": "Алгоритм управления перегрузкой QUIC.",
+        "impl": "option/trusttunnel.go QUICCongestionControl, enum bbr,cubic,reno (bbr2 из naive здесь НЕТ). NewOutbound: иное значение — «unknown quic_congestion_control», отказ старта. Пусто — дефолт ядра. Читается только при quic:true, но ядро проверяет значение всегда — поле не прячется за quic."
+      },
+      "health_check": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Probe the session with CONNECT _check before reusing it after idle.",
+        "desc_ru": "Проверять сессию запросом CONNECT _check перед повторным использованием после простоя.",
+        "impl": "option/trusttunnel.go HealthCheck → transport/trusttunnel/client.go ClientOptions.HealthCheck: перед dial по сессии, которая простаивала, шлётся CONNECT _check; мёртвая сессия пересоздаётся прозрачно. Ядро значение не проверяет."
+      },
+      "idle_timeout": {
+        "type": "duration",
+        "desc_en": "How long an idle session is kept before it is torn down.",
+        "desc_ru": "Сколько держать простаивающую сессию до закрытия.",
+        "impl": "option/trusttunnel.go IdleTimeout (badoption.Duration, указатель). Пусто — lx.trusttunnel.idle_timeout ядра, иначе 5m (protocol/trusttunnel/outbound.go idleWindow); отрицательное ядро поднимает до 0 (сессия не держится). Ядро значение не отвергает."
+      },
+      "tls": {
+        "type": "ref",
+        "ref": "tls",
+        "required": true,
+        "core_rejects": true,
+        "desc_en": "TLS settings.",
+        "desc_ru": "Настройки TLS.",
+        "impl": "OutboundTLSOptionsContainer; NewOutbound: без tls.enabled=true — C.ErrTLSRequired, отказ старта всего конфига; узел снимается (field_missing). Общая суб-схема registry/tls.json целиком (tls.NewClientWithOptions, включая utls/ech/fragment): запретов forbidden_for у trusttunnel нет. Особые правила ядра: server_name обязателен при server-IP; непустой alpn обязан содержать h2 (без quic) либо h3 (с quic); utls несовместим с quic (связь у поля quic)."
+      },
+      "__dialer": {
+        "type": "ref",
+        "ref": "dialer",
+        "inline": true,
+        "desc_en": "Common dialer fields, inlined flat into the body.",
+        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
+        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body. domain_resolver узла ядро использует и для UDP-назначений с доменом (udpQueryOptions)."
+      }
+    },
+    "note": "Описаны все поля option/trusttunnel.go TrustTunnelOutboundOptions (контракт 1.1.141, ядро 1.14.3-lx.22). Wildcard `*` не стоит: все ключи структуры ядра известны, и неописанный ключ снимается кодом unknown_key (норма описанного тела, как у naive и vless); новый ключ форка заводится здесь вместе с бампом `core`. Гейта по ядру нет намеренно — см. note схемы."
+  },
+  "mappers": {
+    "singbox": {
+      "detect": {
+        "json": {
+          "value_in": {
+            "type": [
+              "trusttunnel"
+            ]
+          }
+        }
+      },
+      "body_source": "singbox",
+      "forms": [
+        {
+          "id": "outbound",
+          "detect": {
+            "default": true
+          },
+          "space": "json",
+          "level": "outbound"
+        }
+      ],
+      "params": {},
+      "unknown_key": {
+        "action": "keep",
+        "code": "json_field_unknown",
+        "ignore": [
+          "type",
+          "tag"
+        ],
+        "impl": "keep, а не drop: тело уже в каноне ядра, и чужой ключ может быть расширением форка — выбрасывать его нельзя; код нужен, чтобы ключ не уехал в ядро слепой копией молча (норма MAPPER_ENGINE §8a, как у naive). `ignore` — бухгалтерия элемента: `type` (по нему элемент опознан) и `tag` (имя узла). Пустая `params` — конечное состояние: вход sing-box это тело уже в каноне ядра, секция нужна ради detect, body_source и unknown_key."
+      }
+    }
+  }
+}

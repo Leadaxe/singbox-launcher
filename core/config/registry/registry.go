@@ -807,7 +807,7 @@ type Registry struct {
 var protocolFiles = []string{
 	"anytls", "chain", "http", "hysteria", "hysteria2", "masque",
 	"naive", "openconnect", "openvpn-client", "shadowsocks", "socks", "ssh", "tailscale",
-	"trojan", "tuic", "vless", "vmess", "wireguard",
+	"trojan", "trusttunnel", "tuic", "vless", "vmess", "wireguard",
 }
 
 var (

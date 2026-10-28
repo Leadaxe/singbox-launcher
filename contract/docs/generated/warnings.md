@@ -696,6 +696,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`spoof`](protocols/_tls.md#body-spoof) — conflicts with `tls.reality.enabled` → removed
 - [`transports`](protocols/_transports.md)
   - [`xhttp.xmux.max_concurrency`](protocols/_transports.md#body-xhttp-xmux-max-concurrency) — conflicts with `transport.xmux.max_connections` → removed
+- [`trusttunnel`](protocols/trusttunnel.md)
+  - [`quic`](protocols/trusttunnel.md#body-quic) — conflicts with `tls.utls.enabled` when `quic` is `true` → removed
 - [`tuic`](protocols/tuic.md)
   - [`udp_relay_mode`](protocols/tuic.md#body-udp-relay-mode) — conflicts with `udp_over_stream` → removed
 - [`wireguard`](protocols/wireguard.md)
@@ -744,6 +746,10 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`password`](protocols/shadowsocks.md#body-password) — required and missing → node dropped
 - [`trojan`](protocols/trojan.md)
   - [`password`](protocols/trojan.md#body-password) — required and missing → node dropped
+- [`trusttunnel`](protocols/trusttunnel.md)
+  - [`password`](protocols/trusttunnel.md#body-password) — required and missing → node dropped
+  - [`tls`](protocols/trusttunnel.md#body-tls) — required and missing → node dropped
+  - [`username`](protocols/trusttunnel.md#body-username) — required and missing → node dropped
 - [`tuic`](protocols/tuic.md)
   - [`tls`](protocols/tuic.md#body-tls) — required and missing → node dropped
 - [`vless`](protocols/vless.md)
@@ -2078,6 +2084,8 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
   - [`spoof_method`](protocols/_tls.md#body-spoof-method) — the value does not fit the field → removed
 - [`transports`](protocols/_transports.md)
   - [`ws.max_early_data`](protocols/_transports.md#body-ws-max-early-data) — the value does not fit the field → removed
+- [`trusttunnel`](protocols/trusttunnel.md)
+  - [`quic_congestion_control`](protocols/trusttunnel.md#body-quic-congestion-control) — the value does not fit the field → removed
 - [`tuic`](protocols/tuic.md)
   - [`connection_receive_window`](protocols/tuic.md#body-connection-receive-window) — the value does not fit the field → removed
   - [`initial_packet_size`](protocols/tuic.md#body-initial-packet-size) — the value does not fit the field → removed

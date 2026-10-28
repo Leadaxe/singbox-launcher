@@ -6,8 +6,8 @@ These pages are generated from the `contract/registry/` registry by `go generate
 
 |  | Version |
 |---|---|
-| Contract (`contract/VERSION`) | `1.1.140` |
-| Core (`body.core`) | `1.14.3-lx.17` |
+| Contract (`contract/VERSION`) | `1.1.141` |
+| Core (`body.core`) | `1.14.3-lx.17`, `1.14.3-lx.22` |
 
 ## How to read these pages
 
@@ -49,6 +49,7 @@ The normative text is [`contract/docs/PARSING_PRINCIPLES.md` §8](../PARSING_PRI
 | [`ssh`](protocols/ssh.md) | `ssh` | `outbound` | share link, sing-box JSON | yes |
 | [`tailscale`](protocols/tailscale.md) | `tailscale` | `endpoint` | sing-box JSON | no |
 | [`trojan`](protocols/trojan.md) | `trojan` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
+| [`trusttunnel`](protocols/trusttunnel.md) | `trusttunnel` | `outbound` | sing-box JSON | no |
 | [`tuic`](protocols/tuic.md) | `tuic` | `outbound` | share link, sing-box JSON | yes |
 | [`vless`](protocols/vless.md) | `vless` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
 | [`vmess`](protocols/vmess.md) | `vmess` | `outbound` | share link, sing-box JSON, Xray JSON | yes |
