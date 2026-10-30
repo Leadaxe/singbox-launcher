@@ -232,8 +232,10 @@ func (p *machineListPanel) onAutoDeploy(payload events.MachineAutoDeployPayload)
 	default:
 		body = locale.Tf("Failed: %s", payload.Note)
 	}
-	if app := fyne.CurrentApp(); app != nil {
-		app.SendNotification(&fyne.Notification{Title: title, Content: body})
+	if !platform.SendNotification(title, body) {
+		if app := fyne.CurrentApp(); app != nil {
+			app.SendNotification(&fyne.Notification{Title: title, Content: body})
+		}
 	}
 	fyne.Do(func() {
 		p.Reload()
