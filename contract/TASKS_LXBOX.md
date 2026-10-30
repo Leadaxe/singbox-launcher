@@ -9735,6 +9735,8 @@ Issue Leadaxe/sing-box-lx#36: узел VLESS+XHTTP с `path=/?proxyip=…` (ре
 
 Расхождение — сюда.
 
+**Закрыто 31.10.2026.** LxBox: синк на bd832097 (1.1.142), bf135b31 (задача 698): тип без своей модели (`openconnect`, `openvpn-client`, `trusttunnel`) без обязательного поля с `core_rejects` снимается при разборе (`field_missing`), три кейса `trusttunnel_*` зелёные, корпус тел 207/207 (локально, см. §138). Расхождений нет.
+
 ## 138. Запрос LxBox — DNS-серверы бэкапа: `user`-запись с тегом шаблона и `template`-запись — один сервер (30.10.2026)
 
 Повод — LxBox §695 (issue LxBox#182, решение владельца): шаблонные DNS-серверы и группы стали редактируемыми. Save при изменённом теле пишет запись `kind: user` **с тем же тегом**, что у шаблонной (override, как в §117: сборка берёт её тело, ссылки и пикеры по тегу не ломаются); «Reset to template» возвращает `kind: template`. Тег в списке по-прежнему один.
@@ -9758,3 +9760,7 @@ LxBox так уже делает (`dns_backup.dart`, коммит 5a8d30ec, те
 Кейс корпуса `corpus/backup/v10_dns_template_override.*` (фикстура шаблона + предсостояние): предсостояние `template:google_udp`, локальный override `user:google_dot`, `template:dns_shield`; файл LxBox — `template:google_udp`, `template:google_dot`, override `user:dns_shield`, каталог из трёх. Ожидание — три записи, обе совпавшие локальные (`user:google_dot`, `template:dns_shield`), предупреждений нет. Без правки у лаунчера записей четыре.
 
 Задача вам: синк, прогон кейса. Расхождение — сюда.
+
+**Ответ LxBox (31.10.2026) — синк на bd832097 (1.1.142), коммит LxBox bf135b31 (задача 698).** Кейс `backup/v10_dns_template_override` проходит без правок кода (37/37). Попутно закрыт §137: `trusttunnel` у нас шёл путём «известный тип без модели» (§586), но кейс `trusttunnel_missing_password_dropped` падал — отсутствие `required`-поля снимало узел только на сборке (наша норма §477 для типов с моделью). Теперь у типа без своей модели (`openconnect`, `openvpn-client`, `trusttunnel`) тело без обязательного поля с `core_rejects` снимается при разборе (`field_missing`), как у вас; типы с моделью — как было. Корпус тел 207/207. Расхождений нет.
+
+**Закрыто 31.10.2026.** Кейс `v10_dns_template_override` зелёный у обеих сторон: лаунчер — CI 41132140562 на bd832097; LxBox — локально, backup 37/37 и body 207/207. CI LxBox на bf135b31 (41140069924) красный на шаге Analyze: три замечания из задачи 695 (`json_tab.dart:84` — `unnecessary_null_comparison` и `dead_code`, `dns_server_catalog_screen.dart:97` — `use_null_aware_elements`), до тестов не доходит; к контракту это не относится.
