@@ -98,8 +98,11 @@ Every patch endpoint returns `{"ok":true,"diff_summary":["..."]}` on success. Th
 | Method | Path | Body | What it does |
 |---|---|---|---|
 | GET | `/state/servers` | — | `{"servers":[{tag, kind, type?, enabled, folder_id?, folder?}]}` — root `kind=server` entries and folder members. Use it to find the `tag` for `DELETE`. |
-| POST | `/state/servers` | `{"input":"…", "folder"?:"…", "tag"?:"…"}` | Adds nodes the way the Configurator's add-source field does. `input` is: share links, one per line; WireGuard/AWG `.conf` text; `vpn://`; sing-box JSON (one outbound, an array, or a document with `outbounds`). Reply: `added:[{tag, folder_id?, type, warnings:[code]}]`, `skipped:[{line, tag?, reason}]`. `line` is the 1-based input line (`0` for a record out of JSON); `reason` is `subscription_url` (subscriptions are **not** added here), `duplicate` (the same link is already a root server), `unrecognized: …`, `unsupported outbound type: X`, or the parse error text. `tag` is accepted only when the input yields exactly one node (else `422`). A tag is made unique against the root namespace (`X`, `X-2`, …), inside a folder against the folder's nodes. `folder` is looked up by ULID, then by name (`kind=folder`; a subscription → `422`). Nothing added → `200` with `added:[]`, the state is not saved. |
+| POST | `/state/servers` | `{"input":"…", "folder"?:"…", "tag"?:"…", "detour"?:{"tag":"…", "folder"?:"…"}}` | Adds nodes the way the Configurator's add-source field does. `input` is: share links, one per line; WireGuard/AWG `.conf` text; `vpn://`; sing-box JSON (one outbound, an array, or a document with `outbounds`). Reply: `added:[{tag, folder_id?, type, warnings:[code]}]`, `skipped:[{line, tag?, reason}]`. `line` is the 1-based input line (`0` for a record out of JSON); `reason` is `subscription_url` (subscriptions are **not** added here), `duplicate` (the same link is already a root server), `unrecognized: …`, `unsupported outbound type: X`, or the parse error text. `tag` is accepted only when the input yields exactly one node (else `422`). A tag is made unique against the root namespace (`X`, `X-2`, …), inside a folder against the folder's nodes. `folder` is looked up by ULID, then by name (`kind=folder`; a subscription → `422`). `detour` sets the dial-through target of every added node (it shows up as `added[].detour`): without `detour.folder` it is a root name — a root node, chain, Direction, fold tag or template outbound (the block outbound is not a dialer → `422`); with `detour.folder` (ULID or name of a folder **or** subscription) it is a node of that container by its raw tag. A target that does not exist → `422`, `field: detour.tag` / `detour.folder`, nothing is added. Nothing added → `200` with `added:[]`, the state is not saved. |
 | DELETE | `/state/servers?tag=&folder=` | — | Deletes a root `kind=server` (no `folder`) or a folder member. Reply: `deleted:{tag, folder_id?, links_removed:[], directions_updated:[], dangling:[]}`. Link references are removed — `detour`, chain hops, group members and `default`, and (for a root node) the Directions' `include` lists. References **by name** (rule `outbound`, `route_final`, DNS `detour`, `vars`, a Direction's `options.default`) are not rewritten, only listed in `dangling` (root nodes only — a folder member has no root name to refer to) — same as the Configurator, which reports and does not clean. A Tailscale node also loses its state directory. |
+| GET | `/state/folders` | — | `{"folders":[{id, name, enabled, nodes, replace?}]}` — every `kind=folder` source, empty ones included (`GET /state/servers` lists nodes, so an empty folder is not there); `nodes` is the member count, `replace` the fold tag. |
+| POST | `/state/folders` | `{"name":"…", "enabled"?:bool}` | Creates an empty folder at the end of the sources list, like the Configurator's **Add folder** (`enabled` defaults to `true`). `name` is required and must not already name a folder or subscription (`422`, `field: name`) — the API finds folders by name too, and a second one with the same name would make `folder=<name>` ambiguous. Reply: `folder:{id, name, enabled, nodes}`; fill it with `POST /state/servers` and `"folder":"<id or name>"`. |
+| DELETE | `/state/folders?folder=&with_nodes=` | — | Deletes a folder found by ULID, then by name (a subscription → `422`). A folder that still holds nodes is deleted only with `with_nodes=1` (else `422`, `field: with_nodes`, nothing changes): its nodes go with it, and links to them elsewhere are removed the way `DELETE /state/servers` removes them for each node. A folded folder's `replace` tag (and its `-auto`) is a root name: links and Directions' `include` entries to it are removed, references by name are listed in `dangling`. Reply: `deleted:{id, name, nodes_removed:[], links_removed:[], directions_updated:[], dangling:[]}`. |
 | PATCH | `/state/rules` | `{"mode":"replace"\|"append", "rules":[]state.Rule}` | Replaces / appends rules. Each is validated via `r.DecodeBody()` (kind discriminator: preset/inline/srs). |
 | POST | `/state/rules` | one state v8 rule record: `kind`, `id?`, `ref?`, `name?`, `enabled?` (default `true`), `num?`, `refs?`, `vars?`, `body?` | Adds one rule. `inline`/`srs`: `body` is the raw sing-box rule and must carry `outbound` or `action`; an unknown `outbound` → `422`, `field: body.outbound`. `preset`: `ref` must be a template preset that is not in the rules yet. `num` omitted → the next number in the user zone (inline/srs) or the preset's template anchor (preset); the list stays sorted. Reply: `num`. Adding a preset also syncs the DNS and outbound sections, as the Configurator's Save does. |
 | DELETE | `/state/rules?num=\|name=\|ref=` | — | Deletes exactly one rule (one selector). Reply: `deleted:` the rule record. Several matches → `409` with `nums:[…]` — repeat with `num`. A fixed head preset (not sortable) → `422`. Deleting a preset syncs DNS/outbounds like the add. |
@@ -111,7 +114,7 @@ Every patch endpoint returns `{"ok":true,"diff_summary":["..."]}` on success. Th
 | DELETE | `/state/dns/rules?index=` | — | Deletes the user DNS rule at `index` in `dns.rules` — the position `GET /state/dns` shows. Reply: `deleted:` the record. A preset entry → `422` (presets follow their routing rule); out of range → `404`. |
 | PATCH | `/state/log-level` | `{"level":"trace"\|"debug"\|"info"\|"warn"\|"error"\|"fatal"\|"panic"}` | Writes `vars[log_level]` → forces a `config.json` rebuild → **restarts sing-box** (active connections are dropped). Responds `202` + `{"ok":true,"level":"...","warning":"active connections reset"}` rather than the generic `{"ok":true,"diff_summary":[...]}`. The `level` field is required; an invalid level → `400` with the `allowed` list (the core is left alone). |
 
-Every `POST`/`DELETE` above (SPEC 160) answers `{"ok":true,"diff_summary":["…"], …}` plus the operation's own field, and works like the Configurator's buttons: after the save the local `config.json` is rebuilt — `config_rebuilt:true`, or `config_rebuilt:false` with `config_rebuild_error` when the rebuild failed (the edit is already on disk, do not repeat the call). The `/remote/machines/{id}/state/*` mirrors never rebuild: `config_rebuilt` is always `false`.
+Every `POST`/`DELETE` above (SPEC 160) answers `{"ok":true,"diff_summary":["…"], …}` plus the operation's own field, and works like the Configurator's buttons: after the save the local `config.json` is rebuilt — `config_rebuilt:true`, or `config_rebuilt:false` with `config_rebuild_error` when the rebuild failed (the edit is already on disk, do not repeat the call). The `/remote/machines/{id}/state/*` mirrors do not rebuild the machine's config (`config_rebuilt` is always `false`): build it with `POST /remote/machines/{id}/config/rebuild` once the edits are done (see **Remote machines**).
 
 ```bash
 # Add one node by link — the rest of the setup (rules, DNS) is not touched
@@ -128,6 +131,14 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 curl -s -H "Authorization: Bearer $TOKEN" "$API/state/servers" | jq
 curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/servers?tag=My%20node" | jq .deleted
 curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/servers?tag=work-1&folder=Work"
+
+# A test folder: create it, put a copy of a node there that dials through
+# the root node "hop", then delete the folder together with its nodes
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/folders" -d '{"name":"lx-test"}' | jq .folder.id
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/servers" -d '{"input":"vless://…#copy","folder":"lx-test","detour":{"tag":"hop"}}'
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$API/state/folders?folder=lx-test&with_nodes=1" | jq .deleted
 
 # Add an inline routing rule (state v8 record: name/vars/refs are record fields,
 # body is the raw sing-box rule), then delete it by name
@@ -239,7 +250,7 @@ curl -sD- -o /dev/null -H "Authorization: Bearer $TOKEN" "$API/backup/export" | 
 curl -s -X POST -H "Authorization: Bearer $TOKEN" --data-binary @lx-backup.json "$API/backup/import" | jq
 ```
 
-Machines paired through `/remote/*` mirror export and import: `GET /remote/machines/{id}/backup/export` (the same 1.0-only rule for `?format=`) and `POST /remote/machines/{id}/backup/import` act on that machine's wizard profile. The known SPEC 100 §3.3 limitation applies — the machine's `config.json` is rebuilt by its own wizard, so a remote import returns `config_rebuilt:false` and the deploy still needs the Save step in the UI.
+Machines paired through `/remote/*` mirror export and import: `GET /remote/machines/{id}/backup/export` (the same 1.0-only rule for `?format=`) and `POST /remote/machines/{id}/backup/import` act on that machine's wizard profile. A remote import returns `config_rebuilt:false` — the machine's `config.json` is not touched; build it with `POST /remote/machines/{id}/config/rebuild` (add `?deploy=1` to deploy it in the same call).
 
 On a **fresh install** (no `state.json` yet) import still works: the file describes the whole setting, so it is merged into a clean state and saved. Export in the same situation answers `404` — there is nothing to snapshot, and an empty file would misreport the machine.
 
@@ -375,6 +386,7 @@ auto-deploy sweep; `result` ∈ `applied | skipped | failed | build_failed | unr
 | GET | `/remote/machines/{id}/health` | `{reachable, core_status, active_sha, last_good_sha, …}` — comparing SHAs is the honest "did it land" check. Also the rest of the passport — `executable`, `log_path`, `listen`, `tls`, `uptime_seconds` (`null` when the daemon did not answer `/admin/info`) — and `core_required` (the core version this launcher builds configs for) with `core_outdated` (`true` only when `version` is provably older; an unparsable version → `false`) |
 | POST | `/remote/machines/{id}/core/start` \| `stop` \| `rollback` | Core control (stop drops the VPN of the machine's clients — the API does not ask for confirmation) |
 | GET | `/remote/machines/{id}/config/active` \| `built` | Running config fetched from the machine / locally built one |
+| POST | `/remote/machines/{id}/config/rebuild` | Builds the machine's `config.json` from its current profile — the same step as Save in the machine's wizard, so profile edits made through the API reach the config without the UI. Answers `{ok, path, config_sha, changed, deployed}`; `config_sha` is the sha256 of the built file, `changed` — whether the build changed it. `check_error` — the file is written but the launcher's bundled core rejected it (the machine's core may be newer). `?deploy=1` then deploys it through the same chain as `…/deploy` (also when `check_error` is set — the machine's daemon decides) and adds `resources_uploaded`, `deployed_sha`; a failed deploy answers its own status (`422`, `502`, …) with `ok:false`, `error` and the build fields. `404` — the machine has no profile yet; `422` — the build failed; `503` — headless launcher (the builder lives in the wizard) |
 | POST | `/remote/machines/{id}/deploy` | Resources → config (the same chain as the Deploy button). Optional body `{config:{…}}`. `422` = daemon rejected the config, running instance untouched |
 | POST | `/remote/machines/{id}/auto-deploy/run` | SPEC 164: consider the machine by the auto-deploy sweep right now, regardless of its flag — refresh the stale subscriptions of its profile (`?force_refresh=1` refreshes all of them), rebuild its config and, when the built sha256 matched the active one before the refresh and changed after it, deploy through the same chain as the button. Answers `{result, sha_before?, sha_after?, deployed, note?}`; a deploy that happened is already applied (the machine's core restarted). `503` when the launcher runs headless |
 
@@ -382,16 +394,17 @@ auto-deploy sweep; `result` ∈ `applied | skipped | failed | build_failed | unr
 `GET/PATCH …/state/rules`, `…/state/dns`, `…/state/dns/rules`,
 `GET …/state/outbounds/resolved` — same contracts as the local endpoints. The
 single-entry edits are mirrored too: `GET/POST/DELETE …/state/servers`,
-`POST/DELETE …/state/dns/servers`, and `POST`/`DELETE` on `…/state/rules` and
-`…/state/dns/rules`.
-**Limitation:** PATCH, POST and DELETE update the machine's state, but its
-`config.json` is still built only by the wizard (Configure → Save) — no
-programmatic rebuild yet, so every remote mutation answers `config_rebuilt:false`.
+`GET/POST/DELETE …/state/folders`, `POST/DELETE …/state/dns/servers`, and
+`POST`/`DELETE` on `…/state/rules` and `…/state/dns/rules`.
+PATCH, POST and DELETE update the machine's state only — every remote mutation
+answers `config_rebuilt:false`, and the machine's `config.json` stays as the last
+build left it. After a batch of edits run `POST …/config/rebuild` (the wizard's
+Save step), then `POST …/deploy` — or both at once with `…/config/rebuild?deploy=1`.
 
 **Backup (mirrors of `/backup/*`):** `GET /remote/machines/{id}/backup/export`,
 `POST /remote/machines/{id}/backup/import` — the same contracts as the local
-endpoints, acting on that machine's profile. The rebuild limitation above
-applies: a remote import answers `config_rebuilt:false`.
+endpoints, acting on that machine's profile. Like the state mirrors, a remote
+import answers `config_rebuilt:false`; follow it with `…/config/rebuild`.
 
 **Observability:** `GET …/groups`, `GET …/proxies?group=`,
 `POST …/proxies/switch {group,name}`, `POST …/proxies/delay {name}`,
@@ -432,6 +445,11 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/remote/machines/routerich/proxie
 # Deploy and verify it landed
 curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/remote/machines/routerich/deploy" | jq .config_sha
 curl -s -H "Authorization: Bearer $TOKEN" "$API/remote/machines/routerich/health" | jq .active_sha
+
+# Edit the machine's profile, then build its config the way wizard Save does and deploy it
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/remote/machines/routerich/state/servers" -d '{"input":"vless://…#copy","folder":"lx-test","detour":{"tag":"hop"}}'
+curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/remote/machines/routerich/config/rebuild?deploy=1" | jq '{changed, deployed, deployed_sha}'
 ```
 
 ---
@@ -518,6 +536,10 @@ The method is resolved by name via protoregistry (no hand-written table — new
 RPCs are picked up automatically after `internal/daemonpb` updates), JSON ↔
 proto via protojson. Unary → `{"response":{…}}`; server-stream → a window
 `{"events":[…],"truncated":bool}`; client/bidi streams → `501`.
+Units follow the proto, not one convention: `URLTestOutbound`'s `timeout` is a
+`uint32` in **milliseconds** (`10000` = 10 s), while the `interval` of the
+`Subscribe*` requests is an `int64` in nanoseconds; a value of the wrong kind
+fails with a proto error.
 
 ```bash
 # Any admin-REST request to a machine
@@ -576,9 +598,9 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 |---|---|
 | `core/debugapi/server.go` | Routing, auth middleware, `/ping`, `/version`, `/state`, `/proxies`, `/action/*` |
 | `core/debugapi/state_endpoints.go` | `/state/full`, `/state/rules`, `/state/dns`, `/state/dns/rules`, `/state/outbounds/resolved` |
-| `core/debugapi/state_crud_endpoints.go` | SPEC 160: `GET/POST/DELETE /state/servers`, `POST/DELETE` on `/state/rules`, `/state/dns/servers`, `/state/dns/rules` (shared tail: schema gate → mutex → load → edit → save → rebuild) |
+| `core/debugapi/state_crud_endpoints.go` | SPEC 160: `GET/POST/DELETE /state/servers` and `/state/folders`, `POST/DELETE` on `/state/rules`, `/state/dns/servers`, `/state/dns/rules` (shared tail: schema gate → mutex → load → edit → save → rebuild) |
 | `core/debugapi/mutation_log.go` | The mutation log: one launcher-log line per `POST`/`PATCH`/`PUT`/`DELETE` |
-| `core/stateedit/` | State edit operations behind the endpoints: `servers.go` (add from input, delete with link cleanup), `rules.go`, `dns.go` |
+| `core/stateedit/` | State edit operations behind the endpoints: `servers.go` (add from input with an optional detour, delete with link cleanup), `folders.go` (create, delete with or without nodes), `rules.go`, `dns.go` |
 | `core/debugapi/backup_endpoints.go` | `/backup/export`, `/backup/import`, `/backup/formats` and their `/remote/machines/{id}/backup/*` mirrors |
 | `core/debugapi/log_level_endpoint.go` | `/state/log-level` (level validation + core restart via `core.ApplyLogLevelAndReloadCore`) |
 | `core/debugapi/traffic_endpoints.go` | All of `/traffic/*` |

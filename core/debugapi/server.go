@@ -276,7 +276,8 @@ func (s *Server) endpoints() []apiEndpoint {
 		{"GET/PATCH", "/state/dns", true, "Get / replace whole dns_options (both servers and rules required)", s.handleStateDNS},
 		{"POST/DELETE", "/state/dns/servers", true, "Add a user DNS server / delete one (?tag=)", s.handleStateDNSServers},
 		{"GET/PATCH/POST/DELETE", "/state/dns/rules", true, "Get / replace USER dns rules (text); add one (POST) / delete one (?index=)", s.handleStateDNSRules},
-		{"GET/POST/DELETE", "/state/servers", true, "List servers / add from links, .conf, vpn://, JSON / delete one (?tag=&folder=)", s.handleStateServers},
+		{"GET/POST/DELETE", "/state/servers", true, "List servers / add from links, .conf, vpn://, JSON (detour optional) / delete one (?tag=&folder=)", s.handleStateServers},
+		{"GET/POST/DELETE", "/state/folders", true, "List folders / create an empty one / delete one (?folder=&with_nodes=1)", s.handleStateFolders},
 		{"GET", "/state/outbounds/resolved", true, "Resolved outbound tags", s.handleStateOutboundsResolved},
 		{"GET/PATCH", "/state/log-level", true, "Get / set sing-box log.level (restarts core)", s.handleStateLogLevel},
 

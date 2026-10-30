@@ -8,6 +8,8 @@ package debugapi
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -64,11 +66,20 @@ type RemoteAPI struct {
 	// задеплоить). force — фетчить все подписки, не только устаревшие.
 	// nil — endpoint отвечает 503.
 	AutoDeployRun func(d services.RemoteDaemon, force bool) services.MachineAutoDeployOutcome
+	// RebuildConfig — сборка config.json машины из её профиля тем же шагом,
+	// что Save Мастера (AppController.MachineConfigRebuildFunc). Путь файла
+	// непуст и при ошибке, если файл записан, но ядро бандла его отвергло.
+	// ErrBuilderUnavailable (или nil-поле) — 503.
+	RebuildConfig func(id string) (string, error)
 	// MachineStateLock — per-machine мьютекс файла состояния машины,
 	// общий с обходом авто-деплоя (SPEC 164): PATCH …/state/* и обход не
 	// должны писать один файл одновременно. nil — у сервера свои.
 	MachineStateLock func(id string) *sync.Mutex
 }
+
+// ErrBuilderUnavailable — сборщика конфига машины нет: он живёт в презентере
+// Мастера и ставится UI при старте. Мапится в 503.
+var ErrBuilderUnavailable = errors.New("config builder is unavailable: launcher is headless or the UI is not initialized yet")
 
 // ErrUIUnavailable — UI-override недоступен: лаунчер работает headless или
 // окно ещё не создано. Мапится в 503 (временное состояние, не ошибка запроса).
@@ -92,6 +103,7 @@ func (s *Server) remoteEndpoints() []apiEndpoint {
 		{"POST", "/remote/machines/{id}/core/rollback", true, "Roll back to last-good config", s.handleRemoteCoreRollback},
 		{"GET", "/remote/machines/{id}/config/active", true, "Running config fetched from the machine", s.handleRemoteConfigActive},
 		{"GET", "/remote/machines/{id}/config/built", true, "Locally built config of the machine", s.handleRemoteConfigBuilt},
+		{"POST", "/remote/machines/{id}/config/rebuild", true, "Build the machine's config from its profile like wizard Save (?deploy=1 deploys it)", s.handleRemoteConfigRebuild},
 		{"POST", "/remote/machines/{id}/deploy", true, "Deploy resources + config to the machine", s.handleRemoteDeploy},
 		{"POST", "/remote/machines/{id}/auto-deploy/run", true, "Refresh the machine's subscriptions, rebuild and deploy if only nodes changed (?force_refresh=1)", s.handleRemoteAutoDeployRun},
 
@@ -102,6 +114,7 @@ func (s *Server) remoteEndpoints() []apiEndpoint {
 		{"POST/DELETE", "/remote/machines/{id}/state/dns/servers", true, "Add / delete (?tag=) a user DNS server of the machine", s.handleRemoteStateDNSServers},
 		{"GET/PATCH/POST/DELETE", "/remote/machines/{id}/state/dns/rules", true, "Get / replace machine's USER dns rules (text); add one / delete one (?index=)", s.handleRemoteStateDNSRules},
 		{"GET/POST/DELETE", "/remote/machines/{id}/state/servers", true, "List / add / delete (?tag=&folder=) servers of the machine", s.handleRemoteStateServers},
+		{"GET/POST/DELETE", "/remote/machines/{id}/state/folders", true, "List / create / delete (?folder=&with_nodes=1) folders of the machine", s.handleRemoteStateFolders},
 		{"GET", "/remote/machines/{id}/state/outbounds/resolved", true, "Machine's resolved outbounds", s.handleRemoteStateOutboundsResolved},
 		{"GET", "/remote/machines/{id}/backup/export", true, "Export the machine's settings as an LX Backup file", s.handleRemoteBackupExport},
 		{"POST", "/remote/machines/{id}/backup/import", true, "Import an LX Backup file into the machine's profile", s.handleRemoteBackupImport},
@@ -705,6 +718,91 @@ func (s *Server) handleRemoteDeploy(w http.ResponseWriter, r *http.Request) {
 		"resources_uploaded": res.ResourcesUploaded,
 		"config_sha":         res.ConfigSHA,
 	})
+}
+
+// handleRemoteConfigRebuild — POST (issue #152): собрать config.json машины из
+// её профиля тем же шагом, что Save Мастера, — иначе правки state через API
+// не доходили до конфига без Save в UI. ?deploy=1 — следом задеплоить его
+// цепочкой кнопки Deploy.
+//
+// Отказ ядра бандла (файл записан, check не прошёл) — не провал сборки: он
+// едет полем check_error, и deploy=1 всё равно деплоит — судья конфигу
+// машины её собственное ядро (бандл может быть старше), а отказ демона
+// оставляет работающий экземпляр нетронутым.
+//
+// Мьютекс файла состояния машины не берётся, как и у обхода авто-деплоя:
+// сборка читает файл один раз (запись атомарна), а её цикл отказов ядра может
+// ждать человека в диалоге предела — взятый мьютекс держал бы на это время
+// все правки машины.
+func (s *Server) handleRemoteConfigRebuild(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+		return
+	}
+	id, ok := s.remoteMachineID(w, r)
+	if !ok {
+		return
+	}
+	if s.remote.RebuildConfig == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": ErrBuilderUnavailable.Error()})
+		return
+	}
+	if _, err := os.Stat(s.machineStatePath(id)); err != nil {
+		if os.IsNotExist(err) {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "the machine has no profile yet — configure it first (wizard Save, backup/import or profile/copy-from)"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	configPath := platform.GetRemoteConfigPathFor(s.remote.DataDir, id)
+	shaBefore := fileSHA256Hex(configPath)
+	path, err := s.remote.RebuildConfig(id)
+	if err != nil && path == "" {
+		if errors.Is(err, ErrBuilderUnavailable) {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": "build: " + err.Error()})
+		return
+	}
+	shaAfter := fileSHA256Hex(configPath)
+	out := map[string]any{
+		"ok":         true,
+		"path":       path,
+		"config_sha": shaAfter,
+		"changed":    shaAfter != shaBefore,
+		"deployed":   false,
+	}
+	if err != nil {
+		out["check_error"] = err.Error()
+	}
+	if q := r.URL.Query().Get("deploy"); q != "1" && q != "true" {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	res, derr := s.remote.Registry.Deploy(id, nil)
+	if derr != nil {
+		// Сборка уже на диске: ответ называет её вместе с отказом деплоя.
+		out["ok"] = false
+		out["error"] = "deploy: " + derr.Error()
+		writeJSON(w, remoteCallStatus(derr), out)
+		return
+	}
+	out["deployed"] = true
+	out["resources_uploaded"] = res.ResourcesUploaded
+	out["deployed_sha"] = res.ConfigSHA
+	writeJSON(w, http.StatusOK, out)
+}
+
+// fileSHA256Hex — sha256 файла в hex; "" — файла нет или он не читается.
+func fileSHA256Hex(path string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }
 
 // handleRemoteAutoDeployRun — POST (SPEC 164 §4.4): рассмотреть машину

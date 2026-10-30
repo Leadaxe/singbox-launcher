@@ -2,11 +2,10 @@
 // машины. Тела хендлеров общие (stateAccess в state_endpoints.go); здесь —
 // только резолв файла машины и per-machine мьютекс.
 //
-// Известное ограничение v1 (SPEC 100 §3.3): PATCH меняет state машины, но её
-// config.json пересобирает только визард (Configure → Save) — программной
-// сборки remote-конфига пока нет, поэтому цикл «PATCH → deploy» требует шага
-// Save в UI. Endpoint action/rebuild-config появится вместе с выносом сборки
-// из презентера.
+// Правка state машины её config.json не трогает (config_rebuilt:false): конфиг
+// машины собирается шагом Save её Мастера, и через API этот шаг —
+// POST /remote/machines/{id}/config/rebuild (issue #152), а не побочный эффект
+// каждой правки.
 package debugapi
 
 import (
@@ -79,6 +78,12 @@ func (s *Server) handleRemoteStateOutboundsResolved(w http.ResponseWriter, r *ht
 func (s *Server) handleRemoteStateServers(w http.ResponseWriter, r *http.Request) {
 	if id, ok := s.remoteMachineID(w, r); ok {
 		s.stateServersWith(w, r, s.machineStateAccess(id))
+	}
+}
+
+func (s *Server) handleRemoteStateFolders(w http.ResponseWriter, r *http.Request) {
+	if id, ok := s.remoteMachineID(w, r); ok {
+		s.stateFoldersWith(w, r, s.machineStateAccess(id))
 	}
 }
 

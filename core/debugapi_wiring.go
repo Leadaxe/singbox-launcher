@@ -228,6 +228,14 @@ func (ac *AppController) StartDebugAPI(port int, token string) error {
 				return ac.AutoDeployMachine(d, "api", force)
 			},
 			MachineStateLock: ac.MachineStateLock,
+			// Issue #152: сборка конфига машины шагом Save её Мастера. Хук
+			// читается на каждый вызов — UI ставит его позже старта API.
+			RebuildConfig: func(id string) (string, error) {
+				if ac.MachineConfigRebuildFunc == nil {
+					return "", debugapi.ErrBuilderUnavailable
+				}
+				return ac.MachineConfigRebuildFunc(id)
+			},
 			// UI-override (SPEC 100 §3.8): хуки читаются на КАЖДЫЙ вызов, а не
 			// снимаются здесь — Debug API может стартовать раньше, чем UI
 			// зарегистрирует обработчики (RegisterOverrideAPIHooks в NewApp).

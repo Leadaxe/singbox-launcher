@@ -1,5 +1,5 @@
 // Package stateedit — правка состояния по образу Конфигуратора: добавить и
-// удалить сервер, правило, DNS-сервер и DNS-правило (SPEC 160).
+// удалить сервер, папку, правило, DNS-сервер и DNS-правило (SPEC 160).
 //
 // Операции работают со state.State, а не с моделью визарда: их зовёт Debug
 // API, которому ui/* недоступен (цикл импортов), а правка состояния обязана
@@ -88,6 +88,9 @@ type AddServersRequest struct {
 	Folder string
 	// Tag — тег узла; допустим, только если из Input получился ровно один узел.
 	Tag string
+	// Detour — цель дозвона каждого добавленного узла; nil — без detour.
+	// Цель обязана существовать до добавления (resolveDetour).
+	Detour *DetourRef
 }
 
 // AddedServer — легший узел.
@@ -96,6 +99,8 @@ type AddedServer struct {
 	FolderID string   `json:"folder_id,omitempty"`
 	Type     string   `json:"type"`
 	Warnings []string `json:"warnings"`
+	// Detour — цель дозвона узла; nil — без detour.
+	Detour *state.NodeLink `json:"detour,omitempty"`
 }
 
 // AddServersResult — исход добавления: легшие узлы и пропущенные части ввода.
@@ -116,7 +121,8 @@ type parsedServer struct {
 // Конфигуратор: узлы, Направления, свёртки, системные теги шаблона), а ссылка,
 // уже лежащая корневым сервером (Origin.Raw у origin uri), пропускается с
 // причиной SkipDuplicate. В папке тег уникализируется против её состава,
-// дублей по ссылке там не ищут (как AppendNodesToFolder).
+// дублей по ссылке там не ищут (как AppendNodesToFolder). Detour, если задан,
+// ставится каждому добавленному узлу.
 func AddServers(st *state.State, td *template.TemplateData, req AddServersRequest) (*AddServersResult, error) {
 	input := strings.TrimSpace(req.Input)
 	if input == "" {
@@ -129,6 +135,19 @@ func AddServers(st *state.State, td *template.TemplateData, req AddServersReques
 			return nil, err
 		}
 		folderIdx = idx
+	}
+
+	var detour *state.NodeLink
+	if req.Detour != nil {
+		blockTag := template.DefaultDirectionBlockTag
+		if td != nil {
+			blockTag = td.DirectionBlockTag()
+		}
+		link, err := resolveDetour(st, KnownRuleTargets(st, td), blockTag, *req.Detour)
+		if err != nil {
+			return nil, err
+		}
+		detour = link
 	}
 
 	fallback := len(st.Sources)
@@ -144,6 +163,12 @@ func AddServers(st *state.State, td *template.TemplateData, req AddServersReques
 			return nil, fieldErr("tag", "tag applies only when the input yields exactly one node (got %d)", len(parsed))
 		}
 		parsed[0].node.Tag = tag
+	}
+	if detour != nil {
+		for i := range parsed {
+			link := *detour
+			parsed[i].node.Detour = &link
+		}
 	}
 
 	res := &AddServersResult{Skipped: skipped, Added: []AddedServer{}}
@@ -193,7 +218,7 @@ func addedView(n state.Node, folderID string) AddedServer {
 	for _, w := range n.Warnings {
 		warns = append(warns, w.Code)
 	}
-	return AddedServer{Tag: n.Tag, FolderID: folderID, Type: bodyType(n.Body), Warnings: warns}
+	return AddedServer{Tag: n.Tag, FolderID: folderID, Type: bodyType(n.Body), Warnings: warns, Detour: n.Detour}
 }
 
 // findFolder — индекс папки по ULID, затем по имени. Подписка не папка: её
@@ -529,24 +554,15 @@ func DeleteServer(st *state.State, tag, folder string) (*DeleteServerResult, err
 		policy = f.TagPolicy
 	}
 
-	res.LinksRemoved = append(res.LinksRemoved, dropNodeLinks(st, target)...)
 	if target.FolderID == "" {
 		// Корневое имя: строки `include` Направлений гаснут, одиночные ссылки
 		// по имени только называются.
-		for i := range st.Directions {
-			d := &st.Directions[i]
-			kept := d.AddOutbounds[:0:0]
-			for _, o := range d.AddOutbounds {
-				if strings.TrimSpace(o) != tag {
-					kept = append(kept, o)
-				}
-			}
-			if len(kept) != len(d.AddOutbounds) {
-				d.AddOutbounds = kept
-				res.DirectionsUpdated = append(res.DirectionsUpdated, d.Tag)
-			}
-		}
-		res.Dangling = append(res.Dangling, nameRefs(st, tag)...)
+		links, dirs, dangling := dropRootName(st, tag)
+		res.LinksRemoved = append(res.LinksRemoved, links...)
+		res.DirectionsUpdated = append(res.DirectionsUpdated, dirs...)
+		res.Dangling = append(res.Dangling, dangling...)
+	} else {
+		res.LinksRemoved = append(res.LinksRemoved, dropNodeLinks(st, target)...)
 	}
 	if isTailscaleNode(&removed) {
 		res.TailscaleStateDir = config.TailscaleStateDirName(policy.FinalTag(tag))

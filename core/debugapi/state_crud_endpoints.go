@@ -4,6 +4,9 @@
 //	GET    /state/servers               — корневые серверы и члены папок
 //	POST   /state/servers               — {input, folder?, tag?} → узлы из ссылок/.conf/vpn:///JSON
 //	DELETE /state/servers?tag=&folder=  — узел + NodeLink на него + include Направлений
+//	GET    /state/folders               — папки (kind=folder), включая пустые
+//	POST   /state/folders               — {name, enabled?} → пустая папка
+//	DELETE /state/folders?folder=&with_nodes= — папка (непустая — только с with_nodes=1)
 //	POST   /state/rules                 — одна запись правила v8
 //	DELETE /state/rules?num=|name=|ref= — ровно одно правило
 //	POST   /state/dns/servers           — DNS-сервер kind=user
@@ -101,6 +104,12 @@ type addServersReq struct {
 	Input  string `json:"input"`
 	Folder string `json:"folder"`
 	Tag    string `json:"tag"`
+	// Detour — цель дозвона добавленных узлов: корневое имя (folder пуст)
+	// или узел папки/подписки (folder — ULID или имя).
+	Detour *struct {
+		Tag    string `json:"tag"`
+		Folder string `json:"folder"`
+	} `json:"detour"`
 }
 
 func (s *Server) handleStateServers(w http.ResponseWriter, r *http.Request) {
@@ -132,9 +141,11 @@ func (s *Server) stateServersWith(w http.ResponseWriter, r *http.Request, acc st
 		if !ok {
 			return
 		}
-		res, err := stateedit.AddServers(st, s.editTemplate(), stateedit.AddServersRequest{
-			Input: req.Input, Folder: req.Folder, Tag: req.Tag,
-		})
+		addReq := stateedit.AddServersRequest{Input: req.Input, Folder: req.Folder, Tag: req.Tag}
+		if req.Detour != nil {
+			addReq.Detour = &stateedit.DetourRef{Tag: req.Detour.Tag, Folder: req.Detour.Folder}
+		}
+		res, err := stateedit.AddServers(st, s.editTemplate(), addReq)
 		if err != nil {
 			writeStateEditError(w, err)
 			return
@@ -197,6 +208,99 @@ func (s *Server) stateServersWith(w http.ResponseWriter, r *http.Request, acc st
 		// локальная машина, у профиля удалённой одноимённый каталог чужой.
 		if acc.local && res.TailscaleStateDir != "" {
 			config.RemoveTailscaleStateDir(res.TailscaleStateDir)
+		}
+		writeJSON(w, http.StatusOK, out)
+
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET, POST or DELETE required"})
+	}
+}
+
+// ── /state/folders ───────────────────────────────────────────────
+
+// addFolderReq — тело POST /state/folders; Enabled — как у addRuleReq.
+type addFolderReq struct {
+	Name    string `json:"name"`
+	Enabled *bool  `json:"enabled"`
+}
+
+func (s *Server) handleStateFolders(w http.ResponseWriter, r *http.Request) {
+	s.stateFoldersWith(w, r, s.localStateAccess())
+}
+
+func (s *Server) stateFoldersWith(w http.ResponseWriter, r *http.Request, acc stateAccess) {
+	switch r.Method {
+	case http.MethodGet:
+		st, err := acc.load()
+		if err != nil {
+			writeJSON(w, stateErrStatus(err), map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"folders": stateedit.ListFolders(st)})
+
+	case http.MethodPost:
+		if !guardStateSchema(w, acc) {
+			return
+		}
+		var req addFolderReq
+		if err := decodeJSONBody(r, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body: " + err.Error()})
+			return
+		}
+		acc.mu.Lock()
+		defer acc.mu.Unlock()
+		st, ok := loadForEdit(w, acc)
+		if !ok {
+			return
+		}
+		folder, err := stateedit.AddFolder(st, req.Name, req.Enabled == nil || *req.Enabled)
+		if err != nil {
+			writeStateEditError(w, err)
+			return
+		}
+		out := map[string]any{
+			"diff_summary": []string{fmt.Sprintf("folders: +1 %q (%s)", folder.Name, folder.ID)},
+			"folder":       folder,
+		}
+		if s.commitStateEdit(w, acc, st, out) {
+			writeJSON(w, http.StatusOK, out)
+		}
+
+	case http.MethodDelete:
+		if !guardStateSchema(w, acc) {
+			return
+		}
+		q := r.URL.Query()
+		ref := strings.TrimSpace(q.Get("folder"))
+		if ref == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "query parameter folder is required (ULID or name)"})
+			return
+		}
+		withNodes := q.Get("with_nodes") == "1" || q.Get("with_nodes") == "true"
+		acc.mu.Lock()
+		defer acc.mu.Unlock()
+		st, ok := loadForEdit(w, acc)
+		if !ok {
+			return
+		}
+		res, err := stateedit.DeleteFolder(st, ref, withNodes)
+		if err != nil {
+			writeStateEditError(w, err)
+			return
+		}
+		out := map[string]any{
+			"diff_summary": []string{fmt.Sprintf("folders: -1 %q (%s) with %d node(s), %d links removed, %d direction includes removed, %d dangling",
+				res.Name, res.ID, len(res.NodesRemoved), len(res.LinksRemoved), len(res.DirectionsUpdated), len(res.Dangling))},
+			"deleted": res,
+		}
+		if !s.commitStateEdit(w, acc, st, out) {
+			return
+		}
+		// Каталоги tailnet-узлов — как у DELETE /state/servers.
+		if acc.local {
+			for _, dir := range res.TailscaleStateDirs {
+				config.RemoveTailscaleStateDir(dir)
+			}
 		}
 		writeJSON(w, http.StatusOK, out)
 
