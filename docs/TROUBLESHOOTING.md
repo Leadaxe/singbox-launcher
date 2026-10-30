@@ -100,6 +100,47 @@ iptables on the host; confirmed on the same openSUSE setup in issue #129. If it 
 your profile, turn it on and press Start again. "TUN stack" → `gvisor` also works, at the
 cost of CPU and throughput.
 
+## macOS
+
+### TUN is up, but DNS queries go past the tunnel
+
+The system resolver (`mDNSResponder`) sends queries to the network's DNS servers through
+a route scoped to the physical interface (`en0`), not through the routes `auto_route`
+puts on the TUN. The queries never enter the TUN, so "DNS hijack" does not see them: they
+go straight to the network's resolver (usually the router or the provider). Connections
+themselves are routed into the TUN. What breaks: DNS leaks to the local resolver, DNS
+rules and the fake-IP preset do not apply, and if that resolver answers blocked domains
+with a stub address, the site does not open even with the VPN on. Domain rules keep
+working only through "Protocol and domain detection" (sniffing).
+
+This is how macOS treats a process without a Network Extension; the core cannot change it
+from the routing table. Background:
+[sing-box-lx#12](https://github.com/Leadaxe/sing-box-lx/issues/12).
+
+Workaround: point the system DNS at an address inside the TUN subnet other than the TUN
+address itself. There is no scoped route for it, so queries follow the TUN route and DNS
+hijack picks them up. With the default TUN address `172.16.0.1/30` that is `172.16.0.2`.
+Note the current DNS first, then switch:
+
+```bash
+networksetup -getdnsservers Wi-Fi
+```
+
+```bash
+networksetup -setdnsservers Wi-Fi 172.16.0.2
+```
+
+When the VPN is off, put the DNS back, otherwise the Mac is left without name resolution.
+`Empty` returns the DNS the network hands out; if `-getdnsservers` listed servers set by
+hand, pass them instead:
+
+```bash
+networksetup -setdnsservers Wi-Fi Empty
+```
+
+Service names are listed by `networksetup -listallnetworkservices`; with both Wi-Fi and
+Ethernet, set each one. The launcher does not change the system DNS by itself.
+
 ## Windows
 
 ### Start shows “TUN needs administrator rights”
