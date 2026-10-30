@@ -794,6 +794,11 @@ func main() {
 	platform.RegisterPowerResumeCallback(func() {
 		api.ResetClashHTTPTransport()
 		debuglog.InfoLog("Power resume: Clash API HTTP transport reset, scheduling re-sync")
+		// macOS: windows show the pre-sleep picture until resized. Twice, in
+		// case the display comes up after the first nudge.
+		for _, d := range []time.Duration{2 * time.Second, 10 * time.Second} {
+			time.AfterFunc(d, controller.UIService.NudgeWindowsAfterWake)
+		}
 		// Give network interfaces a couple seconds to come back, then:
 		//   - Re-test the Clash API connection (RefreshAPIFunc → onTestAPIConnection
 		//     in proxy_list_panel.go — this also reloads the proxies list).
