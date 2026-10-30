@@ -248,6 +248,10 @@ func NormalizeRecordVars(s *State, decls *RecordVarDecls) bool {
 //     нетронутое»), новым серверам обновлённого шаблона — потом;
 //   - серверу с `required: true`, если записи нет: сборка эмитит его всегда.
 //
+// Тег в списке один (контракт 1.1.142): тегу, который занят записью
+// kind=user (правка сервера каталога, пришедшая из LxBox или бэкапа),
+// шаблонная запись не дописывается.
+//
 // Новая запись встаёт среди шаблонных в порядке каталога (до первой с
 // бо́льшим номером каталога, иначе после последней шаблонной, а без
 // шаблонных — в начало списка), как у списка вкладки DNS. Затем
@@ -272,8 +276,8 @@ func SeedDNSTemplateCatalog(dns *DNSOptions, decls *RecordVarDecls, skip func(ta
 	}
 	changed := false
 	for _, tag := range decls.DNSServerOrder {
-		if dns.FindTemplateServer(tag) >= 0 {
-			continue
+		if dns.hasServerTag(tag) {
+			continue // запись есть — шаблонная или его правка (kind=user)
 		}
 		if offered[tag] && !decls.DNSServerRequired[tag] {
 			continue // удалён пользователем

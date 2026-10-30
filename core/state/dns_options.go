@@ -195,6 +195,17 @@ func (d *DNSOptions) FindTemplateServer(tag string) int {
 	return -1
 }
 
+// hasServerTag — есть ли в списке запись kind=template или kind=user с тегом
+// tag (у preset тега нет, его идентичность — ref).
+func (d *DNSOptions) hasServerTag(tag string) bool {
+	for _, s := range d.Servers {
+		if s.Kind != DNSServerKindPreset && s.Tag == tag {
+			return true
+		}
+	}
+	return false
+}
+
 // FindServerByRef возвращает индекс preset-server с ref, или -1.
 func (d *DNSOptions) FindServerByRef(ref string) int {
 	if d == nil {

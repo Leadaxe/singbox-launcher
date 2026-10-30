@@ -1,0 +1,13 @@
+{
+  "_": "Правка сервера каталога — тот же сервер (контракт 1.1.142, LxBox §138, BACKUP.md §9 п. 5). У template и user ключ слияния — только тег, совпавшая запись остаётся локальной, какого бы вида ни были обе: user:dns_shield файла (override источника) совпал с template:dns_shield приёмника — остаётся шаблонная; template:google_dot файла совпал с user:google_dot приёмника (локальный override) — остаётся override. dns_shield не снимается по template_catalog: в файле он есть записью user, источник его правил, а не удалял. Тег в списке один, предупреждений нет.",
+  "rules": [],
+  "warnings": [],
+  "dns": {
+    "servers": [
+      { "kind": "template", "tag": "google_udp", "enabled": true },
+      { "kind": "user", "tag": "google_dot", "enabled": true },
+      { "kind": "template", "tag": "dns_shield", "enabled": true }
+    ],
+    "rules": 0
+  }
+}

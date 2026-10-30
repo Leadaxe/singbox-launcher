@@ -854,9 +854,12 @@ func reservedTargetLiteral(tag string) bool {
 // ЛОКАЛЬНОЙ (её тело и включённость — решение этой машины), несовпавшая
 // дописывается в конец в порядке файла.
 //
-// Ключ сервера — kind+tag: имя DNS-сервера и есть его идентичность (на него
+// Ключ сервера — тег: имя DNS-сервера и есть его идентичность (на него
 // метят detour и dns-правила), а тело за ним — настройка, которую здесь
-// правили. У kind=preset тега НЕТ вовсе (state.DNSServer: `ref` формы
+// правили. Вид в ключ не входит (контракт 1.1.142, LxBox §138): запись
+// kind=user с тегом шаблонного сервера — его правка (override), тот же
+// сервер, и совпавшая запись приёмника остаётся локальной, какого бы вида ни
+// были обе. У kind=preset тега НЕТ вовсе (state.DNSServer: `ref` формы
 // "<preset_id>:<local_tag>" — вот его идентичность), поэтому в ключ входит и
 // `ref`: без него все preset-серверы состояния схлопывались в один ключ
 // "preset\x00", и из трёх резолверов пресета импорт молча оставлял первый
@@ -898,19 +901,19 @@ func importDNS(s *state.State, dns *decodedDNS, fileVars map[string]string, decl
 	var warns []Warning
 
 	// Ключ един для всех видов: у template/user заполнен tag и пуст ref, у
-	// preset — наоборот. Разбирать по kind нечего, а один ключ на все виды
-	// не даёт завести второй, расходящийся с первым.
+	// preset — наоборот. Вида в ключе нет: template и user с одним тегом —
+	// один сервер (override), тег в списке один.
 	//
 	// Дубли ищутся ТОЛЬКО среди записей, которые лежали здесь ДО импорта:
 	// запись файла, совпавшая с локальной, пропускается, а одинаковые записи
 	// внутри самого файла ввозятся все. Файл — снимок настоящего состояния, и
 	// импорт в пустое состояние обязан его воспроизвести; ключ приехавшей
 	// записи в тех же наборах схлопывал два одинаковых правила файла в одно.
-	serverKey := func(kind, tag, ref string) string { return kind + "\x00" + tag + "\x00" + ref }
+	serverKey := func(tag, ref string) string { return tag + "\x00" + ref }
 	haveServers := map[string]bool{}
 	localTemplate := map[string]int{}
 	for i, srv := range s.DNS.Servers {
-		haveServers[serverKey(string(srv.Kind), srv.Tag, srv.Ref)] = true
+		haveServers[serverKey(srv.Tag, srv.Ref)] = true
 		if srv.Kind == state.DNSServerKindTemplate {
 			if _, dup := localTemplate[srv.Tag]; !dup {
 				localTemplate[srv.Tag] = i
@@ -946,8 +949,12 @@ func importDNS(s *state.State, dns *decodedDNS, fileVars map[string]string, decl
 				}
 				continue // своё сильнее: enabled и прочие имена — локальные
 			}
-		} else if haveServers[serverKey(string(srv.Kind), srv.Tag, srv.Ref)] {
-			continue // своё сильнее
+		}
+		// Своё сильнее — и между видами: локальный override (user) не
+		// уступает шаблонной записи файла, локальная шаблонная — override
+		// файла; vars накладываются только шаблонной на шаблонную (выше).
+		if haveServers[serverKey(srv.Tag, srv.Ref)] {
+			continue
 		}
 		if srv.Kind != state.DNSServerKindTemplate {
 			srv.Vars = nil // Н1: vars только у записи шаблонного сервера
@@ -1051,7 +1058,8 @@ func importDNS(s *state.State, dns *decodedDNS, fileVars map[string]string, decl
 // sourceDeletedTemplateServers — теги шаблонных серверов, удалённых
 // источником (BACKUP.md §9 п. 5, «Состав шаблонных серверов — каталог
 // источника»): тег есть в `template_catalog` файла (источник сервер знал),
-// а записи kind=template с ним в файле нет (источник его удалил). Запись
+// а записи с ним в файле нет ни kind=template, ни kind=user (источник его
+// удалил; user с тегом каталога — правка сервера, а не удаление, 1.1.142). Запись
 // приёмника с таким тегом снимается, если её не держит ссылка состояния
 // ПОСЛЕ импорта; удержанная остаётся с backup_dns_entry_kept. Тег вне
 // каталога файла не трогается: источник о нём не знал.
@@ -1066,7 +1074,7 @@ func sourceDeletedTemplateServers(dns *decodedDNS) map[string]bool {
 	}
 	inFile := map[string]bool{}
 	for _, srv := range dns.Servers {
-		if srv.Kind == state.DNSServerKindTemplate {
+		if srv.Kind == state.DNSServerKindTemplate || srv.Kind == state.DNSServerKindUser {
 			inFile[srv.Tag] = true
 		}
 	}

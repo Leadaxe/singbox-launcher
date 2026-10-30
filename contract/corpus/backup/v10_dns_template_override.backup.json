@@ -1,0 +1,18 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "lxbox", "version": "corpus", "platform": "test" },
+  "exported_at": "2026-10-31T00:00:00Z",
+  "dns": {
+    "template_catalog": ["google_udp", "google_dot", "dns_shield"],
+    "servers": [
+      { "kind": "template", "tag": "google_udp", "enabled": true },
+      { "kind": "template", "tag": "google_dot", "enabled": false },
+      {
+        "kind": "user",
+        "tag": "dns_shield",
+        "enabled": true,
+        "body": { "type": "tls", "server": "94.140.15.15", "server_port": 853 }
+      }
+    ]
+  }
+}
