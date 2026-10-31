@@ -117,8 +117,8 @@
       "type": "int",
       "wizard_ui": "edit",
       "title": "TUN MTU",
-      "tooltip": "Maximum transmission unit for the TUN interface (numeric value in JSON).",
-      "default_value": "1492",
+      "tooltip": "Maximum transmission unit for the TUN interface (numeric value in JSON). Default 9000 matches sing-box.",
+      "default_value": "9000",
       "#enable": ["@tun"]
     },
     {

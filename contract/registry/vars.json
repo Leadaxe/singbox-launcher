@@ -120,7 +120,7 @@
       "type": "int",
       "portable": true,
       "in": "both",
-      "note": "tun.mtu; type int на обеих сторонах, clamp по §2.2 TEMPLATE_LANG (SPEC 143); дефолт 1492 совпадает"
+      "note": "tun.mtu; type int на обеих сторонах, clamp по §2.2 TEMPLATE_LANG (SPEC 143); дефолт 9000 (дефолт ядра sing-box) совпадает с 1.1.143"
     },
     "tun_stack": {
       "type": "enum",
