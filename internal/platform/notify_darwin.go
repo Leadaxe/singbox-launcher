@@ -4,7 +4,7 @@ package platform
 
 /*
 #cgo CFLAGS: -x objective-c
-#cgo LDFLAGS: -framework Foundation -framework UserNotifications
+#cgo LDFLAGS: -framework Foundation
 
 #include <stdlib.h>
 
@@ -33,15 +33,23 @@ import (
 // уведомление шло через osascript и показывалось от имени «Редактора
 // скриптов» с его иконкой, а в настройках уведомлений лаунчера не было.
 //
-// Здесь между ними стоит NSUserNotificationCenter: устаревший, но разрешения
-// не спрашивает, работает с ad-hoc подписью, показывает иконку лаунчера и
-// заводит ему запись в настройках уведомлений. Цепочка:
-//  1. UNUserNotificationCenter — если система пустила (подпись Developer ID);
-//  2. NSUserNotificationCenter — если система ответила ошибкой;
-//  3. osascript — если нет и его, или процесс запущен без бандла.
+// Здесь вместо него NSUserNotificationCenter: устаревший, но разрешения не
+// спрашивает, работает с ad-hoc подписью, показывает иконку лаунчера и
+// заводит ему запись в настройках уведомлений. osascript остаётся для
+// процесса без бандла (go run) и для отказа usernoted (ниже).
 //
-// Отказ без ошибки значит, что пользователь выключил уведомления лаунчера в
-// настройках, — тогда не показывается ничего.
+// # Ловушка: usernoted помнит «современного» клиента
+//
+// bundle id, который когда-то ходил через UNUserNotificationCenter (Fyne
+// делал это при каждом уведомлении), usernoted хранит на диске как
+// «современного» клиента и отклоняет его старый API: «You can't mix modern
+// clients with legacy clients», затем «Denying message 3 from
+// LegacyConnection». Перезапуск usernoted отметку не снимает. Приложению
+// отказ не сообщается — уведомление просто не появляется в
+// deliveredNotifications. Поэтому через секунду после отправки .m сверяет
+// этот список и при отказе шлёт через osascript, а дальше в этом процессе
+// старый API уже не пробует. Новый API здесь не вызывается совсем: на ad-hoc
+// подписи он всё равно отвечает ошибкой.
 func SendNotification(title, content string) bool {
 	cTitle := C.CString(title)
 	defer C.free(unsafe.Pointer(cTitle))
