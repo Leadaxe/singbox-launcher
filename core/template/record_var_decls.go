@@ -88,7 +88,8 @@ func RecordVarDeclsFor(td *TemplateData, globalValues map[string]string, target 
 }
 
 // dnsServerLinks — ссылки тела сервера шаблона на другие DNS-серверы
-// (удерживающие ссылки, SPEC 173): `domain_resolver` и члены группы.
+// (удерживающие ссылки, SPEC 173): `domain_resolver`, члены группы и её
+// `hosts` (контракт 1.1.144).
 func dnsServerLinks(srv map[string]interface{}) state.DNSServerLinks {
 	var links state.DNSServerLinks
 	switch v := srv["domain_resolver"].(type) {
@@ -104,6 +105,7 @@ func dnsServerLinks(srv map[string]interface{}) state.DNSServerLinks {
 				links.Group = append(links.Group, tag)
 			}
 		}
+		links.Group = append(links.Group, state.DNSGroupHosts(srv["hosts"])...)
 	}
 	return links
 }

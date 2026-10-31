@@ -1,0 +1,10 @@
+{
+  "_": "Ключ hosts группы (ядро 1.14.4-lx.26, SPEC 143) чистится после состава: остаётся только эмитированный сервер типа hosts, без повтора, не сама группа и не её член. Выключенный, необъявленный, не-hosts, повтор, самоссылка и член состава ядро отвергает при старте вместе со всем конфигом — они выпадают с предупреждением",
+  "servers": [
+    {"type": "hosts", "tag": "ok", "predefined": {"router.lan": ["192.168.1.1"]}, "enabled": true},
+    {"type": "hosts", "tag": "disabled", "predefined": {"nas.lan": ["192.168.1.2"]}, "enabled": false},
+    {"type": "udp", "tag": "not_hosts_udp", "server": "9.9.9.9", "server_port": 53, "enabled": true},
+    {"type": "udp", "tag": "member", "server": "1.1.1.1", "server_port": 53, "enabled": true},
+    {"type": "group", "tag": "self", "servers": ["member"], "hosts": ["ok", "disabled", "missing", "not_hosts_udp", "ok", "self", "member"], "mode": "fastest", "enabled": true}
+  ]
+}

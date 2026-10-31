@@ -87,7 +87,8 @@ type RecordVarDecls struct {
 type DNSServerLinks struct {
 	// DomainResolver — `domain_resolver` (строка или `server` объекта).
 	DomainResolver string
-	// Group — члены группы (`servers` у `type: group`).
+	// Group — члены группы (`servers` у `type: group`) и её `hosts`
+	// (контракт 1.1.144): обе ссылки держат сервер одинаково.
 	Group []string
 }
 

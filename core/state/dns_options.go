@@ -350,6 +350,13 @@ func DNSServerHolders(s *State, decls *RecordVarDecls) map[string]string {
 						hold(tag, dnsHoldGroup, "group:"+srv.Tag)
 					}
 				}
+				// Ссылка из `hosts` держит сервер так же, как член состава
+				// (контракт 1.1.144, LxBox §699): словарь used_by не расширяем.
+				for _, tag := range DNSGroupHosts(srv.Body["hosts"]) {
+					if tag != srv.Tag {
+						hold(tag, dnsHoldGroup, "group:"+srv.Tag)
+					}
+				}
 			}
 			if tag := dnsResolverTarget(srv.Body["domain_resolver"]); tag != srv.Tag {
 				hold(tag, dnsHoldServer, "server:"+srv.Tag)
@@ -390,6 +397,30 @@ func DNSServerHolders(s *State, decls *RecordVarDecls) map[string]string {
 		}
 	}
 	return used
+}
+
+// DNSGroupHosts — теги ключа `hosts` DNS-группы (ядро 1.14.4-lx.26, SPEC 143
+// ядра): серверы типа hosts, которых группа спрашивает до выбора цели.
+// Listable ядра: строка читается как список из одного. Пустые теги пропускаются.
+func DNSGroupHosts(v interface{}) []string {
+	var raw []interface{}
+	switch t := v.(type) {
+	case string:
+		raw = []interface{}{t}
+	case []interface{}:
+		raw = t
+	case []string:
+		for _, s := range t {
+			raw = append(raw, s)
+		}
+	}
+	var out []string
+	for _, r := range raw {
+		if tag, _ := r.(string); strings.TrimSpace(tag) != "" {
+			out = append(out, strings.TrimSpace(tag))
+		}
+	}
+	return out
 }
 
 // dnsResolverTarget — тег из `domain_resolver`: строка или объект {server}.

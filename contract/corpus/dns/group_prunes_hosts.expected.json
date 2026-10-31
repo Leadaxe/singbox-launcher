@@ -1,0 +1,36 @@
+{
+  "servers": [
+    {
+      "predefined": {
+        "router.lan": [
+          "192.168.1.1"
+        ]
+      },
+      "tag": "ok",
+      "type": "hosts"
+    },
+    {
+      "server": "9.9.9.9",
+      "server_port": 53,
+      "tag": "not_hosts_udp",
+      "type": "udp"
+    },
+    {
+      "server": "1.1.1.1",
+      "server_port": 53,
+      "tag": "member",
+      "type": "udp"
+    },
+    {
+      "hosts": [
+        "ok"
+      ],
+      "mode": "fastest",
+      "servers": [
+        "member"
+      ],
+      "tag": "self",
+      "type": "group"
+    }
+  ]
+}

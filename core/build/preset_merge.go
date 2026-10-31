@@ -990,7 +990,76 @@ func pruneDNSGroupMembers(servers []interface{}) []interface{} {
 		}
 		servers = out
 		if !removedGroup {
+			pruneDNSGroupHosts(servers)
 			return servers
 		}
+	}
+}
+
+// pruneDNSGroupHosts чистит ключ `hosts` групп (ядро 1.14.4-lx.26, SPEC 143
+// ядра) после состава: правила ядра сверяются с уже очищенными `servers`.
+//
+// Тег остаётся, если сервер дошёл до конфига, у него тип hosts, тег не
+// повторяется, не равен тегу самой группы и не стоит в её `servers`. Любое
+// нарушение ядро отвергает при старте вместе со всем конфигом, поэтому
+// выпавший тег снимается с предупреждением, а не уезжает в ядро. Пустой итог
+// снимает ключ: у ядра `[]` и отсутствие ключа — одно и то же. Строку
+// (Listable ядра) пишем списком. Контракт 1.1.144, сверено с LxBox §699.
+func pruneDNSGroupHosts(servers []interface{}) {
+	typeByTag := make(map[string]string, len(servers))
+	for _, raw := range servers {
+		if m, ok := raw.(map[string]interface{}); ok {
+			if tag, _ := m["tag"].(string); tag != "" {
+				typeByTag[tag], _ = m["type"].(string)
+			}
+		}
+	}
+	for _, raw := range servers {
+		m, ok := raw.(map[string]interface{})
+		if !ok || m["type"] != "group" {
+			continue
+		}
+		hostsRaw, has := m["hosts"]
+		if !has {
+			continue
+		}
+		groupTag, _ := m["tag"].(string)
+		members := map[string]bool{}
+		if list, ok := m["servers"].([]interface{}); ok {
+			for _, mem := range list {
+				if tag, _ := mem.(string); tag != "" {
+					members[tag] = true
+				}
+			}
+		}
+		seen := map[string]bool{}
+		kept := make([]interface{}, 0)
+		for _, tag := range state.DNSGroupHosts(hostsRaw) {
+			typ, present := typeByTag[tag]
+			reason := ""
+			switch {
+			case tag == groupTag:
+				reason = "itself"
+			case seen[tag]:
+				reason = "duplicate"
+			case !present:
+				reason = "did not reach the config"
+			case typ != "hosts":
+				reason = "not hosts"
+			case members[tag]:
+				reason = "also a member"
+			}
+			if reason != "" {
+				debuglog.WarnLog("dns: group %q: hosts %q dropped (%s)", groupTag, tag, reason)
+				continue
+			}
+			seen[tag] = true
+			kept = append(kept, tag)
+		}
+		if len(kept) == 0 {
+			delete(m, "hosts")
+			continue
+		}
+		m["hosts"] = kept
 	}
 }
