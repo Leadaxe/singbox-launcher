@@ -26,6 +26,7 @@
 ### Technical / Internal
 - Contract 1.1.141: `registry/protocols/trusttunnel.json` (outbound, singbox source only, no core gate), three `body/singbox` corpus cases, LxBox §137.
 - Contract 1.1.144: the build cleans a DNS group's `hosts` key (core `1.14.4-lx.26`, SPEC 143 of the core) after its members — only emitted servers of type `hosts`, no repeats, not the group itself and not its members stay, an empty list drops the key; a `hosts` link holds a server like a member does in backup import (`used_by` `group:<tag>`). Corpus `dns/group_prunes_hosts`, `dns/group_hosts_all_dropped`, LxBox §140.
+- Contract 1.1.145: `tcp_multi_path` (Multipath TCP) moved from `skipped` to `body.fields` of `registry/dialer.json` — a sing-box JSON node carrying it no longer loses the field with `unknown_key`; the launcher does not write it itself. Corpus `body/singbox/dialer_tcp_multi_path`, LxBox §141.
 
 ## RU
 ### Основное
@@ -51,3 +52,4 @@
 ### Техническое / Внутреннее
 - Контракт 1.1.141: `registry/protocols/trusttunnel.json` (outbound, только источник singbox, без гейта по ядру), три кейса корпуса `body/singbox`, LxBox §137.
 - Контракт 1.1.144: сборка чистит ключ `hosts` DNS-группы (ядро `1.14.4-lx.26`, SPEC 143 ядра) после состава — остаются только эмитированные серверы типа `hosts`, без повторов, не сама группа и не её члены, пустой список снимает ключ; ссылка из `hosts` держит сервер при импорте бэкапа как член (`used_by` `group:<tag>`). Корпус `dns/group_prunes_hosts`, `dns/group_hosts_all_dropped`, LxBox §140.
+- Контракт 1.1.145: `tcp_multi_path` (Multipath TCP) перенесён из `skipped` в `body.fields` реестра `registry/dialer.json` — узел sing-box JSON с этим полем больше не теряет его с `unknown_key`; сам лаунчер его не пишет. Корпус `body/singbox/dialer_tcp_multi_path`, LxBox §141.
