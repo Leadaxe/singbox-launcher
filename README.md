@@ -436,7 +436,7 @@ To run GUI tests locally, set `TEST_PACKAGE` manually inside the script or invok
 | Subscription returns empty / errors | Check **Subscription identification** in Settings — HWID-binding panels need `Send device ID` enabled. Look at the ⚠ badge tooltip for provider announce. |
 | Windows: Start shows “TUN needs administrator rights” | The launcher runs without administrator rights; TUN needs them. Choose **Restart as administrator** or **Switch to proxy mode** — see [Installation → Windows](#windows-1). |
 | TUN doesn't capture traffic (Linux/macOS) | TUN interface usually needs root: `sudo ./singbox-launcher` or `sudo setcap cap_net_admin+ep ./singbox-launcher` (Linux). |
-| Linux: password asked 3× on VPN start, 1× on stop | `systemd-resolved` + Polkit authorize each `resolvectl` D-Bus action separately — see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#linux). |
+| Linux: password asked on VPN start/stop or network change | `systemd-resolved` + Polkit authorize each `resolvectl` D-Bus action separately — see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#linux). |
 | Win7 32-bit: tray icon shows but window is blank / empty frame | OpenGL 2.0 vs Fyne's 2.1+ requirement — see [docs/WIN7_OPENGL.md](docs/WIN7_OPENGL.md) for the Mesa3D drop-in fix. |
 | Subscription auto-update silent | Open **Settings → Subscriptions** — confirm `Auto-update subscriptions` is on. Heartbeat is hourly; immediate retry fires on VPN-event. |
 | Need full state for a bug report | **Diagnostics → Copy snapshot** packages template + state + cache + config into one JSON. |

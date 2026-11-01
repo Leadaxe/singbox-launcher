@@ -61,16 +61,26 @@ on your side (items 1, 2, 4, 5), not on the server.
 
 ## Linux
 
-### A password is asked three times when the VPN starts, and once when it stops
+### A password is asked when the VPN starts, stops, or the network changes
 
 Desktop with `systemd-resolved`: sing-box sets the DNS of the TUN interface through
-`resolvectl`, and Polkit authorizes each of the four D-Bus actions separately.
-`CAP_NET_ADMIN` on the binary does not help — the check happens in `systemd-resolved`.
+`resolvectl`, and Polkit authorizes each D-Bus action separately — so the number of
+prompts is not fixed. `CAP_NET_ADMIN` on the binary does not help — the check happens in
+`systemd-resolved`. The core asks for five actions:
+
+- `org.freedesktop.resolve1.set-dns-servers`
+- `org.freedesktop.resolve1.set-domains`
+- `org.freedesktop.resolve1.set-default-route`
+- `org.freedesktop.resolve1.revert` — on stop
+- `org.freedesktop.resolve1.flush-caches` — on a network change (core `1.14.4-lx.24` and
+  newer, from upstream sing-tun)
 
 A user-contributed recipe (a dedicated group plus a narrow Polkit rule for exactly these
-four actions) is in [issue #126](https://github.com/Leadaxe/singbox-launcher/issues/126). It is a system-level change made by the
-administrator; the launcher does not install it, and the project has not verified it on
-other distributions.
+actions) is in [issue #126](https://github.com/Leadaxe/singbox-launcher/issues/126). A rule
+made from the original four-action version keeps asking on network changes until
+`flush-caches` is added to its allowlist; Polkit reloads rules on its own, no new login is
+needed. It is a system-level change made by the administrator; the launcher does not
+install it, and the project has not verified it on other distributions.
 
 ### The VPN starts, TUN and routes are up, but nothing loads; `gvisor` works
 
