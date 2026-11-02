@@ -162,3 +162,10 @@ func (b *DaemonBackend) TailscalePing(ctx context.Context, tag, peerIP string, o
 	}
 	return nil
 }
+
+// TaildropClient implements taildropSource (SPEC 175): клиент
+// StartedService демона для RPC Taildrop. Дедлайна нет — стримы входящих и
+// отправки живут столько, сколько ctx вызывающего.
+func (b *DaemonBackend) TaildropClient() (daemonpb.StartedServiceClient, error) {
+	return b.grpcClient()
+}

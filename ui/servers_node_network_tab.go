@@ -1,5 +1,5 @@
 // File servers_node_network_tab.go — вкладка Network окна узла Tailscale
-// (SPEC 148 §3, LxBox §581): Status, This device, Exit node, Devices,
+// (SPEC 148 §3, LxBox §581): Status, This device, Files (SPEC 175), Exit node, Devices,
 // проверка устройства.
 //
 // Данные — запросный GetTailscaleStatus (SPEC 115 ядра) раз в
@@ -99,12 +99,20 @@ func tailscaleNetworkTab(ac *core.AppController, win fyne.Window, tag, cfgPath s
 	target, bound := nodeWindowTarget(scope)
 	canSave := bound && ac.CanSaveTailscaleExitNode(target.MachineID, tag)
 	cmd := tailscaleCommands{ac: ac, target: target}
+	// Входящие Taildrop (SPEC 175) — подписка на время окна.
+	taildropOn := bound && ac.TaildropAvailable(target)
+	inbox := &taildropInboxState{}
+	inboxCtx, stopInbox := context.WithCancel(context.Background())
+	if taildropOn {
+		go superviseTaildropInbox(inboxCtx, ac, target, tag, inbox)
+	}
 
 	type snapKey struct {
 		view     tailscaleNetworkView
 		state    string
 		written  string
 		haveCtrl bool
+		files    string
 	}
 	var (
 		last     *snapKey
@@ -152,7 +160,9 @@ func tailscaleNetworkTab(ac *core.AppController, win fyne.Window, tag, cfgPath s
 			st, ok = fresh, true
 		}
 		written := writtenExitNode(cfgPath, tag)
-		key := snapKey{view: tailscaleNetworkViewFor(running, live, ok), state: tailscaleNetworkKey(st), written: written, haveCtrl: haveCtrl}
+		files := taildropView{available: taildropOn && running}
+		files.inbox, files.have = inbox.get()
+		key := snapKey{view: tailscaleNetworkViewFor(running, live, ok), state: tailscaleNetworkKey(st), written: written, haveCtrl: haveCtrl, files: files.key()}
 		if last != nil && *last == key {
 			return
 		}
@@ -162,13 +172,14 @@ func tailscaleNetworkTab(ac *core.AppController, win fyne.Window, tag, cfgPath s
 			draw = func() {
 				box.RemoveAll()
 				buildTailscaleNetwork(cmd, win, box, tag, key.view, st, written, canSave, key.haveCtrl,
-					deviceExpand{open: expanded, redraw: draw})
+					deviceExpand{open: expanded, redraw: draw}, files)
 				box.Refresh()
 			}
 			draw()
 		})
 	}
 	go func() {
+		defer stopInbox()
 		refresh()
 		t := time.NewTicker(time.Second) // стрим — раз в секунду, запрос — реже (tailnetPollInterval)
 		defer t.Stop()
@@ -257,7 +268,7 @@ func windowOpen(win fyne.Window) bool {
 }
 
 func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Container, tag string,
-	view tailscaleNetworkView, st services.TailscaleStatus, written string, canSave, haveCtrl bool, expand deviceExpand) {
+	view tailscaleNetworkView, st services.TailscaleStatus, written string, canSave, haveCtrl bool, expand deviceExpand, files taildropView) {
 	ac := cmd.ac
 	note := func(text string) {
 		l := widget.NewLabel(text)
@@ -343,6 +354,9 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 		}
 		box.Add(infoRow(locale.T("Key expiry"), expiry))
 	}
+
+	// --- Files (Taildrop, SPEC 175) ---
+	buildTaildropSection(cmd, win, box, tag, st, files)
 
 	// --- Exit node ---
 	box.Add(widget.NewSeparator())
@@ -461,7 +475,7 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 			if i > 0 {
 				box.Add(widget.NewSeparator())
 			}
-			box.Add(tailscaleDeviceRow(cmd, win, tag, p, haveCtrl, expand))
+			box.Add(tailscaleDeviceRow(cmd, win, tag, p, haveCtrl, files.available && canSendTaildrop(st, p), expand))
 		}
 	}
 }
@@ -504,8 +518,9 @@ func tailscaleDeviceConnection(p services.TailscalePeer, now time.Time) string {
 
 // tailscaleDeviceRow — устройство строкой списка серверов
 // (tailscalePeerLines) и меню справа: Copy name, Copy MagicDNS name, Copy
-// address (адресов несколько — подменю со всеми), Ping (по первому адресу).
-func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer, haveCtrl bool, expand deviceExpand) fyne.CanvasObject {
+// address (адресов несколько — подменю со всеми), Ping (по первому адресу),
+// Send file… (Taildrop, SPEC 175).
+func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer, haveCtrl, canSend bool, expand deviceExpand) fyne.CanvasObject {
 	addr := ""
 	if len(p.TailscaleIPs) > 0 {
 		addr = p.TailscaleIPs[0]
@@ -537,6 +552,11 @@ func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p se
 		if addr != "" && haveCtrl {
 			items = append(items, fyne.NewMenuItem(locale.T("Ping"), func() {
 				showTailscalePing(cmd, win, tag, p.HostName, addr)
+			}))
+		}
+		if canSend {
+			items = append(items, fyne.NewMenuItem(locale.T("Send file…"), func() {
+				sendTaildropFile(cmd, win, tag, p)
 			}))
 		}
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(more)

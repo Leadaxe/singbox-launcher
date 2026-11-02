@@ -168,3 +168,14 @@ func (t *LxdRemoteTransport) TailscalePing(ctx context.Context, tag, peerIP stri
 	}
 	return nil
 }
+
+// TaildropClient — клиент StartedService машины для RPC Taildrop (SPEC 175;
+// реализует core.taildropSource). Соединение стримовое, без дедлайна rpc():
+// входящие и отправка живут столько, сколько ctx вызывающего.
+func (t *LxdRemoteTransport) TaildropClient() (daemonpb.StartedServiceClient, error) {
+	conn, err := t.streamConn()
+	if err != nil {
+		return nil, err
+	}
+	return daemonpb.NewStartedServiceClient(conn), nil
+}

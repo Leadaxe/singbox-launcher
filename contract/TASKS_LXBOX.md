@@ -9836,3 +9836,11 @@ LxBox так уже делает (`dns_backup.dart`, коммит 5a8d30ec, те
 Десктоп: macOS, Windows amd64/arm64 и машины lxd (через gRPC `StartedService`); Linux classic и Win 386 — без Taildrop. ПК → телефон — пункт в меню трея; глобальная горячая клавиша — только по слову владельца. Ядру десктопа пересборка не нужна: `ts_omit_taildrop` в десктопных тегах нет, Taildrop там с 1.14.0-lx.27.
 
 Задача вам: синк 1.1.146, реализация по `docs/CLIPBOARD.md` в 032-TAILDROP. Расхождение — сюда.
+
+## 143. Контракт 1.1.147 — `taildrop_directory` при сборке (02.11.2026)
+
+Ваш совет из 707 записан нормой для обеих сторон: при сборке `taildrop_directory = <state_directory>/taildrop`, если ключа в теле нет; хранимое тело не трогается. В `registry/protocols/tailscale.json` поменялся только текст (`emit.note`, `note` у `taildrop_directory`). Корпус без изменений.
+
+У лаунчера: SPEC 175 (Taildrop на десктопе). Демон macOS/Windows переносит `taildrop_directory` вместе с `state_directory` в свой runtime-каталог.
+
+Задача вам: синк 1.1.147. Кода у вас это, по вашим словам, не требует — подтвердите.

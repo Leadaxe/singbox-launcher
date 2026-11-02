@@ -225,7 +225,7 @@ func daemonInboundsWithoutSystemProxy(raw json.RawMessage) (json.RawMessage, str
 	return out, server, true, nil
 }
 
-// daemonEndpointsTailscaleStateDir — шаг (4): state_directory узла tailscale
+// daemonEndpointsTailscaleStateDir — шаг (4): state_directory и taildrop_directory узла tailscale
 // под localRoot (DataDir лаунчера) → <runtimeDir>/tailscale/<тот же
 // относительный путь>; явный каталог пользователя вне корня не трогается.
 func daemonEndpointsTailscaleStateDir(raw json.RawMessage, localRoot, runtimeDir string) (json.RawMessage, bool, error) {
@@ -235,19 +235,28 @@ func daemonEndpointsTailscaleStateDir(raw json.RawMessage, localRoot, runtimeDir
 	}
 	changed := false
 	for _, ep := range endpoints {
-		var typ, dir string
+		var typ string
 		_ = json.Unmarshal(ep["type"], &typ)
-		if typ != "tailscale" || json.Unmarshal(ep["state_directory"], &dir) != nil || dir == "" {
+		if typ != "tailscale" {
 			continue
 		}
-		rel, err := filepath.Rel(localRoot, dir)
-		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
-			continue
+		// taildrop_directory сборка кладёт внутрь state_directory (SPEC 175
+		// §2) — переезжает тем же правилом, иначе демон писал бы входящие в
+		// каталог пользователя от root.
+		for _, key := range []string{"state_directory", "taildrop_directory"} {
+			var dir string
+			if json.Unmarshal(ep[key], &dir) != nil || dir == "" {
+				continue
+			}
+			rel, err := filepath.Rel(localRoot, dir)
+			if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+				continue
+			}
+			moved := filepath.Join(runtimeDir, "tailscale", rel)
+			ep[key], _ = json.Marshal(moved)
+			changed = true
+			debuglog.InfoLog("daemon: tailscale %s %q → %q", key, dir, moved)
 		}
-		moved := filepath.Join(runtimeDir, "tailscale", rel)
-		ep["state_directory"], _ = json.Marshal(moved)
-		changed = true
-		debuglog.InfoLog("daemon: tailscale state_directory %q → %q", dir, moved)
 	}
 	if !changed {
 		return raw, false, nil

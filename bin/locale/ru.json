@@ -6004,5 +6004,41 @@
   },
   "Fixed IP: %s": {
     "value": "Фиксированный IP: %s"
+  },
+  "Files": {
+    "value": "Файлы"
+  },
+  "File sharing is off for this tailnet. Turn on Taildrop in the Tailscale admin console.": {
+    "value": "Передача файлов в этой tailnet выключена. Включите Taildrop в админ-панели Tailscale."
+  },
+  "No files.": {
+    "value": "Файлов нет."
+  },
+  "Delete file": {
+    "value": "Удалить файл"
+  },
+  "Delete %s from the inbox?": {
+    "value": "Удалить %s из входящих?"
+  },
+  "from %s": {
+    "value": "от %s"
+  },
+  "File saved": {
+    "value": "Файл сохранён"
+  },
+  "Show in folder": {
+    "value": "Показать в папке"
+  },
+  "Send file…": {
+    "value": "Отправить файл…"
+  },
+  "Sending %s to %s…": {
+    "value": "Отправка %s на %s…"
+  },
+  "Send file": {
+    "value": "Отправка файла"
+  },
+  "%s sent to %s.": {
+    "value": "%s отправлен на %s."
   }
 }

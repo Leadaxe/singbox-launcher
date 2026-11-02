@@ -12,7 +12,7 @@
   "uri": null,
   "emit": {
     "share_uri": false,
-    "note": "Share-URI не эмитится — URI-формы у схемы нет. Тело узла эмитится как есть (канон v7), per-scheme ветки нет; единственная правка эмиттера — подстановка state_directory при его отсутствии."
+    "note": "Share-URI не эмитится — URI-формы у схемы нет. Тело узла эмитится как есть (канон v7), per-scheme ветки нет; правки эмиттера — подстановка state_directory при его отсутствии и taildrop_directory = <state_directory>/taildrop при отсутствии ключа (контракт 1.1.147)."
   },
   "refs": {
     "go": [
@@ -237,7 +237,8 @@
         "default": "Taildrop",
         "desc_en": "Directory receiving Taildrop files.",
         "desc_ru": "Каталог, куда попадают файлы Taildrop.",
-        "impl": "option/tailscale.go TaildropDirectory."
+        "impl": "option/tailscale.go TaildropDirectory.",
+        "note": "Обе стороны при сборке подставляют <state_directory>/taildrop, если ключа в теле нет (контракт 1.1.147): дефолт ядра — общий каталог Taildrop от рабочего каталога, и входящие всех узлов tailnet легли бы в одну папку. Хранимое тело не меняется — как у state_directory."
       },
       "__dialer": {
         "type": "ref",
