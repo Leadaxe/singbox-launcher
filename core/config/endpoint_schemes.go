@@ -113,6 +113,7 @@ func applyTailscaleStateDirectory(endpoint map[string]interface{}, scheme, tag, 
 	}
 	remoteRoot = strings.TrimSpace(remoteRoot)
 	defer applyTailscaleTaildropDirectory(endpoint, remoteRoot != "")
+	applyTailscaleTaildropDefault(endpoint)
 	if _, present := endpoint["state_directory"]; present {
 		return
 	}
@@ -129,6 +130,18 @@ func applyTailscaleStateDirectory(endpoint map[string]interface{}, scheme, tag, 
 	// filepath.Join, а не конкатенация через "/": на Windows корень приходит
 	// с обратными слэшами, и смешивать разделители в одном пути незачем.
 	endpoint["state_directory"] = filepath.Join(root, sanitizeStateDirName(tag))
+}
+
+// applyTailscaleTaildropDefault — «Allow Taildrop» по умолчанию выключено
+// (контракт 1.1.150, решение владельца 02.11.2026): disable_taildrop: true,
+// если в теле нет явного значения. Дефолт ядра — включено, поэтому выключает
+// сборка. Ядро старше min_core поля не знает — полевой гейт config-формы
+// снимает его вместе с остальными, и Taildrop там остаётся как у ядра.
+func applyTailscaleTaildropDefault(endpoint map[string]interface{}) {
+	if _, present := endpoint["disable_taildrop"]; present {
+		return
+	}
+	endpoint["disable_taildrop"] = true
 }
 
 // applyTailscaleTaildropDirectory подставляет taildrop_directory =

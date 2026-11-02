@@ -54,13 +54,15 @@ func (s *taildropInboxState) get() (services.TaildropInbox, bool) {
 type taildropView struct {
 	// available — у ядра окна есть Taildrop (gRPC-источник).
 	available bool
-	have      bool
-	inbox     services.TaildropInbox
+	// off — Taildrop узла выключен в конфиге («Allow Taildrop» снята).
+	off   bool
+	have  bool
+	inbox services.TaildropInbox
 }
 
 // key — ключ перерисовки секции.
 func (v taildropView) key() string {
-	return fmt.Sprintf("%v|%v|%+v", v.available, v.have, v.inbox)
+	return fmt.Sprintf("%v|%v|%v|%+v", v.available, v.off, v.have, v.inbox)
 }
 
 // superviseTaildropInbox держит подписку на входящие до отмены ctx:
@@ -107,6 +109,10 @@ func buildTaildropSection(cmd tailscaleCommands, win fyne.Window, box *fyne.Cont
 	}
 	box.Add(widget.NewSeparator())
 	box.Add(sectionHeader(locale.T("Files")))
+	if v.off {
+		note(locale.T("Taildrop is off for this node. Turn on \"Allow Taildrop\" in the node settings."))
+		return
+	}
 	if !st.CanShareFiles {
 		note(locale.T("File sharing is off for this tailnet. Turn on Taildrop in the Tailscale admin console."))
 		return

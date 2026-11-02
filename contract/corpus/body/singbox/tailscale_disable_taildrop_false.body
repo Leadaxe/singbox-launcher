@@ -1,0 +1,10 @@
+# sing-box: endpoint tailscale с явным disable_taildrop: false (контракт 1.1.150).
+# Так галка «Allow Taildrop» = вкл пишется в хранимое тело: поле известно
+# реестру и проходит насквозь. Без записи в реестре сторона сняла бы его как
+# unknown_key, и Taildrop узла молча выключался бы сборкой (дефолт сборки —
+# disable_taildrop: true при отсутствии поля).
+#
+# В ожидании НЕТ disable_taildrop: true у узлов без поля и НЕТ
+# taildrop_directory / state_directory: всё это подставляет config-форма при
+# эмиссии, хранимое тело их не несёт.
+{"endpoints":[{"type":"tailscale","tag":"ts-files","disable_taildrop":false},{"type":"tailscale","tag":"ts-plain","accept_routes":true}]}

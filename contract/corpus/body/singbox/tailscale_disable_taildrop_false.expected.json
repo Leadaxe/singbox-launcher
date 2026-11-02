@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "disable_taildrop": false,
+        "type": "tailscale"
+      },
+      "kind": "endpoint",
+      "label": "ts-files",
+      "scheme": "tailscale"
+    },
+    {
+      "entry": {
+        "accept_routes": true,
+        "type": "tailscale"
+      },
+      "kind": "endpoint",
+      "label": "ts-plain",
+      "scheme": "tailscale"
+    }
+  ],
+  "v": 1
+}

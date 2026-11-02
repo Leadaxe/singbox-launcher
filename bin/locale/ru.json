@@ -6049,5 +6049,11 @@
   },
   "%s saved to Downloads.": {
     "value": "%s сохранён в «Загрузки»."
+  },
+  "Allow Taildrop (send and receive files)": {
+    "value": "Разрешить Taildrop (отправка и приём файлов)"
+  },
+  "Taildrop is off for this node. Turn on \"Allow Taildrop\" in the node settings.": {
+    "value": "Taildrop у этого узла выключен. Включите «Allow Taildrop» в настройках узла."
   }
 }

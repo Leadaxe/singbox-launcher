@@ -84,6 +84,18 @@ func writtenExitNode(cfgPath, tag string) string {
 	return strings.TrimSpace(v)
 }
 
+// writtenTaildropOff — Taildrop узла выключен в собранном конфиге
+// (`disable_taildrop: true`, контракт 1.1.150). Поля нет — ядро старше
+// min_core, гейт его снял, Taildrop там включён, как у ядра.
+func writtenTaildropOff(cfgPath, tag string) bool {
+	node := wizardbusiness.LoadConfigNodes(cfgPath).Lookup(tag)
+	if node == nil {
+		return false
+	}
+	off, _ := node.Raw["disable_taildrop"].(bool)
+	return off
+}
+
 // tailscaleNetworkTab строит вкладку и запускает её обновление; обновление
 // останавливается, когда окно закрыто.
 //
@@ -160,7 +172,7 @@ func tailscaleNetworkTab(ac *core.AppController, win fyne.Window, tag, cfgPath s
 			st, ok = fresh, true
 		}
 		written := writtenExitNode(cfgPath, tag)
-		files := taildropView{available: taildropOn && running}
+		files := taildropView{available: taildropOn && running, off: writtenTaildropOff(cfgPath, tag)}
 		files.inbox, files.have = inbox.get()
 		key := snapKey{view: tailscaleNetworkViewFor(running, live, ok), state: tailscaleNetworkKey(st), written: written, haveCtrl: haveCtrl, files: files.key()}
 		if last != nil && *last == key {
@@ -475,7 +487,7 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 			if i > 0 {
 				box.Add(widget.NewSeparator())
 			}
-			box.Add(tailscaleDeviceRow(cmd, win, tag, p, haveCtrl, files.available && canSendTaildrop(st, p), expand))
+			box.Add(tailscaleDeviceRow(cmd, win, tag, p, haveCtrl, files.available && !files.off && canSendTaildrop(st, p), expand))
 		}
 	}
 }

@@ -109,6 +109,10 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-taildrop-directory"></a>**`taildrop_directory`** — Directory receiving Taildrop files.
   - Type: string
   - Default: `Taildrop`
+- <a id="body-disable-taildrop"></a>**`disable_taildrop`** — Turn Taildrop off on this node: incoming files are refused, sending is not allowed.
+  - Type: bool
+  - Default: `false`
+  - Only written when: core ≥ `1.14.4-lx.30-rc.2`
 - <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
   - Type: string, set by config build
 - <a id="body-bind-interface"></a>**`bind_interface`** — Network interface the connection is bound to.
@@ -182,4 +186,8 @@ Every code that can be raised on a node of this scheme, including the ones comin
 - `listen_port` — invalid value
 - `relay_server_port` — invalid value
 - `system_interface_mtu` — invalid value
+
+**Left out when the running core is too old**
+
+- `disable_taildrop` — needs core ≥ `1.14.4-lx.30-rc.2`
 

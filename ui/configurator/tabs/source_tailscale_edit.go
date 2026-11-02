@@ -66,8 +66,9 @@ const tailscaleSingboxType = "tailscale"
 // Ключи тела, которые пишет форма. Снятие любого из них санитайзером =
 // ввод негоден, и тело не пишется.
 const (
-	tailscaleKeyAdvertiseExit = "advertise_exit_node"
-	tailscaleKeyExitNode      = "exit_node"
+	tailscaleKeyAdvertiseExit   = "advertise_exit_node"
+	tailscaleKeyExitNode        = "exit_node"
+	tailscaleKeyDisableTaildrop = "disable_taildrop"
 )
 
 // tailscaleKeyExitLAN — спутник exit_node из JSON; форма его не пишет, только
@@ -76,12 +77,15 @@ const tailscaleKeyExitLAN = "exit_node_allow_lan_access"
 
 // tailscaleRoleKeys — те же ключи списком: порядок = порядок проверки
 // отказа санитайзера.
-var tailscaleRoleKeys = []string{tailscaleKeyAdvertiseExit, tailscaleKeyExitNode}
+var tailscaleRoleKeys = []string{tailscaleKeyAdvertiseExit, tailscaleKeyExitNode, tailscaleKeyDisableTaildrop}
 
 // tailscaleRole — роль узла в tailnet в виде, пригодном для формы.
 type tailscaleRole struct {
 	AdvertiseExit bool
 	ExitNode      string
+	// AllowTaildrop — «Allow Taildrop» (контракт 1.1.150): в теле явное
+	// `disable_taildrop: false`. Поля нет — выключено: сборка эмитит true.
+	AllowTaildrop bool
 }
 
 // tailscaleSchemeOfBody — схема реестра по типу тела, если это Tailscale.
@@ -130,6 +134,9 @@ func readTailscaleRole(node *wizardmodels.Node) tailscaleRole {
 	out.AdvertiseExit, _ = ob[tailscaleKeyAdvertiseExit].(bool)
 	out.ExitNode, _ = ob[tailscaleKeyExitNode].(string)
 	out.ExitNode = strings.TrimSpace(out.ExitNode)
+	if v, ok := ob[tailscaleKeyDisableTaildrop].(bool); ok && !v {
+		out.AllowTaildrop = true
+	}
 	return out
 }
 
@@ -164,6 +171,12 @@ func applyTailscaleRole(node *wizardmodels.Node, r tailscaleRole) error {
 	}
 	if _, hasExit := ob[tailscaleKeyExitNode]; !hasExit {
 		delete(ob, tailscaleKeyExitLAN)
+	}
+	// «Allow Taildrop»: вкл — явное false, выкл — поле снимается (тело без
+	// поля и значит «выключено», контракт 1.1.150).
+	delete(ob, tailscaleKeyDisableTaildrop)
+	if r.AllowTaildrop {
+		ob[tailscaleKeyDisableTaildrop] = false
 	}
 	return writeTailscaleBody(node, ob)
 }
@@ -229,6 +242,7 @@ func writeTailscaleBody(node *wizardmodels.Node, ob map[string]interface{}) erro
 type tailscaleBlock struct {
 	advExit  *widget.Check
 	exitNode *widget.Entry
+	taildrop *widget.Check
 	// exitRow — строка, которую гасит галка «быть выходом».
 	exitRow fyne.CanvasObject
 	// content — всё, что блок добавляет в форму, одним объектом.
@@ -280,6 +294,8 @@ func newTailscaleBlock(
 		commit()
 	})
 
+	b.taildrop = widget.NewCheck(locale.T("Allow Taildrop (send and receive files)"), func(bool) { commit() })
+
 	note := widget.NewLabel(locale.T(tailscaleBlockNoteText))
 	note.Wrapping = fyne.TextWrapWord
 	note.Importance = widget.LowImportance
@@ -291,6 +307,7 @@ func newTailscaleBlock(
 		sectionHeader(locale.T("Tailscale")),
 		b.advExit,
 		b.exitRow,
+		b.taildrop,
 		note,
 	)
 	return b
@@ -301,6 +318,7 @@ func (b *tailscaleBlock) values() tailscaleRole {
 	return tailscaleRole{
 		AdvertiseExit: b.advExit.Checked,
 		ExitNode:      b.exitNode.Text,
+		AllowTaildrop: b.taildrop.Checked,
 	}
 }
 
@@ -311,6 +329,7 @@ func (b *tailscaleBlock) load(node *wizardmodels.Node) {
 	b.syncing = true
 	b.advExit.SetChecked(r.AdvertiseExit)
 	b.exitNode.SetText(r.ExitNode)
+	b.taildrop.SetChecked(r.AllowTaildrop)
 	b.syncing = false
 	b.syncExitRole()
 }

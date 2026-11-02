@@ -62,6 +62,18 @@ Delete — с подтверждением.
 каталог своими входящими (Delete удалял бы файлы пользователя), а демон macOS
 пишет от root.
 
+### 3.5 Allow Taildrop
+
+Галка узла «Allow Taildrop (send and receive files)» — в Add server → Tailscale
+и в блоке Tailscale окна правки узла. По умолчанию ВЫКЛЮЧЕНА (решение
+владельца 02.11.2026, контракт 1.1.150): вкл пишет в тело
+`disable_taildrop: false`, выкл снимает поле; сборка эмитит
+`disable_taildrop: true` при отсутствии поля (`applyTailscaleTaildropDefault`).
+Поле с `min_core 1.14.4-lx.30-rc.2`: на ядре старше гейт его снимает, Taildrop
+там как у ядра. Выключено в собранном конфиге — секция Files пишет «Taildrop
+is off for this node…», «Send file…» нет. Полевой гейт сравнивает пре-релизы
+(`lx.30-rc.1 < lx.30-rc.2 < lx.30`).
+
 ### 3.3 Журнал
 
 Имена файлов и устройств в журнал не пишутся (как SPEC 148 §3): только тег
