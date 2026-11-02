@@ -305,6 +305,43 @@
     },
     {"separator": true},
     {
+      "name": "mtu_align",
+      "type": "enum",
+      "wizard_ui": "edit",
+      "title": "Tunnel MTU alignment",
+      "tooltip": "sing-box-lx lx.mtu_align — how a node riding inside another tunnel (chain, detour, WARP) fits its packets into the outer path MTU. Clamp (default) fills in an MTU the node does not set and lowers one that does not fit; fill only fills in a missing MTU and keeps an explicit one, warning if it does not fit; off changes nothing. MTU is never raised.",
+      "default_value": "clamp",
+      "options": [
+        {"title": "Clamp (default)", "value": "clamp"},
+        {"title": "Fill", "value": "fill"},
+        {"title": "Off", "value": "off"}
+      ]
+    },
+    {
+      "name": "quic_sniff_decoy",
+      "type": "bool",
+      "wizard_ui": "edit",
+      "title": "QUIC sniff decoy",
+      "tooltip": "sing-box-lx lx.quic_sniff_decoy — send one non-QUIC byte ahead of the first QUIC packet of every MASQUE (HTTP/3), Hysteria2 and TUIC connection. A relay in the path that sniffs the QUIC SNI and rewrites the destination by it (Xray destOverride) then leaves the connection where it was dialled.",
+      "default_value": "true"
+    },
+    {
+      "name": "masque_idle_timeout",
+      "type": "enum",
+      "wizard_ui": "edit",
+      "title": "MASQUE idle timeout",
+      "tooltip": "sing-box-lx lx.masque.idle_timeout — close the tunnel of a MASQUE node (WARP) after this long without traffic and reopen it on the next connection. Applies to nodes without their own idle timeout; a node's own value wins. Off keeps tunnels up.",
+      "default_value": "off",
+      "options": [
+        {"title": "Off (default)", "value": "off"},
+        {"title": "2m", "value": "2m"},
+        {"title": "5m", "value": "5m"},
+        {"title": "15m", "value": "15m"},
+        {"title": "30m", "value": "30m"}
+      ]
+    },
+    {"separator": true},
+    {
       "name": "urltest_url",
       "type": "text",
       "wizard_ui": "edit",
@@ -477,6 +514,11 @@
         {"clash_api": {"external_controller": "@clash_api", "secret": "@clash_secret"}}
       ],
       "cache_file": {"enabled": true, "path": "cache.db", "store_fakeip": true, "store_dns": "@dns_store_cache"}
+    },
+    "lx": {
+      "#if mtu_align": [{"#not": {"@mtu_align": "clamp"}}, {"mtu_align": "@mtu_align"}],
+      "#if quic_sniff_decoy": ["@quic_sniff_decoy", {"quic_sniff_decoy": true}],
+      "#if masque_idle_timeout": [{"#not": {"@masque_idle_timeout": "off"}}, {"masque": {"idle_timeout": "@masque_idle_timeout"}}]
     }
   },
   "dns_options": {

@@ -355,6 +355,48 @@
       "portable": false,
       "in": "mobile",
       "note": "tun.auto_route как var; на desktop auto_route захардкожен true в params[]"
+    },
+    "mtu_align": {
+      "type": "enum",
+      "portable": false,
+      "in": "both",
+      "note": "lx.mtu_align ядра (SPEC 120 форка, >= 1.14.3-lx.14); options clamp / fill / off, дефолт clamp = дефолт ядра. Эмитится строкой режима в корневой lx шаблона, кроме clamp (контракт 1.1.151, LxBox §709). except в шаблон не выносится."
+    },
+    "quic_sniff_decoy": {
+      "type": "bool",
+      "portable": false,
+      "in": "both",
+      "note": "lx.quic_sniff_decoy ядра (SPEC 151 форка, >= 1.14.4-lx.30-rc.3, пин обеих сторон не ниже). Дефолт шаблона true при дефолте ядра «выкл»; эмитится только true (контракт 1.1.151)."
+    },
+    "masque_idle_timeout": {
+      "type": "enum",
+      "portable": false,
+      "in": "both",
+      "note": "lx.masque.idle_timeout ядра (>= 1.14.1-lx.13): глобальное окно простоя MASQUE-узлов без своего idle_timeout, ключ узла сильнее. options off / 2m / 5m / 15m / 30m, дефолт off; эмитится lx.masque.idle_timeout, кроме off (контракт 1.1.151)."
+    },
+    "wg_idle_suspend": {
+      "type": "enum",
+      "portable": false,
+      "in": "mobile",
+      "note": "lx.wg.idle_suspend; options off / 30s / 2m / 5m, дефолт 30s, кроме off. Только mobile: десктопные сборки ядра без with_lx_idle_suspend отвергают любой lx.wg.* на старте (контракт 1.1.151, LxBox §709)."
+    },
+    "wg_idle_suspend_reachable": {
+      "type": "enum",
+      "portable": false,
+      "in": "mobile",
+      "note": "lx.wg.idle_suspend_reachable; options off / 5m / 15m / 30m / 1h, дефолт 5m; эмитится только при wg_idle_suspend != off, неактивность строки — #enable на объявлении (TEMPLATE_LANG §4.6)."
+    },
+    "wg_lazy_build": {
+      "type": "bool",
+      "portable": false,
+      "in": "mobile",
+      "note": "lx.wg.lazy_build; дефолт true; эмитится только при wg_idle_suspend != off."
+    },
+    "wg_build_max": {
+      "type": "int",
+      "portable": false,
+      "in": "mobile",
+      "note": "lx.wg.build_max — целое в конфиге ядра, поэтому int с options (как urltest_tolerance), не enum; options 0 / 3 / 5 / 8 / 12, дефолт 5; эмитится только при wg_lazy_build."
     }
   }
 }

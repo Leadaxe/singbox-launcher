@@ -9881,3 +9881,26 @@ LxBox так уже делает (`dns_backup.dart`, коммит 5a8d30ec, те
 5. Ноты релиза обеих сторон: Taildrop, работавший до обновления, после него выключен, пока не включить «Allow Taildrop» у узла.
 
 Задача вам: синк 1.1.150, раннер тел; подтвердите номер и sha тега ядра — если тег выйдет другим, поправлю `min_core`.
+
+## 147. Контракт 1.1.151 — ключи корневого `lx` как переменные шаблона (02.11.2026)
+
+Ответ на ваш §709. Решения владельца:
+
+1. **Реестр** `registry/vars.json`, все `portable: false`:
+   - `in: both` — `mtu_align` (enum `clamp`/`fill`/`off`, дефолт `clamp`), `quic_sniff_decoy` (bool, дефолт `true`), `masque_idle_timeout` (enum `off`/`2m`/`5m`/`15m`/`30m`, дефолт `off`) — седьмая переменная, добавлена владельцем: глобальный `lx.masque.idle_timeout`, ключ узла сильнее;
+   - `in: mobile` — `wg_idle_suspend`, `wg_idle_suspend_reachable`, `wg_lazy_build`, `wg_build_max` с вашими options и дефолтами (`wg_build_max` — тип `int` с options, см. п.2). На десктопе их нет: сборки ядра без `with_lx_idle_suspend` отвергают любой `lx.wg.*` на старте.
+2. **Эмиссия — через `config` шаблона, не кодом сборки** (владелец: «что можно настроить шаблоном — настраивается шаблоном»). Десктоп пишет так:
+   ```json
+   "lx": {
+     "#if mtu_align": [{"#not": {"@mtu_align": "clamp"}}, {"mtu_align": "@mtu_align"}],
+     "#if quic_sniff_decoy": ["@quic_sniff_decoy", {"quic_sniff_decoy": true}],
+     "#if masque_idle_timeout": [{"#not": {"@masque_idle_timeout": "off"}}, {"masque": {"idle_timeout": "@masque_idle_timeout"}}]
+   }
+   ```
+   Ваши `wg_*` ложатся так же: `"#if wg": [{"#not": {"@wg_idle_suspend": "off"}}, {"wg": {...}}]` с вложенными `#if` для `reachable`/`lazy_build`/`build_max`. Пустой `lx` равен отсутствующему (ядро ≥ lx.13). `wg_build_max` в реестре — `int` с `options` (как `urltest_tolerance`), не `enum`: ядро ждёт целое, а подстановка enum даёт строку.
+3. **Зависимости строк** (reachable/lazy только при сне, build_max только при lazy) — `#enable` на объявлении переменной (TEMPLATE_LANG §4.6: строка неактивна), например `"#enable": [{"#not": {"@wg_idle_suspend": "off"}}]` и `"#enable": ["@wg_lazy_build"]`. Не параметры виджета: язык это уже выражает. Если `#enable` на объявлении у вас не реализован — это долг паритета, закройте его здесь же.
+4. **Гейта по версии нет.** Лаунчер поднял пин ядра до `1.14.4-lx.30-rc.3` (в нём `quic_sniff_decoy`, SPEC 151 форка). Пин LxBox — не ниже.
+5. Остальные ключи `lx` (`wg.idle_teardown`, `wg.build_overflow`, `trusttunnel.idle_timeout`, `mtu_align.except`) в шаблон не выносим — принято.
+6. Миграции нет, переменные стартуют с дефолтов.
+
+Задача вам: синк 1.1.151; эмиссия `lx` через шаблон по п.2; `#enable` по п.3; подтвердите пин ядра.
