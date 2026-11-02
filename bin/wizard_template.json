@@ -319,11 +319,17 @@
     },
     {
       "name": "quic_sniff_decoy",
-      "type": "bool",
+      "type": "enum",
       "wizard_ui": "edit",
       "title": "QUIC sniff decoy",
-      "tooltip": "sing-box-lx lx.quic_sniff_decoy — send one non-QUIC byte ahead of the first QUIC packet of every MASQUE (HTTP/3), Hysteria2 and TUIC connection. A relay in the path that sniffs the QUIC SNI and rewrites the destination by it (Xray destOverride) then leaves the connection where it was dialled.",
-      "default_value": "true"
+      "tooltip": "sing-box-lx lx.quic_sniff_decoy — send one non-QUIC byte ahead of the first QUIC packet of MASQUE (HTTP/3), Hysteria2 and TUIC connections. A relay in the path that sniffs the QUIC SNI and rewrites the destination by it (Xray destOverride) then leaves the connection where it was dialled. Through detour (default): only connections carried by another outbound, such as a VLESS relay; direct: only connections on this device's own socket; all: both. A DPI on your own uplink may react to the extra byte, so direct and all are for networks where the sniffing relay sits on your own path.",
+      "default_value": "detour",
+      "options": [
+        {"title": "Off", "value": "off"},
+        {"title": "Through detour (default)", "value": "detour"},
+        {"title": "Direct", "value": "direct"},
+        {"title": "All", "value": "all"}
+      ]
     },
     {
       "name": "masque_idle_timeout",
@@ -517,7 +523,7 @@
     },
     "lx": {
       "#if mtu_align": [{"#not": {"@mtu_align": "clamp"}}, {"mtu_align": "@mtu_align"}],
-      "#if quic_sniff_decoy": ["@quic_sniff_decoy", {"quic_sniff_decoy": true}],
+      "#if quic_sniff_decoy": [{"@quic_sniff_decoy": {"#in": ["detour", "direct", "all"]}}, {"quic_sniff_decoy": "@quic_sniff_decoy"}],
       "#if masque_idle_timeout": [{"#not": {"@masque_idle_timeout": "off"}}, {"masque": {"idle_timeout": "@masque_idle_timeout"}}]
     }
   },

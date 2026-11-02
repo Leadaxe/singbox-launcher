@@ -363,10 +363,10 @@
       "note": "lx.mtu_align ядра (SPEC 120 форка, >= 1.14.3-lx.14); options clamp / fill / off, дефолт clamp = дефолт ядра. Эмитится строкой режима в корневой lx шаблона, кроме clamp (контракт 1.1.151, LxBox §709). except в шаблон не выносится."
     },
     "quic_sniff_decoy": {
-      "type": "bool",
+      "type": "enum",
       "portable": false,
       "in": "both",
-      "note": "lx.quic_sniff_decoy ядра (SPEC 151 форка, >= 1.14.4-lx.30-rc.3, пин обеих сторон не ниже). Дефолт шаблона true при дефолте ядра «выкл»; эмитится только true (контракт 1.1.151)."
+      "note": "lx.quic_sniff_decoy ядра (SPEC 151 форка; режимы с 1.14.4-lx.30, пин обеих сторон не ниже). options off / detour / direct / all, дефолт шаблона detour при дефолте ядра off; эмитится строкой режима только при значении из detour / direct / all (#in), иначе ключа нет. Было bool в 1.1.151 (rc.3: true = all): оставшееся в состоянии true/false через #in не эмитится, ядро не падает; миграции нет — релизом не выходило (контракт 1.1.152)."
     },
     "masque_idle_timeout": {
       "type": "enum",

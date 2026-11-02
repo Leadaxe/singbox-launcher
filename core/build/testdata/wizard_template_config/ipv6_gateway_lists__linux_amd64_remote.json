@@ -117,7 +117,7 @@
     "timestamp": true
   },
   "lx": {
-    "quic_sniff_decoy": true
+    "quic_sniff_decoy": "detour"
   },
   "outbounds": [
     /** @ParserSTART */
