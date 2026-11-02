@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -235,8 +236,52 @@ func canSendTaildrop(st services.TailscaleStatus, p services.TailscalePeer) bool
 	return st.CanShareFiles && p.Online && p.CanReceiveFiles && !p.ShareeNode
 }
 
-// sendTaildropFile — выбор файла и лист отправки с прогрессом и Cancel.
+// sendTaildropFile — выбор файлов системным диалогом (Finder / Проводник,
+// несколько сразу) и лист отправки с прогрессом и Cancel. Нет системного
+// диалога (Linux без zenity/kdialog) — встроенный Fyne на один файл.
 func sendTaildropFile(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer) {
+	go func() {
+		paths, ok, err := platform.PickOpenFiles(locale.Tf("Send files to %s", p.HostName), nil)
+		fyne.Do(func() {
+			switch {
+			case errors.Is(err, platform.ErrNativeDialogUnavailable):
+				sendTaildropFileFyne(cmd, win, tag, p)
+			case err != nil:
+				ShowError(win, err)
+			case ok && len(paths) > 0:
+				sendTaildropPaths(cmd, win, tag, p, paths)
+			}
+		})
+	}()
+}
+
+// sendTaildropPaths открывает выбранные файлы и запускает отправку.
+func sendTaildropPaths(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer, paths []string) {
+	var (
+		files   []services.TaildropOutgoing
+		closers []io.Closer
+	)
+	for _, path := range paths {
+		f, err := os.Open(path)
+		if err != nil {
+			for _, c := range closers {
+				_ = c.Close()
+			}
+			ShowError(win, err)
+			return
+		}
+		size := int64(-1)
+		if fi, serr := f.Stat(); serr == nil {
+			size = fi.Size()
+		}
+		files = append(files, services.TaildropOutgoing{Name: filepath.Base(path), Size: size, Body: f})
+		closers = append(closers, f)
+	}
+	showTaildropSend(cmd, win, tag, p, files, closers)
+}
+
+// sendTaildropFileFyne — запасной встроенный диалог на один файл.
+func sendTaildropFileFyne(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer) {
 	open := dialog.NewFileOpen(func(rc fyne.URIReadCloser, err error) {
 		if err != nil {
 			ShowError(win, err)
@@ -251,8 +296,8 @@ func sendTaildropFile(cmd tailscaleCommands, win fyne.Window, tag string, p serv
 				size = fi.Size()
 			}
 		}
-		name := rc.URI().Name()
-		showTaildropSend(cmd, win, tag, p, name, size, rc)
+		showTaildropSend(cmd, win, tag, p,
+			[]services.TaildropOutgoing{{Name: rc.URI().Name(), Size: size, Body: rc}}, []io.Closer{rc})
 	}, win)
 	if dir, err := core.DownloadsDir(); err == nil {
 		if lister, lerr := storage.ListerForURI(storage.NewFileURI(dir)); lerr == nil {
@@ -262,29 +307,47 @@ func sendTaildropFile(cmd tailscaleCommands, win fyne.Window, tag string, p serv
 	open.Show()
 }
 
-// showTaildropSend — лист отправки: прогресс, Cancel; по концу — итог.
-func showTaildropSend(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer, name string, size int64, rc fyne.URIReadCloser) {
+// showTaildropSend — лист отправки: общий прогресс по всем файлам, Cancel;
+// по концу — итог. closers закрываются после отправки.
+func showTaildropSend(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer, files []services.TaildropOutgoing, closers []io.Closer) {
 	ctx, cancel := context.WithCancel(context.Background())
+	total := int64(0)
+	offsets := make([]int64, len(files))
+	for i, f := range files {
+		offsets[i] = total
+		if f.Size < 0 {
+			total = -1
+			break
+		}
+		total += f.Size
+	}
+	what := files[0].Name
+	if len(files) > 1 {
+		what = locale.Tf("files: %d", len(files))
+	}
 	bar := widget.NewProgressBar()
-	status := widget.NewLabel(locale.Tf("Sending %s to %s…", name, p.HostName))
+	status := widget.NewLabel(locale.Tf("Sending %s to %s…", what, p.HostName))
 	status.Wrapping = fyne.TextWrapWord
 	var body fyne.CanvasObject = container.NewVBox(status, bar)
-	if size < 0 {
+	if total < 0 {
 		body = container.NewVBox(status, widget.NewProgressBarInfinite())
-	} else if size > 0 {
-		bar.Max = float64(size)
+	} else if total > 0 {
+		bar.Max = float64(total)
 	}
 	d := dialog.NewCustom(locale.T("Send file"), locale.T("Cancel"), body, win)
 	d.SetOnClosed(cancel)
 	d.Resize(fyne.NewSize(420, 0))
 	d.Show()
 	go func() {
-		defer rc.Close()
-		err := cmd.ac.TaildropSend(ctx, cmd.target, tag, p.StableID,
-			[]services.TaildropOutgoing{{Name: name, Size: size, Body: rc}},
-			func(_ int, sent int64) {
-				if size > 0 {
-					fyne.Do(func() { bar.SetValue(float64(sent)) })
+		defer func() {
+			for _, c := range closers {
+				_ = c.Close()
+			}
+		}()
+		err := cmd.ac.TaildropSend(ctx, cmd.target, tag, p.StableID, files,
+			func(i int, sent int64) {
+				if total > 0 && i < len(offsets) {
+					fyne.Do(func() { bar.SetValue(float64(offsets[i] + sent)) })
 				}
 			})
 		cancelled := ctx.Err() != nil
@@ -297,7 +360,7 @@ func showTaildropSend(cmd tailscaleCommands, win fyne.Window, tag string, p serv
 				debuglog.WarnLog("taildrop %s: file not sent", tag)
 				ShowError(win, err)
 			default:
-				dialog.ShowInformation(locale.T("Send file"), locale.Tf("%s sent to %s.", name, p.HostName), win)
+				dialog.ShowInformation(locale.T("Send file"), locale.Tf("%s sent to %s.", what, p.HostName), win)
 			}
 		})
 	}()

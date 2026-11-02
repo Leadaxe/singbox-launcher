@@ -6127,5 +6127,11 @@
   },
   "Copied text sent to %s.": {
     "value": "Скопированный текст отправлен на %s."
+  },
+  "Send files to %s": {
+    "value": "Отправить файлы на %s"
+  },
+  "files: %d": {
+    "value": "файлы: %d"
   }
 }
