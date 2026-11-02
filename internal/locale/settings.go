@@ -45,6 +45,10 @@ type Settings struct {
 	DebugAPIToken string `json:"debug_api_token,omitempty"`
 	// DebugAPIPort — порт для debug-API; 0 / отсутствует означает DefaultPort.
 	DebugAPIPort int `json:"debug_api_port,omitempty"`
+	// TaildropAutoSave — узлы Tailscale, чьи принятые файлы лаунчер сам
+	// сохраняет в ~/Downloads (SPEC 175 §3.4). Настройка этого компьютера:
+	// в бэкап не идёт.
+	TaildropAutoSave []TaildropAutoSaveEntry `json:"taildrop_auto_save,omitempty"`
 	// LastTemplateLauncherVersion — версия лаунчера, которая в последний раз
 	// успешно скачала bin/wizard_template.json. На старте сравнивается с
 	// текущей AppVersion: если меньше → шаблон этой версии скачивается и
@@ -335,6 +339,13 @@ func MarkLocalesRefreshed(binDir, appVersion string) error {
 	}
 	s.LastLocaleLauncherVersion = appVersion
 	return SaveSettings(binDir, s)
+}
+
+// TaildropAutoSaveEntry — узел с автосохранением: тег у ядра машины
+// (MachineID пуст — своё ядро).
+type TaildropAutoSaveEntry struct {
+	MachineID string `json:"machine_id,omitempty"`
+	Tag       string `json:"tag"`
 }
 
 // LoadSettings reads settings from binDir/settings.json.

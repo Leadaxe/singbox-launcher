@@ -1,19 +1,18 @@
 // File servers_node_taildrop.go — файлы Taildrop на вкладке Network окна
 // узла Tailscale (SPEC 175): секция Files (входящие: Save, Delete, Cancel
-// приёма) и отправка файла устройству из его меню.
+// приёма, галка автосохранения) и отправка файла устройству из его меню.
 //
 // Входящие — подписка SubscribeTaildropInbox на время открытого окна, у ядра
 // окна (core.TailscaleTarget). Save кладёт файл в ~/Downloads и убирает его
-// из входящих. Имена файлов и устройств в журнал не пишутся (SPEC 148 §3).
+// из входящих (core.TaildropSaveToDownloads — тот же путь, что у
+// автосохранения). Имена файлов и устройств в журнал не пишутся (SPEC 148 §3).
 package ui
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -112,6 +111,17 @@ func buildTaildropSection(cmd tailscaleCommands, win fyne.Window, box *fyne.Cont
 		note(locale.T("File sharing is off for this tailnet. Turn on Taildrop in the Tailscale admin console."))
 		return
 	}
+	// Галка автосохранения (§3.4): применяется сразу, без Save; держит
+	// подписку и при закрытом окне.
+	auto := widget.NewCheck(locale.T("Save to Downloads automatically"), nil)
+	auto.SetChecked(cmd.ac.TaildropAutoSaveEnabled(cmd.target, tag))
+	auto.OnChanged = func(on bool) {
+		if err := cmd.ac.SetTaildropAutoSave(cmd.target, tag, on); err != nil {
+			debuglog.WarnLog("taildrop %s: auto-save setting not saved", tag)
+			ShowError(win, err)
+		}
+	}
+	box.Add(auto)
 	if !v.have {
 		box.Add(widget.NewProgressBarInfinite())
 		return
@@ -142,7 +152,7 @@ func buildTaildropSection(cmd tailscaleCommands, win fyne.Window, box *fyne.Cont
 		save = widget.NewButton(locale.T("Save"), func() {
 			save.Disable()
 			go func() {
-				path, err := saveTaildropFile(cmd, tag, f.Name)
+				path, err := cmd.ac.TaildropSaveToDownloads(context.Background(), cmd.target, tag, f.Name)
 				fyne.Do(func() {
 					if err != nil {
 						save.Enable()
@@ -193,60 +203,6 @@ func taildropFileRow(name, details string, actions fyne.CanvasObject) fyne.Canva
 	sub.Importance = widget.LowImportance
 	sub.Truncation = fyne.TextTruncateEllipsis
 	return container.NewBorder(nil, nil, nil, container.NewCenter(actions), container.NewVBox(title, sub))
-}
-
-// saveTaildropFile скачивает файл входящих в ~/Downloads под свободным
-// именем и убирает его из входящих. Недокачанный файл удаляется.
-func saveTaildropFile(cmd tailscaleCommands, tag, name string) (string, error) {
-	dir, err := core.DownloadsDir()
-	if err != nil {
-		return "", err
-	}
-	out, path, err := createFreeFile(dir, name)
-	if err != nil {
-		return "", err
-	}
-	_, err = cmd.ac.TaildropDownload(context.Background(), cmd.target, tag, name, out)
-	if cerr := out.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		_ = os.Remove(path)
-		debuglog.WarnLog("taildrop %s: file not saved", tag)
-		return "", err
-	}
-	if err := cmd.ac.TaildropDelete(cmd.target, tag, name); err != nil {
-		// Файл уже сохранён — это главное; во входящих он просто останется.
-		debuglog.WarnLog("taildrop %s: saved file not removed from inbox", tag)
-	}
-	return path, nil
-}
-
-// createFreeFile создаёт файл в dir: имя как пришло, при занятом —
-// «name (2).ext», «name (3).ext»… Имя — только последний сегмент: путь
-// приходит от чужого устройства.
-func createFreeFile(dir, name string) (*os.File, string, error) {
-	base := filepath.Base(strings.ReplaceAll(name, "\\", "/"))
-	if base == "." || base == ".." || base == string(filepath.Separator) || strings.TrimSpace(base) == "" {
-		base = "taildrop-file"
-	}
-	ext := filepath.Ext(base)
-	stem := strings.TrimSuffix(base, ext)
-	for i := 1; i <= 1000; i++ {
-		candidate := base
-		if i > 1 {
-			candidate = fmt.Sprintf("%s (%d)%s", stem, i, ext)
-		}
-		path := filepath.Join(dir, candidate)
-		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-		if err == nil {
-			return f, path, nil
-		}
-		if !errors.Is(err, os.ErrExist) {
-			return nil, "", err
-		}
-	}
-	return nil, "", fmt.Errorf("no free file name for %s in %s", base, dir)
 }
 
 // showTaildropSaved — куда лёг файл и кнопка открыть папку.

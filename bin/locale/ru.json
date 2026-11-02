@@ -6040,5 +6040,14 @@
   },
   "%s sent to %s.": {
     "value": "%s отправлен на %s."
+  },
+  "Save to Downloads automatically": {
+    "value": "Сохранять в «Загрузки» автоматически"
+  },
+  "File received": {
+    "value": "Файл получен"
+  },
+  "%s saved to Downloads.": {
+    "value": "%s сохранён в «Загрузки»."
   }
 }
