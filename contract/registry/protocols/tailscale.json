@@ -12,7 +12,7 @@
   "uri": null,
   "emit": {
     "share_uri": false,
-    "note": "Share-URI не эмитится — URI-формы у схемы нет. Тело узла эмитится как есть (канон v7), per-scheme ветки нет; правки эмиттера — подстановка state_directory при его отсутствии и taildrop_directory = <state_directory>/taildrop при отсутствии ключа (контракт 1.1.147)."
+    "note": "Share-URI не эмитится — URI-формы у схемы нет. Тело узла эмитится как есть (канон v7), per-scheme ветки нет; правки эмиттера — подстановка state_directory при его отсутствии и taildrop_directory = <state_directory>/taildrop при отсутствии ключа (контракт 1.1.147); disable_taildrop: true при отсутствии явного disable_taildrop: false (контракт 1.1.149, «Allow Taildrop» по умолчанию выключено) — норма вступает со следующей версией контракта, когда поле получит min_core тега ядра; до неё ни одна сторона поле не пишет и не эмитит."
   },
   "refs": {
     "go": [
