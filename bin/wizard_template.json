@@ -523,7 +523,10 @@
     },
     "lx": {
       "#if mtu_align": [{"#not": {"@mtu_align": "clamp"}}, {"mtu_align": "@mtu_align"}],
-      "#if quic_sniff_decoy": [{"@quic_sniff_decoy": {"#in": ["detour", "direct", "all"]}}, {"quic_sniff_decoy": "@quic_sniff_decoy"}],
+      "#if quic_sniff_decoy": [
+        {"@quic_sniff_decoy": {"#in": ["detour", "direct", "all"]}},
+        {"quic_sniff_decoy": "@quic_sniff_decoy"}
+      ],
       "#if masque_idle_timeout": [{"#not": {"@masque_idle_timeout": "off"}}, {"masque": {"idle_timeout": "@masque_idle_timeout"}}]
     }
   },
