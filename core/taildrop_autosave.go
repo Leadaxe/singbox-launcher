@@ -1,9 +1,10 @@
 // File taildrop_autosave.go — сохранение файлов Taildrop в ~/Downloads
 // (SPEC 175): по кнопке Save и автоматически у узлов с галкой «Save to
-// Downloads automatically» (§3.4).
+// Downloads automatically» (§3.4). Тот же фоновый поток разбирает служебные
+// файлы своего ядра и уведомляет о принятых (SPEC 176).
 //
-// Автосохранение держит подписку на входящие узла всё время, пока ядро его
-// машины работает, — не только при открытом окне. Галка — настройка этого
+// Подписка на входящие узла живёт всё время, пока ядро его машины работает,
+// — не только при открытом окне. Галка — настройка этого
 // компьютера (settings.json), в бэкап не идёт. Имена файлов и устройств в
 // журнал не пишутся (SPEC 148 §3).
 package core
@@ -21,7 +22,6 @@ import (
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
 )
 
 // TaildropSaveToDownloads скачивает файл входящих в ~/Downloads под
@@ -119,17 +119,28 @@ func (ac *AppController) SetTaildropAutoSave(t TailscaleTarget, tag string, on b
 	return nil
 }
 
-// taildropAutoSaver — подписки автосохранения по узлам.
+// taildropAutoSaver — фоновые подписки на входящие по узлам: автосохранение
+// (галка узла, любая машина) и служебные файлы с уведомлением о принятых
+// (все узлы своего ядра, SPEC 176). Одна подписка на узел.
 type taildropAutoSaver struct {
 	mu     sync.Mutex
 	active map[locale.TaildropAutoSaveEntry]*taildropAutoSaveSub
 	wake   chan struct{}
 }
 
+// taildropWatchFlags — что подписка узла делает с кадром.
+type taildropWatchFlags struct {
+	// autoSave — обычные файлы в ~/Downloads (галка узла).
+	autoSave bool
+	// local — узел своего ядра: служебные файлы и уведомление о принятых.
+	local bool
+}
+
 // taildropAutoSaveSub — поднятая подписка; указатель отличает её от
 // следующей подписки того же узла.
 type taildropAutoSaveSub struct {
 	cancel context.CancelFunc
+	flags  taildropWatchFlags
 }
 
 func (s *taildropAutoSaver) kick() {
@@ -142,11 +153,11 @@ func (s *taildropAutoSaver) kick() {
 	}
 }
 
-// taildropAutoSaveTick — как часто сверяются галки с работающими ядрами.
+// taildropAutoSaveTick — как часто сверяются узлы с работающими ядрами.
 const taildropAutoSaveTick = 5 * time.Second
 
-// startTaildropAutoSave — цикл сверки: у узла с галкой и работающим ядром
-// с Taildrop подписка поднята, у остальных — снята.
+// startTaildropAutoSave — цикл сверки: у нужного узла работающего ядра с
+// Taildrop подписка поднята, у остальных — снята.
 func (ac *AppController) startTaildropAutoSave() {
 	s := &ac.taildropAutoSave
 	s.mu.Lock()
@@ -166,50 +177,69 @@ func (ac *AppController) startTaildropAutoSave() {
 	}
 }
 
+func taildropEntryTarget(e locale.TaildropAutoSaveEntry) TailscaleTarget {
+	if e.MachineID != "" {
+		return TailscaleTarget{Scope: services.ScopeRemote, MachineID: e.MachineID}
+	}
+	return TailscaleTarget{Scope: services.ScopeLocal}
+}
+
 func (ac *AppController) reconcileTaildropAutoSave() {
 	s := &ac.taildropAutoSave
-	want := map[locale.TaildropAutoSaveEntry]bool{}
+	want := map[locale.TaildropAutoSaveEntry]taildropWatchFlags{}
+	for _, tag := range ac.taildropServiceTags() {
+		e := locale.TaildropAutoSaveEntry{Tag: tag}
+		f := want[e]
+		f.local = true
+		want[e] = f
+	}
 	for _, e := range locale.LoadSettings(ac.FileService.Layout.Data.Bin()).TaildropAutoSave {
-		target := TailscaleTarget{Scope: services.ScopeLocal}
-		if e.MachineID != "" {
-			target = TailscaleTarget{Scope: services.ScopeRemote, MachineID: e.MachineID}
-		}
+		target := taildropEntryTarget(e)
 		if ac.TaildropAvailable(target) && ac.TailscaleCoreRunning(target) {
-			want[e] = true
+			f := want[e]
+			f.autoSave = true
+			want[e] = f
 		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for e, sub := range s.active {
-		if !want[e] {
+		if f, ok := want[e]; !ok || f != sub.flags {
 			sub.cancel()
 			delete(s.active, e)
 		}
 	}
-	for e := range want {
+	for e, f := range want {
 		if _, ok := s.active[e]; ok {
 			continue
 		}
 		ctx, cancel := context.WithCancel(ac.ctx)
-		sub := &taildropAutoSaveSub{cancel: cancel}
+		sub := &taildropAutoSaveSub{cancel: cancel, flags: f}
 		s.active[e] = sub
 		go ac.runTaildropAutoSave(ctx, e, sub)
 	}
 }
 
-// runTaildropAutoSave — подписка одного узла: принятые файлы по одному
-// уходят в ~/Downloads. Обрыв подписки — снятие из active, следующая сверка
-// поднимет её заново.
+// taildropWatchState — что подписка уже знает о файлах входящих. Чистится
+// по составу последнего кадра.
+type taildropWatchState struct {
+	// handled — файлы, уже взятые в работу (сохранён, разобран, показан в
+	// уведомлении): второй раз не трогаем, даже если не ушёл из входящих.
+	handled map[string]bool
+	// regular — кандидаты в служебные, оказавшиеся обычными файлами.
+	regular map[string]bool
+	// seen — первый кадр подписки обработан: файлы, лежавшие до неё, не
+	// объявляются уведомлением «принят».
+	seen bool
+}
+
+// runTaildropAutoSave — подписка одного узла. Обрыв — снятие из active,
+// следующая сверка поднимет её заново.
 func (ac *AppController) runTaildropAutoSave(ctx context.Context, e locale.TaildropAutoSaveEntry, sub *taildropAutoSaveSub) {
-	target := TailscaleTarget{Scope: services.ScopeLocal}
-	if e.MachineID != "" {
-		target = TailscaleTarget{Scope: services.ScopeRemote, MachineID: e.MachineID}
-	}
+	target := taildropEntryTarget(e)
 	frames := make(chan services.TaildropInbox, 1)
 	go func() {
-		// handled — файлы, уже взятые в работу: не удалось убрать из входящих
-		// — второй раз не качаем. Чистится по составу последнего кадра.
-		handled := map[string]bool{}
+		st := &taildropWatchState{handled: map[string]bool{}, regular: map[string]bool{}}
 		for {
 			var in services.TaildropInbox
 			select {
@@ -217,25 +247,7 @@ func (ac *AppController) runTaildropAutoSave(ctx context.Context, e locale.Taild
 				return
 			case in = <-frames:
 			}
-			present := map[string]bool{}
-			for _, f := range in.Files {
-				present[f.Name] = true
-				if handled[f.Name] || ctx.Err() != nil {
-					continue
-				}
-				handled[f.Name] = true
-				path, err := ac.TaildropSaveToDownloads(ctx, target, e.Tag, f.Name)
-				if err != nil {
-					continue
-				}
-				debuglog.InfoLog("taildrop %s: received file saved to Downloads (%d bytes)", e.Tag, f.Size)
-				platform.SendNotification(locale.T("File received"), locale.Tf("%s saved to Downloads.", filepath.Base(path)))
-			}
-			for name := range handled {
-				if !present[name] {
-					delete(handled, name)
-				}
-			}
+			ac.handleTaildropFrame(ctx, target, e.Tag, sub.flags, in, st)
 		}
 	}()
 	err := ac.TaildropSubscribe(ctx, target, e.Tag, func(in services.TaildropInbox) {
@@ -247,7 +259,7 @@ func (ac *AppController) runTaildropAutoSave(ctx context.Context, e locale.Taild
 		frames <- in
 	})
 	if err != nil {
-		debuglog.DebugLog("taildrop %s: auto-save subscription ended: %v", e.Tag, err)
+		debuglog.DebugLog("taildrop %s: inbox subscription ended: %v", e.Tag, err)
 	}
 	s := &ac.taildropAutoSave
 	sub.cancel()
@@ -256,4 +268,74 @@ func (ac *AppController) runTaildropAutoSave(ctx context.Context, e locale.Taild
 		delete(s.active, e)
 	}
 	s.mu.Unlock()
+}
+
+// handleTaildropFrame — один кадр входящих: сначала служебные файлы (§6
+// SERVICE_FILES: до автосохранения и уведомления), затем обычные —
+// в Downloads или уведомлением.
+func (ac *AppController) handleTaildropFrame(ctx context.Context, t TailscaleTarget, tag string, flags taildropWatchFlags, in services.TaildropInbox, st *taildropWatchState) {
+	present := map[string]bool{}
+	for _, f := range in.Files {
+		present[f.Name] = true
+	}
+	for name := range st.handled {
+		if !present[name] {
+			delete(st.handled, name)
+		}
+	}
+	for name := range st.regular {
+		if !present[name] {
+			delete(st.regular, name)
+		}
+	}
+	first := !st.seen
+	st.seen = true
+
+	rules, rulesErr := services.TaildropServiceRulesFromRegistry()
+	var items []taildropServiceItem
+	var regular []services.TaildropFile
+	for _, f := range in.Files {
+		if st.handled[f.Name] || ctx.Err() != nil {
+			continue
+		}
+		if flags.local && rulesErr == nil && !st.regular[f.Name] && rules.TaildropServiceCandidate(f.Name, f.Size) {
+			cmds, ok, err := ac.readTaildropService(ctx, t, tag, rules, f)
+			if err != nil {
+				// Не скачался — следующий кадр попробует снова.
+				debuglog.DebugLog("taildrop %s: service candidate not read: %v", tag, err)
+				continue
+			}
+			if ok {
+				st.handled[f.Name] = true
+				items = append(items, taildropServiceItem{file: f, cmds: cmds})
+				continue
+			}
+			st.regular[f.Name] = true
+		}
+		regular = append(regular, f)
+	}
+	ac.runTaildropServices(t, tag, rules, items)
+
+	for _, f := range regular {
+		if ctx.Err() != nil {
+			return
+		}
+		st.handled[f.Name] = true
+		if flags.autoSave {
+			path, err := ac.TaildropSaveToDownloads(ctx, t, tag, f.Name)
+			if err != nil {
+				continue
+			}
+			debuglog.InfoLog("taildrop %s: received file saved to Downloads (%d bytes)", tag, f.Size)
+			taildropNotify(locale.T("File received"), locale.Tf("%s saved to Downloads.", filepath.Base(path)))
+			continue
+		}
+		if flags.local && !first {
+			from := f.SenderName
+			if from == "" {
+				from = locale.T("unknown device")
+			}
+			taildropNotify(locale.T("File received"), locale.Tf("%s from %s. Open the node window to save it.", f.Name, from))
+		}
+	}
 }

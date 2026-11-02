@@ -305,6 +305,17 @@ func (c *TailscaleStatusCache) Get(tag string) (TailscaleStatus, bool) {
 	return st, ok
 }
 
+// Tags — теги tailscale-endpoint'ов последнего снимка.
+func (c *TailscaleStatusCache) Tags() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	tags := make([]string, 0, len(c.byTag))
+	for tag := range c.byTag {
+		tags = append(tags, tag)
+	}
+	return tags
+}
+
 // Live — пришёл ли хотя бы один кадр и не оборван ли стрим.
 func (c *TailscaleStatusCache) Live() bool {
 	c.mu.Lock()

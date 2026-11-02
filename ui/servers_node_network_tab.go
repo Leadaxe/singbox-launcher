@@ -487,7 +487,9 @@ func buildTailscaleNetwork(cmd tailscaleCommands, win fyne.Window, box *fyne.Con
 			if i > 0 {
 				box.Add(widget.NewSeparator())
 			}
-			box.Add(tailscaleDeviceRow(cmd, win, tag, p, haveCtrl, files.available && !files.off && canSendTaildrop(st, p), expand))
+			filesOn := files.available && !files.off
+			box.Add(tailscaleDeviceRow(cmd, win, tag, p, haveCtrl, filesOn && canSendTaildrop(st, p),
+				filesOn && taildropServiceHere(cmd, st, p), expand))
 		}
 	}
 }
@@ -532,7 +534,9 @@ func tailscaleDeviceConnection(p services.TailscalePeer, now time.Time) string {
 // (tailscalePeerLines) и меню справа: Copy name, Copy MagicDNS name, Copy
 // address (адресов несколько — подменю со всеми), Ping (по первому адресу),
 // Send file… (Taildrop, SPEC 175).
-func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer, haveCtrl, canSend bool, expand deviceExpand) fyne.CanvasObject {
+// canSend — «Send file…» и «Send text…»; service — галки служебных файлов
+// устройства (SPEC 176, только своё ядро).
+func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer, haveCtrl, canSend, service bool, expand deviceExpand) fyne.CanvasObject {
 	addr := ""
 	if len(p.TailscaleIPs) > 0 {
 		addr = p.TailscaleIPs[0]
@@ -570,6 +574,15 @@ func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p se
 			items = append(items, fyne.NewMenuItem(locale.T("Send file…"), func() {
 				sendTaildropFile(cmd, win, tag, p)
 			}))
+			if service {
+				items = append(items, fyne.NewMenuItem(locale.T("Send text…"), func() {
+					showTaildropSendText(cmd, win, tag, p)
+				}))
+			}
+		}
+		if service {
+			items = append(items, fyne.NewMenuItemSeparator())
+			items = append(items, taildropPermissionItems(cmd, win, p)...)
 		}
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(more)
 		widget.NewPopUpMenu(fyne.NewMenu("", items...), win.Canvas()).

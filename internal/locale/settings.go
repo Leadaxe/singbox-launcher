@@ -49,6 +49,10 @@ type Settings struct {
 	// сохраняет в ~/Downloads (SPEC 175 §3.4). Настройка этого компьютера:
 	// в бэкап не идёт.
 	TaildropAutoSave []TaildropAutoSaveEntry `json:"taildrop_auto_save,omitempty"`
+	// TaildropServicePermissions — устройства, чьи служебные файлы Taildrop
+	// выполняются на этом компьютере, по видам команд (SPEC 176 §3). По
+	// умолчанию всё выключено; в бэкап не идёт.
+	TaildropServicePermissions []TaildropServicePermission `json:"taildrop_service_permissions,omitempty"`
 	// LastTemplateLauncherVersion — версия лаунчера, которая в последний раз
 	// успешно скачала bin/wizard_template.json. На старте сравнивается с
 	// текущей AppVersion: если меньше → шаблон этой версии скачивается и
@@ -346,6 +350,17 @@ func MarkLocalesRefreshed(binDir, appVersion string) error {
 type TaildropAutoSaveEntry struct {
 	MachineID string `json:"machine_id,omitempty"`
 	Tag       string `json:"tag"`
+}
+
+// TaildropServicePermission — разрешения служебных файлов от одного
+// устройства. Ключ — SenderID (stable node ID); SenderName — DNS-имя
+// устройства без домена, ключ только при пустом senderID у файла (ядро старше
+// 1.14.4-lx.30-rc.2).
+type TaildropServicePermission struct {
+	SenderID   string `json:"sender_id,omitempty"`
+	SenderName string `json:"sender_name,omitempty"`
+	Clipboard  bool   `json:"clipboard,omitempty"`
+	OpenURL    bool   `json:"open_url,omitempty"`
 }
 
 // LoadSettings reads settings from binDir/settings.json.

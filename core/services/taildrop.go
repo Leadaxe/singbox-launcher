@@ -29,6 +29,9 @@ type TaildropFile struct {
 	Name       string
 	Size       int64
 	SenderName string
+	// SenderID — stable node ID отправителя (ядро с 1.14.4-lx.30-rc.2); пуст
+	// у старого ядра и у файлов, лежавших до перезапуска ядра.
+	SenderID string
 	// ModifiedAt — время приёма по часам этой машины (mtime файла у ядра).
 	ModifiedAt time.Time
 }
@@ -76,7 +79,7 @@ func taildropErr(op string, err error) error {
 func taildropInboxFromPB(in *daemonpb.TaildropInbox) TaildropInbox {
 	var out TaildropInbox
 	for _, f := range in.GetFiles() {
-		file := TaildropFile{Name: f.GetName(), Size: f.GetSize(), SenderName: f.GetSenderName()}
+		file := TaildropFile{Name: f.GetName(), Size: f.GetSize(), SenderName: f.GetSenderName(), SenderID: f.GetSenderID()}
 		if at := f.GetModifiedAt(); at > 0 {
 			file.ModifiedAt = time.Unix(at, 0)
 		}

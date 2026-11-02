@@ -10,6 +10,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -300,4 +301,113 @@ func showTaildropSend(cmd tailscaleCommands, win fyne.Window, tag string, p serv
 			}
 		})
 	}()
+}
+
+// taildropServiceHere — служебные файлы с устройством (SPEC 176): только у
+// своего ядра (буфер и браузер этого компьютера), tailnet делится файлами,
+// устройство не расшаренное и с stable ID.
+func taildropServiceHere(cmd tailscaleCommands, st services.TailscaleStatus, p services.TailscalePeer) bool {
+	return cmd.target.Scope == services.ScopeLocal && st.CanShareFiles && !p.ShareeNode && p.StableID != ""
+}
+
+// taildropPermissionItems — галки «Accept clipboard» и «Accept links»
+// устройства; применяются сразу.
+func taildropPermissionItems(cmd tailscaleCommands, win fyne.Window, p services.TailscalePeer) []*fyne.MenuItem {
+	clipOn, linkOn := cmd.ac.TaildropServicePermission(p)
+	toggle := func(kind string, on bool) {
+		if err := cmd.ac.SetTaildropServicePermission(p, kind, on); err != nil {
+			debuglog.WarnLog("taildrop: service permission not saved")
+			ShowError(win, err)
+		}
+	}
+	clip := fyne.NewMenuItem(locale.T("Accept clipboard"), func() { toggle(services.TaildropServiceClipboard, !clipOn) })
+	clip.Checked = clipOn
+	link := fyne.NewMenuItem(locale.T("Accept links"), func() { toggle(services.TaildropServiceOpenURL, !linkOn) })
+	link.Checked = linkOn
+	return []*fyne.MenuItem{clip, link}
+}
+
+// showTaildropSendText — окно «Send text…»: поле с текущим буфером (текст
+// виден перед отправкой — SERVICE_FILES §7), «Send to clipboard» и, если в
+// поле одна http(s)-ссылка, «Open on <device>».
+func showTaildropSendText(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer) {
+	rules, err := services.TaildropServiceRulesFromRegistry()
+	if err != nil {
+		ShowError(win, err)
+		return
+	}
+	entry := widget.NewMultiLineEntry()
+	entry.Wrapping = fyne.TextWrapWord
+	entry.SetMinRowsVisible(6)
+	if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
+		entry.SetText(app.Clipboard().Content())
+	}
+	status := widget.NewLabel("")
+	status.Wrapping = fyne.TextWrapWord
+	status.Importance = widget.LowImportance
+
+	var d dialog.Dialog
+	var sendClip, openURL *widget.Button
+	send := func(c services.TaildropServiceCommand) {
+		sendClip.Disable()
+		openURL.Disable()
+		entry.Disable()
+		status.SetText(locale.Tf("Sending to %s…", p.HostName))
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			err := cmd.ac.TaildropSendText(ctx, cmd.target, tag, p.StableID, c)
+			fyne.Do(func() {
+				if err != nil {
+					entry.Enable()
+					sendClip.Enable()
+					refreshOpen(entry.Text, rules, openURL)
+					status.SetText("")
+					ShowError(win, taildropSendTextError(err, rules))
+					return
+				}
+				d.Hide()
+				dialog.ShowInformation(locale.T("Send text"), locale.Tf("Sent to %s.", p.HostName), win)
+			})
+		}()
+	}
+	sendClip = widget.NewButton(locale.T("Send to clipboard"), func() {
+		send(services.TaildropServiceCommand{Kind: services.TaildropServiceClipboard, Text: entry.Text})
+	})
+	sendClip.Importance = widget.HighImportance
+	openURL = widget.NewButton(locale.Tf("Open on %s", p.HostName), func() {
+		if u, ok := rules.SingleURL(entry.Text); ok {
+			send(services.TaildropServiceCommand{Kind: services.TaildropServiceOpenURL, URL: u})
+		}
+	})
+	refreshOpen(entry.Text, rules, openURL)
+	entry.OnChanged = func(text string) { refreshOpen(text, rules, openURL) }
+
+	body := container.NewBorder(nil, container.NewVBox(status, container.NewHBox(sendClip, openURL)), nil, nil, entry)
+	d = dialog.NewCustom(locale.Tf("Send text to %s", p.HostName), locale.T("Cancel"), body, win)
+	d.Resize(fyne.NewSize(480, 320))
+	d.Show()
+}
+
+// refreshOpen — «Open on <device>» доступна, только если в поле одна ссылка.
+func refreshOpen(text string, rules services.TaildropServiceRules, b *widget.Button) {
+	if _, ok := rules.SingleURL(text); ok {
+		b.Enable()
+	} else {
+		b.Disable()
+	}
+}
+
+// taildropSendTextError — отказ отправителя (SERVICE_FILES §7 п.2) с причиной
+// для человека; прочие ошибки как есть.
+func taildropSendTextError(err error, rules services.TaildropServiceRules) error {
+	switch {
+	case errors.Is(err, services.ErrTaildropServiceEmpty):
+		return errors.New(locale.T("Nothing to send: the text is empty."))
+	case errors.Is(err, services.ErrTaildropServiceTooBig):
+		return errors.New(locale.Tf("The text is too large to send (limit %s).", paths.FormatBytes(rules.MaxBytes)))
+	case errors.Is(err, services.ErrTaildropServiceNotUTF8):
+		return errors.New(locale.T("The text is not valid UTF-8."))
+	}
+	return err
 }

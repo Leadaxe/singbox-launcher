@@ -6055,5 +6055,59 @@
   },
   "Taildrop is off for this node. Turn on \"Allow Taildrop\" in the node settings.": {
     "value": "Taildrop у этого узла выключен. Включите «Allow Taildrop» в настройках узла."
+  },
+  "unknown device": {
+    "value": "неизвестное устройство"
+  },
+  "Link opened": {
+    "value": "Ссылка открыта"
+  },
+  "Link from %s opened in the browser.": {
+    "value": "Ссылка с %s открыта в браузере."
+  },
+  "Clipboard updated": {
+    "value": "Буфер обмена обновлён"
+  },
+  "Text from %s copied to the clipboard.": {
+    "value": "Текст с %s скопирован в буфер обмена."
+  },
+  "%s from %s. Open the node window to save it.": {
+    "value": "%s с %s. Откройте окно узла, чтобы сохранить."
+  },
+  "Send text…": {
+    "value": "Отправить текст…"
+  },
+  "Accept clipboard": {
+    "value": "Принимать буфер обмена"
+  },
+  "Accept links": {
+    "value": "Принимать ссылки"
+  },
+  "Sending to %s…": {
+    "value": "Отправка на %s…"
+  },
+  "Send text": {
+    "value": "Отправка текста"
+  },
+  "Sent to %s.": {
+    "value": "Отправлено на %s."
+  },
+  "Send to clipboard": {
+    "value": "В буфер обмена"
+  },
+  "Open on %s": {
+    "value": "Открыть на %s"
+  },
+  "Send text to %s": {
+    "value": "Текст на %s"
+  },
+  "Nothing to send: the text is empty.": {
+    "value": "Нечего отправлять: текст пустой."
+  },
+  "The text is too large to send (limit %s).": {
+    "value": "Текст слишком большой для отправки (предел %s)."
+  },
+  "The text is not valid UTF-8.": {
+    "value": "Текст не в UTF-8."
   }
 }
