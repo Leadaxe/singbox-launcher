@@ -53,6 +53,10 @@ type Settings struct {
 	// выполняются на этом компьютере, по видам команд (SPEC 176 §3). По
 	// умолчанию всё выключено; в бэкап не идёт.
 	TaildropServicePermissions []TaildropServicePermission `json:"taildrop_service_permissions,omitempty"`
+	// TaildropDoubleCopy — устройства, куда уходит текст двойного
+	// копирования (Cmd+C / Ctrl+C дважды, SPEC 177). Только узлы своего ядра;
+	// в бэкап не идёт.
+	TaildropDoubleCopy []TaildropDoubleCopyTarget `json:"taildrop_double_copy,omitempty"`
 	// LastTemplateLauncherVersion — версия лаунчера, которая в последний раз
 	// успешно скачала bin/wizard_template.json. На старте сравнивается с
 	// текущей AppVersion: если меньше → шаблон этой версии скачивается и
@@ -361,6 +365,14 @@ type TaildropServicePermission struct {
 	SenderName string `json:"sender_name,omitempty"`
 	Clipboard  bool   `json:"clipboard,omitempty"`
 	OpenURL    bool   `json:"open_url,omitempty"`
+}
+
+// TaildropDoubleCopyTarget — устройство двойного копирования: узел своего
+// ядра и stable ID пира; PeerName — для уведомления, когда пира нет в статусе.
+type TaildropDoubleCopyTarget struct {
+	Tag      string `json:"tag"`
+	PeerID   string `json:"peer_id"`
+	PeerName string `json:"peer_name,omitempty"`
 }
 
 // LoadSettings reads settings from binDir/settings.json.

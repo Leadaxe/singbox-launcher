@@ -411,3 +411,17 @@ func taildropSendTextError(err error, rules services.TaildropServiceRules) error
 	}
 	return err
 }
+
+// taildropDoubleCopyItem — галка «Send double copy here» (SPEC 177): текст,
+// скопированный дважды подряд, уходит в буфер этого устройства.
+func taildropDoubleCopyItem(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer) *fyne.MenuItem {
+	on := cmd.ac.TaildropDoubleCopyEnabled(tag, p)
+	item := fyne.NewMenuItem(locale.T("Send double copy here"), func() {
+		if err := cmd.ac.SetTaildropDoubleCopy(tag, p, !on); err != nil {
+			debuglog.WarnLog("taildrop: double copy setting not saved")
+			ShowError(win, err)
+		}
+	})
+	item.Checked = on
+	return item
+}

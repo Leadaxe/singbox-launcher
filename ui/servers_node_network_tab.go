@@ -578,6 +578,9 @@ func tailscaleDeviceRow(cmd tailscaleCommands, win fyne.Window, tag string, p se
 				items = append(items, fyne.NewMenuItem(locale.T("Send text…"), func() {
 					showTaildropSendText(cmd, win, tag, p)
 				}))
+				if core.TaildropDoubleCopySupported() {
+					items = append(items, taildropDoubleCopyItem(cmd, win, tag, p))
+				}
 			}
 		}
 		if service {

@@ -6109,5 +6109,23 @@
   },
   "The text is not valid UTF-8.": {
     "value": "Текст не в UTF-8."
+  },
+  "Send double copy here": {
+    "value": "Слать сюда двойное копирование"
+  },
+  "Not sent": {
+    "value": "Не отправлено"
+  },
+  "%s is offline or does not accept files.": {
+    "value": "%s не в сети или не принимает файлы."
+  },
+  "Clipboard to %s: %v": {
+    "value": "Буфер на %s: %v"
+  },
+  "Clipboard sent": {
+    "value": "Буфер отправлен"
+  },
+  "Copied text sent to %s.": {
+    "value": "Скопированный текст отправлен на %s."
   }
 }

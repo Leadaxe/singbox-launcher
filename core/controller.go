@@ -409,6 +409,7 @@ func NewAppController(layout paths.Layout, appIconData, greyIconData, greenIconD
 	}
 	go ac.startAutoUpdateLoop()
 	go ac.startTaildropAutoSave()
+	go ac.startTaildropDoubleCopy()
 
 	// Set global singleton instance
 	instanceOnce.Do(func() {
