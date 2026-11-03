@@ -3830,8 +3830,11 @@
   "The outbound as it will reach the config.": {
     "value": "Outbound в том виде, в каком он попадёт в конфиг."
   },
-  "The sing-box outbound this node is built from — exactly what the build writes to config.json. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time.": {
-    "value": "Outbound sing-box, из которого собран этот узел, — ровно то, что сборка пишет в config.json. Правьте и нажмите Apply, чтобы сохранить; «Пересобрать из исходника» вернёт его к исходному URI/JSON. Тег и detour лаунчер проставляет заново на сборке."
+  "The node as stored. The build also adds to the config: %s.": {
+    "value": "Узел в том виде, как он хранится. При сборке в конфиг добавится ещё: %s."
+  },
+  "The sing-box outbound this node is built from. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time.": {
+    "value": "Outbound sing-box, из которого собран этот узел. Правьте и нажмите Apply, чтобы сохранить; «Пересобрать из исходника» вернёт его к исходному URI/JSON. Тег и detour лаунчер проставляет заново на сборке."
   },
   "The source arrives as one entry instead of every node. Its nodes stay in the config as that group's members.": {
     "value": "Источник приезжает одной записью вместо всех узлов. Его узлы остаются в конфиге членами этой группы."

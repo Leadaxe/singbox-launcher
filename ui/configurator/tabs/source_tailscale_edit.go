@@ -121,6 +121,27 @@ func tailscaleEditableNode(node *wizardmodels.Node) bool {
 	return tailscaleSchemeOfBody(ob) != ""
 }
 
+// tailscaleBuildAdds — что сборка допишет в config.json к телу узла Tailscale:
+// ключи, которых в теле нет (config.applyTailscaleStateDirectory). Вкладка JSON
+// показывает хранимое тело, и без этого списка узел выглядел бы включённым для
+// Taildrop. Не Tailscale — пусто.
+func tailscaleBuildAdds(body []byte) []string {
+	var ob map[string]interface{}
+	if err := json.Unmarshal(body, &ob); err != nil || tailscaleSchemeOfBody(ob) == "" {
+		return nil
+	}
+	var adds []string
+	if _, ok := ob[tailscaleKeyDisableTaildrop]; !ok {
+		adds = append(adds, tailscaleKeyDisableTaildrop+": true")
+	}
+	for _, key := range []string{"state_directory", "taildrop_directory"} {
+		if _, ok := ob[key]; !ok {
+			adds = append(adds, key)
+		}
+	}
+	return adds
+}
+
 // readTailscaleRole достаёт роль из тела узла.
 func readTailscaleRole(node *wizardmodels.Node) tailscaleRole {
 	var out tailscaleRole

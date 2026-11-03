@@ -2249,6 +2249,9 @@ func showSourceEditWindowAt(
 				text = buf.String()
 			}
 			status := locale.T("The outbound as it will reach the config.")
+			if adds := tailscaleBuildAdds(scratch.Body); len(adds) > 0 {
+				status = locale.Tf("The node as stored. The build also adds to the config: %s.", strings.Join(adds, ", "))
+			}
 			setJSONText(text)
 			jsonStatus.SetText(status)
 			if sourceOriginURI(&scratch) != "" {
@@ -2324,7 +2327,7 @@ func showSourceEditWindowAt(
 	case isChainSource:
 		jsonHintKey = "The chain object exactly as it will reach the config. This is also where rewrite is edited — per-protocol overrides of node options; everything else is easier to change on the Chain tab." // l10n-key
 	case isServerSource:
-		jsonHintKey = "The sing-box outbound this node is built from — exactly what the build writes to config.json. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time." // l10n-key
+		jsonHintKey = "The sing-box outbound this node is built from. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time." // l10n-key
 	case isFolderSource:
 		// SPEC 116 W4: текст подписки говорил про провайдера и обновление —
 		// у папки нет ни того, ни другого. Read-only вкладка остаётся:
