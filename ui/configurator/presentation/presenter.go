@@ -152,7 +152,7 @@ func (p *WizardPresenter) DialogParent() fyne.Window {
 //     reuses the same key.
 //
 // See `docs/ARCHITECTURE.md` UIService entry for the relation with
-// `FocusOpenChildWindows` / `wizardOverlayEnabled`.
+// `WizardWindowEntry.FocusChildWindows` / `wizardOverlayEnabled`.
 
 // OpenViewWindow returns the open View (source servers) window if any.
 func (p *WizardPresenter) OpenViewWindow() fyne.Window { return p.openViewWindow }

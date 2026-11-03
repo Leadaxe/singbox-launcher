@@ -13,6 +13,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/locale"
 	tprof "singbox-launcher/internal/traffic"
 	uitraffic "singbox-launcher/ui/traffic"
 
@@ -177,6 +178,7 @@ func trafficWindowManager(ac *core.AppController, parentRefresh func()) *uitraff
 	trafficManager.SetDeps(uitraffic.WindowDeps{
 		App:      ac.UIService.Application,
 		Profiler: tprof.GetInstance(),
+		Subject:  locale.T("Local"),
 		ConfigReader: func() (string, bool) {
 			level, set, err := ReadCurrentLogLevel(ac)
 			if err != nil {

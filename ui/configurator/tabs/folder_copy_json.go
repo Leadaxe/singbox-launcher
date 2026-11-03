@@ -35,6 +35,7 @@ import (
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
@@ -70,7 +71,7 @@ func folderCopyNodesJSON(presenter *wizardpresentation.WizardPresenter, sourceIn
 	// в контексте всего конфига — иначе первый же тег приехал бы с «-2»,
 	// доставшимся от соседнего источника, которого в документе нет.
 	emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
-	res := unpackNodesDoc(emitted.Nodes, 0)
+	res := unpackNodesDoc(emitted.Nodes, 0, wizardbusiness.TailscaleRemoteRootOf(m))
 	if res.Err != nil {
 		dialogs.ShowAutoHideInfo(fyne.CurrentApp(), win,
 			locale.T("Nothing to copy"), res.Err.Error())

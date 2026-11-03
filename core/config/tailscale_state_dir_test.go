@@ -262,12 +262,8 @@ func TestTailscaleStateDirRemoteRootWins(t *testing.T) {
 	local := tsStateRoot(t) // ставит локальный корень и снимает его после теста
 	const remote = "/etc/sing-box/tailscale"
 
-	prev := TailscaleRemoteStateDirRoot()
-	SetTailscaleRemoteStateDirRoot(remote)
-	defer SetTailscaleRemoteStateDirRoot(prev)
-
 	ep := map[string]interface{}{"type": SchemeTailscale}
-	applyTailscaleStateDirectory(ep, SchemeTailscale, "Tailscale LexNet", TailscaleRemoteStateDirRoot())
+	applyTailscaleStateDirectory(ep, SchemeTailscale, "Tailscale LexNet", remote)
 
 	got, _ := ep["state_directory"].(string)
 	if want := remote + "/Tailscale_LexNet"; got != want {
@@ -284,17 +280,15 @@ func TestTailscaleStateDirRemoteRootWins(t *testing.T) {
 
 	// Local (пустой remote-корень) возвращается к локальному корню — иначе
 	// после визита в Remote своя же сборка унесла бы путь роутера.
-	SetTailscaleRemoteStateDirRoot("")
 	ep2 := map[string]interface{}{"type": SchemeTailscale}
-	applyTailscaleStateDirectory(ep2, SchemeTailscale, "ts", TailscaleRemoteStateDirRoot())
+	applyTailscaleStateDirectory(ep2, SchemeTailscale, "ts", "")
 	if got2, _ := ep2["state_directory"].(string); !strings.HasPrefix(got2, local) {
 		t.Fatalf("local-сборка не вернулась к локальному корню: %q", got2)
 	}
 
 	// Явное значение пользователя не перебивается ни в одном из режимов.
-	SetTailscaleRemoteStateDirRoot(remote)
 	ep3 := map[string]interface{}{"type": SchemeTailscale, "state_directory": "/custom/path"}
-	applyTailscaleStateDirectory(ep3, SchemeTailscale, "ts", TailscaleRemoteStateDirRoot())
+	applyTailscaleStateDirectory(ep3, SchemeTailscale, "ts", remote)
 	if got3, _ := ep3["state_directory"].(string); got3 != "/custom/path" {
 		t.Fatalf("явный state_directory перебит: %q", got3)
 	}

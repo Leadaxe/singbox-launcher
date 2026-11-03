@@ -128,17 +128,18 @@ func (ac *AppController) showTunElevationDialog() {
 }
 
 // switchToProxyAction — кнопка «Switch to proxy mode». При открытом
-// конфигураторе недоступна: его Save перезаписал бы state и вернул tun=true.
+// ЛОКАЛЬНОМ конфигураторе недоступна: его Save перезаписал бы state и вернул
+// tun=true. Окно машины пишет её state, к локальному tun оно не относится.
 func (ac *AppController) switchToProxyAction() dialogs.Action {
 	act := dialogs.Action{Label: locale.T("Switch to proxy mode")}
-	if ac.UIService.WizardWindow != nil {
+	if ac.UIService.LocalWizardOpen() {
 		act.Disabled = true
 		act.Hint = locale.T("Close the configurator first")
 		return act
 	}
 	act.Run = func(d *dialogs.ActionsDialog) {
 		// Конфигуратор могли открыть, пока диалог висел.
-		if ac.UIService.WizardWindow != nil {
+		if ac.UIService.LocalWizardOpen() {
 			d.SetStatus(locale.T("Close the configurator first"))
 			return
 		}

@@ -92,6 +92,9 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	// работают на локальных копиях и выбрасываются вместе с ними; canonical
 	// GlobalOutbounds синхронизируется своим путём (presenter_sync/state).
 	parserConfigForGen := parserConfig
+	// SPEC 178: корень состояния tailnet — свойство цели этого окна, а не
+	// глобал: у Local пусто (локальный корень), у машины — путь на ней.
+	parserConfigForGen.TailscaleRemoteStateDirRoot = TailscaleRemoteRootOf(model)
 	if model.TemplateData != nil {
 		wizardmodels.ReconcileRuleOrder(model)
 		rulesV6 := wizardmodels.EmitStateRulesInAxisOrder(
@@ -369,4 +372,17 @@ func nodeLinksFromEmit(in map[string]configtypes.NodeLink) map[string]corestate.
 		out[tag] = corestate.NodeLink{FolderID: link.FolderID, Tag: link.Tag}
 	}
 	return out
+}
+
+// TailscaleRemoteRootOf — корень состояния tailnet НА МАШИНЕ цели модели
+// (SPEC 122) для эмиссии узлов: у Local всегда пусто (локальный корень), у
+// машины — её TailscaleStateDir. Единая точка для сборки (ParseAndPreview) и
+// превью окна (вкладка JSON источника, выгрузка папки, Add server), чтобы
+// они не разошлись. SPEC 178: раньше корень жил в глобале с момента открытия
+// окна и протекал в сборку другой цели.
+func TailscaleRemoteRootOf(model *wizardmodels.WizardModel) string {
+	if model == nil || !model.Target.IsRemote() {
+		return ""
+	}
+	return model.Target.TailscaleStateDir
 }

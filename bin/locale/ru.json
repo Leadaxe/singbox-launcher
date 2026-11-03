@@ -6133,5 +6133,14 @@
   },
   "files: %d": {
     "value": "файлы: %d"
+  },
+  "Config Wizard — %s": {
+    "value": "Мастер конфигурации — %s"
+  },
+  "Traffic Profiler — %s": {
+    "value": "Профайлер трафика — %s"
+  },
+  "Traffic Profiler — %s ⚡ Recording · %02d:%02d": {
+    "value": "Профайлер трафика — %s ⚡ Запись · %02d:%02d"
   }
 }

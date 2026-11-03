@@ -91,7 +91,10 @@ type unpackedNodesResult struct {
 //
 // limit <= 0 означает «без лимита»: показ в MultiLineEntry обрезается, а
 // выгрузка в буфер — нет, иначе «взять всю папку» отдало бы не всю папку.
-func unpackNodesDoc(nodes []*config.ParsedNode, limit int) unpackedNodesResult {
+//
+// remoteRoot — корень состояния tailnet цели окна (model.Target, SPEC 178):
+// тот же, что у сборки этой цели, иначе документ разошёлся бы с config.json.
+func unpackNodesDoc(nodes []*config.ParsedNode, limit int, remoteRoot string) unpackedNodesResult {
 	// json.RawMessage, а не map: MarshalIndent переиндентирует вложенные
 	// объекты, не трогая порядок полей внутри них.
 	type unpackedDoc struct {
@@ -108,7 +111,7 @@ func unpackNodesDoc(nodes []*config.ParsedNode, limit int) unpackedNodesResult {
 			res.Truncated = true
 			break
 		}
-		outJSONs, epJSON, err := config.EmitNodeJSONs(node)
+		outJSONs, epJSON, err := config.EmitNodeJSONsFor(node, remoteRoot)
 		if err != nil {
 			res.Dropped++
 			continue
@@ -138,8 +141,8 @@ func unpackNodesDoc(nodes []*config.ParsedNode, limit int) unpackedNodesResult {
 //
 // Возвращает (текст, статус-строка). Узлы, которые эмиттер отверг, молча
 // пропускаются (он сам пишет warn в лог) — так же ведёт себя сборка.
-func renderUnpackedNodes(nodes []*config.ParsedNode) (string, string) {
-	res := unpackNodesDoc(nodes, previewNodeCap)
+func renderUnpackedNodes(nodes []*config.ParsedNode, remoteRoot string) (string, string) {
+	res := unpackNodesDoc(nodes, previewNodeCap, remoteRoot)
 	if res.Err != nil {
 		return "", res.Err.Error()
 	}

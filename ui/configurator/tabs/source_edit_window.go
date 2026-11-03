@@ -2307,7 +2307,7 @@ func showSourceEditWindowAt(
 			return
 		}
 		emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
-		text, status := renderUnpackedNodes(emitted.Nodes)
+		text, status := renderUnpackedNodes(emitted.Nodes, wizardbusiness.TailscaleRemoteRootOf(model))
 		setJSONText(text)
 		jsonStatus.SetText(status)
 	}

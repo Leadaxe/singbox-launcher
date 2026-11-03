@@ -230,6 +230,33 @@ for several signals:
 > `ConfigBuilt`/`StateChanged` are kept (not deleted) precisely so the subscribers
 > can be wired without re-plumbing publishers.
 
+### 4.4 Configurator window registry (SPEC 178)
+
+`UIService` keeps the open Configurator windows in a registry keyed by target
+(`TargetSpec.WizardWindowKey()`: `local` or `machine:<id>`), one window per target,
+instead of a single `WizardWindow` field. `ShowConfigWizard` / `ShowConfigWizardForMachine`
+focus the window of *their* target or open a new one next to the others; the window
+title carries the target (`Config Wizard — Local` / `Config Wizard — <machine name>`),
+and closing a window removes only its own key. Each entry carries its own
+`FocusChildWindows` (View / Outbound Edit / rule dialogs belong to that Configurator).
+Consumers ask a specific question: the main-window click overlay is shown while
+`WizardWindowCount() > 0` and raises `AnyWizardWindow()` (local first); the TUN-rights
+dialog blocks "Switch to proxy mode" only while `LocalWizardOpen()`. All registry access
+is UI-thread only.
+
+The tailnet state root of a machine (`TargetSpec.TailscaleStateDir`) is no longer a
+package global set when a window opens: `ParseAndPreview` copies it from the window's
+`model.Target` into the build-only field `ParserConfig.TailscaleRemoteStateDirRoot`
+(`json:"-"`), and `GenerateOutboundsFromParserConfig` passes it to
+`EmitNodeJSONsFor`. Local builds (local window, rebuild outside the Configurator) never
+set it, so a machine path cannot leak into the local `config.json`. Window previews
+(source JSON tab, folder copy, Add server) use the same root via
+`wizardbusiness.TailscaleRemoteRootOf(model)`.
+
+The traffic profiler windows (local singleton + one per machine) put the target into
+the title the same way (`WindowDeps.Subject` → `FormatRecordingTitle(subject, session)`),
+including while recording.
+
 ---
 
 ## 5. State model

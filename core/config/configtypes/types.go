@@ -87,6 +87,16 @@ type ParserConfig struct {
 			LastUpdated string `json:"last_updated,omitempty"` // Время последнего обновления (RFC3339, UTC)
 		} `json:"parser,omitempty"`
 	} `json:"ParserConfig"`
+
+	// TailscaleRemoteStateDirRoot — корень каталогов состояния tailnet НА
+	// МАШИНЕ-ИСПОЛНИТЕЛЕ (`<state_dir>/tailscale` её демона, SPEC 122), когда
+	// сборка идёт для чужой машины. Пусто = своя машина, локальный корень.
+	//
+	// Поле сборочной проекции, не данные: не сериализуется и ставится только
+	// разбором окна машины (ParseAndPreview по model.Target). Раньше корень жил
+	// в глобале пакета config «с момента открытия окна», и с двумя открытыми
+	// Конфигураторами (SPEC 178) последний открытый диктовал путь обоим.
+	TailscaleRemoteStateDirRoot string `json:"-"`
 }
 
 // ProxySource represents a proxy subscription source

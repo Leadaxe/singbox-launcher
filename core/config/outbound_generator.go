@@ -680,7 +680,14 @@ func sanitizeBalancerOptions(opts map[string]interface{}) {
 // THIS machine has no place in a body that travels to backups and to another
 // machine's config.
 func GenerateEndpointJSON(node *ParsedNode) (string, error) {
-	body, err := generateEndpointJSONBare(node, true)
+	return GenerateEndpointJSONFor(node, "")
+}
+
+// GenerateEndpointJSONFor — GenerateEndpointJSON для сборки конфига чужой
+// машины: remoteRoot — корень состояния tailnet НА НЕЙ (пусто = своя машина,
+// локальный корень). SPEC 178: корень едет параметром от цели сборки.
+func GenerateEndpointJSONFor(node *ParsedNode, remoteRoot string) (string, error) {
+	body, err := generateEndpointJSONBare(node, true, remoteRoot)
 	if err != nil {
 		return "", err
 	}
@@ -694,10 +701,10 @@ func GenerateEndpointJSON(node *ParsedNode) (string, error) {
 // комментария. Парная к GenerateNodeJSONBare: подпись содержимого и миграция
 // legacy-ключей разбирают эмиссию обратно и обёртку видеть не должны.
 func GenerateEndpointJSONBare(node *ParsedNode) (string, error) {
-	return generateEndpointJSONBare(node, false)
+	return generateEndpointJSONBare(node, false, "")
 }
 
-func generateEndpointJSONBare(node *ParsedNode, forConfig bool) (string, error) {
+func generateEndpointJSONBare(node *ParsedNode, forConfig bool, remoteRoot string) (string, error) {
 	if node == nil || !IsEndpointScheme(node.Scheme) || node.Outbound == nil {
 		return "", fmt.Errorf("GenerateEndpointJSON requires an endpoint-scheme node with Outbound set")
 	}
@@ -710,7 +717,7 @@ func generateEndpointJSONBare(node *ParsedNode, forConfig bool) (string, error) 
 		endpoint["tag"] = node.Tag
 	}
 	if forConfig {
-		applyTailscaleStateDirectory(endpoint, node.Scheme, node.Tag, TailscaleRemoteStateDirRoot())
+		applyTailscaleStateDirectory(endpoint, node.Scheme, node.Tag, remoteRoot)
 	}
 	jsonBytes, err := json.MarshalIndent(endpoint, "", "  ")
 	if err != nil {
@@ -753,12 +760,20 @@ func generateEndpointJSONBare(node *ParsedNode, forConfig bool) (string, error) 
 // one emission point, so what the tab shows is byte-for-byte what the build
 // puts into config.json.
 func EmitNodeJSONs(node *ParsedNode) (outboundJSONs []string, endpointJSON string, err error) {
+	return EmitNodeJSONsFor(node, "")
+}
+
+// EmitNodeJSONsFor — EmitNodeJSONs для цели сборки: remoteRoot — корень
+// состояния tailnet на машине-исполнителе (пусто = своя машина). Превью окна
+// машины обязано звать её с тем же корнем, что и сборка этой машины, иначе
+// вкладка JSON показала бы не то, что уедет в конфиг.
+func EmitNodeJSONsFor(node *ParsedNode, remoteRoot string) (outboundJSONs []string, endpointJSON string, err error) {
 	if node == nil {
 		return nil, "", fmt.Errorf("nil node")
 	}
 
 	if IsEndpointScheme(node.Scheme) {
-		ep, err := GenerateEndpointJSON(node)
+		ep, err := GenerateEndpointJSONFor(node, remoteRoot)
 		if err != nil {
 			return nil, "", err
 		}
@@ -1198,7 +1213,7 @@ func GenerateOutboundsFromParserConfig(
 		}
 	}
 	for _, node := range allNodes {
-		outJSONs, epJSON, err := EmitNodeJSONs(node)
+		outJSONs, epJSON, err := EmitNodeJSONsFor(node, parserConfig.TailscaleRemoteStateDirRoot)
 		if err != nil {
 			debuglog.WarnLog("GenerateOutboundsFromParserConfig: Failed to generate JSON for node %s: %v", node.Tag, err)
 			continue

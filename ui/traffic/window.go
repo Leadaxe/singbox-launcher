@@ -33,6 +33,10 @@ type WindowDeps struct {
 	App      fyne.App
 	Profiler *tprof.TrafficProfiler
 
+	// Subject — имя цели в заголовке окна («Local» или имя машины, SPEC 178):
+	// профайлеры Local и машин открываются параллельно и без него неразличимы.
+	Subject string
+
 	// ConfigReader returns the current sing-box log level. Used by the
 	// verbose toggle to render its checkbox state. nil → toggle hidden.
 	ConfigReader func() (logLevel string, ok bool)
@@ -165,7 +169,7 @@ func (m *Manager) build() {
 	deps := m.deps
 	m.mu.Unlock()
 
-	win := deps.App.NewWindow("Traffic Profiler")
+	win := deps.App.NewWindow(tprof.FormatRecordingTitle(deps.Subject, deps.Profiler.ActiveSession()))
 
 	live := buildLiveView(deps)
 
@@ -283,7 +287,7 @@ func (m *Manager) refreshTitle() {
 		return
 	}
 	active := m.deps.Profiler.ActiveSession()
-	title := tprof.FormatRecordingTitle(active)
+	title := tprof.FormatRecordingTitle(m.deps.Subject, active)
 	w.SetTitle(title)
 	if m.deps.ParentRefresh != nil {
 		m.deps.ParentRefresh()

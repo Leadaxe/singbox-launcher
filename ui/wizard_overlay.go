@@ -72,7 +72,7 @@ func (a *App) updateWizardOverlay() {
 	if a.overlay == nil || a.core == nil || a.core.UIService == nil {
 		return
 	}
-	if a.core.UIService.WizardWindow != nil {
+	if a.core.UIService.WizardWindowCount() > 0 {
 		a.overlay.Show()
 		a.overlay.Refresh()
 	} else {
