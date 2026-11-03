@@ -4,17 +4,13 @@
 
 ---
 
-### Выжимка (RU) — следующий релиз (черновик)
+### Выжимка (RU) — v2.4.1
 
-**DNS: шаблонные серверы удаляются.** Серверы шаблона засеваются в список один раз, дальше список ваш: **Del** у шаблонного сервера (кроме обязательных и используемых — подсказка называет, кто держит), **Добавить из шаблона** / **Вернуть все шаблонные** возвращают удалённые. Бэкап несёт каталог шаблона: удалённое на одном устройстве снимается импортом на другом, как у LxBox. После обновления все прежние серверы на месте.
+Патч после v2.4.0, ядро `sing-box-lx 1.14.4-lx.30` (было 1.14.3-lx.21), контракт 1.1.156. **Taildrop на десктопе:** у узла Tailscale секция Files — приём, Save в «Загрузки», автосохранение, Send file… через Finder/Проводник; Taildrop по умолчанию выключен, включается галкой Allow Taildrop. **Буфер и ссылки с LxBox:** Send text…, разрешения Accept clipboard / Accept links на устройство, а двойное копирование (Cmd+C дважды) отправляет текст на отмеченный телефон; пароли из менеджеров паролей не уходят. **DNS:** шаблонные серверы удаляются, бэкап переносит удаления; ответ DNS фиксированным IP в правиле. **Linux:** TUN auto redirect против firewalld. **WireGuard:** все `[Peer]` из `.conf`. **TrustTunnel** разбирается реестром. TUN MTU по умолчанию 9000. Полностью — [docs/release_notes/2-4-1.md](docs/release_notes/2-4-1.md).
 
-**Правило: ответ DNS фиксированным IP.** Вкладка DNS окна правила — «Ответ»: по умолчанию, отдельный сервер или фиксированный IP (по адресу в строке) — как hosts, домены правила получают эти адреса прямо от ядра.
+### Highlights (EN) — v2.4.1
 
-### Highlights (EN) — next release (draft)
-
-**DNS: template servers can be deleted.** Template servers are seeded into your list once, then the list is yours: **Del** on a template server (except required and used ones — the "Used by …" tooltip names the holder), **Add from template** / **Add all defaults** bring deleted ones back. Backups carry the template catalog: what you deleted on one device is removed by the import on another, the same way as in LxBox. After the update every server you had is still there.
-
-**Rule: answer DNS with a fixed IP.** The rule window's DNS tab has **Answer**: default, dedicated server or fixed IP (one address per line) — hosts-style, the rule's domains get these addresses straight from the core.
+A patch release after v2.4.0, core `sing-box-lx 1.14.4-lx.30` (was 1.14.3-lx.21), contract 1.1.156. **Taildrop on the desktop:** a Tailscale node's Files section — receive, Save to Downloads, auto-save, Send file… through Finder/Explorer; Taildrop is off by default, the Allow Taildrop checkbox turns it on. **Clipboard and links with LxBox:** Send text…, per-device Accept clipboard / Accept links, and a double copy (Cmd+C twice) sends the text to a marked phone; password-manager copies are never sent. **DNS:** template servers can be deleted and backups carry the deletions; a rule can answer DNS with a fixed IP. **Linux:** TUN auto redirect against firewalld. **WireGuard:** every `[Peer]` of a `.conf` is kept. **TrustTunnel** nodes are parsed by the registry. TUN MTU defaults to 9000. Full notes — [docs/release_notes/2-4-1.md](docs/release_notes/2-4-1.md).
 
 ### Выжимка (RU) — v2.4.0
 
