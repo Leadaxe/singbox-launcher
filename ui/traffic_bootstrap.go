@@ -178,7 +178,7 @@ func trafficWindowManager(ac *core.AppController, parentRefresh func()) *uitraff
 	trafficManager.SetDeps(uitraffic.WindowDeps{
 		App:      ac.UIService.Application,
 		Profiler: tprof.GetInstance(),
-		Subject:  locale.T("Local"),
+		Subject:  locale.T("This computer"),
 		ConfigReader: func() (string, bool) {
 			level, set, err := ReadCurrentLogLevel(ac)
 			if err != nil {

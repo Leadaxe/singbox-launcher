@@ -73,7 +73,7 @@ import (
 // UIService по ключу цели (TargetSpec.WizardWindowKey), повторный вызов для
 // той же цели только фокусирует его, а Конфигуратор машины открывается рядом.
 func ShowConfigWizard(parent fyne.Window) {
-	showConfigWizardFor(parent, wizardtemplate.LocalTarget(), "", locale.T("Local"))
+	showConfigWizardFor(parent, wizardtemplate.LocalTarget(), "", locale.T("This computer"))
 }
 
 // ShowConfigWizardForMachine открывает визард, корневой на профиле КОНКРЕТНОЙ
