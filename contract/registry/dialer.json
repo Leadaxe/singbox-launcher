@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "note": "Общие поля тела узла: ServerOptions + network (секция common) и «клиентские» DialerOptions (секция body). Ссылаются из body протоколов как {\"type\":\"ref\",\"ref\":\"dialer\",\"inline\":true} — поля вливаются в тело плоско, без обёртки. Неклиентские поля DialerOptions (bind_address_no_port, protect_path, routing_mark, reuse_addr, netns, tcp_multi_path, domain_strategy) лаунчер не пишет — они помечены skip в этой же секции. ВНИМАНИЕ (контракт 1.1.6): skipped ≠ «поля нет у ядра». Санитайзер снимает всё, чего нет в fields, кодом unknown_key, поэтому skip годится только тому, что тело узла не несёт НИ ОДНИМ входом; поле, которое ядро принимает и которое может приехать входом singbox, обязано быть в fields, даже если лаунчер его не пишет сам (так вернулись disable_tcp_keep_alive, tcp_keep_alive, tcp_keep_alive_interval, а следом network_strategy с тройкой при нём). ОТСУТСТВИЕ `values` — не повод для skip: словарь network_strategy/InterfaceType живёт в C.* и из option/*.go не виден, но снимать настройку, которую ядро принимает, хуже, чем не проверять её значение (решение владельца 18.09.2026) — такие поля описаны БЕЗ enum, значение судит ядро. SPEC 131, CORE_SCHEMA §1.1–§1.3.",
+  "note": "Общие поля тела узла: ServerOptions + network (секция common) и «клиентские» DialerOptions (секция body). Ссылаются из body протоколов как {\"type\":\"ref\",\"ref\":\"dialer\",\"inline\":true} — поля вливаются в тело плоско, без обёртки. Неклиентские поля DialerOptions (bind_address_no_port, protect_path, routing_mark, reuse_addr, netns, domain_strategy) лаунчер не пишет — они помечены skip в этой же секции. ВНИМАНИЕ (контракт 1.1.6): skipped ≠ «поля нет у ядра». Санитайзер снимает всё, чего нет в fields, кодом unknown_key, поэтому skip годится только тому, что тело узла не несёт НИ ОДНИМ входом; поле, которое ядро принимает и которое может приехать входом singbox, обязано быть в fields, даже если лаунчер его не пишет сам (так вернулись disable_tcp_keep_alive, tcp_keep_alive, tcp_keep_alive_interval, следом network_strategy с тройкой при нём, а в 1.1.145 — tcp_multi_path). ОТСУТСТВИЕ `values` — не повод для skip: словарь network_strategy/InterfaceType живёт в C.* и из option/*.go не виден, но снимать настройку, которую ядро принимает, хуже, чем не проверять её значение (решение владельца 18.09.2026) — такие поля описаны БЕЗ enum, значение судит ядро. SPEC 131, CORE_SCHEMA §1.1–§1.3.",
   "common": {
     "core": "1.14.3-lx.17",
     "order": [
@@ -62,6 +62,7 @@
       "inet6_bind_address",
       "connect_timeout",
       "tcp_fast_open",
+      "tcp_multi_path",
       "disable_tcp_keep_alive",
       "tcp_keep_alive",
       "tcp_keep_alive_interval",
@@ -119,6 +120,13 @@
         "desc_en": "Use TCP Fast Open.",
         "desc_ru": "Использовать TCP Fast Open.",
         "impl": "Запрещён у anytls: «tcp_fast_open is not supported with anytls outbound» (protocol/anytls/outbound.go) — одна такая нода не даёт ядру стартовать, поэтому поле снимается."
+      },
+      "tcp_multi_path": {
+        "type": "bool",
+        "default": false,
+        "desc_en": "Use Multipath TCP (MPTCP). The core and the OS judge whether it works.",
+        "desc_ru": "Использовать Multipath TCP (MPTCP). Работает ли он, решают ядро и ОС.",
+        "impl": "option/outbound.go DialerOptions.TCPMultiPath, bool рядом с tcp_fast_open. Лаунчер поле не ПИШЕТ сам, но тело входом singbox его несёт, и в skip оно снималось как unknown_key (запрос LxBox §141, решение владельца 01.11.2026, контракт 1.1.145). Ограничения платформы (MPTCP на Android зависит от ядра Linux телефона) контракт не описывает — значение судит ядро, как у network_strategy."
       },
       "disable_tcp_keep_alive": {
         "type": "bool",
@@ -185,7 +193,6 @@
       "routing_mark": "Linux only; the launcher does not write it.",
       "reuse_addr": "A low-level dialer option; the launcher does not write it.",
       "netns": "Linux only, reference:network_namespace; the launcher does not write it.",
-      "tcp_multi_path": "A low-level dialer option; the launcher does not write it.",
       "domain_strategy": "Deprecated, schema:\"omit\" in the core — migrated to domain_resolver."
     }
   },

@@ -232,8 +232,10 @@ func (p *machineListPanel) onAutoDeploy(payload events.MachineAutoDeployPayload)
 	default:
 		body = locale.Tf("Failed: %s", payload.Note)
 	}
-	if app := fyne.CurrentApp(); app != nil {
-		app.SendNotification(&fyne.Notification{Title: title, Content: body})
+	if !platform.SendNotification(title, body) {
+		if app := fyne.CurrentApp(); app != nil {
+			app.SendNotification(&fyne.Notification{Title: title, Content: body})
+		}
 	}
 	fyne.Do(func() {
 		p.Reload()
@@ -601,10 +603,20 @@ func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 		// N мин»): первая неудачная попытка, а не последняя.
 		var firstFail time.Time
 		for attempt := 1; attempt <= connectAttempts; attempt++ {
+			// Пользователь переключился на другую машину или отключился —
+			// повторять дальше незачем: результат всё равно будет выброшен.
+			if nowID, _, ok := GetLxdRemoteOverride(); !ok || nowID != d.ID {
+				break
+			}
 			if attempt > 1 {
 				fyne.Do(func() {
-					p.connectAttempt[d.ID] = attempt
-					p.redrawRows()
+					// Не воскрешать счётчик, стёртый переключением на другую
+					// машину: иначе строка навсегда застревает на неактивной
+					// «Connecting… 5/5» и повторить Connect нельзя.
+					if nowID, _, ok := GetLxdRemoteOverride(); ok && nowID == d.ID {
+						p.connectAttempt[d.ID] = attempt
+						p.redrawRows()
+					}
 				})
 			}
 			h = p.registry.Health(d.ID)
@@ -642,6 +654,9 @@ func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 			// удалённую запись.
 			if nowID, _, stillOK := GetLxdRemoteOverride(); !stillOK || nowID != d.ID {
 				debuglog.InfoLog("machine list: %q connect result discarded — active machine is now %q", d.ID, nowID)
+				// Попытка закончилась — строка обязана вернуть кнопку Connect.
+				delete(p.connectAttempt, d.ID)
+				p.redrawRows()
 				return
 			}
 			p.connectAttempt[d.ID] = 0

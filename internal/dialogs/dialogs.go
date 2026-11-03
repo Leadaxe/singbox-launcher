@@ -488,7 +488,9 @@ func ShowProcessKillConfirmation(window fyne.Window, onKill func()) {
 
 // ShowAutoHideInfo shows a temporary notification and dialog that auto-hides after 2 seconds
 func ShowAutoHideInfo(app fyne.App, window fyne.Window, title, message string) {
-	app.SendNotification(&fyne.Notification{Title: title, Content: message})
+	if !platform.SendNotification(title, message) {
+		app.SendNotification(&fyne.Notification{Title: title, Content: message})
+	}
 	fyne.Do(func() {
 		d := dialog.NewCustomWithoutButtons(title, widget.NewLabel(message), window)
 		d.Show()

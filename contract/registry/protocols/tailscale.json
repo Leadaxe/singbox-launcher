@@ -12,7 +12,7 @@
   "uri": null,
   "emit": {
     "share_uri": false,
-    "note": "Share-URI не эмитится — URI-формы у схемы нет. Тело узла эмитится как есть (канон v7), per-scheme ветки нет; единственная правка эмиттера — подстановка state_directory при его отсутствии."
+    "note": "Share-URI не эмитится — URI-формы у схемы нет. Тело узла эмитится как есть (канон v7), per-scheme ветки нет; правки эмиттера — подстановка state_directory при его отсутствии и taildrop_directory = <state_directory>/taildrop при отсутствии ключа (контракт 1.1.147); disable_taildrop: true при отсутствии явного disable_taildrop: false (контракт 1.1.150, «Allow Taildrop» по умолчанию выключено; поле с min_core 1.14.4-lx.30-rc.2 — на ядре старше снимается гейтом)."
   },
   "refs": {
     "go": [
@@ -32,7 +32,7 @@
   },
   "body": {
     "core": "1.14.3-lx.17",
-    "order": ["state_directory", "auth_key", "control_url", "ephemeral", "hostname", "accept_routes", "exit_node", "exit_node_allow_lan_access", "advertise_routes", "advertise_exit_node", "advertise_tags", "listen_port", "relay_server_port", "relay_server_static_endpoints", "system_interface", "system_interface_name", "system_interface_mtu", "udp_timeout", "ssh_server", "taildrop_directory", "__dialer"],
+    "order": ["state_directory", "auth_key", "control_url", "ephemeral", "hostname", "accept_routes", "exit_node", "exit_node_allow_lan_access", "advertise_routes", "advertise_exit_node", "advertise_tags", "listen_port", "relay_server_port", "relay_server_static_endpoints", "system_interface", "system_interface_name", "system_interface_mtu", "udp_timeout", "ssh_server", "taildrop_directory", "disable_taildrop", "__dialer"],
     "fields": {
       "state_directory": {
         "type": "string",
@@ -237,7 +237,17 @@
         "default": "Taildrop",
         "desc_en": "Directory receiving Taildrop files.",
         "desc_ru": "Каталог, куда попадают файлы Taildrop.",
-        "impl": "option/tailscale.go TaildropDirectory."
+        "impl": "option/tailscale.go TaildropDirectory.",
+        "note": "Обе стороны при сборке подставляют <state_directory>/taildrop, если ключа в теле нет (контракт 1.1.147): дефолт ядра — общий каталог Taildrop от рабочего каталога, и входящие всех узлов tailnet легли бы в одну папку. Хранимое тело не меняется — как у state_directory."
+      },
+      "disable_taildrop": {
+        "type": "bool",
+        "default": false,
+        "min_core": "1.14.4-lx.30-rc.2",
+        "desc_en": "Turn Taildrop off on this node: incoming files are refused, sending is not allowed.",
+        "desc_ru": "Выключить Taildrop узла: входящие файлы отклоняются, отправка запрещена.",
+        "impl": "option/tailscale.go DisableTaildrop (SPEC 149 §4 ядра). true: peer API /v0/put/ (PUT и GET докачки) → 403 «Taildrop is disabled on this node» раньше проверок прав апстрима; SendTaildropFiles → FailedPrecondition; canShareFiles = false, canReceiveFiles = false у всех пиров; лежащие файлы остаются во входящих, open/delete работают; на лету не переключается — только reload.",
+        "note": "Контракт 1.1.150, решение владельца 02.11.2026: «Allow Taildrop» по умолчанию ВЫКЛЮЧЕНО у обеих сторон. Дефолт ядра — включено (совместимость с апстримом), поэтому выключает СБОРКА: config-форма эмитит disable_taildrop: true, если в теле нет явного disable_taildrop: false. Хранимое тело не трогается: галка «вкл» пишет в тело false, «выкл» снимает поле — тело без поля и значит «выключено». min_core: на ядре старше поле снимается полевым гейтом (и пишущееся сборкой true тоже) — Taildrop там остаётся включённым, как у ядра."
       },
       "__dialer": {
         "type": "ref",

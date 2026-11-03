@@ -135,6 +135,9 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
   - Type: bool
   - Default: `false`
+- <a id="body-tcp-multi-path"></a>**`tcp_multi_path`** — Use Multipath TCP (MPTCP). The core and the OS judge whether it works.
+  - Type: bool
+  - Default: `false`
 - <a id="body-disable-tcp-keep-alive"></a>**`disable_tcp_keep_alive`** — Disable TCP keepalive on this connection.
   - Type: bool
   - Default: `false`

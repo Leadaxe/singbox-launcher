@@ -1,0 +1,27 @@
+{
+  "_": "Объявления шаблона приёмника для кейса v10_dns_template_catalog (контракт 1.1.135, D-139): каталог dns_options.servers из четырёх серверов. Оба раннера нормализуют только по этой фикстуре.",
+  "dns_options": {
+    "servers": [
+      {
+        "description": "Google DNS (direct)",
+        "enabled": false,
+        "server": { "type": "udp", "tag": "google_udp", "server_port": 53, "server": "8.8.8.8" }
+      },
+      {
+        "description": "Google DoT",
+        "enabled": false,
+        "server": { "type": "tls", "tag": "google_dot", "server_port": 853, "server": "8.8.8.8" }
+      },
+      {
+        "description": "Cloudflare DoT",
+        "enabled": false,
+        "server": { "type": "tls", "tag": "cloudflare_dot", "server_port": 853, "server": "1.1.1.1" }
+      },
+      {
+        "description": "Quad9 DoH",
+        "enabled": false,
+        "server": { "type": "https", "tag": "quad9_doh", "server_port": 443, "server": "9.9.9.9", "path": "/dns-query" }
+      }
+    ]
+  }
+}

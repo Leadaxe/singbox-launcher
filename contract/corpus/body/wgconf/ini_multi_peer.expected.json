@@ -1,0 +1,40 @@
+{
+  "meta": {
+    "body_kind": "wgconf"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.0.0.2/32"
+        ],
+        "peers": [
+          {
+            "address": "first.example.com",
+            "allowed_ips": [
+              "10.10.0.0/16"
+            ],
+            "port": 51820,
+            "public_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA="
+          },
+          {
+            "address": "second.example.com",
+            "allowed_ips": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "persistent_keepalive_interval": 25,
+            "port": 51821,
+            "public_key": "ccccccccccccccccccccccccccccccccccccccccccA="
+          }
+        ],
+        "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "first.example.com",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

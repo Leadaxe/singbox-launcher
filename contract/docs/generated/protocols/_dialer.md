@@ -39,6 +39,9 @@ Core the schema was checked against: `1.14.3-lx.17`
   - Type: bool
   - Default: `false`
   - Not supported by: `anytls`
+- <a id="body-tcp-multi-path"></a>**`tcp_multi_path`** — Use Multipath TCP (MPTCP). The core and the OS judge whether it works.
+  - Type: bool
+  - Default: `false`
 - <a id="body-disable-tcp-keep-alive"></a>**`disable_tcp_keep_alive`** — Disable TCP keepalive on this connection.
   - Type: bool
   - Default: `false`
@@ -67,5 +70,4 @@ Core the schema was checked against: `1.14.3-lx.17`
 - `protect_path` — Android only (platform=android); the desktop launcher does not write it.
 - `reuse_addr` — A low-level dialer option; the launcher does not write it.
 - `routing_mark` — Linux only; the launcher does not write it.
-- `tcp_multi_path` — A low-level dialer option; the launcher does not write it.
 

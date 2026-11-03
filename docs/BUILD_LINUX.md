@@ -81,6 +81,8 @@ The binary appears in the current directory.
 
 ### Option 3: manual build
 
+Install the system packages from [Requirements](#requirements) first: without them `go build` fails with `Package gl was not found` or `X11/Xlib.h: No such file or directory`. If you are not sure they are all in place, use `./build/build_linux.sh` — it checks them and prints the install command for your distribution.
+
 Once the dependencies are installed:
 
 ```bash

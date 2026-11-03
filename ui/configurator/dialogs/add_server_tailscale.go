@@ -55,6 +55,7 @@ type tailscaleFields struct {
 	hostname   *widget.Entry
 	ephemeral  *widget.Check
 	acceptRts  *widget.Check
+	taildrop   *widget.Check
 	exitNode   *widget.Entry
 	advExit    *widget.Check
 	advRoutes  *widget.Entry
@@ -93,6 +94,9 @@ func buildTailscaleFields(onChange func()) *tailscaleFields {
 
 	t.ephemeral = widget.NewCheck(locale.T("Ephemeral node (removed from the tailnet when it goes offline)"), func(bool) { onChange() })
 	t.acceptRts = widget.NewCheck(locale.T("Accept routes advertised by other nodes"), func(bool) { onChange() })
+	// «Allow Taildrop» по умолчанию выключено (контракт 1.1.150): галка
+	// пишет явное disable_taildrop: false, без неё сборка выключает Taildrop.
+	t.taildrop = widget.NewCheck(locale.T("Allow Taildrop (send and receive files)"), func(bool) { onChange() })
 
 	// Две роли исключают друг друга: ядро отказывается стартовать с
 	// `advertise_exit_node` и непустым `exit_node` разом (protocol/tailscale
@@ -121,6 +125,7 @@ func buildTailscaleFields(onChange func()) *tailscaleFields {
 		labeledRow(locale.T("Hostname"), t.hostname),
 		t.ephemeral,
 		t.acceptRts,
+		t.taildrop,
 		widget.NewSeparator(),
 		// Галка-переключатель роли стоит НАД тем, что от неё зависит: скрытые
 		// ею строки лежат ниже, поэтому переключение не двигает саму галку
@@ -172,6 +177,9 @@ func tailscaleDocument(tag string, t *tailscaleFields) ([]byte, error) {
 	}
 	if t.acceptRts.Checked {
 		endpoint["accept_routes"] = true
+	}
+	if t.taildrop.Checked {
+		endpoint["disable_taildrop"] = false
 	}
 	// Роли взаимоисключающие (см. syncExitRole): на анонсе чужой выход в тело
 	// не пишется, даже если строка осталась заполненной с прошлого состояния

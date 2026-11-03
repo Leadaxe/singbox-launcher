@@ -248,6 +248,30 @@ func (p *WizardPresenter) recordVarDecls(st *wizardmodels.WizardStateFile) *core
 	return wizardtemplate.RecordVarDeclsFor(p.model.TemplateData, values, p.model.Target)
 }
 
+// DNSServerHolders — удерживающие ссылки DNS-серверов модели (SPEC 173):
+// тег → `used_by`. Тот же расчёт, что снимает удалённое источником на
+// импорте бэкапа (state.DNSServerHolders), — на лёгком состоянии из модели:
+// список DNS, DNS-правила, правила маршрута и скаляры DNS. Модель не
+// меняется.
+func (p *WizardPresenter) DNSServerHolders() map[string]string {
+	m := p.model
+	if m == nil || m.TemplateData == nil {
+		return nil
+	}
+	st := &corestate.State{
+		Rules: wizardmodels.EmitStateRulesInAxisOrder(m.RuleOrder, m.PresetRefs, m.CustomRules),
+		DNS: wizardmodels.SyncDNSByOrderToState(m.DNSRuleOrder, m.PresetRefs, m.DNSUserRules,
+			m.DNSServers, m.DNSRulesText, m.DNSTemplateOverrides,
+			wizardbusiness.ExtractTemplateDNSTags(m.TemplateData)),
+	}
+	wizardmodels.ApplyDNSTemplateVarsToState(&st.DNS, m.DNSTemplateVars)
+	st.DNS.Final = m.DNSFinal
+	if !m.DefaultDomainResolverUnset {
+		st.DNS.DefaultDomainResolver = m.DefaultDomainResolver
+	}
+	return corestate.DNSServerHolders(st, wizardtemplate.RecordVarDeclsFor(m.TemplateData, m.SettingsVars, m.Target))
+}
+
 // SaveCurrentState сохраняет текущее состояние в state.json.
 func (p *WizardPresenter) SaveCurrentState() error {
 	debuglog.InfoLog("SaveCurrentState: called")

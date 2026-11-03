@@ -452,19 +452,18 @@ func syncDNSServersOnly(
 		}
 	}
 
-	for tag, enabled := range explicitOverrides {
-		if seenTemplateTags[tag] {
-			continue
+	// SPEC 173 (D-139): список шаблонных серверов — ровно строки модели.
+	// Прежняя доливка записей по explicitOverrides для тегов без строки
+	// возвращала удалённый пользователем сервер. Модель сверена с каталогом
+	// целиком (ApplyWizardDNSTemplate: каждый тег каталога уже предложен),
+	// поэтому каталог списка — все теги шаблона; порядок выставит посев
+	// (state.SeedDNSTemplateCatalog в ApplyRecordVars).
+	if templateDNSTags != nil {
+		cfg.TemplateCatalog = make([]string, 0, len(templateDNSTags))
+		for tag := range templateDNSTags {
+			cfg.TemplateCatalog = append(cfg.TemplateCatalog, tag)
 		}
-		if templateDNSTags != nil && !templateDNSTags[tag] {
-			continue
-		}
-		cfg.Servers = append(cfg.Servers, state.DNSServer{
-			Kind:    state.DNSServerKindTemplate,
-			Tag:     tag,
-			Enabled: enabled,
-		})
-		seenTemplateTags[tag] = true
+		sort.Strings(cfg.TemplateCatalog)
 	}
 
 	return cfg

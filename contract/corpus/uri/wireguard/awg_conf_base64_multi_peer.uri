@@ -1,0 +1,4 @@
+# awg://<base64 .conf> с двумя [Peer] (контракт 1.1.140): форма conf_b64 читает текст
+# диалектом ini протокола (mappers.conf.ini_dialect) и получает обоих пиров в порядке файла.
+# До 1.1.140 Go читал её диалектом по умолчанию, и пиры слипались в один ключами второго.
+awg://W0ludGVyZmFjZV0KUHJpdmF0ZUtleSA9IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYUE9CkFkZHJlc3MgPSAxMC4wLjAuMi8zMgoKW1BlZXJdClB1YmxpY0tleSA9IGJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYkE9CkVuZHBvaW50ID0gZmlyc3QuZXhhbXBsZS5jb206NTE4MjAKQWxsb3dlZElQcyA9IDEwLjEwLjAuMC8xNgoKW1BlZXJdClB1YmxpY0tleSA9IGNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY0E9CkVuZHBvaW50ID0gc2Vjb25kLmV4YW1wbGUuY29tOjUxODIxCkFsbG93ZWRJUHMgPSAwLjAuMC4wLzAsIDo6LzAKUGVyc2lzdGVudEtlZXBhbGl2ZSA9IDI1Cg==#Multi-Peer

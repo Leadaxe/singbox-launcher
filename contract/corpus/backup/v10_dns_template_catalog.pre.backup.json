@@ -1,0 +1,22 @@
+{
+  "lx_backup": 2,
+  "exported_by": { "app": "launcher", "version": "corpus", "platform": "test" },
+  "exported_at": "2026-10-23T00:00:00Z",
+  "dns": {
+    "final": "google_dot",
+    "template_catalog": ["google_udp", "google_dot", "cloudflare_dot", "quad9_doh"],
+    "servers": [
+      { "kind": "template", "tag": "google_udp", "enabled": true },
+      { "kind": "template", "tag": "google_dot", "enabled": true },
+      { "kind": "template", "tag": "cloudflare_dot", "enabled": false },
+      { "kind": "template", "tag": "quad9_doh", "enabled": false }
+    ],
+    "rules": [
+      {
+        "kind": "user",
+        "enabled": true,
+        "body": { "domain_suffix": [".corp.example-1.com"], "server": "cloudflare_dot" }
+      }
+    ]
+  }
+}

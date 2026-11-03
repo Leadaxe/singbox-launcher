@@ -1,0 +1,8 @@
+{
+  "_": "Все теги hosts группы выпали (выключенный и необъявленный) — ключ снимается целиком: у ядра пустой список и отсутствие ключа одно и то же, а пустой hosts в теле только путал бы. Сама группа эмитится составом",
+  "servers": [
+    {"type": "hosts", "tag": "off_hosts", "predefined": {"nas.lan": ["192.168.1.2"]}, "enabled": false},
+    {"type": "udp", "tag": "alive_one", "server": "1.1.1.1", "server_port": 53, "enabled": true},
+    {"type": "group", "tag": "shield", "servers": ["alive_one"], "hosts": ["off_hosts", "never_declared"], "mode": "fastest", "enabled": true}
+  ]
+}

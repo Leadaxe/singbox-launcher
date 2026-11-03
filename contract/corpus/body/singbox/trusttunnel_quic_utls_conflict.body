@@ -1,0 +1,8 @@
+# sing-box: trusttunnel с quic:true и tls.utls.enabled (контракт 1.1.141).
+# Ядро отвергает пару («uTLS is not supported with quic», NewOutbound) и не
+# запускает весь конфиг. Снимается quic с кодом field_conflict — узел идёт по
+# HTTP/2, uTLS остаётся (подмена ClientHello и есть причина такой настройки).
+# Связь действует только при quic:true (`when`): quic:false рядом с uTLS ядро
+# принимает. quic_congestion_control при этом остаётся — ядро проверяет его
+# всегда, значение годное.
+{"outbounds":[{"type":"trusttunnel","tag":"tt-h3-utls","server":"tt.example.com","server_port":443,"username":"user","password":"pass","quic":true,"quic_congestion_control":"BBR","tls":{"enabled":true,"server_name":"tt.example.com","utls":{"enabled":true,"fingerprint":"chrome"}}}]}

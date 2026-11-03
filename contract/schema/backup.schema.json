@@ -994,6 +994,13 @@
             "forceIpv4": {
               "type": "boolean",
               "description": "AAAA-запросы под правило получают пустой ответ (NOERROR); пишется только true."
+            },
+            "fixedIps": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Поддержка: обе (контракт 1.1.139). Адреса IPv4/IPv6 локального ответа: DNS-запросы под правило получают эти адреса (predefined, записи `*. 300 IN A|AAAA <ip>` по query_type; семейство без адресов — пустой NOERROR) вместо зеркала на serverTag и глушилки forceIpv4. Режим действует, когда хоть одна строка разбирается как IP; флага режима нет. Пишется только непустым. Норма — TEMPLATE_LANG.md §6.11."
             }
           },
           "description": "inline | srs. Поддержка: обе (контракт 1.1.130, D-137). DNS-зеркало правила — TEMPLATE_LANG.md §6.11. Ключи в форме LxBox (camelCase)."
@@ -1032,6 +1039,13 @@
         "default_domain_resolver": {
           "type": "string",
           "description": "Тег сервера, которым резолвятся доменные адреса самих outbound'ов."
+        },
+        "template_catalog": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Теги dns_options.servers шаблона источника на момент экспорта, в порядке шаблона (контракт 1.1.135, D-139). Запись kind template приёмника с тегом из каталога, которой нет в файле, снимается, если её не держит ссылка (docs/BACKUP.md §9 п. 5). Отсутствие поля — файл до 1.1.135."
         },
         "servers": {
           "type": "array",

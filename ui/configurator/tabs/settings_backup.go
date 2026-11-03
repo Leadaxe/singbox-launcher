@@ -307,6 +307,18 @@ func warnText(w backup.Warning) string {
 	case backup.WarnBackupDNSEntrySkipped:
 		return fmt.Sprintf(locale.T("%s — this template has no such DNS server, the entry is not imported"),
 			strings.TrimPrefix(w.Detail, "template:"))
+	case backup.WarnBackupDNSEntryKept:
+		// SPEC 173: источник сервер удалил, а здесь его что-то держит —
+		// снятие оставило бы ссылку висеть. Reason — кто держит (used_by).
+		return fmt.Sprintf(locale.T("%s — deleted in the backup, kept here because it is still in use (%s)"),
+			strings.TrimPrefix(w.Detail, "template:"), w.Reason)
+	case backup.WarnBackupDNSResolverReset:
+		if w.Reason == "default_domain_resolver" {
+			return fmt.Sprintf(locale.T("%s — the backup's default domain resolver is not in the DNS server list here (or is turned off), the template default is used"), w.Detail)
+		}
+		return fmt.Sprintf(locale.T("%s — the backup's Final DNS is not in the DNS server list here (or is turned off), the template default is used"), w.Detail)
+	case backup.WarnBackupDNSGroupEmpty:
+		return fmt.Sprintf(locale.T("%s — none of this DNS group's servers exist here, the group is imported turned off"), w.Detail)
 	case backup.WarnBackupUnknownField:
 		return fmt.Sprintf(locale.T("%s — not supported here, skipped"), w.Detail)
 	case backup.WarnBackupFieldTypeMismatch:

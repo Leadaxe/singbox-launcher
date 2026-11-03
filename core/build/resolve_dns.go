@@ -179,9 +179,14 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 		return out
 	}
 
-	// TEMPLATE LIBRARY: единый источник — template.dns_options.servers[].
-	// Required entries → Locked=true (Enabled forced true ParseTemplateDNSDefaults'ом).
-	// Иначе → Enabled из state override (с fallback на template default).
+	// TEMPLATE LIBRARY: каталог — template.dns_options.servers[] (SPEC 173,
+	// D-139). Сервер каталога эмитится, только если в списке состояния есть
+	// его запись kind=template: нет записи — пользователь его удалил.
+	// Required entries → Locked=true, эмитятся всегда (запись создаёт посев).
+	// Порядок — каталога: у ядра серверы адресуются тегом, а список вкладки
+	// DNS держит тот же порядок. Состояние без посева (TemplateCatalog nil:
+	// до SPEC 173 или мимо ApplyRecordVars) — прежнее правило «нет записи =
+	// умолчание шаблона», иначе такой путь молча терял бы серверы.
 	for _, raw := range templateDNSLibraryFromTemplate(td) {
 		tag := tagFromBody(raw)
 		if tag == "" {
@@ -189,6 +194,9 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 		}
 		defaultEnabled := bodyEnabled(raw, true)
 		required := bodyRequired(raw)
+		if !required && state != nil && state.DNS.TemplateCatalog != nil && state.DNS.FindTemplateServer(tag) < 0 {
+			continue
+		}
 		var enabled bool
 		if required {
 			enabled = true

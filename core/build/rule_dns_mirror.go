@@ -14,6 +14,7 @@ package build
 // `rule_dns_mirror_gate`): имён полей правила и видов записи здесь нет.
 
 import (
+	"fmt"
 	"sort"
 
 	"singbox-launcher/core/config/registry"
@@ -33,6 +34,10 @@ const (
 	ruleDNSForceIPv4Action  = "predefined"
 	ruleDNSForceIPv4Rcode   = "NOERROR"
 )
+
+// Локальный ответ фиксированными адресами (контракт 1.1.139, §6.11): запись
+// с именем `*.` ядро подставляет под имя запроса (rewriteRecords).
+const ruleDNSFixedTTL = 300
 
 // RuleDNSMirrorMatch — матчер DNS-зеркала по телу маршрутного правила (у srs —
 // с вписанным сборкой rule_set). ok == false — зеркала нет: тело несёт ключ
@@ -67,6 +72,9 @@ type ruleDNSMirror struct {
 	Name string
 	// ForceIPv4 — тело глушилки; nil — опция выключена.
 	ForceIPv4 map[string]interface{}
+	// Fixed — локальный ответ адресами: два тела, A и AAAA; nil — режим не
+	// действует. При нём глушилки и зеркала на сервер нет.
+	Fixed []map[string]interface{}
 	// Server — тело зеркала БЕЗ server; nil — опция выключена.
 	Server    map[string]interface{}
 	ServerTag string
@@ -87,6 +95,15 @@ func collectRuleDNSMirrors(route ResolvedRoute) []ruleDNSMirror {
 			continue
 		}
 		m := ruleDNSMirror{Num: r.Num, Name: r.Name}
+		if r.DNS.FixedActive() {
+			v4, v6 := r.DNS.FixedAddrs()
+			m.Fixed = []map[string]interface{}{
+				ruleDNSFixedBody(match, "A", v4),
+				ruleDNSFixedBody(match, "AAAA", v6),
+			}
+			out = append(out, m)
+			continue
+		}
 		if r.DNS.ForceIPv4 {
 			m.ForceIPv4 = cloneDNSRuleMap(match)
 			m.ForceIPv4["ip_version"] = ruleDNSForceIPv4Version
@@ -106,6 +123,24 @@ func collectRuleDNSMirrors(route ResolvedRoute) []ruleDNSMirror {
 	return out
 }
 
+// ruleDNSFixedBody — DNS-правило локального ответа одного семейства: матч
+// зеркала, query_type, predefined NOERROR и записи `*. 300 IN <qtype> <ip>`;
+// без адресов — пустой NOERROR (приложение берёт другое семейство).
+func ruleDNSFixedBody(match map[string]interface{}, qtype string, addrs []string) map[string]interface{} {
+	body := cloneDNSRuleMap(match)
+	body["query_type"] = []interface{}{qtype}
+	body["action"] = ruleDNSForceIPv4Action
+	body["rcode"] = ruleDNSForceIPv4Rcode
+	if len(addrs) > 0 {
+		answer := make([]interface{}, 0, len(addrs))
+		for _, ip := range addrs {
+			answer = append(answer, fmt.Sprintf("*. %d IN %s %s", ruleDNSFixedTTL, qtype, ip))
+		}
+		body["answer"] = answer
+	}
+	return body
+}
+
 // RuleDNSMirror — DNS-правила одного маршрутного правила для показа (вкладка
 // Preview окна правила): глушилка AAAA и/или зеркало, в порядке выпуска.
 // ServerTag — тег сервера зеркала; есть ли он в конфиге, решает сборка.
@@ -120,6 +155,7 @@ func RuleDNSMirrors(route ResolvedRoute) []RuleDNSMirror {
 	var out []RuleDNSMirror
 	for _, m := range collectRuleDNSMirrors(route) {
 		var v RuleDNSMirror
+		v.Rules = append(v.Rules, m.Fixed...)
 		if m.ForceIPv4 != nil {
 			v.Rules = append(v.Rules, m.ForceIPv4)
 		}

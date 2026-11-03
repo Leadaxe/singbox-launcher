@@ -2,6 +2,7 @@ package uiservice
 
 import (
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -221,6 +222,46 @@ func forceRepaint(w fyne.Window) {
 			content.Refresh()
 		}
 	}
+}
+
+// NudgeWindowsAfterWake grows every window by one pixel and shrinks it back.
+//
+// macOS only: after the system sleeps, windows keep handling clicks and Fyne
+// keeps painting frames, but the screen shows the pre-sleep picture until the
+// window is resized. Moving the window (which only re-binds the GL context)
+// does not help; a size change makes the window server allocate a new
+// surface, and that does. The two steps are apart in time so the intermediate
+// size actually reaches the window server.
+func (ui *UIService) NudgeWindowsAfterWake() {
+	if ui == nil || ui.Application == nil || runtime.GOOS != "darwin" {
+		return
+	}
+	fyne.Do(func() {
+		var wins []fyne.Window
+		var sizes []fyne.Size
+		for _, w := range ui.Application.Driver().AllWindows() {
+			c := w.Canvas()
+			if c == nil {
+				continue
+			}
+			s := c.Size()
+			if s.Width < 50 || s.Height < 50 { // tray helper window and the like
+				continue
+			}
+			w.Resize(fyne.NewSize(s.Width+1, s.Height))
+			wins = append(wins, w)
+			sizes = append(sizes, s)
+		}
+		debuglog.DebugLog("NudgeWindowsAfterWake: resized %d window(s) by 1px", len(wins))
+		time.AfterFunc(300*time.Millisecond, func() {
+			fyne.Do(func() {
+				for i, w := range wins {
+					w.Resize(sizes[i])
+					forceRepaint(w)
+				}
+			})
+		})
+	})
 }
 
 // ShowMainWindowOrFocusWizard ensures the main window is shown (unhidden),

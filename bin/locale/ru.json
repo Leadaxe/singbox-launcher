@@ -1703,6 +1703,15 @@
   "Rule-set (SRS) download failed": {
     "value": "Не удалось скачать набор правил (SRS)"
   },
+  "%d of %d rule-set links do not exist (HTTP 404). Remove them from the rule:\n\n%s": {
+    "value": "Ссылок на наборы правил, которых не существует (HTTP 404): %d из %d. Уберите их из правила:\n\n%s"
+  },
+  "%d of %d rule-sets did not download.": {
+    "value": "Не скачалось наборов правил: %d из %d."
+  },
+  "%d of them do not exist (HTTP 404), see the log.": {
+    "value": "Из них не существуют (HTTP 404): %d, подробности в логе."
+  },
   "Add at least one source: use the Sources tab (Add) or add proxies in ParserConfig on the Outbounds tab.": {
     "value": "Добавьте хотя бы один источник: на вкладке «Источники» (Добавить) или в ParserConfig на вкладке «Outbound'ы»."
   },
@@ -5876,9 +5885,6 @@
   "The form for this server type is unavailable": {
     "value": "Форма для этого типа сервера недоступна"
   },
-  "Send DNS to a dedicated server": {
-    "value": "Отправлять DNS на отдельный сервер"
-  },
   "Force IPv4 (drop AAAA)": {
     "value": "Только IPv4 (сбрасывать AAAA)"
   },
@@ -5914,5 +5920,218 @@
   },
   "DNS server %s is turned off: it is kept in the config because this rule uses it.": {
     "value": "DNS-сервер %s выключен: он останется в конфиге, потому что его использует это правило."
+  },
+  "Add all defaults": {
+    "value": "Вернуть все шаблонные"
+  },
+  "Add from template": {
+    "value": "Добавить из шаблона"
+  },
+  "Required by the template: it cannot be deleted.": {
+    "value": "Обязателен по шаблону: удалить нельзя."
+  },
+  "Return every deleted template DNS server, with the template's defaults.": {
+    "value": "Вернуть все удалённые DNS-серверы шаблона с настройками шаблона по умолчанию."
+  },
+  "This tag belongs to a template DNS server; return it with Add from template": {
+    "value": "Этот тег принадлежит DNS-серверу шаблона; верните его кнопкой «Добавить из шаблона»"
+  },
+  "Used as the domain resolver of DNS server \"%s\": delete that server first.": {
+    "value": "Используется как резолвер доменов DNS-сервера «%s»: сначала удалите тот сервер."
+  },
+  "Used by %s.": {
+    "value": "Используется: %s."
+  },
+  "Used by DNS group \"%s\": delete the group first.": {
+    "value": "Входит в DNS-группу «%s»: сначала удалите группу."
+  },
+  "Used by a DNS rule: change or remove the rule to delete this server.": {
+    "value": "Используется DNS-правилом: измените или удалите правило, чтобы удалить сервер."
+  },
+  "Used by preset \"%s\": change its DNS server or turn it off to delete this one.": {
+    "value": "Используется пресетом «%s»: смените в нём DNS-сервер или выключите пресет, чтобы удалить этот."
+  },
+  "Used by the DNS option of routing rule \"%s\": change it to delete this server.": {
+    "value": "Используется DNS-опцией правила маршрутизации «%s»: измените её, чтобы удалить сервер."
+  },
+  "Used by the Final DNS setting: pick another server there to delete this one.": {
+    "value": "Используется как Final DNS: выберите там другой сервер, чтобы удалить этот."
+  },
+  "Used by the default domain resolver: pick another server there to delete this one.": {
+    "value": "Используется как резолвер доменов по умолчанию: выберите там другой сервер, чтобы удалить этот."
+  },
+  "%s — deleted in the backup, kept here because it is still in use (%s)": {
+    "value": "%s — в бэкапе удалён, здесь оставлен: он ещё используется (%s)"
+  },
+  "%s — the backup's default domain resolver is not in the DNS server list here (or is turned off), the template default is used": {
+    "value": "%s — резолвера доменов по умолчанию из бэкапа здесь нет в списке DNS-серверов (или он выключен), действует умолчание шаблона"
+  },
+  "%s — the backup's Final DNS is not in the DNS server list here (or is turned off), the template default is used": {
+    "value": "%s — Final DNS из бэкапа здесь нет в списке DNS-серверов (или он выключен), действует умолчание шаблона"
+  },
+  "%s — none of this DNS group's servers exist here, the group is imported turned off": {
+    "value": "%s — ни одного сервера этой DNS-группы здесь нет, группа ввезена выключенной"
+  },
+  "Pick a template DNS server: a deleted one comes back with the template's defaults, one already in the list is added as your own copy.": {
+    "value": "Выберите DNS-сервер шаблона: удалённый вернётся с настройками шаблона, уже добавленный появится вашей копией."
+  },
+  "in list · copy": {
+    "value": "в списке · копия"
+  },
+  "Locked: used by %s. Remove the reference first.": {
+    "value": "Заблокировано: используется (%s). Сначала уберите ссылку."
+  },
+  "Answer": {
+    "value": "Ответ"
+  },
+  "Default — queries go to DNS Final": {
+    "value": "По умолчанию — запросы идут в DNS Final"
+  },
+  "Dedicated server": {
+    "value": "Отдельный сервер"
+  },
+  "Fixed IP": {
+    "value": "Фиксированный IP"
+  },
+  "One address per line, IPv4 or IPv6.": {
+    "value": "По одному адресу в строке, IPv4 или IPv6."
+  },
+  "Line %d is not an IPv4 or IPv6 address.": {
+    "value": "Строка %d — не адрес IPv4 или IPv6."
+  },
+  "Enter an IP address.": {
+    "value": "Введите IP-адрес."
+  },
+  "Fixed IP: %s": {
+    "value": "Фиксированный IP: %s"
+  },
+  "Files": {
+    "value": "Файлы"
+  },
+  "File sharing is off for this tailnet. Turn on Taildrop in the Tailscale admin console.": {
+    "value": "Передача файлов в этой tailnet выключена. Включите Taildrop в админ-панели Tailscale."
+  },
+  "No files.": {
+    "value": "Файлов нет."
+  },
+  "Delete file": {
+    "value": "Удалить файл"
+  },
+  "Delete %s from the inbox?": {
+    "value": "Удалить %s из входящих?"
+  },
+  "from %s": {
+    "value": "от %s"
+  },
+  "File saved": {
+    "value": "Файл сохранён"
+  },
+  "Show in folder": {
+    "value": "Показать в папке"
+  },
+  "Send file…": {
+    "value": "Отправить файл…"
+  },
+  "Sending %s to %s…": {
+    "value": "Отправка %s на %s…"
+  },
+  "Send file": {
+    "value": "Отправка файла"
+  },
+  "%s sent to %s.": {
+    "value": "%s отправлен на %s."
+  },
+  "Save to Downloads automatically": {
+    "value": "Сохранять в «Загрузки» автоматически"
+  },
+  "File received": {
+    "value": "Файл получен"
+  },
+  "%s saved to Downloads.": {
+    "value": "%s сохранён в «Загрузки»."
+  },
+  "Allow Taildrop (send and receive files)": {
+    "value": "Разрешить Taildrop (отправка и приём файлов)"
+  },
+  "Taildrop is off for this node. Turn on \"Allow Taildrop\" in the node settings.": {
+    "value": "Taildrop у этого узла выключен. Включите «Allow Taildrop» в настройках узла."
+  },
+  "unknown device": {
+    "value": "неизвестное устройство"
+  },
+  "Link opened": {
+    "value": "Ссылка открыта"
+  },
+  "Link from %s opened in the browser.": {
+    "value": "Ссылка с %s открыта в браузере."
+  },
+  "Clipboard updated": {
+    "value": "Буфер обмена обновлён"
+  },
+  "Text from %s copied to the clipboard.": {
+    "value": "Текст с %s скопирован в буфер обмена."
+  },
+  "%s from %s. Open the node window to save it.": {
+    "value": "%s с %s. Откройте окно узла, чтобы сохранить."
+  },
+  "Send text…": {
+    "value": "Отправить текст…"
+  },
+  "Accept clipboard": {
+    "value": "Принимать буфер обмена"
+  },
+  "Accept links": {
+    "value": "Принимать ссылки"
+  },
+  "Sending to %s…": {
+    "value": "Отправка на %s…"
+  },
+  "Send text": {
+    "value": "Отправка текста"
+  },
+  "Sent to %s.": {
+    "value": "Отправлено на %s."
+  },
+  "Send to clipboard": {
+    "value": "В буфер обмена"
+  },
+  "Open on %s": {
+    "value": "Открыть на %s"
+  },
+  "Send text to %s": {
+    "value": "Текст на %s"
+  },
+  "Nothing to send: the text is empty.": {
+    "value": "Нечего отправлять: текст пустой."
+  },
+  "The text is too large to send (limit %s).": {
+    "value": "Текст слишком большой для отправки (предел %s)."
+  },
+  "The text is not valid UTF-8.": {
+    "value": "Текст не в UTF-8."
+  },
+  "Send double copy here": {
+    "value": "Слать сюда двойное копирование"
+  },
+  "Not sent": {
+    "value": "Не отправлено"
+  },
+  "%s is offline or does not accept files.": {
+    "value": "%s не в сети или не принимает файлы."
+  },
+  "Clipboard to %s: %v": {
+    "value": "Буфер на %s: %v"
+  },
+  "Clipboard sent": {
+    "value": "Буфер отправлен"
+  },
+  "Copied text sent to %s.": {
+    "value": "Скопированный текст отправлен на %s."
+  },
+  "Send files to %s": {
+    "value": "Отправить файлы на %s"
+  },
+  "files: %d": {
+    "value": "файлы: %d"
   }
 }

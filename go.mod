@@ -8,13 +8,13 @@ require (
 	github.com/dweymouth/fyne-tooltip v0.4.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-gl/glfw/v3.4/glfw v0.1.0-pre.2
-	github.com/godbus/dbus/v5 v5.2.2
+	github.com/godbus/dbus/v5 v5.2.4
 	github.com/ideaconnect/go-fyne-pretty-view/v2 v2.7.0
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/muhammadmuzzammil1998/jsonc v1.0.0
 	github.com/pion/stun v0.6.1
 	github.com/txthinking/socks5 v0.0.0-20251011041537-5c31f201a10e
-	golang.org/x/sys v0.48.0
+	golang.org/x/sys v0.49.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 )

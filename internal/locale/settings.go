@@ -45,6 +45,18 @@ type Settings struct {
 	DebugAPIToken string `json:"debug_api_token,omitempty"`
 	// DebugAPIPort — порт для debug-API; 0 / отсутствует означает DefaultPort.
 	DebugAPIPort int `json:"debug_api_port,omitempty"`
+	// TaildropAutoSave — узлы Tailscale, чьи принятые файлы лаунчер сам
+	// сохраняет в ~/Downloads (SPEC 175 §3.4). Настройка этого компьютера:
+	// в бэкап не идёт.
+	TaildropAutoSave []TaildropAutoSaveEntry `json:"taildrop_auto_save,omitempty"`
+	// TaildropServicePermissions — устройства, чьи служебные файлы Taildrop
+	// выполняются на этом компьютере, по видам команд (SPEC 176 §3). По
+	// умолчанию всё выключено; в бэкап не идёт.
+	TaildropServicePermissions []TaildropServicePermission `json:"taildrop_service_permissions,omitempty"`
+	// TaildropDoubleCopy — устройства, куда уходит текст двойного
+	// копирования (Cmd+C / Ctrl+C дважды, SPEC 177). Только узлы своего ядра;
+	// в бэкап не идёт.
+	TaildropDoubleCopy []TaildropDoubleCopyTarget `json:"taildrop_double_copy,omitempty"`
 	// LastTemplateLauncherVersion — версия лаунчера, которая в последний раз
 	// успешно скачала bin/wizard_template.json. На старте сравнивается с
 	// текущей AppVersion: если меньше → шаблон этой версии скачивается и
@@ -335,6 +347,32 @@ func MarkLocalesRefreshed(binDir, appVersion string) error {
 	}
 	s.LastLocaleLauncherVersion = appVersion
 	return SaveSettings(binDir, s)
+}
+
+// TaildropAutoSaveEntry — узел с автосохранением: тег у ядра машины
+// (MachineID пуст — своё ядро).
+type TaildropAutoSaveEntry struct {
+	MachineID string `json:"machine_id,omitempty"`
+	Tag       string `json:"tag"`
+}
+
+// TaildropServicePermission — разрешения служебных файлов от одного
+// устройства. Ключ — SenderID (stable node ID); SenderName — DNS-имя
+// устройства без домена, ключ только при пустом senderID у файла (ядро старше
+// 1.14.4-lx.30-rc.2).
+type TaildropServicePermission struct {
+	SenderID   string `json:"sender_id,omitempty"`
+	SenderName string `json:"sender_name,omitempty"`
+	Clipboard  bool   `json:"clipboard,omitempty"`
+	OpenURL    bool   `json:"open_url,omitempty"`
+}
+
+// TaildropDoubleCopyTarget — устройство двойного копирования: узел своего
+// ядра и stable ID пира; PeerName — для уведомления, когда пира нет в статусе.
+type TaildropDoubleCopyTarget struct {
+	Tag      string `json:"tag"`
+	PeerID   string `json:"peer_id"`
+	PeerName string `json:"peer_name,omitempty"`
 }
 
 // LoadSettings reads settings from binDir/settings.json.

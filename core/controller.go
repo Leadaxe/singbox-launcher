@@ -98,6 +98,9 @@ type AppController struct {
 	ctx        context.Context    // Context for cancellation
 	cancelFunc context.CancelFunc // Cancel function for stopping goroutines
 
+	// taildropAutoSave — подписки автосохранения Taildrop (SPEC 175 §3.4).
+	taildropAutoSave taildropAutoSaver
+
 	// templateRefreshDone закрывается, когда фоновое обновление шаблона после
 	// апгрейда (StartTemplateRefresh) закончилось; сборка config.json ждёт его
 	// (awaitTemplateRefresh). nil — обновление не запускалось, ждать нечего.
@@ -405,6 +408,8 @@ func NewAppController(layout paths.Layout, appIconData, greyIconData, greenIconD
 		ac.StateService.SetAutoUpdateEnabled(false)
 	}
 	go ac.startAutoUpdateLoop()
+	go ac.startTaildropAutoSave()
+	go ac.startTaildropDoubleCopy()
 
 	// Set global singleton instance
 	instanceOnce.Do(func() {

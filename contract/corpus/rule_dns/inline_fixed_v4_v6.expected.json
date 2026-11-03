@@ -1,0 +1,24 @@
+{
+  "dns_rules": [
+    {
+      "action": "predefined",
+      "answer": [
+        "*. 300 IN A 10.0.0.5"
+      ],
+      "query_type": [
+        "A"
+      ],
+      "rcode": "NOERROR"
+    },
+    {
+      "action": "predefined",
+      "answer": [
+        "*. 300 IN AAAA fd00::10"
+      ],
+      "query_type": [
+        "AAAA"
+      ],
+      "rcode": "NOERROR"
+    }
+  ]
+}

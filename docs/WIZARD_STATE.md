@@ -512,8 +512,9 @@ written back.
 | `strategy` | string (omitempty) | An in-memory fallback duplicate of `vars["dns_strategy"]`. `vars` is the source of truth. Not written to disk when zero. |
 | `final` | string (omitempty) | The same, duplicating `vars["dns_final"]`. |
 | `default_domain_resolver` | string (omitempty) | The same, duplicating `vars["dns_default_domain_resolver"]`. |
-| `servers` | `[]DNSServer` | Entries with a `kind` discriminator (see below). |
+| `servers` | `[]DNSServer` | Entries with a `kind` discriminator (see below). The list belongs to the user: template servers are seeded into it once (SPEC 173, below). |
 | `rules` | `[]DNSRule` | Entries with a `kind` discriminator. |
+| `template_catalog` | `[]string` (omitempty) | **SPEC 173, contract 1.1.135.** The tags of `template.dns_options.servers[]` the list has already been seeded with, in template order. Absent — the list was never seeded (a pre-173 state; the first load seeds it). The backup file carries the same field as the source's catalog. |
 
 **`servers[i]` — `v6.DNSServer` (SPEC 056-R-N):**
 
@@ -536,6 +537,17 @@ written back.
 | `name` | string | Optional display name. The launcher does not fill it in, it carries it through. |
 | `enabled` | bool | Toggle. |
 | `body` | `map[string]interface{}` | For `kind=user` only — **the sing-box dns rule as it is** (rule_set / server / domain_* / ip_cidr / port / network / ...), `server` inside. nil for preset. Before v8 these fields lay flat next to `kind`. |
+
+**Template servers are a catalog (SPEC 173).** `template.dns_options.servers[]`
+is the catalog, not the list. `state.SeedDNSTemplateCatalog` adds a
+`{kind: template, tag, enabled: <template default>}` entry for every catalog tag
+missing from `template_catalog` (a new template server, or every server on the
+first seed — this is also the migration of older states) and for a `required`
+server without an entry, then sets `template_catalog`. After that a catalog tag
+without a `kind=template` entry means **deleted by the user**: the build does not
+emit it, the Configurator does not bring it back, and the DNS tab returns it with
+"Add from template" / "Add all defaults". `required` servers and servers held by
+a reference (`state.DNSServerHolders`) cannot be deleted.
 
 **Template entries: two shapes (SPEC 109).** `template.dns_options.servers[]`
 accepts an entry in two forms — flat (ours) and nested

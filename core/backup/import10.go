@@ -623,6 +623,9 @@ func decode10DNS(in *state.DNSOptions) *decodedDNS {
 		Strategy:              in.Strategy,
 		DefaultDomainResolver: in.DefaultDomainResolver,
 	}
+	if in.TemplateCatalog != nil {
+		out.TemplateCatalog = append([]string{}, in.TemplateCatalog...)
+	}
 	for _, srv := range in.Servers {
 		cp := state.CloneDNSServer(srv)
 		if cp.Kind != state.DNSServerKindTemplate {

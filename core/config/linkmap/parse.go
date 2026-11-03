@@ -336,13 +336,14 @@ func lexSpace(form registry.Form, body, original string, dialect *registry.IniDi
 		// wg-quick/.conf: под текстом лежит не ссылка, а ini-документ.
 		// Секции адресуют его `ini.<Секция>.<Ключ>`, и Lookup эти имена уже
 		// знает — не хватало только того, кто наполнит пространство.
-		sections, dropped, ok := parseINIDialect(body, dialect)
+		doc, ok := parseINIDialect(body, dialect)
 		if !ok {
 			return nil, fmt.Errorf("linkmap: ini: секций нет")
 		}
 		s := &Space{}
-		s.SetINI(sections, parseINIComments(body, dialect, comment))
-		s.iniDropped = dropped
+		s.SetINI(doc.Sections, parseINIComments(body, dialect, comment))
+		s.iniDropped = doc.Dropped
+		s.iniInstances = doc.Instances
 		// Схема и фрагмент — свойства ОБОЛОЧКИ, как и у формы JSON: под
 		// base64 их нет, а `label` и `scheme_source` читают их позже.
 		// У формы `.conf` (голый файл, без "://") оболочки нет вовсе, и оба

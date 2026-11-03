@@ -176,6 +176,7 @@ core/build entry (BuildConfig)  — pure function over BuildContext
      ├─► ResolveDNS(state, template, vars)        — pure func
      │     walk state.dns.servers[] kind switch
      │       template → resolve body from template.dns_options.servers[tag]
+     │                  (catalog, SPEC 173: emitted only when listed; required — always)
      │       preset   → resolve body from template.presets[id].dns_servers[local_tag] + substitute vars
      │       user     → body is already flat in the entry
      │     attach metadata: Source / Required / Locked / Active / Enabled

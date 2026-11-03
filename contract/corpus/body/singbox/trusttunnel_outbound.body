@@ -1,0 +1,9 @@
+# sing-box: outbound типа trusttunnel (контракт 1.1.141, 29.10.2026). Повод:
+# без записи реестра узел из sing-box JSON шёл слепой копией, а проверка
+# кандидата ядром старше 1.14.3-lx.21 (тип появился в lx.21) ложно сообщала
+# «машина откажет на Deploy». Тип известен реестру (protocols/trusttunnel.json,
+# kind outbound, гейта по ядру нет). Описанные поля годны — server, учётные
+# данные, tls с uTLS (HTTP/2, uTLS допустим), health_check. Неизвестный
+# реестру x_future_key снят кодом unknown_key — тело описано целиком, без
+# wildcard `*` (норма описанного тела, как у naive). tag уходит в имя узла.
+{"outbounds":[{"type":"trusttunnel","tag":"tt-h2","server":"tt.example.com","server_port":443,"username":"user","password":"pass","health_check":true,"tls":{"enabled":true,"server_name":"tt.example.com","utls":{"enabled":true,"fingerprint":"chrome"}},"x_future_key":1}]}

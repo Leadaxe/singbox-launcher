@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass",
+        "quic_congestion_control": "bbr",
+        "server": "tt.example.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "tt.example.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "trusttunnel",
+        "username": "user"
+      },
+      "kind": "outbound",
+      "label": "tt-h3-utls",
+      "scheme": "trusttunnel",
+      "warnings": [
+        {
+          "code": "field_conflict",
+          "path": "quic"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

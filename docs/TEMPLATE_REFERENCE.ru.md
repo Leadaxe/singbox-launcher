@@ -66,7 +66,7 @@
 | `parser_config` | Default ParserConfig skeleton: outbounds (`proxy-out` с двойником `auto{}`, `vpn ①`, `vpn ②`) с top-level `required: true` маркерами (см. §5). После SPEC 058 — **live source-of-truth** для body referenced template outbound'ов (state хранит только thin `{tag, ref: "#TEMPLATE#"}`). | На fresh install — в `model.ParserConfigJSON`. При LoadState body для `ref="#TEMPLATE#"` entries резолвится отсюда на каждый render/build. | вкладка Направлений (renders model.GlobalOutbounds) |
 | `config` | Sing-box config skeleton: `log`, `dns`, `inbounds`, `outbounds`, `route`, `experimental`. Содержит `@var` плейсхолдеры. | После `applyParams(GOOS) + substitute @vars` → `TemplateData.Config` (по секциям). При build merge'ится с state-derived sections. | Никакая напрямую; преview через Edit dialog | 
 | `params` | Platform-conditional patches (`if`/`if_or` + `replace`/`prepend`/`append`) | Применяются в `LoadTemplateData` (GetEffectiveConfig) — продьюсят `Config` под текущий runtime.GOOS | — |
-| `dns_options.servers` | Library template DNS servers (cloudflare, google, yandex, ...) + mandatory `required:true` entries (`local_dns_resolver`, `direct_dns_resolver`) | `TemplateData.DNSOptionsRaw` → используется `ResolveDNS` для резолва body kind=template entries в state | DNS tab (renders kind=template entries) |
+| `dns_options.servers` | **Каталог** шаблонных DNS-серверов (cloudflare, google, yandex, ...) + обязательные `required:true` (`local_dns_resolver`, `direct_dns_resolver`). Засевается в список состояния один раз (SPEC 173): удалённый пользователем сервер не возвращается, новый сервер обновлённого шаблона дописывается один раз | `TemplateData.DNSOptionsRaw` → `state.SeedDNSTemplateCatalog` засевает записи `kind=template`; `ResolveDNS` резолвит их тела и эмитит только серверы из списка (`required` — всегда) | DNS tab (записи kind=template; Del, «Добавить из шаблона», «Вернуть все шаблонные») |
 | `dns_options.rules` | Default template DNS rules (опционально) | Auxiliary fill для DNS rules editor если state пустой | DNS tab |
 | `selectable_rules` | **Legacy.** Library из v3+ времён. Полностью заменён `presets[]`. | Сохранено для back-compat: загружается в `TemplateData.SelectableRules`, фильтруется по platforms | Не показывается (Library показывает только `presets[]`) |
 | `presets` | Self-contained preset bundles: vars / rule_set / dns_servers / dns_rule / rules / outbounds (SPEC 053 + 055 + 057; `rules` — `[]map`, SPEC 067 Phase 9) | `TemplateData.Presets`. На enable preset → создаются `kind=preset` entries в `state.rules`, `state.dns_options.servers/rules`, `state.connections.outbounds` через Sync* функции | Library dialog (add to Rules) → Rules tab (preset rows) |
@@ -243,7 +243,7 @@ state не персистит. Применим к:
 | Где | Эффект в UI |
 |-----|-------------|
 | `parser_config.outbounds[].required` | вкладка Направлений: Up/Down + Edit + Reset; Del не рендерится |
-| `dns_options.servers[].required` | DNS tab: enabled+lock (toggle blocked); Edit/Del заблокированы |
+| `dns_options.servers[].required` | DNS tab: enabled+lock (toggle blocked); Edit/Del заблокированы; запись засевается заново, если её нет (SPEC 173). Остальные шаблонные серверы удаляются, если их не держит ссылка |
 
 **Shape (после SPEC 058):** `required` — top-level поле прямо на outbound
 entry, не вложенное в обёртку:

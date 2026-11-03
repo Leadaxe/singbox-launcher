@@ -64,7 +64,7 @@
       ],
       "auto_route": true,
       "include_interface": [],
-      "mtu": 1492,
+      "mtu": 9000,
       "route_exclude_address": [],
       "stack": "system",
       "strict_route": false,
@@ -75,6 +75,9 @@
   "log": {
     "level": "warn",
     "timestamp": true
+  },
+  "lx": {
+    "quic_sniff_decoy": "detour"
   },
   "outbounds": [
     /** @ParserSTART */

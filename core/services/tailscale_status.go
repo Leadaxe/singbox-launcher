@@ -64,6 +64,8 @@ type TailscalePeer struct {
 	KeyExpiry time.Time
 	// ShareeNode — устройство чужой tailnet, расшаренное в эту.
 	ShareeNode bool
+	// CanReceiveFiles — устройство принимает Taildrop от этого узла.
+	CanReceiveFiles bool
 	// Path и детали пути (SPEC 115 ядра). В потоке — снимок на момент
 	// последнего события IPN-шины, смена пути событием не является; правда
 	// на момент запроса — TailscaleStatusRPC.
@@ -100,6 +102,8 @@ type TailscaleStatus struct {
 	MagicDNSSuffix string
 	// KeyAuth — вход по auth_key (иначе интерактивный).
 	KeyAuth bool
+	// CanShareFiles — Taildrop включён в tailnet (политика админки).
+	CanShareFiles bool
 	// Self — этот узел; nil в NoState/NeedsLogin, когда адреса ещё нет.
 	Self *TailscalePeer
 	// ExitNode — пир, через который идёт выход; nil = выход не используется.
@@ -155,6 +159,7 @@ func TailscaleEndpointStatusFromPB(ep *daemonpb.TailscaleEndpointStatus, at time
 		NetworkName:    ep.GetNetworkName(),
 		MagicDNSSuffix: ep.GetMagicDNSSuffix(),
 		KeyAuth:        ep.GetKeyAuth(),
+		CanShareFiles:  ep.GetCanShareFiles(),
 		Self:           tailscalePeerFromPB(ep.GetSelf()),
 		ExitNode:       tailscalePeerFromPB(ep.GetExitNode()),
 		Health:         ep.GetHealth(),
@@ -212,23 +217,24 @@ func tailscalePeerFromPB(p *daemonpb.TailscalePeer) *TailscalePeer {
 		return nil
 	}
 	peer := &TailscalePeer{
-		HostName:       p.GetHostName(),
-		DNSName:        p.GetDnsName(),
-		OS:             p.GetOs(),
-		TailscaleIPs:   p.GetTailscaleIPs(),
-		Online:         p.GetOnline(),
-		ExitNode:       p.GetExitNode(),
-		ExitNodeOption: p.GetExitNodeOption(),
-		Active:         p.GetActive(),
-		RxBytes:        p.GetRxBytes(),
-		TxBytes:        p.GetTxBytes(),
-		Expired:        p.GetExpired(),
-		StableID:       p.GetStableID(),
-		ShareeNode:     p.GetShareeNode(),
-		Path:           tailscalePathFromPB(p.GetPath()),
-		Endpoint:       p.GetEndpoint(),
-		PeerRelay:      p.GetPeerRelay(),
-		DERPRegionCode: p.GetDerpRegionCode(),
+		HostName:        p.GetHostName(),
+		DNSName:         p.GetDnsName(),
+		OS:              p.GetOs(),
+		TailscaleIPs:    p.GetTailscaleIPs(),
+		Online:          p.GetOnline(),
+		ExitNode:        p.GetExitNode(),
+		ExitNodeOption:  p.GetExitNodeOption(),
+		Active:          p.GetActive(),
+		RxBytes:         p.GetRxBytes(),
+		TxBytes:         p.GetTxBytes(),
+		Expired:         p.GetExpired(),
+		StableID:        p.GetStableID(),
+		ShareeNode:      p.GetShareeNode(),
+		CanReceiveFiles: p.GetCanReceiveFiles(),
+		Path:            tailscalePathFromPB(p.GetPath()),
+		Endpoint:        p.GetEndpoint(),
+		PeerRelay:       p.GetPeerRelay(),
+		DERPRegionCode:  p.GetDerpRegionCode(),
 	}
 	if hs := p.GetLastHandshake(); hs > 0 {
 		peer.LastHandshake = time.Unix(hs, 0)
@@ -297,6 +303,17 @@ func (c *TailscaleStatusCache) Get(tag string) (TailscaleStatus, bool) {
 	defer c.mu.Unlock()
 	st, ok := c.byTag[tag]
 	return st, ok
+}
+
+// Tags — теги tailscale-endpoint'ов последнего снимка.
+func (c *TailscaleStatusCache) Tags() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	tags := make([]string, 0, len(c.byTag))
+	for tag := range c.byTag {
+		tags = append(tags, tag)
+	}
+	return tags
 }
 
 // Live — пришёл ли хотя бы один кадр и не оборван ли стрим.

@@ -1,0 +1,22 @@
+{
+  "_": "Объявления шаблона приёмника для кейса v10_dns_template_override (контракт 1.1.142, LxBox §138): каталог dns_options.servers из трёх серверов. Оба раннера нормализуют только по этой фикстуре.",
+  "dns_options": {
+    "servers": [
+      {
+        "description": "Google DNS (direct)",
+        "enabled": false,
+        "server": { "type": "udp", "tag": "google_udp", "server_port": 53, "server": "8.8.8.8" }
+      },
+      {
+        "description": "Google DoT",
+        "enabled": false,
+        "server": { "type": "tls", "tag": "google_dot", "server_port": 853, "server": "8.8.8.8" }
+      },
+      {
+        "description": "AdGuard DNS shield",
+        "enabled": false,
+        "server": { "type": "tls", "tag": "dns_shield", "server_port": 853, "server": "94.140.14.14" }
+      }
+    ]
+  }
+}

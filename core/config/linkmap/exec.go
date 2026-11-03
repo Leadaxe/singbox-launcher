@@ -312,10 +312,193 @@ type writeMark struct {
 //
 // bodyType — тип тела узла (singbox_type схемы): движок сам его не выводит,
 // потому что «как называется тип» — свойство реестра, а не таблицы.
+//
+// Секция ini с `repeat: each` и несколькими экземплярами исполняется
+// по экземплярам (execEach); иначе — один прогон таблицы.
 func Exec(plan *Plan, space *Space, form registry.Form, bodyType string, trace *Trace) (*Result, error) {
 	if plan == nil || plan.Mapper == nil {
 		return nil, fmt.Errorf("linkmap: план не задан")
 	}
+	if section, rule, instances := eachSection(plan, space); len(instances) > 1 {
+		return execEach(plan, space, form, bodyType, trace, section, rule, instances)
+	}
+	return execOne(plan, space, form, bodyType, trace)
+}
+
+// eachSection — секция ini с `repeat: each`, у которой во входе есть
+// экземпляры. Таких секций у диалекта может быть объявлено несколько, но
+// тело собирает одна: берётся первая по имени, порядок устойчивый.
+func eachSection(plan *Plan, space *Space) (string, *registry.IniSection, []map[string]string) {
+	d := plan.Mapper.IniDialect
+	if d == nil || space == nil || len(space.iniInstances) == 0 {
+		return "", nil, nil
+	}
+	names := make([]string, 0, len(space.iniInstances))
+	for name := range space.iniInstances {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		rule := d.Section(name)
+		if rule == nil || rule.Repeat != "each" || rule.Into == "" {
+			continue
+		}
+		return name, rule, space.iniInstances[name]
+	}
+	return "", nil, nil
+}
+
+// execEach исполняет таблицу на каждом экземпляре секции и собирает узел
+// (контракт 1.1.140, wg-quick с несколькими [Peer]).
+//
+// Каждый экземпляр — отдельный прогон над копией пространства, где секция
+// — этот экземпляр. Тело узла — тело первого уцелевшего прогона, а массив
+// `into` в нём — элементы всех уцелевших прогонов в порядке файла.
+//
+// Экземпляр без обязательного ключа своей секции снимается до прогона с
+// кодом `on_drop` (параметры `index` и `missing`); экземпляр, чей прогон
+// отказал по иной причине, — с кодом самого отказа и `index`. Не уцелел ни
+// один — исполняется первый экземпляр, и узел получает ровно тот отказ,
+// что и при единственной секции.
+func execEach(plan *Plan, space *Space, form registry.Form, bodyType string, trace *Trace, section string, rule *registry.IniSection, instances []map[string]string) (*Result, error) {
+	var kept []*Result
+	var drops []Note
+	for i, inst := range instances {
+		index := strconv.Itoa(i + 1)
+		path := section + "." + index
+		if missing := missingINIKeys(plan, form, section, inst); len(missing) > 0 {
+			if rule.OnDrop != nil && rule.OnDrop.Code != "" {
+				drops = append(drops, Note{Code: rule.OnDrop.Code, Path: path, Params: map[string]string{
+					"index": index, "missing": strings.Join(missing, ", "),
+				}})
+			}
+			continue
+		}
+		res, err := execOne(plan, space.withINIInstance(section, inst), form, bodyType, trace)
+		if err != nil {
+			var rej *RejectError
+			if errors.As(err, &rej) && rej.Code != "" {
+				params := map[string]string{"index": index}
+				for k, v := range rej.Params {
+					params[k] = v
+				}
+				drops = append(drops, Note{Code: rej.Code, Path: path, Params: params})
+			}
+			continue
+		}
+		kept = append(kept, res)
+	}
+	if len(kept) == 0 {
+		return execOne(plan, space.withINIInstance(section, instances[0]), form, bodyType, trace)
+	}
+
+	base := kept[0]
+	arrPath := strings.TrimSuffix(rule.Into, "[]")
+	elems := []interface{}{}
+	for _, r := range kept {
+		if v, ok := getPath(r.Body, arrPath); ok {
+			if list, ok := v.([]interface{}); ok {
+				elems = append(elems, list...)
+			}
+		}
+	}
+	setPath(base.Body, arrPath, elems)
+
+	seen := map[string]bool{}
+	notes := make([]Note, 0, len(base.Notes)+len(drops))
+	for _, r := range kept {
+		for _, n := range r.Notes {
+			if key := noteKey(n); !seen[key] {
+				seen[key] = true
+				notes = append(notes, n)
+			}
+		}
+	}
+	base.Notes = append(notes, drops...)
+	return base, nil
+}
+
+// missingINIKeys — обязательные ключи секции, которых нет в экземпляре.
+//
+// Обязательной считается запись с `required`, все источники которой —
+// ключи этой секции (`ini.<Секция>.<Ключ>`): только о таких экземпляр
+// судит сам. Имена — как их пишет реестр, в алфавитном порядке.
+func missingINIKeys(plan *Plan, form registry.Form, section string, inst map[string]string) []string {
+	prefix := "ini." + section + "."
+	var missing []string
+	seen := map[string]bool{}
+	for _, list := range [][]Entry{plan.Selectors, plan.Rest} {
+		for i := range list {
+			p := list[i].Param
+			if p == nil || !p.Required {
+				continue
+			}
+			srcs := p.Source.ForForm(form.ID)
+			if len(srcs) == 0 {
+				continue
+			}
+			var keys []string
+			for _, src := range srcs {
+				if len(src) <= len(prefix) || !strings.EqualFold(src[:len(prefix)], prefix) {
+					keys = nil
+					break
+				}
+				keys = append(keys, src[len(prefix):])
+			}
+			if len(keys) == 0 {
+				continue
+			}
+			present := false
+			for _, k := range keys {
+				if instanceHasKey(inst, k) {
+					present = true
+					break
+				}
+			}
+			if !present && !seen[keys[0]] {
+				seen[keys[0]] = true
+				missing = append(missing, keys[0])
+			}
+		}
+	}
+	sort.Strings(missing)
+	return missing
+}
+
+// instanceHasKey — задан ли ключ в экземпляре секции, без учёта регистра имени:
+// регистр ключей решает диалект (`key_case`), а реестр пишет имя как wg-quick.
+func instanceHasKey(inst map[string]string, key string) bool {
+	if v, ok := inst[key]; ok && v != "" {
+		return true
+	}
+	if v, ok := inst[strings.ToLower(key)]; ok && v != "" {
+		return true
+	}
+	for k, v := range inst {
+		if v != "" && strings.EqualFold(k, key) {
+			return true
+		}
+	}
+	return false
+}
+
+// noteKey — ключ дедупа кода: (код, путь, параметры).
+func noteKey(n Note) string {
+	keys := make([]string, 0, len(n.Params))
+	for k := range n.Params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString(n.Code + "\x00" + n.Path)
+	for _, k := range keys {
+		b.WriteString("\x00" + k + "=" + n.Params[k])
+	}
+	return b.String()
+}
+
+// execOne — один прогон таблицы над пространством.
+func execOne(plan *Plan, space *Space, form registry.Form, bodyType string, trace *Trace) (*Result, error) {
 	st := &execState{
 		plan:       plan,
 		space:      space,

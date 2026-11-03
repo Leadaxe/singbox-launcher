@@ -1,0 +1,13 @@
+# sing-box: tcp_multi_path в теле, написанном в форме ядра (запрос LxBox §141,
+# решение владельца 01.11.2026, контракт 1.1.145). Поле — bool в DialerOptions
+# ядра (option/outbound.go) рядом с tcp_fast_open и udp_fragment, но в реестре
+# числилось строкой `skipped` — и санитайзер снимал его как unknown_key с ⚠ на
+# рабочем узле. Лаунчер его сам не пишет, но тело входом singbox его несёт, а
+# skip годится только тому, что не приезжает НИ ОДНИМ входом (норма 1.1.6).
+#
+# Ожидание: поле переживает разбор → эмиссию байт в байт вместе с соседями
+# tcp_fast_open и udp_fragment, warnings нет. Работает ли MPTCP на платформе
+# (Android — по ядру Linux телефона), судит ядро, контракт этого не описывает.
+[
+  {"type":"vless","tag":"mptcp","server":"example-1.com","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111","tcp_multi_path":true,"tcp_fast_open":true,"udp_fragment":false}
+]

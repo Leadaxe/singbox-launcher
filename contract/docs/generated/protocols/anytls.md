@@ -300,6 +300,9 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Type: bool
   - Default: `false`
   - Not applicable to `anytls`: removed → [`field_conflict`](../warnings.md#field_conflict)
+- <a id="body-tcp-multi-path"></a>**`tcp_multi_path`** — Use Multipath TCP (MPTCP). The core and the OS judge whether it works.
+  - Type: bool
+  - Default: `false`
 - <a id="body-disable-tcp-keep-alive"></a>**`disable_tcp_keep_alive`** — Disable TCP keepalive on this connection.
   - Type: bool
   - Default: `false`

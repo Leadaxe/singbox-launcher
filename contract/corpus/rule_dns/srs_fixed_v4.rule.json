@@ -1,0 +1,11 @@
+{
+  "_": "srs-правило с fixedIps: тот же выпуск, что у inline (матчер — rule_set, не сравнивается)",
+  "rule": {
+    "kind": "srs",
+    "name": "Home set",
+    "enabled": true,
+    "refs": ["https://example.com/rules/home.srs"],
+    "body": {"outbound": "direct"},
+    "dns": {"enabled": false, "serverTag": "", "fixedIps": ["192.168.1.10"]}
+  }
+}

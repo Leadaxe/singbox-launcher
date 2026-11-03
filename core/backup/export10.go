@@ -238,6 +238,13 @@ func export10Rules(rules []state.Rule) []state.Rule {
 //
 // Пустая секция в файл не пишется: значение по умолчанию, записанное явно, —
 // шум, из-за которого «одно и то же состояние» перестаёт давать один файл.
+//
+// `template_catalog` (SPEC 173, контракт 1.1.135) — каталог шаблона на
+// момент экспорта, в порядке шаблона: по нему приёмник отличит удалённый
+// здесь сервер от сервера, о котором этот шаблон не знает. Это поле
+// состояния как есть: stateWithRecordVars10 засевает копию каталогом
+// шаблона (SeedDNSTemplateCatalog), и `servers` — полный список, у каждого
+// сервера каталога, который есть в списке, есть запись.
 func export10DNS(s *state.State) *state.DNSOptions {
 	if s.DNS.IsEmpty() {
 		return nil
@@ -246,6 +253,9 @@ func export10DNS(s *state.State) *state.DNSOptions {
 		Strategy:              s.DNS.Strategy,
 		Final:                 s.DNS.Final,
 		DefaultDomainResolver: s.DNS.DefaultDomainResolver,
+	}
+	if s.DNS.TemplateCatalog != nil {
+		out.TemplateCatalog = append([]string{}, s.DNS.TemplateCatalog...)
 	}
 	for _, srv := range s.DNS.Servers {
 		out.Servers = append(out.Servers, state.CloneDNSServer(srv))

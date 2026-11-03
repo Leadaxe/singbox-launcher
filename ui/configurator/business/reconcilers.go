@@ -29,14 +29,18 @@ func reconcileDNSServers(model *wizardmodels.WizardModel, dnsObj map[string]inte
 	seen := make(map[string]struct{})
 
 	// Pass 1: template dns_options порядок (required entries приходят первыми
-	// в template'е и сохраняют этот порядок здесь).
+	// в template'е и сохраняют этот порядок здесь). Каталог, а не список
+	// (SPEC 173, D-139): строка сервера каталога строится, только если он
+	// есть в списке состояния (model.DNSTemplateListed; nil — состояния нет,
+	// список = каталог) или он `required`. Удалённый пользователем сервер
+	// сюда не возвращается — его возвращает «Add from template».
 	for _, tag := range optsOrder {
 		if _, done := seen[tag]; done {
 			continue
 		}
 		if raw, ok := byTag[tag]; ok && len(raw) > 0 {
 			out = append(out, raw)
-		} else if opt := optsByTag[tag]; opt != nil {
+		} else if opt := optsByTag[tag]; opt != nil && templateServerListed(model, tag, opt) {
 			if b, err := json.Marshal(opt); err == nil {
 				out = append(out, json.RawMessage(b))
 			}
@@ -56,6 +60,14 @@ func reconcileDNSServers(model *wizardmodels.WizardModel, dnsObj map[string]inte
 	}
 
 	model.DNSServers = out
+}
+
+// templateServerListed — строит ли сверка строку сервера каталога tag.
+func templateServerListed(model *wizardmodels.WizardModel, tag string, opt map[string]interface{}) bool {
+	if req, ok := opt["required"].(bool); ok && req {
+		return true
+	}
+	return model.DNSTemplateListed == nil || model.DNSTemplateListed[tag]
 }
 
 func indexDNSStateByTag(servers []json.RawMessage) (byTag map[string]json.RawMessage, order []string) {

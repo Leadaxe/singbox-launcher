@@ -1,0 +1,17 @@
+# Две секции [Peer] с разными AllowedIPs (контракт 1.1.140, LxBox §136).
+# Норма: каждая [Peer] — свой элемент peers[] в порядке файла, [Interface] общая.
+# До 1.1.140 вторая отбрасывалась с кодом wgconf_extra_peer_dropped.
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.0.0.2/32
+
+[Peer]
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+Endpoint = first.example.com:51820
+AllowedIPs = 10.10.0.0/16
+
+[Peer]
+PublicKey = ccccccccccccccccccccccccccccccccccccccccccA=
+Endpoint = second.example.com:51821
+AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 25

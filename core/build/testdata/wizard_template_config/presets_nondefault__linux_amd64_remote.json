@@ -96,10 +96,11 @@
       "address": [
         "172.16.0.1/30"
       ],
+      "auto_redirect": false,
       "auto_route": true,
       "include_interface": [],
       "interface_name": "lxd-tun0",
-      "mtu": 1492,
+      "mtu": 9000,
       "route_exclude_address": [],
       "stack": "system",
       "strict_route": false,
@@ -110,6 +111,9 @@
   "log": {
     "level": "warn",
     "timestamp": true
+  },
+  "lx": {
+    "quic_sniff_decoy": "detour"
   },
   "outbounds": [
     /** @ParserSTART */

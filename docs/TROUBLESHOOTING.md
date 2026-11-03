@@ -61,16 +61,95 @@ on your side (items 1, 2, 4, 5), not on the server.
 
 ## Linux
 
-### A password is asked three times when the VPN starts, and once when it stops
+### A password is asked when the VPN starts, stops, or the network changes
 
 Desktop with `systemd-resolved`: sing-box sets the DNS of the TUN interface through
-`resolvectl`, and Polkit authorizes each of the four D-Bus actions separately.
-`CAP_NET_ADMIN` on the binary does not help — the check happens in `systemd-resolved`.
+`resolvectl`, and Polkit authorizes each D-Bus action separately — so the number of
+prompts is not fixed. `CAP_NET_ADMIN` on the binary does not help — the check happens in
+`systemd-resolved`. The core asks for five actions:
+
+- `org.freedesktop.resolve1.set-dns-servers`
+- `org.freedesktop.resolve1.set-domains`
+- `org.freedesktop.resolve1.set-default-route`
+- `org.freedesktop.resolve1.revert` — on stop
+- `org.freedesktop.resolve1.flush-caches` — on a network change (core `1.14.4-lx.24` and
+  newer, from upstream sing-tun)
 
 A user-contributed recipe (a dedicated group plus a narrow Polkit rule for exactly these
-four actions) is in [issue #126](https://github.com/Leadaxe/singbox-launcher/issues/126). It is a system-level change made by the
-administrator; the launcher does not install it, and the project has not verified it on
-other distributions.
+actions) is in [issue #126](https://github.com/Leadaxe/singbox-launcher/issues/126). A rule
+made from the original four-action version keeps asking on network changes until
+`flush-caches` is added to its allowlist; Polkit reloads rules on its own, no new login is
+needed. It is a system-level change made by the administrator; the launcher does not
+install it, and the project has not verified it on other distributions.
+
+### The VPN starts, TUN and routes are up, but nothing loads; `gvisor` works
+
+Desktop with `firewalld` (or another host firewall with a default-deny `INPUT`
+policy). The `system` TUN stack forwards TCP through a local listener: packets come in
+from the synthetic TUN peer (`172.16.0.2`) to the TUN address (`172.16.0.1`), and the
+firewall treats that as a new inbound connection and drops it. `gvisor` does not use the
+host path, so it is unaffected. Confirmed on openSUSE in
+[issue #129](https://github.com/Leadaxe/singbox-launcher/issues/129).
+
+The narrow fix, as root (the addresses must match the TUN in your `config.json`):
+
+```bash
+firewall-cmd --permanent --zone=public \
+  --add-rich-rule='rule family="ipv4" source address="172.16.0.2/32" destination address="172.16.0.1/32" protocol value="tcp" accept'
+firewall-cmd --reload
+```
+
+`--reload` replaces runtime-only firewall settings; a runtime-only check without
+`--permanent` and without `--reload` is enough to test.
+
+Without touching the firewall: Wizard → Settings → "TUN auto redirect (Linux)". It emits
+sing-box `auto_redirect`, which routes TCP into the core with nftables (or iptables) rules
+instead of the local forwarder, so the firewall never sees that connection. It is on by
+default for this computer (off for remote machines) and needs `auto_route` plus nftables or
+iptables on the host; confirmed on the same openSUSE setup in issue #129. If it is off in
+your profile, turn it on and press Start again. "TUN stack" → `gvisor` also works, at the
+cost of CPU and throughput.
+
+## macOS
+
+### TUN is up, but DNS queries go past the tunnel
+
+The system resolver (`mDNSResponder`) sends queries to the network's DNS servers through
+a route scoped to the physical interface (`en0`), not through the routes `auto_route`
+puts on the TUN. The queries never enter the TUN, so "DNS hijack" does not see them: they
+go straight to the network's resolver (usually the router or the provider). Connections
+themselves are routed into the TUN. What breaks: DNS leaks to the local resolver, DNS
+rules and the fake-IP preset do not apply, and if that resolver answers blocked domains
+with a stub address, the site does not open even with the VPN on. Domain rules keep
+working only through "Protocol and domain detection" (sniffing).
+
+This is how macOS treats a process without a Network Extension; the core cannot change it
+from the routing table. Background:
+[sing-box-lx#12](https://github.com/Leadaxe/sing-box-lx/issues/12).
+
+Workaround: point the system DNS at an address inside the TUN subnet other than the TUN
+address itself. There is no scoped route for it, so queries follow the TUN route and DNS
+hijack picks them up. With the default TUN address `172.16.0.1/30` that is `172.16.0.2`.
+Note the current DNS first, then switch:
+
+```bash
+networksetup -getdnsservers Wi-Fi
+```
+
+```bash
+networksetup -setdnsservers Wi-Fi 172.16.0.2
+```
+
+When the VPN is off, put the DNS back, otherwise the Mac is left without name resolution.
+`Empty` returns the DNS the network hands out; if `-getdnsservers` listed servers set by
+hand, pass them instead:
+
+```bash
+networksetup -setdnsservers Wi-Fi Empty
+```
+
+Service names are listed by `networksetup -listallnetworkservices`; with both Wi-Fi and
+Ethernet, set each one. The launcher does not change the system DNS by itself.
 
 ## Windows
 

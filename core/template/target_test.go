@@ -308,3 +308,39 @@ func TestBundledTemplate_SystemProxyNeverRemote(t *testing.T) {
 		}
 	}
 }
+
+// auto_redirect — ответ на issue #129: хост-файрвол Linux (firewalld) молча
+// рубит локальный TCP-форвардер стека system; nftables-редирект ядра его
+// обходит. Ключ эмитится ТОЛЬКО на Linux и только при auto_route: на других
+// платформах ядро его не знает, без auto_route ядро отказывает. Default —
+// true на этой машине, false на удалённой (роутеры: работающие деплои не
+// трогаем).
+func TestBundledTemplate_AutoRedirectLinuxOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		spec TargetSpec
+		vars map[string]string
+		want interface{} // nil = ключа быть не должно
+	}{
+		{"linux local", TargetSpec{GOOS: "linux", GOARCH: "amd64", Target: TargetLocal}, nil, true},
+		{"linux remote", TargetSpec{GOOS: "linux", GOARCH: "amd64", Target: TargetRemote}, nil, false},
+		{"linux remote opted in", TargetSpec{GOOS: "linux", GOARCH: "amd64", Target: TargetRemote},
+			map[string]string{"auto_redirect": "true"}, true},
+		{"linux local, auto_route off", TargetSpec{GOOS: "linux", GOARCH: "amd64", Target: TargetLocal},
+			map[string]string{"auto_route": "false"}, nil},
+		{"darwin local", TargetSpec{GOOS: "darwin", GOARCH: "arm64", Target: TargetLocal}, nil, nil},
+		{"windows local", TargetSpec{GOOS: "windows", GOARCH: "amd64", Target: TargetLocal}, nil, nil},
+	} {
+		tun := tunInbound(t, renderBundledTemplate(t, tc.spec, tc.vars))
+		got, ok := tun["auto_redirect"]
+		if tc.want == nil {
+			if ok {
+				t.Errorf("%s: auto_redirect must be absent, got %#v", tc.name, got)
+			}
+			continue
+		}
+		if !ok || got != tc.want {
+			t.Errorf("%s: auto_redirect want %v, got %#v (present=%v)", tc.name, tc.want, got, ok)
+		}
+	}
+}

@@ -235,33 +235,50 @@ func (g *gate) supported(f *registry.Field) bool {
 	return true
 }
 
-// compareCoreVersions сравнивает версии ядра форка вида MAJOR.MINOR.PATCH-lx.N.
+// compareCoreVersions сравнивает версии ядра форка вида
+// MAJOR.MINOR.PATCH-lx.N[-rc.K].
 //
 // Своя функция, а не core.CompareVersions: тот живёт в пакете core, который
 // импортирует core/config, — обратная ссылка дала бы цикл. И правило тут
 // другое: суффикс -lx.N значим (lx.4 > lx.3 на одной базе), а не просто
 // «есть суффикс = новее». Ядро без -lx (апстрим) на равной базе считается
 // младше форковой сборки: lx-поля в нём появиться не могли.
+//
+// Пре-релиз значим (контракт 1.1.150): lx.30-rc.1 < lx.30-rc.2 < lx.30. Поле
+// с min_core на rc.2 в ядро rc.1 не уходит — там его нет, и ядро отвергло
+// бы весь конфиг. Суффикс не вида -rc<K>/-rc.<K> (-dev, -test128) — сборка
+// вне нумерации, сравнивается как релиз своего lx.N, как прежде.
 func compareCoreVersions(have, want string) int {
-	haveBase, haveLx := splitCoreVersion(have)
-	wantBase, wantLx := splitCoreVersion(want)
+	haveBase, haveLx, havePre := splitCoreVersion(have)
+	wantBase, wantLx, wantPre := splitCoreVersion(want)
 	if c := compareNumericParts(haveBase, wantBase); c != 0 {
 		return c
 	}
-	if haveLx == wantLx {
-		return 0
+	if haveLx != wantLx {
+		if haveLx < wantLx {
+			return -1
+		}
+		return 1
 	}
-	if haveLx < wantLx {
+	// Релиз — pre = -1, выше любого своего пре-релиза.
+	switch {
+	case havePre == wantPre:
+		return 0
+	case havePre == -1:
+		return 1
+	case wantPre == -1:
+		return -1
+	case havePre < wantPre:
 		return -1
 	}
 	return 1
 }
 
-// splitCoreVersion разбирает "1.14.1-lx.4-rc.2" на базу и номер релиза форка.
-// Номер -1 означает «форкового суффикса нет».
-func splitCoreVersion(v string) (base []int, lx int) {
+// splitCoreVersion разбирает "1.14.1-lx.4-rc.2" на базу, номер релиза форка
+// и номер пре-релиза. lx -1 — форкового суффикса нет; pre -1 — не пре-релиз.
+func splitCoreVersion(v string) (base []int, lx, pre int) {
 	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
-	lx = -1
+	lx, pre = -1, -1
 	rest := v
 	if i := strings.Index(v, "-"); i >= 0 {
 		rest = v[:i]
@@ -276,6 +293,7 @@ func splitCoreVersion(v string) (base []int, lx int) {
 					lx = n
 				}
 			}
+			pre = preReleaseNumber(tail[end:])
 		}
 	}
 	for _, p := range strings.Split(rest, ".") {
@@ -285,7 +303,28 @@ func splitCoreVersion(v string) (base []int, lx int) {
 		}
 		base = append(base, n)
 	}
-	return base, lx
+	return base, lx, pre
+}
+
+// preReleaseNumber — K из хвоста "-rc.K" / "-rcK"; иначе -1.
+func preReleaseNumber(tail string) int {
+	if !strings.HasPrefix(tail, "-rc") {
+		return -1
+	}
+	num := strings.TrimPrefix(strings.TrimPrefix(tail, "-rc"), ".")
+	if num == "" {
+		return -1
+	}
+	for _, r := range num {
+		if r < '0' || r > '9' {
+			return -1
+		}
+	}
+	n, err := strconv.Atoi(num)
+	if err != nil {
+		return -1
+	}
+	return n
 }
 
 func compareNumericParts(a, b []int) int {

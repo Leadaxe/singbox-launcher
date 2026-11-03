@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image/color"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -71,9 +72,35 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	}
 	serversBox := container.NewVBox()
 
+	// SPEC 173: «Add from template» — попап со всем каталогом шаблона
+	// (отсутствующий сервер возвращается, имеющийся копируется своим),
+	// «Add all defaults» — все отсутствующие сразу. Доступность кнопок
+	// пересчитывает каждая пересборка списка.
+	var addFromTemplateBtn, addAllDefaultsBtn *widget.Button
+	syncTemplateButtons := func() {
+		if addFromTemplateBtn == nil || addAllDefaultsBtn == nil {
+			return
+		}
+		m := presenter.Model()
+		for _, b := range []struct {
+			btn *widget.Button
+			on  bool
+		}{
+			{addFromTemplateBtn, len(wizardbusiness.DNSTemplateCatalog(m)) > 0},
+			{addAllDefaultsBtn, len(wizardbusiness.DNSTemplateServersMissing(m)) > 0},
+		} {
+			if b.on {
+				b.btn.Enable()
+			} else {
+				b.btn.Disable()
+			}
+		}
+	}
+
 	refreshList := func() {
 		serversBox.Objects = serversBox.Objects[:0]
 		m := presenter.Model()
+		syncTemplateButtons()
 		if len(m.DNSServers) == 0 {
 			g := components.NewScrollGutter()
 			serversBox.Add(container.NewHBox(
@@ -96,6 +123,9 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		// Значения переменных — свои у каждого сервера (SPEC 129): их
 		// объявления и выбор живут в записи, и считаются по тегу строки.
 		enabledByTag := dnsEnabledByTag(m.DNSServers)
+		// Удерживающие ссылки (SPEC 173) — тоже одним расчётом на пересборку:
+		// шаблонный сервер, который что-то держит, удалить нельзя.
+		holders := presenter.DNSServerHolders()
 
 		for i := range m.DNSServers {
 			func(idx int) {
@@ -153,6 +183,16 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 					desc += note
 				}
 
+				// Замок по удерживающим ссылкам (SPEC 173, как у LxBox) — у
+				// любого сервера списка, шаблонного и своего.
+				usedBy := holders[tag]
+				if usedBy != "" {
+					if desc != "" {
+						desc += "\n"
+					}
+					desc += dnsUsedByText(usedBy)
+				}
+
 				// Не вызывать SyncModelToGUI здесь — он пересобирает весь список и все вкладки; только обновить селекты.
 				sumLabel := ttwidget.NewLabel(sum)
 				sumLabel.Truncation = fyne.TextTruncateClip
@@ -166,7 +206,25 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				cwc := fynewidget.NewCheckWithContent(nil, sumLabel, fynewidget.CheckWithContentConfig{ContentToolTip: desc})
 				enCheck := cwc.Check
 				enCheck.SetChecked(wizardbusiness.DNSServerWizardEnabledRaw(raw))
+				reverting := false
 				enCheck.OnChanged = func(checked bool) {
+					if reverting {
+						return
+					}
+					// Используемый включённый сервер не выключается (SPEC 173,
+					// как у LxBox): галка активна, щелчок возвращает её и
+					// говорит, кто держит. Ссылки — на момент щелчка: сервер мог
+					// стать используемым после пересборки строки. Выключенный
+					// используемый включается как обычно.
+					if !checked {
+						if by := presenter.DNSServerHolders()[tag]; by != "" && !locked {
+							reverting = true
+							enCheck.SetChecked(true)
+							reverting = false
+							showDNSLockedHint(dialogParent(), enCheck, fmt.Sprintf(locale.T("Locked: used by %s. Remove the reference first."), by))
+							return
+						}
+					}
 					// Полная пересборка только когда изменились ДРУГИЕ строки
 					// (включение группы включает участников): она дороже, и
 					// на каждый щелчок галкой её звать незачем.
@@ -197,17 +255,36 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 						showDNSServerEditor(presenter, dialogParent(), viewIdx)
 					}, rowGetter)
 					viewBtn.Importance = widget.LowImportance
-					right = container.NewHBox(viewBtn, rowGutter)
+					// SPEC 173 (D-139): шаблонный сервер удаляется, как свой, —
+					// вернуть его можно «Add from template». Кроме `required`
+					// и удерживаемого ссылкой: Del недоступен, подсказка
+					// называет, кто держит.
+					delBtn := fynewidget.NewHoverForwardTTButton(locale.T("Del"), func() {
+						deleteDNSServerAt(presenter, idx)
+						presenter.RefreshDNSListAndSelects()
+					}, rowGetter)
+					delBtn.Icon = theme.DeleteIcon()
+					delBtn.Importance = widget.LowImportance
+					if usedBy != "" {
+						delBtn.Disable()
+						delBtn.SetToolTip(dnsUsedByText(usedBy))
+					}
+					right = container.NewHBox(buildRowEditDelCluster(viewBtn, delBtn), rowGutter)
 				} else {
 					editBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.TN(1, "Edit"), theme.DocumentCreateIcon(), func() {
 						showDNSServerEditor(presenter, dialogParent(), idx)
 					}, rowGetter)
 					editBtn.Importance = widget.LowImportance
-					delBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("Del"), theme.DeleteIcon(), func() {
+					delBtn := fynewidget.NewHoverForwardTTButton(locale.T("Del"), func() {
 						deleteDNSServerAt(presenter, idx)
 						presenter.RefreshDNSListAndSelects()
 					}, rowGetter)
+					delBtn.Icon = theme.DeleteIcon()
 					delBtn.Importance = widget.LowImportance
+					if usedBy != "" {
+						delBtn.Disable()
+						delBtn.SetToolTip(dnsUsedByText(usedBy))
+					}
 					right = container.NewHBox(buildRowEditDelCluster(editBtn, delBtn), rowGutter)
 				}
 				// Border: check left, content center (tap/hover → check via fynewidget), buttons right — avoids zero-width label in HBox-only row.
@@ -228,6 +305,25 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	addBtn := widget.NewButton(locale.T("Add"), func() {
 		showDNSServerAddDialog(presenter, dialogParent())
 	})
+	addFromTemplateBtn = widget.NewButton(locale.T("Add from template"), nil)
+	addFromTemplateBtn.OnTapped = func() {
+		showDNSTemplateCatalogPopup(presenter, dialogParent(), addFromTemplateBtn)
+	}
+	addAllDefaultsBtn = widget.NewButton(locale.T("Add all defaults"), func() {
+		added := false
+		for _, c := range wizardbusiness.DNSTemplateServersMissing(presenter.Model()) {
+			if wizardbusiness.AddDNSTemplateServer(presenter.Model(), c.Tag) {
+				added = true
+			}
+		}
+		if added {
+			presenter.MarkAsChanged()
+			presenter.RefreshDNSListAndSelects()
+		}
+	})
+	setTooltip(addFromTemplateBtn, locale.T("Pick a template DNS server: a deleted one comes back with the template's defaults, one already in the list is added as your own copy."))
+	setTooltip(addAllDefaultsBtn, locale.T("Return every deleted template DNS server, with the template's defaults."))
+	syncTemplateButtons()
 
 	serversScroll := container.NewVScroll(serversBox)
 	// Доля высоты окна, а не константа: при растягивании окна список
@@ -239,7 +335,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 
 	serversLabel := widget.NewLabel(locale.T("DNS servers"))
 	serversLabel.Importance = widget.MediumImportance
-	serversHeader := container.NewHBox(serversLabel, layout.NewSpacer(), addBtn)
+	serversHeader := container.NewHBox(serversLabel, layout.NewSpacer(), addFromTemplateBtn, addAllDefaultsBtn, addBtn)
 
 	guiState.DNSFinalSelect = widget.NewSelect([]string{}, func(sel string) {
 		if guiState.DNSSelectsProgrammatic {
@@ -674,6 +770,154 @@ func dnsGroupMembersSummary(obj map[string]interface{}, enabledByTag map[string]
 }
 
 // strikeThrough зачёркивает строку комбинирующим символом.
+// dnsCatalogPopupMaxRows / dnsCatalogPopupWidth — размер попапа каталога:
+// строк без прокрутки и ширина (кнопка уже строки «описание · тег»).
+const (
+	dnsCatalogPopupMaxRows = 12
+	dnsCatalogPopupWidth   = 440
+)
+
+// showDNSTemplateCatalogPopup — попап «Add from template» под кнопкой
+// (SPEC 173): весь каталог шаблона компактными строками «описание · тег».
+// Отсутствующий в списке сервер возвращается записью шаблона с его
+// умолчаниями; сервер, который уже в списке (справа — «in list»),
+// добавляется копией — своим сервером с телом, которое он эмитит сейчас, и
+// сразу открывается редактором. Попап — плоский widget.List, как у выбора
+// detour.
+func showDNSTemplateCatalogPopup(presenter *wizardpresentation.WizardPresenter, win fyne.Window, anchor fyne.CanvasObject) {
+	if win == nil {
+		return
+	}
+	choices := wizardbusiness.DNSTemplateCatalog(presenter.Model())
+	if len(choices) == 0 {
+		return
+	}
+	var popup *widget.PopUp
+	list := widget.NewList(
+		func() int { return len(choices) },
+		func() fyne.CanvasObject {
+			label := widget.NewLabel("")
+			label.Truncation = fyne.TextTruncateEllipsis
+			mark := widget.NewLabel("")
+			mark.Importance = widget.LowImportance
+			return container.NewBorder(nil, nil, nil, mark, label)
+		},
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			if id < 0 || id >= len(choices) {
+				return
+			}
+			c := choices[id]
+			row := obj.(*fyne.Container)
+			label := row.Objects[0].(*widget.Label)
+			mark := row.Objects[1].(*widget.Label)
+			text := c.Title
+			if text != c.Tag {
+				text += " · " + c.Tag
+			}
+			label.SetText(text)
+			if c.Listed {
+				mark.SetText(locale.T("in list · copy"))
+			} else {
+				mark.SetText("")
+			}
+		},
+	)
+	list.OnSelected = func(id widget.ListItemID) {
+		list.Unselect(id)
+		if id < 0 || id >= len(choices) {
+			return
+		}
+		popup.Hide()
+		c := choices[id]
+		m := presenter.Model()
+		if !c.Listed {
+			if wizardbusiness.AddDNSTemplateServer(m, c.Tag) {
+				presenter.MarkAsChanged()
+				presenter.RefreshDNSListAndSelects()
+			}
+			return
+		}
+		idx, ok := wizardbusiness.DNSTemplateServerCopy(m, c.Tag)
+		if !ok {
+			return
+		}
+		presenter.MarkAsChanged()
+		presenter.RefreshDNSListAndSelects()
+		showDNSServerEditor(presenter, win, idx)
+	}
+
+	popup = widget.NewPopUp(list, win.Canvas())
+	pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor)
+	pos.Y += anchor.Size().Height
+	pad := theme.Padding()
+	rowH := list.CreateItem().MinSize().Height + pad
+	n := len(choices)
+	if n > dnsCatalogPopupMaxRows {
+		n = dnsCatalogPopupMaxRows
+	}
+	h := float32(n)*rowH + pad
+	if room := win.Canvas().Size().Height - pos.Y - pad; room > rowH && h > room {
+		h = room
+	}
+	w := float32(dnsCatalogPopupWidth)
+	// Попап прижат правым краем к кнопке: она стоит у правого края вкладки.
+	if x := pos.X + anchor.Size().Width - w; x > 0 {
+		pos.X = x
+	}
+	popup.Resize(fyne.NewSize(w, h))
+	popup.ShowAtPosition(pos)
+}
+
+// dnsLockedHintDuration — сколько висит подсказка о запертой галке.
+const dnsLockedHintDuration = 3 * time.Second
+
+// showDNSLockedHint — лёгкая подсказка под объектом (не модальная, без
+// кнопок, сама прячется): галка используемого сервера не снялась, и
+// пользователь должен узнать почему — как SnackBar у LxBox.
+func showDNSLockedHint(win fyne.Window, anchor fyne.CanvasObject, text string) {
+	if win == nil || anchor == nil {
+		return
+	}
+	label := widget.NewLabel(text)
+	pop := widget.NewPopUp(label, win.Canvas())
+	pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor)
+	pos.Y += anchor.Size().Height
+	pop.ShowAtPosition(pos)
+	go func() {
+		<-time.After(dnsLockedHintDuration)
+		fyne.Do(pop.Hide)
+	}()
+}
+
+// dnsUsedByText — подсказка «кто держит сервер» по `used_by` удерживающей
+// ссылки (state.DNSServerHolders, словарь контракта).
+func dnsUsedByText(usedBy string) string {
+	kind, src := usedBy, ""
+	if i := strings.Index(usedBy, ":"); i >= 0 {
+		kind, src = usedBy[:i], usedBy[i+1:]
+	}
+	switch kind {
+	case "required":
+		return locale.T("Required by the template: it cannot be deleted.")
+	case "final":
+		return locale.T("Used by the Final DNS setting: pick another server there to delete this one.")
+	case "default_domain_resolver":
+		return locale.T("Used by the default domain resolver: pick another server there to delete this one.")
+	case "dns_rule":
+		return locale.T("Used by a DNS rule: change or remove the rule to delete this server.")
+	case "rule":
+		return fmt.Sprintf(locale.T("Used by the DNS option of routing rule \"%s\": change it to delete this server."), src)
+	case "group":
+		return fmt.Sprintf(locale.T("Used by DNS group \"%s\": delete the group first."), src)
+	case "server":
+		return fmt.Sprintf(locale.T("Used as the domain resolver of DNS server \"%s\": delete that server first."), src)
+	case "preset":
+		return fmt.Sprintf(locale.T("Used by preset \"%s\": change its DNS server or turn it off to delete this one."), src)
+	default:
+		return fmt.Sprintf(locale.T("Used by %s."), usedBy)
+	}
+}
+
 func strikeThrough(s string) string {
 	var b strings.Builder
 	for _, r := range s {
@@ -837,11 +1081,17 @@ func deleteDNSServerAt(p *wizardpresentation.WizardPresenter, index int) {
 	}
 	var deleted map[string]interface{}
 	_ = json.Unmarshal(m.DNSServers[index], &deleted)
-	if wizardbusiness.DNSTagFromTemplate(m, dnsJSONStringField(deleted, "tag")) {
+	delTag := dnsJSONStringField(deleted, "tag")
+	// SPEC 173: шаблонный сервер удаляется, кроме `required` (удерживаемый
+	// ссылкой отсекает кнопка: она недоступна).
+	fromTemplate := wizardbusiness.DNSTagFromTemplate(m, delTag)
+	if fromTemplate && wizardbusiness.DNSTagLocked(m, delTag) {
 		return
 	}
-	delTag, _ := deleted["tag"].(string)
 	m.DNSServers = append(m.DNSServers[:index], m.DNSServers[index+1:]...)
+	if fromTemplate {
+		wizardbusiness.ForgetDNSTemplateServer(m, delTag)
+	}
 
 	tags := wizardbusiness.DNSEnabledTagOptions(m)
 	if delTag == m.DNSFinal && len(tags) > 0 {
@@ -895,6 +1145,13 @@ func applyDNSServerJSON(p *wizardpresentation.WizardPresenter, w fyne.Window, te
 			dialog.ShowError(fmt.Errorf("%s", locale.T("This DNS server cannot be edited (template config.dns).")), w)
 			return false
 		}
+	}
+	// SPEC 173: тег сервера каталога занят и тогда, когда строку удалили, —
+	// своя запись с ним сохранилась бы шаблонной (syncDNSServersOnly
+	// различает вид по тегу шаблона).
+	if wizardbusiness.DNSTagFromTemplate(mod, tag) {
+		dialog.ShowError(fmt.Errorf("%s: %s", locale.T("This tag belongs to a template DNS server; return it with Add from template"), tag), w)
+		return false
 	}
 	for i, raw := range mod.DNSServers {
 		if editIndex >= 0 && i == editIndex {

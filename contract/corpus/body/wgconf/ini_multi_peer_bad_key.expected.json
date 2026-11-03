@@ -17,6 +17,15 @@
             ],
             "port": 51820,
             "public_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA="
+          },
+          {
+            "address": "third.example.com",
+            "allowed_ips": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "port": 51822,
+            "public_key": "ddddddddddddddddddddddddddddddddddddddddddA="
           }
         ],
         "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=",
@@ -27,7 +36,8 @@
       "scheme": "wireguard",
       "warnings": [
         {
-          "code": "wgconf_extra_peer_dropped"
+          "code": "wg_peer_dropped",
+          "path": "peers[1]"
         }
       ]
     }

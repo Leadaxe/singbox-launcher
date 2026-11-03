@@ -1,0 +1,18 @@
+{
+  "servers": [
+    {
+      "server": "1.1.1.1",
+      "server_port": 53,
+      "tag": "alive_one",
+      "type": "udp"
+    },
+    {
+      "mode": "fastest",
+      "servers": [
+        "alive_one"
+      ],
+      "tag": "shield",
+      "type": "group"
+    }
+  ]
+}

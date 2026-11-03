@@ -111,10 +111,13 @@ func applyTailscaleStateDirectory(endpoint map[string]interface{}, scheme, tag, 
 	if scheme != SchemeTailscale || endpoint == nil {
 		return
 	}
+	remoteRoot = strings.TrimSpace(remoteRoot)
+	defer applyTailscaleTaildropDirectory(endpoint, remoteRoot != "")
+	applyTailscaleTaildropDefault(endpoint)
 	if _, present := endpoint["state_directory"]; present {
 		return
 	}
-	if remoteRoot = strings.TrimSpace(remoteRoot); remoteRoot != "" {
+	if remoteRoot != "" {
 		// Разделитель "/" литералом: путь ЧУЖОЙ машины, и filepath.Join на
 		// Windows-лаунчере дал бы обратные слэши в пути linux-роутера.
 		endpoint["state_directory"] = strings.TrimRight(remoteRoot, "/") + "/" + sanitizeStateDirName(tag)
@@ -127,6 +130,39 @@ func applyTailscaleStateDirectory(endpoint map[string]interface{}, scheme, tag, 
 	// filepath.Join, а не конкатенация через "/": на Windows корень приходит
 	// с обратными слэшами, и смешивать разделители в одном пути незачем.
 	endpoint["state_directory"] = filepath.Join(root, sanitizeStateDirName(tag))
+}
+
+// applyTailscaleTaildropDefault — «Allow Taildrop» по умолчанию выключено
+// (контракт 1.1.150, решение владельца 02.11.2026): disable_taildrop: true,
+// если в теле нет явного значения. Дефолт ядра — включено, поэтому выключает
+// сборка. Ядро старше min_core поля не знает — полевой гейт config-формы
+// снимает его вместе с остальными, и Taildrop там остаётся как у ядра.
+func applyTailscaleTaildropDefault(endpoint map[string]interface{}) {
+	if _, present := endpoint["disable_taildrop"]; present {
+		return
+	}
+	endpoint["disable_taildrop"] = true
+}
+
+// applyTailscaleTaildropDirectory подставляет taildrop_directory =
+// <state_directory>/taildrop (SPEC 175 §2), только если ключа в теле нет.
+// Дефолт ядра — общий `Taildrop` от рабочего каталога: входящие всех узлов
+// tailnet легли бы в одну папку. Внутри каталога состояния входящие
+// переименовываются, удаляются и переносятся демоном вместе с узлом.
+// remote — путь чужой машины, разделитель "/".
+func applyTailscaleTaildropDirectory(endpoint map[string]interface{}, remote bool) {
+	if _, present := endpoint["taildrop_directory"]; present {
+		return
+	}
+	dir, _ := endpoint["state_directory"].(string)
+	if dir = strings.TrimSpace(dir); dir == "" {
+		return
+	}
+	if remote {
+		endpoint["taildrop_directory"] = strings.TrimRight(dir, "/") + "/taildrop"
+		return
+	}
+	endpoint["taildrop_directory"] = filepath.Join(dir, "taildrop")
 }
 
 // sanitizeStateDirName — тег как ИМЯ КАТАЛОГА. Тег свободен (пробелы, слэши,
