@@ -119,17 +119,6 @@ func buildTaildropSection(cmd tailscaleCommands, win fyne.Window, box *fyne.Cont
 		note(locale.T("File sharing is off for this tailnet. Turn on Taildrop in the Tailscale admin console."))
 		return
 	}
-	// Галка автосохранения (§3.4): применяется сразу, без Save; держит
-	// подписку и при закрытом окне.
-	auto := widget.NewCheck(locale.T("Save to Downloads automatically"), nil)
-	auto.SetChecked(cmd.ac.TaildropAutoSaveEnabled(cmd.target, tag))
-	auto.OnChanged = func(on bool) {
-		if err := cmd.ac.SetTaildropAutoSave(cmd.target, tag, on); err != nil {
-			debuglog.WarnLog("taildrop %s: auto-save setting not saved", tag)
-			ShowError(win, err)
-		}
-	}
-	box.Add(auto)
 	if !v.have {
 		box.Add(widget.NewProgressBarInfinite())
 		return
@@ -373,23 +362,6 @@ func taildropServiceHere(cmd tailscaleCommands, st services.TailscaleStatus, p s
 	return cmd.target.Scope == services.ScopeLocal && st.CanShareFiles && !p.ShareeNode && p.StableID != ""
 }
 
-// taildropPermissionItems — галки «Accept clipboard» и «Accept links»
-// устройства; применяются сразу.
-func taildropPermissionItems(cmd tailscaleCommands, win fyne.Window, p services.TailscalePeer) []*fyne.MenuItem {
-	clipOn, linkOn := cmd.ac.TaildropServicePermission(p)
-	toggle := func(kind string, on bool) {
-		if err := cmd.ac.SetTaildropServicePermission(p, kind, on); err != nil {
-			debuglog.WarnLog("taildrop: service permission not saved")
-			ShowError(win, err)
-		}
-	}
-	clip := fyne.NewMenuItem(locale.T("Accept clipboard"), func() { toggle(services.TaildropServiceClipboard, !clipOn) })
-	clip.Checked = clipOn
-	link := fyne.NewMenuItem(locale.T("Accept links"), func() { toggle(services.TaildropServiceOpenURL, !linkOn) })
-	link.Checked = linkOn
-	return []*fyne.MenuItem{clip, link}
-}
-
 // showTaildropSendText — окно «Send text…»: поле с текущим буфером (текст
 // виден перед отправкой — SERVICE_FILES §7), «Send to clipboard» и, если в
 // поле одна http(s)-ссылка, «Open on <device>».
@@ -473,18 +445,4 @@ func taildropSendTextError(err error, rules services.TaildropServiceRules) error
 		return errors.New(locale.T("The text is not valid UTF-8."))
 	}
 	return err
-}
-
-// taildropDoubleCopyItem — галка «Send double copy here» (SPEC 177): текст,
-// скопированный дважды подряд, уходит в буфер этого устройства.
-func taildropDoubleCopyItem(cmd tailscaleCommands, win fyne.Window, tag string, p services.TailscalePeer) *fyne.MenuItem {
-	on := cmd.ac.TaildropDoubleCopyEnabled(tag, p)
-	item := fyne.NewMenuItem(locale.T("Send double copy here"), func() {
-		if err := cmd.ac.SetTaildropDoubleCopy(tag, p, !on); err != nil {
-			debuglog.WarnLog("taildrop: double copy setting not saved")
-			ShowError(win, err)
-		}
-	})
-	item.Checked = on
-	return item
 }

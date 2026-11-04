@@ -100,6 +100,8 @@ type AppController struct {
 
 	// taildropAutoSave — подписки автосохранения Taildrop (SPEC 175 §3.4).
 	taildropAutoSave taildropAutoSaver
+	// taildropStates — состояние профилей для настроек Taildrop узлов.
+	taildropStates taildropStateCache
 
 	// templateRefreshDone закрывается, когда фоновое обновление шаблона после
 	// апгрейда (StartTemplateRefresh) закончилось; сборка config.json ждёт его

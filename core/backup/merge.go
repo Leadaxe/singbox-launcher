@@ -778,11 +778,19 @@ func mergeServerItem(s *state.State, item decodedSource, rootBodies map[string]i
 			// Узел уже есть: тело то же. Поля записи из файла — только true:
 			// отсутствие поля неотличимо от false и своё не сбрасывает (D-134).
 			s.Sources[at].NodeRecordFlags.MergeTrue(incoming.NodeRecordFlags)
+			// Каталог совпавшего узла свой: чужое имя увело бы его в новый
+			// каталог и новое устройство tailnet.
+			if incoming.TaildropDoubleCopy != nil {
+				s.Sources[at].TaildropDoubleCopy = incoming.TaildropDoubleCopy
+			}
 			info.landedRoot(fileTag, fileID, s.Sources[at].NodeTagOrLabel(), item.FullSettings)
 			cnt.SkippedServers++
 			return
 		}
 		incoming.Tag = state.UniqueTag(rootTags, incoming.Tag)
+		if s.StateDirIDTaken(incoming.StateDirID) {
+			incoming.StateDirID = state.NewStateDirID()
+		}
 		incoming.ID = freshIDIfTaken(incoming.ID, takenIDs)
 		takenIDs[incoming.ID] = true
 		if incoming.Tag != "" {
@@ -925,8 +933,14 @@ func addFolderMember(s *state.State, folderAt int, node state.Node, fileContaine
 	folder := &s.Sources[folderAt]
 	if hit := folderNodeWithBody(folder, &node); hit >= 0 {
 		folder.Nodes[hit].NodeRecordFlags.MergeTrue(node.NodeRecordFlags) // только true
+		if node.TaildropDoubleCopy != nil {
+			folder.Nodes[hit].TaildropDoubleCopy = node.TaildropDoubleCopy
+		}
 		cnt.SkippedServers++
 		return state.NodeLink{FolderID: folder.ID, Tag: folder.Nodes[hit].Tag}, false
+	}
+	if s.StateDirIDTaken(node.StateDirID) {
+		node.StateDirID = state.NewStateDirID()
 	}
 	taken := map[string]bool{}
 	for i := range folder.Nodes {

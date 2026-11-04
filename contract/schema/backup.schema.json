@@ -283,6 +283,20 @@
           "type": "boolean",
           "description": "server only, узел tailscale (контракт 1.1.159, D-142): не сохранять принятые файлы в папку загрузок без вопроса; по умолчанию сохранение включено. Пишется только true; у узла подписки поля нет; в конфиг не идёт."
         },
+        "state_dir_id": {
+          "type": "string",
+          "description": "server only, узел tailscale (контракт 1.1.160, D-143): имя каталога состояния узла. Нет поля — каталог по финальному тегу. Перед использованием очищается, как тег."
+        },
+        "taildrop_double_copy": {
+          "type": "object",
+          "description": "Поддержка: launcher (контракт 1.1.160, D-143): устройство двойного копирования; нет поля — никуда. LxBox игнорирует молча.",
+          "required": ["peer_id"],
+          "additionalProperties": true,
+          "properties": {
+            "peer_id": { "type": "string" },
+            "peer_name": { "type": "string" }
+          }
+        },
         "skip_presets": {
           "type": "boolean",
           "deprecated": true,
@@ -704,6 +718,20 @@
         "disable_taildrop_autosave": {
           "type": "boolean",
           "description": "server only, узел tailscale (контракт 1.1.159, D-142): не сохранять принятые файлы в папку загрузок без вопроса; по умолчанию сохранение включено. Пишется только true; у узла подписки поля нет; в конфиг не идёт."
+        },
+        "state_dir_id": {
+          "type": "string",
+          "description": "server only, узел tailscale (контракт 1.1.160, D-143): имя каталога состояния узла. Нет поля — каталог по финальному тегу. Перед использованием очищается, как тег."
+        },
+        "taildrop_double_copy": {
+          "type": "object",
+          "description": "Поддержка: launcher (контракт 1.1.160, D-143): устройство двойного копирования; нет поля — никуда. LxBox игнорирует молча.",
+          "required": ["peer_id"],
+          "additionalProperties": true,
+          "properties": {
+            "peer_id": { "type": "string" },
+            "peer_name": { "type": "string" }
+          }
         },
         "skip_presets": {
           "type": "boolean",

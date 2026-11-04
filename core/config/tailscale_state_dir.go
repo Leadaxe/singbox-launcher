@@ -12,12 +12,10 @@
 //
 // Отсюда две обязанности, которых у эмиссии нет:
 //
-//   - узел ПЕРЕИМЕНОВАЛИ (или перенесли в папку с другой тег-политикой) —
-//     каталог обязан переехать вместе с ним, а не осиротеть: иначе узел с
-//     прежним ключом смотрит в пустой каталог и просит новый логин;
-//   - узел УДАЛИЛИ — каталог обязан уйти следом, иначе у пользователя
-//     копится кладбище состояний мёртвых узлов, и повторно заведённый узел
-//     с тем же тегом молча подхватывает чужую идентичность.
+//   - узел ПЕРЕИМЕНОВАЛИ (или перенесли в папку с другой тег-политикой): каталог
+//     остаётся на месте, имя держит параметр записи `state_dir_id` (SPEC 179);
+//   - узел УДАЛИЛИ — каталог обязан уйти следом, иначе в корне копится кладбище
+//     состояний мёртвых узлов.
 //
 // GC на сборке — страховка от третьего случая: путей, которыми узел исчезает
 // или меняет имя, больше одного (Save окна, импорт бэкапа, fetch подписки,
@@ -54,6 +52,28 @@ import (
 // для уборки: разойдись они на один символ — GC снёс бы живое состояние.
 func TailscaleStateDirName(finalTag string) string {
 	return sanitizeStateDirName(finalTag)
+}
+
+// TailscaleStateDirNameFor — имя каталога узла: параметр записи `state_dir_id`,
+// а без него — по финальному тегу. Значение приходит и из бэкапа, поэтому
+// всегда проходит очистку: путь за пределы корня из него не собрать.
+func TailscaleStateDirNameFor(stateDirID, finalTag string) string {
+	if id := strings.TrimSpace(stateDirID); id != "" {
+		return sanitizeStateDirName(id)
+	}
+	return TailscaleStateDirName(finalTag)
+}
+
+// SeedTailscaleStateDir ставит новому узлу tailnet случайное имя каталога.
+// Явный `state_directory` в теле и уже стоящее имя не трогает.
+func SeedTailscaleStateDir(n *state.Node) {
+	if n == nil || n.StateDirID != "" || n.Kind != state.SourceKindServer || len(n.Body) == 0 {
+		return
+	}
+	if !bodyIsTailscale(n.Body) || tailscaleRawBodyHasExplicitStateDir(n.Body) {
+		return
+	}
+	n.StateDirID = state.NewStateDirID()
 }
 
 // tailscaleStateDirPath — абсолютный путь каталога состояния ВНУТРИ корня.
@@ -107,38 +127,6 @@ func RemoveTailscaleStateDir(name string) {
 		return
 	}
 	debuglog.InfoLog("tailscale state dir: removed %q (node deleted)", p)
-}
-
-// RenameTailscaleStateDir переносит каталог состояния со старого имени на
-// новое (норма 2): идентичность устройства (tailscaled.state, ключ) едет
-// вместе с узлом.
-//
-// Три случая ничего-не-делать:
-//
-//   - имена совпали — финальный тег не изменился;
-//   - старого каталога нет — узел ни разу не поднимался, переносить нечего;
-//   - новый каталог УЖЕ есть — там чужое состояние (одноимённый узел был и
-//     логинился). Затирать его переименованием нельзя: пропала бы ЧУЖАЯ
-//     идентичность. Оставляем оба и предупреждаем — разбирается пользователь.
-func RenameTailscaleStateDir(oldName, newName string) {
-	oldPath := tailscaleStateDirPath(oldName)
-	newPath := tailscaleStateDirPath(newName)
-	if oldPath == "" || newPath == "" || oldPath == newPath {
-		return
-	}
-	if _, err := os.Stat(oldPath); err != nil {
-		return
-	}
-	if _, err := os.Stat(newPath); err == nil {
-		debuglog.WarnLog("tailscale state dir: %q already exists — keeping both, %q not moved",
-			newPath, oldPath)
-		return
-	}
-	if err := os.Rename(oldPath, newPath); err != nil {
-		debuglog.WarnLog("tailscale state dir: failed to rename %q → %q: %v", oldPath, newPath, err)
-		return
-	}
-	debuglog.InfoLog("tailscale state dir: renamed %q → %q (node tag changed)", oldPath, newPath)
 }
 
 // GCTailscaleStateDirs сносит каталоги под корнем, которых нет в ОЖИДАЕМОМ
@@ -225,7 +213,7 @@ func CollectTailscaleStateDirNames(parserConfig *ParserConfig, emitted []*Parsed
 			// наборе ему не нужно, каталога под корнем у него нет.
 			continue
 		}
-		names[TailscaleStateDirName(n.Tag)] = true
+		names[TailscaleStateDirNameFor(n.StateDirID, n.Tag)] = true
 	}
 
 	// 2. Все ХРАНИМЫЕ узлы канона — включая выключенные и снятые гейтом.
@@ -245,7 +233,7 @@ func CollectTailscaleStateDirNames(parserConfig *ParserConfig, emitted []*Parsed
 			if tailscaleRawBodyHasExplicitStateDir(cn.Body) {
 				continue
 			}
-			names[TailscaleStateDirName(canonicalStateDirTag(cs, cn))] = true
+			names[TailscaleStateDirNameFor(cn.StateDirID, canonicalStateDirTag(cs, cn))] = true
 		}
 	}
 	return names, true

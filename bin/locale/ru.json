@@ -6047,9 +6047,6 @@
   "%s sent to %s.": {
     "value": "%s отправлен на %s."
   },
-  "Save to Downloads automatically": {
-    "value": "Сохранять в «Загрузки» автоматически"
-  },
   "File received": {
     "value": "Файл получен"
   },
@@ -6083,11 +6080,29 @@
   "Send text…": {
     "value": "Отправить текст…"
   },
-  "Accept clipboard": {
-    "value": "Принимать буфер обмена"
+  "Accept clipboard and links from my devices": {
+    "value": "Принимать буфер и ссылки от своих устройств"
   },
-  "Accept links": {
-    "value": "Принимать ссылки"
+  "Save received files to Downloads": {
+    "value": "Сохранять принятые файлы в Downloads"
+  },
+  "Send double copy to": {
+    "value": "Двойное копирование на"
+  },
+  "Not selected": {
+    "value": "Не выбрано"
+  },
+  "%s sent text for the clipboard. To accept it, turn on Accept clipboard and links in the Taildrop settings of the node.": {
+    "value": "%s прислал текст для буфера обмена. Чтобы принимать его, включите приём буфера и ссылок в настройках Taildrop узла."
+  },
+  "%s sent a link. To accept it, turn on Accept clipboard and links in the Taildrop settings of the node.": {
+    "value": "%s прислал ссылку. Чтобы принимать её, включите приём буфера и ссылок в настройках Taildrop узла."
+  },
+  "Clipboard not accepted": {
+    "value": "Буфер обмена не принят"
+  },
+  "Link not opened": {
+    "value": "Ссылка не открыта"
   },
   "Sending to %s…": {
     "value": "Отправка на %s…"
@@ -6115,9 +6130,6 @@
   },
   "The text is not valid UTF-8.": {
     "value": "Текст не в UTF-8."
-  },
-  "Send double copy here": {
-    "value": "Слать сюда двойное копирование"
   },
   "Not sent": {
     "value": "Не отправлено"

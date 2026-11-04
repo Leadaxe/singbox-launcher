@@ -100,6 +100,26 @@ func SetBodyTopLevelString(body []byte, key, value string) ([]byte, error) {
 
 // findOwnTailscaleNode — свой узел tailscale с финальным тегом finalTag.
 func findOwnTailscaleNode(s *state.State, finalTag string) *state.Node {
+	for _, own := range ownTailscaleNodes(s) {
+		if own.tag == finalTag {
+			return own.node
+		}
+	}
+	return nil
+}
+
+// ownTailscaleNode — свой узел tailnet профиля и его финальный тег.
+type ownTailscaleNode struct {
+	tag  string
+	node *state.Node
+}
+
+// ownTailscaleNodes — свои узлы tailnet профиля: корневые и члены папок. У узла
+// подписки записи нет, он сюда не входит.
+func ownTailscaleNodes(s *state.State) []ownTailscaleNode {
+	if s == nil {
+		return nil
+	}
 	isTailscale := func(n *state.Node) bool {
 		if n.Kind != state.SourceKindServer || len(n.Body) == 0 {
 			return false
@@ -109,24 +129,24 @@ func findOwnTailscaleNode(s *state.State, finalTag string) *state.Node {
 		}
 		return json.Unmarshal(n.Body, &head) == nil && head.Type == "tailscale"
 	}
+	var out []ownTailscaleNode
 	for i := range s.Sources {
 		src := &s.Sources[i]
 		switch src.Kind {
 		case state.SourceKindServer:
-			if strings.TrimSpace(src.Tag) == finalTag && isTailscale(&src.Node) {
-				return &src.Node
+			if isTailscale(&src.Node) {
+				out = append(out, ownTailscaleNode{tag: strings.TrimSpace(src.Tag), node: &src.Node})
 			}
 		case state.SourceKindFolder:
 			for j := range src.Nodes {
 				n := &src.Nodes[j]
-				final, ok := state.NodeLinkFinalTag(src.TagPolicy, n.Tag)
-				if ok && final == finalTag && isTailscale(n) {
-					return n
+				if final, ok := state.NodeLinkFinalTag(src.TagPolicy, n.Tag); ok && isTailscale(n) {
+					out = append(out, ownTailscaleNode{tag: final, node: n})
 				}
 			}
 		}
 	}
-	return nil
+	return out
 }
 
 // tailscaleExitStatePath — state.json профиля, в чей узел пишется выбор:

@@ -111,7 +111,7 @@ func DeleteFolder(st *state.State, ref string, withNodes bool) (*DeleteFolderRes
 		res.NodesRemoved = append(res.NodesRemoved, n.Tag)
 		res.LinksRemoved = append(res.LinksRemoved, dropNodeLinks(st, state.NodeLink{FolderID: fid, Tag: n.Tag})...)
 		if isTailscaleNode(n) {
-			res.TailscaleStateDirs = append(res.TailscaleStateDirs, config.TailscaleStateDirName(folder.TagPolicy.FinalTag(n.Tag)))
+			res.TailscaleStateDirs = append(res.TailscaleStateDirs, config.TailscaleStateDirNameFor(n.StateDirID, folder.TagPolicy.FinalTag(n.Tag)))
 		}
 	}
 	if folder.Replace != nil {

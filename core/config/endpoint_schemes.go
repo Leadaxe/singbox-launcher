@@ -109,7 +109,7 @@ func applyTailscaleStateDirectory(endpoint map[string]interface{}, scheme, tag, 
 // в config.json, с их значениями: те же подстановка и гейт ядра, что у сборки,
 // минус то, что в теле уже есть. Код общий, поэтому вкладка JSON не разойдётся
 // со сборкой. Тело не меняется.
-func TailscaleBuildAdditions(body map[string]interface{}, scheme, tag, remoteRoot string) map[string]interface{} {
+func TailscaleBuildAdditions(body map[string]interface{}, scheme, tag, stateDirID, remoteRoot string) map[string]interface{} {
 	if scheme != SchemeTailscale {
 		return nil
 	}
@@ -117,7 +117,7 @@ func TailscaleBuildAdditions(body map[string]interface{}, scheme, tag, remoteRoo
 	for k, v := range body {
 		emitted[k] = v
 	}
-	applyTailscaleStateDirectory(emitted, scheme, tag, remoteRoot)
+	applyTailscaleStateDirectory(emitted, scheme, TailscaleStateDirNameFor(stateDirID, tag), remoteRoot)
 	if raw, err := json.Marshal(emitted); err == nil {
 		if gated, changed := gateBodyForCore(scheme, tag, raw); changed {
 			var out map[string]interface{}

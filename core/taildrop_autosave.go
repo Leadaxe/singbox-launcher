@@ -1,12 +1,10 @@
 // File taildrop_autosave.go — сохранение файлов Taildrop в ~/Downloads
-// (SPEC 175): по кнопке Save и автоматически у узлов с галкой «Save to
-// Downloads automatically» (§3.4). Тот же фоновый поток разбирает служебные
+// (SPEC 175): по кнопке Save и автоматически, если узел этого не выключил. Тот же фоновый поток разбирает служебные
 // файлы своего ядра и уведомляет о принятых (SPEC 176).
 //
-// Подписка на входящие узла живёт всё время, пока ядро его машины работает,
-// — не только при открытом окне. Галка — настройка этого
-// компьютера (settings.json), в бэкап не идёт. Имена файлов и устройств в
-// журнал не пишутся (SPEC 148 §3).
+// Подписка на входящие узла живёт всё время, пока ядро его может обслуживать, —
+// не только при открытом окне. Настройка автосохранения — поле записи узла
+// (SPEC 179). Имена файлов и устройств в журнал не пишутся (SPEC 148 §3).
 package core
 
 import (
@@ -78,54 +76,18 @@ func createFreeFile(dir, name string) (*os.File, string, error) {
 	return nil, "", fmt.Errorf("no free file name for %s in %s", base, dir)
 }
 
-func taildropAutoSaveEntry(t TailscaleTarget, tag string) locale.TaildropAutoSaveEntry {
-	e := locale.TaildropAutoSaveEntry{Tag: tag}
-	if t.Scope == services.ScopeRemote {
-		e.MachineID = t.MachineID
-	}
-	return e
-}
-
-// TaildropAutoSaveEnabled — стоит ли галка автосохранения у узла.
-func (ac *AppController) TaildropAutoSaveEnabled(t TailscaleTarget, tag string) bool {
-	want := taildropAutoSaveEntry(t, tag)
-	for _, e := range locale.LoadSettings(ac.FileService.Layout.Data.Bin()).TaildropAutoSave {
-		if e == want {
-			return true
-		}
-	}
-	return false
-}
-
-// SetTaildropAutoSave ставит или снимает галку и сразу применяет её.
-func (ac *AppController) SetTaildropAutoSave(t TailscaleTarget, tag string, on bool) error {
-	binDir := ac.FileService.Layout.Data.Bin()
-	st := locale.LoadSettings(binDir)
-	want := taildropAutoSaveEntry(t, tag)
-	kept := st.TaildropAutoSave[:0]
-	for _, e := range st.TaildropAutoSave {
-		if e != want {
-			kept = append(kept, e)
-		}
-	}
-	if on {
-		kept = append(kept, want)
-	}
-	st.TaildropAutoSave = kept
-	if err := locale.SaveSettings(binDir, st); err != nil {
-		return err
-	}
-	ac.taildropAutoSave.kick()
-	return nil
+// taildropWatchKey — узел подписки: машина (пусто — своё ядро) и финальный тег.
+type taildropWatchKey struct {
+	MachineID string
+	Tag       string
 }
 
 // taildropAutoSaver — фоновые подписки на входящие по узлам: автосохранение
-// (галка узла, любая машина) и служебные файлы с уведомлением о принятых
-// (все узлы своего ядра, SPEC 176). Одна подписка на узел.
+// (настройка записи узла, любая машина) и служебные файлы с уведомлением о
+// принятых (все узлы своего ядра, SPEC 176, 179). Одна подписка на узел.
 type taildropAutoSaver struct {
 	mu     sync.Mutex
-	active map[locale.TaildropAutoSaveEntry]*taildropAutoSaveSub
-	wake   chan struct{}
+	active map[taildropWatchKey]*taildropAutoSaveSub
 }
 
 // taildropWatchFlags — что подписка узла делает с кадром.
@@ -143,16 +105,6 @@ type taildropAutoSaveSub struct {
 	flags  taildropWatchFlags
 }
 
-func (s *taildropAutoSaver) kick() {
-	if s.wake == nil {
-		return
-	}
-	select {
-	case s.wake <- struct{}{}:
-	default:
-	}
-}
-
 // taildropAutoSaveTick — как часто сверяются узлы с работающими ядрами.
 const taildropAutoSaveTick = 5 * time.Second
 
@@ -161,8 +113,7 @@ const taildropAutoSaveTick = 5 * time.Second
 func (ac *AppController) startTaildropAutoSave() {
 	s := &ac.taildropAutoSave
 	s.mu.Lock()
-	s.active = map[locale.TaildropAutoSaveEntry]*taildropAutoSaveSub{}
-	s.wake = make(chan struct{}, 1)
+	s.active = map[taildropWatchKey]*taildropAutoSaveSub{}
 	s.mu.Unlock()
 	t := time.NewTicker(taildropAutoSaveTick)
 	defer t.Stop()
@@ -172,12 +123,11 @@ func (ac *AppController) startTaildropAutoSave() {
 		case <-ac.ctx.Done():
 			return
 		case <-t.C:
-		case <-s.wake:
 		}
 	}
 }
 
-func taildropEntryTarget(e locale.TaildropAutoSaveEntry) TailscaleTarget {
+func taildropEntryTarget(e taildropWatchKey) TailscaleTarget {
 	if e.MachineID != "" {
 		return TailscaleTarget{Scope: services.ScopeRemote, MachineID: e.MachineID}
 	}
@@ -186,19 +136,35 @@ func taildropEntryTarget(e locale.TaildropAutoSaveEntry) TailscaleTarget {
 
 func (ac *AppController) reconcileTaildropAutoSave() {
 	s := &ac.taildropAutoSave
-	want := map[locale.TaildropAutoSaveEntry]taildropWatchFlags{}
+	want := map[taildropWatchKey]taildropWatchFlags{}
+	local := TailscaleTarget{Scope: services.ScopeLocal}
 	for _, tag := range ac.taildropServiceTags() {
-		e := locale.TaildropAutoSaveEntry{Tag: tag}
-		f := want[e]
-		f.local = true
-		want[e] = f
+		record := ac.taildropNodeRecord(local, tag)
+		want[taildropWatchKey{Tag: tag}] = taildropWatchFlags{
+			local:    true,
+			autoSave: record == nil || !record.DisableTaildropAutosave,
+		}
 	}
-	for _, e := range locale.LoadSettings(ac.FileService.Layout.Data.Bin()).TaildropAutoSave {
-		target := taildropEntryTarget(e)
-		if ac.TaildropAvailable(target) && ac.TailscaleCoreRunning(target) {
-			f := want[e]
-			f.autoSave = true
-			want[e] = f
+	// Удалённые машины: узлы с разрешённым Taildrop и включённым сохранением,
+	// пока лаунчер подключён к работающему ядру машины.
+	machines, err := services.NewRemoteRegistry(ac.FileService.Layout.Data).List()
+	if err != nil {
+		debuglog.DebugLog("taildrop: machines not listed: %v", err)
+	}
+	for _, m := range machines {
+		target := TailscaleTarget{Scope: services.ScopeRemote, MachineID: m.ID}
+		checked, up := false, false
+		for _, own := range ownTailscaleNodes(ac.taildropProfile(m.ID)) {
+			if own.node.DisableTaildropAutosave || !taildropAllowedBody(own.node.Body) {
+				continue
+			}
+			if !checked {
+				checked = true
+				up = ac.TaildropAvailable(target) && ac.TailscaleCoreRunning(target)
+			}
+			if up {
+				want[taildropWatchKey{MachineID: m.ID, Tag: own.tag}] = taildropWatchFlags{autoSave: true}
+			}
 		}
 	}
 	s.mu.Lock()
@@ -235,7 +201,7 @@ type taildropWatchState struct {
 
 // runTaildropAutoSave — подписка одного узла. Обрыв — снятие из active,
 // следующая сверка поднимет её заново.
-func (ac *AppController) runTaildropAutoSave(ctx context.Context, e locale.TaildropAutoSaveEntry, sub *taildropAutoSaveSub) {
+func (ac *AppController) runTaildropAutoSave(ctx context.Context, e taildropWatchKey, sub *taildropAutoSaveSub) {
 	target := taildropEntryTarget(e)
 	frames := make(chan services.TaildropInbox, 1)
 	go func() {

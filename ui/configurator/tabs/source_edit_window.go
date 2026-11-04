@@ -21,6 +21,7 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
@@ -387,7 +388,7 @@ func mergeEditedSourceIntoModel(
 	// До записи снимка: состав берётся из ЖИВОЙ записи (edited.Nodes уже
 	// равен live.Nodes выше), а старая политика читается только пока она в
 	// модели.
-	wizardbusiness.RenameTailscaleStateDirsForTagPolicy(live, live.TagPolicy, edited.TagPolicy)
+	wizardbusiness.FreezeTailscaleStateDirsForTagPolicy(live, live.TagPolicy, edited.TagPolicy)
 	// Свёртка до правки: после записи снимка прежнего тега взять негде.
 	replaceBefore := live.Replace
 	m.Sources[sourceIndex] = *edited
@@ -1264,7 +1265,10 @@ func showSourceEditWindowAt(
 	// Блок роли Tailscale (source_tailscale_edit.go, SPEC 157). В отличие от
 	// обфускации detour ему не мешает: выход в tailnet — свойство самого
 	// узла, а не его транспорта.
-	tsUI := newTailscaleBlock(func() *wizardmodels.Node { return &scratch.Node }, win, func() {
+	tsUI := newTailscaleBlock(func() *wizardmodels.Node { return &scratch.Node }, win, func() ([]corestate.TaildropPeer, bool) {
+		return presenter.TaildropDoubleCopyChoices(
+			wizardbusiness.TailscaleNodeFinalTag(presenter.Model(), containerIDAtOpen, nodeTagAtOpen))
+	}, func() {
 		if refreshJSONAfterOriginRegen != nil {
 			refreshJSONAfterOriginRegen()
 		}
@@ -2271,7 +2275,7 @@ func showSourceEditWindowAt(
 				text = buf.String()
 			}
 			status := locale.T("The outbound as it will reach the config.")
-			adds := tailscaleBuildAdditionsJSON(scratch.Body, scratch.NodeTagOrLabel(), wizardbusiness.TailscaleRemoteRootOf(presenter.Model()))
+			adds := tailscaleBuildAdditionsJSON(scratch.Body, scratch.NodeTagOrLabel(), scratch.StateDirID, wizardbusiness.TailscaleRemoteRootOf(presenter.Model()))
 			if adds != "" {
 				status = locale.T("The node as stored. The build adds the fields below to the config.")
 			}
@@ -2545,6 +2549,13 @@ func showSourceEditWindowAt(
 			if renamed {
 				dereferenced = wizardbusiness.DereferenceNodeOrigin(&scratch.Node)
 			}
+			// SPEC 179, норма 2: до записи в модель — параметр каталога едет в той же
+			// записи. Контейнер обеих сторон один: переименование состава не меняет.
+			if renamed {
+				if c := wizardbusiness.SourceByID(presenter.Model(), containerIDAtOpen); c != nil {
+					wizardbusiness.FreezeTailscaleStateDirForNode(c, nodeTagAtOpen, c, &scratch.Node)
+				}
+			}
 			applyNodeEditToModel(presenter, guiState, presenter.Model(), nodeLink, &scratch)
 			// Переименование узла контейнера живёт ТОЛЬКО здесь: своей
 			// команды Rename у списка узлов нет (обкатка заход 3), окно узла
@@ -2553,13 +2564,6 @@ func showSourceEditWindowAt(
 			// гасит их вслепую — узел никуда не делся, у него сменилось имя.
 			if renamed {
 				if mm := presenter.Model(); mm != nil {
-					// SPEC 122 норма 2: каталог состояния tailnet едет за
-					// новым тегом. Контейнер обеих сторон один и тот же —
-					// переименование состава не меняет.
-					if c := wizardbusiness.SourceByID(mm, containerIDAtOpen); c != nil {
-						wizardbusiness.RenameTailscaleStateDirForNode(
-							c, nodeTagAtOpen, c, &scratch.Node)
-					}
 					affected = wizardbusiness.RepointContainerNodeLinks(mm, containerIDAtOpen, nodeTagAtOpen, newTag)
 					repointed = true
 				}
@@ -2577,12 +2581,10 @@ func showSourceEditWindowAt(
 					"tag %q is already taken — directions, nodes and service outbounds share one namespace", newRootTag)), win)
 				return
 			}
-			// SPEC 122 норма 2 для КОРНЕВОГО узла: тег-политики у корня нет,
-			// финальный тег = сырой, и переезд каталога считается по паре
-			// «имя при открытии → имя в форме». До записи в модель: после неё
-			// прежнего имени взять уже негде.
+			// SPEC 179, норма 2 для КОРНЕВОГО узла: тег-политики у корня нет, финальный
+			// тег = сырой. До записи в модель: параметр каталога едет в той же записи.
 			if nodeIdentityOwner && nodeTagAtOpen != "" {
-				wizardbusiness.RenameTailscaleStateDirForNode(nil, nodeTagAtOpen, nil, &scratch.Node)
+				wizardbusiness.FreezeTailscaleStateDirForNode(nil, nodeTagAtOpen, nil, &scratch.Node)
 			}
 			applySourceEditToModel(presenter, guiState, presenter.Model(), sourceIndex, &scratch, enabledEdits)
 			// Верхний узел переименован — ссылки идут за ним тем же путём, что

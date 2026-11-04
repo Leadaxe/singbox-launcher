@@ -302,6 +302,9 @@ type CanonicalNode struct {
 	Service bool
 	// Record — поля записи узла (D-134); у узла подписки всегда нули.
 	Record NodeRecordFlags
+	// StateDirID — имя каталога tailnet из записи узла (контракт 1.1.160); у
+	// узла подписки пусто.
+	StateDirID string
 	// Authored — тело авторское (контракт 1.1.87, PARSING_PRINCIPLES
 	// §10.1). Считает state (state.Node.Authored): контейнер известен
 	// только ему.
@@ -795,6 +798,9 @@ type ParsedNode struct {
 	// Record — поля записи узла (skip_tailscale_presets, allow_*; D-134),
 	// которые пресеты с for_each_node* читают как @node.<поле>.
 	Record NodeRecordFlags
+	// StateDirID — имя каталога tailnet из записи узла (контракт 1.1.160); у
+	// узла подписки пусто.
+	StateDirID string
 	// Chain is the ordered detour path from the nearest hop outwards
 	// (SPEC 094 B1). Empty means the node dials directly.
 	//

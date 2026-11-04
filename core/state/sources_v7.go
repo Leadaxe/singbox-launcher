@@ -13,6 +13,7 @@
 package state
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -181,6 +182,46 @@ const (
 	AutoGroupURLTest  = "urltest"
 )
 
+// TaildropPeer — устройство tailnet в настройке узла: ключ — stable ID пира,
+// имя — только подпись на случай, когда статуса нет.
+type TaildropPeer struct {
+	PeerID   string `json:"peer_id"`
+	PeerName string `json:"peer_name,omitempty"`
+}
+
+// NewStateDirID — случайное имя каталога tailnet для нового узла.
+func NewStateDirID() string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	var raw [6]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		// Без случайности поле не ставится вызывающим: каталог останется по тегу.
+		return ""
+	}
+	out := make([]byte, len(raw))
+	for i, b := range raw {
+		out[i] = alphabet[int(b)%len(alphabet)]
+	}
+	return "ts-" + string(out)
+}
+
+// StateDirIDTaken — занято ли имя каталога другим узлом состояния.
+func (s *State) StateDirIDTaken(id string) bool {
+	if s == nil || id == "" {
+		return false
+	}
+	for i := range s.Sources {
+		if s.Sources[i].StateDirID == id {
+			return true
+		}
+		for j := range s.Sources[i].Nodes {
+			if s.Sources[i].Nodes[j].StateDirID == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Node — узел: kind ∈ {server, chain, auto, unsupported}. Живёт в корне
 // sources[] (через embedded в Source) и в Folder.Nodes; kind=unsupported —
 // только в контейнере.
@@ -249,6 +290,13 @@ type Node struct {
 	// подписки поля не ставятся и не читаются. Хранится только true
 	// (omitempty): отсутствие равно false.
 	configtypes.NodeRecordFlags
+	// StateDirID — имя каталога состояния tailnet (контракт 1.1.160, SPEC 179).
+	// Пусто — каталог по финальному тегу: так живут узлы, заведённые раньше,
+	// пока их не переименуют.
+	StateDirID string `json:"state_dir_id,omitempty"`
+	// TaildropDoubleCopy — устройство, куда уходит двойное копирование (контракт
+	// 1.1.160, SPEC 179). nil — никуда.
+	TaildropDoubleCopy *TaildropPeer `json:"taildrop_double_copy,omitempty"`
 	// LegacySkipPresets — ключ `skip_presets` до 1.1.126. Только чтение:
 	// загрузка состояния и импорт бэкапа переносят true в
 	// SkipTailscalePresets и обнуляют поле (LiftLegacyRecordFlags), поэтому

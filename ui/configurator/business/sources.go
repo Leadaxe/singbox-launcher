@@ -130,6 +130,7 @@ func AppendURLsToSources(ctx UIUpdater, input string) (AddSourcesResult, error) 
 		}
 		node := parsed.Nodes[i]
 		node.Tag = claimRootTag(strings.TrimSpace(node.Tag))
+		reseedTailscaleStateDir(&node)
 		model.Sources = append(model.Sources, corestate.Source{
 			Node: node,
 			ID:   corestate.MakeULID(),
@@ -174,6 +175,9 @@ func AppendURLsToSources(ctx UIUpdater, input string) (AddSourcesResult, error) 
 				rootTaken[r.Tag+"-auto"] = true
 			}
 			c.Replace = &r
+		}
+		for i := range c.Nodes {
+			reseedTailscaleStateDir(&c.Nodes[i])
 		}
 		model.Sources = append(model.Sources, c)
 		added++

@@ -48,6 +48,7 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/nodeflow"
 	"singbox-launcher/core/config/registry"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/nodewarn"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -124,7 +125,7 @@ func tailscaleEditableNode(node *wizardmodels.Node) bool {
 // tailscaleBuildAdditionsJSON — поля, которые сборка допишет к телу узла
 // Tailscale, текстом для вкладки JSON: сама вкладка показывает хранимое тело.
 // Не Tailscale или дописывать нечего — пусто.
-func tailscaleBuildAdditionsJSON(body []byte, tag, remoteRoot string) string {
+func tailscaleBuildAdditionsJSON(body []byte, tag, stateDirID, remoteRoot string) string {
 	var ob map[string]interface{}
 	if err := json.Unmarshal(body, &ob); err != nil {
 		return ""
@@ -133,7 +134,7 @@ func tailscaleBuildAdditionsJSON(body []byte, tag, remoteRoot string) string {
 	if scheme == "" {
 		return ""
 	}
-	adds := config.TailscaleBuildAdditions(ob, scheme, tag, remoteRoot)
+	adds := config.TailscaleBuildAdditions(ob, scheme, tag, stateDirID, remoteRoot)
 	if len(adds) == 0 {
 		return ""
 	}
@@ -266,6 +267,16 @@ type tailscaleBlock struct {
 	advExit  *widget.Check
 	exitNode *widget.Entry
 	taildrop *widget.Check
+	// Настройки Taildrop записи узла (SPEC 179): действуют при разрешённом Taildrop.
+	commands   *widget.Check
+	autosave   *widget.Check
+	doubleCopy *widget.Select
+	// doubleCopyRow скрыт, когда жеста нет: удалённая машина, платформа без него.
+	doubleCopyRow fyne.CanvasObject
+	// doubleCopyChoices — устройства работающего узла; ok=false — жеста нет.
+	doubleCopyChoices func() ([]corestate.TaildropPeer, bool)
+	// doubleCopyPeers — подпись варианта выбора → устройство.
+	doubleCopyPeers map[string]corestate.TaildropPeer
 	// exitRow — строка, которую гасит галка «быть выходом».
 	exitRow fyne.CanvasObject
 	// content — всё, что блок добавляет в форму, одним объектом.
@@ -283,9 +294,10 @@ type tailscaleBlock struct {
 func newTailscaleBlock(
 	nodeRef func() *wizardmodels.Node,
 	win fyne.Window,
+	doubleCopyChoices func() ([]corestate.TaildropPeer, bool),
 	onApplied func(),
 ) *tailscaleBlock {
-	b := &tailscaleBlock{}
+	b := &tailscaleBlock{doubleCopyChoices: doubleCopyChoices}
 
 	b.exitNode = widget.NewEntry()
 	b.exitNode.SetPlaceHolder(locale.T("machine name or tailnet IP of the exit node — empty: no exit node"))
@@ -317,7 +329,39 @@ func newTailscaleBlock(
 		commit()
 	})
 
-	b.taildrop = widget.NewCheck(locale.T("Allow Taildrop (send and receive files)"), func(bool) { commit() })
+	b.taildrop = widget.NewCheck(locale.T("Allow Taildrop (send and receive files)"), func(bool) {
+		b.syncTaildrop()
+		commit()
+	})
+	// Настройки записи пишутся в узел рабочей копии мимо тела: в конфиг они не идут.
+	recordEdit := func(apply func(n *wizardmodels.Node)) {
+		if b.syncing {
+			return
+		}
+		node := nodeRef()
+		if node == nil {
+			return
+		}
+		apply(node)
+		if onApplied != nil {
+			onApplied()
+		}
+	}
+	b.commands = widget.NewCheck(locale.T("Accept clipboard and links from my devices"), func(on bool) {
+		recordEdit(func(n *wizardmodels.Node) { n.DisableTaildropCommands = !on })
+	})
+	b.autosave = widget.NewCheck(locale.T("Save received files to Downloads"), func(on bool) {
+		recordEdit(func(n *wizardmodels.Node) { n.DisableTaildropAutosave = !on })
+	})
+	b.doubleCopy = widget.NewSelect(nil, func(choice string) {
+		recordEdit(func(n *wizardmodels.Node) {
+			n.TaildropDoubleCopy = nil
+			if peer, ok := b.doubleCopyPeers[choice]; ok {
+				n.TaildropDoubleCopy = &peer
+			}
+		})
+	})
+	b.doubleCopyRow = container.NewBorder(nil, nil, widget.NewLabel(locale.T("Send double copy to")), nil, b.doubleCopy)
 
 	note := widget.NewLabel(locale.T(tailscaleBlockNoteText))
 	note.Wrapping = fyne.TextWrapWord
@@ -331,6 +375,9 @@ func newTailscaleBlock(
 		b.advExit,
 		b.exitRow,
 		b.taildrop,
+		b.commands,
+		b.autosave,
+		b.doubleCopyRow,
 		note,
 	)
 	return b
@@ -353,8 +400,71 @@ func (b *tailscaleBlock) load(node *wizardmodels.Node) {
 	b.advExit.SetChecked(r.AdvertiseExit)
 	b.exitNode.SetText(r.ExitNode)
 	b.taildrop.SetChecked(r.AllowTaildrop)
+	if node != nil {
+		b.commands.SetChecked(!node.DisableTaildropCommands)
+		b.autosave.SetChecked(!node.DisableTaildropAutosave)
+		b.loadDoubleCopy(node.TaildropDoubleCopy)
+	}
 	b.syncing = false
 	b.syncExitRole()
+	b.syncTaildrop()
+}
+
+// loadDoubleCopy заполняет выбор устройства: устройства статуса и уже выбранное,
+// которого в статусе нет (ядро не запущено). Зовётся при поднятом syncing.
+func (b *tailscaleBlock) loadDoubleCopy(current *corestate.TaildropPeer) {
+	var peers []corestate.TaildropPeer
+	supported := false
+	if b.doubleCopyChoices != nil {
+		peers, supported = b.doubleCopyChoices()
+	}
+	if !supported {
+		b.doubleCopyRow.Hide()
+		return
+	}
+	b.doubleCopyRow.Show()
+	none := locale.T("Not selected")
+	options := []string{none}
+	b.doubleCopyPeers = map[string]corestate.TaildropPeer{}
+	selected := none
+	add := func(p corestate.TaildropPeer) {
+		label := p.PeerName
+		if label == "" {
+			label = p.PeerID
+		}
+		if _, dup := b.doubleCopyPeers[label]; dup {
+			label += " (" + p.PeerID + ")"
+		}
+		b.doubleCopyPeers[label] = p
+		options = append(options, label)
+		if current != nil && current.PeerID == p.PeerID {
+			selected = label
+		}
+	}
+	found := false
+	for _, p := range peers {
+		add(p)
+		found = found || (current != nil && current.PeerID == p.PeerID)
+	}
+	if current != nil && !found {
+		add(*current)
+	}
+	b.doubleCopy.SetOptions(options)
+	b.doubleCopy.SetSelected(selected)
+}
+
+// syncTaildrop — настройки действуют только при разрешённом Taildrop.
+func (b *tailscaleBlock) syncTaildrop() {
+	for _, set := range []interface {
+		Enable()
+		Disable()
+	}{b.commands, b.autosave, b.doubleCopy} {
+		if b.taildrop.Checked {
+			set.Enable()
+		} else {
+			set.Disable()
+		}
+	}
 }
 
 // syncExitRole гасит строку чужого выхода, пока узел сам анонсируется

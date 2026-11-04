@@ -33,6 +33,7 @@ import (
 	"fyne.io/fyne/v2"
 
 	"singbox-launcher/core"
+	corestate "singbox-launcher/core/state"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -98,6 +99,19 @@ func (p *WizardPresenter) ConfigServiceAdapter() wizardbusiness.ConfigService {
 		}
 	}
 	return adapter
+}
+
+// TaildropDoubleCopyChoices — устройства для двойного копирования у узла этой
+// цели. ok=false — жеста нет: удалённая машина или платформа без него.
+func (p *WizardPresenter) TaildropDoubleCopyChoices(finalTag string) ([]corestate.TaildropPeer, bool) {
+	if m := p.Model(); m == nil || m.Target.IsRemote() || !core.TaildropDoubleCopySupported() {
+		return nil, false
+	}
+	ac := p.Controller()
+	if ac == nil {
+		return nil, true
+	}
+	return ac.TaildropDoubleCopyChoices(finalTag), true
 }
 
 // Controller возвращает AppController.

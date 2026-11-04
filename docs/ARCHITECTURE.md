@@ -1179,7 +1179,7 @@ the service layer and core v1.14.2-lx.2 land). Linux and Win7 (`windows/386`,
 client and the remote-machine code are untagged. The daemon protobuf stubs are
 vendored from the fork via `scripts/sync_daemonpb.sh`.
 
-**Taildrop (SPEC 175, 176).** Files of a Tailscale node go over the same gRPC
+**Taildrop (SPEC 175, 176, 179).** Files of a Tailscale node go over the same gRPC
 (`SubscribeTaildropInbox`, `SendTaildropFiles`, `DownloadTaildropFile`,
 `DeleteTaildropFile`): `core/services/taildrop.go` holds the RPC code shared by
 the local daemon and remote machines, `core/taildrop.go` picks the source by
@@ -1187,10 +1187,20 @@ the local daemon and remote machines, `core/taildrop.go` picks the source by
 (`core/taildrop_autosave.go`) runs while that node's core runs: for every node
 of this computer's core it handles service files first
 (`core/taildrop_service.go`, codec `core/services/taildrop_service.go`,
-constants from `contract/registry/service_files.json`) — runs permitted
-clipboard / open_url commands and always deletes the file — then saves ordinary
-files to Downloads (auto-save checkbox, any machine) or notifies about them.
-Permissions and the auto-save checkbox live in `settings.json`, not in backups.
+constants from `contract/registry/service_files.json`) — runs clipboard / open_url
+commands from the user's own devices and always deletes the file — then saves
+ordinary files to Downloads (any machine) or notifies about them.
+
+Taildrop settings are fields of the node record in `state.json` and travel with
+backups: `disable_taildrop_commands`, `disable_taildrop_autosave`,
+`taildrop_double_copy` (one device), read per profile by `taildropProfile`. If
+Taildrop is allowed on a node, commands and auto-save are on by default.
+
+The state directory of a Tailscale node is named by the record field
+`state_dir_id`; without it, by the final tag. New nodes and copies get a random
+name; renaming a node without the field stores the current directory name in it,
+so the directory never moves and the tailnet device stays the same
+(`core/config/tailscale_state_dir.go`, `ui/configurator/business/tailscale_state_dir.go`).
 
 ### 11.2 `ProxyTransport` — the proxy-operation seam
 

@@ -1,6 +1,6 @@
 // File taildrop_double_copy.go — двойное копирование (SPEC 177): текст,
 // скопированный дважды подряд (Cmd+C / Ctrl+C два раза), уходит служебным
-// файлом clipboard на отмеченные устройства tailnet.
+// файлом clipboard на устройство, выбранное в настройках узла (SPEC 179).
 //
 // Жест — действие человека (SERVICE_FILES §7 п.4). Окна показа нет, поэтому
 // содержимое с пометкой чувствительности ОС (пароль из менеджера паролей)
@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2"
 
 	"singbox-launcher/core/services"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
@@ -35,35 +36,26 @@ func TaildropDoubleCopySupported() bool {
 	return ok
 }
 
-// TaildropDoubleCopyEnabled — отмечено ли устройство для двойного копирования.
-func (ac *AppController) TaildropDoubleCopyEnabled(tag string, p services.TailscalePeer) bool {
-	for _, t := range locale.LoadSettings(ac.FileService.Layout.Data.Bin()).TaildropDoubleCopy {
-		if t.Tag == tag && t.PeerID == p.StableID {
-			return true
-		}
-	}
-	return false
+// taildropDoubleCopyTarget — куда уходит жест: узел своего ядра и его устройство.
+type taildropDoubleCopyTarget struct {
+	Tag string
+	state.TaildropPeer
 }
 
-// SetTaildropDoubleCopy отмечает устройство (или снимает отметку).
-func (ac *AppController) SetTaildropDoubleCopy(tag string, p services.TailscalePeer, on bool) error {
-	binDir := ac.FileService.Layout.Data.Bin()
-	st := locale.LoadSettings(binDir)
-	kept := st.TaildropDoubleCopy[:0]
-	for _, t := range st.TaildropDoubleCopy {
-		if t.Tag == tag && t.PeerID == p.StableID {
+// taildropDoubleCopyTargets — узлы с разрешённым Taildrop и выбранным устройством.
+func (ac *AppController) taildropDoubleCopyTargets() []taildropDoubleCopyTarget {
+	var out []taildropDoubleCopyTarget
+	for _, own := range ownTailscaleNodes(ac.taildropProfile("")) {
+		peer := own.node.TaildropDoubleCopy
+		if peer == nil || peer.PeerID == "" || !taildropAllowedBody(own.node.Body) {
 			continue
 		}
-		kept = append(kept, t)
+		out = append(out, taildropDoubleCopyTarget{Tag: own.tag, TaildropPeer: *peer})
 	}
-	if on {
-		kept = append(kept, locale.TaildropDoubleCopyTarget{Tag: tag, PeerID: p.StableID, PeerName: p.HostName})
-	}
-	st.TaildropDoubleCopy = kept
-	return locale.SaveSettings(binDir, st)
+	return out
 }
 
-// startTaildropDoubleCopy — цикл жеста: пока есть отмеченные устройства и
+// startTaildropDoubleCopy — цикл жеста: пока есть выбранные устройства и
 // своё ядро с Taildrop работает, следит за счётчиком буфера.
 func (ac *AppController) startTaildropDoubleCopy() {
 	if !TaildropDoubleCopySupported() {
@@ -77,7 +69,7 @@ func (ac *AppController) startTaildropDoubleCopy() {
 	)
 	for {
 		wait := taildropDoubleCopyIdle
-		targets := locale.LoadSettings(ac.FileService.Layout.Data.Bin()).TaildropDoubleCopy
+		targets := ac.taildropDoubleCopyTargets()
 		local := TailscaleTarget{Scope: services.ScopeLocal}
 		if len(targets) > 0 && ac.TaildropAvailable(local) && ac.TailscaleCoreRunning(local) {
 			wait = taildropDoubleCopyPoll
@@ -128,9 +120,9 @@ func readClipboardForGesture() (string, bool) {
 	return text, false
 }
 
-// sendTaildropDoubleCopy — текст на каждое отмеченное устройство, которое
+// sendTaildropDoubleCopy — текст на выбранное устройство каждого узла, если оно
 // сейчас в сети и принимает файлы; итог — уведомлением.
-func (ac *AppController) sendTaildropDoubleCopy(targets []locale.TaildropDoubleCopyTarget, text string) {
+func (ac *AppController) sendTaildropDoubleCopy(targets []taildropDoubleCopyTarget, text string) {
 	local := TailscaleTarget{Scope: services.ScopeLocal}
 	for _, t := range targets {
 		name := t.PeerName

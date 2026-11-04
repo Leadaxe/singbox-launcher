@@ -1,5 +1,5 @@
 // File taildrop_service.go — служебные файлы Taildrop на этом компьютере
-// (SPEC 176): разрешения по устройствам, разбор кадра входящих своего ядра,
+// (SPEC 176, 179): настройки из записи узла, разбор кадра входящих своего ядра,
 // выполнение clipboard / open_url, отправка текста устройству.
 //
 // Только своё ядро: команда служебного файла — про буфер и браузер ЭТОГО
@@ -10,14 +10,17 @@ package core
 import (
 	"bytes"
 	"context"
-	"errors"
+	"encoding/json"
+	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
 
 	"singbox-launcher/core/services"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
@@ -42,75 +45,100 @@ func (ac *AppController) taildropServiceTags() []string {
 	return src.TailscaleTags()
 }
 
-// TaildropDeviceName — имя устройства для разрешения по имени: DNS-имя без
-// домена (ComputedName ядра — то, что приходит в senderName), иначе HostName.
-func TaildropDeviceName(p services.TailscalePeer) string {
-	if dns := strings.TrimSuffix(p.DNSName, "."); dns != "" {
-		if i := strings.IndexByte(dns, '.'); i > 0 {
-			return dns[:i]
-		}
-		return dns
-	}
-	return p.HostName
+// taildropStateCache — состояние профилей по времени и размеру файла: настройки
+// Taildrop читаются часто, а файл меняется редко.
+type taildropStateCache struct {
+	mu     sync.Mutex
+	byPath map[string]taildropCachedState
 }
 
-// taildropServicePermissionFor — разрешения отправителя файла: по senderID,
-// а при пустом senderID (старое ядро) — по senderName.
-func taildropServicePermissionFor(perms []locale.TaildropServicePermission, senderID, senderName string) locale.TaildropServicePermission {
-	for _, p := range perms {
-		switch {
-		case senderID != "":
-			if p.SenderID == senderID {
-				return p
+type taildropCachedState struct {
+	mod  time.Time
+	size int64
+	st   *state.State
+}
+
+// taildropProfile — состояние профиля (machineID "" — Local) только для чтения;
+// nil, если его нет или оно не читается.
+func (ac *AppController) taildropProfile(machineID string) *state.State {
+	path := tailscaleExitStatePath(ac.FileService.Layout.Data, machineID)
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil
+	}
+	c := &ac.taildropStates
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if got, ok := c.byPath[path]; ok && got.mod.Equal(info.ModTime()) && got.size == info.Size() {
+		return got.st
+	}
+	st, err := state.Load(path)
+	if err != nil {
+		debuglog.DebugLog("taildrop: profile state not read: %v", err)
+		return nil
+	}
+	if c.byPath == nil {
+		c.byPath = map[string]taildropCachedState{}
+	}
+	c.byPath[path] = taildropCachedState{mod: info.ModTime(), size: info.Size(), st: st}
+	return st
+}
+
+// taildropNodeRecord — запись своего узла цели; nil у узла подписки и когда
+// состояние недоступно: действуют умолчания (SERVICE_FILES §5).
+func (ac *AppController) taildropNodeRecord(t TailscaleTarget, tag string) *state.Node {
+	machineID := ""
+	if t.Scope == services.ScopeRemote {
+		machineID = t.MachineID
+	}
+	return findOwnTailscaleNode(ac.taildropProfile(machineID), tag)
+}
+
+// taildropAllowedBody — на узле разрешён Taildrop: явное `disable_taildrop: false`.
+func taildropAllowedBody(body []byte) bool {
+	var head struct {
+		Disable *bool `json:"disable_taildrop"`
+	}
+	return json.Unmarshal(body, &head) == nil && head.Disable != nil && !*head.Disable
+}
+
+// taildropSenderIsOwn — отправитель своё устройство (SERVICE_FILES §5). Ядро
+// пропускает и пира с правом file-send, поэтому sharee отсекается здесь. Нет
+// senderID или пир не найден — не своё.
+func (ac *AppController) taildropSenderIsOwn(t TailscaleTarget, tag, senderID string) bool {
+	if senderID == "" {
+		return false
+	}
+	st, ok := ac.TailscaleStatus(t, tag)
+	if !ok {
+		return false
+	}
+	for _, g := range st.UserGroups {
+		for _, p := range g.Peers {
+			if p.StableID == senderID {
+				return !p.ShareeNode
 			}
-		case senderName != "":
-			if strings.EqualFold(p.SenderName, senderName) {
-				return p
+		}
+	}
+	return false
+}
+
+// TaildropDoubleCopyChoices — устройства для выбора в настройках узла: свои
+// устройства работающего узла своего ядра. Sharee не показываются.
+func (ac *AppController) TaildropDoubleCopyChoices(tag string) []state.TaildropPeer {
+	st, ok := ac.TailscaleStatus(TailscaleTarget{Scope: services.ScopeLocal}, tag)
+	if !ok {
+		return nil
+	}
+	var out []state.TaildropPeer
+	for _, g := range st.UserGroups {
+		for _, p := range g.Peers {
+			if p.StableID != "" && !p.ShareeNode {
+				out = append(out, state.TaildropPeer{PeerID: p.StableID, PeerName: p.HostName})
 			}
 		}
 	}
-	return locale.TaildropServicePermission{}
-}
-
-// TaildropServicePermission — разрешения устройства (галки в его меню).
-func (ac *AppController) TaildropServicePermission(p services.TailscalePeer) (clipboard, openURL bool) {
-	perms := locale.LoadSettings(ac.FileService.Layout.Data.Bin()).TaildropServicePermissions
-	got := taildropServicePermissionFor(perms, p.StableID, TaildropDeviceName(p))
-	return got.Clipboard, got.OpenURL
-}
-
-// SetTaildropServicePermission ставит или снимает разрешение вида kind
-// (services.TaildropServiceClipboard / TaildropServiceOpenURL) устройству.
-// Запись без единого разрешения удаляется.
-func (ac *AppController) SetTaildropServicePermission(p services.TailscalePeer, kind string, on bool) error {
-	if p.StableID == "" {
-		return errors.New("device has no stable ID")
-	}
-	binDir := ac.FileService.Layout.Data.Bin()
-	st := locale.LoadSettings(binDir)
-	entry := locale.TaildropServicePermission{SenderID: p.StableID}
-	kept := st.TaildropServicePermissions[:0]
-	for _, e := range st.TaildropServicePermissions {
-		if e.SenderID == p.StableID {
-			entry = e
-			continue
-		}
-		kept = append(kept, e)
-	}
-	entry.SenderName = TaildropDeviceName(p)
-	switch kind {
-	case services.TaildropServiceClipboard:
-		entry.Clipboard = on
-	case services.TaildropServiceOpenURL:
-		entry.OpenURL = on
-	default:
-		return errors.New("unknown permission kind")
-	}
-	if entry.Clipboard || entry.OpenURL {
-		kept = append(kept, entry)
-	}
-	st.TaildropServicePermissions = kept
-	return locale.SaveSettings(binDir, st)
+	return out
 }
 
 // TaildropSendText отправляет устройству служебный файл с одной командой.
@@ -163,17 +191,32 @@ func (ac *AppController) runTaildropServices(t TailscaleTarget, tag string, rule
 		}
 		return a.Name < b.Name
 	})
-	perms := locale.LoadSettings(ac.FileService.Layout.Data.Bin()).TaildropServicePermissions
+	record := ac.taildropNodeRecord(t, tag)
+	commandsOff := record != nil && record.DisableTaildropCommands
 	now := time.Now()
 	clip, clipFrom, haveClip := "", "", false
 	ran, skipped := 0, 0
+	// Отказы показываем после разбора, по одному на устройство и вид команды:
+	// без них буфер или ссылка «не доходят» без объяснений. Текст и адрес в
+	// уведомление не идут.
+	type taildropDenied struct{ title, body string }
+	var denied []taildropDenied
+	deny := func(title, body string) {
+		d := taildropDenied{title, body}
+		for _, seen := range denied {
+			if seen == d {
+				return
+			}
+		}
+		denied = append(denied, d)
+	}
 	for _, it := range items {
 		f := it.file
 		if f.ModifiedAt.IsZero() || now.Sub(f.ModifiedAt) > rules.TTL {
 			skipped += len(it.cmds)
 			continue
 		}
-		perm := taildropServicePermissionFor(perms, f.SenderID, f.SenderName)
+		own := ac.taildropSenderIsOwn(t, tag, f.SenderID)
 		from := f.SenderName
 		if from == "" {
 			from = locale.T("unknown device")
@@ -182,15 +225,29 @@ func (ac *AppController) runTaildropServices(t TailscaleTarget, tag string, rule
 			switch c.Kind {
 			case services.TaildropServiceClipboard:
 				text, ok := c.ClipboardText()
-				if !ok || !perm.Clipboard {
+				if !ok {
 					skipped++
+					continue
+				}
+				if commandsOff || !own {
+					skipped++
+					if commandsOff && own {
+						deny(locale.T("Clipboard not accepted"), locale.Tf("%s sent text for the clipboard. To accept it, turn on Accept clipboard and links in the Taildrop settings of the node.", from))
+					}
 					continue
 				}
 				clip, clipFrom, haveClip = text, from, true
 				ran++
 			case services.TaildropServiceOpenURL:
-				if !perm.OpenURL || !rules.OpenURLAllowed(c.URL) {
+				if !rules.OpenURLAllowed(c.URL) {
 					skipped++
+					continue
+				}
+				if commandsOff || !own {
+					skipped++
+					if commandsOff && own {
+						deny(locale.T("Link not opened"), locale.Tf("%s sent a link. To accept it, turn on Accept clipboard and links in the Taildrop settings of the node.", from))
+					}
 					continue
 				}
 				if err := platform.OpenURL(strings.TrimSpace(c.URL)); err != nil {
@@ -211,6 +268,9 @@ func (ac *AppController) runTaildropServices(t TailscaleTarget, tag string, rule
 			}
 		})
 		taildropNotify(locale.T("Clipboard updated"), locale.Tf("Text from %s copied to the clipboard.", clipFrom))
+	}
+	for _, d := range denied {
+		taildropNotify(d.title, d.body)
 	}
 	// Удаление — всегда, даже если ни одна команда не выполнена.
 	for _, it := range items {
