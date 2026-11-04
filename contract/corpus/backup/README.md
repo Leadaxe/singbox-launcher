@@ -508,6 +508,7 @@ Side-specific ожидание LxBox (ответ на вопрос 5, `TASKS_LXB
 `backup_group_degraded`); перечень — `TASKS_LXBOX.md` §16.7.
 
 **`v10_lxbox_fields`** — все объявленные поля стороны LxBox в одном файле:
+`native_prefs` в корне (1.1.158),
 `detour_policy` / `import_rules` / `import_rules_enabled` / `on_update_action`
 у подписки, `detour_policy` и `tag_policy {prefix}` у корневого сервера,
 `detour_policy` / `ping_url` / `ping_timeout_ms` у папки, `label` у цепочки,

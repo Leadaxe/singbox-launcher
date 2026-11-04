@@ -108,6 +108,7 @@ func stripLxBoxSideFields(t *testing.T, raw []byte) []byte {
 	if doc == nil {
 		t.Fatal("кейс — не объект")
 	}
+	drop(doc, "native_prefs")
 	sources := arr(doc["sources"])
 	for i, rawSrc := range sources {
 		src := obj(rawSrc)

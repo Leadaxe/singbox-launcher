@@ -2,6 +2,7 @@
   "lx_backup": 2,
   "exported_by": { "app": "lxbox", "version": "corpus", "platform": "android" },
   "exported_at": "2026-09-15T00:00:00Z",
+  "native_prefs": {"auto_start": true, "background_mode": "lazy", "memory_limit": "256", "notification_send": false, "app_theme_mode": "dark"},
   "sources": [
     {
       "kind": "subscription",

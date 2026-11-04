@@ -65,6 +65,25 @@
     "dns": {
       "$ref": "#/$defs/dns"
     },
+    "native_prefs": {
+      "type": "object",
+      "description": "Поддержка: LxBox (контракт 1.1.158, D-141). Настройки телефона, которым у лаунчера нет применения; лаунчер игнорирует молча. Все ключи необязательные, отсутствие не сбрасывает значение у приёмника.",
+      "additionalProperties": true,
+      "properties": {
+        "auto_start": { "type": "boolean", "default": false },
+        "keep_on_exit": { "type": "boolean", "default": true },
+        "background_mode": { "enum": ["never", "lazy", "always"], "default": "never" },
+        "core_logs_enabled": { "type": "boolean", "default": false },
+        "core_logs_verbose": { "type": "boolean", "default": false },
+        "allow_bypass": { "type": "boolean", "default": false },
+        "auto_redirect": { "type": "boolean", "default": false },
+        "memory_limit": { "type": "string", "pattern": "^(auto|off|[0-9]+)$", "default": "auto" },
+        "notification_stop": { "type": "boolean", "default": true },
+        "notification_restart": { "type": "boolean", "default": true },
+        "notification_send": { "type": "boolean", "default": true },
+        "app_theme_mode": { "enum": ["system", "light", "dark"], "default": "system" }
+      }
+    },
     "vars": {
       "type": "object",
       "description": "Только имена с portable=true из registry/vars.json; непереносимое имя отбрасывается с warning backup_var_skipped",
