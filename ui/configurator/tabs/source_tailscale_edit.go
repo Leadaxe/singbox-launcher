@@ -294,6 +294,7 @@ type tailscaleBlock struct {
 func newTailscaleBlock(
 	nodeRef func() *wizardmodels.Node,
 	win fyne.Window,
+	remoteTarget bool,
 	doubleCopyChoices func() ([]corestate.TaildropPeer, bool),
 	onApplied func(),
 ) *tailscaleBlock {
@@ -362,8 +363,13 @@ func newTailscaleBlock(
 		})
 	})
 	b.doubleCopyRow = container.NewBorder(nil, nil, widget.NewLabel(locale.T("Send double copy to")), nil, b.doubleCopy)
+	// Буфер, ссылки и Downloads — этого компьютера, узлу удалённой машины они ни к чему.
+	if remoteTarget {
+		b.commands.Hide()
+		b.autosave.Hide()
+	}
 
-	note := widget.NewLabel(locale.T(tailscaleBlockNoteText))
+	note :=widget.NewLabel(locale.T(tailscaleBlockNoteText))
 	note.Wrapping = fyne.TextWrapWord
 	note.Importance = widget.LowImportance
 

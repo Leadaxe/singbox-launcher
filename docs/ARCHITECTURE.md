@@ -1183,18 +1183,19 @@ vendored from the fork via `scripts/sync_daemonpb.sh`.
 (`SubscribeTaildropInbox`, `SendTaildropFiles`, `DownloadTaildropFile`,
 `DeleteTaildropFile`): `core/services/taildrop.go` holds the RPC code shared by
 the local daemon and remote machines, `core/taildrop.go` picks the source by
-`TailscaleTarget`. One background inbox subscription per node
-(`core/taildrop_autosave.go`) runs while that node's core runs: for every node
-of this computer's core it handles service files first
-(`core/taildrop_service.go`, codec `core/services/taildrop_service.go`,
+`TailscaleTarget`. One background inbox subscription per node of this computer's
+core (`core/taildrop_autosave.go`) runs while that core runs: it handles service
+files first (`core/taildrop_service.go`, codec `core/services/taildrop_service.go`,
 constants from `contract/registry/service_files.json`) — runs clipboard / open_url
 commands from the user's own devices and always deletes the file — then saves
-ordinary files to Downloads (any machine) or notifies about them.
+ordinary files to Downloads or notifies about them. Remote machines have no
+background subscription: their files are taken with Save in the node window.
 
 Taildrop settings are fields of the node record in `state.json` and travel with
 backups: `disable_taildrop_commands`, `disable_taildrop_autosave`,
-`taildrop_double_copy` (one device), read per profile by `taildropProfile`. If
-Taildrop is allowed on a node, commands and auto-save are on by default.
+`taildrop_double_copy` (one device). If Taildrop is allowed on a node of this
+computer's core, commands and auto-save are on by default. They act on this
+computer, so nodes of remote machines neither show nor apply them.
 
 The state directory of a Tailscale node is named by the record field
 `state_dir_id`; without it, by the final tag. New nodes and copies get a random

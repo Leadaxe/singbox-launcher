@@ -1265,7 +1265,7 @@ func showSourceEditWindowAt(
 	// Блок роли Tailscale (source_tailscale_edit.go, SPEC 157). В отличие от
 	// обфускации detour ему не мешает: выход в tailnet — свойство самого
 	// узла, а не его транспорта.
-	tsUI := newTailscaleBlock(func() *wizardmodels.Node { return &scratch.Node }, win, func() ([]corestate.TaildropPeer, bool) {
+	tsUI := newTailscaleBlock(func() *wizardmodels.Node { return &scratch.Node }, win, presenter.Model().Target.IsRemote(), func() ([]corestate.TaildropPeer, bool) {
 		return presenter.TaildropDoubleCopyChoices(
 			wizardbusiness.TailscaleNodeFinalTag(presenter.Model(), containerIDAtOpen, nodeTagAtOpen))
 	}, func() {
