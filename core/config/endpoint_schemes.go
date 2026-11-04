@@ -7,6 +7,7 @@
 package config
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -102,6 +103,36 @@ func applyTailscaleStateDirectory(endpoint map[string]interface{}, scheme, tag, 
 	// filepath.Join, а не конкатенация через "/": на Windows корень приходит
 	// с обратными слэшами, и смешивать разделители в одном пути незачем.
 	endpoint["state_directory"] = filepath.Join(root, sanitizeStateDirName(tag))
+}
+
+// TailscaleBuildAdditions — ключи, которые сборка допишет к телу узла tailnet
+// в config.json, с их значениями: те же подстановка и гейт ядра, что у сборки,
+// минус то, что в теле уже есть. Код общий, поэтому вкладка JSON не разойдётся
+// со сборкой. Тело не меняется.
+func TailscaleBuildAdditions(body map[string]interface{}, scheme, tag, remoteRoot string) map[string]interface{} {
+	if scheme != SchemeTailscale {
+		return nil
+	}
+	emitted := make(map[string]interface{}, len(body)+3)
+	for k, v := range body {
+		emitted[k] = v
+	}
+	applyTailscaleStateDirectory(emitted, scheme, tag, remoteRoot)
+	if raw, err := json.Marshal(emitted); err == nil {
+		if gated, changed := gateBodyForCore(scheme, tag, raw); changed {
+			var out map[string]interface{}
+			if err := json.Unmarshal(gated, &out); err == nil {
+				emitted = out
+			}
+		}
+	}
+	adds := map[string]interface{}{}
+	for k, v := range emitted {
+		if _, present := body[k]; !present {
+			adds[k] = v
+		}
+	}
+	return adds
 }
 
 // applyTailscaleTaildropDefault — «Allow Taildrop» по умолчанию выключено

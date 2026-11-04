@@ -42,6 +42,10 @@ const (
 const (
 	sourceEditSettingsScrollMinH float32 = 260
 	sourceEditJSONScrollMinH     float32 = 380
+	// С полем «добавит сборка» высота делится между ним и редактором: окно
+	// не должно вырасти от второго поля.
+	sourceEditJSONWithAddsMinH float32 = 240
+	sourceEditJSONAddsMinH     float32 = 100
 )
 
 // previewNodeCap — сколько узлов вкладка JSON выводит текстом.
@@ -2021,6 +2025,13 @@ func showSourceEditWindowAt(
 	jsonStatus := widget.NewLabel("")
 	jsonStatus.Wrapping = fyne.TextWrapWord
 
+	// Поля, которые допишет сборка: только просмотр, в тело не попадают.
+	jsonAddsView := fynewidget.NewJSONView("")
+	jsonAddsScroll := container.NewScroll(jsonAddsView.Object())
+	jsonAddsScroll.SetMinSize(fyne.NewSize(0, sourceEditJSONAddsMinH))
+	jsonAddsBox := container.NewVBox(widget.NewLabel(locale.T("Added by the build (read-only)")), jsonAddsScroll)
+	jsonAddsBox.Hide()
+
 	// doRefreshJSONTab — безусловный рендер (Apply/Reset). refreshJSONTab —
 	// обёртка для tabs.OnSelected/afterSync: она не затирает незаApplied
 	// ручные правки в server-режиме (текст отличается от последнего
@@ -2238,6 +2249,17 @@ func showSourceEditWindowAt(
 		jsonResetBtn.Enable()
 	}
 
+	setJSONAdds := func(adds string) {
+		jsonAddsView.SetText(adds)
+		if adds == "" {
+			jsonAddsBox.Hide()
+			jsonScroll.SetMinSize(fyne.NewSize(0, sourceEditJSONScrollMinH))
+			return
+		}
+		jsonAddsBox.Show()
+		jsonScroll.SetMinSize(fyne.NewSize(0, sourceEditJSONWithAddsMinH))
+	}
+
 	refreshServerJSONTab := func() {
 		// SPEC 118 Т8: вкладка показывает ТЕЛО узла — ровно то, что уедет в
 		// config.json (плюс tag/detour, которые штампует сборка). Разбора
@@ -2249,9 +2271,11 @@ func showSourceEditWindowAt(
 				text = buf.String()
 			}
 			status := locale.T("The outbound as it will reach the config.")
-			if adds := tailscaleBuildAdds(scratch.Body); len(adds) > 0 {
-				status = locale.Tf("The node as stored. The build also adds to the config: %s.", strings.Join(adds, ", "))
+			adds := tailscaleBuildAdditionsJSON(scratch.Body, scratch.NodeTagOrLabel(), wizardbusiness.TailscaleRemoteRootOf(presenter.Model()))
+			if adds != "" {
+				status = locale.T("The node as stored. The build adds the fields below to the config.")
 			}
+			setJSONAdds(adds)
 			setJSONText(text)
 			jsonStatus.SetText(status)
 			if sourceOriginURI(&scratch) != "" {
@@ -2262,6 +2286,7 @@ func showSourceEditWindowAt(
 			return
 		}
 		jsonResetBtn.Disable()
+		setJSONAdds("")
 		setJSONText("")
 		if raw := sourceOriginURI(&scratch); raw == "" {
 			jsonStatus.SetText(locale.T("No URI set. Paste a sing-box outbound object below and press Apply."))
@@ -2341,7 +2366,7 @@ func showSourceEditWindowAt(
 	switch {
 	case isServerSource || isChainSource:
 		jsonButtonsRow := container.NewHBox(jsonApplyBtn, jsonResetBtn, layout.NewSpacer())
-		jsonCol = container.NewVBox(jsonHint, jsonStatus, jsonScrollWithGutter, jsonButtonsRow)
+		jsonCol = container.NewVBox(jsonHint, jsonStatus, jsonScrollWithGutter, jsonButtonsRow, jsonAddsBox)
 	default:
 		// SPEC 116 W8 (С6/A6): «взять всю папку → JSON». Кнопка живёт здесь, а
 		// не в «Add nodes…»: там наполнение, тут обратное направление —

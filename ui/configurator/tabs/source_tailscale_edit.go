@@ -121,25 +121,27 @@ func tailscaleEditableNode(node *wizardmodels.Node) bool {
 	return tailscaleSchemeOfBody(ob) != ""
 }
 
-// tailscaleBuildAdds — что сборка допишет в config.json к телу узла Tailscale:
-// ключи, которых в теле нет (config.applyTailscaleStateDirectory). Вкладка JSON
-// показывает хранимое тело, и без этого списка узел выглядел бы включённым для
-// Taildrop. Не Tailscale — пусто.
-func tailscaleBuildAdds(body []byte) []string {
+// tailscaleBuildAdditionsJSON — поля, которые сборка допишет к телу узла
+// Tailscale, текстом для вкладки JSON: сама вкладка показывает хранимое тело.
+// Не Tailscale или дописывать нечего — пусто.
+func tailscaleBuildAdditionsJSON(body []byte, tag, remoteRoot string) string {
 	var ob map[string]interface{}
-	if err := json.Unmarshal(body, &ob); err != nil || tailscaleSchemeOfBody(ob) == "" {
-		return nil
+	if err := json.Unmarshal(body, &ob); err != nil {
+		return ""
 	}
-	var adds []string
-	if _, ok := ob[tailscaleKeyDisableTaildrop]; !ok {
-		adds = append(adds, tailscaleKeyDisableTaildrop+": true")
+	scheme := tailscaleSchemeOfBody(ob)
+	if scheme == "" {
+		return ""
 	}
-	for _, key := range []string{"state_directory", "taildrop_directory"} {
-		if _, ok := ob[key]; !ok {
-			adds = append(adds, key)
-		}
+	adds := config.TailscaleBuildAdditions(ob, scheme, tag, remoteRoot)
+	if len(adds) == 0 {
+		return ""
 	}
-	return adds
+	raw, err := json.MarshalIndent(adds, "", "  ")
+	if err != nil {
+		return ""
+	}
+	return string(raw)
 }
 
 // readTailscaleRole достаёт роль из тела узла.

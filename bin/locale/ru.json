@@ -3830,8 +3830,11 @@
   "The outbound as it will reach the config.": {
     "value": "Outbound в том виде, в каком он попадёт в конфиг."
   },
-  "The node as stored. The build also adds to the config: %s.": {
-    "value": "Узел в том виде, как он хранится. При сборке в конфиг добавится ещё: %s."
+  "Added by the build (read-only)": {
+    "value": "Добавит сборка (только чтение)"
+  },
+  "The node as stored. The build adds the fields below to the config.": {
+    "value": "Узел в том виде, как он хранится. При сборке в конфиг добавятся поля ниже."
   },
   "The sing-box outbound this node is built from. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time.": {
     "value": "Outbound sing-box, из которого собран этот узел. Правьте и нажмите Apply, чтобы сохранить; «Пересобрать из исходника» вернёт его к исходному URI/JSON. Тег и detour лаунчер проставляет заново на сборке."
