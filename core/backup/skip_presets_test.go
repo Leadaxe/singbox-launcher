@@ -60,22 +60,22 @@ func TestSkipPresetsRoundTrip(t *testing.T) {
 	}
 }
 
-// Контракт 1.1.157: поля Taildrop едут у своего сервера и у члена папки, импорт
+// Контракт 1.1.159: поля Taildrop едут у своего сервера и у члена папки, импорт
 // не называет их неизвестными, отсутствие поля своё значение не сбрасывает.
 func TestTaildropRecordFieldsRoundTrip(t *testing.T) {
 	body := json.RawMessage(`{"type":"tailscale","auth_key":"k"}`)
 	src := &state.State{}
 	src.Sources = []state.Source{
 		{ID: "01SRV0000000000000000000", Node: state.Node{Kind: state.SourceKindServer, Enabled: true, Tag: "home-ts", Body: body,
-			NodeRecordFlags: configtypes.NodeRecordFlags{TaildropCommands: true, TaildropAutosave: true}}},
+			NodeRecordFlags: configtypes.NodeRecordFlags{DisableTaildropCommands: true, DisableTaildropAutosave: true}}},
 		{ID: "01FLD0000000000000000000", Name: "F", Node: state.Node{Kind: state.SourceKindFolder, Enabled: true},
 			Nodes: []state.Node{{Kind: state.SourceKindServer, Enabled: true, Tag: "m",
-				NodeRecordFlags: configtypes.NodeRecordFlags{TaildropCommands: true},
+				NodeRecordFlags: configtypes.NodeRecordFlags{DisableTaildropCommands: true},
 				Body:            json.RawMessage(`{"type":"tailscale","auth_key":"m"}`)}}},
 	}
 	raw := fixedExport10(t, src)
-	if n := strings.Count(string(raw), `"taildrop_commands": true`); n != 2 {
-		t.Fatalf("taildrop_commands: true в экспорте %d раз, ожидалось 2:\n%s", n, raw)
+	if n := strings.Count(string(raw), `"disable_taildrop_commands": true`); n != 2 {
+		t.Fatalf("disable_taildrop_commands: true в экспорте %d раз, ожидалось 2:\n%s", n, raw)
 	}
 	for _, w := range scanUnknown10(raw) {
 		t.Errorf("импорт назвал поле неизвестным: %+v", w)
@@ -88,7 +88,7 @@ func TestTaildropRecordFieldsRoundTrip(t *testing.T) {
 	dst := &state.State{}
 	dst.Sources = []state.Source{
 		{ID: "01DST0000000000000000000", Node: state.Node{Kind: state.SourceKindServer, Enabled: true, Tag: "home-ts", Body: body,
-			NodeRecordFlags: configtypes.NodeRecordFlags{TaildropAutosave: true}}},
+			NodeRecordFlags: configtypes.NodeRecordFlags{DisableTaildropAutosave: true}}},
 	}
 	if _, err := Import10(dst, &b, ImportOptions{}); err != nil {
 		t.Fatalf("Import10: %v", err)
@@ -102,10 +102,10 @@ func TestTaildropRecordFieldsRoundTrip(t *testing.T) {
 			got["F/"+n.Tag] = n.NodeRecordFlags
 		}
 	}
-	if w := (configtypes.NodeRecordFlags{TaildropCommands: true, TaildropAutosave: true}); got["home-ts"] != w {
+	if w := (configtypes.NodeRecordFlags{DisableTaildropCommands: true, DisableTaildropAutosave: true}); got["home-ts"] != w {
 		t.Errorf("home-ts после импорта: %+v", got["home-ts"])
 	}
-	if w := (configtypes.NodeRecordFlags{TaildropCommands: true}); got["F/m"] != w {
+	if w := (configtypes.NodeRecordFlags{DisableTaildropCommands: true}); got["F/m"] != w {
 		t.Errorf("F/m после импорта: %+v", got["F/m"])
 	}
 }

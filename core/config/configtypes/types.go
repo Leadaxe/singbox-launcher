@@ -254,12 +254,12 @@ type NodeRecordFlags struct {
 	AllowLan bool `json:"allow_lan,omitempty"`
 	// AllowGateway — пир ходит через нас куда угодно.
 	AllowGateway bool `json:"allow_gateway,omitempty"`
-	// TaildropCommands — принимать буфер и ссылки от своих устройств
-	// (контракт 1.1.157, SERVICE_FILES.md §5). В конфиг не идёт.
-	TaildropCommands bool `json:"taildrop_commands,omitempty"`
-	// TaildropAutosave — сохранять принятые файлы без вопроса (контракт
-	// 1.1.157). В конфиг не идёт.
-	TaildropAutosave bool `json:"taildrop_autosave,omitempty"`
+	// DisableTaildropCommands — не принимать буфер и ссылки от своих устройств
+	// (контракт 1.1.159, SERVICE_FILES.md §5). В конфиг не идёт.
+	DisableTaildropCommands bool `json:"disable_taildrop_commands,omitempty"`
+	// DisableTaildropAutosave — не сохранять принятые файлы без вопроса
+	// (контракт 1.1.159). В конфиг не идёт.
+	DisableTaildropAutosave bool `json:"disable_taildrop_autosave,omitempty"`
 }
 
 // Any — поднят хотя бы один флаг, видимый пресетам.
@@ -275,8 +275,8 @@ func (f *NodeRecordFlags) MergeTrue(in NodeRecordFlags) {
 	f.AllowLocal = f.AllowLocal || in.AllowLocal
 	f.AllowLan = f.AllowLan || in.AllowLan
 	f.AllowGateway = f.AllowGateway || in.AllowGateway
-	f.TaildropCommands = f.TaildropCommands || in.TaildropCommands
-	f.TaildropAutosave = f.TaildropAutosave || in.TaildropAutosave
+	f.DisableTaildropCommands = f.DisableTaildropCommands || in.DisableTaildropCommands
+	f.DisableTaildropAutosave = f.DisableTaildropAutosave || in.DisableTaildropAutosave
 }
 
 // CanonicalNode — один готовый узел канона в сборочной форме.

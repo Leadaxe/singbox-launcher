@@ -275,13 +275,13 @@
           "type": "boolean",
           "description": "server only (контракт 1.1.126, D-134): пир клиентского туннеля этого узла ходит через нас куда угодно — в outbound gateway_out пресета tunnel-ingress, DNS не отбрасывается; @node.allow_gateway. Пишется только true, как allow_local. Поддержка: обе стороны."
         },
-        "taildrop_commands": {
+        "disable_taildrop_commands": {
           "type": "boolean",
-          "description": "server only, узел tailscale (контракт 1.1.157, D-140): принимать буфер и ссылки от своих устройств (SERVICE_FILES.md §5). Пишется только true; у узла подписки поля нет; в конфиг не идёт."
+          "description": "server only, узел tailscale (контракт 1.1.159, D-142): не принимать буфер и ссылки от своих устройств; по умолчанию приём включён (SERVICE_FILES.md §5). Пишется только true; у узла подписки поля нет; в конфиг не идёт."
         },
-        "taildrop_autosave": {
+        "disable_taildrop_autosave": {
           "type": "boolean",
-          "description": "server only, узел tailscale (контракт 1.1.157, D-140): сохранять принятые файлы в папку загрузок без вопроса. Пишется только true; у узла подписки поля нет; в конфиг не идёт."
+          "description": "server only, узел tailscale (контракт 1.1.159, D-142): не сохранять принятые файлы в папку загрузок без вопроса; по умолчанию сохранение включено. Пишется только true; у узла подписки поля нет; в конфиг не идёт."
         },
         "skip_presets": {
           "type": "boolean",
@@ -697,13 +697,13 @@
           "type": "boolean",
           "description": "server only (контракт 1.1.126, D-134): пир клиентского туннеля этого узла ходит через нас куда угодно — в outbound gateway_out пресета tunnel-ingress, DNS не отбрасывается; @node.allow_gateway. Пишется только true, как allow_local. Поддержка: обе стороны."
         },
-        "taildrop_commands": {
+        "disable_taildrop_commands": {
           "type": "boolean",
-          "description": "server only, узел tailscale (контракт 1.1.157, D-140): принимать буфер и ссылки от своих устройств (SERVICE_FILES.md §5). Пишется только true; у узла подписки поля нет; в конфиг не идёт."
+          "description": "server only, узел tailscale (контракт 1.1.159, D-142): не принимать буфер и ссылки от своих устройств; по умолчанию приём включён (SERVICE_FILES.md §5). Пишется только true; у узла подписки поля нет; в конфиг не идёт."
         },
-        "taildrop_autosave": {
+        "disable_taildrop_autosave": {
           "type": "boolean",
-          "description": "server only, узел tailscale (контракт 1.1.157, D-140): сохранять принятые файлы в папку загрузок без вопроса. Пишется только true; у узла подписки поля нет; в конфиг не идёт."
+          "description": "server only, узел tailscale (контракт 1.1.159, D-142): не сохранять принятые файлы в папку загрузок без вопроса; по умолчанию сохранение включено. Пишется только true; у узла подписки поля нет; в конфиг не идёт."
         },
         "skip_presets": {
           "type": "boolean",
