@@ -241,7 +241,8 @@ type CanonicalSource struct {
 //
 // Один тип на весь путь «состояние → эмиссия → кэш сборки → обход пресета»:
 // новое поле записи добавляется сюда и в PresetNodeRecordFields, а не
-// параллельной картой на каждом шаге.
+// параллельной картой на каждом шаге. Поля Taildrop живут здесь же по тем же
+// правилам хранения и слияния, но пресетам не видны и в Any не входят.
 type NodeRecordFlags struct {
 	// SkipTailscalePresets — пресет `tailscale` узел не обслуживает
 	// (до 1.1.126 — `skip_presets`, читается терпимо; LxBox §578).
@@ -253,9 +254,15 @@ type NodeRecordFlags struct {
 	AllowLan bool `json:"allow_lan,omitempty"`
 	// AllowGateway — пир ходит через нас куда угодно.
 	AllowGateway bool `json:"allow_gateway,omitempty"`
+	// TaildropCommands — принимать буфер и ссылки от своих устройств
+	// (контракт 1.1.157, SERVICE_FILES.md §5). В конфиг не идёт.
+	TaildropCommands bool `json:"taildrop_commands,omitempty"`
+	// TaildropAutosave — сохранять принятые файлы без вопроса (контракт
+	// 1.1.157). В конфиг не идёт.
+	TaildropAutosave bool `json:"taildrop_autosave,omitempty"`
 }
 
-// Any — хотя бы один флаг поднят.
+// Any — поднят хотя бы один флаг, видимый пресетам.
 func (f NodeRecordFlags) Any() bool {
 	return f.SkipTailscalePresets || f.AllowLocal || f.AllowLan || f.AllowGateway
 }
@@ -268,6 +275,8 @@ func (f *NodeRecordFlags) MergeTrue(in NodeRecordFlags) {
 	f.AllowLocal = f.AllowLocal || in.AllowLocal
 	f.AllowLan = f.AllowLan || in.AllowLan
 	f.AllowGateway = f.AllowGateway || in.AllowGateway
+	f.TaildropCommands = f.TaildropCommands || in.TaildropCommands
+	f.TaildropAutosave = f.TaildropAutosave || in.TaildropAutosave
 }
 
 // CanonicalNode — один готовый узел канона в сборочной форме.

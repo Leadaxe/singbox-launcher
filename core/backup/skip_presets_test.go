@@ -60,6 +60,56 @@ func TestSkipPresetsRoundTrip(t *testing.T) {
 	}
 }
 
+// Контракт 1.1.157: поля Taildrop едут у своего сервера и у члена папки, импорт
+// не называет их неизвестными, отсутствие поля своё значение не сбрасывает.
+func TestTaildropRecordFieldsRoundTrip(t *testing.T) {
+	body := json.RawMessage(`{"type":"tailscale","auth_key":"k"}`)
+	src := &state.State{}
+	src.Sources = []state.Source{
+		{ID: "01SRV0000000000000000000", Node: state.Node{Kind: state.SourceKindServer, Enabled: true, Tag: "home-ts", Body: body,
+			NodeRecordFlags: configtypes.NodeRecordFlags{TaildropCommands: true, TaildropAutosave: true}}},
+		{ID: "01FLD0000000000000000000", Name: "F", Node: state.Node{Kind: state.SourceKindFolder, Enabled: true},
+			Nodes: []state.Node{{Kind: state.SourceKindServer, Enabled: true, Tag: "m",
+				NodeRecordFlags: configtypes.NodeRecordFlags{TaildropCommands: true},
+				Body:            json.RawMessage(`{"type":"tailscale","auth_key":"m"}`)}}},
+	}
+	raw := fixedExport10(t, src)
+	if n := strings.Count(string(raw), `"taildrop_commands": true`); n != 2 {
+		t.Fatalf("taildrop_commands: true в экспорте %d раз, ожидалось 2:\n%s", n, raw)
+	}
+	for _, w := range scanUnknown10(raw) {
+		t.Errorf("импорт назвал поле неизвестным: %+v", w)
+	}
+	var b Backup10
+	if err := json.Unmarshal(raw, &b); err != nil {
+		t.Fatal(err)
+	}
+	// Приёмник знает home-ts по телу: без флага commands, с флагом autosave.
+	dst := &state.State{}
+	dst.Sources = []state.Source{
+		{ID: "01DST0000000000000000000", Node: state.Node{Kind: state.SourceKindServer, Enabled: true, Tag: "home-ts", Body: body,
+			NodeRecordFlags: configtypes.NodeRecordFlags{TaildropAutosave: true}}},
+	}
+	if _, err := Import10(dst, &b, ImportOptions{}); err != nil {
+		t.Fatalf("Import10: %v", err)
+	}
+	got := map[string]configtypes.NodeRecordFlags{}
+	for _, s := range dst.Sources {
+		if s.Kind == state.SourceKindServer {
+			got[s.Tag] = s.NodeRecordFlags
+		}
+		for _, n := range s.Nodes {
+			got["F/"+n.Tag] = n.NodeRecordFlags
+		}
+	}
+	if w := (configtypes.NodeRecordFlags{TaildropCommands: true, TaildropAutosave: true}); got["home-ts"] != w {
+		t.Errorf("home-ts после импорта: %+v", got["home-ts"])
+	}
+	if w := (configtypes.NodeRecordFlags{TaildropCommands: true}); got["F/m"] != w {
+		t.Errorf("F/m после импорта: %+v", got["F/m"])
+	}
+}
+
 // Контракт 1.1.126 (SPEC 170): файл до переименования несёт `skip_presets`.
 // Импорт читает его как skip_tailscale_presets — у нового корневого узла, у
 // члена папки и у узла, узнанного по телу; поля allow_* едут рядом как есть.
