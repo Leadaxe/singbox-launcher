@@ -10010,3 +10010,31 @@ LxBox задача 710: серверы шаблона на вкладке DNS п
 Задача вам: синк 1.1.160, ответ по `state_dir_id`.
 
 **Ответ LxBox (04.11.2026) — §156 закрыт по составу полей.** Синк с 1351dd6e, код — fe19967d (CI на момент ответа шёл). `state_dir_id` только переносят: каталог у них держит индекс `tailscale_state.json` по id записи (§445 LxBox), к тегу не привязан; совпавший узел своё не меняет, новый с занятым именем получает `ts-xxxxxx`, своим узлам без поля ничего не генерируют. `taildrop_double_copy` молча пропускают и не провозят: после импорта и экспорта через LxBox устройство теряется.
+
+## 157. Запрос LxBox — URI-форма `tt://` у `trusttunnel` (04.11.2026)
+
+Повод — LxBox issue #194: пользователь вставил из буфера ссылку `tt://…`, приложение её не узнало (`scheme_unsupported`). Решение владельца: поддержать ссылку в паре с лаунчером. Запись реестра `protocols/trusttunnel.json` (1.1.141) заявляет `uri: null`, `emit.share_uri: false`; просим заменить на форму ниже. Задача LxBox — 717.
+
+**Формат (референс — код, текстовой спеки у AdGuard нет).** Крейт `deeplink` репозитория https://github.com/TrustTunnel/TrustTunnel (`deeplink/src/{types,encode,decode}.rs`, тесты `deeplink/tests/roundtrip.rs`), генерирует `trusttunnel_endpoint`, читают все клиенты AdGuard (`TrustTunnelClient/trusttunnel/deeplink-ffi`).
+
+1. Вид `tt://?<payload>`: authority и путь пустые, весь payload — строка query без имени и знака `=`.
+2. `payload` = base64url **без padding** над бинарным TLV: tag 1 байт, длина — LEB128 varint, значение. Неизвестный tag пропускается (вперёд-совместимость).
+3. Теги: `0x00 version` (varint; сейчас 2, 1 — без подписки), `0x01 hostname` (UTF-8), `0x02 address` (UTF-8 `host:port`, IPv6 в скобках; **повторяется**), `0x03 custom_sni`, `0x04 has_ipv6` (1 байт 0/1), `0x05 username`, `0x06 password`, `0x07 skip_verification` (0/1), `0x08 certificate` (**DER**, байты), `0x09 upstream_protocol` (1 байт: `0x01` http2, `0x02` http3; отсутствует = http2), `0x0A anti_dpi` (0/1), `0x0B client_random_prefix`, `0x0C name`, `0x0D dns_upstreams` (последовательность varint-длина + UTF-8), `0x0E subscription_url` (с версии 2), `0x0F client_random_auth_key`.
+4. Обязательны `hostname`, хотя бы один `address`, `username`, `password` — **либо** один `subscription_url` (`https://user:pass@host/path`; ссылка-подписка, узла в ней может не быть). Подписка отвечает JSON-объектом (`version: 1`, те же поля, `address` одной строкой) — **в этот запрос не входит**, вторая очередь.
+
+**Предложение записи.** Декларативно TLV ни один движок не выразит, поэтому — именованный декодер, как `ini` у WireGuard: `mappers.uri.detect.scheme_in: ["tt"]`, одна форма `deeplink` с `decode: [{"decoder":"base64url","scope":"query"}, "tt_deeplink"]`, `space: "tt"`. Выход декодера — объект, который дальше читают обычные `params` (`source: "tt.<ключ>"`):
+
+- `version` int; `hostname`, `custom_sni`, `username`, `password`, `name`, `client_random_prefix`, `client_random_auth_key`, `subscription_url` — строки (ключа нет, если тега нет); `addresses` string[]; `has_ipv6`, `skip_verification`, `anti_dpi` — bool; `upstream_protocol` — `"http2"`/`"http3"`; `certificate` — **PEM-строка** (декодер переводит DER → PEM, тело `tls.certificate` ждёт PEM); `dns_upstreams` string[].
+- Производные от первого `address`: `server`, `server_port` (лексер host:port общий, IPv6 без скобок — как `$multiport`/vmess legacy).
+
+Маппинг в тело `trusttunnel`: `server`, `server_port` ← первый адрес; `username`, `password`; `quic` ← `upstream_protocol == http3`; `tls.enabled: true`, `tls.server_name` ← `custom_sni`, иначе `hostname`; `tls.insecure` ← `skip_verification`; `tls.certificate` ← `certificate`; label ← `name`, fallback `{scheme}-{server}-{server_port}`. Правила тела (required/`core_rejects` username/password, конфликт quic/utls) — как есть, снятие узла при разборе (§137/§138).
+
+Чего в теле нет — снимаем с предупреждением, узел живёт: `has_ipv6`, `anti_dpi`, `client_random_prefix`, `client_random_auth_key`, `dns_upstreams`, адреса со второго — один мягкий код `tt_field_unsupported` (параметр `field`). `subscription_url` при полном узле — мягкий `tt_subscription_ignored`. Снятие узла: только `subscription_url` без полей узла — `tt_subscription_only`; битый base64/TLV, `version` > 2, обязательных нет — `tt_deeplink_invalid`. Имена кодов — ваши, нам нужны именно четыре различимых случая.
+
+**Эмит** (`emit.share_uri: true`, форма `deeplink`, порядок тегов как у энкодера AdGuard: version=2, hostname, address, custom_sni, has_ipv6, username, password, skip_verification, anti_dpi, certificate, upstream_protocol, client_random_prefix, name, dns_upstreams, subscription_url, client_random_auth_key — только непустые, bool только `true`, `upstream_protocol` только http3): `hostname` ← `tls.server_name`, иначе `server`; `address` ← `server:server_port` (IPv6 в скобках); `custom_sni` не пишем; `skip_verification` ← `tls.insecure`; `certificate` ← `tls.certificate` PEM → DER; `upstream_protocol` http3 ← `quic`; `name` ← тег. Критерий паритета: round-trip `tt → тело → tt` байт в байт для ссылки без неподдерживаемых полей.
+
+**Корпус** `corpus/uri/tt/`: полный узел http2 (hostname + адрес IPv4 + Let's Encrypt без сертификата), http3 + `custom_sni` + самоподписанный DER + `skip_verification`, два адреса (v4 + v6) + `dns_upstreams` + `anti_dpi` (мягкие коды), только `subscription_url` (drop), битый payload (drop), `version` 1. Ссылки для кейсов соберём мы энкодером Dart и приложим TOML-эквивалент — или вы своим Go, как удобнее; сверить можно `trusttunnel_client --export-deeplink`.
+
+LxBox начинает Dart-сторону сразу по этой записи как черновику (`assets/contract_draft/uri/trusttunnel.json`, пока реестр не привезёт секцию); имена кодов и ключей объекта `tt` подправим под вашу запись при синке. Отдельно: Android AAR ядра собран без `with_trusttunnel` (KERNEL.md, lx.21+) — узел из ссылки у LxBox сейчас выключит страховка core-rejected; это вопрос к ядру, не к контракту.
+
+Расхождение — сюда.
