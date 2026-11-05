@@ -178,6 +178,7 @@ TEMPLATE_LANG §6.7.4). Прежний ключ `for_each` (`node_type`, `as`) �
 | `allow_local` | Allow access to this device | `tunnel-ingress`: пиры этого туннеля достают сервисы на нашем туннельном адресе (видны как `127.0.0.1`), через `allowed_out` пресета (по умолчанию `direct-out`) |
 | `allow_lan` | Expose local network | `tunnel-ingress`: пиры видят частные сети (`ip_is_private`), через `allowed_out` |
 | `allow_gateway` | Allow as gateway | `tunnel-ingress`: пиры ходят через нас куда угодно, в `gateway_out` пресета (по умолчанию `proxy-out`); их DNS не отбрасывается |
+| `own_routes` | Only its own networks | `tunnel-routes` (контракт 1.1.161): в туннель идут только сети, которые он объявляет, — allowed IPs у WireGuard, маршруты и домены, присланные сервером OpenVPN / OpenConnect; остальное идёт дальше по правилам. По умолчанию выключено; показывается у `wireguard` (и AWG), `openvpn-client`, `openconnect` |
 
 Переключатели `allow_*` показываются у узлов `wireguard` (и AWG),
 `openvpn-client` и `openconnect`. Штатный пресет `tunnel-ingress`
@@ -193,6 +194,20 @@ tunnels** (`closed_out`, по умолчанию `reject`; вместо него
 1.1.129): пиры tailnet — свои устройства пользователя, их уже ограничивают ACL
 Tailscale и фильтр control-plane, пропускающий только наши адреса и
 анонсированное `advertise_routes` / `advertise_exit_node`. TEMPLATE_LANG §6.5.2.
+
+Штатный пресет `tunnel-routes` (`num: 943`, включён по умолчанию, у
+существующих установок появляется один раз, сортируемый) обходит те же три
+типа узлов через `for_each_node` и обслуживает только узлы с включённым
+переключателем **Only its own networks**: правило маршрута
+`preferred_by: [узел] → узел`, а у `openvpn-client` / `openconnect`, пока
+включена настройка **DNS** пресета, — правило `resolve`, DNS-сервер типа
+`openvpn` / `openconnect`, привязанный к узлу, и DNS-правило
+`preferred_by: [<тег>-dns]`. Без переключателя пресет не выдаёт ничего.
+Туннель, объявляющий маршрут по умолчанию (WireGuard с `0.0.0.0/0`, OpenVPN с
+`redirect-gateway`), забирает весь трафик; пока туннель не поднят, трафик к
+его сетям идёт по следующему правилу. Ядро допускает один DNS-сервер на
+endpoint: свой DNS-сервер типа `openvpn` / `openconnect` на тот же узел
+несовместим с DNS-частью пресета. TEMPLATE_LANG §6.5.3.
 
 ---
 

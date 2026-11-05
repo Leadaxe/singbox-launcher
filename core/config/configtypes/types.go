@@ -254,6 +254,11 @@ type NodeRecordFlags struct {
 	AllowLan bool `json:"allow_lan,omitempty"`
 	// AllowGateway — пир ходит через нас куда угодно.
 	AllowGateway bool `json:"allow_gateway,omitempty"`
+	// OwnRoutes — в клиентский туннель этого узла идут только его собственные
+	// сети: allowed_ips пиров WireGuard, маршруты и домены, присланные
+	// сервером OpenVPN / OpenConnect (пресет `tunnel-routes`, контракт
+	// 1.1.161, D-144). Работает на включение.
+	OwnRoutes bool `json:"own_routes,omitempty"`
 	// DisableTaildropCommands — не принимать буфер и ссылки от своих устройств
 	// (контракт 1.1.159, SERVICE_FILES.md §5). В конфиг не идёт.
 	DisableTaildropCommands bool `json:"disable_taildrop_commands,omitempty"`
@@ -264,7 +269,7 @@ type NodeRecordFlags struct {
 
 // Any — поднят хотя бы один флаг, видимый пресетам.
 func (f NodeRecordFlags) Any() bool {
-	return f.SkipTailscalePresets || f.AllowLocal || f.AllowLan || f.AllowGateway
+	return f.SkipTailscalePresets || f.AllowLocal || f.AllowLan || f.AllowGateway || f.OwnRoutes
 }
 
 // MergeTrue — слияние импорта: флаг из файла переносится, только если он
@@ -275,6 +280,7 @@ func (f *NodeRecordFlags) MergeTrue(in NodeRecordFlags) {
 	f.AllowLocal = f.AllowLocal || in.AllowLocal
 	f.AllowLan = f.AllowLan || in.AllowLan
 	f.AllowGateway = f.AllowGateway || in.AllowGateway
+	f.OwnRoutes = f.OwnRoutes || in.OwnRoutes
 	f.DisableTaildropCommands = f.DisableTaildropCommands || in.DisableTaildropCommands
 	f.DisableTaildropAutosave = f.DisableTaildropAutosave || in.DisableTaildropAutosave
 }

@@ -11,6 +11,7 @@
 - Double copy goes to one device chosen on the Settings tab of the node; nothing is sent until you choose it.
 - A clipboard text or a link sent while acceptance is off no longer disappears silently: a notification names the device and where to turn it on.
 - Renaming a Tailscale node no longer registers a new device: the state directory name is now a parameter of the node, and new nodes get a random one.
+- Several tunnels, each for its own networks: a WireGuard, AWG, OpenVPN or OpenConnect node has a new switch **Only its own networks** on its Settings tab. With it on, only the networks the tunnel announces go into it — WireGuard allowed IPs, routes and domains pushed by an OpenVPN or OpenConnect server — and everything else follows your rules; the tunnel does not have to be chosen as a direction. The new preset **Tunnel routes** on the Rules tab does the work and can be dragged to set its priority. Nothing changes until the switch is turned on. A tunnel that announces the default route takes all traffic.
 
 ### Technical / Internal
 -
@@ -24,6 +25,7 @@
 - Двойное копирование уходит на одно устройство, выбранное на вкладке Settings узла; пока устройство не выбрано, ничего не отправляется.
 - Текст для буфера или ссылка при выключенном приёме больше не пропадают молча: уведомление называет устройство и место, где включить приём.
 - Переименование узла Tailscale больше не регистрирует новое устройство: имя каталога состояния стало параметром узла, у новых узлов оно случайное.
+- Несколько туннелей, каждый для своих сетей: у узла WireGuard, AWG, OpenVPN и OpenConnect на вкладке Settings появился переключатель **Only its own networks**. С ним в туннель идут только сети, которые он объявляет, — allowed IPs у WireGuard, маршруты и домены, присланные сервером OpenVPN или OpenConnect, — а остальное идёт по вашим правилам; выбирать туннель Направлением не нужно. Работу делает новый пресет **Tunnel routes** на вкладке Rules, его приоритет задаётся перетаскиванием. Пока переключатель не включён, ничего не меняется. Туннель, объявляющий маршрут по умолчанию, забирает весь трафик.
 
 ### Техническое / Внутреннее
 -

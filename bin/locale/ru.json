@@ -6160,5 +6160,17 @@
   },
   "Traffic Profiler — %s ⚡ Recording · %02d:%02d": {
     "value": "Профайлер трафика — %s ⚡ Запись · %02d:%02d"
+  },
+  "Routing through this tunnel": {
+    "value": "Маршрутизация через этот туннель"
+  },
+  "Only its own networks": {
+    "value": "Только свои сети"
+  },
+  "Send to this tunnel only the networks it announces. It works alongside the selected server and does not need to be chosen as a direction.": {
+    "value": "В этот туннель идут только сети, которые он объявляет. Он работает рядом с выбранным сервером, выбирать его Направлением не нужно."
+  },
+  "This tunnel announces the default route, so it takes all traffic.": {
+    "value": "Этот туннель объявляет маршрут по умолчанию и заберёт весь трафик."
   }
 }

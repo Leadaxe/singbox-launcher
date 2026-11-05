@@ -71,6 +71,73 @@ func tunnelAccessBlock(m *wizardmodels.WizardModel, link wizardmodels.NodeLink, 
 	)
 }
 
+// Подписи переключателя поля записи own_routes (SPEC 180, D-144).
+const (
+	ownRoutesTitle        = "Routing through this tunnel"
+	ownRoutesText         = "Only its own networks"
+	ownRoutesTip          = "Send to this tunnel only the networks it announces. It works alongside the selected server and does not need to be chosen as a direction."
+	ownRoutesDefaultRoute = "This tunnel announces the default route, so it takes all traffic."
+)
+
+// tunnelRoutesBlock — переключатель own_routes формы узла-сервера (SPEC 180,
+// контракт 1.1.161): пресет `tunnel-routes` отправляет в этот туннель только
+// его собственные сети. Виден там же, где tunnelAccessBlock: свой сервер или
+// член папки с телом клиентского туннеля — ровно `#filter` пресета. У
+// WireGuard с маршрутом по умолчанию в allowed_ips под включённым
+// переключателем стоит предупреждение; у OpenVPN / OpenConnect маршруты
+// присылает сервер, заранее их не видно. nil — показывать нечего.
+func tunnelRoutesBlock(m *wizardmodels.WizardModel, link wizardmodels.NodeLink, node *wizardmodels.Node) fyne.CanvasObject {
+	if m == nil || node == nil || node.Kind != wizardmodels.SourceKindServer || inSubscription(m, link) {
+		return nil
+	}
+	if !tunnelIngressTypes[nodeBodyType(node)] {
+		return nil
+	}
+	title := widget.NewLabel(locale.T(ownRoutesTitle))
+	title.TextStyle = fyne.TextStyle{Bold: true}
+	notice := widget.NewLabel(locale.T(ownRoutesDefaultRoute))
+	notice.Wrapping = fyne.TextWrapWord
+	notice.Importance = widget.WarningImportance
+	takesAll := wireguardAnnouncesDefaultRoute(node)
+	showNotice := func(on bool) {
+		if on && takesAll {
+			notice.Show()
+		} else {
+			notice.Hide()
+		}
+	}
+	c := ttwidget.NewCheck(locale.T(ownRoutesText), func(on bool) {
+		node.OwnRoutes = on
+		showNotice(on)
+	})
+	c.SetChecked(node.OwnRoutes)
+	c.SetToolTip(locale.T(ownRoutesTip))
+	showNotice(node.OwnRoutes)
+	return container.NewVBox(title, c, notice)
+}
+
+// wireguardAnnouncesDefaultRoute — среди allowed_ips пиров WireGuard-узла
+// есть маршрут по умолчанию (префикс нулевой длины).
+func wireguardAnnouncesDefaultRoute(node *wizardmodels.Node) bool {
+	var body struct {
+		Type  string `json:"type"`
+		Peers []struct {
+			AllowedIPs []string `json:"allowed_ips"`
+		} `json:"peers"`
+	}
+	if len(node.Body) == 0 || json.Unmarshal(node.Body, &body) != nil || body.Type != "wireguard" {
+		return false
+	}
+	for _, peer := range body.Peers {
+		for _, cidr := range peer.AllowedIPs {
+			if strings.HasSuffix(strings.TrimSpace(cidr), "/0") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // inSubscription — узел адресован в подписку (записи у него нет).
 func inSubscription(m *wizardmodels.WizardModel, link wizardmodels.NodeLink) bool {
 	fid := strings.TrimSpace(link.FolderID)

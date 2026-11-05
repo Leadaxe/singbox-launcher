@@ -275,6 +275,10 @@
           "type": "boolean",
           "description": "server only (контракт 1.1.126, D-134): пир клиентского туннеля этого узла ходит через нас куда угодно — в outbound gateway_out пресета tunnel-ingress, DNS не отбрасывается; @node.allow_gateway. Пишется только true, как allow_local. Поддержка: обе стороны."
         },
+        "own_routes": {
+          "type": "boolean",
+          "description": "server only (свой сервер в корне и член папки; контракт 1.1.161, D-144): в клиентский туннель этого узла (body.type wireguard / openvpn-client / openconnect) идут только его собственные сети — пресет tunnel-routes читает @node.own_routes (TEMPLATE_LANG §6.5.3, §6.6). Работает на включение: по умолчанию false. Пишется только true, как allow_local; отсутствие поля на импорте своё значение не сбрасывает. Поддержка: обе стороны."
+        },
         "disable_taildrop_commands": {
           "type": "boolean",
           "description": "server only, узел tailscale (контракт 1.1.159, D-142): не принимать буфер и ссылки от своих устройств; по умолчанию приём включён (SERVICE_FILES.md §5). Пишется только true; у узла подписки поля нет; в конфиг не идёт."
@@ -710,6 +714,10 @@
         "allow_gateway": {
           "type": "boolean",
           "description": "server only (контракт 1.1.126, D-134): пир клиентского туннеля этого узла ходит через нас куда угодно — в outbound gateway_out пресета tunnel-ingress, DNS не отбрасывается; @node.allow_gateway. Пишется только true, как allow_local. Поддержка: обе стороны."
+        },
+        "own_routes": {
+          "type": "boolean",
+          "description": "server only (свой сервер в корне и член папки; контракт 1.1.161, D-144): в клиентский туннель этого узла (body.type wireguard / openvpn-client / openconnect) идут только его собственные сети — пресет tunnel-routes читает @node.own_routes (TEMPLATE_LANG §6.5.3, §6.6). Работает на включение: по умолчанию false. Пишется только true, как allow_local; отсутствие поля на импорте своё значение не сбрасывает. Поддержка: обе стороны."
         },
         "disable_taildrop_commands": {
           "type": "boolean",

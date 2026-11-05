@@ -683,7 +683,13 @@ Key properties:
   `WizardModel.GeneratedRecordFlags` → `template.PresetNode.Record` →
   `@node.<field>` (`PresetNodeRecordFields`). The stock `tunnel-ingress` preset
   (`for_each_node_do`, num 940) reads the `allow_*` fields to reject inbound
-  connections from client tunnel endpoints by `inbound` tag.
+  connections from client tunnel endpoints by `inbound` tag. `own_routes`
+  (SPEC 180, contract 1.1.161) rides the same struct: the stock `tunnel-routes`
+  preset (`for_each_node`, num 943, late default) emits, for each
+  `wireguard` / `openvpn-client` / `openconnect` node with the flag, a route
+  rule `preferred_by: [node] → node`, and for the last two a `resolve` rule, a
+  DNS server of type `openvpn` / `openconnect` and a DNS rule. The switch
+  lives in `tunnelRoutesBlock` (`ui/configurator/tabs/source_tunnel_access.go`).
 - **One template walker (SPEC 143).** Every `@var` / `#if` substitution goes
   through the canonical walker `template.SubstituteVarsInJSONCanonWarnings`
   (`core/template/substitute_canon.go`, rules of `contract/docs/TEMPLATE_LANG.md`):

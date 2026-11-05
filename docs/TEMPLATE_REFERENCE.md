@@ -183,6 +183,7 @@ window:
 | `allow_local` | Allow access to this device | `tunnel-ingress`: peers of this tunnel reach services on our tunnel address (they appear as `127.0.0.1`), through the preset's `allowed_out` (default `direct-out`) |
 | `allow_lan` | Expose local network | `tunnel-ingress`: peers reach private networks (`ip_is_private`), through `allowed_out` |
 | `allow_gateway` | Allow as gateway | `tunnel-ingress`: peers route anything through us, into the preset's `gateway_out` (default `proxy-out`); their DNS is not rejected |
+| `own_routes` | Only its own networks | `tunnel-routes` (contract 1.1.161): only the networks the tunnel announces go into it — WireGuard allowed IPs, routes and domains pushed by an OpenVPN / OpenConnect server; everything else follows the rules below. Off by default; shown for `wireguard` (and AWG), `openvpn-client`, `openconnect` |
 
 The `allow_*` switches are shown for `wireguard` (and AWG), `openvpn-client`
 and `openconnect` nodes. The stock preset `tunnel-ingress`
@@ -199,6 +200,19 @@ outbound the DNS reject is not added), **Device and local network go to**
 Tailscale ACLs and the control-plane filter, which passes only our addresses
 and what `advertise_routes` / `advertise_exit_node` announce. TEMPLATE_LANG
 §6.5.2.
+
+The stock preset `tunnel-routes` (`num: 943`, on by default, added once to
+existing setups, sortable) walks the same three node types with
+`for_each_node` and serves only nodes whose **Only its own networks** switch
+is on: a route rule `preferred_by: [node] → node`, and for `openvpn-client` /
+`openconnect` — while the preset's **DNS** setting is on — a `resolve` rule, a
+DNS server of type `openvpn` / `openconnect` bound to the node and a DNS rule
+`preferred_by: [<tag>-dns]`. Without the switch it emits nothing. A tunnel
+that announces the default route (WireGuard `0.0.0.0/0`, OpenVPN
+`redirect-gateway`) takes all traffic; while a tunnel is down its networks
+follow the next rule. The core allows one DNS server per endpoint: an own DNS
+server of type `openvpn` / `openconnect` on the same node conflicts with the
+preset's DNS part. TEMPLATE_LANG §6.5.3.
 
 ---
 

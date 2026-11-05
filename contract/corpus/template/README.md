@@ -100,7 +100,11 @@ short-circuit.
 `unique` и `wizard_ui: internal` у объявления; кейсы `do_if_*` — операция
 `#do` под условием `#if` (любой формы §4.1): `{}` на узле = пропуск, отказы
 загрузки по §6.7.1; кейсы `tunnel_ingress_*` — тело пресета `tunnel-ingress`
-(§6.5.2) целиком на узлах с полями записи `allow_*`.
+(§6.5.2) целиком на узлах с полями записи `allow_*`. В `for_each_node/`
+кейсы `tunnel_routes_*` — тело пресета `tunnel-routes` (§6.5.3, контракт
+1.1.161) целиком на узлах с полем записи `own_routes`: WireGuard, OpenVPN,
+OpenConnect, выключенный `dns_enable`, поле не поднято, узел подписки, два
+узла.
 
 ```
 <case>.preset.json    {"_comment": "…", "preset": {...}, "nodes": [...]}
@@ -113,10 +117,10 @@ short-circuit.
   `dns_servers`, `dns_rules`. Оболочку (`id`/`preset_id`, `label`, `ui`,
   `num`) раннер стороны добавляет сам.
 - `nodes` — узлы в порядке конфига: `{tag, body, enabled?, in_config?,
-  skip_tailscale_presets?, allow_local?, allow_lan?, allow_gateway?}`. `tag` — финальный тег, `body` — тело в форме конфига.
+  skip_tailscale_presets?, allow_local?, allow_lan?, allow_gateway?, own_routes?}`. `tag` — финальный тег, `body` — тело в форме конфига.
   `enabled: false` (узел выключен) и `in_config: false` (снят гейтом реестра,
   ядра, деградацией) — такие узлы сборка в обход не передаёт; раннер
-  отсеивает их так же. `skip_tailscale_presets`, `allow_local`, `allow_lan`, `allow_gateway` —
+  отсеивает их так же. `skip_tailscale_presets`, `allow_local`, `allow_lan`, `allow_gateway`, `own_routes` (с 1.1.161) —
   поля записи (TEMPLATE_LANG §6.6; до 1.1.126 первое называлось
   `skip_presets`, корпус переписан на новое имя); отсутствие = false (узел
   подписки).

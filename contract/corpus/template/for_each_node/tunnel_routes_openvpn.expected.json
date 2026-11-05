@@ -1,0 +1,34 @@
+{
+  "rules": [
+    {
+      "preferred_by": [
+        "office-ovpn"
+      ],
+      "action": "resolve",
+      "server": "office-ovpn-dns"
+    },
+    {
+      "preferred_by": [
+        "office-ovpn"
+      ],
+      "outbound": "office-ovpn"
+    }
+  ],
+  "dns_servers": [
+    {
+      "type": "openvpn",
+      "tag": "office-ovpn-dns",
+      "endpoint": "office-ovpn",
+      "description": "DNS announced by the tunnel"
+    }
+  ],
+  "dns_rules": [
+    {
+      "preferred_by": [
+        "office-ovpn-dns"
+      ],
+      "server": "office-ovpn-dns"
+    }
+  ],
+  "warnings": []
+}

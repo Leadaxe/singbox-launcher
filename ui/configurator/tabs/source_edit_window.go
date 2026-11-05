@@ -1405,6 +1405,11 @@ func showSourceEditWindowAt(
 				settingsContent.Add(widget.NewSeparator())
 				settingsContent.Add(blk)
 			}
+			// SPEC 180: в туннель идут только его собственные сети (own_routes).
+			if blk := tunnelRoutesBlock(m, nodeLink, &scratch.Node); blk != nil {
+				settingsContent.Add(widget.NewSeparator())
+				settingsContent.Add(blk)
+			}
 			// SPEC 170: что пиру клиентского туннеля разрешено (allow_*).
 			if blk := tunnelAccessBlock(m, nodeLink, &scratch.Node); blk != nil {
 				settingsContent.Add(widget.NewSeparator())

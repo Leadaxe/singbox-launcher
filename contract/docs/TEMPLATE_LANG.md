@@ -858,7 +858,11 @@ warning (`preset_expand.dart:473-526`). Миграция LxBox меняет те
   `load_reject_do_in_for_each_node`, `load_reject_unknown_verb`,
   `load_reject_final_without_do`, `load_reject_append_non_list`,
   `load_reject_var_named_node`, `load_reject_unique_non_list`,
-  `load_reject_both_loops`.
+  `load_reject_both_loops`. Пресет `tunnel-routes` (§6.5.3, контракт
+  1.1.161) — `tunnel_routes_wireguard`, `tunnel_routes_openvpn`,
+  `tunnel_routes_openconnect`, `tunnel_routes_dns_disabled`,
+  `tunnel_routes_flag_off`, `tunnel_routes_subscription_node`,
+  `tunnel_routes_two_nodes`.
 - `corpus/template/for_each_node_do/`: `collect_domains_filter_ip`,
   `duplicates_without_final`, `final_unique_sort_limit`,
   `final_key_order_irrelevant`, `append_tpl`, `empty_result_rule_dropped`,
@@ -1076,6 +1080,137 @@ LxBox: `preset_id`, `ui{}`, `vars[].default_value`), D-046. Тело в форм
 "oc-work", "wg-exit"], "outbound": "proxy-out" }`, DNS-правила нет (кейс
 `tunnel_ingress_closed_out_forwarded`).
 
+#### 6.5.3 Пресет `tunnel-routes` (обе стороны, контракт 1.1.161, D-144)
+
+**Задача.** Правило маршрута выбирает узел, дальше узел решает сам: собственные
+сети клиентского туннеля (allowed_ips пиров WireGuard, маршруты от сервера
+OpenVPN и OpenConnect) в `route.rules` не попадают. Адрес вне сетей туннеля,
+отправленный в него правилом, рвётся и к следующему правилу не переходит.
+Пресет отправляет в каждый отмеченный туннель только то, что туннель считает
+своим, остальное идёт дальше по правилам; узел не нужно выбирать Направлением.
+
+Опирается на матчер ядра `preferred_by` (sing-box ≥ 1.13), как пресет
+`tailscale` (§6.5.1):
+
+| Тип узла | Адрес свой, если | Домен свой, если |
+|---|---|---|
+| `wireguard` (и AWG) | попадает в `allowed_ips` какого-то пира | доменов нет |
+| `openvpn-client` | в наборе маршрутов, присланных сервером (минус исключённые); набор пересобирается при каждой смене конфигурации туннеля | среди присланных DNS-маршрутов, search domains, доменов первого по приоритету DNS-сервера |
+| `openconnect` | то же, маршруты сервера | split-DNS и search domains сервера |
+
+Тело одинаковое на обеих сторонах; оболочка — в диалекте стороны (D-046).
+Тело в форме лаунчера:
+
+```json
+{
+  "id": "tunnel-routes",
+  "label": "Tunnel routes",
+  "description": "Send to each client tunnel only the networks it announces: WireGuard allowed IPs, routes pushed by an OpenVPN or OpenConnect server. Everything else follows the rules below. Turned on per tunnel, in the tunnel's own settings.",
+  "default_enabled": true,
+  "num": 943,
+  "for_each_node": {
+    "#filter": { "#and": [
+      { "@node.body.type": { "#in": ["wireguard", "openvpn-client", "openconnect"] } },
+      "@node.own_routes"
+    ] }
+  },
+  "vars": [
+    { "name": "dns_enable", "type": "bool", "default": "true", "title": "DNS",
+      "tooltip": "Resolve the names a tunnel announces with the tunnel's own DNS." }
+  ],
+  "rules": [
+    { "#if": [
+        { "#and": ["@dns_enable", { "@node.body.type": { "#in": ["openvpn-client", "openconnect"] } }] },
+        { "preferred_by": ["@node"], "action": "resolve", "server": { "#tpl": "@{node}-dns" } } ] },
+    { "preferred_by": ["@node"], "outbound": "@node" }
+  ],
+  "dns_servers": [
+    { "#if": [
+        { "#and": ["@dns_enable", { "@node.body.type": "openvpn-client" }] },
+        { "type": "openvpn", "tag": { "#tpl": "@{node}-dns" }, "endpoint": "@node",
+          "description": "DNS announced by the tunnel" } ] },
+    { "#if": [
+        { "#and": ["@dns_enable", { "@node.body.type": "openconnect" }] },
+        { "type": "openconnect", "tag": { "#tpl": "@{node}-dns" }, "endpoint": "@node",
+          "description": "DNS announced by the tunnel" } ] }
+  ],
+  "dns_rules": [
+    { "#if": [
+        { "#and": ["@dns_enable", { "@node.body.type": { "#in": ["openvpn-client", "openconnect"] } }] },
+        { "preferred_by": [ { "#tpl": "@{node}-dns" } ], "server": { "#tpl": "@{node}-dns" } } ] }
+  ]
+}
+```
+
+- **Флаг на включение.** Поле записи `own_routes` (§6.6) по умолчанию
+  ложно: пресет включён по умолчанию и появляется у существующих
+  пользователей (§6.7.5), но без поднятого поля не выдаёт ничего — конфиг
+  байт в байт прежний. Флаг на выключение (как `skip_tailscale_presets`)
+  здесь нельзя: WireGuard с `0.0.0.0/0` в `allowed_ips` забрал бы весь
+  трафик сразу после обновления.
+- **`for_each_node`, а не `for_each_node_do`.** Цель правила — сам узел:
+  `preferred_by: [a, b]` с одним `outbound` отправил бы сети обоих туннелей в
+  один. DNS-сервер у каждого узла тоже свой. Правило на узел, фрагменты идут
+  подряд в порядке узлов конфига; при пересекающихся сетях двух туннелей
+  побеждает первый, отдельной настройки нет.
+- **Условие на `@node.body.type` в теле.** Тело `for_each_node` видит имена
+  узла (§6.6), короткий `#if` — норма с 1.1.125. DNS-часть — только у
+  `openvpn-client` и `openconnect`: у WireGuard доменов нет, ему одно адресное
+  правило.
+- **Два DNS-сервера вместо одной вставки.** Тип узла `openvpn-client`, тип
+  DNS-сервера ядра — `openvpn`; одним `#tpl` не выразить.
+- **`preferred_by` в DNS-правиле называет сервер** (`<тег>-dns`), в правиле
+  маршрута — узел (§6.5.1, контракт 1.1.90).
+- **DNS-сервер туннеля отвечает только за свои домены.** Поля
+  `accept_default_resolvers` и `accept_search_domain` сервера остаются по
+  умолчанию (`false`): DNS-правило отдаёт ему только имена, которые туннель
+  назвал своими. Сервер, приславший один адрес DNS без доменов, своих имён
+  не объявил — правило `preferred_by` не совпадает ни с чем, DNS туннеля не
+  используется (ядро: `DNSTransport.PreferredDomain` смотрит только
+  DNS-маршруты и search domains).
+- **`num: 943`** — после `tunnel-ingress` (940: входящее из туннеля
+  закрывается раньше) и перед `tailscale` (945) и `private-ips` (950: иначе
+  «private → direct» забрал бы частные сети туннеля). Пресет сортируемый —
+  приоритет против своих правил пользователь задаёт перетаскиванием.
+  DNS-слот — по той же оси (§6.10): раньше `A/AAAA → fakeip` пресета `fakeip`
+  (1130), иначе присланные сервером домены получили бы поддельный адрес.
+- **Пространство тегов** не действует (§6.5): `<тег узла>-dns`.
+- **Узел подписки** пресет не обслуживает: записи нет, `@node.own_routes`
+  ложь (§6.6).
+- **Туннель не поднят** — матчер ядра отвечает «нет»: трафик к сетям туннеля
+  идёт по следующему правилу. Защиты от утечки пресет не даёт.
+- **Маршрут по умолчанию.** `redirect-gateway` у OpenVPN кладёт в набор
+  `0.0.0.0/0` (или пару `0.0.0.0/1` + `128.0.0.0/1`), WireGuard может нести
+  `0.0.0.0/0` в `allowed_ips` — такой узел с поднятым полем забирает весь
+  трафик. Домен `.` среди присланных сервером совпадает с любым именем —
+  весь DNS уходит в туннель. Поведение верное (это и есть собственные
+  маршруты туннеля); сторона предупреждает пользователя там, где может
+  увидеть это заранее (WireGuard — по `allowed_ips`).
+- **Один DNS-сервер на endpoint — ограничение ядра.** Второй DNS-сервер типа
+  `openvpn` / `openconnect` с тем же `endpoint` и другим тегом ядро не
+  запускает (`only one DNS server is allowed for an endpoint`). Свой сервер
+  пользователя на тот же узел и включённая DNS-часть пресета несовместимы:
+  либо `dns_enable = false`, либо без своего сервера. Свой сервер с тегом
+  `<тег узла>-dns` побеждает по общему дедупу DNS-тегов (§6.5).
+- Условие `preferred_by` — в `route_rule_conditions` и `dns_rule_conditions`
+  реестра (с 1.1.86).
+
+Что попадает в конфиг для узлов `office-ovpn` (OpenVPN) и `lab-wg`
+(WireGuard), у обоих поле поднято (кейс `tunnel_routes_two_nodes`):
+
+```json
+"route.rules": [
+  { "preferred_by": ["office-ovpn"], "action": "resolve", "server": "office-ovpn-dns" },
+  { "preferred_by": ["office-ovpn"], "outbound": "office-ovpn" },
+  { "preferred_by": ["lab-wg"], "outbound": "lab-wg" }
+]
+"dns.servers": [ { "type": "openvpn", "tag": "office-ovpn-dns", "endpoint": "office-ovpn" } ]
+"dns.rules":   [ { "preferred_by": ["office-ovpn-dns"], "server": "office-ovpn-dns" } ]
+```
+
+`dns_enable = false` снимает DNS-серверы, DNS-правила и правила `resolve`;
+правила маршрута остаются (кейс `tunnel_routes_dns_disabled`).
+
 ### 6.6 Доступ к узлу `@node` (ядро, контракт 1.1.86; имя фиксировано — 1.1.119)
 
 В `#filter` обоих ключей, в правых частях `#do` и в теле пресета с
@@ -1100,6 +1235,7 @@ LxBox: `preset_id`, `ui{}`, `vars[].default_value`), D-046. Тело в форм
   | `allow_local` | 1.1.126 | пир endpoint'а достаёт сервисы на нашем туннельном адресе (§6.5.2) |
   | `allow_lan` | 1.1.126 | пир видит наши частные сети (`ip_is_private`) |
   | `allow_gateway` | 1.1.126 | пир ходит через нас куда угодно, в `gateway_out` пресета |
+  | `own_routes` | 1.1.161 | в клиентский туннель узла идут только его собственные сети — пресет `tunnel-routes` (§6.5.3); работает на включение |
 
 - **`skip_presets` → `skip_tailscale_presets` (контракт 1.1.126, D-134).**
   Поле сужено до того, для чего вводилось (LxBox §578): общее «пресеты с
@@ -1323,11 +1459,12 @@ LxBox: `preset_id`, `ui{}`, `vars[].default_value`), D-046. Тело в форм
 
 Пресет, включённый по умолчанию и добавленный в шаблон позже (`tailscale`,
 §6.5.1; `tunnel-ingress`, §6.5.2, контракт 1.1.126), появляется в состоянии
-сам, один раз; удалённый пользователем — не возвращается. Механизм у каждой стороны
+сам, один раз (`tunnel-routes`, §6.5.3 — с контракта 1.1.161); удалённый
+пользователем — не возвращается. Механизм у каждой стороны
 свой (LxBox — `seedLateDefaultPresets`, ключ `late_presets_seeded`; лаунчер —
 `state.SeedLateDefaultRules`, отметка `meta.late_presets_seeded` в
 `state.json`); список поздних дефолтов только растёт (с 1.1.126 —
-`tailscale`, `tunnel-ingress`). Маршрутное правило засеянного пресета
+`tailscale`, `tunnel-ingress`; с 1.1.161 — ещё `tunnel-routes`). Маршрутное правило засеянного пресета
 встаёт на номер шаблона; его DNS-слот — по той же оси (§6.10, контракт
 1.1.127), а не в хвост `dns.rules`.
 
@@ -1636,6 +1773,7 @@ C7 = D-012):
 | D-135 | DNS-слот пресета появляется по оси маршрутного правила (контракт 1.1.127, SPEC 171) | новая запись `dns.rules[] {kind: preset}` встаёт перед первым слотом пресета с бо́льшим `num` маршрутного правила, иначе в конец; пользовательские DNS-правила не учитываются и не двигаются; уже стоящие слоты не переупорядочиваются (§6.10) | Go ✅ (SPEC 171); Dart — TASKS_LXBOX §124 | `seedLateDefaultPresets`, включение пресета, синхронизация DNS-записей пресетов |
 | D-136 | Tailscale выведен из пресета `tunnel-ingress`, форма пресета — три настройки (контракт 1.1.129, SPEC 170, изменение 15.10.2026) | пять списков — `wizard_ui: internal`, ручного ввода тегов нет; видимы `closed_out` (`reject`), `allowed_out` (`direct-out`), `gateway_out` (`proxy-out`); неразрешённое идёт в `closed_out` (сентинелы `reject`/`drop` → action), DNS-reject — только при `closed_out` ∈ {`reject`, `drop`}; `#filter` пресета — `wireguard`, `openvpn-client`, `openconnect`; пиров tailnet ограничивают ACL Tailscale и фильтр control-plane (наши адреса и явно анонсированное `advertise_routes` / `advertise_exit_node`), reject по умолчанию отрезал бы устройства пользователя; переключатели `allow_*` у узла `tailscale` не показываются, значения в записи остаются и обходом не читаются; `skip_tailscale_presets` без изменений (§6.5.2) | Go ✅ (SPEC 170); Dart — TASKS_LXBOX §126 | шаблон (тело пресета), форма узла |
 | D-137 | DNS-зеркало собственного правила маршрута (контракт 1.1.130, SPEC 172) | поле записи `rules[].dns` `{enabled, serverTag, forceIpv4}` — общее, в форме LxBox (camelCase); зеркало и глушилка AAAA — вывод сборки из выпущенного маршрутного правила: гейт `port`/`port_range`/`protocol`/`network`, гейт и матчер — списки реестра `rule_dns_mirror_gate` / `rule_dns_mirror_match` (без IP назначения), пустой матчер не выпускается; место — перед первым слотом пресета с бо́льшим номером, иначе после последнего слота, иначе в конец; удалённый сервер — зеркала нет (+ диагностика), выключенный — включается принудительно (§6.11) | Go ✅ (SPEC 172); Dart — TASKS_LXBOX §127 | сборка DNS, окно правила, импорт/экспорт записи правила |
+| D-144 | поле записи узла `own_routes`, пресет `tunnel-routes` (контракт 1.1.161, SPEC 180 лаунчера, LxBox 718) | bool записи своего сервера и члена папки, пишется только `true`, у узла подписки всегда ложь; виден обходу как `@node.own_routes` (§6.6), работает на включение; пресет `tunnel-routes` (`for_each_node`, `num: 943`, поздний дефолт, сортируемый) для узлов `wireguard` / `openvpn-client` / `openconnect` с поднятым полем выдаёт правило маршрута `preferred_by: [узел] → узел`, а у `openvpn-client` / `openconnect` при `dns_enable` — правило `resolve`, DNS-сервер типа `openvpn` / `openconnect` и DNS-правило `preferred_by: [<тег>-dns]`; без поля пресет не выдаёт ничего (§6.5.3) | Go ✅ (SPEC 180); Dart — TASKS_LXBOX §158 | шаблоны сторон, перечень полей записи обхода, форма узла |
 | C8 | @var-подстановка в RHS предикатов отсутствует в Dart | RHS equality / элементы `#in` / паттерн `#matches` проходят подстановку (§4.2) | ✅ **закрыт** (D-056): `_substRhs` | — |
 | C9 | наборы полей объявления var расходятся | ядро = name/type/default_value/options/title/tooltip/wizard_ui; остальное — задекларированные расширения + правило толерантности (§2.1, §7, §8) | ✅ **зафиксирован тестом** — `corpus/template/grammar/tolerant_unknown_var_field`, проходит с обеих сторон; наборы полей остаются разными по D-046 | — |
 

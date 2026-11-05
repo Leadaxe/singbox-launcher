@@ -1,0 +1,157 @@
+{
+  "_comment": "Узел подписки: записи нет, поля записи отсутствуют — own_routes ложь, пресет ничего не выдаёт. Узел другого типа с флагом (поле хранится, пресетом не читается) тоже не обслуживается. Тело — пресет tunnel-routes (TEMPLATE_LANG §6.5.3) целиком.",
+  "preset": {
+    "for_each_node": {
+      "#filter": {
+        "#and": [
+          {
+            "@node.body.type": {
+              "#in": [
+                "wireguard",
+                "openvpn-client",
+                "openconnect"
+              ]
+            }
+          },
+          "@node.own_routes"
+        ]
+      }
+    },
+    "vars": [
+      {
+        "name": "dns_enable",
+        "type": "bool",
+        "default_value": "true"
+      }
+    ],
+    "rules": [
+      {
+        "#if": [
+          {
+            "#and": [
+              "@dns_enable",
+              {
+                "@node.body.type": {
+                  "#in": [
+                    "openvpn-client",
+                    "openconnect"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "preferred_by": [
+              "@node"
+            ],
+            "action": "resolve",
+            "server": {
+              "#tpl": "@{node}-dns"
+            }
+          }
+        ]
+      },
+      {
+        "preferred_by": [
+          "@node"
+        ],
+        "outbound": "@node"
+      }
+    ],
+    "dns_servers": [
+      {
+        "#if": [
+          {
+            "#and": [
+              "@dns_enable",
+              {
+                "@node.body.type": "openvpn-client"
+              }
+            ]
+          },
+          {
+            "type": "openvpn",
+            "tag": {
+              "#tpl": "@{node}-dns"
+            },
+            "endpoint": "@node",
+            "description": "DNS announced by the tunnel"
+          }
+        ]
+      },
+      {
+        "#if": [
+          {
+            "#and": [
+              "@dns_enable",
+              {
+                "@node.body.type": "openconnect"
+              }
+            ]
+          },
+          {
+            "type": "openconnect",
+            "tag": {
+              "#tpl": "@{node}-dns"
+            },
+            "endpoint": "@node",
+            "description": "DNS announced by the tunnel"
+          }
+        ]
+      }
+    ],
+    "dns_rules": [
+      {
+        "#if": [
+          {
+            "#and": [
+              "@dns_enable",
+              {
+                "@node.body.type": {
+                  "#in": [
+                    "openvpn-client",
+                    "openconnect"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "preferred_by": [
+              {
+                "#tpl": "@{node}-dns"
+              }
+            ],
+            "server": {
+              "#tpl": "@{node}-dns"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "tag": "sub-wg",
+      "body": {
+        "type": "wireguard",
+        "tag": "sub-wg"
+      }
+    },
+    {
+      "tag": "sub-ovpn",
+      "body": {
+        "type": "openvpn-client",
+        "tag": "sub-ovpn"
+      }
+    },
+    {
+      "tag": "v1",
+      "body": {
+        "type": "vless",
+        "tag": "v1"
+      },
+      "own_routes": true
+    }
+  ]
+}
