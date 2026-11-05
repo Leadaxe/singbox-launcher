@@ -734,6 +734,12 @@ Key properties:
   for it. The launcher never emits the WireGuard idle-suspend keys in either form
   (`route.lx_idle_*`, `lx.wg.*`): desktop core builds lack `with_lx_idle_suspend`
   and refuse them at start (SPEC 138; pinned by `TestBuildConfigPassesRootLXBlock`).
+  A pass-through section that substitution left as `{}` is not written, and keys
+  outside node bodies newer than the executing core are dropped by the table
+  `contract/registry/core_config.json` (`nodeflow.GateConfigForCore`): at build
+  for the target's core (`build.CoreVersionForTarget` — installed core for Local,
+  the machine's cached passport version for a remote) and before the daemon apply
+  for the service core (`config.GateConfigJSONForCore`). Unknown version — no gate.
 
 See [DATA_FLOW.md §3](DATA_FLOW.md) for the build flow with the SPEC 057/058 outbound
 `Ref`/`Updates` resolution detail.

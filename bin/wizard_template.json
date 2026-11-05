@@ -322,11 +322,11 @@
       "type": "enum",
       "wizard_ui": "edit",
       "title": "QUIC sniff decoy",
-      "tooltip": "sing-box-lx lx.quic_sniff_decoy — send one non-QUIC byte ahead of the first QUIC packet of MASQUE (HTTP/3), Hysteria2 and TUIC connections. A relay in the path that sniffs the QUIC SNI and rewrites the destination by it (Xray destOverride) then leaves the connection where it was dialled. Through detour (default): only connections carried by another outbound, such as a VLESS relay; direct: only connections on this device's own socket; all: both. A DPI on your own uplink may react to the extra byte, so direct and all are for networks where the sniffing relay sits on your own path.",
-      "default_value": "detour",
+      "tooltip": "sing-box-lx lx.quic_sniff_decoy — send one non-QUIC byte ahead of the first QUIC packet of MASQUE (HTTP/3), Hysteria2 and TUIC connections. A relay in the path that sniffs the QUIC SNI and rewrites the destination by it (Xray destOverride) then leaves the connection where it was dialled. Off (default, as in the core): nothing is sent. Through detour: only connections carried by another outbound, such as a VLESS relay; direct: only connections on this device's own socket; all: both. Needs core 1.14.4-lx.30 or newer — an older core runs without the decoy. A DPI on your own uplink may react to the extra byte, so direct and all are for networks where the sniffing relay sits on your own path.",
+      "default_value": "off",
       "options": [
-        {"title": "Off", "value": "off"},
-        {"title": "Through detour (default)", "value": "detour"},
+        {"title": "Off (default)", "value": "off"},
+        {"title": "Through detour", "value": "detour"},
         {"title": "Direct", "value": "direct"},
         {"title": "All", "value": "all"}
       ]

@@ -366,7 +366,7 @@
       "type": "enum",
       "portable": false,
       "in": "both",
-      "note": "lx.quic_sniff_decoy ядра (SPEC 151 форка; режимы с 1.14.4-lx.30, пин обеих сторон не ниже). options off / detour / direct / all, дефолт шаблона detour при дефолте ядра off; эмитится строкой режима только при значении из detour / direct / all (#in), иначе ключа нет. Было bool в 1.1.151 (rc.3: true = all): оставшееся в состоянии true/false через #in не эмитится, ядро не падает; миграции нет — релизом не выходило (контракт 1.1.152)."
+      "note": "lx.quic_sniff_decoy ядра (SPEC 151 форка; режимы с 1.14.4-lx.30). options off / detour / direct / all, дефолт шаблона off = дефолт ядра (контракт 1.1.163; в 1.1.152 был detour, и ключ писался в каждый конфиг); эмитится строкой режима только при значении из detour / direct / all (#in), иначе ключа нет. Было bool в 1.1.151 (rc.3: true = all): оставшееся в состоянии true/false через #in не эмитится, ядро не падает; миграции нет. Граница версии ключа — registry/core_config.json."
     },
     "awg_masquerade": {
       "type": "enum",

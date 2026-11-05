@@ -18,6 +18,7 @@ import (
 	"fyne.io/fyne/v2"
 
 	"singbox-launcher/api"
+	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/events"
@@ -322,6 +323,9 @@ func NewAppController(layout paths.Layout, appIconData, greyIconData, greenIconD
 	// RealityKeyShareSupportProbe, и так же уйдёт всякое следующее поле с
 	// min_core: правка реестра вместо пробы, хука и ветки в эмиттере.
 	config.CoreVersionProbe = ac.coreVersionForBuildGate
+	// Ключи конфига вне тел узлов (корневой lx) гейтятся той же таблицей
+	// реестра под ядро ЦЕЛИ: своё у local, ядро машины у remote.
+	build.CoreVersionForTarget = ac.coreVersionForTarget
 
 	// SPEC 122: корень каталогов состояния tailnet. Тот же корень
 	// `<DataDir>/bin`, относительно которого лежат локальные .srs — эмиссия

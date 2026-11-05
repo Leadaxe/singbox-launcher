@@ -12,9 +12,10 @@
 - A clipboard text or a link sent while acceptance is off no longer disappears silently: a notification names the device and where to turn it on.
 - Renaming a Tailscale node no longer registers a new device: the state directory name is now a parameter of the node, and new nodes get a random one.
 - Several tunnels, each for its own networks: a WireGuard, AWG, OpenVPN or OpenConnect node has a new switch **Only its own networks** on its Settings tab. With it on, only the networks the tunnel announces go into it — WireGuard allowed IPs, routes and domains pushed by an OpenVPN or OpenConnect server — and everything else follows your rules; the tunnel does not have to be chosen as a direction. The new preset **Tunnel routes** on the Rules tab does the work and can be dragged to set its priority. Nothing changes until the switch is turned on. A tunnel that announces the default route takes all traffic.
+- Fix: a daemon service or a remote machine running a core older than the launcher's no longer rejects the whole config with `unknown field "quic_sniff_decoy"`. Settings the core does not know yet are left out of the config sent to it (the log names them), and **QUIC sniff decoy** now defaults to Off, as in the core: until you change a tunnel option in Settings, nothing about it is written to the config. If you relied on the decoy for MASQUE, Hysteria2 or TUIC behind a relay, turn it on in Wizard → Settings.
 
 ### Technical / Internal
--
+- Contract 1.1.163: new `registry/core_config.json` (config keys outside node bodies with `min_core`: root `lx`, `lx.mtu_align`, `lx.quic_sniff_decoy`, `lx.awg_masquerade`); the build applies it for the target's core (installed core for Local, the machine's passport version for a remote), the daemon apply — for the service core. `quic_sniff_decoy` default is `off`; an empty root `lx` block is no longer emitted.
 
 ## RU
 ### Основное
@@ -26,6 +27,7 @@
 - Текст для буфера или ссылка при выключенном приёме больше не пропадают молча: уведомление называет устройство и место, где включить приём.
 - Переименование узла Tailscale больше не регистрирует новое устройство: имя каталога состояния стало параметром узла, у новых узлов оно случайное.
 - Несколько туннелей, каждый для своих сетей: у узла WireGuard, AWG, OpenVPN и OpenConnect на вкладке Settings появился переключатель **Only its own networks**. С ним в туннель идут только сети, которые он объявляет, — allowed IPs у WireGuard, маршруты и домены, присланные сервером OpenVPN или OpenConnect, — а остальное идёт по вашим правилам; выбирать туннель Направлением не нужно. Работу делает новый пресет **Tunnel routes** на вкладке Rules, его приоритет задаётся перетаскиванием. Пока переключатель не включён, ничего не меняется. Туннель, объявляющий маршрут по умолчанию, забирает весь трафик.
+- Исправлено: служба или удалённая машина с ядром старше ядра лаунчера больше не отвергает весь конфиг с ошибкой `unknown field "quic_sniff_decoy"`. Настройки, которых ядро ещё не знает, в отправляемый ему конфиг не попадают (лог называет их), а **QUIC sniff decoy** по умолчанию теперь Off, как в ядре: пока вы не меняли настройки туннелей в Settings, в конфиг о них ничего не пишется. Если обманка была нужна для MASQUE, Hysteria2 или TUIC за реле — включите её в Мастере → Settings.
 
 ### Техническое / Внутреннее
--
+- Контракт 1.1.163: новый `registry/core_config.json` (ключи конфига вне тел узлов с `min_core`: корневой `lx`, `lx.mtu_align`, `lx.quic_sniff_decoy`, `lx.awg_masquerade`); сборка применяет его под ядро цели (установленное ядро у Local, версия из паспорта у машины), apply службы — под ядро службы. Дефолт `quic_sniff_decoy` — `off`; пустой корневой блок `lx` в конфиг не пишется.

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"singbox-launcher/core/services"
+	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 )
@@ -186,4 +188,26 @@ func (ac *AppController) coreVersionForBuildGate() string {
 		return ""
 	}
 	return strings.TrimSpace(version)
+}
+
+// coreVersionForTarget — версия ядра, которое исполнит конфиг цели
+// (build.CoreVersionForTarget): установленное ядро у local, версия из кэша
+// паспорта демона у удалённой машины. Пусто — неизвестна, гейт не
+// применяется.
+func (ac *AppController) coreVersionForTarget(target template.TargetSpec) string {
+	id := target.MachineIDOrEmpty()
+	if id == "" {
+		if target.IsRemote() {
+			return ""
+		}
+		return ac.coreVersionForBuildGate()
+	}
+	if ac == nil || ac.FileService == nil {
+		return ""
+	}
+	d, ok, err := services.NewRemoteRegistry(ac.FileService.Layout.Data).Get(id)
+	if err != nil || !ok || d.Passport == nil {
+		return ""
+	}
+	return strings.TrimSpace(d.Passport.Version)
 }
