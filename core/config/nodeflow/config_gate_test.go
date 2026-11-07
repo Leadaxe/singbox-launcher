@@ -35,4 +35,21 @@ func TestGateConfigForCore(t *testing.T) {
 			t.Errorf("core %q: got %s (dropped %v), want %s (%d dropped)", c.version, got, dropped, c.want, c.dropped)
 		}
 	}
+	// Запрещённый ключ (forbidden, контракт 1.1.164) снимается при любой
+	// версии, включая неизвестную; соседний ключ остаётся.
+	const forb = `{"lx":{"awg_masquerade":"direct","mtu_align":"fill"}}`
+	for _, version := range []string{"", "1.14.4-lx.31", "1.14.4-lx.33"} {
+		var root map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(forb), &root); err != nil {
+			t.Fatal(err)
+		}
+		dropped, err := GateConfigForCore(root, version)
+		if err != nil {
+			t.Fatalf("%s: %v", version, err)
+		}
+		got, _ := json.Marshal(root)
+		if want := `{"lx":{"mtu_align":"fill"}}`; string(got) != want || len(dropped) != 1 {
+			t.Errorf("forbidden, core %q: got %s (dropped %v), want %s", version, got, dropped, want)
+		}
+	}
 }

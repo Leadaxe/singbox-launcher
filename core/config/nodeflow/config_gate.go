@@ -20,11 +20,13 @@ import (
 // version не знает, и возвращает снятые пути. root правится на месте;
 // объект, опустевший от снятия, снимается тоже.
 //
-// Пустая version — гейт не применяется: не деградируем по догадке, та же
-// политика, что у полевого гейта узлов.
+// Пустая version — гейт по `min_core` не применяется: не деградируем по
+// догадке, та же политика, что у полевого гейта узлов. Ключ с `forbidden`
+// (снят из ядра и из реестра, контракт 1.1.164) снимается всегда, и при
+// неизвестной версии тоже.
 func GateConfigForCore(root map[string]json.RawMessage, version string) ([]string, error) {
 	version = strings.TrimSpace(version)
-	if version == "" || len(root) == 0 {
+	if len(root) == 0 {
 		return nil, nil
 	}
 	reg, err := registry.Get()
@@ -34,7 +36,10 @@ func GateConfigForCore(root map[string]json.RawMessage, version string) ([]strin
 	fields := reg.CoreConfigFields()
 	paths := make([]string, 0, len(fields))
 	for path, f := range fields {
-		if f.MinCore != "" && compareCoreVersions(version, f.MinCore) < 0 {
+		switch {
+		case f.Forbidden:
+			paths = append(paths, path)
+		case version != "" && f.MinCore != "" && compareCoreVersions(version, f.MinCore) < 0:
 			paths = append(paths, path)
 		}
 	}

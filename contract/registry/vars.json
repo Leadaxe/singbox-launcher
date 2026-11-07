@@ -366,13 +366,25 @@
       "type": "enum",
       "portable": false,
       "in": "both",
-      "note": "lx.quic_sniff_decoy ядра (SPEC 151 форка; режимы с 1.14.4-lx.30). options off / detour / direct / all, дефолт шаблона off = дефолт ядра (контракт 1.1.163; в 1.1.152 был detour, и ключ писался в каждый конфиг); эмитится строкой режима только при значении из detour / direct / all (#in), иначе ключа нет. Было bool в 1.1.151 (rc.3: true = all): оставшееся в состоянии true/false через #in не эмитится, ядро не падает; миграции нет. Граница версии ключа — registry/core_config.json."
+      "note": "lx.quic_sniff_decoy ядра (SPEC 151 форка; режимы с 1.14.4-lx.30). options off / detour / direct / all, дефолт шаблона off = дефолт ядра (контракт 1.1.163; в 1.1.152 был detour, и ключ писался в каждый конфиг); ключ только при значении из detour / direct / all (#in), иначе ключа нет. Форма ключа зависит от пина ядра стороны (контракт 1.1.164, LxBox §162): с 1.14.4-lx.33 ключ — объект {mode, outbound_type, detour_type, send}, строка и bool валят загрузку конфига; сторона с пином >= lx.33 пишет объект — mode и send всегда, outbound_type / detour_type только непустыми списками (#notEmpty) из quic_sniff_decoy_outbounds / quic_sniff_decoy_detours; сторона с пином lx.30–lx.32 пишет прежнюю строку режима (норма 1.1.152). Было bool в 1.1.151 (rc.3: true = all): оставшееся в состоянии true/false через #in не эмитится, ядро не падает; миграции нет. Граница версии ключа — registry/core_config.json."
     },
-    "awg_masquerade": {
+    "quic_sniff_decoy_send": {
       "type": "enum",
       "portable": false,
       "in": "mobile",
-      "note": "lx.awg_masquerade ядра (SPEC 153 форка, ключ с 1.14.4-lx.31; пин стороны, несущей переменную, не ниже 1.14.4-lx.32). options all / direct, дефолт all = дефолт ядра с lx.32: all — маскировочная пачка AWG (ip=quic, i1…) на любом пути, direct — только на прямом пути, через detour идёт одна инициация рукопожатия. Эмитится строкой direct только при direct, при all и чужом значении ключа нет. На lx.31 отсутствие ключа значило direct — такая эмиссия давала бы обратное поведение, отсюда нижняя граница lx.32. С lx.32 прямым путём у awg_masquerade и quic_sniff_decoy считается и detour на outbound direct или на группу (selector / urltest) любой вложенности, в которой сейчас выбран direct; в конфиге это следа не оставляет. Только mobile: пин лаунчера 1.14.4-lx.30 ключа не знает, шаблон лаунчера переменную не несёт; both — с подъёмом пина лаунчера до lx.32, отдельной версией контракта (контракт 1.1.162, LxBox 720, §159)."
+      "note": "lx.quic_sniff_decoy.send ядра (SPEC 151 форка, объект с 1.14.4-lx.33). options retry / always, дефолт retry = дефолт ядра: retry — байт-обманка только на повторе после неудачной первой попытки, always — на каждом соединении (поведение lx.30–lx.32); на wireguard не действует. Пишется всегда внутри объекта quic_sniff_decoy при режиме != off (#enable при quic_sniff_decoy != off). Только mobile: пин лаунчера 1.14.4-lx.30 объекта не знает; both — с подъёмом пина лаунчера до lx.33, отдельной версией контракта (контракт 1.1.164, LxBox 709, §162)."
+    },
+    "quic_sniff_decoy_outbounds": {
+      "type": "text_list",
+      "portable": false,
+      "in": "mobile",
+      "note": "lx.quic_sniff_decoy.outbound_type ядра (объект с 1.14.4-lx.33): типы outbound, чьи соединения получают обманку. options_open, options — восемь типов ядра: masque, hysteria2, tuic, trusttunnel, vless, vmess, trojan, wireguard; дефолт masque = дефолт ядра. Пишется в объект только непустым списком (#notEmpty); пустой или отсутствующий список ядро читает как дефолтный. Только mobile, как quic_sniff_decoy_send (контракт 1.1.164, §162)."
+    },
+    "quic_sniff_decoy_detours": {
+      "type": "text_list",
+      "portable": false,
+      "in": "mobile",
+      "note": "lx.quic_sniff_decoy.detour_type ядра (объект с 1.14.4-lx.33): типы outbound, через которые идёт обманка в режимах detour / all. options_open, options — любой тип outbound, кроме групп (selector / urltest); тип, которого сборка ядра не знает, валит старт. Дефолт vless = дефолт ядра. Пишется в объект только непустым списком (#notEmpty). Только mobile, как quic_sniff_decoy_send (контракт 1.1.164, §162)."
     },
     "masque_idle_timeout": {
       "type": "enum",
