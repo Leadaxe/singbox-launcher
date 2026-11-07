@@ -10151,3 +10151,38 @@ LxBox задача 720, решение владельца 05.11.2026. Ядро `
 Версия контракта — 1.1.163. Корпус без изменений. Синк: `sync_contract.sh --to 7e264a95`.
 
 Задачи вам: синк 1.1.163; дефолт `quic_sniff_decoy` в своём шаблоне — `off`, подпись «(default)» перенести на Off. Расхождение — сюда.
+
+## 162. Запрос LxBox — ядро lx.33: `quic_sniff_decoy` объектом, `awg_masquerade` снят (07.11.2026)
+
+LxBox задача 709 итерация 5 и отмена задачи 720, решения владельца 07.11.2026. Ядро `v1.14.4-lx.33` (SPEC 151 и SPEC 153 форка) — несовместимое изменение конфига:
+
+- **`lx.quic_sniff_decoy` — объект** `{mode, outbound_type, detour_type, send}`; строка и bool из lx.30–lx.32 — ошибка загрузки (`lx.quic_sniff_decoy must be an object: …`). `mode` — `off` (дефолт) / `direct` / `detour` / `all`; `outbound_type` — дефолт `["masque"]`, допустимы `masque`, `hysteria2`, `tuic`, `trusttunnel`, `vless`, `vmess`, `trojan`, `wireguard`; `detour_type` — дефолт `["vless"]`, любой тип outbound, кроме групп (тип, которого сборка не знает, валит старт); `send` — `retry` (дефолт: байт только на повторе после неудачной первой попытки) / `always` (поведение lx.30–lx.32), на `wireguard` не действует. Пустой или отсутствующий список ядро читает как дефолтный.
+- **`lx.awg_masquerade` удалён**: маскировочная пачка AWG идёт на любом пути, любое значение ключа — ошибка загрузки.
+
+Что сделано у LxBox (пин `v1.14.4-lx.33`, секция QUIC вкладки Core):
+
+1. `quic_sniff_decoy` — enum `off` / `detour` / `direct` / `all`, дефолт `off` (= §161, 1.1.163).
+2. Три новые переменные, `#enable` при `quic_sniff_decoy` ≠ `off`:
+   - `quic_sniff_decoy_send` — enum `retry` / `always`, дефолт `retry`;
+   - `quic_sniff_decoy_outbounds` — `text_list`, `options_open`, дефолт `masque` (восемь типов ядра в options);
+   - `quic_sniff_decoy_detours` — `text_list`, `options_open`, дефолт `vless` (типы outbound без групп в options).
+   Все `portable: false`; `in: mobile`, пока пин лаунчера `1.14.4-lx.30`.
+3. **Норма эмиссии** — объект при режиме ≠ `off`, `mode` и `send` всегда, список — только непустым:
+   ```json
+   "#if quic_sniff_decoy": [{"@quic_sniff_decoy": {"#in": ["detour", "direct", "all"]}}, {
+     "quic_sniff_decoy": {
+       "mode": "@quic_sniff_decoy",
+       "#if outbound_type": [{"@quic_sniff_decoy_outbounds": "#notEmpty"}, {"outbound_type": "@quic_sniff_decoy_outbounds"}],
+       "#if detour_type": [{"@quic_sniff_decoy_detours": "#notEmpty"}, {"detour_type": "@quic_sniff_decoy_detours"}],
+       "send": "@quic_sniff_decoy_send"
+     }
+   }]
+   ```
+   При `off` и чужом значении (старые `true` / `false`) ключа нет. Дефолты переменных равны дефолтам ядра, сравнивать списки в языке шаблона не нужно.
+4. Переменная `awg_masquerade` и ветка `#if awg_masquerade` сняты из шаблона.
+
+Просим лаунчер:
+
+1. **Реестр** `registry/vars.json`: снять `awg_masquerade`; завести `quic_sniff_decoy_send`, `quic_sniff_decoy_outbounds`, `quic_sniff_decoy_detours` по п.2 (`in: mobile`; `both` — с подъёмом пина лаунчера до lx.33).
+2. **Норму 1.1.152** «строка режима» заменить объектной (п.3) для стороны с пином ≥ `1.14.4-lx.33`; сторона на lx.30–lx.32 пишет строку, как прежде (в `registry/core_config.json` 1.1.163 — граница формы, если нужна вашей службе).
+3. Корпус без изменений.
