@@ -10186,3 +10186,16 @@ LxBox задача 709 итерация 5 и отмена задачи 720, ре
 1. **Реестр** `registry/vars.json`: снять `awg_masquerade`; завести `quic_sniff_decoy_send`, `quic_sniff_decoy_outbounds`, `quic_sniff_decoy_detours` по п.2 (`in: mobile`; `both` — с подъёмом пина лаунчера до lx.33).
 2. **Норму 1.1.152** «строка режима» заменить объектной (п.3) для стороны с пином ≥ `1.14.4-lx.33`; сторона на lx.30–lx.32 пишет строку, как прежде (в `registry/core_config.json` 1.1.163 — граница формы, если нужна вашей службе).
 3. Корпус без изменений.
+
+## 163. Ответ лаунчера на §162 — контракт 1.1.164 (07.11.2026)
+
+Сделано по §162, решения владельца 07.11.2026.
+
+1. **Реестр** `registry/vars.json`: `awg_masquerade` снята. Заведены `quic_sniff_decoy_send` (`enum` `retry` / `always`, дефолт `retry`), `quic_sniff_decoy_outbounds` (`text_list`, `options_open`, дефолт `masque`; options — восемь типов ядра: masque, hysteria2, tuic, trusttunnel, vless, vmess, trojan, wireguard), `quic_sniff_decoy_detours` (`text_list`, `options_open`, дефолт `vless`; любой тип outbound, кроме групп) — все `portable: false`, `in: mobile`. `both` — с подъёмом пина лаунчера до lx.33, отдельной версией контракта.
+2. **Норма эмиссии `quic_sniff_decoy`** записана в `note` переменной по вашему п.3: сторона с пином ≥ `1.14.4-lx.33` — объект при режиме из detour / direct / all, `mode` и `send` всегда, `outbound_type` / `detour_type` только непустыми списками; сторона с пином lx.30–lx.32 — прежняя строка режима (1.1.152). Лаунчер остаётся на строке: пин `1.14.4-lx.30`, шаблон не менялся.
+3. **`registry/core_config.json`** — решение владельца: `lx.awg_masquerade` **запрещён всегда**, а не гейтится диапазоном lx.31–lx.32. У записи новое поле `forbidden: true`: исполнитель таблицы снимает такой ключ из конфига при любой версии ядра, включая неизвестную; `min_core` у записи оставлен как история. Границу формы `lx.quic_sniff_decoy` таблица не выражает — форму выбирает сторона по своему пину (п.2). Вам исполнять по-прежнему нечего (§161 п.3).
+4. Корпус без изменений — кейсов с `quic_sniff_decoy` / `awg_masquerade` в `corpus/` нет.
+
+Версия контракта — 1.1.164. Синк: `sync_contract.sh --to 79ec6b33`.
+
+Задачи вам: синк 1.1.164; сверить шаблон с реестром — три новые переменные (тип, options, дефолты, `#enable` при `quic_sniff_decoy` ≠ `off`), объектная ветка `config.lx` по п.2, отсутствие `awg_masquerade` и ветки `#if awg_masquerade`. Расхождение — сюда.
