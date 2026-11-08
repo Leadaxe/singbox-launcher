@@ -155,7 +155,7 @@ func setSourceOriginURI(p *wizardmodels.Source, uri string) {
 		return
 	}
 	if uri == "" {
-		if p.Origin != nil && p.Origin.Kind != wizardmodels.OriginKindJSON {
+		if p.Origin != nil && !p.Origin.IsJSON() {
 			p.Origin = nil
 		}
 		return
@@ -1451,8 +1451,10 @@ func showSourceEditWindowAt(
 				switch scratch.Origin.Kind {
 				case wizardmodels.OriginKindWGIni:
 					uriLabel = locale.T("Origin (wg-quick config)")
-				case wizardmodels.OriginKindJSON:
+				case wizardmodels.OriginKindSingbox:
 					uriLabel = locale.T("Origin (raw JSON)")
+				case wizardmodels.OriginKindXray:
+					uriLabel = locale.T("Origin (Xray JSON)")
 				}
 			}
 			// Заголовок и кнопки — ОДНОЙ строкой: Origin занимает всю
@@ -1469,7 +1471,7 @@ func showSourceEditWindowAt(
 			// правка «молча не работает» и путает. Текст говорит «origin», а
 			// не «URI»: у JSON-узла в поле выше лежит объект, и звать его URI
 			// значило бы повторить ту же ложь, что и подпись поля.
-			if scratch.Origin != nil && scratch.Origin.Kind == wizardmodels.OriginKindJSON {
+			if scratch.Origin != nil && scratch.Origin.IsJSON() {
 				manualNote := widget.NewLabel(locale.T("A manual config_json is set — the origin above is ignored at build time (see the JSON tab). Regen from raw rebuilds the node from it."))
 				manualNote.Wrapping = fyne.TextWrapWord
 				manualNote.Importance = widget.LowImportance
@@ -2072,9 +2074,15 @@ func showSourceEditWindowAt(
 				dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
 				return
 			}
-			if t, _ := ob["type"].(string); strings.TrimSpace(t) == "" {
-				dialog.ShowError(errors.New(locale.T("The outbound object must have a non-empty \"type\" field.")), win)
-				return
+			// Непустой `type` — требование ЦЕПОЧКИ (её объект — sing-box
+			// outbound). У сервера диалект решает реестр (контракт
+			// 1.1.165): Xray outbound несёт `protocol`, а не `type`, и
+			// проверка ключа здесь отвергала бы его до разбора (LxBox #209).
+			if isChainSource {
+				if t, _ := ob["type"].(string); strings.TrimSpace(t) == "" {
+					dialog.ShowError(errors.New(locale.T("The outbound object must have a non-empty \"type\" field.")), win)
+					return
+				}
 			}
 		}
 		// SPEC 110: у цепочки правится СВОЙ объект, а не ConfigJSON —

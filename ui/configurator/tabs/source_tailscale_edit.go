@@ -248,12 +248,15 @@ func writeTailscaleBody(node *wizardmodels.Node, ob map[string]interface{}) erro
 	// Вердикт ядра привязан к ТЕЛУ: смена роли сменила тело — приговор о
 	// прежнем недействителен (SPEC 132, PARSING_PRINCIPLES §9.4).
 	node.RevalidateCoreVerdictAfterBodyChange(bodyBefore)
-	if node.Origin == nil || node.Origin.Kind == wizardmodels.OriginKindJSON {
+	// Источник JSON-узла — тело, которое форма собрала: оно в форме
+	// sing-box, вид `singbox` (у узла `xray` прежний текст Xray заменяется —
+	// правка другим диалектом меняет вид, контракт 1.1.165 §11 п.4).
+	if node.Origin == nil || node.Origin.IsJSON() {
 		o := wizardmodels.Origin{}
 		if node.Origin != nil {
 			o = *node.Origin
 		}
-		o.Kind = wizardmodels.OriginKindJSON
+		o.Kind = wizardmodels.OriginKindSingbox
 		o.Raw = string(stamped)
 		node.Origin = &o
 	}

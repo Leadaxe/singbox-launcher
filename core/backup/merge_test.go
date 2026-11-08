@@ -307,7 +307,7 @@ func TestMergeServersDedupByBody(t *testing.T) {
 			Node: state.Node{
 				Kind: state.SourceKindServer, Tag: "Json", Enabled: true,
 				Body:   body,
-				Origin: &state.Origin{Kind: state.OriginKindJSON, Raw: string(body)},
+				Origin: &state.Origin{Kind: state.OriginKindSingbox, Raw: string(body)},
 			},
 			ID: "01JSON",
 		},
@@ -598,7 +598,7 @@ func TestMergeDedupMaterializedLocalNode(t *testing.T) {
 	localJSON := state.Source{
 		Node: state.Node{
 			Kind: state.SourceKindServer, Tag: "Json", Enabled: true,
-			Origin: &state.Origin{Kind: state.OriginKindJSON, Raw: jsonRaw},
+			Origin: &state.Origin{Kind: state.OriginKindSingbox, Raw: jsonRaw},
 			Body:   json.RawMessage(jsonRaw),
 		},
 		ID: "01JSON",

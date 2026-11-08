@@ -1,5 +1,5 @@
 {
-  "_comment": "Свой сервер в корне из ссылки: правка JSON заменяет источник голым телом, вид json (singbox_outbound), тело авторское; лишний ключ остаётся, код unknown_key с applied:false (контракт 1.1.88, PARSING_PRINCIPLES §11 п.1, §10).",
+  "_comment": "Свой сервер в корне из ссылки: правка JSON заменяет источник голым телом, вид singbox, тело авторское; лишний ключ остаётся, код unknown_key с applied:false (контракт 1.1.88, PARSING_PRINCIPLES §11 п.1, §10).",
   "container": "own",
   "origin": {
     "kind": "uri",

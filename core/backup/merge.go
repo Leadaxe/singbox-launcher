@@ -217,8 +217,9 @@ func folderMemberKey(n *state.Node) string {
 //
 //   - origin.kind=uri: `TrimSpace` и БЕЗ фрагмента `#имя` — у share-URI это
 //     имя узла, а не часть тела;
-//   - origin.kind=json и wg_ini: тело = сам текст исходника; json идёт в
-//     нормальную форму (см. canonicalJSONKey), wg-quick сравнивается текстом —
+//   - origin.kind=singbox|xray и wg_ini: тело = сам текст исходника; JSON
+//     идёт в нормальную форму (см. canonicalJSONKey; §9 контракта 1.1.165),
+//     wg-quick сравнивается текстом —
 //     разбирать INI ради ключа нечем, а `#` там начинает комментарий строки и
 //     отрезать по нему нельзя;
 //   - origin нет → Body в нормальной форме: узел, созданный руками с нуля,
@@ -245,7 +246,11 @@ func nodeBodyKey(n *state.Node) string {
 				return ""
 			}
 			return "raw\x00" + raw
-		case state.OriginKindJSON:
+		case state.OriginKindSingbox, state.OriginKindXray:
+			// Префикс общий с телом записи без исходника: узел, созданный
+			// руками с нуля, и тот же узел, приехавший sing-box источником,
+			// обязаны узнаться. Xray-текст каноническому sing-box телу не
+			// равен по построению — отдельный префикс диалекту не нужен.
 			if key := canonicalJSONKey(json.RawMessage(raw)); key != "" {
 				return "json\x00" + key
 			}

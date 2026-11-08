@@ -163,7 +163,7 @@
           "tag": "Auto",
           "enabled": true,
           "origin": {
-            "kind": "json",
+            "kind": "singbox",
             "raw": "{\"type\":\"urltest\",\"tag\":\"Auto\"}"
           },
           "group": {

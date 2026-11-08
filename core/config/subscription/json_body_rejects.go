@@ -149,7 +149,10 @@ func newJSONRejectFlusher(st *bodyParseState, records []jsonRejectedRecord) func
 			r := records[next]
 			next++
 			st.warn(fmt.Sprintf("record rejected: %s", r.Reason))
-			st.rejectCoded(r.Reason, r.Code, OriginKindJSON, r.OriginRaw)
+			// Вид исходника отбраковки — диалект её текста по реестру
+			// (контракт 1.1.165): у Xray-тела это сам элемент Xray, у
+			// sing-box — запись sing-box.
+			st.rejectCoded(r.Reason, r.Code, OriginKindOfText(r.OriginRaw), r.OriginRaw)
 		}
 	}
 }

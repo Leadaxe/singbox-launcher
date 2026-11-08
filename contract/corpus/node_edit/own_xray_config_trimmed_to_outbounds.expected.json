@@ -1,0 +1,32 @@
+{
+  "origin": {
+    "kind": "xray",
+    "raw": {
+      "outbounds": [
+        {
+          "tag": "xr",
+          "protocol": "vless",
+          "settings": {
+            "vnext": [
+              {
+                "address": "example-1.com",
+                "port": 443,
+                "users": [
+                  {
+                    "id": "11111111-2222-3333-4444-555555555555"
+                  }
+                ]
+              }
+            ]
+          },
+          "streamSettings": {
+            "network": "tcp",
+            "security": "none"
+          }
+        }
+      ]
+    }
+  },
+  "authored": false,
+  "rest_not_kept": true
+}

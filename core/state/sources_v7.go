@@ -47,7 +47,13 @@ type NodeLink struct {
 
 // Origin — происхождение узла. nil = создан руками с нуля.
 type Origin struct {
-	// Kind: "uri" | "wg_ini" | "json". kind=warp НЕ существует (warp-К1).
+	// Kind — ДИАЛЕКТ текста Raw (контракт 1.1.165, PARSING_PRINCIPLES §11):
+	// "singbox" | "xray" | "uri" | "wg_ini". Определяется движком по реестру
+	// (source_kinds.json, mapper вида) один раз — когда текст приходит
+	// снаружи; хранимый текст заново не классифицируется. Форма текста
+	// (голое тело / документ) в вид не входит. kind=warp НЕ существует
+	// (warp-К1). Старое "json" (до 1.1.165) читается миграцией
+	// (MigrateLegacyOriginKinds) и в состоянии не живёт.
 	Kind string `json:"kind"`
 	// Raw — байт в байт; правится только явным Regen и merge-освежением.
 	Raw string `json:"raw"`
@@ -57,10 +63,24 @@ type Origin struct {
 }
 
 const (
-	OriginKindURI   = "uri"
-	OriginKindWGIni = "wg_ini"
-	OriginKindJSON  = "json"
+	OriginKindURI     = "uri"
+	OriginKindWGIni   = "wg_ini"
+	OriginKindSingbox = "singbox"
+	OriginKindXray    = "xray"
+	// LegacyOriginKindJSON — вид "json" контрактов ≤ 1.1.164: JSON любого
+	// диалекта. Читается только миграцией, писать его нельзя.
+	LegacyOriginKindJSON = "json"
 )
+
+// IsJSONOriginKind — вид источника есть JSON-диалект (singbox или xray).
+func IsJSONOriginKind(kind string) bool {
+	return kind == OriginKindSingbox || kind == OriginKindXray
+}
+
+// IsJSON — текст источника есть JSON (вид singbox или xray).
+func (o *Origin) IsJSON() bool {
+	return o != nil && IsJSONOriginKind(o.Kind)
+}
 
 // TagPolicy — косметика эмиссии: финальный тег = prefix + сырой тег + postfix.
 // Переменные {$tag} {$scheme} {$protocol} {$server} {$port} {$label}

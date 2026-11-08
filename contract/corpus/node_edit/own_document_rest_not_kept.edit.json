@@ -1,8 +1,8 @@
 {
-  "_comment": "Документ узла с dns: в источник тело узла, об остатке то же сообщение, что у массива.",
+  "_comment": "Документ узла с dns: в источник документ, обрезанный до узловых массивов (контракт 1.1.165, PARSING_PRINCIPLES §11 п.2); об остатке (dns) одно сообщение.",
   "container": "own",
   "origin": {
-    "kind": "json",
+    "kind": "singbox",
     "raw": "{\"type\":\"trojan\",\"server\":\"example-2.com\",\"server_port\":443,\"password\":\"testpass581\"}"
   },
   "input": "{\"outbounds\": [{\"type\": \"trojan\", \"server\": \"example-1.com\", \"server_port\": 443, \"password\": \"testpass580\"}], \"dns\": {\"servers\": [{\"type\": \"local\", \"tag\": \"d\"}]}}"

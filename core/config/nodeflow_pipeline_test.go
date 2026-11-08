@@ -422,10 +422,12 @@ func TestPipelineAWGMTUExceptionSurvivesStateReload(t *testing.T) {
 	}{
 		// Авторское тело (свой узел, голое тело sing-box, контракт
 		// 1.1.87): тело остаётся байт в байт, код — info.
-		{"origin=json authored", state.OriginKindJSON, true, false, "awg_mtu_high"},
+		{"origin=singbox authored", state.OriginKindSingbox, true, false, "awg_mtu_high"},
 		// sing-box JSON подписки авторским не бывает: вход `other`,
 		// значение заменяется (PARSING_PRINCIPLES §10.4).
-		{"origin=json", state.OriginKindJSON, false, true, "awg_mtu_clamped"},
+		{"origin=singbox", state.OriginKindSingbox, false, true, "awg_mtu_clamped"},
+		// Xray-источник: тело — перевод, вход `xray`, значение заменяется.
+		{"origin=xray", state.OriginKindXray, false, true, "awg_mtu_clamped"},
 		// Узел из ссылки: значение заменяется, тело переписывается.
 		{"origin=uri", state.OriginKindURI, false, true, "awg_mtu_clamped"},
 		// .conf — ссылка того же рода.

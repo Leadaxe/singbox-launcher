@@ -209,7 +209,7 @@ func WriteTailscaleExitNodeChoice(d paths.DataDir, machineID, finalTag, value st
 	if node == nil {
 		return errNoOwnTailscaleNode
 	}
-	jsonOrigin := node.Origin == nil || node.Origin.Kind == state.OriginKindJSON
+	jsonOrigin := node.Origin == nil || node.Origin.IsJSON()
 	src := []byte(node.Body)
 	if jsonOrigin && node.Origin != nil && strings.TrimSpace(node.Origin.Raw) != "" {
 		src = []byte(node.Origin.Raw)
@@ -236,7 +236,7 @@ func WriteTailscaleExitNodeChoice(d paths.DataDir, machineID, finalTag, value st
 		if node.Origin != nil {
 			o = *node.Origin
 		}
-		o.Kind = state.OriginKindJSON
+		o.Kind = mat.OriginKind
 		o.Raw = mat.OriginRaw
 		node.Origin = &o
 	}

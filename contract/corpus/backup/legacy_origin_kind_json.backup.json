@@ -1,0 +1,56 @@
+{
+  "lx_backup": 2,
+  "exported_by": {
+    "app": "lxbox",
+    "version": "corpus",
+    "platform": "test"
+  },
+  "exported_at": "2026-11-09T00:00:00Z",
+  "sources": [
+    {
+      "kind": "server",
+      "tag": "sb-body",
+      "enabled": true,
+      "origin": {
+        "kind": "json",
+        "raw": "{\"type\":\"trojan\",\"server\":\"example-1.com\",\"server_port\":443,\"password\":\"testpass722\"}"
+      },
+      "body": {
+        "type": "trojan",
+        "server": "example-1.com",
+        "server_port": 443,
+        "password": "testpass722"
+      }
+    },
+    {
+      "kind": "server",
+      "tag": "xr-body",
+      "enabled": true,
+      "origin": {
+        "kind": "json",
+        "raw": "{\"tag\":\"xr\",\"protocol\":\"vless\",\"settings\":{\"vnext\":[{\"address\":\"example-1.com\",\"port\":443,\"users\":[{\"id\":\"11111111-2222-3333-4444-555555555555\"}]}]},\"streamSettings\":{\"network\":\"tcp\",\"security\":\"none\"}}"
+      },
+      "body": {
+        "type": "vless",
+        "server": "example-1.com",
+        "server_port": 443,
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      }
+    },
+    {
+      "kind": "server",
+      "tag": "no-kind",
+      "enabled": true,
+      "origin": {
+        "kind": "json",
+        "raw": "{\"type\": "
+      },
+      "body": {
+        "type": "trojan",
+        "server": "example-1.com",
+        "server_port": 443,
+        "password": "testpass722"
+      }
+    }
+  ]
+}
