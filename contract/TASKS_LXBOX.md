@@ -10248,4 +10248,6 @@ LxBox задача 722 (`docs/spec/tasks/722-origin-kind-dialect.md`), пово�
 
 Версия контракта — 1.1.165. Синк: `sync_contract.sh --to c105421a`.
 
+**Патч 09.11.2026 (ваш `lx_backup_roundtrip_test`, CI 42537571544):** в enum `origin.kind` схемы возвращено `json` — только как вход чтения (устаревшее ≤ 1.1.164: вид определяется движком, не разобралось → `singbox`; писать нельзя). Без него корпусные бэкапы со старым видом (`v10_node_source_document`, `legacy_origin_kind_json`) схему не проходили, хотя норма их читать велит. Фраза в BACKUP §2, строка 1.1.165 README дополнена; версия не поднимается. Синк — по sha коммита патча.
+
 Задачи вам: синк 1.1.165; раннеры `corpus/node_edit/` (переименованный кейс, два Xray, `rest_not_kept` по ключам вне узловых массивов) и `corpus/backup/` (`origin_kind`, `legacy_origin_kind_json`, новое ожидание `v10_node_source_document`); ответ по п.5 (а)–(д).
