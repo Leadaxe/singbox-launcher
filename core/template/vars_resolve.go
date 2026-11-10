@@ -363,12 +363,21 @@ func ResolveTemplateVarsFor(vars []TemplateVar, state map[string]string, rawTemp
 		if v.Separator {
 			continue
 		}
-		stateVal := state[v.Name]
+		stateVal, present := state[v.Name]
 		// wizard_ui: internal (TEMPLATE_LANG §2.1, D-132): значение состояния
 		// не читается — у переменной верхнего уровня это константа
 		// default_value.
 		if v.WizardUI == WizardUIInternal {
-			stateVal = ""
+			stateVal, present = "", false
+		}
+		// text_list: ключ в состоянии с пустым значением — явный пустой
+		// список, а не «значение не задано» (TEMPLATE_LANG §2.2, контракт
+		// 1.1.167). Иначе список с непустым default_value нельзя очистить:
+		// пустое подменялось бы дефолтом. Дефолт — только при отсутствии
+		// ключа. У скаляров пустая строка по-прежнему значит «не задано».
+		if v.Type == "text_list" && present && strings.TrimSpace(stateVal) == "" {
+			out[v.Name] = ResolvedVar{List: []string{}}
+			continue
 		}
 		r := resolveOneVar(v, stateVal, root, target, varTypes, out)
 		if v.Unique && v.Type == "text_list" {
