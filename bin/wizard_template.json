@@ -339,10 +339,7 @@
       "title": "Decoy sending",
       "tooltip": "On retry: the first attempt goes without the byte, a failed one is repeated with it. Always: the byte goes on every dial. Does not apply to WireGuard: there the byte goes on every handshake.",
       "default_value": "retry",
-      "options": [
-        {"title": "On retry (default)", "value": "retry"},
-        {"title": "Always", "value": "always"}
-      ]
+      "options": [{"title": "On retry (default)", "value": "retry"}, {"title": "Always", "value": "always"}]
     },
     {
       "name": "quic_sniff_decoy_outbounds",
@@ -362,7 +359,23 @@
       "title": "Decoy relay types",
       "tooltip": "The byte goes only if the nearest relay (detour) is of one of these types. Behind a group the type of the member the group actually picked counts. Empty means the core default (vless).",
       "default_value": "vless",
-      "options": ["vless", "vmess", "trojan", "shadowsocks", "socks", "http", "ssh", "hysteria2", "tuic", "masque", "trusttunnel", "wireguard", "anytls", "naive", "shadowtls"]
+      "options": [
+        "vless",
+        "vmess",
+        "trojan",
+        "shadowsocks",
+        "socks",
+        "http",
+        "ssh",
+        "hysteria2",
+        "tuic",
+        "masque",
+        "trusttunnel",
+        "wireguard",
+        "anytls",
+        "naive",
+        "shadowtls"
+      ]
     },
     {
       "name": "masque_idle_timeout",
@@ -556,18 +569,17 @@
     },
     "lx": {
       "#if mtu_align": [{"#not": {"@mtu_align": "clamp"}}, {"mtu_align": "@mtu_align"}],
-      "#if quic_sniff_decoy": [{"@quic_sniff_decoy": {"#in": ["detour", "direct", "all"]}}, {
-        "quic_sniff_decoy": {
-          "mode": "@quic_sniff_decoy",
-          "#if outbound_type": [{"@quic_sniff_decoy_outbounds": "#notEmpty"}, {
-            "outbound_type": "@quic_sniff_decoy_outbounds"
-          }],
-          "#if detour_type": [{"@quic_sniff_decoy_detours": "#notEmpty"}, {
-            "detour_type": "@quic_sniff_decoy_detours"
-          }],
-          "send": "@quic_sniff_decoy_send"
+      "#if quic_sniff_decoy": [
+        {"@quic_sniff_decoy": {"#in": ["detour", "direct", "all"]}},
+        {
+          "quic_sniff_decoy": {
+            "mode": "@quic_sniff_decoy",
+            "#if outbound_type": [{"@quic_sniff_decoy_outbounds": "#notEmpty"}, {"outbound_type": "@quic_sniff_decoy_outbounds"}],
+            "#if detour_type": [{"@quic_sniff_decoy_detours": "#notEmpty"}, {"detour_type": "@quic_sniff_decoy_detours"}],
+            "send": "@quic_sniff_decoy_send"
+          }
         }
-      }],
+      ],
       "#if masque_idle_timeout": [{"#not": {"@masque_idle_timeout": "off"}}, {"masque": {"idle_timeout": "@masque_idle_timeout"}}]
     }
   },
@@ -971,10 +983,7 @@
       "num": 943,
       "for_each_node": {
         "#filter": {
-          "#and": [
-            {"@node.body.type": {"#in": ["wireguard", "openvpn-client", "openconnect"]}},
-            "@node.own_routes"
-          ]
+          "#and": [{"@node.body.type": {"#in": ["wireguard", "openvpn-client", "openconnect"]}}, "@node.own_routes"]
         }
       },
       "vars": [
