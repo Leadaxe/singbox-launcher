@@ -321,8 +321,8 @@
       "name": "quic_sniff_decoy",
       "type": "enum",
       "wizard_ui": "edit",
-      "title": "QUIC sniff decoy",
-      "tooltip": "sing-box-lx lx.quic_sniff_decoy — send one non-QUIC byte ahead of the first QUIC packet of MASQUE (HTTP/3), Hysteria2 and TUIC connections. A relay in the path that sniffs the QUIC SNI and rewrites the destination by it (Xray destOverride) then leaves the connection where it was dialled. Off (default, as in the core): nothing is sent. Through detour: only connections carried by another outbound, such as a VLESS relay; direct: only connections on this device's own socket; all: both. Needs core 1.14.4-lx.30 or newer — an older core runs without the decoy. A DPI on your own uplink may react to the extra byte, so direct and all are for networks where the sniffing relay sits on your own path.",
+      "title": "Anti-sniff decoy",
+      "tooltip": "Send one junk byte before the QUIC handshake so a relay that sniffs UDP cannot redirect the connection by its SNI. The byte goes only where a node opens QUIC (MASQUE, Hysteria2, TUIC, XHTTP over HTTP/3, AWG with ip=quic) and, by default, only on a retry after a failed first attempt. Through detour: only connections carried by another node; Direct: only this device's own socket; All: both. Needs core 1.14.4-lx.33 or newer — an older core runs without the decoy.",
       "default_value": "off",
       "options": [
         {"title": "Off (default)", "value": "off"},
@@ -330,6 +330,39 @@
         {"title": "Direct", "value": "direct"},
         {"title": "All", "value": "all"}
       ]
+    },
+    {
+      "name": "quic_sniff_decoy_send",
+      "type": "enum",
+      "wizard_ui": "edit",
+      "#enable": [{"#not": {"@quic_sniff_decoy": "off"}}],
+      "title": "Decoy sending",
+      "tooltip": "On retry: the first attempt goes without the byte, a failed one is repeated with it. Always: the byte goes on every dial. Does not apply to WireGuard: there the byte goes on every handshake.",
+      "default_value": "retry",
+      "options": [
+        {"title": "On retry (default)", "value": "retry"},
+        {"title": "Always", "value": "always"}
+      ]
+    },
+    {
+      "name": "quic_sniff_decoy_outbounds",
+      "type": "text_list",
+      "wizard_ui": "edit",
+      "#enable": [{"#not": {"@quic_sniff_decoy": "off"}}],
+      "title": "Decoy node types",
+      "tooltip": "Node types that send the byte before their QUIC handshake. Empty means the core default (masque).",
+      "default_value": "masque",
+      "options": ["masque", "hysteria2", "tuic", "trusttunnel", "vless", "vmess", "trojan", "wireguard"]
+    },
+    {
+      "name": "quic_sniff_decoy_detours",
+      "type": "text_list",
+      "wizard_ui": "edit",
+      "#enable": [{"#not": {"@quic_sniff_decoy": "off"}}],
+      "title": "Decoy relay types",
+      "tooltip": "The byte goes only if the nearest relay (detour) is of one of these types. Behind a group the type of the member the group actually picked counts. Empty means the core default (vless).",
+      "default_value": "vless",
+      "options": ["vless", "vmess", "trojan", "shadowsocks", "socks", "http", "ssh", "hysteria2", "tuic", "masque", "trusttunnel", "wireguard", "anytls", "naive", "shadowtls"]
     },
     {
       "name": "masque_idle_timeout",
@@ -523,10 +556,18 @@
     },
     "lx": {
       "#if mtu_align": [{"#not": {"@mtu_align": "clamp"}}, {"mtu_align": "@mtu_align"}],
-      "#if quic_sniff_decoy": [
-        {"@quic_sniff_decoy": {"#in": ["detour", "direct", "all"]}},
-        {"quic_sniff_decoy": "@quic_sniff_decoy"}
-      ],
+      "#if quic_sniff_decoy": [{"@quic_sniff_decoy": {"#in": ["detour", "direct", "all"]}}, {
+        "quic_sniff_decoy": {
+          "mode": "@quic_sniff_decoy",
+          "#if outbound_type": [{"@quic_sniff_decoy_outbounds": "#notEmpty"}, {
+            "outbound_type": "@quic_sniff_decoy_outbounds"
+          }],
+          "#if detour_type": [{"@quic_sniff_decoy_detours": "#notEmpty"}, {
+            "detour_type": "@quic_sniff_decoy_detours"
+          }],
+          "send": "@quic_sniff_decoy_send"
+        }
+      }],
       "#if masque_idle_timeout": [{"#not": {"@masque_idle_timeout": "off"}}, {"masque": {"idle_timeout": "@masque_idle_timeout"}}]
     }
   },

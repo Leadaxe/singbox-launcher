@@ -643,8 +643,13 @@ func buildVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmod
 	}
 
 	// SPEC 143 Т12: список рисуется по наличию options, а не по имени типа.
-	// bool с options отвергает загрузка шаблона; text_list + options пока
-	// многострочное поле — множественный выбор вынесен в подзадачу 143.1.
+	// bool с options отвергает загрузка шаблона. text_list + options без
+	// options_open — закрытый множественный выбор (TEMPLATE_LANG §2.1);
+	// с options_open остаётся многострочным полем со свободным вводом.
+	if len(options) > 0 && typ == "text_list" && !vd.OptionsOpen {
+		return buildOptionsListVarRow(presenter, vd, title, toolTip, rowEnabled, gs, store,
+			wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget), resetBtn)
+	}
 	if len(options) > 0 && typ != "bool" && typ != "text_list" {
 		return buildOptionsVarRow(presenter, vd, title, toolTip, rowEnabled, gs, store,
 			wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget), resetBtn)
@@ -801,8 +806,8 @@ func buildVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmod
 		return row
 
 	case "text_list":
-		// TODO(SPEC 143 §8, подзадача 143.1): text_list + options —
-		// множественный выбор; до него options у списка не рисуются.
+		// text_list + options без options_open сюда не доходит (закрытый
+		// множественный выбор, buildOptionsListVarRow); здесь свободный ввод.
 		titleLab := newSettingsTitleLabelFor(title, rowEnabled)
 		e := widget.NewMultiLineEntry()
 		e.SetMinRowsVisible(3)
@@ -952,6 +957,110 @@ func buildOptionsVarRow(presenter *wizardpresentation.WizardPresenter, vd wizard
 	setVarFieldToolTip(toolTip, titleLab, sel)
 	applySettingsRowDisabled(rowEnabled, resetBtn, sel)
 	bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, sel)
+	return row
+}
+
+// listPickGate — выключатель строки множественного выбора: чип не умеет
+// Disable, поэтому гейт строки (#enable) держит флаг, по которому нажатия на
+// чипы игнорируются, и выключает выпадающий список добавления.
+type listPickGate struct {
+	off bool
+	add *widget.Select
+}
+
+func (g *listPickGate) Enable()        { g.off = false; g.add.Enable() }
+func (g *listPickGate) Disable()       { g.off = true; g.add.Disable() }
+func (g *listPickGate) Disabled() bool { return g.off }
+
+// buildOptionsListVarRow — строка text_list с закрытым списком options:
+// выбранные значения чипами с «×» (нажатие убирает), добавление — выпадающим
+// списком из ещё не выбранных. Свободного ввода нет: значение вне options
+// ввести нельзя. Значение, уже лежащее в хранилище вне списка, показывается
+// чипом и убирается, но не добавляется обратно. В хранилище — строки по
+// одной на строку (TEMPLATE_LANG §2.2).
+func buildOptionsListVarRow(presenter *wizardpresentation.WizardPresenter, vd wizardtemplate.TemplateVar, title, toolTip string, rowEnabled bool, gs *wizardpresentation.GUIState, store varRowStore, disp string, resetBtn *ttwidget.Button) fyne.CanvasObject {
+	name := vd.Name
+	titleLab := newSettingsTitleLabelFor(title, rowEnabled)
+	if v, ok := store.stored(name); ok {
+		disp = v
+	}
+	var picked []string
+	for _, line := range strings.Split(disp, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !enumListContains(picked, line) {
+			picked = append(picked, line)
+		}
+	}
+
+	flow := fynewidget.NewFlowBox()
+	gate := &listPickGate{}
+	var rebuild func()
+	commit := func() {
+		changed := store.set(name, strings.Join(picked, "\n"))
+		if changed {
+			presenter.MarkAsChanged()
+		}
+		store.afterChange(name, changed, false)
+		rebuild()
+	}
+	gate.add = widget.NewSelect(nil, func(pickedTitle string) {
+		if pickedTitle == "" || gate.off {
+			return
+		}
+		for i := range vd.Options {
+			if vd.OptionTitle(i) == pickedTitle && !enumListContains(picked, vd.Options[i]) {
+				picked = append(picked, vd.Options[i])
+				break
+			}
+		}
+		commit()
+	})
+	gate.add.PlaceHolder = locale.T("Add")
+	rebuild = func() {
+		chips := make([]fyne.CanvasObject, 0, len(picked))
+		for _, val := range picked {
+			val := val
+			label := val
+			for i, o := range vd.Options {
+				if o == val {
+					label = vd.OptionTitle(i)
+					break
+				}
+			}
+			chip := fynewidget.NewChip(label+" ×", false, func(bool) {
+				if gate.off {
+					rebuild() // сбросить подсветку нажатия у выключенной строки
+					return
+				}
+				kept := picked[:0:0]
+				for _, p := range picked {
+					if p != val {
+						kept = append(kept, p)
+					}
+				}
+				picked = kept
+				commit()
+			})
+			chips = append(chips, chip)
+		}
+		flow.SetObjects(chips)
+		var rest []string
+		for i, o := range vd.Options {
+			if !enumListContains(picked, o) {
+				rest = append(rest, vd.OptionTitle(i))
+			}
+		}
+		gate.add.Options = rest
+		gate.add.ClearSelected()
+		gate.add.Refresh()
+	}
+	rebuild()
+
+	field := container.NewBorder(nil, nil, nil, gate.add, flow)
+	row := container.NewBorder(nil, nil, titleLab, resetBtn, field)
+	setVarFieldToolTip(toolTip, titleLab)
+	applySettingsRowDisabled(rowEnabled, resetBtn, gate)
+	bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, gate)
 	return row
 }
 

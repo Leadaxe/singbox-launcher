@@ -366,25 +366,25 @@
       "type": "enum",
       "portable": false,
       "in": "both",
-      "note": "lx.quic_sniff_decoy ядра (SPEC 151 форка; режимы с 1.14.4-lx.30). options off / detour / direct / all, дефолт шаблона off = дефолт ядра (контракт 1.1.163; в 1.1.152 был detour, и ключ писался в каждый конфиг); ключ только при значении из detour / direct / all (#in), иначе ключа нет. Форма ключа зависит от пина ядра стороны (контракт 1.1.164, LxBox §162): с 1.14.4-lx.33 ключ — объект {mode, outbound_type, detour_type, send}, строка и bool валят загрузку конфига; сторона с пином >= lx.33 пишет объект — mode и send всегда, outbound_type / detour_type только непустыми списками (#notEmpty) из quic_sniff_decoy_outbounds / quic_sniff_decoy_detours; сторона с пином lx.30–lx.32 пишет прежнюю строку режима (норма 1.1.152). Было bool в 1.1.151 (rc.3: true = all): оставшееся в состоянии true/false через #in не эмитится, ядро не падает; миграции нет. Граница версии ключа — registry/core_config.json."
+      "note": "lx.quic_sniff_decoy ядра (SPEC 151 форка; объект {mode, outbound_type, detour_type, send} с 1.14.4-lx.33, строка и bool валят загрузку конфига). options off / detour / direct / all, дефолт шаблона off = дефолт ядра (контракт 1.1.163). Ключ только при значении из detour / direct / all (#in), иначе ключа нет. Норма эмиссии — одна для обеих сторон (контракт 1.1.166, LxBox §162 п.3): объект, mode и send всегда, outbound_type / detour_type только непустыми списками (#notEmpty) из quic_sniff_decoy_outbounds / quic_sniff_decoy_detours. Строка режима lx.30–lx.32 (нормы 1.1.152 и 1.1.164 «сторона с пином lx.30–lx.32») больше не пишется никем: пин обеих сторон — 1.14.4-lx.33. Оставшееся в состоянии true/false (bool из 1.1.151) через #in не эмитится; миграции нет. Граница версии ключа — registry/core_config.json."
     },
     "quic_sniff_decoy_send": {
       "type": "enum",
       "portable": false,
-      "in": "mobile",
-      "note": "lx.quic_sniff_decoy.send ядра (SPEC 151 форка, объект с 1.14.4-lx.33). options retry / always, дефолт retry = дефолт ядра: retry — байт-обманка только на повторе после неудачной первой попытки, always — на каждом соединении (поведение lx.30–lx.32); на wireguard не действует. Пишется всегда внутри объекта quic_sniff_decoy при режиме != off (#enable при quic_sniff_decoy != off). Только mobile: пин лаунчера 1.14.4-lx.30 объекта не знает; both — с подъёмом пина лаунчера до lx.33, отдельной версией контракта (контракт 1.1.164, LxBox 709, §162)."
+      "in": "both",
+      "note": "lx.quic_sniff_decoy.send ядра (SPEC 151 форка, объект с 1.14.4-lx.33). options retry / always, дефолт retry = дефолт ядра: retry — байт-обманка только на повторе после неудачной первой попытки, always — на каждом соединении (поведение lx.30–lx.32); на wireguard не действует. Пишется всегда внутри объекта quic_sniff_decoy; #enable при quic_sniff_decoy != off (контракты 1.1.164 / 1.1.166, LxBox 709, §162)."
     },
     "quic_sniff_decoy_outbounds": {
       "type": "text_list",
       "portable": false,
-      "in": "mobile",
-      "note": "lx.quic_sniff_decoy.outbound_type ядра (объект с 1.14.4-lx.33): типы outbound, чьи соединения получают обманку. options_open, options — восемь типов ядра: masque, hysteria2, tuic, trusttunnel, vless, vmess, trojan, wireguard; дефолт masque = дефолт ядра. Пишется в объект только непустым списком (#notEmpty); пустой или отсутствующий список ядро читает как дефолтный. Только mobile, как quic_sniff_decoy_send (контракт 1.1.164, §162)."
+      "in": "both",
+      "note": "lx.quic_sniff_decoy.outbound_type ядра (объект с 1.14.4-lx.33): типы узлов, которые шлют обманку перед своим QUIC-рукопожатием. ЗАКРЫТЫЙ список: text_list + options БЕЗ options_open (контракт 1.1.166; в 1.1.164 был options_open) — свободный ввод запрещён, ядро принимает только известные типы и на неизвестном не стартует. options ровно: masque, hysteria2, tuic, trusttunnel, vless, vmess, trojan, wireguard; дефолт masque = дефолт ядра. UI — множественный выбор только из списка. Пишется в объект только непустым списком (#notEmpty); пустой или отсутствующий список ядро читает как дефолтный. #enable при quic_sniff_decoy != off."
     },
     "quic_sniff_decoy_detours": {
       "type": "text_list",
       "portable": false,
-      "in": "mobile",
-      "note": "lx.quic_sniff_decoy.detour_type ядра (объект с 1.14.4-lx.33): типы outbound, через которые идёт обманка в режимах detour / all. options_open, options — любой тип outbound, кроме групп (selector / urltest); тип, которого сборка ядра не знает, валит старт. Дефолт vless = дефолт ядра. Пишется в объект только непустым списком (#notEmpty). Только mobile, как quic_sniff_decoy_send (контракт 1.1.164, §162)."
+      "in": "both",
+      "note": "lx.quic_sniff_decoy.detour_type ядра (объект с 1.14.4-lx.33): обманка идёт, только если ближайшее реле (detour) одного из этих типов; за группой считается тип выбранного группой члена. ЗАКРЫТЫЙ список: text_list + options БЕЗ options_open (контракт 1.1.166; в 1.1.164 был options_open) — тип, которого сборка ядра не знает, валит старт. options ровно: vless, vmess, trojan, shadowsocks, socks, http, ssh, hysteria2, tuic, masque, trusttunnel, wireguard, anytls, naive, shadowtls; дефолт vless = дефолт ядра. UI — множественный выбор только из списка. Пишется в объект только непустым списком (#notEmpty). #enable при quic_sniff_decoy != off."
     },
     "masque_idle_timeout": {
       "type": "enum",

@@ -8,15 +8,15 @@ import (
 // Ключ корневого lx новее ядра снимается, известный остаётся; опустевший
 // блок уходит целиком; неизвестная версия конфиг не трогает.
 func TestGateConfigForCore(t *testing.T) {
-	const src = `{"log":{"level":"warn"},"lx":{"mtu_align":"fill","quic_sniff_decoy":"detour"}}`
+	const src = `{"log":{"level":"warn"},"lx":{"mtu_align":"fill","quic_sniff_decoy":{"mode":"detour","send":"retry"}}}`
 	cases := []struct {
 		version string
 		want    string
 		dropped int
 	}{
 		{"", src, 0},
-		{"1.14.4-lx.30", src, 0},
-		{"1.14.4-lx.30-rc.3", `{"log":{"level":"warn"},"lx":{"mtu_align":"fill"}}`, 1},
+		{"1.14.4-lx.33", src, 0},
+		{"1.14.4-lx.32", `{"log":{"level":"warn"},"lx":{"mtu_align":"fill"}}`, 1},
 		{"1.14.3-lx.21", `{"log":{"level":"warn"},"lx":{"mtu_align":"fill"}}`, 1},
 		{"1.14.3-lx.13", `{"log":{"level":"warn"}}`, 2},
 		{"1.14.0-lx.32", `{"log":{"level":"warn"}}`, 1},
