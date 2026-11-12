@@ -5755,6 +5755,11 @@ cookie с кастомным ключом. `seqPlacement`/`seqKey` доезжа�
 «must be set together». D-097 (пустые `host`/`path`/`mode` из `extra` не
 перекрывают плоские) не тронут.
 
+> **Отменено контрактом 1.1.168 (§168, 12.11.2026):** пара заведена в мапперах
+> обоих диалектов, половину пары снимает парная защита тела (`requires`,
+> `field_requires`); п.2 ниже и кейсы `xhttp_extra_session_id_aliases`
+> переписаны под новую норму.
+
 **Что проверить у себя:**
 
 1. Ссылка `vless+xhttp` с `extra={"sessionIDPlacement":"cookie",
@@ -10278,3 +10283,28 @@ LxBox задача 722 (`docs/spec/tasks/722-origin-kind-dialect.md`), пово�
 Версия контракта — 1.1.167. Синк: `sync_contract.sh --to 6d844f4a` (включает 1.1.166).
 
 Задачи вам: синк 1.1.167; прогнать раннер `corpus/template` — два новых кейса. Мы исходим из того, что ваш движок уже так себя ведёт; если кейс `text_list_empty_state_beats_default` у вас красный — сюда.
+
+## 168. Контракт 1.1.168 — XHTTP `sessionIDTable` / `sessionIDLength` доезжают до тела (12.11.2026)
+
+Решение владельца 12.11.2026, повод — ваш issue #211: живой сервер vless+XHTTP за CDN отвечает 403, если идентификатор сессии — UUID с дефисами (XTLS/Xray-core#6264). В Xray это лечится парой `sessionIDTable` (алфавит или его имя) + `sessionIDLength` (длина); ядро sing-box-lx умеет то же с lx.28 — `transport.session_table` / `transport.session_length` (`option/v2ray_xhttp.go`, проверка пары — `transport/v2rayxhttp/meta.go`). В теле контракта оба поля были с 1.1.167 (с `requires` друг на друга), но мапперы их не читали: отказ 1.1.47 (§43) «не заведены умышленно» держался на том, что одно поле без второго валит ядро. Парная защита в теле этот довод сняла — **§43 в этой части отменён**, делаем в контракте, а не оверлеем у вас.
+
+**1. Реестр `registry/transports.json`.**
+- Описательные параметры `transports.xhttp.params`: `session_table` (алиасы `sessionTable`, `sessionIDTable`) и `session_length` (`sessionLength`, `sessionIDLength`).
+- `blocks.uri.xhttp`: записи `sessionTable` и `sessionLength` сразу после `sessionKey`. Источники — по образцу `sessionPlacement`: `extra.sessionTable`, `extra.session_table`, `extra.sessionIDTable`, затем те же три под `query.` (слой extra впереди плоского, канон впереди алиаса). Цели `transport.session_table` / `transport.session_length`, `when transport.type = xhttp`.
+- `blocks.xray.xhttp`: зеркало — 16 источников на запись: `json.streamSettings.{xhttpSettings|splithttpSettings}.{extra.|}{sessionTable|session_table|sessionIDTable|session_id_table}` (и то же для `Length`), слой `extra` впереди плоского, оба имени контейнера.
+- **Нового примитива движка нет.** У записи `sessionLength` в обоих диалектах — существующий `omit_default: "0"`: значение, равное `"0"` после приведения, в тело не пишется (у Xray нулевая длина = дефолтный UUID). Пустое значение не пишется по общей норме «пусто = отсутствует». Число в источнике (`sessionIDLength: 12` — у Xray `Int32Range` принимает число как `12-12`, `infra/conf/common.go Int32Range.UnmarshalJSON`) приводится к строке `"12"` тем же правилом, что у прочих числовых полей `extra` (`30.0` → `"30"`); строка `"10-20"` едет дословно. Таблица едет дословно: имя предопределённого алфавита (`hex`, `HEX`, `number`, `alphabet`, `Alphabet`, `ALPHABET`, `base36`, `BASE36`, `Base62` — регистр значим) или литеральный ASCII-алфавит; годность (ASCII, `len(table)^min ≥ 2^31`, `min > 0`) судит ядро, в маппере суда над значением нет.
+
+**2. Парная защита — в теле, не в маппере.** Маппер доносит поле всегда; одно без второго снимает `body.variants.xhttp.fields.session_table.requires` / `session_length.requires` с кодом `field_requires` (путь `transport.session_table` или `transport.session_length`). Следствие для нулевой длины при заданной таблице: длина не пишется, оставшаяся таблица снимается с `field_requires` — у Xray такая пара и так ошибка конфига («sessionIDTable or sessionIDLength is too small»).
+
+**3. Обратный ход.** Как у соседей `session_placement`/`session_key`: плоские snake_case-параметры ссылки (`session_table=…&session_length=…`), ничего отдельного не объявлено; round-trip по новым uri-кейсам у лаунчера зелёный.
+
+**4. Корпус.**
+- **Изменены ожидания**: `body/xray/xhttp_extra_session_id_aliases` и `uri/vless/xhttp_extra_session_id_aliases` — предупреждений `json_field_unknown` по `sessionIDLength`/`sessionIDTable` больше нет, `"0"`/`""` в тело по-прежнему не попадают (комментарии кейсов переписаны).
+- +5 `body/xray`: `xhttp_session_id_table_length_extra` (extra: `base36` + длина числом `12` → `"12"`), `xhttp_session_id_table_length_flat` (плоско в `xhttpSettings`: литерал + `"10-20"`), `xhttp_session_id_snake_splithttp` (`splithttpSettings.extra.session_id_table/_length`), `xhttp_session_id_length_without_table` (→ `field_requires` на `transport.session_length`), `xhttp_session_id_zero_length_with_table` (длина `0` не пишется, таблица → `field_requires`).
+- +4 `uri/vless`: `xhttp_extra_session_table_length` (extra: `Base62` + `"8-12"`), `xhttp_extra_session_length_number` (extra: длина JSON-числом `16` → `"16"`), `xhttp_session_table_length_query_flat` (плоские `sessionIDTable=number&sessionIDLength=12`), `xhttp_session_table_without_length` (→ `field_requires` на `transport.session_table`).
+
+**5. Проверено у лаунчера:** раннеры корпуса (uri, body, round-trip эмита, движок vs корпус xray/uri), линтер ссылок реестра, `go generate` документации; `sing-box check` ядром lx.33 на телах из кейсов — три формы пары принимаются, обе половины дают «session_table and session_length must be set together» (то есть защита тела нужна и срабатывает раньше ядра). Вживую на сервере из #211 не проверялось.
+
+Версия контракта — 1.1.168. Синк: `sync_contract.sh --to <sha>` (sha — в сообщении рядом с этой записью).
+
+Задачи вам: синк 1.1.168; раннеры `corpus/body/xray` и `corpus/uri/vless` (два изменённых ожидания, девять новых кейсов); у вашего Dart-движка проверить, что (а) `omit_default` строкой `"0"` сравнивается с уже СТРИНГИФИЦИРОВАННЫМ значением (число `0` из JSON тоже должно сниматься), (б) число из `extra`/Xray-JSON даёт строку без дробной части, (в) `requires` тела срабатывает на поле, пришедшее через маппер, а не только из sing-box тела; если у вас был свой оверлей под #211 — снять, норма теперь в реестре.

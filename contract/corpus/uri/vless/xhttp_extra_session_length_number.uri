@@ -1,0 +1,2 @@
+# Контракт 1.1.168: длина ЧИСЛОМ в JSON extra (Int32Range числом у Xray) → строка "16" в теле.
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=xhttp&security=tls&sni=example-1.com&mode=packet-up&extra=%7B%22sessionIDTable%22%3A%22hex%22%2C%22sessionIDLength%22%3A16%7D#xhttp-session-length-number

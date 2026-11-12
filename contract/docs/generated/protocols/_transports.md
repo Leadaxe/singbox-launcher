@@ -86,6 +86,14 @@ These are repeated on the page of every scheme that carries a transport block, t
   - Also spelled: `sessionKey`, `sessionIDKey`
   - Type: string · Default: `""`
   - Maps to: `transport.session_key`
+- **`session_table`** — Alphabet used to generate session ids (name or literal).
+  - Also spelled: `sessionTable`, `sessionIDTable`
+  - Type: string · Default: `""`
+  - Maps to: `transport.session_table`
+- **`session_length`** — Session id length: a number or a min-max range.
+  - Also spelled: `sessionLength`, `sessionIDLength`
+  - Type: string · Default: `""`
+  - Maps to: `transport.session_length`
 - **`seq_placement`** — Where the packet sequence number is carried.
   - Also spelled: `seqPlacement`
   - Type: enum: `path`, `query`, `header`, `cookie` · Default: `""`
