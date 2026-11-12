@@ -1,0 +1,4 @@
+# enabled строкой "true" — Xray-панели пишут булево и строкой. Код
+# xray_mux_unsupported даёт и это написание (when.in перечисляет true/"true"/"1"),
+# multiplex в тело не едет (D-146, контракт 1.1.169).
+[{"remarks":"mux-str","outbounds":[{"tag":"proxy","protocol":"vmess","settings":{"vnext":[{"address":"a.example","port":443,"users":[{"id":"11111111-2222-3333-4444-555555555555","security":"auto"}]}]},"streamSettings":{"network":"tcp","security":"none"},"mux":{"enabled":"true","concurrency":4}}]}]

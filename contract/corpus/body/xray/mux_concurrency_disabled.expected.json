@@ -12,7 +12,14 @@
       },
       "kind": "outbound",
       "label": "mux-off",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "xray_mux_unsupported",
+          "path": "enabled",
+          "value": "true"
+        }
+      ]
     }
   ],
   "v": 1

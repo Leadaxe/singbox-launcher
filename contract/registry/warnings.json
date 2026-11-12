@@ -2759,6 +2759,25 @@
       "dart": null,
       "go": "правило реестра contract/registry/transports.json blocks.xray.grpc.multiMode.on_present (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
     },
+    "xray_mux_unsupported": {
+      "severity": "info",
+      "params": [],
+      "title_en": "Xray mux not applied",
+      "title_ru": "Xray mux не применяется",
+      "text_en": "The element turns on Xray mux. The core does not speak Xray's mux protocol, so mux was removed and the node was imported without multiplexing.",
+      "text_ru": "Элемент включает Xray mux. Ядро не умеет протокол мультиплексирования Xray, поэтому mux снят, а узел импортирован без мультиплексирования.",
+      "cause_en": "Xray mux is the Mux.Cool protocol, while sing-box multiplexing is h2mux, smux or yamux. They are different protocols on the wire: an Xray server does not understand sing-box multiplexing and would refuse every connection. An Xray server always accepts plain connections too, so the node works without mux.",
+      "cause_ru": "Xray mux — это протокол Mux.Cool, а мультиплексирование sing-box — h2mux, smux или yamux. На проводе это разные протоколы: сервер Xray мультиплексирование sing-box не понимает и отверг бы каждое соединение. Обычные соединения сервер Xray принимает всегда, поэтому без mux узел работает.",
+      "fix_en": [
+        "Nothing needs doing: the node works without mux."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно: узел работает без mux."
+      ],
+      "desc": "mux.enabled Xray-элемента при ИСТИННОМ значении (D-146, контракт 1.1.169). Mux.Cool ≠ h2mux/smux/yamux: клиента Mux.Cool в ядре нет, а multiplex ядра сервер Xray принимает за обычное назначение. Ложное значение кода не даёт. Явный multiplex в sing-box JSON не затронут.",
+      "dart": null,
+      "go": "правило реестра contract/registry/multiplex.json blocks.xray.enabled.on_present (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
+    },
     "fields_order_invalid": {
       "severity": "warning",
       "params": [

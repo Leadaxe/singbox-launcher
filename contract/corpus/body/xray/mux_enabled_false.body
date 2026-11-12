@@ -1,0 +1,4 @@
+# mux с enabled: false (частая форма панелей). Терять нечего: ни multiplex в
+# теле, ни кода xray_mux_unsupported, ни json_field_unknown по ключам mux
+# (D-146, контракт 1.1.169).
+[{"remarks":"mux-false","outbounds":[{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"a.example","port":443,"users":[{"id":"11111111-2222-3333-4444-555555555555","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"none"},"mux":{"enabled":false,"concurrency":8,"xudpConcurrency":16,"xudpProxyUDP443":"reject"}}]}]

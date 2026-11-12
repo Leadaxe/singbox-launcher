@@ -10308,3 +10308,26 @@ LxBox задача 722 (`docs/spec/tasks/722-origin-kind-dialect.md`), пово�
 Версия контракта — 1.1.168. Синк: `sync_contract.sh --to 81da80d4` (реестр и корпус — в этом коммите; sha записи с этой строкой — следующий, только текст).
 
 Задачи вам: синк 1.1.168; раннеры `corpus/body/xray` и `corpus/uri/vless` (два изменённых ожидания, девять новых кейсов); у вашего Dart-движка проверить, что (а) `omit_default` строкой `"0"` сравнивается с уже СТРИНГИФИЦИРОВАННЫМ значением (число `0` из JSON тоже должно сниматься), (б) число из `extra`/Xray-JSON даёт строку без дробной части, (в) `requires` тела срабатывает на поле, пришедшее через маппер, а не только из sing-box тела; если у вас был свой оверлей под #211 — снять, норма теперь в реестре.
+
+## 169. Контракт 1.1.169 — Xray `mux` больше не превращается в `multiplex` (12.11.2026)
+
+Решение владельца 12.11.2026, повод — ваша задача 727 (`docs/spec/tasks/727-xray-mux-not-multiplex.md`): узел из Xray-подписки с `"mux": {"enabled": true, "concurrency": 8, "xudpConcurrency": 16, "xudpProxyUDP443": "reject"}` не соединялся, пока `multiplex` не удалить из тела руками. Причина — в контракте: `multiplex.json` `blocks.xray` (с 1.1.50, §46) переносил `mux.enabled` → `multiplex.enabled` и `mux.concurrency` → `multiplex.max_streams`. Но Xray mux — протокол Mux.Cool (служебный адрес `v1.mux.cool`), а `multiplex` ядра — h2mux/smux/yamux поверх sing-mux (`sp.mux.sing-box.arpa`). Сервер Xray понимает только свой Mux.Cool и адрес sing-box принимает за обычное назначение; клиента Mux.Cool в ядре нет (в sing-box-lx только серверный приём, `test/mux_cool_test.go`). **Запись mux из §46 отменена**, делаем в контракте, а не оверлеем у вас. D-146.
+
+**1. Реестр `registry/multiplex.json`, `blocks.xray`.**
+- Все четыре записи (`enabled`, `concurrency`, `xudpConcurrency`, `xudpProxyUDP443`) — объявленное чтение без записи, `maps_to: null`. Ключи `json.mux.*` по-прежнему объявлены и `json_field_unknown` не дают.
+- Сняты: `selector: true` у `enabled` (гейтить больше нечего — ни одна запись блока в тело не пишет), `when: {multiplex.enabled: true}` у остальных и `sets` для `concurrency` -1/0 (раньше снимали блок целиком).
+- `enabled`: `when: {"json.mux.enabled": {"in": [true, "true", "1"]}}` + `on_present: {action: note, code: xray_mux_unsupported}` — тот же приём, что у `grpcSettings.multiMode` (`transports.json`). `enabled: false` кода не даёт.
+
+**2. Реестр `registry/warnings.json`: новый код `xray_mux_unsupported`** (severity `info`, без параметров, `path` — имя записи `enabled`, `value` — значение как прочитано, `"true"`). Тексты EN/RU, cause, fix — в реестре. Уровень info, а не warning: сервер Xray одиночные соединения принимает всегда (mux у Xray — выбор клиента), узел без mux работает; код сообщает о потере, а не о поломке.
+
+**3. Не затронуто.** Явный `multiplex` в sing-box JSON едет как раньше (новый кейс `body/singbox/multiplex_kept`). Диалект `uri` mux не читал и не читает. Тело `multiplex` (`body`) не менялось.
+
+**4. Корпус.**
+- **Изменены ожидания**: `body/xray/mux_concurrency` — `multiplex` из тела снят, добавлен код `xray_mux_unsupported` (`path: enabled`, `value: "true"`); `body/xray/mux_concurrency_disabled` (`concurrency: -1`) — тело то же (без `multiplex`), добавлен тот же код: `enabled` истинный, а у Xray -1 выключает только TCP-подпотоки, XUDP через Mux.Cool остаётся. Комментарии обоих кейсов переписаны.
+- +3: `body/xray/mux_enabled_false` (без `multiplex`, без кода, без `json_field_unknown`), `body/xray/mux_enabled_string` (vmess, `enabled: "true"` строкой → код), `body/singbox/multiplex_kept` (явный `multiplex` с `smux` сохранён).
+
+**5. Проверено у лаунчера:** раннер `corpus/body`, `go generate` документации (`docs/generated/warnings.md`). Рукописного Go под mux в лаунчере нет — движок взял всё из реестра. Вживую на сервере из 727 не проверялось.
+
+Версия контракта — 1.1.169. Синк: `sync_contract.sh --to SHA169` (реестр и корпус — в этом коммите; sha записи с этой строкой — следующий, только текст).
+
+Задачи вам: синк 1.1.169; раннер `corpus/body` (два изменённых ожидания, три новых кейса); новый код `xray_mux_unsupported` в вашем каталоге предупреждений (тексты — из реестра); убедиться, что `when` на JSON-пути с `in: [true, "true", "1"]` сравнивает и булево, и строку; если в 727 у вас был оверлей, снимающий `multiplex` с Xray-узлов, — убрать, норма теперь в реестре. Узлы, уже сохранённые с `multiplex` из Xray mux, сами не исправятся: это вопрос вашей миграции/повторного импорта — у лаунчера миграции нет, тело узла пересобирается при обновлении подписки.

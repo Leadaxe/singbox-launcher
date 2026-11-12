@@ -1,0 +1,4 @@
+# Явный multiplex в sing-box JSON — родной блок ядра, его D-146 (контракт
+# 1.1.169) не касается: едет в тело как есть, без кода. Пара к
+# xray/mux_concurrency, где Xray mux снимается.
+{"outbounds":[{"type":"vless","tag":"sb-mux","server":"a.example","server_port":443,"uuid":"11111111-2222-3333-4444-555555555555","multiplex":{"enabled":true,"protocol":"smux","max_streams":8}}]}
