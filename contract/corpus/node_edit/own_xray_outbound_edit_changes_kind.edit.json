@@ -1,0 +1,9 @@
+{
+  "_comment": "Свой sing-box узел: в Source вставлен Xray outbound — вид записи меняется на xray, текст хранится как набран, тело — перевод (не авторское), критерий годности — реестр, не ключ type (контракт 1.1.165, §11 п.4–5; LxBox #209).",
+  "container": "own",
+  "origin": {
+    "kind": "singbox",
+    "raw": "{\"type\":\"trojan\",\"server\":\"example-2.com\",\"server_port\":443,\"password\":\"testpass581\"}"
+  },
+  "input": "{\"tag\":\"xr\",\"protocol\":\"vless\",\"settings\":{\"vnext\":[{\"address\":\"example-1.com\",\"port\":443,\"users\":[{\"id\":\"11111111-2222-3333-4444-555555555555\"}]}]},\"streamSettings\":{\"network\":\"tcp\",\"security\":\"none\"}}"
+}

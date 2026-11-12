@@ -11,11 +11,10 @@
 //
 // # Почему не «просто дождаться GC на сборке»
 //
-// GC умеет одно — СНОСИТЬ лишнее. Переименование узла для него неотличимо от
-// «старый узел удалили, новый завели»: каталог со старым именем становится
-// сиротой и уезжает в удаление вместе с ключом устройства. Пользователь
-// переименовал узел — и получил «залогинься заново». Поэтому переезд каталога
-// обязан произойти В МОМЕНТ правки, до всякой сборки.
+// GC умеет одно — СНОСИТЬ лишнее. Переименование узла для него выглядит как
+// «старый узел удалили, новый завели». Поэтому в момент правки узел без
+// `state_dir_id` получает имя текущего каталога (SPEC 179): каталог не двигается,
+// устройство tailnet остаётся тем же.
 //
 // # Чего эти вызовы НЕ ловят
 //
@@ -78,6 +77,12 @@ func SourceByID(m *wizardmodels.WizardModel, id string) *wizardmodels.Source {
 	return findSourceByID(m, strings.TrimSpace(id))
 }
 
+// TailscaleNodeFinalTag — финальный тег узла контейнера с этим ULID (пусто —
+// корневой узел): им узел назван в статусе работающего ядра.
+func TailscaleNodeFinalTag(m *wizardmodels.WizardModel, containerID, rawTag string) string {
+	return tailscaleFinalTag(SourceByID(m, containerID), rawTag)
+}
+
 // tailscaleFinalTagOfSource — финальный тег узла, лежащего в этом источнике.
 //
 // Источник может быть и КОРНЕВЫМ УЗЛОМ (Node встроен в Source): у него
@@ -92,12 +97,12 @@ func tailscaleFinalTagOfSource(src *wizardmodels.Source, rawTag string) string {
 	return tailscaleFinalTag(src, rawTag)
 }
 
-// renameTailscaleStateDirTo — переезд каталога в папку с известным ULID.
+// freezeTailscaleStateDirTo — узел переехал в папку с известным ULID.
 //
 // Папка ищется по ULID, а не по индексу: перенос уже подвинул m.Sources
 // (removeNodeFromSource мог убрать целый элемент), и индекс, снятый до
 // операции, после неё адресует соседа.
-func renameTailscaleStateDirTo(
+func freezeTailscaleStateDirTo(
 	m *wizardmodels.WizardModel, oldFinalTag, dstFolderID string, moved *corestate.Node,
 ) {
 	if !NodeIsTailscale(moved) {
@@ -112,7 +117,7 @@ func renameTailscaleStateDirTo(
 			}
 		}
 	}
-	RenameTailscaleStateDirForNode(nil, oldFinalTag, dst, moved)
+	FreezeTailscaleStateDirForNode(nil, oldFinalTag, dst, moved)
 }
 
 // RemoveTailscaleStateDirForNode — норма 1: узел удалили, каталог уходит
@@ -124,7 +129,7 @@ func RemoveTailscaleStateDirForNode(container *wizardmodels.Source, n *corestate
 	if !NodeIsTailscale(n) {
 		return
 	}
-	config.RemoveTailscaleStateDir(config.TailscaleStateDirName(tailscaleFinalTag(container, n.Tag)))
+	config.RemoveTailscaleStateDir(config.TailscaleStateDirNameFor(n.StateDirID, tailscaleFinalTag(container, n.Tag)))
 }
 
 // RemoveTailscaleStateDirsForSource — норма 1 для источника целиком: папку
@@ -146,36 +151,47 @@ func RemoveTailscaleStateDirsForSource(src *wizardmodels.Source) {
 	}
 }
 
-// RenameTailscaleStateDirForNode — норма 2: финальный тег узла сменился,
-// каталог переезжает вместе с ним.
+// reseedTailscaleStateDir — узел появился в модели заново (создан, вставлен,
+// скопирован): свой каталог, тот же каталог двум узлам нельзя.
+func reseedTailscaleStateDir(n *corestate.Node) {
+	if n == nil {
+		return
+	}
+	n.StateDirID = ""
+	config.SeedTailscaleStateDir(n)
+}
+
+// FreezeTailscaleStateDirForNode — норма 2: финальный тег узла меняется, каталог
+// остаётся на месте. Узел без `state_dir_id` получает имя каталога по старому
+// тегу; узел с параметром ничего не замечает.
 //
-// Зовётся ТРЕМЯ видами правки, и все три — смена финального тега:
-// переименование узла (сырой тег), перенос между контейнерами (сменилась
-// политика) и смена тег-политики контейнера (сменилась приставка у всех его
-// узлов сразу).
-func RenameTailscaleStateDirForNode(
+// Зовётся ТРЕМЯ видами правки, и все три — смена финального тега: переименование
+// узла (сырой тег), перенос между контейнерами (другая политика) и смена
+// тег-политики контейнера.
+func FreezeTailscaleStateDirForNode(
 	oldContainer *wizardmodels.Source, oldRawTag string,
 	newContainer *wizardmodels.Source, n *corestate.Node,
 ) {
-	if !NodeIsTailscale(n) {
+	if !NodeIsTailscale(n) || n.StateDirID != "" {
 		return
 	}
 	oldName := config.TailscaleStateDirName(tailscaleFinalTag(oldContainer, oldRawTag))
 	newName := config.TailscaleStateDirName(tailscaleFinalTag(newContainer, n.Tag))
-	config.RenameTailscaleStateDir(oldName, newName)
+	if oldName != newName {
+		n.StateDirID = oldName
+	}
 }
 
-// RenameTailscaleStateDirsForTagPolicy — норма 2 для СМЕНЫ ТЕГ-ПОЛИТИКИ
-// контейнера: приставка меняется разом у всех его узлов, значит и каталоги
-// переезжают все разом.
+// FreezeTailscaleStateDirsForTagPolicy — норма 2 для СМЕНЫ ТЕГ-ПОЛИТИКИ
+// контейнера: приставка меняется разом у всех его узлов.
 //
-// `oldPolicy` — политика ДО правки (nil = её не было). Состав берётся из
-// `live`: это живая запись модели, а не снимок окна, — узлы, родившиеся
-// фоновым fetch'ем, тоже носят каталоги.
-func RenameTailscaleStateDirsForTagPolicy(
+// `oldPolicy` — политика ДО правки (nil = её не было). Состав берётся из `live`:
+// это живая запись модели. У подписки записи узла нет: её узлам каталог остаётся
+// по тегу, новая приставка заведёт новое устройство.
+func FreezeTailscaleStateDirsForTagPolicy(
 	live *wizardmodels.Source, oldPolicy *corestate.TagPolicy, newPolicy *corestate.TagPolicy,
 ) {
-	if live == nil {
+	if live == nil || live.Kind == corestate.SourceKindSubscription {
 		return
 	}
 	oldP, newP := tagPolicyOrZero(oldPolicy), tagPolicyOrZero(newPolicy)
@@ -184,14 +200,14 @@ func RenameTailscaleStateDirsForTagPolicy(
 	}
 	for i := range live.Nodes {
 		n := &live.Nodes[i]
-		if !NodeIsTailscale(n) {
+		if !NodeIsTailscale(n) || n.StateDirID != "" {
 			continue
 		}
 		raw := strings.TrimSpace(n.Tag)
-		config.RenameTailscaleStateDir(
-			config.TailscaleStateDirName(oldP.FinalTag(raw)),
-			config.TailscaleStateDirName(newP.FinalTag(raw)),
-		)
+		oldName := config.TailscaleStateDirName(oldP.FinalTag(raw))
+		if oldName != config.TailscaleStateDirName(newP.FinalTag(raw)) {
+			n.StateDirID = oldName
+		}
 	}
 }
 

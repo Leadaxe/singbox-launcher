@@ -13,6 +13,7 @@
 package state
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -46,7 +47,13 @@ type NodeLink struct {
 
 // Origin — происхождение узла. nil = создан руками с нуля.
 type Origin struct {
-	// Kind: "uri" | "wg_ini" | "json". kind=warp НЕ существует (warp-К1).
+	// Kind — ДИАЛЕКТ текста Raw (контракт 1.1.165, PARSING_PRINCIPLES §11):
+	// "singbox" | "xray" | "uri" | "wg_ini". Определяется движком по реестру
+	// (source_kinds.json, mapper вида) один раз — когда текст приходит
+	// снаружи; хранимый текст заново не классифицируется. Форма текста
+	// (голое тело / документ) в вид не входит. kind=warp НЕ существует
+	// (warp-К1). Старое "json" (до 1.1.165) читается миграцией
+	// (MigrateLegacyOriginKinds) и в состоянии не живёт.
 	Kind string `json:"kind"`
 	// Raw — байт в байт; правится только явным Regen и merge-освежением.
 	Raw string `json:"raw"`
@@ -56,10 +63,24 @@ type Origin struct {
 }
 
 const (
-	OriginKindURI   = "uri"
-	OriginKindWGIni = "wg_ini"
-	OriginKindJSON  = "json"
+	OriginKindURI     = "uri"
+	OriginKindWGIni   = "wg_ini"
+	OriginKindSingbox = "singbox"
+	OriginKindXray    = "xray"
+	// LegacyOriginKindJSON — вид "json" контрактов ≤ 1.1.164: JSON любого
+	// диалекта. Читается только миграцией, писать его нельзя.
+	LegacyOriginKindJSON = "json"
 )
+
+// IsJSONOriginKind — вид источника есть JSON-диалект (singbox или xray).
+func IsJSONOriginKind(kind string) bool {
+	return kind == OriginKindSingbox || kind == OriginKindXray
+}
+
+// IsJSON — текст источника есть JSON (вид singbox или xray).
+func (o *Origin) IsJSON() bool {
+	return o != nil && IsJSONOriginKind(o.Kind)
+}
 
 // TagPolicy — косметика эмиссии: финальный тег = prefix + сырой тег + postfix.
 // Переменные {$tag} {$scheme} {$protocol} {$server} {$port} {$label}
@@ -181,6 +202,46 @@ const (
 	AutoGroupURLTest  = "urltest"
 )
 
+// TaildropPeer — устройство tailnet в настройке узла: ключ — stable ID пира,
+// имя — только подпись на случай, когда статуса нет.
+type TaildropPeer struct {
+	PeerID   string `json:"peer_id"`
+	PeerName string `json:"peer_name,omitempty"`
+}
+
+// NewStateDirID — случайное имя каталога tailnet для нового узла.
+func NewStateDirID() string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	var raw [6]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		// Без случайности поле не ставится вызывающим: каталог останется по тегу.
+		return ""
+	}
+	out := make([]byte, len(raw))
+	for i, b := range raw {
+		out[i] = alphabet[int(b)%len(alphabet)]
+	}
+	return "ts-" + string(out)
+}
+
+// StateDirIDTaken — занято ли имя каталога другим узлом состояния.
+func (s *State) StateDirIDTaken(id string) bool {
+	if s == nil || id == "" {
+		return false
+	}
+	for i := range s.Sources {
+		if s.Sources[i].StateDirID == id {
+			return true
+		}
+		for j := range s.Sources[i].Nodes {
+			if s.Sources[i].Nodes[j].StateDirID == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Node — узел: kind ∈ {server, chain, auto, unsupported}. Живёт в корне
 // sources[] (через embedded в Source) и в Folder.Nodes; kind=unsupported —
 // только в контейнере.
@@ -249,6 +310,13 @@ type Node struct {
 	// подписки поля не ставятся и не читаются. Хранится только true
 	// (omitempty): отсутствие равно false.
 	configtypes.NodeRecordFlags
+	// StateDirID — имя каталога состояния tailnet (контракт 1.1.160, SPEC 179).
+	// Пусто — каталог по финальному тегу: так живут узлы, заведённые раньше,
+	// пока их не переименуют.
+	StateDirID string `json:"state_dir_id,omitempty"`
+	// TaildropDoubleCopy — устройство, куда уходит двойное копирование (контракт
+	// 1.1.160, SPEC 179). nil — никуда.
+	TaildropDoubleCopy *TaildropPeer `json:"taildrop_double_copy,omitempty"`
 	// LegacySkipPresets — ключ `skip_presets` до 1.1.126. Только чтение:
 	// загрузка состояния и импорт бэкапа переносят true в
 	// SkipTailscalePresets и обнуляют поле (LiftLegacyRecordFlags), поэтому

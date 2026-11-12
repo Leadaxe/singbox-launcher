@@ -1,11 +1,60 @@
 {
   "rules": [],
   "warnings": [],
-  "root_servers": ["doc-root"],
-  "folders": { "Own": ["arr-member", "bare-member"] },
+  "root_servers": [
+    "doc-root"
+  ],
+  "folders": {
+    "Own": [
+      "arr-member",
+      "bare-member"
+    ]
+  },
+  "origin_kind": {
+    "doc-root": "singbox",
+    "Own/arr-member": "singbox",
+    "Own/bare-member": "singbox"
+  },
   "origin_raw": {
-    "doc-root": { "type": "trojan", "server": "example-1.com", "server_port": 443, "password": "testpass576" },
-    "Own/arr-member": { "type": "trojan", "server": "example-2.com", "server_port": 443, "password": "testpass577" },
-    "Own/bare-member": { "type": "trojan", "server": "example-4.com", "server_port": 443, "password": "testpass579" }
+    "doc-root": {
+      "outbounds": [
+        {
+          "type": "trojan",
+          "tag": "doc-root",
+          "server": "example-1.com",
+          "server_port": 443,
+          "password": "testpass576"
+        },
+        {
+          "type": "direct",
+          "tag": "direct"
+        }
+      ],
+      "route": {
+        "final": "doc-root"
+      }
+    },
+    "Own/arr-member": [
+      {
+        "type": "trojan",
+        "tag": "arr-member",
+        "server": "example-2.com",
+        "server_port": 443,
+        "password": "testpass577"
+      },
+      {
+        "type": "trojan",
+        "tag": "other",
+        "server": "example-3.com",
+        "server_port": 443,
+        "password": "testpass578"
+      }
+    ],
+    "Own/bare-member": {
+      "type": "trojan",
+      "server": "example-4.com",
+      "server_port": 443,
+      "password": "testpass579"
+    }
   }
 }

@@ -121,9 +121,6 @@
     "level": "warn",
     "timestamp": true
   },
-  "lx": {
-    "quic_sniff_decoy": "detour"
-  },
   "outbounds": [
     /** @ParserSTART */
 	{"type":"vless","tag":"node-a","server":"198.51.100.1","server_port":443,"uuid":"00000000-0000-0000-0000-000000000001"},

@@ -72,7 +72,7 @@ func ShowAddServerDialog(presenter *wizardpresentation.WizardPresenter, owner fy
 		return
 	}
 
-	f := newAddServerForm()
+	f := newAddServerForm(wizardbusiness.TailscaleRemoteRootOf(presenter.Model()))
 
 	// Отдельное окно (Application.NewWindow), а НЕ модальный попап — тот же
 	// довод, что у warp_dialog и preset_ref_edit: попап Fyne подтягивает
@@ -111,6 +111,10 @@ func ShowAddServerDialog(presenter *wizardpresentation.WizardPresenter, owner fy
 // addServerForm — состояние формы.
 type addServerForm struct {
 	container *fyne.Container
+
+	// tailnetRoot — корень состояния tailnet цели окна (SPEC 178): превью
+	// JSON эмитит узлы с ним, как эмитит их сборка этой цели.
+	tailnetRoot string
 
 	tag *widget.Entry
 
@@ -158,8 +162,8 @@ const (
 	modeSource
 )
 
-func newAddServerForm() *addServerForm {
-	f := &addServerForm{}
+func newAddServerForm(tailnetRoot string) *addServerForm {
+	f := &addServerForm{tailnetRoot: tailnetRoot}
 
 	// Тег — общий для всех вариантов, поэтому стоит над вкладками.
 	f.tag = widget.NewEntry()
@@ -400,7 +404,7 @@ func (f *addServerForm) previewJSON() (string, string) {
 
 	docs := make([]string, 0, len(nodes))
 	for _, n := range nodes {
-		outs, ep, eerr := config.EmitNodeJSONs(n)
+		outs, ep, eerr := config.EmitNodeJSONsFor(n, f.tailnetRoot)
 		if eerr != nil {
 			continue
 		}

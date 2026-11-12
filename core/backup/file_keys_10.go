@@ -67,7 +67,9 @@ func jsonKeys(t reflect.Type) map[string]bool {
 }
 
 var (
-	root10Keys = jsonKeys(reflect.TypeOf(Backup10{}))
+	// В корне ещё `native_prefs` стороны LxBox (контракт 1.1.158): объявленное
+	// чужое поле, внутрь не спускаемся.
+	root10Keys = withKeys(jsonKeys(reflect.TypeOf(Backup10{})), map[string]bool{"native_prefs": true})
 	// `sections` у записи и у члена — известный ключ: поле снимается с
 	// собственным кодом (scanSections10), а не как неизвестное.
 	source10Keys = withKeys(jsonKeys(reflect.TypeOf(Source10{})), sectionsKeySet)

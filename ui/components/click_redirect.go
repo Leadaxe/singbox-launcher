@@ -53,13 +53,19 @@ func NewClickRedirect(ui *uiservice.UIService) *ClickRedirect {
 }
 
 func (w *ClickRedirect) Tapped(e *fyne.PointEvent) {
-	if w == nil || w.ui == nil || w.ui.WizardWindow == nil {
+	if w == nil || w.ui == nil {
 		return
 	}
-	w.ui.WizardWindow.Show()
-	w.ui.WizardWindow.RequestFocus()
-	if w.ui.FocusOpenChildWindows != nil {
-		w.ui.FocusOpenChildWindows()
+	// Открыто несколько Конфигураторов (SPEC 178) — поднимается локальный,
+	// иначе любой: главное окно — окно этой машины.
+	entry, ok := w.ui.AnyWizardWindow()
+	if !ok {
+		return
+	}
+	entry.Window.Show()
+	entry.Window.RequestFocus()
+	if entry.FocusChildWindows != nil {
+		entry.FocusChildWindows()
 	}
 }
 

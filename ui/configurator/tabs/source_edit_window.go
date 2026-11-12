@@ -21,6 +21,7 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
@@ -42,6 +43,10 @@ const (
 const (
 	sourceEditSettingsScrollMinH float32 = 260
 	sourceEditJSONScrollMinH     float32 = 380
+	// С полем «добавит сборка» высота делится между ним и редактором: окно
+	// не должно вырасти от второго поля.
+	sourceEditJSONWithAddsMinH float32 = 240
+	sourceEditJSONAddsMinH     float32 = 100
 )
 
 // previewNodeCap — сколько узлов вкладка JSON выводит текстом.
@@ -150,7 +155,7 @@ func setSourceOriginURI(p *wizardmodels.Source, uri string) {
 		return
 	}
 	if uri == "" {
-		if p.Origin != nil && p.Origin.Kind != wizardmodels.OriginKindJSON {
+		if p.Origin != nil && !p.Origin.IsJSON() {
 			p.Origin = nil
 		}
 		return
@@ -383,7 +388,7 @@ func mergeEditedSourceIntoModel(
 	// До записи снимка: состав берётся из ЖИВОЙ записи (edited.Nodes уже
 	// равен live.Nodes выше), а старая политика читается только пока она в
 	// модели.
-	wizardbusiness.RenameTailscaleStateDirsForTagPolicy(live, live.TagPolicy, edited.TagPolicy)
+	wizardbusiness.FreezeTailscaleStateDirsForTagPolicy(live, live.TagPolicy, edited.TagPolicy)
 	// Свёртка до правки: после записи снимка прежнего тега взять негде.
 	replaceBefore := live.Replace
 	m.Sources[sourceIndex] = *edited
@@ -1260,7 +1265,10 @@ func showSourceEditWindowAt(
 	// Блок роли Tailscale (source_tailscale_edit.go, SPEC 157). В отличие от
 	// обфускации detour ему не мешает: выход в tailnet — свойство самого
 	// узла, а не его транспорта.
-	tsUI := newTailscaleBlock(func() *wizardmodels.Node { return &scratch.Node }, win, func() {
+	tsUI := newTailscaleBlock(func() *wizardmodels.Node { return &scratch.Node }, win, presenter.Model().Target.IsRemote(), func() ([]corestate.TaildropPeer, bool) {
+		return presenter.TaildropDoubleCopyChoices(
+			wizardbusiness.TailscaleNodeFinalTag(presenter.Model(), containerIDAtOpen, nodeTagAtOpen))
+	}, func() {
 		if refreshJSONAfterOriginRegen != nil {
 			refreshJSONAfterOriginRegen()
 		}
@@ -1397,6 +1405,11 @@ func showSourceEditWindowAt(
 				settingsContent.Add(widget.NewSeparator())
 				settingsContent.Add(blk)
 			}
+			// SPEC 180: в туннель идут только его собственные сети (own_routes).
+			if blk := tunnelRoutesBlock(m, nodeLink, &scratch.Node); blk != nil {
+				settingsContent.Add(widget.NewSeparator())
+				settingsContent.Add(blk)
+			}
 			// SPEC 170: что пиру клиентского туннеля разрешено (allow_*).
 			if blk := tunnelAccessBlock(m, nodeLink, &scratch.Node); blk != nil {
 				settingsContent.Add(widget.NewSeparator())
@@ -1438,8 +1451,10 @@ func showSourceEditWindowAt(
 				switch scratch.Origin.Kind {
 				case wizardmodels.OriginKindWGIni:
 					uriLabel = locale.T("Origin (wg-quick config)")
-				case wizardmodels.OriginKindJSON:
+				case wizardmodels.OriginKindSingbox:
 					uriLabel = locale.T("Origin (raw JSON)")
+				case wizardmodels.OriginKindXray:
+					uriLabel = locale.T("Origin (Xray JSON)")
 				}
 			}
 			// Заголовок и кнопки — ОДНОЙ строкой: Origin занимает всю
@@ -1456,7 +1471,7 @@ func showSourceEditWindowAt(
 			// правка «молча не работает» и путает. Текст говорит «origin», а
 			// не «URI»: у JSON-узла в поле выше лежит объект, и звать его URI
 			// значило бы повторить ту же ложь, что и подпись поля.
-			if scratch.Origin != nil && scratch.Origin.Kind == wizardmodels.OriginKindJSON {
+			if scratch.Origin != nil && scratch.Origin.IsJSON() {
 				manualNote := widget.NewLabel(locale.T("A manual config_json is set — the origin above is ignored at build time (see the JSON tab). Regen from raw rebuilds the node from it."))
 				manualNote.Wrapping = fyne.TextWrapWord
 				manualNote.Importance = widget.LowImportance
@@ -2021,6 +2036,13 @@ func showSourceEditWindowAt(
 	jsonStatus := widget.NewLabel("")
 	jsonStatus.Wrapping = fyne.TextWrapWord
 
+	// Поля, которые допишет сборка: только просмотр, в тело не попадают.
+	jsonAddsView := fynewidget.NewJSONView("")
+	jsonAddsScroll := container.NewScroll(jsonAddsView.Object())
+	jsonAddsScroll.SetMinSize(fyne.NewSize(0, sourceEditJSONAddsMinH))
+	jsonAddsBox := container.NewVBox(widget.NewLabel(locale.T("Added by the build (read-only)")), jsonAddsScroll)
+	jsonAddsBox.Hide()
+
 	// doRefreshJSONTab — безусловный рендер (Apply/Reset). refreshJSONTab —
 	// обёртка для tabs.OnSelected/afterSync: она не затирает незаApplied
 	// ручные правки в server-режиме (текст отличается от последнего
@@ -2052,9 +2074,15 @@ func showSourceEditWindowAt(
 				dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
 				return
 			}
-			if t, _ := ob["type"].(string); strings.TrimSpace(t) == "" {
-				dialog.ShowError(errors.New(locale.T("The outbound object must have a non-empty \"type\" field.")), win)
-				return
+			// Непустой `type` — требование ЦЕПОЧКИ (её объект — sing-box
+			// outbound). У сервера диалект решает реестр (контракт
+			// 1.1.165): Xray outbound несёт `protocol`, а не `type`, и
+			// проверка ключа здесь отвергала бы его до разбора (LxBox #209).
+			if isChainSource {
+				if t, _ := ob["type"].(string); strings.TrimSpace(t) == "" {
+					dialog.ShowError(errors.New(locale.T("The outbound object must have a non-empty \"type\" field.")), win)
+					return
+				}
 			}
 		}
 		// SPEC 110: у цепочки правится СВОЙ объект, а не ConfigJSON —
@@ -2238,6 +2266,17 @@ func showSourceEditWindowAt(
 		jsonResetBtn.Enable()
 	}
 
+	setJSONAdds := func(adds string) {
+		jsonAddsView.SetText(adds)
+		if adds == "" {
+			jsonAddsBox.Hide()
+			jsonScroll.SetMinSize(fyne.NewSize(0, sourceEditJSONScrollMinH))
+			return
+		}
+		jsonAddsBox.Show()
+		jsonScroll.SetMinSize(fyne.NewSize(0, sourceEditJSONWithAddsMinH))
+	}
+
 	refreshServerJSONTab := func() {
 		// SPEC 118 Т8: вкладка показывает ТЕЛО узла — ровно то, что уедет в
 		// config.json (плюс tag/detour, которые штампует сборка). Разбора
@@ -2249,6 +2288,11 @@ func showSourceEditWindowAt(
 				text = buf.String()
 			}
 			status := locale.T("The outbound as it will reach the config.")
+			adds := tailscaleBuildAdditionsJSON(scratch.Body, scratch.NodeTagOrLabel(), scratch.StateDirID, wizardbusiness.TailscaleRemoteRootOf(presenter.Model()))
+			if adds != "" {
+				status = locale.T("The node as stored. The build adds the fields below to the config.")
+			}
+			setJSONAdds(adds)
 			setJSONText(text)
 			jsonStatus.SetText(status)
 			if sourceOriginURI(&scratch) != "" {
@@ -2259,6 +2303,7 @@ func showSourceEditWindowAt(
 			return
 		}
 		jsonResetBtn.Disable()
+		setJSONAdds("")
 		setJSONText("")
 		if raw := sourceOriginURI(&scratch); raw == "" {
 			jsonStatus.SetText(locale.T("No URI set. Paste a sing-box outbound object below and press Apply."))
@@ -2307,7 +2352,7 @@ func showSourceEditWindowAt(
 			return
 		}
 		emitted := config.EmitCanonicalSource(src.ToProxySourceV4(), sourceIndex, map[string]int{})
-		text, status := renderUnpackedNodes(emitted.Nodes)
+		text, status := renderUnpackedNodes(emitted.Nodes, wizardbusiness.TailscaleRemoteRootOf(model))
 		setJSONText(text)
 		jsonStatus.SetText(status)
 	}
@@ -2324,7 +2369,7 @@ func showSourceEditWindowAt(
 	case isChainSource:
 		jsonHintKey = "The chain object exactly as it will reach the config. This is also where rewrite is edited — per-protocol overrides of node options; everything else is easier to change on the Chain tab." // l10n-key
 	case isServerSource:
-		jsonHintKey = "The sing-box outbound this node is built from — exactly what the build writes to config.json. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time." // l10n-key
+		jsonHintKey = "The sing-box outbound this node is built from. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time." // l10n-key
 	case isFolderSource:
 		// SPEC 116 W4: текст подписки говорил про провайдера и обновление —
 		// у папки нет ни того, ни другого. Read-only вкладка остаётся:
@@ -2338,7 +2383,7 @@ func showSourceEditWindowAt(
 	switch {
 	case isServerSource || isChainSource:
 		jsonButtonsRow := container.NewHBox(jsonApplyBtn, jsonResetBtn, layout.NewSpacer())
-		jsonCol = container.NewVBox(jsonHint, jsonStatus, jsonScrollWithGutter, jsonButtonsRow)
+		jsonCol = container.NewVBox(jsonHint, jsonStatus, jsonScrollWithGutter, jsonButtonsRow, jsonAddsBox)
 	default:
 		// SPEC 116 W8 (С6/A6): «взять всю папку → JSON». Кнопка живёт здесь, а
 		// не в «Add nodes…»: там наполнение, тут обратное направление —
@@ -2517,6 +2562,13 @@ func showSourceEditWindowAt(
 			if renamed {
 				dereferenced = wizardbusiness.DereferenceNodeOrigin(&scratch.Node)
 			}
+			// SPEC 179, норма 2: до записи в модель — параметр каталога едет в той же
+			// записи. Контейнер обеих сторон один: переименование состава не меняет.
+			if renamed {
+				if c := wizardbusiness.SourceByID(presenter.Model(), containerIDAtOpen); c != nil {
+					wizardbusiness.FreezeTailscaleStateDirForNode(c, nodeTagAtOpen, c, &scratch.Node)
+				}
+			}
 			applyNodeEditToModel(presenter, guiState, presenter.Model(), nodeLink, &scratch)
 			// Переименование узла контейнера живёт ТОЛЬКО здесь: своей
 			// команды Rename у списка узлов нет (обкатка заход 3), окно узла
@@ -2525,13 +2577,6 @@ func showSourceEditWindowAt(
 			// гасит их вслепую — узел никуда не делся, у него сменилось имя.
 			if renamed {
 				if mm := presenter.Model(); mm != nil {
-					// SPEC 122 норма 2: каталог состояния tailnet едет за
-					// новым тегом. Контейнер обеих сторон один и тот же —
-					// переименование состава не меняет.
-					if c := wizardbusiness.SourceByID(mm, containerIDAtOpen); c != nil {
-						wizardbusiness.RenameTailscaleStateDirForNode(
-							c, nodeTagAtOpen, c, &scratch.Node)
-					}
 					affected = wizardbusiness.RepointContainerNodeLinks(mm, containerIDAtOpen, nodeTagAtOpen, newTag)
 					repointed = true
 				}
@@ -2549,12 +2594,10 @@ func showSourceEditWindowAt(
 					"tag %q is already taken — directions, nodes and service outbounds share one namespace", newRootTag)), win)
 				return
 			}
-			// SPEC 122 норма 2 для КОРНЕВОГО узла: тег-политики у корня нет,
-			// финальный тег = сырой, и переезд каталога считается по паре
-			// «имя при открытии → имя в форме». До записи в модель: после неё
-			// прежнего имени взять уже негде.
+			// SPEC 179, норма 2 для КОРНЕВОГО узла: тег-политики у корня нет, финальный
+			// тег = сырой. До записи в модель: параметр каталога едет в той же записи.
 			if nodeIdentityOwner && nodeTagAtOpen != "" {
-				wizardbusiness.RenameTailscaleStateDirForNode(nil, nodeTagAtOpen, nil, &scratch.Node)
+				wizardbusiness.FreezeTailscaleStateDirForNode(nil, nodeTagAtOpen, nil, &scratch.Node)
 			}
 			applySourceEditToModel(presenter, guiState, presenter.Model(), sourceIndex, &scratch, enabledEdits)
 			// Верхний узел переименован — ссылки идут за ним тем же путём, что

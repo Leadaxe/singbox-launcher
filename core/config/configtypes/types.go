@@ -87,6 +87,16 @@ type ParserConfig struct {
 			LastUpdated string `json:"last_updated,omitempty"` // Время последнего обновления (RFC3339, UTC)
 		} `json:"parser,omitempty"`
 	} `json:"ParserConfig"`
+
+	// TailscaleRemoteStateDirRoot — корень каталогов состояния tailnet НА
+	// МАШИНЕ-ИСПОЛНИТЕЛЕ (`<state_dir>/tailscale` её демона, SPEC 122), когда
+	// сборка идёт для чужой машины. Пусто = своя машина, локальный корень.
+	//
+	// Поле сборочной проекции, не данные: не сериализуется и ставится только
+	// разбором окна машины (ParseAndPreview по model.Target). Раньше корень жил
+	// в глобале пакета config «с момента открытия окна», и с двумя открытыми
+	// Конфигураторами (SPEC 178) последний открытый диктовал путь обоим.
+	TailscaleRemoteStateDirRoot string `json:"-"`
 }
 
 // ProxySource represents a proxy subscription source
@@ -231,7 +241,8 @@ type CanonicalSource struct {
 //
 // Один тип на весь путь «состояние → эмиссия → кэш сборки → обход пресета»:
 // новое поле записи добавляется сюда и в PresetNodeRecordFields, а не
-// параллельной картой на каждом шаге.
+// параллельной картой на каждом шаге. Поля Taildrop живут здесь же по тем же
+// правилам хранения и слияния, но пресетам не видны и в Any не входят.
 type NodeRecordFlags struct {
 	// SkipTailscalePresets — пресет `tailscale` узел не обслуживает
 	// (до 1.1.126 — `skip_presets`, читается терпимо; LxBox §578).
@@ -243,11 +254,22 @@ type NodeRecordFlags struct {
 	AllowLan bool `json:"allow_lan,omitempty"`
 	// AllowGateway — пир ходит через нас куда угодно.
 	AllowGateway bool `json:"allow_gateway,omitempty"`
+	// OwnRoutes — в клиентский туннель этого узла идут только его собственные
+	// сети: allowed_ips пиров WireGuard, маршруты и домены, присланные
+	// сервером OpenVPN / OpenConnect (пресет `tunnel-routes`, контракт
+	// 1.1.161, D-144). Работает на включение.
+	OwnRoutes bool `json:"own_routes,omitempty"`
+	// DisableTaildropCommands — не принимать буфер и ссылки от своих устройств
+	// (контракт 1.1.159, SERVICE_FILES.md §5). В конфиг не идёт.
+	DisableTaildropCommands bool `json:"disable_taildrop_commands,omitempty"`
+	// DisableTaildropAutosave — не сохранять принятые файлы без вопроса
+	// (контракт 1.1.159). В конфиг не идёт.
+	DisableTaildropAutosave bool `json:"disable_taildrop_autosave,omitempty"`
 }
 
-// Any — хотя бы один флаг поднят.
+// Any — поднят хотя бы один флаг, видимый пресетам.
 func (f NodeRecordFlags) Any() bool {
-	return f.SkipTailscalePresets || f.AllowLocal || f.AllowLan || f.AllowGateway
+	return f.SkipTailscalePresets || f.AllowLocal || f.AllowLan || f.AllowGateway || f.OwnRoutes
 }
 
 // MergeTrue — слияние импорта: флаг из файла переносится, только если он
@@ -258,6 +280,9 @@ func (f *NodeRecordFlags) MergeTrue(in NodeRecordFlags) {
 	f.AllowLocal = f.AllowLocal || in.AllowLocal
 	f.AllowLan = f.AllowLan || in.AllowLan
 	f.AllowGateway = f.AllowGateway || in.AllowGateway
+	f.OwnRoutes = f.OwnRoutes || in.OwnRoutes
+	f.DisableTaildropCommands = f.DisableTaildropCommands || in.DisableTaildropCommands
+	f.DisableTaildropAutosave = f.DisableTaildropAutosave || in.DisableTaildropAutosave
 }
 
 // CanonicalNode — один готовый узел канона в сборочной форме.
@@ -283,6 +308,9 @@ type CanonicalNode struct {
 	Service bool
 	// Record — поля записи узла (D-134); у узла подписки всегда нули.
 	Record NodeRecordFlags
+	// StateDirID — имя каталога tailnet из записи узла (контракт 1.1.160); у
+	// узла подписки пусто.
+	StateDirID string
 	// Authored — тело авторское (контракт 1.1.87, PARSING_PRINCIPLES
 	// §10.1). Считает state (state.Node.Authored): контейнер известен
 	// только ему.
@@ -776,6 +804,9 @@ type ParsedNode struct {
 	// Record — поля записи узла (skip_tailscale_presets, allow_*; D-134),
 	// которые пресеты с for_each_node* читают как @node.<поле>.
 	Record NodeRecordFlags
+	// StateDirID — имя каталога tailnet из записи узла (контракт 1.1.160); у
+	// узла подписки пусто.
+	StateDirID string
 	// Chain is the ordered detour path from the nearest hop outwards
 	// (SPEC 094 B1). Empty means the node dials directly.
 	//

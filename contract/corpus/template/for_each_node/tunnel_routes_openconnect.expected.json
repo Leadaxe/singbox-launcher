@@ -1,0 +1,34 @@
+{
+  "rules": [
+    {
+      "preferred_by": [
+        "work-oc"
+      ],
+      "action": "resolve",
+      "server": "work-oc-dns"
+    },
+    {
+      "preferred_by": [
+        "work-oc"
+      ],
+      "outbound": "work-oc"
+    }
+  ],
+  "dns_servers": [
+    {
+      "type": "openconnect",
+      "tag": "work-oc-dns",
+      "endpoint": "work-oc",
+      "description": "DNS announced by the tunnel"
+    }
+  ],
+  "dns_rules": [
+    {
+      "preferred_by": [
+        "work-oc-dns"
+      ],
+      "server": "work-oc-dns"
+    }
+  ],
+  "warnings": []
+}

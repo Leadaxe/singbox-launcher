@@ -26,6 +26,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/muhammadmuzzammil1998/jsonc"
+
 	"singbox-launcher/core/config/nodeflow"
 	"singbox-launcher/internal/debuglog"
 )
@@ -103,6 +105,32 @@ func gateBodyForCore(scheme, tag string, body []byte) ([]byte, bool) {
 			scheme, path, coreVersionLabel(core.Version))
 	}
 	return out, true
+}
+
+// GateConfigJSONForCore — готовый config.json (JSONC), из которого сняты
+// ключи вне тел узлов, которых ядро версии version не знает
+// (registry/core_config.json). Для путей, где исполнитель — не то ядро, под
+// которое конфиг собран: служба со своей копией ядра. Снимать нечего, версия
+// неизвестна или конфиг не разобрался — возвращается как есть.
+func GateConfigJSONForCore(config []byte, version string) []byte {
+	if strings.TrimSpace(version) == "" {
+		return config
+	}
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(jsonc.ToJSON(config), &root); err != nil {
+		return config
+	}
+	dropped, err := nodeflow.GateConfigForCore(root, version)
+	if err != nil || len(dropped) == 0 {
+		return config
+	}
+	out, err := json.Marshal(root)
+	if err != nil {
+		return config
+	}
+	debuglog.WarnLog("Config gate: keys %s dropped — core %s does not know them (registry core_config min_core)",
+		strings.Join(dropped, ", "), version)
+	return out
 }
 
 func coreVersionLabel(v string) string {

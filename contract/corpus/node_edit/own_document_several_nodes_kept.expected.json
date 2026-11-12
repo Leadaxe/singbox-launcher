@@ -1,0 +1,35 @@
+{
+  "origin": {
+    "kind": "singbox",
+    "raw": {
+      "outbounds": [
+        {
+          "type": "direct",
+          "tag": "direct"
+        },
+        {
+          "type": "selector",
+          "tag": "proxy",
+          "outbounds": [
+            "n1",
+            "n2"
+          ]
+        },
+        {
+          "type": "trojan",
+          "server": "example-1.com",
+          "server_port": 443,
+          "password": "testpass580"
+        },
+        {
+          "type": "trojan",
+          "server": "example-3.com",
+          "server_port": 443,
+          "password": "testpass582"
+        }
+      ]
+    }
+  },
+  "authored": true,
+  "rest_not_kept": false
+}

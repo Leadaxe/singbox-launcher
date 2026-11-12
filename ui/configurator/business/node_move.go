@@ -78,7 +78,9 @@ func CopyNodeToFolder(m *wizardmodels.WizardModel, srcIndex int, rawTag, dstFold
 	if err != nil {
 		return nil, err
 	}
-	if _, err := placeNodeIntoFolder(m, dstIndex, cloneCanonicalNodeForMove(*node)); err != nil {
+	copied := cloneCanonicalNodeForMove(*node)
+	reseedTailscaleStateDir(&copied)
+	if _, err := placeNodeIntoFolder(m, dstIndex, copied); err != nil {
 		return nil, err
 	}
 	InvalidateNodePool(m)
@@ -144,7 +146,7 @@ func MoveNodeToFolder(m *wizardmodels.WizardModel, srcIndex int, rawTag, dstFold
 	// тега (у каждой папки своя тег-политика), значит каталог состояния
 	// tailnet переезжает вместе с узлом.
 	moved.Tag = newTag
-	renameTailscaleStateDirTo(m, oldStateDirTag, dstFolderID, &moved)
+	freezeTailscaleStateDirTo(m, oldStateDirTag, dstFolderID, &moved)
 
 	to := nodeContainerRef{folderID: strings.TrimSpace(dstFolderID), tag: newTag}
 	affected := append(repointNodeLinks(m, from, to), orphans...)
@@ -220,7 +222,7 @@ func ExtractFolderNodesToRoot(m *wizardmodels.WizardModel, folderIndex int) []st
 		// новый — сырой (у корня политики нет). Считается до folder.Nodes=nil.
 		oldStateDirTag := tailscaleFinalTagOfSource(folder, folder.Nodes[i].Tag)
 		src, from, to := promoteNodeToRoot(folder.Nodes[i], folderID, taken)
-		RenameTailscaleStateDirForNode(nil, oldStateDirTag, nil, &src.Node)
+		FreezeTailscaleStateDirForNode(nil, oldStateDirTag, nil, &src.Node)
 		promoted = append(promoted, src)
 		repoints = append(repoints, [2]nodeContainerRef{from, to})
 	}
@@ -329,7 +331,7 @@ func MoveNodeToRoot(m *wizardmodels.WizardModel, srcIndex int, rawTag string) ([
 	oldStateDirTag := tailscaleFinalTagOfSource(srcSource, node.Tag)
 	promotedSrc, from, to := promoteNodeToRoot(*node, folderID, rootTagSet(m))
 	// У корня тег-политики нет: финальный тег вынесенного узла = его сырой.
-	RenameTailscaleStateDirForNode(nil, oldStateDirTag, nil, &promotedSrc.Node)
+	FreezeTailscaleStateDirForNode(nil, oldStateDirTag, nil, &promotedSrc.Node)
 
 	// Кладём ДО удаления — то же правило, что у MoveNodeToFolder: если что-то
 	// откажет посередине, узел не должен пропасть из папки.
@@ -369,6 +371,7 @@ func CopyNodeToRoot(m *wizardmodels.WizardModel, srcIndex int, rawTag string) ([
 	if copySrc.Tag == "" {
 		return nil, fmt.Errorf("node move: node has no tag")
 	}
+	reseedTailscaleStateDir(&copySrc.Node)
 	insertSourceAfter(m, srcIndex, copySrc)
 	InvalidateNodePool(m)
 	return nil, nil

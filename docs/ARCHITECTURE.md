@@ -230,6 +230,33 @@ for several signals:
 > `ConfigBuilt`/`StateChanged` are kept (not deleted) precisely so the subscribers
 > can be wired without re-plumbing publishers.
 
+### 4.4 Configurator window registry (SPEC 178)
+
+`UIService` keeps the open Configurator windows in a registry keyed by target
+(`TargetSpec.WizardWindowKey()`: `local` or `machine:<id>`), one window per target,
+instead of a single `WizardWindow` field. `ShowConfigWizard` / `ShowConfigWizardForMachine`
+focus the window of *their* target or open a new one next to the others; the window
+title carries the target (`Config Wizard — Local` / `Config Wizard — <machine name>`),
+and closing a window removes only its own key. Each entry carries its own
+`FocusChildWindows` (View / Outbound Edit / rule dialogs belong to that Configurator).
+Consumers ask a specific question: the main-window click overlay is shown while
+`WizardWindowCount() > 0` and raises `AnyWizardWindow()` (local first); the TUN-rights
+dialog blocks "Switch to proxy mode" only while `LocalWizardOpen()`. All registry access
+is UI-thread only.
+
+The tailnet state root of a machine (`TargetSpec.TailscaleStateDir`) is no longer a
+package global set when a window opens: `ParseAndPreview` copies it from the window's
+`model.Target` into the build-only field `ParserConfig.TailscaleRemoteStateDirRoot`
+(`json:"-"`), and `GenerateOutboundsFromParserConfig` passes it to
+`EmitNodeJSONsFor`. Local builds (local window, rebuild outside the Configurator) never
+set it, so a machine path cannot leak into the local `config.json`. Window previews
+(source JSON tab, folder copy, Add server) use the same root via
+`wizardbusiness.TailscaleRemoteRootOf(model)`.
+
+The traffic profiler windows (local singleton + one per machine) put the target into
+the title the same way (`WindowDeps.Subject` → `FormatRecordingTitle(subject, session)`),
+including while recording.
+
 ---
 
 ## 5. State model
@@ -656,7 +683,13 @@ Key properties:
   `WizardModel.GeneratedRecordFlags` → `template.PresetNode.Record` →
   `@node.<field>` (`PresetNodeRecordFields`). The stock `tunnel-ingress` preset
   (`for_each_node_do`, num 940) reads the `allow_*` fields to reject inbound
-  connections from client tunnel endpoints by `inbound` tag.
+  connections from client tunnel endpoints by `inbound` tag. `own_routes`
+  (SPEC 180, contract 1.1.161) rides the same struct: the stock `tunnel-routes`
+  preset (`for_each_node`, num 943, late default) emits, for each
+  `wireguard` / `openvpn-client` / `openconnect` node with the flag, a route
+  rule `preferred_by: [node] → node`, and for the last two a `resolve` rule, a
+  DNS server of type `openvpn` / `openconnect` and a DNS rule. The switch
+  lives in `tunnelRoutesBlock` (`ui/configurator/tabs/source_tunnel_access.go`).
 - **One template walker (SPEC 143).** Every `@var` / `#if` substitution goes
   through the canonical walker `template.SubstituteVarsInJSONCanonWarnings`
   (`core/template/substitute_canon.go`, rules of `contract/docs/TEMPLATE_LANG.md`):
@@ -701,6 +734,12 @@ Key properties:
   for it. The launcher never emits the WireGuard idle-suspend keys in either form
   (`route.lx_idle_*`, `lx.wg.*`): desktop core builds lack `with_lx_idle_suspend`
   and refuse them at start (SPEC 138; pinned by `TestBuildConfigPassesRootLXBlock`).
+  A pass-through section that substitution left as `{}` is not written, and keys
+  outside node bodies newer than the executing core are dropped by the table
+  `contract/registry/core_config.json` (`nodeflow.GateConfigForCore`): at build
+  for the target's core (`build.CoreVersionForTarget` — installed core for Local,
+  the machine's cached passport version for a remote) and before the daemon apply
+  for the service core (`config.GateConfigJSONForCore`). Unknown version — no gate.
 
 See [DATA_FLOW.md §3](DATA_FLOW.md) for the build flow with the SPEC 057/058 outbound
 `Ref`/`Updates` resolution detail.
@@ -1152,18 +1191,29 @@ the service layer and core v1.14.2-lx.2 land). Linux and Win7 (`windows/386`,
 client and the remote-machine code are untagged. The daemon protobuf stubs are
 vendored from the fork via `scripts/sync_daemonpb.sh`.
 
-**Taildrop (SPEC 175, 176).** Files of a Tailscale node go over the same gRPC
+**Taildrop (SPEC 175, 176, 179).** Files of a Tailscale node go over the same gRPC
 (`SubscribeTaildropInbox`, `SendTaildropFiles`, `DownloadTaildropFile`,
 `DeleteTaildropFile`): `core/services/taildrop.go` holds the RPC code shared by
 the local daemon and remote machines, `core/taildrop.go` picks the source by
-`TailscaleTarget`. One background inbox subscription per node
-(`core/taildrop_autosave.go`) runs while that node's core runs: for every node
-of this computer's core it handles service files first
-(`core/taildrop_service.go`, codec `core/services/taildrop_service.go`,
-constants from `contract/registry/service_files.json`) — runs permitted
-clipboard / open_url commands and always deletes the file — then saves ordinary
-files to Downloads (auto-save checkbox, any machine) or notifies about them.
-Permissions and the auto-save checkbox live in `settings.json`, not in backups.
+`TailscaleTarget`. One background inbox subscription per node of this computer's
+core (`core/taildrop_autosave.go`) runs while that core runs: it handles service
+files first (`core/taildrop_service.go`, codec `core/services/taildrop_service.go`,
+constants from `contract/registry/service_files.json`) — runs clipboard / open_url
+commands from the user's own devices and always deletes the file — then saves
+ordinary files to Downloads or notifies about them. Remote machines have no
+background subscription: their files are taken with Save in the node window.
+
+Taildrop settings are fields of the node record in `state.json` and travel with
+backups: `disable_taildrop_commands`, `disable_taildrop_autosave`,
+`taildrop_double_copy` (one device). If Taildrop is allowed on a node of this
+computer's core, commands and auto-save are on by default. They act on this
+computer, so nodes of remote machines neither show nor apply them.
+
+The state directory of a Tailscale node is named by the record field
+`state_dir_id`; without it, by the final tag. New nodes and copies get a random
+name; renaming a node without the field stores the current directory name in it,
+so the directory never moves and the tailnet device stays the same
+(`core/config/tailscale_state_dir.go`, `ui/configurator/business/tailscale_state_dir.go`).
 
 ### 11.2 `ProxyTransport` — the proxy-operation seam
 

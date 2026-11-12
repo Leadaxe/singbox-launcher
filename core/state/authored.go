@@ -11,100 +11,81 @@ import (
 // Условий четыре, и первое — контейнер — вызывающий обязан проверить сам:
 // звать только у своего сервера в корне и у члена папки, не у узла
 // подписки. Здесь три остальных: узел — сервер (не группа автовыбора),
-// источник — голое тело узла sing-box (вид `singbox_outbound`), и текст
-// источника разбирается как JSON-объект.
+// вид источника — `singbox` (контракт 1.1.165, §11 п.5: дословное тело —
+// только у sing-box источника; `xray` — перевод, не текст автора в форме
+// ядра), и текст источника разбирается как JSON (голое тело, документ или
+// массив — тело узла из него берёт материализация).
 //
-// Условием НЕ являются: кто набрал текст, вид хранения `json`, факт правки.
+// Условием НЕ являются: кто набрал текст, факт правки.
 func (n *Node) Authored() bool {
-	if n == nil || n.Kind != SourceKindServer || n.Origin == nil || n.Origin.Kind != OriginKindJSON {
+	if n == nil || n.Kind != SourceKindServer || n.Origin == nil || n.Origin.Kind != OriginKindSingbox {
 		return false
 	}
-	return IsBareNodeBody(n.Origin.Raw)
+	return isJSONObjectOrArray(strings.TrimSpace(n.Origin.Raw))
 }
 
-// IsBareNodeBody — текст является голым телом узла sing-box (вид источника
-// `singbox_outbound`): JSON-объект со строковым непустым `type` и без
-// `outbounds`/`endpoints` в корне (это уже документ, `singbox_config`).
-func IsBareNodeBody(raw string) bool {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &m); err != nil || m == nil {
-		return false
-	}
-	if _, doc := m["outbounds"]; doc {
-		return false
-	}
-	if _, doc := m["endpoints"]; doc {
-		return false
-	}
-	var typ string
-	if err := json.Unmarshal(m["type"], &typ); err != nil {
-		return false
-	}
-	return strings.TrimSpace(typ) != ""
-}
-
-// NormalizeBareBodyOrigins — старые записи своего сервера и члена папки, у
-// которых в источнике лежит документ или массив тел (виды `singbox_config`,
-// `singbox_config_array`, `singbox_outbound_array`), получают в источник
-// ТЕЛО узла этой записи (контракт 1.1.87, PARSING_PRINCIPLES §11 п.2; LxBox
-// §576). Тело, уходившее в ядро, не меняется — меняется только обёртка.
-// Туда же — JSON, записанный видом `uri` (SPEC 157): вид становится `json`.
+// MigrateLegacyOriginKinds — записи, у которых вид источника записан до
+// контракта 1.1.165, получают вид-диалект (PARSING_PRINCIPLES §11 п.6):
+//
+//   - `json` (JSON любого диалекта) → классификация текста движком реестра
+//     (хук ClassifyOriginKind): `singbox` либо `xray`; движок вида не дал или
+//     дал не JSON-диалект → `singbox` (прежнее поведение `json`);
+//   - `uri`, чей текст — JSON (правка поля Origin до того, как вид стал
+//     определяться по тексту, SPEC 157) → то же правило.
+//
+// Текст источника НЕ меняется: документ остаётся документом (обрезка до
+// узловых массивов — на входе текста, не при чтении), тело узла не
+// трогается. Обходятся ВСЕ узлы с происхождением — корневые серверы, члены
+// папок и подписок, включая группы и неразобранные записи: у них вид тот же.
 //
 // Возвращает число переписанных записей: вызывающему нужно знать, стоит ли
 // сохранять файл.
-func NormalizeBareBodyOrigins(s *State) int {
+func MigrateLegacyOriginKinds(s *State) int {
 	if s == nil {
 		return 0
 	}
 	n := 0
 	for i := range s.Sources {
 		src := &s.Sources[i]
-		switch src.Kind {
-		case SourceKindServer:
-			if normalizeBareBodyOrigin(&src.Node) {
+		if migrateLegacyOriginKind(src.Node.Origin) {
+			n++
+		}
+		for j := range src.Nodes {
+			if migrateLegacyOriginKind(src.Nodes[j].Origin) {
 				n++
-			}
-		case SourceKindFolder:
-			for j := range src.Nodes {
-				if normalizeBareBodyOrigin(&src.Nodes[j]) {
-					n++
-				}
 			}
 		}
 	}
 	return n
 }
 
-func normalizeBareBodyOrigin(node *Node) bool {
-	if node == nil || node.Kind != SourceKindServer || node.Origin == nil || len(node.Body) == 0 {
+func migrateLegacyOriginKind(o *Origin) bool {
+	if o == nil {
 		return false
 	}
-	raw := strings.TrimSpace(node.Origin.Raw)
-	changed := false
-	// JSON, записанный видом `uri` (поле Origin до SPEC 157 знало только
-	// ссылку и wg-quick), — источник `json`: вид отвечает ФОРМЕ текста. Без
-	// этого Regen разбирал объект как ссылку, вкладка JSON спрашивала про
-	// «замену ссылки», а тело не считалось авторским.
-	if node.Origin.Kind == OriginKindURI && isJSONObjectOrArray(raw) {
-		node.Origin.Kind = OriginKindJSON
-		changed = true
+	raw := strings.TrimSpace(o.Raw)
+	switch o.Kind {
+	case LegacyOriginKindJSON:
+		o.Kind = classifyJSONOriginKind(raw)
+		return true
+	case OriginKindURI:
+		if isJSONObjectOrArray(raw) {
+			o.Kind = classifyJSONOriginKind(raw)
+			return true
+		}
 	}
-	if node.Origin.Kind != OriginKindJSON {
-		return changed
+	return false
+}
+
+// classifyJSONOriginKind — вид JSON-текста по реестру; не опознан или не
+// JSON-диалект → `singbox`.
+func classifyJSONOriginKind(raw string) string {
+	if migrationHooks.ClassifyOriginKind != nil {
+		if kind := migrationHooks.ClassifyOriginKind(raw); IsJSONOriginKind(kind) {
+			return kind
+		}
 	}
-	if IsBareNodeBody(raw) || !isNodeDocumentOrArray(raw) {
-		return changed
-	}
-	var body interface{}
-	if err := json.Unmarshal(node.Body, &body); err != nil {
-		return false
-	}
-	pretty, err := json.MarshalIndent(body, "", "  ")
-	if err != nil {
-		return false
-	}
-	node.Origin.Raw = string(pretty)
-	return true
+	return OriginKindSingbox
 }
 
 // isJSONObjectOrArray — текст есть валидный JSON-объект или массив. Ссылка
@@ -115,20 +96,4 @@ func isJSONObjectOrArray(raw string) bool {
 		return false
 	}
 	return json.Valid([]byte(raw))
-}
-
-// isNodeDocumentOrArray — текст является документом sing-box (объект с
-// `outbounds`/`endpoints`) или JSON-массивом.
-func isNodeDocumentOrArray(raw string) bool {
-	if strings.HasPrefix(raw, "[") {
-		var arr []json.RawMessage
-		return json.Unmarshal([]byte(raw), &arr) == nil
-	}
-	var m map[string]json.RawMessage
-	if json.Unmarshal([]byte(raw), &m) != nil {
-		return false
-	}
-	_, ob := m["outbounds"]
-	_, ep := m["endpoints"]
-	return ob || ep
 }

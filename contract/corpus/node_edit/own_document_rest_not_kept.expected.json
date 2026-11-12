@@ -1,11 +1,15 @@
 {
   "origin": {
-    "kind": "json",
+    "kind": "singbox",
     "raw": {
-      "type": "trojan",
-      "server": "example-1.com",
-      "server_port": 443,
-      "password": "testpass580"
+      "outbounds": [
+        {
+          "type": "trojan",
+          "server": "example-1.com",
+          "server_port": 443,
+          "password": "testpass580"
+        }
+      ]
     }
   },
   "authored": true,

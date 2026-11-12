@@ -20,6 +20,8 @@
 - `vars.json` — значения **строками**, как их хранит состояние обоих
   приложений; отсутствующий ключ = значение не задано (берётся
   `default_value`), значение `null` = optional-var (Dropped-каскад §5.1).
+  Пустая строка у `text_list` — явный пустой список, дефолт не берётся
+  (§2.2, контракт 1.1.167); у остальных типов пустая строка = не задано.
 - `expected.json` — результат подстановки (`config`) и отсортированный
   список кодов предупреждений (`warnings`, коды из
   `registry/warnings.json`). Пустой список — поле обязательно присутствует.
@@ -100,7 +102,11 @@ short-circuit.
 `unique` и `wizard_ui: internal` у объявления; кейсы `do_if_*` — операция
 `#do` под условием `#if` (любой формы §4.1): `{}` на узле = пропуск, отказы
 загрузки по §6.7.1; кейсы `tunnel_ingress_*` — тело пресета `tunnel-ingress`
-(§6.5.2) целиком на узлах с полями записи `allow_*`.
+(§6.5.2) целиком на узлах с полями записи `allow_*`. В `for_each_node/`
+кейсы `tunnel_routes_*` — тело пресета `tunnel-routes` (§6.5.3, контракт
+1.1.161) целиком на узлах с полем записи `own_routes`: WireGuard, OpenVPN,
+OpenConnect, выключенный `dns_enable`, поле не поднято, узел подписки, два
+узла.
 
 ```
 <case>.preset.json    {"_comment": "…", "preset": {...}, "nodes": [...]}
@@ -113,10 +119,10 @@ short-circuit.
   `dns_servers`, `dns_rules`. Оболочку (`id`/`preset_id`, `label`, `ui`,
   `num`) раннер стороны добавляет сам.
 - `nodes` — узлы в порядке конфига: `{tag, body, enabled?, in_config?,
-  skip_tailscale_presets?, allow_local?, allow_lan?, allow_gateway?}`. `tag` — финальный тег, `body` — тело в форме конфига.
+  skip_tailscale_presets?, allow_local?, allow_lan?, allow_gateway?, own_routes?}`. `tag` — финальный тег, `body` — тело в форме конфига.
   `enabled: false` (узел выключен) и `in_config: false` (снят гейтом реестра,
   ядра, деградацией) — такие узлы сборка в обход не передаёт; раннер
-  отсеивает их так же. `skip_tailscale_presets`, `allow_local`, `allow_lan`, `allow_gateway` —
+  отсеивает их так же. `skip_tailscale_presets`, `allow_local`, `allow_lan`, `allow_gateway`, `own_routes` (с 1.1.161) —
   поля записи (TEMPLATE_LANG §6.6; до 1.1.126 первое называлось
   `skip_presets`, корпус переписан на новое имя); отсутствие = false (узел
   подписки).

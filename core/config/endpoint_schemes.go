@@ -7,6 +7,7 @@
 package config
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -34,22 +35,9 @@ const SchemeTailscale = configtypes.SchemeTailscale
 // Пусто = состояние ставить некуда (превью, тесты): поле не подставляется
 // вовсе, и ядро возьмёт свой дефолт. Молча писать относительный путь нельзя
 // — рабочий каталог ядра лаунчеру не принадлежит.
-// tailscaleRemoteStateDirRoot — корень каталогов состояния tailnet НА
-// МАШИНЕ-ИСПОЛНИТЕЛЕ, когда конфиг собирается не для себя
-// (`<state_dir>/tailscale` её демона, SPEC 063/122).
-//
-// Живёт рядом с локальным корнем и переключается вместе с целью Мастера
-// (ShowConfigWizardForMachine ставит, Local — снимает), потому что эмиссия
-// одна и та же для сборки и для превью вкладки JSON: разъедься они, вкладка
-// показывала бы путь, отличный от уехавшего в конфиг.
-//
-// Пусто = собираем для себя, берётся локальный корень. GC каталогов на это
-// НЕ смотрит: он ходит по нашей файловой системе и остаётся на локальном
-// корне всегда — чужой каталог нам не принадлежит.
 var (
-	tailscaleStateDirRoot       string
-	tailscaleRemoteStateDirRoot string
-	tailscaleStateDirRootMu     sync.RWMutex
+	tailscaleStateDirRoot   string
+	tailscaleStateDirRootMu sync.RWMutex
 )
 
 // SetTailscaleStateDirRoot задаёт корень каталогов состояния tailnet.
@@ -74,25 +62,6 @@ func TailscaleStateDirRoot() string {
 	return tailscaleStateDirRoot
 }
 
-// SetTailscaleRemoteStateDirRoot задаёт корень состояния tailnet на
-// машине-исполнителе. Пустая строка (Local) снимает переопределение.
-//
-// Зовётся при выборе цели Мастера — там же, где ставится ResourceDir: оба
-// поля решают одну задачу, путь чужой машины в конфиг для чужой машины.
-func SetTailscaleRemoteStateDirRoot(root string) {
-	root = strings.TrimSpace(root)
-	tailscaleStateDirRootMu.Lock()
-	tailscaleRemoteStateDirRoot = root
-	tailscaleStateDirRootMu.Unlock()
-}
-
-// TailscaleRemoteStateDirRoot — текущий корень машины-исполнителя.
-func TailscaleRemoteStateDirRoot() string {
-	tailscaleStateDirRootMu.RLock()
-	defer tailscaleStateDirRootMu.RUnlock()
-	return tailscaleRemoteStateDirRoot
-}
-
 // applyTailscaleStateDirectory подставляет state_directory узлу tailnet.
 //
 // Только если ключа В ТЕЛЕ НЕТ: явное значение пользователя — решение
@@ -102,7 +71,11 @@ func TailscaleRemoteStateDirRoot() string {
 // идентичность первого.
 //
 // remoteRoot — корень НА МАШИНЕ-ИСПОЛНИТЕЛЕ (`<state_dir>/tailscale` её
-// демона). Непустой = конфиг собирается для чужой машины, и локальный корень
+// демона, SPEC 063/122). Приходит параметром от сборки цели
+// (ParserConfig.TailscaleRemoteStateDirRoot), а не из глобала: окна
+// Конфигуратора разных целей открыты одновременно (SPEC 178), и общий корень
+// унёс бы путь роутера в локальный конфиг. Непустой = конфиг собирается для
+// чужой машины, и локальный корень
 // в него писать нельзя: путь резолвит ядро на той стороне, нашего пути там
 // нет. Ядро создало бы его от своего корня, и состояние узла оседало бы в
 // каталоге вида `/Applications/…/bin/tailscale/<тег>` на роутере — рабочем,
@@ -130,6 +103,36 @@ func applyTailscaleStateDirectory(endpoint map[string]interface{}, scheme, tag, 
 	// filepath.Join, а не конкатенация через "/": на Windows корень приходит
 	// с обратными слэшами, и смешивать разделители в одном пути незачем.
 	endpoint["state_directory"] = filepath.Join(root, sanitizeStateDirName(tag))
+}
+
+// TailscaleBuildAdditions — ключи, которые сборка допишет к телу узла tailnet
+// в config.json, с их значениями: те же подстановка и гейт ядра, что у сборки,
+// минус то, что в теле уже есть. Код общий, поэтому вкладка JSON не разойдётся
+// со сборкой. Тело не меняется.
+func TailscaleBuildAdditions(body map[string]interface{}, scheme, tag, stateDirID, remoteRoot string) map[string]interface{} {
+	if scheme != SchemeTailscale {
+		return nil
+	}
+	emitted := make(map[string]interface{}, len(body)+3)
+	for k, v := range body {
+		emitted[k] = v
+	}
+	applyTailscaleStateDirectory(emitted, scheme, TailscaleStateDirNameFor(stateDirID, tag), remoteRoot)
+	if raw, err := json.Marshal(emitted); err == nil {
+		if gated, changed := gateBodyForCore(scheme, tag, raw); changed {
+			var out map[string]interface{}
+			if err := json.Unmarshal(gated, &out); err == nil {
+				emitted = out
+			}
+		}
+	}
+	adds := map[string]interface{}{}
+	for k, v := range emitted {
+		if _, present := body[k]; !present {
+			adds[k] = v
+		}
+	}
+	return adds
 }
 
 // applyTailscaleTaildropDefault — «Allow Taildrop» по умолчанию выключено

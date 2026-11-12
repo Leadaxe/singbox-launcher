@@ -44,6 +44,7 @@ import (
 	"sort"
 	"strings"
 
+	"singbox-launcher/core/config/nodeflow"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
@@ -194,6 +195,7 @@ func BuildConfig(ctx BuildContext) (Result, error) {
 
 	// Шаг 1: эффективный конфиг через GetEffectiveConfig.
 	cfg, order := effectiveConfig(ctx.Template, ctx.Vars, ctx.Target, &res)
+	cfg = gateConfigForTargetCore(cfg, ctx.Target)
 
 	// Привязка аплинка к несуществующему интерфейсу — не ошибка сборки:
 	// конфиг валиден по схеме, но ядро на нём останется без сети. Предупредить
@@ -225,6 +227,41 @@ func BuildConfig(ctx BuildContext) (Result, error) {
 
 	res.ConfigJSON = []byte(b.String())
 	return res, nil
+}
+
+// CoreVersionForTarget — версия ядра, которое исполнит конфиг этой цели:
+// своё ядро у local, ядро машины (кэш паспорта демона) у remote. Ставится
+// слоем приложения. nil-хук или пустая строка — версия неизвестна, гейт
+// ключей конфига не применяется.
+var CoreVersionForTarget func(target template.TargetSpec) string
+
+// gateConfigForTargetCore снимает ключи конфига вне тел узлов, которых ядро
+// цели не знает (registry/core_config.json): иначе ядро отвергает конфиг
+// целиком («unknown field»). Карта шаблона не правится — гейт работает на
+// копии.
+func gateConfigForTargetCore(cfg map[string]json.RawMessage, target template.TargetSpec) map[string]json.RawMessage {
+	if CoreVersionForTarget == nil {
+		return cfg
+	}
+	version := strings.TrimSpace(CoreVersionForTarget(target))
+	if version == "" {
+		return cfg
+	}
+	out := make(map[string]json.RawMessage, len(cfg))
+	for k, v := range cfg {
+		out[k] = v
+	}
+	dropped, err := nodeflow.GateConfigForCore(out, version)
+	if err != nil {
+		debuglog.WarnLog("Build gate: config keys not checked against core %s: %v", version, err)
+		return cfg
+	}
+	if len(dropped) == 0 {
+		return cfg
+	}
+	debuglog.WarnLog("Build gate: config keys %s dropped — core %s does not know them (registry core_config min_core)",
+		strings.Join(dropped, ", "), version)
+	return out
 }
 
 // effectiveConfig возвращает эффективные секции и их порядок. При неудаче
@@ -348,6 +385,11 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 		}
 		if key == "dns" && dnsBuilt {
 			out = append(out, fmt.Sprintf(`  "%s": %s`, key, dnsFormatted))
+			continue
+		}
+		// Секция без обработчика, опустевшая после подстановки (корневой lx,
+		// когда ни одна его настройка не задана), в конфиг не пишется.
+		if passThroughSection(key) && emptyJSONObject(raw) {
 			continue
 		}
 		formatted, err := buildSection(ctx, key, raw, finalOutboundTags)
@@ -475,6 +517,21 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutbou
 		}
 		return formatted, nil
 	}
+}
+
+// passThroughSection — секция шаблона без своего обработчика в buildSection.
+func passThroughSection(key string) bool {
+	switch key {
+	case "outbounds", "endpoints", "dns", "route":
+		return false
+	}
+	return true
+}
+
+// emptyJSONObject — raw есть `{}`.
+func emptyJSONObject(raw json.RawMessage) bool {
+	var m map[string]json.RawMessage
+	return json.Unmarshal(raw, &m) == nil && m != nil && len(m) == 0
 }
 
 // extractRouteFinal — достаёт route.final из merged route JSON.

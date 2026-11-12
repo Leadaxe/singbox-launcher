@@ -97,25 +97,17 @@ func TestTailscaleStateDirLifecycle(t *testing.T) {
 	// Повторное удаление несуществующего — не ошибка и не паника.
 	RemoveTailscaleStateDir(TailscaleStateDirName("doomed"))
 
-	// --- Норма 2: переименование ---
-	mkStateDir(t, root, "ts-old", "key-moved")
-	RenameTailscaleStateDir(TailscaleStateDirName("ts-old"), TailscaleStateDirName("ts-new"))
-	if got := stateDirMarker(t, root, "ts-new"); got != "key-moved" {
-		t.Fatalf("норма 2: идентичность не переехала, маркер %q", got)
+	// --- Норма 2: параметр записи важнее тега, из него не выйти за корень ---
+	if got := TailscaleStateDirNameFor("ts-a1b2c3", "any tag"); got != "ts-a1b2c3" {
+		t.Fatalf("норма 2: имя из state_dir_id: %q", got)
 	}
-	if _, err := os.Stat(filepath.Join(root, "ts-old")); !os.IsNotExist(err) {
-		t.Fatalf("норма 2: старый каталог остался")
+	if got := TailscaleStateDirNameFor("", "ts-old"); got != "ts-old" {
+		t.Fatalf("норма 2: без state_dir_id имя по тегу: %q", got)
 	}
-
-	// Новое имя занято — оставляем ОБА, чужую идентичность не затираем.
-	mkStateDir(t, root, "ts-a", "key-a")
-	mkStateDir(t, root, "ts-b", "key-b")
-	RenameTailscaleStateDir("ts-a", "ts-b")
-	if got := stateDirMarker(t, root, "ts-a"); got != "key-a" {
-		t.Fatalf("норма 2: исходный каталог при занятом имени пропал (%q)", got)
-	}
-	if got := stateDirMarker(t, root, "ts-b"); got != "key-b" {
-		t.Fatalf("норма 2: занятый каталог затёрт переименованием (%q)", got)
+	for _, id := range []string{"../victim", "..", "a/b"} {
+		if got := TailscaleStateDirNameFor(id, "t"); got == ".." || got == "." || strings.ContainsAny(got, `/\`) {
+			t.Fatalf("норма 2: state_dir_id %q вышел из корня: %q", id, got)
+		}
 	}
 
 	// Тег с символами, недопустимыми в имени каталога, уходит в "_" — и
@@ -226,8 +218,6 @@ func TestTailscaleStateDirStaysInsideRoot(t *testing.T) {
 
 	for _, name := range []string{"../victim", "..", ".", "", "a/b", "../../etc"} {
 		RemoveTailscaleStateDir(name)
-		RenameTailscaleStateDir(name, "x")
-		RenameTailscaleStateDir("x", name)
 	}
 	if _, err := os.Stat(outside); err != nil {
 		t.Fatalf("каталог ВНЕ корня удалён по имени с обходом: %v", err)
@@ -262,12 +252,8 @@ func TestTailscaleStateDirRemoteRootWins(t *testing.T) {
 	local := tsStateRoot(t) // ставит локальный корень и снимает его после теста
 	const remote = "/etc/sing-box/tailscale"
 
-	prev := TailscaleRemoteStateDirRoot()
-	SetTailscaleRemoteStateDirRoot(remote)
-	defer SetTailscaleRemoteStateDirRoot(prev)
-
 	ep := map[string]interface{}{"type": SchemeTailscale}
-	applyTailscaleStateDirectory(ep, SchemeTailscale, "Tailscale LexNet", TailscaleRemoteStateDirRoot())
+	applyTailscaleStateDirectory(ep, SchemeTailscale, "Tailscale LexNet", remote)
 
 	got, _ := ep["state_directory"].(string)
 	if want := remote + "/Tailscale_LexNet"; got != want {
@@ -284,17 +270,15 @@ func TestTailscaleStateDirRemoteRootWins(t *testing.T) {
 
 	// Local (пустой remote-корень) возвращается к локальному корню — иначе
 	// после визита в Remote своя же сборка унесла бы путь роутера.
-	SetTailscaleRemoteStateDirRoot("")
 	ep2 := map[string]interface{}{"type": SchemeTailscale}
-	applyTailscaleStateDirectory(ep2, SchemeTailscale, "ts", TailscaleRemoteStateDirRoot())
+	applyTailscaleStateDirectory(ep2, SchemeTailscale, "ts", "")
 	if got2, _ := ep2["state_directory"].(string); !strings.HasPrefix(got2, local) {
 		t.Fatalf("local-сборка не вернулась к локальному корню: %q", got2)
 	}
 
 	// Явное значение пользователя не перебивается ни в одном из режимов.
-	SetTailscaleRemoteStateDirRoot(remote)
 	ep3 := map[string]interface{}{"type": SchemeTailscale, "state_directory": "/custom/path"}
-	applyTailscaleStateDirectory(ep3, SchemeTailscale, "ts", TailscaleRemoteStateDirRoot())
+	applyTailscaleStateDirectory(ep3, SchemeTailscale, "ts", remote)
 	if got3, _ := ep3["state_directory"].(string); got3 != "/custom/path" {
 		t.Fatalf("явный state_directory перебит: %q", got3)
 	}

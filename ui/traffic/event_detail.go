@@ -22,7 +22,7 @@ import (
 // Falls back to the first available window — and to nil if there are
 // none at all (caller is nil-safe).
 // По ПРЕФИКСУ, а не по полному совпадению: во время записи заголовок несёт
-// таймер («Traffic Profiler ⚡ Recording · 00:29», см. FormatRecordingTitle),
+// таймер («Traffic Profiler — Local ⚡ Recording · 00:29», FormatRecordingTitle),
 // и точное сравнение переставало находить своё окно ровно тогда, когда по
 // строкам и кликают.
 func parentWindowOf(deps WindowDeps) fyne.Window {
@@ -31,7 +31,7 @@ func parentWindowOf(deps WindowDeps) fyne.Window {
 	}
 	all := deps.App.Driver().AllWindows()
 	for _, w := range all {
-		if strings.HasPrefix(w.Title(), "Traffic Profiler") {
+		if isProfilerWindowOf(deps, w) {
 			return w
 		}
 	}
@@ -39,6 +39,17 @@ func parentWindowOf(deps WindowDeps) fyne.Window {
 		return all[0]
 	}
 	return nil
+}
+
+// isProfilerWindowOf — окно профайлера ЭТОЙ цели. Заголовок локализован и
+// несёт цель (SPEC 178): профайлеры Local и машин открыты рядом, и голый
+// префикс «Traffic Profiler» нашёл бы первое попавшееся из них. Сравнение —
+// с заголовком без записи целиком либо с ним же плюс пробел (хвост записи):
+// иначе «Router» поймал бы окно «Router2».
+func isProfilerWindowOf(deps WindowDeps, w fyne.Window) bool {
+	base := tprof.FormatRecordingTitle(deps.Subject, nil)
+	t := w.Title()
+	return t == base || strings.HasPrefix(t, base+" ")
 }
 
 // showEventDetail pops a modal with every field of `e` rendered as a

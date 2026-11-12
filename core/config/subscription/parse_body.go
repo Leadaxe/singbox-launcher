@@ -44,9 +44,10 @@ import (
 // Словарь Origin.Kind — единый со схемой v7 (state.OriginKind*): парсер
 // порождает происхождение ровно в той форме, в которой оно хранится.
 const (
-	OriginKindURI   = state.OriginKindURI
-	OriginKindJSON  = state.OriginKindJSON
-	OriginKindWGIni = state.OriginKindWGIni
+	OriginKindURI     = state.OriginKindURI
+	OriginKindSingbox = state.OriginKindSingbox
+	OriginKindXray    = state.OriginKindXray
+	OriginKindWGIni   = state.OriginKindWGIni
 )
 
 // NodeSourceFromOriginKind — ВХОД узла (configtypes.NodeSource*) по
@@ -54,9 +55,9 @@ const (
 // словарями.
 //
 // Словари разные не по недосмотру: origin.kind отвечает на вопрос «чем узел
-// чинить» (ссылка, .conf, JSON — три значения, они же лежат в state), а
-// `sources` реестра — «кто сочинил значение» (там различимы ещё xray, wgconf,
-// amnezia). Перевод нужен правилам значений с `except_sources`: тело в форме
+// чинить» (ссылка, .conf, JSON sing-box или Xray — они же лежат в state), а
+// `sources` реестра — «кто сочинил значение» (там различимы ещё wgconf,
+// amnezia и авторское `singbox`). Перевод нужен правилам значений с `except_sources`: тело в форме
 // ядра человек или подписка написали сами, и лаунчер его не переписывает — он
 // предупреждает (потолок MTU у AmneziaWG, решение владельца 18.09.2026).
 //
@@ -68,10 +69,12 @@ const (
 // провайдера, и правило там работает заменой.
 func NodeSourceFromOriginKind(kind string) string {
 	switch strings.TrimSpace(kind) {
-	case OriginKindJSON:
+	case OriginKindSingbox:
 		// Вход `singbox` — только у авторского тела (контракт 1.1.87):
 		// его назначает материализация своего узла, а не происхождение.
 		return configtypes.NodeSourceOther
+	case OriginKindXray:
+		return configtypes.NodeSourceXray
 	case OriginKindURI:
 		return configtypes.NodeSourceURI
 	case OriginKindWGIni:
@@ -91,8 +94,9 @@ type ParsedBodyEntry struct {
 	// Node — разобранный узел. У группы Scheme == configtypes.SchemeGroup.
 	Node *configtypes.ParsedNode
 	// OriginKind / OriginRaw — происхождение записи ("uri" — строка
-	// URI-списка, "json" — объект sing-box/Xray-тела, "wg_ini" — блок .conf,
-	// в том числе из vpn://-контейнера). Пустой kind =
+	// URI-списка, "singbox" — тело узла в форме sing-box (у Xray-тела — его
+	// перевод: парсер хранит результат разбора, не элемент Xray), "wg_ini" —
+	// блок .conf, в том числе из vpn://-контейнера). Пустой kind =
 	// пофрагментного происхождения нет (синтезированные группы Xray).
 	OriginKind string
 	OriginRaw  string
@@ -425,7 +429,7 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			if node != nil && node.SourceTag == "" {
 				node.SourceTag = node.Tag
 			}
-			st.accept(node, OriginKindJSON, marshalNodeOriginJSON(node))
+			st.accept(node, OriginKindSingbox, marshalNodeOriginJSON(node))
 			flushJSON(i + 1)
 		}
 
@@ -462,8 +466,10 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 					node.SourceTag = node.Tag
 				}
 				// Синтезированные Xray-группы происхождения не имеют
-				// (origin=null — warp-К1/группы); обычные узлы — kind=json.
-				originKind, originRaw := OriginKindJSON, marshalNodeOriginJSON(node)
+				// (origin=null — warp-К1/группы); у обычных узлов источник —
+				// перевод в форму sing-box, вид `singbox` (текст и есть
+				// sing-box; хранение элемента Xray дословно — отдельная волна).
+				originKind, originRaw := OriginKindSingbox, marshalNodeOriginJSON(node)
 				if node.Scheme == configtypes.SchemeGroup {
 					originKind, originRaw = "", ""
 				}

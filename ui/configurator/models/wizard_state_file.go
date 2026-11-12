@@ -59,9 +59,10 @@ type (
 
 // Re-export SourceKind constants for UI.
 const (
-	OriginKindURI   = corestate.OriginKindURI
-	OriginKindWGIni = corestate.OriginKindWGIni
-	OriginKindJSON  = corestate.OriginKindJSON
+	OriginKindURI     = corestate.OriginKindURI
+	OriginKindWGIni   = corestate.OriginKindWGIni
+	OriginKindSingbox = corestate.OriginKindSingbox
+	OriginKindXray    = corestate.OriginKindXray
 
 	SourceKindServer       = corestate.SourceKindServer
 	SourceKindChain        = corestate.SourceKindChain

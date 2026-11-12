@@ -147,7 +147,7 @@ func TestApplyServerBodyJSON(t *testing.T) {
 			if err := applyServerBodyJSON(&src.Node, edited, true); err != nil {
 				t.Fatalf("правка отвергнута: %v", err)
 			}
-			if src.Origin == nil || src.Origin.Kind != wizardmodels.OriginKindJSON || src.Origin.Raw != edited {
+			if src.Origin == nil || src.Origin.Kind != wizardmodels.OriginKindSingbox || src.Origin.Raw != edited {
 				t.Fatalf("источник = %+v, ожидали json с голым телом", src.Origin)
 			}
 			if !src.Node.Authored() {
@@ -161,7 +161,7 @@ func TestApplyServerBodyJSON(t *testing.T) {
 	}
 
 	t.Run("массив тел: в источник первый элемент, остаток назван", func(t *testing.T) {
-		src := serverWithBody(wizardmodels.OriginKindJSON, workingBody)
+		src := serverWithBody(wizardmodels.OriginKindSingbox, workingBody)
 		const arr = `[{"type":"trojan","server":"b.example","server_port":8443,"password":"q"},{"type":"trojan","server":"c.example","server_port":443,"password":"r"}]`
 		if !jsonInputDropsRest(arr) {
 			t.Error("остаток массива не назван")
@@ -181,25 +181,58 @@ func TestApplyServerBodyJSON(t *testing.T) {
 		}
 	})
 
-	t.Run("документ с несколькими узлами: в источник первый узел, остаток назван", func(t *testing.T) {
-		src := serverWithBody(wizardmodels.OriginKindJSON, workingBody)
+	t.Run("документ с несколькими узлами: источник — документ целиком, тело — первый узел", func(t *testing.T) {
+		src := serverWithBody(wizardmodels.OriginKindSingbox, workingBody)
 		const doc = `{"outbounds":[{"type":"direct","tag":"direct"},{"type":"selector","tag":"sel","outbounds":["x"]},` +
 			`{"type":"trojan","server":"b.example","server_port":8443,"password":"q"},` +
 			`{"type":"trojan","server":"c.example","server_port":443,"password":"r"}]}`
-		if !jsonInputDropsRest(doc) {
-			t.Error("остаток документа не назван")
+		// Контракт 1.1.165 §11 п.2: узловые массивы хранятся целиком, остаток
+		// — только ключи вне них; здесь их нет.
+		if jsonInputDropsRest(doc) {
+			t.Error("документ из одних узлов объявлен с остатком")
 		}
 		if err := applyServerBodyJSON(&src.Node, doc, true); err != nil {
 			t.Fatalf("документ отвергнут: %v", err)
 		}
-		const first = `{"type":"trojan","server":"b.example","server_port":8443,"password":"q"}`
-		if src.Origin == nil || src.Origin.Raw != first {
-			t.Fatalf("источник = %+v, ожидали первый узел", src.Origin)
+		if src.Origin == nil || src.Origin.Kind != wizardmodels.OriginKindSingbox || src.Origin.Raw != doc {
+			t.Fatalf("источник = %+v, ожидали документ целиком", src.Origin)
+		}
+		if !strings.Contains(string(src.Body), `"b.example"`) {
+			t.Errorf("тело = %s, ожидали первый узел документа", src.Body)
+		}
+		const withRoute = `{"outbounds":[{"type":"trojan","server":"b.example","server_port":8443,"password":"q"}],"route":{"final":"x"}}`
+		if !jsonInputDropsRest(withRoute) {
+			t.Error("остаток документа (route) не назван")
+		}
+		if err := applyServerBodyJSON(&src.Node, withRoute, true); err != nil {
+			t.Fatalf("документ с route отвергнут: %v", err)
+		}
+		const trimmed = `{"outbounds":[{"type":"trojan","server":"b.example","server_port":8443,"password":"q"}]}`
+		if src.Origin == nil || src.Origin.Raw != trimmed {
+			t.Fatalf("источник = %+v, ожидали документ без route", src.Origin)
+		}
+	})
+
+	t.Run("Xray outbound в своём узле: вид меняется на xray, тело не авторское", func(t *testing.T) {
+		src := serverWithBody(wizardmodels.OriginKindSingbox, workingBody)
+		const xr = `{"tag":"xr","protocol":"vless","settings":{"vnext":[{"address":"b.example","port":443,` +
+			`"users":[{"id":"11111111-2222-3333-4444-555555555555"}]}]},"streamSettings":{"network":"tcp","security":"none"}}`
+		if err := applyServerBodyJSON(&src.Node, xr, true); err != nil {
+			t.Fatalf("Xray outbound отвергнут: %v", err)
+		}
+		if src.Origin == nil || src.Origin.Kind != wizardmodels.OriginKindXray || src.Origin.Raw != xr {
+			t.Fatalf("источник = %+v, ожидали xray с текстом как набран", src.Origin)
+		}
+		if src.Node.Authored() {
+			t.Error("тело узла из Xray объявлено авторским")
+		}
+		if !strings.Contains(string(src.Body), `"vless"`) || !strings.Contains(string(src.Body), `"b.example"`) {
+			t.Errorf("тело = %s, ожидали перевод vless", src.Body)
 		}
 	})
 
 	t.Run("документ из служебных и групп откатывается", func(t *testing.T) {
-		src := serverWithBody(wizardmodels.OriginKindJSON, workingBody)
+		src := serverWithBody(wizardmodels.OriginKindSingbox, workingBody)
 		const doc = `{"outbounds":[{"type":"direct","tag":"direct"},{"type":"block","tag":"block"},{"type":"urltest","tag":"u","outbounds":["direct"]}]}`
 		if err := applyServerBodyJSON(&src.Node, doc, true); err == nil {
 			t.Fatal("документ без узла принят")

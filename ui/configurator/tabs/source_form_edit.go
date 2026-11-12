@@ -97,12 +97,15 @@ func writeNodeFormBody(node *wizardmodels.Node, scheme string, ob map[string]int
 	node.Body = stamped
 	node.ReplaceDerivedWarnings(nodewarn.FromParsed(res.Warnings))
 	node.RevalidateCoreVerdictAfterBodyChange(bodyBefore)
-	if node.Origin == nil || node.Origin.Kind == wizardmodels.OriginKindJSON {
+	// Источник JSON-узла — тело, которое форма собрала: оно в форме
+	// sing-box, вид `singbox` (у узла `xray` прежний текст Xray заменяется —
+	// правка другим диалектом меняет вид, контракт 1.1.165 §11 п.4).
+	if node.Origin == nil || node.Origin.IsJSON() {
 		o := wizardmodels.Origin{}
 		if node.Origin != nil {
 			o = *node.Origin
 		}
-		o.Kind = wizardmodels.OriginKindJSON
+		o.Kind = wizardmodels.OriginKindSingbox
 		o.Raw = string(stamped)
 		node.Origin = &o
 	}

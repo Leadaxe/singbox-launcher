@@ -78,7 +78,8 @@ type SanitizeBodyRequest struct {
 	// Body — тело узла из state как есть; схема определяется по его "type".
 	Body json.RawMessage
 	// OriginKind — вход, которым узел когда-то приехал (Origin.Kind:
-	// "uri" | "wg_ini" | "json"); пусто, если происхождения у узла нет.
+	// "singbox" | "xray" | "uri" | "wg_ini"); пусто, если происхождения у
+	// узла нет.
 	//
 	// Его читают правила значений, различающие, КТО сочинил значение: тело в
 	// форме ядра человек или подписка написали сами, и лаунчер его не
@@ -112,6 +113,11 @@ type MigrationHooks struct {
 	MaterializeServer       func(req MigrationServerRequest) (*MigrationServerResult, error)
 	// SanitizeBody — пересчёт кодов по сохранённому телу (без origin.raw).
 	SanitizeBody func(req SanitizeBodyRequest) (*SanitizeBodyResult, error)
+	// ClassifyOriginKind — вид происхождения текста по реестру видов
+	// источника (OriginKind*; "" — вид не опознан). Нужен миграции старого
+	// вида "json" (контракт 1.1.165): диалект решает движок реестра, а не
+	// проверка ключа в коде состояния.
+	ClassifyOriginKind func(raw string) string
 }
 
 var migrationHooks MigrationHooks

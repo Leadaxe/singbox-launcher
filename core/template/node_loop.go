@@ -504,12 +504,13 @@ type PresetNode struct {
 
 // PresetNodeRecordFields — поля записи узла, видимые пресету как
 // `@node.<поле>`, со значением из записи. Перечень закрытый, расширяется
-// контрактом (TEMPLATE_LANG §6.6; 1.1.126, D-134).
+// контрактом (TEMPLATE_LANG §6.6; 1.1.126, D-134; own_routes — 1.1.161, D-144).
 var PresetNodeRecordFields = map[string]func(configtypes.NodeRecordFlags) bool{
 	"skip_tailscale_presets": func(f configtypes.NodeRecordFlags) bool { return f.SkipTailscalePresets },
 	"allow_local":            func(f configtypes.NodeRecordFlags) bool { return f.AllowLocal },
 	"allow_lan":              func(f configtypes.NodeRecordFlags) bool { return f.AllowLan },
 	"allow_gateway":          func(f configtypes.NodeRecordFlags) bool { return f.AllowGateway },
+	"own_routes":             func(f configtypes.NodeRecordFlags) bool { return f.OwnRoutes },
 }
 
 // NodeScope — имена одного узла под именем `node` для обходчика.

@@ -3,11 +3,12 @@ package traffic
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"singbox-launcher/internal/locale"
 )
 
 // Limits for the rolling buffer — see SPEC §"Pre-session backfill".
@@ -634,14 +635,19 @@ func (p *TrafficProfiler) SeenProcesses() []ProcessSummary {
 
 // FormatRecordingTitle is the window title with timer (⚡ Recording · mm:ss).
 // Centralized so the live-update tick and the initial setup agree.
-func FormatRecordingTitle(s *Session) string {
+//
+// subject — имя цели («Local» или имя машины, SPEC 178): профайлеры Local и
+// машины открыты рядом, и без цели в заголовке два окна неразличимы. Цель
+// остаётся и во время записи — тик перерисовывает заголовок каждую секунду,
+// и одноразовый SetTitle он бы затёр.
+func FormatRecordingTitle(subject string, s *Session) string {
 	if s == nil {
-		return "Traffic Profiler"
+		return locale.Tf("Traffic Profiler — %s", subject)
 	}
 	d := s.Duration()
 	m := int(d.Minutes())
 	sec := int(d.Seconds()) % 60
-	return fmt.Sprintf("Traffic Profiler ⚡ Recording · %02d:%02d", m, sec)
+	return locale.Tf("Traffic Profiler — %s ⚡ Recording · %02d:%02d", subject, m, sec)
 }
 
 // PushEvent подаёт событие, пришедшее из внешнего источника, — так же, как

@@ -769,8 +769,18 @@ type Limit struct {
 	Impl  string      `json:"impl"`
 }
 
+// CoreConfigField — запись из registry/core_config.json: ключ config.json вне
+// тел узлов и версия ядра, с которой он существует. Forbidden — ключ снят из
+// ядра и из реестра (контракт 1.1.164): снимается при любой версии ядра.
+type CoreConfigField struct {
+	MinCore   string `json:"min_core"`
+	Forbidden bool   `json:"forbidden"`
+	Note      string `json:"note"`
+}
+
 // Registry — весь реестр в разрешённом виде.
 type Registry struct {
+	coreConfig map[string]CoreConfigField
 	bodies   map[string]*BodySchema
 	warnings map[string]*WarningEntry
 	limits   map[string]Limit
@@ -959,6 +969,11 @@ func Load() (*Registry, error) {
 	if err := readJSON("limits.json", &struct {
 		Limits *map[string]Limit `json:"limits"`
 	}{Limits: &reg.limits}); err != nil {
+		return nil, err
+	}
+	if err := readJSON("core_config.json", &struct {
+		Fields *map[string]CoreConfigField `json:"fields"`
+	}{Fields: &reg.coreConfig}); err != nil {
 		return nil, err
 	}
 	var lists struct {
@@ -2029,6 +2044,16 @@ func (r *Registry) QueryAliases(scheme, param string) ([]string, bool) {
 	out := make([]string, len(names))
 	copy(out, names)
 	return out, true
+}
+
+// CoreConfigFields — ключи config.json вне тел узлов с границей версии ядра
+// (registry/core_config.json): путь от корня через точку → запись.
+func (r *Registry) CoreConfigFields() map[string]CoreConfigField {
+	out := make(map[string]CoreConfigField, len(r.coreConfig))
+	for k, v := range r.coreConfig {
+		out[k] = v
+	}
+	return out
 }
 
 // Limits — лимиты контракта (registry/limits.json).

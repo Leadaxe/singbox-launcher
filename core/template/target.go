@@ -135,6 +135,17 @@ func (t TargetSpec) MachineIDOrEmpty() string {
 	return strings.TrimSpace(t.MachineID)
 }
 
+// WizardWindowKey — ключ окна Конфигуратора этой цели в реестре окон
+// (SPEC 178): "local" или "machine:<id>". Одна функция и для поиска, и для
+// регистрации окна — разойдись они, повторное нажатие Configure открывало бы
+// второе окно той же машины.
+func (t TargetSpec) WizardWindowKey() string {
+	if id := t.MachineIDOrEmpty(); id != "" {
+		return "machine:" + id
+	}
+	return TargetLocal
+}
+
 // Normalized заполняет пустые поля дефолтами: GOOS/GOARCH — из runtime,
 // Target — local. Вызывается на входе в пайплайн, чтобы вглубь шёл уже
 // валидный spec.

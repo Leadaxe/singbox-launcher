@@ -186,8 +186,10 @@ func export10Source(src state.Source) (Source10, bool) {
 		Service: node.Service,
 		Reason:  node.Reason,
 
-		NodeRecordFlags: node.NodeRecordFlags,
-		Warnings:        node.Warnings,
+		NodeRecordFlags:    node.NodeRecordFlags,
+		StateDirID:         node.StateDirID,
+		TaildropDoubleCopy: node.TaildropDoubleCopy,
+		Warnings:           node.Warnings,
 
 		ID:        src.ID,
 		Name:      src.Name,

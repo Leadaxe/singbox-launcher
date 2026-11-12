@@ -1,0 +1,8 @@
+{
+  "_comment": "1.1.167: ключ text_list в состоянии с пустым значением — явный пустой список, непустой default_value не подставляется; #notEmpty по нему ложен",
+  "vars": [{"name": "kinds", "type": "text_list", "default_value": "vless\nvmess"}],
+  "config": {
+    "kinds": "@kinds",
+    "#if gated": [{"@kinds": "#notEmpty"}, {"gated": "@kinds"}]
+  }
+}

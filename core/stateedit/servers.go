@@ -180,6 +180,7 @@ func AddServers(st *state.State, td *template.TemplateData, req AddServersReques
 		}
 		for _, p := range parsed {
 			n := p.node
+			config.SeedTailscaleStateDir(&n)
 			n.Tag = state.UniqueTag(taken, n.Tag)
 			taken[n.Tag] = true
 			folder.Nodes = append(folder.Nodes, n)
@@ -205,6 +206,7 @@ func AddServers(st *state.State, td *template.TemplateData, req AddServersReques
 			}
 			existing[n.Origin.Raw] = true
 		}
+		config.SeedTailscaleStateDir(&n)
 		n.Tag = state.UniqueTag(taken, n.Tag)
 		taken[n.Tag] = true
 		st.Sources = append(st.Sources, state.Source{Node: n, ID: state.MakeULID()})
@@ -565,7 +567,7 @@ func DeleteServer(st *state.State, tag, folder string) (*DeleteServerResult, err
 		res.LinksRemoved = append(res.LinksRemoved, dropNodeLinks(st, target)...)
 	}
 	if isTailscaleNode(&removed) {
-		res.TailscaleStateDir = config.TailscaleStateDirName(policy.FinalTag(tag))
+		res.TailscaleStateDir = config.TailscaleStateDirNameFor(removed.StateDirID, policy.FinalTag(tag))
 	}
 	return res, nil
 }

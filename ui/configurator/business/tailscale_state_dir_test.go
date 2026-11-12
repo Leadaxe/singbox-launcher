@@ -93,12 +93,12 @@ func TestTailscaleStateDirFollowsNodeUI(t *testing.T) {
 	f2.TagPolicy = &corestate.TagPolicy{Prefix: "P-"}
 	tsUIMkDir(t, root, "P-ts-old", "key-identity")
 	f2.Nodes[0].Tag = "ts-new"
-	RenameTailscaleStateDirForNode(&f2, "ts-old", &f2, &f2.Nodes[0])
-	if got := tsUIMarker(root, "P-ts-new"); got != "key-identity" {
-		t.Fatalf("норма 2 (переименование): идентичность не переехала, маркер %q", got)
+	FreezeTailscaleStateDirForNode(&f2, "ts-old", &f2, &f2.Nodes[0])
+	if f2.Nodes[0].StateDirID != "P-ts-old" {
+		t.Fatalf("норма 2 (переименование): имя каталога не запомнено: %q", f2.Nodes[0].StateDirID)
 	}
-	if tsUIExists(root, "P-ts-old") {
-		t.Fatalf("норма 2 (переименование): старый каталог остался")
+	if got := tsUIMarker(root, "P-ts-old"); got != "key-identity" {
+		t.Fatalf("норма 2 (переименование): каталог сдвинулся, маркер %q", got)
 	}
 
 	// --- Норма 2: перенос узла из папки в корень (MoveNodeToRoot) ---
@@ -114,12 +114,9 @@ func TestTailscaleStateDirFollowsNodeUI(t *testing.T) {
 	if _, err := MoveNodeToRoot(m, 0, "ts-moved"); err != nil {
 		t.Fatalf("MoveNodeToRoot: %v", err)
 	}
-	// В корне политики нет: финальный тег = сырой.
-	if got := tsUIMarker(root, "ts-moved"); got != "key-move" {
-		t.Fatalf("норма 2 (перенос в корень): каталог не переехал, маркер %q", got)
-	}
-	if tsUIExists(root, "M-ts-moved") {
-		t.Fatalf("норма 2 (перенос в корень): каталог остался под старым именем")
+	// Узел переехал, каталог на месте: имя держит параметр записи.
+	if got := tsUIMarker(root, "M-ts-moved"); got != "key-move" {
+		t.Fatalf("норма 2 (перенос в корень): каталог сдвинулся, маркер %q", got)
 	}
 
 	// --- Норма 2: перенос корневого узла В ПАПКУ (MoveNodeToFolder) ---
@@ -139,24 +136,48 @@ func TestTailscaleStateDirFollowsNodeUI(t *testing.T) {
 	if _, err := MoveNodeToFolder(m, rootIdx, "ts-moved", "01DST"); err != nil {
 		t.Fatalf("MoveNodeToFolder: %v", err)
 	}
-	if got := tsUIMarker(root, "D-ts-moved"); got != "key-move" {
-		t.Fatalf("норма 2 (перенос в папку): каталог не переехал, маркер %q", got)
+	if got := tsUIMarker(root, "M-ts-moved"); got != "key-move" {
+		t.Fatalf("норма 2 (перенос в папку): каталог сдвинулся, маркер %q", got)
 	}
-	if tsUIExists(root, "ts-moved") {
-		t.Fatalf("норма 2 (перенос в папку): каталог остался под корневым именем")
+	var movedNode *corestate.Node
+	for i := range m.Sources {
+		for j := range m.Sources[i].Nodes {
+			if m.Sources[i].ID == "01DST" && m.Sources[i].Nodes[j].Tag == "ts-moved" {
+				movedNode = &m.Sources[i].Nodes[j]
+			}
+		}
+	}
+	if movedNode == nil || movedNode.StateDirID != "M-ts-moved" {
+		t.Fatalf("норма 2 (перенос в папку): имя каталога потеряно: %+v", movedNode)
 	}
 
 	// --- Норма 2: смена тег-политики контейнера ---
 	pol := moveTestFolder("01POL", "Pol", tsUINode("ts-pol"))
 	pol.TagPolicy = &corestate.TagPolicy{Prefix: "A-"}
 	tsUIMkDir(t, root, "A-ts-pol", "key-pol")
-	RenameTailscaleStateDirsForTagPolicy(&pol,
+	FreezeTailscaleStateDirsForTagPolicy(&pol,
 		&corestate.TagPolicy{Prefix: "A-"}, &corestate.TagPolicy{Prefix: "B-", Postfix: "-x"})
-	if got := tsUIMarker(root, "B-ts-pol-x"); got != "key-pol" {
-		t.Fatalf("норма 2 (тег-политика): каталог не переехал, маркер %q", got)
+	if pol.Nodes[0].StateDirID != "A-ts-pol" {
+		t.Fatalf("норма 2 (тег-политика): имя каталога не запомнено: %q", pol.Nodes[0].StateDirID)
 	}
-	if tsUIExists(root, "A-ts-pol") {
-		t.Fatalf("норма 2 (тег-политика): каталог остался под старым именем")
+	if got := tsUIMarker(root, "A-ts-pol"); got != "key-pol" {
+		t.Fatalf("норма 2 (тег-политика): каталог сдвинулся, маркер %q", got)
+	}
+
+	// --- Копия получает свой каталог ---
+	cm := &wizardmodels.WizardModel{Sources: []corestate.Source{
+		func() corestate.Source {
+			f := moveTestFolder("01CP", "CP", tsUINode("ts-copy"))
+			f.Nodes[0].StateDirID = "ts-origin"
+			return f
+		}(),
+		moveTestFolder("01CD", "CD"),
+	}}
+	if _, err := CopyNodeToFolder(cm, 0, "ts-copy", "01CD"); err != nil {
+		t.Fatalf("CopyNodeToFolder: %v", err)
+	}
+	if got := cm.Sources[1].Nodes[0].StateDirID; got == "" || got == "ts-origin" {
+		t.Fatalf("копия узла: state_dir_id %q", got)
 	}
 }
 

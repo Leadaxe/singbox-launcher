@@ -52,6 +52,7 @@ import (
 	"singbox-launcher/core/services"
 	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/core/uiservice"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
@@ -68,13 +69,11 @@ import (
 
 // ShowConfigWizard opens the configuration wizard window.
 //
-// Implemented as a singleton window: we keep a reference to the created
-// window in `controller.UIService.WizardWindow` so that subsequent calls
-// only focus the existing window instead of creating a second instance.
-// This prevents multiple parallel instances of the wizard from being
-// opened and simplifies lifecycle management.
+// По одному окну на цель (SPEC 178): окно регистрируется в реестре
+// UIService по ключу цели (TargetSpec.WizardWindowKey), повторный вызов для
+// той же цели только фокусирует его, а Конфигуратор машины открывается рядом.
 func ShowConfigWizard(parent fyne.Window) {
-	showConfigWizardFor(parent, wizardtemplate.LocalTarget(), "")
+	showConfigWizardFor(parent, wizardtemplate.LocalTarget(), "", locale.T("This computer"))
 }
 
 // ShowConfigWizardForMachine открывает визард, корневой на профиле КОНКРЕТНОЙ
@@ -88,7 +87,7 @@ func ShowConfigWizard(parent fyne.Window) {
 // Платформа берётся из записи реестра, а не из состояния: это свойство
 // машины, и второго источника правды у него быть не должно.
 func ShowConfigWizardForMachine(parent fyne.Window, machine services.RemoteDaemon) {
-	showConfigWizardFor(parent, machineTargetSpec(machine), machine.ResourceDir())
+	showConfigWizardFor(parent, machineTargetSpec(machine), machine.ResourceDir(), machine.Name)
 }
 
 // machineTargetSpec — таргет профиля машины из записи реестра. Общий для
@@ -188,14 +187,9 @@ func RebuildMachineConfig(machineID string) (string, error) {
 	}
 	wizardbusiness.ApplyDNSVarsFromSettingsToModel(model)
 
-	// Корень состояния tailnet — путь НА МАШИНЕ (SPEC 122), глобальный для
-	// генератора узлов. Мастер ставит его при открытии; здесь — на время
-	// сборки, с возвратом прежнего: открытое окно Мастера другой цели
-	// продолжает со своим корнем.
-	prevRoot := config.TailscaleRemoteStateDirRoot()
-	config.SetTailscaleRemoteStateDirRoot(target.TailscaleStateDir)
-	defer config.SetTailscaleRemoteStateDirRoot(prevRoot)
-
+	// Корень состояния tailnet (путь НА МАШИНЕ, SPEC 122) ставить не нужно:
+	// разбор узлов берёт его из model.Target этой сборки (SPEC 178), и окна
+	// Конфигуратора других целей его не видят.
 	return presenter.WriteRemoteConfig()
 }
 
@@ -203,21 +197,23 @@ func RebuildMachineConfig(machineID string) (string, error) {
 // Remote → Configure). Всё, что делается до появления окна, обязано вести
 // себя одинаково у обоих: раньше это было не так только потому, что
 // автоскачивание шаблона жило в UI вкладки Local, а не здесь.
-func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, resourceDir string) {
+//
+// subject — имя цели для заголовка окна («Local» или имя машины из записи
+// реестра).
+func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, resourceDir, subject string) {
 	ac := core.GetController()
 	if ac == nil {
 		return
 	}
-	// Корень состояния tailnet ставится ЗДЕСЬ, в общей точке обоих входов, а
-	// не у каждого отдельно: у Local он обязан СНЯТЬСЯ, и пустая строка тут
-	// — не забытый случай, а рабочий. Поставь его только в ветке машины —
-	// после возврата на Local локальный конфиг унаследовал бы путь роутера.
-	config.SetTailscaleRemoteStateDirRoot(target.TailscaleStateDir)
-	// If wizard is already open - just focus it and return.
-	// Using RequestFocus() ensures the already-open window is brought
-	// to the foreground without creating a duplicate.
-	if ac.UIService != nil && ac.UIService.WizardWindow != nil {
-		ac.UIService.WizardWindow.RequestFocus()
+	// Корень состояния tailnet здесь больше не ставится (SPEC 178): разбор
+	// узлов берёт его из model.Target своего окна, а глобал «с момента
+	// открытия» при двух открытых окнах отдавал путь роутера и локальной
+	// сборке.
+	//
+	// Окно этой цели уже открыто — только фокус. Окно ДРУГОЙ цели не мешает:
+	// Конфигураторы Local и машин живут рядом.
+	key := target.WizardWindowKey()
+	if focusWizardWindow(ac, key) {
 		return
 	}
 
@@ -232,7 +228,7 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 	templateLoader := &wizardbusiness.DefaultTemplateLoader{}
 	templateData, loadErr := templateLoader.LoadTemplateData(ac.FileService.Layout)
 	if loadErr == nil {
-		buildWizardWindow(ac, templateLoader, templateData, target, resourceDir)
+		buildWizardWindow(ac, templateLoader, templateData, target, resourceDir, subject)
 		return
 	}
 	templateFileName := wizardtemplate.GetTemplateFileName()
@@ -267,15 +263,29 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 			if ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
 				ac.UIService.UpdateConfigStatusFunc()
 			}
-			// Пока качали, Мастер мог открыть кто-то ещё — второго окна быть
-			// не должно (тот же инвариант, что и в начале функции).
-			if ac.UIService != nil && ac.UIService.WizardWindow != nil {
-				ac.UIService.WizardWindow.RequestFocus()
+			// Пока качали, Мастер этой цели мог открыть кто-то ещё — второго
+			// окна одной цели быть не должно (тот же инвариант, что и в
+			// начале функции).
+			if focusWizardWindow(ac, key) {
 				return
 			}
-			buildWizardWindow(ac, templateLoader, fetched, target, resourceDir)
+			buildWizardWindow(ac, templateLoader, fetched, target, resourceDir, subject)
 		})
 	}()
+}
+
+// focusWizardWindow поднимает уже открытое окно Конфигуратора цели key.
+// false — окна этой цели нет. Только UI-поток.
+func focusWizardWindow(ac *core.AppController, key string) bool {
+	if ac.UIService == nil {
+		return false
+	}
+	e, ok := ac.UIService.WizardWindowFor(key)
+	if !ok {
+		return false
+	}
+	e.Window.RequestFocus()
+	return true
 }
 
 // showTemplateDownloadProgress показывает модальный прелоадер на время
@@ -308,6 +318,7 @@ func buildWizardWindow(
 	templateData *wizardtemplate.TemplateData,
 	target wizardtemplate.TargetSpec,
 	resourceDir string,
+	subject string,
 ) {
 	// Create model and GUI state
 	model := wizardmodels.NewWizardModel()
@@ -328,25 +339,21 @@ func buildWizardWindow(
 	// 1280×800 (типичный минимум для macOS 11 Big Sur) фиксированные 660px не
 	// помещались — нижний край с навигационными кнопками уходил под Dock.
 	// clampWizardSize ограничивает размер рабочей областью экрана.
-	wizardWindow := ac.UIService.Application.NewWindow(locale.T("Config Wizard"))
+	// Цель в заголовке (SPEC 178): окна Local и машин открыты рядом, и
+	// одинаковый «Config Wizard» не отличить.
+	wizardWindow := ac.UIService.Application.NewWindow(locale.Tf("Config Wizard — %s", subject))
 	wizardWindow.Resize(clampWizardSize(ac.UIService.Application, 620, 660))
 	fynewidget.CenterOnScreen(wizardWindow)
 	guiState.Window = wizardWindow
 
-	// Store wizard window in UIService
-	if ac.UIService != nil {
-		ac.UIService.WizardWindow = wizardWindow
-		// Notify UIService consumers that wizard state changed
-		if ac.UIService.OnStateChange != nil {
-			ac.UIService.OnStateChange()
-		}
-	}
-
 	// Create presenter
 	presenter := wizardpresentation.NewWizardPresenter(model, guiState, templateLoader)
+	windowKey := target.WizardWindowKey()
 	if ac.UIService != nil {
-		// Focus any open child window (View, Outbound Edit, or rule dialog) so click on wizard brings focus to it
-		ac.UIService.FocusOpenChildWindows = func() {
+		// Focus any open child window (View, Outbound Edit, or rule dialog) so click on wizard brings focus to it.
+		// Дочерние окна у каждого Конфигуратора свои — функция едет в запись
+		// его окна в реестре.
+		focusChildWindows := func() {
 			if w := presenter.OpenViewWindow(); w != nil {
 				w.RequestFocus()
 				return
@@ -364,6 +371,14 @@ func buildWizardWindow(
 				}
 			}
 		}
+		ac.UIService.SetWizardWindow(windowKey, uiservice.WizardWindowEntry{
+			Window:            wizardWindow,
+			FocusChildWindows: focusChildWindows,
+		})
+		// Notify UIService consumers that wizard state changed
+		if ac.UIService.OnStateChange != nil {
+			ac.UIService.OnStateChange()
+		}
 		// SPEC 160 §E: правка состояния через debug API при открытом окне —
 		// попап «перечитать / оставить своё» вместо молчаливой перезаписи
 		// следующим Save.
@@ -372,8 +387,8 @@ func buildWizardWindow(
 			stopWatchingState()
 			presenter.CancelDebouncedOutboundRefresh()
 			fynetooltip.DestroyWindowToolTipLayer(wizardWindow.Canvas())
-			ac.UIService.WizardWindow = nil
-			ac.UIService.FocusOpenChildWindows = nil
+			// Снимается только свой ключ: окна других целей живут дальше.
+			ac.UIService.RemoveWizardWindow(windowKey)
 			if ac.UIService.OnStateChange != nil {
 				ac.UIService.OnStateChange()
 			}

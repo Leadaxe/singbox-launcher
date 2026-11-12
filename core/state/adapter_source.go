@@ -126,6 +126,7 @@ func (s *Source) canonicalProjection() *configtypes.CanonicalSource {
 			// У узла подписки записи нет — её поля всегда ложь (D-134).
 			if s.Kind == SourceKindSubscription {
 				cn.Record = configtypes.NodeRecordFlags{}
+				cn.StateDirID = ""
 			} else {
 				cn.Authored = s.Nodes[i].Authored()
 			}
@@ -174,7 +175,8 @@ func canonicalNodeProjection(n *Node) configtypes.CanonicalNode {
 		Detour:  canonicalLink(n.Detour),
 		Service: n.Service,
 
-		Record: n.NodeRecordFlags,
+		Record:     n.NodeRecordFlags,
+		StateDirID: n.StateDirID,
 	}
 	if n.Origin != nil {
 		out.OriginKind = n.Origin.Kind

@@ -190,7 +190,7 @@ func nameFromRejectedRecord(r subscription.RejectedBodyRecord) string {
 		// «Оплата: РФ/зарубеж» превратилась бы в обрезок до двоеточия.
 		return r.OriginRaw
 	}
-	if r.OriginKind == state.OriginKindJSON {
+	if state.IsJSONOriginKind(r.OriginKind) {
 		return subscription.NameFromOriginJSON(r.OriginRaw)
 	}
 	return subscription.LabelFromOriginURI(r.OriginRaw)

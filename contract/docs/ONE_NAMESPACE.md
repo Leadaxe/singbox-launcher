@@ -64,7 +64,7 @@ sing-box), тогда всё будет проще и отлаживать, и �
 | вид | `kind: server` | `type: user` | (список `servers[]`) | `kind: server` |
 | имя/тег | `tag` | `name` | `node_tag` | `tag` |
 | тело | `body` (объект) | `raw_body` (строка: URI или JSON) | `config_json` (объект) \| `uri` (строка) | `body` (объект sing-box, без `tag`) |
-| происхождение | `origin{kind,raw,sub_url}` | `origin: "manual"` | — | `origin{kind: uri\|wg_ini\|json, raw, sub_url?}` (необязательно) |
+| происхождение | `origin{kind,raw,sub_url}` | `origin: "manual"` | — | `origin{kind: singbox\|xray\|uri\|wg_ini, raw, sub_url?}` (необязательно; `json` до 1.1.165) |
 | id | `id` (корень) | `id` (uuid) | `id` | `id` |
 | включён | `enabled` | `enabled` | `enabled` | `enabled` |
 | detour | `detour{folder_id,tag}` | `detour` только у члена папки (`detour_policy` — политика КОНТЕЙНЕРА, local-only, не узла) | `detour_tag`, `detour_node_*` | `detour{folder_id?, tag}` — только про узел; политика контейнера остаётся полем стороны |

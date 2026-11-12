@@ -111,6 +111,9 @@ type Source10 struct {
 	// skip_tailscale_presets, allow_local, allow_lan, allow_gateway; свой
 	// сервер и член папки; пишется только true.
 	configtypes.NodeRecordFlags
+	// StateDirID и TaildropDoubleCopy — параметры записи узла (контракт 1.1.160).
+	StateDirID         string              `json:"state_dir_id,omitempty"`
+	TaildropDoubleCopy *state.TaildropPeer `json:"taildrop_double_copy,omitempty"`
 	// LegacySkipPresets — ключ `skip_presets` файлов до 1.1.126. Только
 	// чтение: импорт переносит true в skip_tailscale_presets, экспорт его не
 	// пишет никогда.

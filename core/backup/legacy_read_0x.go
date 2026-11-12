@@ -344,7 +344,9 @@ func importServer(srv Server) (state.Source, []Warning) {
 	switch {
 	case len(srv.ConfigJSON) > 0:
 		src.Body = append(json.RawMessage(nil), srv.ConfigJSON...)
-		src.Origin = &state.Origin{Kind: state.OriginKindJSON, Raw: string(srv.ConfigJSON)}
+		// Вид — диалект текста по реестру (контракт 1.1.165): ручной
+		// config_json формата 0.x мог быть и sing-box, и Xray.
+		src.Origin = &state.Origin{Kind: subscription.OriginKindOfText(string(srv.ConfigJSON)), Raw: string(srv.ConfigJSON)}
 	case strings.TrimSpace(srv.URI) != "":
 		// Вид определяется ФОРМОЙ текста: в поле `uri` контракта едет и
 		// ссылка, и блок wg-quick, и JSON узла (контракт общий с LxBox,

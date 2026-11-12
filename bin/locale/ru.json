@@ -976,9 +976,6 @@
   "Private key in the link": {
     "value": "В ссылке приватный ключ"
   },
-  "Config Wizard": {
-    "value": "Мастер конфигурации"
-  },
   "Target": {
     "value": "Назначение"
   },
@@ -3830,8 +3827,14 @@
   "The outbound as it will reach the config.": {
     "value": "Outbound в том виде, в каком он попадёт в конфиг."
   },
-  "The sing-box outbound this node is built from — exactly what the build writes to config.json. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time.": {
-    "value": "Outbound sing-box, из которого собран этот узел, — ровно то, что сборка пишет в config.json. Правьте и нажмите Apply, чтобы сохранить; «Пересобрать из исходника» вернёт его к исходному URI/JSON. Тег и detour лаунчер проставляет заново на сборке."
+  "Added by the build (read-only)": {
+    "value": "Добавит сборка (только чтение)"
+  },
+  "The node as stored. The build adds the fields below to the config.": {
+    "value": "Узел в том виде, как он хранится. При сборке в конфиг добавятся поля ниже."
+  },
+  "The sing-box outbound this node is built from. Edit and press Apply to store it; Regen from raw rebuilds it from the original URI/JSON. Tag and detour are restamped by the launcher at build time.": {
+    "value": "Outbound sing-box, из которого собран этот узел. Правьте и нажмите Apply, чтобы сохранить; «Пересобрать из исходника» вернёт его к исходному URI/JSON. Тег и detour лаунчер проставляет заново на сборке."
   },
   "The source arrives as one entry instead of every node. Its nodes stay in the config as that group's members.": {
     "value": "Источник приезжает одной записью вместо всех узлов. Его узлы остаются в конфиге членами этой группы."
@@ -4036,6 +4039,9 @@
   },
   "Origin (raw JSON)": {
     "value": "Происхождение (сырой JSON)"
+  },
+  "Origin (Xray JSON)": {
+    "value": "Происхождение (Xray JSON)"
   },
   "A manual config_json is set — the origin above is ignored at build time (see the JSON tab). Regen from raw rebuilds the node from it.": {
     "value": "Задан ручной config_json — происхождение выше при сборке игнорируется (см. вкладку JSON). «Regen from raw» пересобирает узел из него."
@@ -6041,9 +6047,6 @@
   "%s sent to %s.": {
     "value": "%s отправлен на %s."
   },
-  "Save to Downloads automatically": {
-    "value": "Сохранять в «Загрузки» автоматически"
-  },
   "File received": {
     "value": "Файл получен"
   },
@@ -6077,11 +6080,29 @@
   "Send text…": {
     "value": "Отправить текст…"
   },
-  "Accept clipboard": {
-    "value": "Принимать буфер обмена"
+  "Accept clipboard and links from my devices": {
+    "value": "Принимать буфер и ссылки от своих устройств"
   },
-  "Accept links": {
-    "value": "Принимать ссылки"
+  "Save received files to Downloads": {
+    "value": "Сохранять принятые файлы в Downloads"
+  },
+  "Send double copy to": {
+    "value": "Двойное копирование на"
+  },
+  "Not selected": {
+    "value": "Не выбрано"
+  },
+  "%s sent text for the clipboard. To accept it, turn on Accept clipboard and links in the Taildrop settings of the node.": {
+    "value": "%s прислал текст для буфера обмена. Чтобы принимать его, включите приём буфера и ссылок в настройках Taildrop узла."
+  },
+  "%s sent a link. To accept it, turn on Accept clipboard and links in the Taildrop settings of the node.": {
+    "value": "%s прислал ссылку. Чтобы принимать её, включите приём буфера и ссылок в настройках Taildrop узла."
+  },
+  "Clipboard not accepted": {
+    "value": "Буфер обмена не принят"
+  },
+  "Link not opened": {
+    "value": "Ссылка не открыта"
   },
   "Sending to %s…": {
     "value": "Отправка на %s…"
@@ -6110,9 +6131,6 @@
   "The text is not valid UTF-8.": {
     "value": "Текст не в UTF-8."
   },
-  "Send double copy here": {
-    "value": "Слать сюда двойное копирование"
-  },
   "Not sent": {
     "value": "Не отправлено"
   },
@@ -6133,5 +6151,26 @@
   },
   "files: %d": {
     "value": "файлы: %d"
+  },
+  "Config Wizard — %s": {
+    "value": "Мастер конфигурации — %s"
+  },
+  "Traffic Profiler — %s": {
+    "value": "Профайлер трафика — %s"
+  },
+  "Traffic Profiler — %s ⚡ Recording · %02d:%02d": {
+    "value": "Профайлер трафика — %s ⚡ Запись · %02d:%02d"
+  },
+  "Routing through this tunnel": {
+    "value": "Маршрутизация через этот туннель"
+  },
+  "Only its own networks": {
+    "value": "Только свои сети"
+  },
+  "Send to this tunnel only the networks it announces. It works alongside the selected server and does not need to be chosen as a direction.": {
+    "value": "В этот туннель идут только сети, которые он объявляет. Он работает рядом с выбранным сервером, выбирать его Направлением не нужно."
+  },
+  "This tunnel announces the default route, so it takes all traffic.": {
+    "value": "Этот туннель объявляет маршрут по умолчанию и заберёт весь трафик."
   }
 }

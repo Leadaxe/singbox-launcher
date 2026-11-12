@@ -130,6 +130,7 @@ func OpenMachineProfiler(ac *core.AppController, d services.RemoteDaemon) {
 	mp.window = traffic.NewManager(traffic.WindowDeps{
 		App:      ac.UIService.Application,
 		Profiler: p,
+		Subject:  d.Name,
 		// Настройки уровня лога и find_process — свойства ЛОКАЛЬНОГО конфига;
 		// у машины он свой, и править его отсюда нельзя. Оставляем nil:
 		// окно скрывает эти элементы само.

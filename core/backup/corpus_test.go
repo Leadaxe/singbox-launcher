@@ -231,11 +231,17 @@ type corpusExpectation struct {
 	// Поле необязательное: отсутствие ключа значит «не проверяем».
 	RootServers []string `json:"root_servers"`
 
-	// OriginRaw — источник своего узла после импорта (контракт 1.1.87,
-	// PARSING_PRINCIPLES §11 п.2): ключ — тег корневого сервера или
-	// «имя папки/тег» члена папки, значение — JSON, которому обязан быть
-	// равен origin.raw (сравнение по значению).
+	// OriginRaw — источник своего узла после импорта (контракт 1.1.165,
+	// PARSING_PRINCIPLES §11 п.6: текст при чтении не меняется): ключ — тег
+	// корневого сервера или «имя папки/тег» члена папки, значение — JSON,
+	// которому обязан быть равен origin.raw (сравнение по значению).
 	OriginRaw map[string]json.RawMessage `json:"origin_raw"`
+
+	// OriginKind — вид источника узла после импорта (контракт 1.1.165):
+	// те же ключи, значение — `singbox` | `xray` | `uri` | `wg_ini`.
+	// Проверяет миграцию старого `json` (классификация движком, не
+	// опознано → `singbox`).
+	OriginKind map[string]string `json:"origin_kind"`
 
 	// Directions — Направления, которые импорт обязан СОЗДАТЬ (SPEC 104,
 	// схема v1.1). Проверяется каноническая форма, а не внутренняя: она и
@@ -458,6 +464,7 @@ func TestBackupCorpus(t *testing.T) {
 			checkSubscriptions(t, dst, exp)
 			checkRootServers(t, dst, exp)
 			checkOriginRaw(t, dst, exp)
+			checkOriginKind(t, dst, exp)
 		})
 	}
 }
@@ -1410,23 +1417,30 @@ func checkWarningReasons(t *testing.T, warns []Warning, exp corpusExpectation) {
 	}
 }
 
+// corpusNodeByKey — узел по ключу ожидания: тег корневого сервера или
+// «имя папки/тег» члена папки.
+func corpusNodeByKey(dst *state.State, key string) *state.Node {
+	var node *state.Node
+	for i := range dst.Sources {
+		src := &dst.Sources[i]
+		if src.Kind == state.SourceKindServer && src.NodeTagOrLabel() == key {
+			node = &src.Node
+		}
+		for j := range src.Nodes {
+			if src.Kind == state.SourceKindFolder && src.Name+"/"+src.Nodes[j].Tag == key {
+				node = &src.Nodes[j]
+			}
+		}
+	}
+	return node
+}
+
 // checkOriginRaw — источник своих узлов после импорта: сравнение по
-// значению JSON (контракт 1.1.87, PARSING_PRINCIPLES §11 п.2).
+// значению JSON (контракт 1.1.165, PARSING_PRINCIPLES §11 п.6).
 func checkOriginRaw(t *testing.T, dst *state.State, exp corpusExpectation) {
 	t.Helper()
 	for key, want := range exp.OriginRaw {
-		var node *state.Node
-		for i := range dst.Sources {
-			src := &dst.Sources[i]
-			if src.Kind == state.SourceKindServer && src.NodeTagOrLabel() == key {
-				node = &src.Node
-			}
-			for j := range src.Nodes {
-				if src.Kind == state.SourceKindFolder && src.Name+"/"+src.Nodes[j].Tag == key {
-					node = &src.Nodes[j]
-				}
-			}
-		}
+		node := corpusNodeByKey(dst, key)
 		if node == nil || node.Origin == nil {
 			t.Errorf("origin_raw %q: узла с источником нет", key)
 			continue
@@ -1441,6 +1455,22 @@ func checkOriginRaw(t *testing.T, dst *state.State, exp corpusExpectation) {
 		eb, _ := json.Marshal(exp)
 		if string(gb) != string(eb) {
 			t.Errorf("origin_raw %q: %s, ожидалось %s", key, gb, eb)
+		}
+	}
+}
+
+// checkOriginKind — вид источника своих узлов после импорта (контракт
+// 1.1.165): миграция `json` → диалект по реестру.
+func checkOriginKind(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	for key, want := range exp.OriginKind {
+		node := corpusNodeByKey(dst, key)
+		if node == nil || node.Origin == nil {
+			t.Errorf("origin_kind %q: узла с источником нет", key)
+			continue
+		}
+		if node.Origin.Kind != want {
+			t.Errorf("origin_kind %q: %q, ожидалось %q", key, node.Origin.Kind, want)
 		}
 	}
 }

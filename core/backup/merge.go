@@ -217,8 +217,9 @@ func folderMemberKey(n *state.Node) string {
 //
 //   - origin.kind=uri: `TrimSpace` и БЕЗ фрагмента `#имя` — у share-URI это
 //     имя узла, а не часть тела;
-//   - origin.kind=json и wg_ini: тело = сам текст исходника; json идёт в
-//     нормальную форму (см. canonicalJSONKey), wg-quick сравнивается текстом —
+//   - origin.kind=singbox|xray и wg_ini: тело = сам текст исходника; JSON
+//     идёт в нормальную форму (см. canonicalJSONKey; §9 контракта 1.1.165),
+//     wg-quick сравнивается текстом —
 //     разбирать INI ради ключа нечем, а `#` там начинает комментарий строки и
 //     отрезать по нему нельзя;
 //   - origin нет → Body в нормальной форме: узел, созданный руками с нуля,
@@ -245,7 +246,11 @@ func nodeBodyKey(n *state.Node) string {
 				return ""
 			}
 			return "raw\x00" + raw
-		case state.OriginKindJSON:
+		case state.OriginKindSingbox, state.OriginKindXray:
+			// Префикс общий с телом записи без исходника: узел, созданный
+			// руками с нуля, и тот же узел, приехавший sing-box источником,
+			// обязаны узнаться. Xray-текст каноническому sing-box телу не
+			// равен по построению — отдельный префикс диалекту не нужен.
 			if key := canonicalJSONKey(json.RawMessage(raw)); key != "" {
 				return "json\x00" + key
 			}
@@ -778,11 +783,19 @@ func mergeServerItem(s *state.State, item decodedSource, rootBodies map[string]i
 			// Узел уже есть: тело то же. Поля записи из файла — только true:
 			// отсутствие поля неотличимо от false и своё не сбрасывает (D-134).
 			s.Sources[at].NodeRecordFlags.MergeTrue(incoming.NodeRecordFlags)
+			// Каталог совпавшего узла свой: чужое имя увело бы его в новый
+			// каталог и новое устройство tailnet.
+			if incoming.TaildropDoubleCopy != nil {
+				s.Sources[at].TaildropDoubleCopy = incoming.TaildropDoubleCopy
+			}
 			info.landedRoot(fileTag, fileID, s.Sources[at].NodeTagOrLabel(), item.FullSettings)
 			cnt.SkippedServers++
 			return
 		}
 		incoming.Tag = state.UniqueTag(rootTags, incoming.Tag)
+		if s.StateDirIDTaken(incoming.StateDirID) {
+			incoming.StateDirID = state.NewStateDirID()
+		}
 		incoming.ID = freshIDIfTaken(incoming.ID, takenIDs)
 		takenIDs[incoming.ID] = true
 		if incoming.Tag != "" {
@@ -925,8 +938,14 @@ func addFolderMember(s *state.State, folderAt int, node state.Node, fileContaine
 	folder := &s.Sources[folderAt]
 	if hit := folderNodeWithBody(folder, &node); hit >= 0 {
 		folder.Nodes[hit].NodeRecordFlags.MergeTrue(node.NodeRecordFlags) // только true
+		if node.TaildropDoubleCopy != nil {
+			folder.Nodes[hit].TaildropDoubleCopy = node.TaildropDoubleCopy
+		}
 		cnt.SkippedServers++
 		return state.NodeLink{FolderID: folder.ID, Tag: folder.Nodes[hit].Tag}, false
+	}
+	if s.StateDirIDTaken(node.StateDirID) {
+		node.StateDirID = state.NewStateDirID()
 	}
 	taken := map[string]bool{}
 	for i := range folder.Nodes {

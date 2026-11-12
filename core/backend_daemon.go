@@ -16,6 +16,7 @@ import (
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 
 	"singbox-launcher/api"
+	coreconfig "singbox-launcher/core/config"
 	"singbox-launcher/core/services"
 	daemonpb "singbox-launcher/internal/daemonpb"
 	"singbox-launcher/internal/debuglog"
@@ -395,6 +396,12 @@ func (b *DaemonBackend) applyOnce(caller string, forced bool) bool {
 	if err != nil {
 		ac.ShowStartupError(fmt.Errorf("daemon apply: prepare config: %w", err))
 		return false
+	}
+
+	// Ядро службы — своя копия и может быть старше ядра лаунчера, под
+	// которое собран config.json: ключи новее него снимаются по реестру.
+	if infoErr == nil {
+		config = coreconfig.GateConfigJSONForCore(config, passport.Version)
 	}
 
 	debuglog.InfoLog("daemon.%s: applying config.json (%d bytes) to %s", caller, len(config), b.admin.AddrString())

@@ -1,6 +1,6 @@
 {
   "origin": {
-    "kind": "json",
+    "kind": "singbox",
     "raw": {
       "type": "trojan",
       "server": "example-1.com",

@@ -1,0 +1,25 @@
+{
+  "rules": [
+    {
+      "preferred_by": [
+        "office-ovpn"
+      ],
+      "outbound": "office-ovpn"
+    },
+    {
+      "preferred_by": [
+        "work-oc"
+      ],
+      "outbound": "work-oc"
+    },
+    {
+      "preferred_by": [
+        "lab-wg"
+      ],
+      "outbound": "lab-wg"
+    }
+  ],
+  "dns_servers": [],
+  "dns_rules": [],
+  "warnings": []
+}

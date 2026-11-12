@@ -31,6 +31,10 @@ func init() {
 		MaterializeSubscription: materializeSubscriptionForMigration,
 		MaterializeServer:       materializeServerForMigration,
 		SanitizeBody:            sanitizeStoredNodeBody,
+		ClassifyOriginKind: func(raw string) string {
+			kind, _ := subscription.ClassifyOriginText(raw)
+			return kind
+		},
 	})
 }
 
@@ -225,33 +229,29 @@ func materializeServerForMigration(req state.MigrationServerRequest) (*state.Mig
 	// поле Origin (или принесли в `uri` legacy-бэкапа), читается по своей
 	// ФОРМЕ, а не по тому, под каким видом его записали. Иначе объект
 	// уходил в разбор ссылки и падал на «not a link: no scheme» — так и
-	// ломался узел Tailscale с правленым происхождением. Документ узла и
-	// массив тел сводятся к первому телу (контракт 1.1.87/1.1.88: источник
-	// JSON-узла — только тело).
+	// ломался узел Tailscale с правленым происхождением.
 	if len(req.ConfigJSON) == 0 && subscription.IsJSONOriginText(req.URI) {
-		body, err := nodeBodyOfJSONOriginText([]byte(strings.TrimSpace(req.URI)))
+		req.ConfigJSON = json.RawMessage(strings.TrimSpace(req.URI))
+	}
+	if len(req.ConfigJSON) > 0 {
+		// Диалект решает реестр (контракт 1.1.165): Xray-текст идёт
+		// разбором Xray, sing-box — ручным телом. Ручной объект идёт ТЕМ ЖЕ
+		// конвейером, что и ссылка (ловушка Л2): до W2c он ехал в тело
+		// дословно через stripTagAndDetour, и вставленный мусор валил
+		// `sing-box check` на ВСЁМ конфиге. `tag` и `detour` снимает сам
+		// санитайзер — они managed-ключи сборки. Источником остаётся ВЕСЬ
+		// текст (документ — документом, §11 п.2), а не тело первого узла.
+		node, kind, err := parsedNodeFromJSONSource(req.ConfigJSON)
 		if err != nil {
 			return nil, err
 		}
-		req.ConfigJSON = body
-	}
-	if len(req.ConfigJSON) > 0 {
-		node, err := subscription.NodeFromManualConfigJSON(req.ConfigJSON)
-		if err != nil {
-			return nil, fmt.Errorf("manual config_json: %w", err)
-		}
-		// Ручной объект идёт ТЕМ ЖЕ конвейером, что и ссылка (ловушка Л2):
-		// до W2c он ехал в тело дословно через stripTagAndDetour, и
-		// вставленный мусор валил `sing-box check` на ВСЁМ конфиге. Схема
-		// определяется по "type" тела (обратная карта реестра), а `tag` и
-		// `detour` снимает сам санитайзер — они managed-ключи сборки.
 		body, warns, drop := materializeParsedNodeBody(node)
 		if drop != nil {
 			return nil, fmt.Errorf("manual config_json: %s", dropReason(drop))
 		}
 		return &state.MigrationServerResult{
 			Body:       body,
-			OriginKind: state.OriginKindJSON,
+			OriginKind: kind,
 			OriginRaw:  string(req.ConfigJSON),
 			LegacyHash: LegacyNodeIdentityHash(node),
 			Warnings:   stateWarnings(warns),
@@ -440,9 +440,9 @@ func MaterializeEditedBody(configJSON json.RawMessage) (*ServerNodeMaterial, err
 
 func materializeServerNode(uri string, configJSON json.RawMessage, authored bool) (*ServerNodeMaterial, error) {
 	if len(configJSON) > 0 && !authored {
-		node, err := subscription.NodeFromManualConfigJSON(configJSON)
+		node, kind, err := parsedNodeFromJSONSource(configJSON)
 		if err != nil {
-			return nil, fmt.Errorf("manual config_json: %w", err)
+			return nil, err
 		}
 		node.Authored = false
 		node.Source = configtypes.NodeSourceOther
@@ -450,7 +450,7 @@ func materializeServerNode(uri string, configJSON json.RawMessage, authored bool
 		if drop != nil {
 			return nil, fmt.Errorf("manual config_json: %s", dropReason(drop))
 		}
-		return &ServerNodeMaterial{Body: body, OriginKind: state.OriginKindJSON, OriginRaw: string(configJSON), Warnings: stateWarnings(warns)}, nil
+		return &ServerNodeMaterial{Body: body, OriginKind: kind, OriginRaw: string(configJSON), Warnings: stateWarnings(warns)}, nil
 	}
 	res, err := materializeServerForMigration(state.MigrationServerRequest{URI: uri, ConfigJSON: configJSON})
 	if err != nil {
@@ -462,6 +462,31 @@ func materializeServerNode(uri string, configJSON json.RawMessage, authored bool
 		OriginRaw:  res.OriginRaw,
 		Warnings:   res.Warnings,
 	}, nil
+}
+
+// parsedNodeFromJSONSource — узел из JSON-текста источника по его диалекту
+// (реестр видов источника, контракт 1.1.165): Xray — разбором Xray любой
+// формы (NodeFromXrayJSON); sing-box — тело узла из документа, массива или
+// объекта → ручное тело. Возвращает вид происхождения текста.
+func parsedNodeFromJSONSource(raw json.RawMessage) (*configtypes.ParsedNode, string, error) {
+	text := strings.TrimSpace(string(raw))
+	kind, sourceKind := subscription.ClassifyOriginText(text)
+	if kind == state.OriginKindXray {
+		node, err := subscription.NodeFromXrayJSON([]byte(text), sourceKind)
+		if err != nil {
+			return nil, "", fmt.Errorf("xray source: %w", err)
+		}
+		return node, kind, nil
+	}
+	body, err := nodeBodyOfJSONOriginText([]byte(text))
+	if err != nil {
+		return nil, "", err
+	}
+	node, err := subscription.NodeFromManualConfigJSON(body)
+	if err != nil {
+		return nil, "", fmt.Errorf("manual config_json: %w", err)
+	}
+	return node, state.OriginKindSingbox, nil
 }
 
 // nodeBodyOfJSONOriginText — тело узла из JSON-текста происхождения:

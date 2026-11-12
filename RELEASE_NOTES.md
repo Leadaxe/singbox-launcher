@@ -4,6 +4,14 @@
 
 ---
 
+### Выжимка (RU) — v2.4.2
+
+Патч после v2.4.1, ядро `sing-box-lx 1.14.4-lx.33` (было 1.14.4-lx.30), контракт 1.1.167. **Несколько туннелей, каждый для своих сетей:** переключатель **Only its own networks** у узла WireGuard, AWG, OpenVPN и OpenConnect и пресет **Tunnel routes** — в туннель идут только объявленные им сети. **Узел из Xray JSON:** вкладка JSON и поле Origin окна узла принимают Xray-конфиг, источник хранится в своём диалекте. **Anti-sniff decoy** (бывшая QUIC sniff decoy) приведена к ядру `lx.33`: Decoy sending, Decoy node types, Decoy relay types; по умолчанию Off. Ядро старше `lx.33` работает без обманки — службе и удалённым машинам нужно обновить ядро. **Окна по цели:** Конфигуратор и Профайлер трафика для Local и для машины открываются одновременно. **Taildrop:** настройки принадлежат узлу и переносятся с бэкапом, двойное копирование — на одно выбранное устройство. Исправлено: служба с ядром старше ядра лаунчера больше не отвергает весь конфиг; каталог tailnet машины не попадает в локальный конфиг; переименование узла Tailscale не регистрирует новое устройство. Подробно: [docs/release_notes/2-4-2.md](docs/release_notes/2-4-2.md)
+
+### Highlights (EN) — v2.4.2
+
+A patch release after v2.4.1, core `sing-box-lx 1.14.4-lx.33` (was 1.14.4-lx.30), contract 1.1.167. **Several tunnels, each for its own networks:** the **Only its own networks** switch on WireGuard, AWG, OpenVPN and OpenConnect nodes and the **Tunnel routes** preset — only the networks a tunnel announces go into it. **A node from Xray JSON:** the JSON tab and the Origin field of the node window accept an Xray config, the source keeps its dialect. **Anti-sniff decoy** (was QUIC sniff decoy) follows core `lx.33`: Decoy sending, Decoy node types, Decoy relay types; Off by default. A core older than `lx.33` runs without the decoy — update the core of a service or a remote machine. **A window per target:** Configurator and Traffic Profiler for Local and for a machine open side by side. **Taildrop:** settings belong to the node and travel with its backup, double copy goes to one chosen device. Fixed: a service with a core older than the launcher's no longer rejects the whole config; a machine's tailnet directory no longer leaks into the local config; renaming a Tailscale node no longer registers a new device. Details: [docs/release_notes/2-4-2.md](docs/release_notes/2-4-2.md)
+
 ### Выжимка (RU) — v2.4.1
 
 Патч после v2.4.0, ядро `sing-box-lx 1.14.4-lx.30` (было 1.14.3-lx.21), контракт 1.1.156. **Taildrop на десктопе:** у узла Tailscale секция Files — приём, Save в «Загрузки», автосохранение, Send file… через Finder/Проводник; Taildrop по умолчанию выключен, включается галкой Allow Taildrop. **Буфер и ссылки с LxBox:** Send text…, разрешения Accept clipboard / Accept links на устройство, а двойное копирование (Cmd+C дважды) отправляет текст на отмеченный телефон; пароли из менеджеров паролей не уходят. **DNS:** шаблонные серверы удаляются, бэкап переносит удаления; ответ DNS фиксированным IP в правиле. **Linux:** TUN auto redirect против firewalld. **WireGuard:** все `[Peer]` из `.conf`. **TrustTunnel** разбирается реестром. TUN MTU по умолчанию 9000. Полностью — [docs/release_notes/2-4-1.md](docs/release_notes/2-4-1.md).
@@ -804,6 +812,9 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.4.2** | [docs/release_notes/2-4-2.md](docs/release_notes/2-4-2.md) |
+| **v2.4.1** | [docs/release_notes/2-4-1.md](docs/release_notes/2-4-1.md) |
+| **v2.4.0** | [docs/release_notes/2-4-0.md](docs/release_notes/2-4-0.md) |
 | **v2.3.10** | [docs/release_notes/2-3-10.md](docs/release_notes/2-3-10.md) |
 | **v2.3.9** | [docs/release_notes/2-3-9.md](docs/release_notes/2-3-9.md) |
 | **v2.3.8** | [docs/release_notes/2-3-8.md](docs/release_notes/2-3-8.md) |

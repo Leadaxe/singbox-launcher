@@ -119,6 +119,7 @@ func AppendNodesToFolder(m *wizardmodels.WizardModel, folderID, input string, de
 			continue
 		}
 		taken[node.Tag] = true
+		reseedTailscaleStateDir(&node)
 		folder.Nodes = append(folder.Nodes, node)
 		res.Added++
 	}

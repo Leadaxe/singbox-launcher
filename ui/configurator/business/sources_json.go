@@ -196,6 +196,7 @@ func AppendManualConfigJSON(ctx UIUpdater, body []byte, label string) error {
 		ID:    corestate.MakeULID(),
 		Label: label,
 	})
+	reseedTailscaleStateDir(&model.Sources[len(model.Sources)-1].Node)
 
 	model.BumpRevision()
 	model.PreviewNeedsParse = true

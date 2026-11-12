@@ -328,10 +328,9 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 	}
 	res, err := applyDecoded(s, dec, opts)
 	if err == nil {
-		// Контракт 1.1.87 (PARSING_PRINCIPLES §11 п.2): источник своего
-		// узла — только тело узла; документ или массив из файла сводится к
-		// телу записи.
-		state.NormalizeBareBodyOrigins(s)
+		// Контракт 1.1.165 (PARSING_PRINCIPLES §11 п.6): старый вид `json`
+		// из файла → вид-диалект по реестру; текст источника не меняется.
+		state.MigrateLegacyOriginKinds(s)
 	}
 	return res, err
 }
@@ -358,10 +357,9 @@ func Import10(s *state.State, b *Backup10, opts ImportOptions) (*ImportResult, e
 	}
 	res, err := applyDecoded(s, dec, opts)
 	if err == nil {
-		// Контракт 1.1.87 (PARSING_PRINCIPLES §11 п.2): источник своего
-		// узла — только тело узла; документ или массив из файла сводится к
-		// телу записи.
-		state.NormalizeBareBodyOrigins(s)
+		// Контракт 1.1.165 (PARSING_PRINCIPLES §11 п.6): старый вид `json`
+		// из файла → вид-диалект по реестру; текст источника не меняется.
+		state.MigrateLegacyOriginKinds(s)
 	}
 	return res, err
 }

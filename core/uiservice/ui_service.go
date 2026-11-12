@@ -27,11 +27,11 @@ type UIService struct {
 	// Fyne Components
 	Application fyne.App
 	MainWindow  fyne.Window
-	// WizardWindow holds the currently open configuration wizard window (if any).
-	// We store it here to implement singleton-like behavior for the wizard: only
-	// one wizard window exists at a time. Other UI code checks this field to
-	// decide whether to create a new wizard or focus the existing one.
-	WizardWindow   fyne.Window
+	// wizardWindows — открытые окна Конфигуратора по ключу цели
+	// (TargetSpec.WizardWindowKey: "local" | "machine:<id>", SPEC 178): по
+	// одному окну на цель, окна разных целей сосуществуют. Доступ только из
+	// UI-потока — как и у прежнего одиночного поля.
+	wizardWindows  map[string]WizardWindowEntry
 	TrayIcon       fyne.Resource
 	ApiStatusLabel *widget.Label
 
@@ -95,7 +95,6 @@ type UIService struct {
 	// (RegisterOverrideAPIHooks); значение — *services.LxdRemoteTransport
 	// (interface{}, чтобы uiservice не зависел от services).
 	LxdMachineTransportFunc func(machineID string) (interface{}, bool)
-	FocusOpenChildWindows   func()                                     // Focus one of wizard child windows (View, Outbound Edit, rule dialog) when user clicks wizard
 	ShowUpdatePopupFunc     func(currentVersion, latestVersion string) // Called to show update popup
 
 	// Dependencies (passed from AppController)
@@ -264,6 +263,73 @@ func (ui *UIService) NudgeWindowsAfterWake() {
 	})
 }
 
+// WizardWindowEntry — открытое окно Конфигуратора и фокус его дочерних окон
+// (View, Outbound Edit, диалог правила): дочерние окна у каждого
+// Конфигуратора свои, поэтому функция живёт в записи окна, а не в UIService.
+type WizardWindowEntry struct {
+	Window            fyne.Window
+	FocusChildWindows func()
+}
+
+// WizardWindowFor — окно Конфигуратора цели по ключу. Только UI-поток.
+func (ui *UIService) WizardWindowFor(key string) (WizardWindowEntry, bool) {
+	if ui == nil {
+		return WizardWindowEntry{}, false
+	}
+	e, ok := ui.wizardWindows[key]
+	return e, ok && e.Window != nil
+}
+
+// SetWizardWindow регистрирует окно Конфигуратора цели. Только UI-поток.
+func (ui *UIService) SetWizardWindow(key string, e WizardWindowEntry) {
+	if ui.wizardWindows == nil {
+		ui.wizardWindows = make(map[string]WizardWindowEntry)
+	}
+	ui.wizardWindows[key] = e
+}
+
+// RemoveWizardWindow снимает окно цели из реестра. Только UI-поток.
+func (ui *UIService) RemoveWizardWindow(key string) {
+	delete(ui.wizardWindows, key)
+}
+
+// AnyWizardWindow — окно, которое поднимать по клику в главное окно:
+// локальное приоритетно (Конфигуратор этой машины), иначе любое открытое.
+func (ui *UIService) AnyWizardWindow() (WizardWindowEntry, bool) {
+	if ui == nil {
+		return WizardWindowEntry{}, false
+	}
+	if e, ok := ui.WizardWindowFor(wizardWindowKeyLocal); ok {
+		return e, true
+	}
+	for _, e := range ui.wizardWindows {
+		if e.Window != nil {
+			return e, true
+		}
+	}
+	return WizardWindowEntry{}, false
+}
+
+// LocalWizardOpen — открыт ли Конфигуратор этой машины: его Save пишет
+// локальный state, окна машин к нему отношения не имеют.
+func (ui *UIService) LocalWizardOpen() bool {
+	_, ok := ui.WizardWindowFor(wizardWindowKeyLocal)
+	return ok
+}
+
+// WizardWindowCount — сколько окон Конфигуратора открыто.
+func (ui *UIService) WizardWindowCount() int {
+	if ui == nil {
+		return 0
+	}
+	return len(ui.wizardWindows)
+}
+
+// wizardWindowKeyLocal — ключ окна локальной цели. Литерал совпадает с
+// template.TargetLocal (= TargetSpec.WizardWindowKey у Local); uiservice —
+// листовой пакет и core/template не импортирует.
+const wizardWindowKeyLocal = "local"
+
 // ShowMainWindowOrFocusWizard ensures the main window is shown (unhidden),
 // then if the Wizard is open it brings the Wizard to front and focuses it.
 // This avoids the case where both windows are hidden and clicking "Open" does nothing.
@@ -278,10 +344,10 @@ func (ui *UIService) ShowMainWindowOrFocusWizard() {
 			forceRepaint(ui.MainWindow)
 		}
 
-		if ui.WizardWindow != nil {
-			ui.WizardWindow.Show()
-			ui.WizardWindow.RequestFocus()
-			forceRepaint(ui.WizardWindow)
+		if e, ok := ui.AnyWizardWindow(); ok {
+			e.Window.Show()
+			e.Window.RequestFocus()
+			forceRepaint(e.Window)
 		}
 
 		if ui.OnWindowShown != nil {

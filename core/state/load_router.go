@@ -74,12 +74,12 @@ func Load(path string) (*State, error) {
 	// санитайзер переписал хотя бы одно тело: коды производные и считаются
 	// заново на каждой загрузке, а лишняя перезапись файла означала бы
 	// «изменилось тело» у всех узлов разом (Л3).
-	// Контракт 1.1.87 (PARSING_PRINCIPLES §11 п.2): документ или массив в
-	// источнике своего узла → тело узла. До пересчёта кодов: от вида
-	// источника зависит, авторское ли тело.
-	if n := NormalizeBareBodyOrigins(s); n > 0 {
+	// Контракт 1.1.165 (PARSING_PRINCIPLES §11 п.6): старый вид `json` и
+	// JSON под видом `uri` → вид-диалект по реестру. До пересчёта кодов: от
+	// вида источника зависит, авторское ли тело.
+	if n := MigrateLegacyOriginKinds(s); n > 0 {
 		if err := s.Save(path); err != nil {
-			debuglog.WarnLog("state: %d node sources normalized (body or origin kind), not persisted: %v", n, err)
+			debuglog.WarnLog("state: %d node origin kinds migrated, not persisted: %v", n, err)
 		}
 	}
 	if n := recountNodeWarnings(s); n > 0 {
@@ -124,7 +124,7 @@ func Parse(data []byte) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	NormalizeBareBodyOrigins(s)
+	MigrateLegacyOriginKinds(s)
 	recountNodeWarnings(s)
 	return s, nil
 }

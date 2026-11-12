@@ -184,6 +184,14 @@ enabled?, nodes?, pending_disabled?}`. Ключ тот же, по котором
 
 Оба поля необязательны: отсутствие ключа значит «не проверяем».
 
+`origin_raw` и `origin_kind` — источник своих узлов после импорта (контракт
+1.1.165, PARSING_PRINCIPLES §11): ключ — тег корневого сервера или «имя
+папки/тег» члена папки. `origin_raw` — JSON, которому обязан быть равен
+`origin.raw` (сравнение по значению; текст при чтении не меняется — документ
+остаётся документом), `origin_kind` — вид `singbox | xray | uri | wg_ini`
+(миграция старого `json`: диалект по реестру, не опознан → `singbox`; кейс
+`legacy_origin_kind_json`). Оба необязательны.
+
 `chains[]` в ожиданиях — исчерпывающий список `{tag, label?, enabled?, chain}`:
 `chain` сверяется deep-equal канона (включая `null`-значения `rewrite` —
 RFC 7396), число записей — строго (пропущенная по занятому тегу запись не
@@ -508,6 +516,7 @@ Side-specific ожидание LxBox (ответ на вопрос 5, `TASKS_LXB
 `backup_group_degraded`); перечень — `TASKS_LXBOX.md` §16.7.
 
 **`v10_lxbox_fields`** — все объявленные поля стороны LxBox в одном файле:
+`native_prefs` в корне (1.1.158),
 `detour_policy` / `import_rules` / `import_rules_enabled` / `on_update_action`
 у подписки, `detour_policy` и `tag_policy {prefix}` у корневого сервера,
 `detour_policy` / `ping_url` / `ping_timeout_ms` у папки, `label` у цепочки,

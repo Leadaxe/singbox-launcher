@@ -1,0 +1,9 @@
+{
+  "_comment": "Xray-конфиг с log и routing в Source своего узла: в источник остаётся только outbounds, остальное не хранится, одно сообщение; вид xray (контракт 1.1.165, §11 п.2).",
+  "container": "own",
+  "origin": {
+    "kind": "singbox",
+    "raw": "{\"type\":\"trojan\",\"server\":\"example-2.com\",\"server_port\":443,\"password\":\"testpass581\"}"
+  },
+  "input": "{\"log\":{\"loglevel\":\"warning\"},\"outbounds\":[{\"tag\":\"xr\",\"protocol\":\"vless\",\"settings\":{\"vnext\":[{\"address\":\"example-1.com\",\"port\":443,\"users\":[{\"id\":\"11111111-2222-3333-4444-555555555555\"}]}]},\"streamSettings\":{\"network\":\"tcp\",\"security\":\"none\"}}],\"routing\":{\"rules\":[{\"type\":\"field\",\"outboundTag\":\"xr\",\"network\":\"tcp,udp\"}]}}"
+}
