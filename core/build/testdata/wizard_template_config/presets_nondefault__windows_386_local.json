@@ -115,6 +115,22 @@
     "level": "warn",
     "timestamp": true
   },
+  "lx": {
+    "sniff_guard": {
+      "nodes": {
+        "sni_mismatch": true
+      },
+      "quic": {
+        "detour_type": {
+          "socks": "never"
+        },
+        "method": "decoy_first_byte"
+      },
+      "tls": {
+        "method": "record_fragment"
+      }
+    }
+  },
   "outbounds": [
     /** @ParserSTART */
 	{"type":"vless","tag":"node-a","server":"198.51.100.1","server_port":443,"uuid":"00000000-0000-0000-0000-000000000001"},

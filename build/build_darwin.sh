@@ -380,6 +380,55 @@ fi
     echo '</plist>'
 } > "$APP_CONTENTS/Info.plist"
 
+# Notifier.app — helper that shows system notifications for the launcher
+# (platform.SendNotification). It has its own bundle id because usernoted
+# refuses the legacy notification center to com.singbox.launcher. Built for
+# both architectures and signed ad-hoc here, before the outer bundle is
+# sealed: an unsigned nested app makes the bundle seal fail.
+echo "=== Building Notifier.app helper ==="
+NOTIFIER_APP="$APP_CONTENTS/Helpers/Notifier.app"
+mkdir -p "$NOTIFIER_APP/Contents/MacOS" "$NOTIFIER_APP/Contents/Resources"
+if ! clang -fobjc-arc -arch arm64 -arch x86_64 -mmacosx-version-min="$MIN_MACOS_VERSION" \
+        -framework Foundation -o "$NOTIFIER_APP/Contents/MacOS/notifier" \
+        build/darwin/notifier/main.m; then
+    echo "!!! Failed to build Notifier.app !!!"
+    exit 1
+fi
+chmod +x "$NOTIFIER_APP/Contents/MacOS/notifier"
+if [ "$HAS_ICON" = true ]; then
+    cp "$ICON_FILE" "$NOTIFIER_APP/Contents/Resources/${ICON_NAME}.icns"
+fi
+{
+    echo '<?xml version="1.0" encoding="UTF-8"?>'
+    echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+    echo '<plist version="1.0">'
+    echo '<dict>'
+    echo '    <key>CFBundleExecutable</key>'
+    echo '    <string>notifier</string>'
+    echo '    <key>CFBundleIdentifier</key>'
+    echo '    <string>com.leadaxe.notifier</string>'
+    echo '    <key>CFBundleName</key>'
+    echo '    <string>Sing-Box Launcher</string>'
+    echo '    <key>CFBundlePackageType</key>'
+    echo '    <string>APPL</string>'
+    if [ "$HAS_ICON" = true ]; then
+        echo '    <key>CFBundleIconFile</key>'
+        echo "    <string>$ICON_NAME</string>"
+    fi
+    echo '    <key>CFBundleShortVersionString</key>'
+    echo "    <string>$VERSION</string>"
+    echo '    <key>CFBundleVersion</key>'
+    echo "    <string>$VERSION</string>"
+    echo '    <key>LSMinimumSystemVersion</key>'
+    echo "    <string>$MIN_MACOS_VERSION</string>"
+    echo '    <key>LSUIElement</key>'
+    echo '    <true/>'
+    echo '</dict>'
+    echo '</plist>'
+} > "$NOTIFIER_APP/Contents/Info.plist"
+codesign --force --sign - --identifier com.leadaxe.notifier "$NOTIFIER_APP" 2>&1 | tail -1
+echo "Notifier.app: $NOTIFIER_APP"
+
 echo "Created .app bundle: $APP_NAME"
 echo ""
 echo "========================================"
@@ -428,6 +477,10 @@ if [ "$COPY_TO_APPLICATIONS" = true ]; then
         cp "$SRC_BIN" "$DEST_BIN"
         chmod +x "$DEST_BIN"
         echo "Updated: $DEST_BIN"
+        # Helpers are shipped files like the executable: replaced whole.
+        rm -rf "$DEST_APP/Contents/Helpers"
+        cp -R "$(pwd)/$APP_NAME/Contents/Helpers" "$DEST_APP/Contents/Helpers"
+        echo "Updated: $DEST_APP/Contents/Helpers"
     else
         echo "No $APP_NAME in /Applications — copying full bundle (first install)."
         cp -R "$APP_NAME" /Applications/

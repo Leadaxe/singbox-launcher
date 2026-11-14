@@ -128,47 +128,40 @@
     }
   },
   "blocks": {
-    "note": "Источники мультиплексирования. Подключается протоколами через include (\"multiplex#xray\") — у ядра блок multiplex есть у vless/vmess/trojan/shadowsocks, и таблица одна на все четыре.",
+    "note": "Источники мультиплексирования. Подключается протоколами через include (\"multiplex#xray\") — у ядра блок multiplex есть у vless/vmess/trojan/shadowsocks, и таблица одна на все четыре. С 1.1.169 (D-146) блок xray в тело НЕ ПИШЕТ НИЧЕГО: Xray mux — протокол Mux.Cool, а multiplex ядра — h2mux/smux/yamux, на проводе это разные протоколы. Ключи mux объявлены чтением без записи, истинный enabled даёт код xray_mux_unsupported.",
     "xray": {
       "enabled": {
         "source": "json.mux.enabled",
-        "selector": true,
-        "maps_to": "multiplex.enabled",
-        "type": "bool_spelled",
-        "impl": "Селектор блока: остальные записи гейтятся по multiplex.enabled, как записи TLS по tls.enabled. bool_spelled — Xray пишет и булево, и строку."
+        "maps_to": null,
+        "when": {
+          "json.mux.enabled": {
+            "in": [
+              true,
+              "true",
+              "1"
+            ]
+          }
+        },
+        "on_present": {
+          "action": "note",
+          "code": "xray_mux_unsupported"
+        },
+        "impl": "НЕ МАППИТСЯ в multiplex.enabled (до 1.1.169 маппился — ошибка, D-146). Xray mux — протокол Mux.Cool: клиент шлёт поток на служебный адрес v1.mux.cool и режет его кадрами Mux.Cool (Xray-core common/mux). multiplex ядра — h2mux/smux/yamux поверх sing-mux со служебным адресом sp.mux.sing-box.arpa (option/multiplex.go, common/mux). Сервер Xray понимает ТОЛЬКО свой Mux.Cool: адрес sing-box он принимает за обычное назначение, и узел не соединяется вовсе — ровно то, что сообщили пользователи LxBox (задача 727). Клиента Mux.Cool в ядре нет (в sing-box-lx только серверный приём, test/mux_cool_test.go). Поэтому mux снимается целиком, а узел едет без мультиплексирования — сервер Xray одиночные соединения принимает всегда, mux у Xray — выбор клиента. Код за потерю — только при ИСТИННОМ значении (написания булева и строки перечислены when.in, как у grpc multiMode): enabled: false терять нечего, и код на нём был бы шумом. Selector-гейт прежней таблицы снят: гейтить больше нечего, остальные записи ничего не пишут."
       },
       "concurrency": {
         "source": "json.mux.concurrency",
-        "maps_to": "multiplex.max_streams",
-        "type": "int",
-        "when": {
-          "multiplex.enabled": true
-        },
-        "sets": {
-          "-1": {
-            "multiplex": null
-          },
-          "0": {
-            "multiplex": null
-          }
-        },
-        "impl": "СЕМАНТИКА СВЕРЕНА С XRAY: concurrency — максимум подпотоков в одном соединении, то есть max_streams ядра (option/multiplex.go MaxStreams), а НЕ max_connections. Отрицательное значение и ноль у Xray означают «mux выключен» (common/mux: concurrency<=0 → мультиплексор не создаётся), и это не «без ограничения», как читает ноль ядро: поэтому оба значения СНИМАЮТ блок целиком через sets: null (§7), а не пишут число. Иначе элемент, явно отключивший mux, получил бы в теле enabled: true с неограниченным числом потоков — ровно обратное тому, что просил."
+        "maps_to": null,
+        "impl": "Объявленное чтение без записи (D-146): concurrency — предел подпотоков Mux.Cool, у multiplex ядра он означал бы настройку ДРУГОГО протокола, который сервер Xray не поймёт. До 1.1.169 писался в multiplex.max_streams, а -1/0 снимали блок через sets — правило снято вместе с записью. Ключ объявлен, чтобы не давать json_field_unknown: потерю сообщает код записи enabled."
       },
       "xudpConcurrency": {
         "source": "json.mux.xudpConcurrency",
         "maps_to": null,
-        "when": {
-          "multiplex.enabled": true
-        },
-        "impl": "Отдельного предела для XUDP-подпотоков у ядра нет: option/multiplex.go знает один max_streams на весь мультиплексор. Объявленное чтение без записи — ключ не попадёт в json_field_unknown."
+        "impl": "Объявленное чтение без записи: XUDP — часть Mux.Cool, у ядра аналога нет. Ключ объявлен, чтобы не давать json_field_unknown."
       },
       "xudpProxyUDP443": {
         "source": "json.mux.xudpProxyUDP443",
         "maps_to": null,
-        "when": {
-          "multiplex.enabled": true
-        },
-        "impl": "Значения reject/allow/skip решают у Xray, пускать ли UDP/443 (QUIC) через мультиплексор. У ядра это не настройка mux, а packet_encoding узла, и отображение неоднозначно: skip означает «мимо mux, но через узел», чего одним полем тела не выразить. Маппить наугад значило бы менять путь трафика QUIC молча, поэтому чтение объявлено без записи."
+        "impl": "Объявленное чтение без записи: reject/allow/skip решают у Xray, пускать ли UDP/443 (QUIC) через Mux.Cool; без mux настройке не к чему относиться. Ключ объявлен, чтобы не давать json_field_unknown."
       }
     }
   }

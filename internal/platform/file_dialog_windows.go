@@ -13,11 +13,16 @@ import (
 
 // runDialogPS runs a dialog script in powershell without a console window
 // (CREATE_NO_WINDOW; the WinForms dialog itself is unaffected) and returns
-// its stdout — the picked path(s). All file dialogs go through here.
-func runDialogPS(script string) ([]byte, error) {
+// its stdout decoded (psEmit / psDecodeOutput) — the picked path(s). All file
+// dialogs go through here.
+func runDialogPS(script string) (string, error) {
 	cmd := exec.Command("powershell", append([]string{"-WindowStyle", "Hidden"}, psDialogArgs(script)...)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}
-	return cmd.Output()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return psDecodeOutput(out)
 }
 
 // pickOpenFileNative uses PowerShell + System.Windows.Forms.OpenFileDialog —
@@ -32,7 +37,7 @@ func pickOpenFileNative(prompt string, exts []string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	path := strings.TrimSpace(string(out))
+	path := strings.TrimSpace(out)
 	if path == "" {
 		return "", false, nil
 	}
@@ -48,7 +53,7 @@ func pickOpenFilesNative(prompt string, exts []string) ([]string, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	paths := splitPickedPaths(string(out))
+	paths := splitPickedPaths(out)
 	if len(paths) == 0 {
 		return nil, false, nil
 	}
@@ -77,7 +82,7 @@ func pickSaveFileNative(prompt, defaultName string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	path := strings.TrimSpace(string(out))
+	path := strings.TrimSpace(out)
 	if path == "" {
 		return "", false, nil // cancel
 	}

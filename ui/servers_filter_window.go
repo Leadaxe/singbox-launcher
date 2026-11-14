@@ -235,7 +235,7 @@ func showServersFilterWindow(host serversFilterHost, existing *serversFilterWind
 	regexClear.Importance = widget.LowImportance
 	regexClear.SetToolTip(locale.T("Clear the pattern"))
 
-	regexRow := fynewidget.CategoryRow(regexInvert, locale.T("Regex"),
+	regexRow := fynewidget.CategoryRow(regexInvert, locale.TN(2, "Regex"),
 		container.NewBorder(nil, nil, nil,
 			container.NewHBox(regexCopy, regexClear),
 			regexEntry,

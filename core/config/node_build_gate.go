@@ -110,12 +110,12 @@ func gateBodyForCore(scheme, tag string, body []byte) ([]byte, bool) {
 // GateConfigJSONForCore — готовый config.json (JSONC), из которого сняты
 // ключи вне тел узлов, которых ядро версии version не знает
 // (registry/core_config.json). Для путей, где исполнитель — не то ядро, под
-// которое конфиг собран: служба со своей копией ядра. Снимать нечего, версия
-// неизвестна или конфиг не разобрался — возвращается как есть.
+// которое конфиг собран: служба со своей копией ядра. Снимать нечего или
+// конфиг не разобрался — возвращается как есть; при неизвестной версии
+// снимаются только запрещённые ключи.
 func GateConfigJSONForCore(config []byte, version string) []byte {
-	if strings.TrimSpace(version) == "" {
-		return config
-	}
+	// Пустая версия не выход: запрещённые ключи (forbidden) снимаются и при
+	// неизвестной версии ядра.
 	var root map[string]json.RawMessage
 	if err := json.Unmarshal(jsonc.ToJSON(config), &root); err != nil {
 		return config
@@ -128,7 +128,7 @@ func GateConfigJSONForCore(config []byte, version string) []byte {
 	if err != nil {
 		return config
 	}
-	debuglog.WarnLog("Config gate: keys %s dropped — core %s does not know them (registry core_config min_core)",
+	debuglog.WarnLog("Config gate: keys %s dropped — core %q does not accept them (registry core_config)",
 		strings.Join(dropped, ", "), version)
 	return out
 }

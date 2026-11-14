@@ -5755,6 +5755,11 @@ cookie с кастомным ключом. `seqPlacement`/`seqKey` доезжа�
 «must be set together». D-097 (пустые `host`/`path`/`mode` из `extra` не
 перекрывают плоские) не тронут.
 
+> **Отменено контрактом 1.1.168 (§168, 12.11.2026):** пара заведена в мапперах
+> обоих диалектов, половину пары снимает парная защита тела (`requires`,
+> `field_requires`); п.2 ниже и кейсы `xhttp_extra_session_id_aliases`
+> переписаны под новую норму.
+
 **Что проверить у себя:**
 
 1. Ссылка `vless+xhttp` с `extra={"sessionIDPlacement":"cookie",
@@ -10278,3 +10283,128 @@ LxBox задача 722 (`docs/spec/tasks/722-origin-kind-dialect.md`), пово�
 Версия контракта — 1.1.167. Синк: `sync_contract.sh --to 6d844f4a` (включает 1.1.166).
 
 Задачи вам: синк 1.1.167; прогнать раннер `corpus/template` — два новых кейса. Мы исходим из того, что ваш движок уже так себя ведёт; если кейс `text_list_empty_state_beats_default` у вас красный — сюда.
+
+## 168. Контракт 1.1.168 — XHTTP `sessionIDTable` / `sessionIDLength` доезжают до тела (12.11.2026)
+
+Решение владельца 12.11.2026, повод — ваш issue #211: живой сервер vless+XHTTP за CDN отвечает 403, если идентификатор сессии — UUID с дефисами (XTLS/Xray-core#6264). В Xray это лечится парой `sessionIDTable` (алфавит или его имя) + `sessionIDLength` (длина); ядро sing-box-lx умеет то же с lx.28 — `transport.session_table` / `transport.session_length` (`option/v2ray_xhttp.go`, проверка пары — `transport/v2rayxhttp/meta.go`). В теле контракта оба поля были с 1.1.167 (с `requires` друг на друга), но мапперы их не читали: отказ 1.1.47 (§43) «не заведены умышленно» держался на том, что одно поле без второго валит ядро. Парная защита в теле этот довод сняла — **§43 в этой части отменён**, делаем в контракте, а не оверлеем у вас.
+
+**1. Реестр `registry/transports.json`.**
+- Описательные параметры `transports.xhttp.params`: `session_table` (алиасы `sessionTable`, `sessionIDTable`) и `session_length` (`sessionLength`, `sessionIDLength`).
+- `blocks.uri.xhttp`: записи `sessionTable` и `sessionLength` сразу после `sessionKey`. Источники — по образцу `sessionPlacement`: `extra.sessionTable`, `extra.session_table`, `extra.sessionIDTable`, затем те же три под `query.` (слой extra впереди плоского, канон впереди алиаса). Цели `transport.session_table` / `transport.session_length`, `when transport.type = xhttp`.
+- `blocks.xray.xhttp`: зеркало — 16 источников на запись: `json.streamSettings.{xhttpSettings|splithttpSettings}.{extra.|}{sessionTable|session_table|sessionIDTable|session_id_table}` (и то же для `Length`), слой `extra` впереди плоского, оба имени контейнера.
+- **Нового примитива движка нет.** У записи `sessionLength` в обоих диалектах — существующий `omit_default: "0"`: значение, равное `"0"` после приведения, в тело не пишется (у Xray нулевая длина = дефолтный UUID). Пустое значение не пишется по общей норме «пусто = отсутствует». Число в источнике (`sessionIDLength: 12` — у Xray `Int32Range` принимает число как `12-12`, `infra/conf/common.go Int32Range.UnmarshalJSON`) приводится к строке `"12"` тем же правилом, что у прочих числовых полей `extra` (`30.0` → `"30"`); строка `"10-20"` едет дословно. Таблица едет дословно: имя предопределённого алфавита (`hex`, `HEX`, `number`, `alphabet`, `Alphabet`, `ALPHABET`, `base36`, `BASE36`, `Base62` — регистр значим) или литеральный ASCII-алфавит; годность (ASCII, `len(table)^min ≥ 2^31`, `min > 0`) судит ядро, в маппере суда над значением нет.
+
+**2. Парная защита — в теле, не в маппере.** Маппер доносит поле всегда; одно без второго снимает `body.variants.xhttp.fields.session_table.requires` / `session_length.requires` с кодом `field_requires` (путь `transport.session_table` или `transport.session_length`). Следствие для нулевой длины при заданной таблице: длина не пишется, оставшаяся таблица снимается с `field_requires` — у Xray такая пара и так ошибка конфига («sessionIDTable or sessionIDLength is too small»).
+
+**3. Обратный ход.** Как у соседей `session_placement`/`session_key`: плоские snake_case-параметры ссылки (`session_table=…&session_length=…`), ничего отдельного не объявлено; round-trip по новым uri-кейсам у лаунчера зелёный.
+
+**4. Корпус.**
+- **Изменены ожидания**: `body/xray/xhttp_extra_session_id_aliases` и `uri/vless/xhttp_extra_session_id_aliases` — предупреждений `json_field_unknown` по `sessionIDLength`/`sessionIDTable` больше нет, `"0"`/`""` в тело по-прежнему не попадают (комментарии кейсов переписаны).
+- +5 `body/xray`: `xhttp_session_id_table_length_extra` (extra: `base36` + длина числом `12` → `"12"`), `xhttp_session_id_table_length_flat` (плоско в `xhttpSettings`: литерал + `"10-20"`), `xhttp_session_id_snake_splithttp` (`splithttpSettings.extra.session_id_table/_length`), `xhttp_session_id_length_without_table` (→ `field_requires` на `transport.session_length`), `xhttp_session_id_zero_length_with_table` (длина `0` не пишется, таблица → `field_requires`).
+- +4 `uri/vless`: `xhttp_extra_session_table_length` (extra: `Base62` + `"8-12"`), `xhttp_extra_session_length_number` (extra: длина JSON-числом `16` → `"16"`), `xhttp_session_table_length_query_flat` (плоские `sessionIDTable=number&sessionIDLength=12`), `xhttp_session_table_without_length` (→ `field_requires` на `transport.session_table`).
+
+**5. Проверено у лаунчера:** раннеры корпуса (uri, body, round-trip эмита, движок vs корпус xray/uri), линтер ссылок реестра, `go generate` документации; `sing-box check` ядром lx.33 на телах из кейсов — три формы пары принимаются, обе половины дают «session_table and session_length must be set together» (то есть защита тела нужна и срабатывает раньше ядра). Вживую на сервере из #211 не проверялось.
+
+Версия контракта — 1.1.168. Синк: `sync_contract.sh --to 81da80d4` (реестр и корпус — в этом коммите; sha записи с этой строкой — следующий, только текст).
+
+Задачи вам: синк 1.1.168; раннеры `corpus/body/xray` и `corpus/uri/vless` (два изменённых ожидания, девять новых кейсов); у вашего Dart-движка проверить, что (а) `omit_default` строкой `"0"` сравнивается с уже СТРИНГИФИЦИРОВАННЫМ значением (число `0` из JSON тоже должно сниматься), (б) число из `extra`/Xray-JSON даёт строку без дробной части, (в) `requires` тела срабатывает на поле, пришедшее через маппер, а не только из sing-box тела; если у вас был свой оверлей под #211 — снять, норма теперь в реестре.
+
+## 169. Контракт 1.1.169 — Xray `mux` больше не превращается в `multiplex` (12.11.2026)
+
+Решение владельца 12.11.2026, повод — ваша задача 727 (`docs/spec/tasks/727-xray-mux-not-multiplex.md`): узел из Xray-подписки с `"mux": {"enabled": true, "concurrency": 8, "xudpConcurrency": 16, "xudpProxyUDP443": "reject"}` не соединялся, пока `multiplex` не удалить из тела руками. Причина — в контракте: `multiplex.json` `blocks.xray` (с 1.1.50, §46) переносил `mux.enabled` → `multiplex.enabled` и `mux.concurrency` → `multiplex.max_streams`. Но Xray mux — протокол Mux.Cool (служебный адрес `v1.mux.cool`), а `multiplex` ядра — h2mux/smux/yamux поверх sing-mux (`sp.mux.sing-box.arpa`). Сервер Xray понимает только свой Mux.Cool и адрес sing-box принимает за обычное назначение; клиента Mux.Cool в ядре нет (в sing-box-lx только серверный приём, `test/mux_cool_test.go`). **Запись mux из §46 отменена**, делаем в контракте, а не оверлеем у вас. D-146.
+
+**1. Реестр `registry/multiplex.json`, `blocks.xray`.**
+- Все четыре записи (`enabled`, `concurrency`, `xudpConcurrency`, `xudpProxyUDP443`) — объявленное чтение без записи, `maps_to: null`. Ключи `json.mux.*` по-прежнему объявлены и `json_field_unknown` не дают.
+- Сняты: `selector: true` у `enabled` (гейтить больше нечего — ни одна запись блока в тело не пишет), `when: {multiplex.enabled: true}` у остальных и `sets` для `concurrency` -1/0 (раньше снимали блок целиком).
+- `enabled`: `when: {"json.mux.enabled": {"in": [true, "true", "1"]}}` + `on_present: {action: note, code: xray_mux_unsupported}` — тот же приём, что у `grpcSettings.multiMode` (`transports.json`). `enabled: false` кода не даёт.
+
+**2. Реестр `registry/warnings.json`: новый код `xray_mux_unsupported`** (severity `info`, без параметров, `path` — имя записи `enabled`, `value` — значение как прочитано, `"true"`). Тексты EN/RU, cause, fix — в реестре. Уровень info, а не warning: сервер Xray одиночные соединения принимает всегда (mux у Xray — выбор клиента), узел без mux работает; код сообщает о потере, а не о поломке.
+
+**3. Не затронуто.** Явный `multiplex` в sing-box JSON едет как раньше (новый кейс `body/singbox/multiplex_kept`). Диалект `uri` mux не читал и не читает. Тело `multiplex` (`body`) не менялось.
+
+**4. Корпус.**
+- **Изменены ожидания**: `body/xray/mux_concurrency` — `multiplex` из тела снят, добавлен код `xray_mux_unsupported` (`path: enabled`, `value: "true"`); `body/xray/mux_concurrency_disabled` (`concurrency: -1`) — тело то же (без `multiplex`), добавлен тот же код: `enabled` истинный, а у Xray -1 выключает только TCP-подпотоки, XUDP через Mux.Cool остаётся. Комментарии обоих кейсов переписаны.
+- +3: `body/xray/mux_enabled_false` (без `multiplex`, без кода, без `json_field_unknown`), `body/xray/mux_enabled_string` (vmess, `enabled: "true"` строкой → код), `body/singbox/multiplex_kept` (явный `multiplex` с `smux` сохранён).
+
+**5. Проверено у лаунчера:** раннер `corpus/body`, `go generate` документации (`docs/generated/warnings.md`). Рукописного Go под mux в лаунчере нет — движок взял всё из реестра. Вживую на сервере из 727 не проверялось.
+
+Версия контракта — 1.1.169. Синк: `sync_contract.sh --to 30e09cce` (реестр и корпус — в этом коммите; sha записи с этой строкой — следующий, только текст).
+
+Задачи вам: синк 1.1.169; раннер `corpus/body` (два изменённых ожидания, три новых кейса); новый код `xray_mux_unsupported` в вашем каталоге предупреждений (тексты — из реестра); убедиться, что `when` на JSON-пути с `in: [true, "true", "1"]` сравнивает и булево, и строку; если в 727 у вас был оверлей, снимающий `multiplex` с Xray-узлов, — убрать, норма теперь в реестре. Узлы, уже сохранённые с `multiplex` из Xray mux, сами не исправятся: это вопрос вашей миграции/повторного импорта — у лаунчера миграции нет, тело узла пересобирается при обновлении подписки.
+
+## 170. Контракт 1.1.170 — `lx.sniff_guard` вместо `lx.quic_sniff_decoy` и авторазреза под `detour` (14.11.2026)
+
+Решение владельца 14.11.2026 по общей рекомендации двух сессий (ваша — «LxBox: блок lx.sniff_guard в генераторе конфига»). Повод — ядро `1.14.4-lx.34` (FEATURE 019 / SPEC 060 форка): ключ `lx.quic_sniff_decoy` удалён (любое значение, включая `null`, — отказ загрузки), авто-`record_fragment` узлу с `detour` снят без ошибки загрузки. Без блока `lx.sniff_guard` TLS-узлы через релей со сниффингом Xray перестают подниматься.
+
+**1. Норма эмиссии — одна для обеих сторон.**
+
+```json
+"lx": {
+  "sniff_guard": {
+    "nodes": {"sni_mismatch": true},
+    "tls":  {"method": "<sniff_guard_tls>"},
+    "quic": {"method": "<sniff_guard_quic>", "detour_type": {"socks": "never"}}
+  }
+}
+```
+
+Это вид при дефолтах. Решения владельца 14.11.2026 (вторым заходом, через родительскую сессию): `sni_mismatch` — настройка, дефолт `true`; `persist` — настройка, дефолт `false`.
+
+- Секция пишется, только если её переменная не `off`; блок не пишется, если `off` обе.
+- `nodes: {sni_mismatch: <значение sniff_guard_sni_mismatch>}` пишется **всегда**, и `true`, и `false`. Дефолт ядра с lx.34 — `true` (нет ключа = `true`, `false` = защищать все узлы), поэтому опущенный при `false` ключ настройку не выключал бы.
+- `persist: true` дописывается в каждую секцию с методом при включённой `sniff_guard_persist` (одна переменная на обе секции); при выключенной ключа нет.
+- Не пишутся (дефолты ядра): общая карта `detour_type` (`direct` / `ssh` / `socks` = `clean`, `"*"` = `suspect`), `nodes.outbound_type`, `override`, `delay`.
+- `quic.detour_type` — ровно `{"socks": "never"}`, ключа `"*"` нет: через зашифрованный релей QUIC стартует с байтом. Довод — AmneziaWG метку пути не учит.
+- `persist: true` требует включённого `experimental.cache_file`; оба шаблона держат его включённым всегда.
+- Конфиг без `experimental.cache_file` (у вас — отдельный экземпляр ядра для проверки узлов) несёт тот же блок **без** `persist` при любом значении переменной: без блока ядро lx.34 рукопожатие за сниффящим релеем не прячет, и проверка покажет живой узел мёртвым, а `persist: true` без `cache_file` — отказ загрузки. У лаунчера таких конфигов нет: проверка идёт через работающее ядро.
+
+Запись в шаблоне лаунчера (`bin/wizard_template.json`, корневой `lx`):
+
+```json
+"#if sniff_guard": [
+  {"#or": [{"#not": {"@sniff_guard_tls": "off"}}, {"#not": {"@sniff_guard_quic": "off"}}]},
+  {
+    "sniff_guard": {
+      "nodes": {"sni_mismatch": "@sniff_guard_sni_mismatch"},
+      "#if tls": [
+        {"#not": {"@sniff_guard_tls": "off"}},
+        {"tls": {"method": "@sniff_guard_tls", "#if persist": ["@sniff_guard_persist", {"persist": true}]}}
+      ],
+      "#if quic": [
+        {"#not": {"@sniff_guard_quic": "off"}},
+        {
+          "quic": {
+            "method": "@sniff_guard_quic",
+            "#if persist": ["@sniff_guard_persist", {"persist": true}],
+            "detour_type": {"socks": "never"}
+          }
+        }
+      ]
+    }
+  }
+]
+```
+
+**2. Реестр `registry/vars.json`.** Сняты `quic_sniff_decoy`, `quic_sniff_decoy_send`, `quic_sniff_decoy_outbounds`, `quic_sniff_decoy_detours`. Заведены, все `portable: false`, `in: both`:
+- `sniff_guard_tls` — `enum` `record_fragment` / `fragment` / `delay` / `off`, дефолт `record_fragment`;
+- `sniff_guard_quic` — `enum` `decoy_first_byte` / `delay` / `off`, дефолт `decoy_first_byte`;
+- `sniff_guard_sni_mismatch` — `bool`, дефолт `true`;
+- `sniff_guard_persist` — `bool`, дефолт `false`, одна на обе секции.
+
+Две последние — `#enable`, пока хотя бы один метод не `off`.
+
+**3. Реестр `registry/core_config.json`.**
+- `lx.sniff_guard` — `min_core: 1.14.4-lx.34`. Ядру старше блок снимается; там по-прежнему работает авторазрез ядра. Если выйдет `1.14.4-lx.34-rc.N`, границу сдвигаем на `rc.1` одной правкой (записано в `note`).
+- `lx.quic_sniff_decoy` — `forbidden: true`: не пишется никогда, из чужого шаблона снимается при любой версии ядра, включая неизвестную.
+
+**4. Миграции значений нет.** Значения четырёх снятых переменных в хранилище и бэкапах игнорируются.
+
+**5. Предупреждение о явном `tls.fragment` под `detour`** (контракт 1.1.84): норма снятия прежняя, тексты `text_en` / `text_ru` переписаны — вместо «ядро само режет записи» теперь защита от сниффинга. `impl` у `tls.record_fragment` (`registry/tls.json`) и у `detour` (`registry/dialer.json`) — про границу lx.33 / lx.34.
+
+**6. Корпус** не менялся: кейсов с корневым `lx` в `corpus/` нет.
+
+**7. Проверено у лаунчера:** `go build ./...`, тест гейта `TestGateConfigForCore`, `go generate` документации. На ядре с блоком вживую не проверялось. Решение владельца: приложения выпускаются на `1.14.4-lx.35` (lx.34 срезан без свежих коммитов апстрима); пин лаунчера поднят до `1.14.4-lx.35` отдельным коммитом после публикации релиза ядра. Граница гейта — `1.14.4-lx.34`: блок существует с него.
+
+Версия контракта — 1.1.170. Sha для синка пришлём после коммита.
+
+Задачи вам: синк 1.1.170; четыре новые переменные и снятие четырёх старых в шаблоне и экране настроек; блок по норме п.1; шаг сборщика, судящий по `core_config.json` (пока ваш пин — lx.33); новые тексты предупреждения из реестра.

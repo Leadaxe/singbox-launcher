@@ -4,6 +4,14 @@
 
 ---
 
+### Выжимка (RU) — v2.4.3
+
+Патч после v2.4.2, ядро `sing-box-lx 1.14.4-lx.35` (было 1.14.4-lx.33), контракт 1.1.170. **Защита от сниффинга вместо QUIC-приманки:** в Settings — **Sniff guard: TLS** и **Sniff guard: QUIC** (обе включены), **only masked SNI** и **remember relays**; в конфиг пишется блок ядра `lx.sniff_guard`, четыре настройки **Anti-sniff decoy** убраны. Блок действует с ядром `1.14.4-lx.34` — после обновления поставьте новое ядро из Core Dashboard. **XHTTP:** `sessionIDTable` / `sessionIDLength` из Xray доезжают до узла. **Подписки Xray:** элемент с включённым `mux` импортируется без mux и соединяется. Подробно — [docs/release_notes/2-4-3.md](docs/release_notes/2-4-3.md).
+
+### Highlights (EN) — v2.4.3
+
+A patch release after v2.4.2, core `sing-box-lx 1.14.4-lx.35` (was 1.14.4-lx.33), contract 1.1.170. **Sniff guard replaces the QUIC decoy:** Settings has **Sniff guard: TLS** and **Sniff guard: QUIC** (both on), **only masked SNI** and **remember relays**; the config carries the core's `lx.sniff_guard` block, and the four **Anti-sniff decoy** options are gone. The block takes effect with core `1.14.4-lx.34` — install the new core from the Core Dashboard after the upgrade. **XHTTP:** Xray `sessionIDTable` / `sessionIDLength` reach the node. **Xray subscriptions:** an element with `mux` turned on imports without mux and connects. Details — [docs/release_notes/2-4-3.md](docs/release_notes/2-4-3.md).
+
 ### Выжимка (RU) — v2.4.2
 
 Патч после v2.4.1, ядро `sing-box-lx 1.14.4-lx.33` (было 1.14.4-lx.30), контракт 1.1.167. **Несколько туннелей, каждый для своих сетей:** переключатель **Only its own networks** у узла WireGuard, AWG, OpenVPN и OpenConnect и пресет **Tunnel routes** — в туннель идут только объявленные им сети. **Узел из Xray JSON:** вкладка JSON и поле Origin окна узла принимают Xray-конфиг, источник хранится в своём диалекте. **Anti-sniff decoy** (бывшая QUIC sniff decoy) приведена к ядру `lx.33`: Decoy sending, Decoy node types, Decoy relay types; по умолчанию Off. Ядро старше `lx.33` работает без обманки — службе и удалённым машинам нужно обновить ядро. **Окна по цели:** Конфигуратор и Профайлер трафика для Local и для машины открываются одновременно. **Taildrop:** настройки принадлежат узлу и переносятся с бэкапом, двойное копирование — на одно выбранное устройство. Исправлено: служба с ядром старше ядра лаунчера больше не отвергает весь конфиг; каталог tailnet машины не попадает в локальный конфиг; переименование узла Tailscale не регистрирует новое устройство. Подробно: [docs/release_notes/2-4-2.md](docs/release_notes/2-4-2.md)
@@ -812,6 +820,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.4.3** | [docs/release_notes/2-4-3.md](docs/release_notes/2-4-3.md) |
 | **v2.4.2** | [docs/release_notes/2-4-2.md](docs/release_notes/2-4-2.md) |
 | **v2.4.1** | [docs/release_notes/2-4-1.md](docs/release_notes/2-4-1.md) |
 | **v2.4.0** | [docs/release_notes/2-4-0.md](docs/release_notes/2-4-0.md) |

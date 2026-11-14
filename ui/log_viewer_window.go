@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +30,31 @@ var (
 	logViewerMu     sync.Mutex
 	logViewerWindow fyne.Window
 )
+
+// coreLogANSI matches terminal colour sequences the core writes into its log.
+var coreLogANSI = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+
+// coreLogRows turns core log entries into list rows: one row per text line.
+// A List row has a fixed height, so an entry with embedded newlines (a
+// goroutine dump from the daemon log stream) would paint over its neighbours.
+// The list shows the newest row first, so the lines of one entry are stored
+// in reverse order here and read top-down on screen.
+func coreLogRows(entries []string) []string {
+	rows := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		entry = coreLogANSI.ReplaceAllString(entry, "")
+		entry = strings.ReplaceAll(entry, "\r", "")
+		entry = strings.ReplaceAll(entry, "\t", "    ")
+		parts := strings.Split(strings.TrimRight(entry, "\n"), "\n")
+		for i := len(parts) - 1; i >= 0; i-- {
+			rows = append(rows, parts[i])
+		}
+	}
+	if len(rows) > logViewerMaxLines {
+		rows = rows[len(rows)-logViewerMaxLines:]
+	}
+	return rows
+}
 
 type logEntry struct {
 	level debuglog.Level
@@ -240,7 +266,7 @@ func OpenLogViewerWindow(ac *core.AppController) {
 				if len(lines) == 0 {
 					lines = []string{locale.T("(daemon log buffer is empty — no core output yet)")}
 				}
-				coreLines = lines
+				coreLines = coreLogRows(lines)
 				if coreList != nil {
 					coreList.Refresh()
 				}
@@ -268,7 +294,7 @@ func OpenLogViewerWindow(ac *core.AppController) {
 			return
 		}
 		fyne.Do(func() {
-			coreLines = lines
+			coreLines = coreLogRows(lines)
 			if coreList != nil {
 				coreList.Refresh()
 			}

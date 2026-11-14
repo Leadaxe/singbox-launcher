@@ -226,6 +226,30 @@
           "desc_ru": "Имя идентификатора сессии.",
           "impl": "Оба."
         },
+        "session_table": {
+          "type": "string",
+          "default": "",
+          "aliases": [
+            "sessionTable",
+            "sessionIDTable"
+          ],
+          "maps_to": "transport.session_table",
+          "desc_en": "Alphabet used to generate session ids (name or literal).",
+          "desc_ru": "Алфавит идентификатора сессии (имя или литерал).",
+          "impl": "Контракт 1.1.168 (issue Leadaxe/LxBox#211: CDN режет UUID с дефисами, XTLS/Xray-core#6264). Парное с session_length: одно без другого снимает правило тела body.variants.xhttp.fields.session_table.requires (код field_requires), до ядра половина пары не доходит. Оба."
+        },
+        "session_length": {
+          "type": "string",
+          "default": "",
+          "aliases": [
+            "sessionLength",
+            "sessionIDLength"
+          ],
+          "maps_to": "transport.session_length",
+          "desc_en": "Session id length: a number or a min-max range.",
+          "desc_ru": "Длина идентификатора сессии: число или диапазон min-max.",
+          "impl": "Контракт 1.1.168. «0» и пусто = не задано (в тело не пишется — omit_default записи маппера; у Xray нулевая длина при пустой таблице означает дефолтный UUID). Парное с session_table. Xray infra/conf/transport_method.go (SplitHTTPConfig: SessionIDTable string, SessionIDLength Int32Range, json-теги sessionIDTable/sessionIDLength; Build: имя из transport/internet/splithttp/config.go PredefinedTable разворачивается в алфавит, таблица только ASCII, room = len(table)^from ≥ 2^31, from > 0). Форма длины — infra/conf/common.go Int32Range.UnmarshalJSON: число (10 → 10-10) ЛИБО строка «10» / «10-20»; других форм нет. Ядро sing-box-lx (option/v2ray_xhttp.go session_table/session_length, transport/v2rayxhttp/meta.go parseRange) принимает «n» и «min-max» строкой, число маппер стрингифицирует канонично (10.0 → '10') тем же правилом, что у остальных числовых полей extra. Оба."
+        },
         "seq_placement": {
           "type": "enum",
           "values": [
@@ -1393,6 +1417,37 @@
             "transport.type": "xhttp"
           }
         },
+        "sessionTable": {
+          "source": [
+            "extra.sessionTable",
+            "extra.session_table",
+            "extra.sessionIDTable",
+            "query.sessionTable",
+            "query.session_table",
+            "query.sessionIDTable"
+          ],
+          "maps_to": "transport.session_table",
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "Контракт 1.1.168: пара session_table/session_length заведена (прежний отказ 1.1.47 «не заведены умышленно» отменён — парная защита живёт в теле, requires у обоих полей). Порядок источников как у sessionPlacement: слой extra впереди плоского, канон впереди алиаса Xray-прото sessionIDTable. Значение едет дословно: имя предопределённого алфавита (hex, HEX, number, alphabet, Alphabet, ALPHABET, base36, BASE36, Base62 — регистр значим) или литеральный ASCII-алфавит; годность судит ядро."
+        },
+        "sessionLength": {
+          "source": [
+            "extra.sessionLength",
+            "extra.session_length",
+            "extra.sessionIDLength",
+            "query.sessionLength",
+            "query.session_length",
+            "query.sessionIDLength"
+          ],
+          "maps_to": "transport.session_length",
+          "omit_default": "0",
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "Контракт 1.1.168. omit_default «0»: нулевая длина у Xray = «не задано» (GenerateSessionID при length 0 отдаёт UUID), ключ в тело не пишется — как и пустое значение (норма «пусто = отсутствует»); число из extra стрингифицируется слоем overlay (10 → «10»), и сравнение идёт со строкой. Без пары session_table поле снимает requires тела (field_requires). Xray infra/conf/transport_method.go (SplitHTTPConfig: SessionIDTable string, SessionIDLength Int32Range, json-теги sessionIDTable/sessionIDLength; Build: имя из transport/internet/splithttp/config.go PredefinedTable разворачивается в алфавит, таблица только ASCII, room = len(table)^from ≥ 2^31, from > 0). Форма длины — infra/conf/common.go Int32Range.UnmarshalJSON: число (10 → 10-10) ЛИБО строка «10» / «10-20»; других форм нет. Ядро sing-box-lx (option/v2ray_xhttp.go session_table/session_length, transport/v2rayxhttp/meta.go parseRange) принимает «n» и «min-max» строкой, число маппер стрингифицирует канонично (10.0 → '10') тем же правилом, что у остальных числовых полей extra."
+        },
         "seqPlacement": {
           "source": [
             "extra.seqPlacement",
@@ -2106,6 +2161,57 @@
             "transport.type": "xhttp"
           },
           "impl": " ПЛОСКИЕ написания sessionID* (контракт 1.1.50, запрос LxBox): в 1.1.47 имя из json-тега Xray (Xray infra/conf/transport_method.go, поля SessionIDPlacement/SessionIDKey) добавлено только в слой extra, а тот же ключ форки пишут и ПЛОСКО — тогда он не читался ни одним источником. Порядок тот же, что у остальных: слой extra впереди плоского (норма $note_extra), канон впереди алиаса."
+        },
+        "sessionTable": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.sessionTable",
+            "json.streamSettings.xhttpSettings.extra.session_table",
+            "json.streamSettings.xhttpSettings.extra.sessionIDTable",
+            "json.streamSettings.xhttpSettings.extra.session_id_table",
+            "json.streamSettings.splithttpSettings.extra.sessionTable",
+            "json.streamSettings.splithttpSettings.extra.session_table",
+            "json.streamSettings.splithttpSettings.extra.sessionIDTable",
+            "json.streamSettings.splithttpSettings.extra.session_id_table",
+            "json.streamSettings.xhttpSettings.sessionTable",
+            "json.streamSettings.xhttpSettings.session_table",
+            "json.streamSettings.xhttpSettings.sessionIDTable",
+            "json.streamSettings.xhttpSettings.session_id_table",
+            "json.streamSettings.splithttpSettings.sessionTable",
+            "json.streamSettings.splithttpSettings.session_table",
+            "json.streamSettings.splithttpSettings.sessionIDTable",
+            "json.streamSettings.splithttpSettings.session_id_table"
+          ],
+          "maps_to": "transport.session_table",
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "Контракт 1.1.168, зеркало записи sessionTable блока uri/xhttp: те же четыре написания (канон, snake, прото Xray sessionIDTable, его snake), слой extra впереди плоского, оба имени контейнера. Прежний отказ 1.1.47 отменён — парная защита в теле."
+        },
+        "sessionLength": {
+          "source": [
+            "json.streamSettings.xhttpSettings.extra.sessionLength",
+            "json.streamSettings.xhttpSettings.extra.session_length",
+            "json.streamSettings.xhttpSettings.extra.sessionIDLength",
+            "json.streamSettings.xhttpSettings.extra.session_id_length",
+            "json.streamSettings.splithttpSettings.extra.sessionLength",
+            "json.streamSettings.splithttpSettings.extra.session_length",
+            "json.streamSettings.splithttpSettings.extra.sessionIDLength",
+            "json.streamSettings.splithttpSettings.extra.session_id_length",
+            "json.streamSettings.xhttpSettings.sessionLength",
+            "json.streamSettings.xhttpSettings.session_length",
+            "json.streamSettings.xhttpSettings.sessionIDLength",
+            "json.streamSettings.xhttpSettings.session_id_length",
+            "json.streamSettings.splithttpSettings.sessionLength",
+            "json.streamSettings.splithttpSettings.session_length",
+            "json.streamSettings.splithttpSettings.sessionIDLength",
+            "json.streamSettings.splithttpSettings.session_id_length"
+          ],
+          "maps_to": "transport.session_length",
+          "omit_default": "0",
+          "when": {
+            "transport.type": "xhttp"
+          },
+          "impl": "Контракт 1.1.168, зеркало записи sessionLength блока uri/xhttp. Число JSON (Int32Range числом: 10 → 10-10) приводится к строке «10» общим правилом движка, строка «10-20» едет дословно; «0» и пусто не пишутся (omit_default). Xray infra/conf/transport_method.go (SplitHTTPConfig: SessionIDTable string, SessionIDLength Int32Range, json-теги sessionIDTable/sessionIDLength; Build: имя из transport/internet/splithttp/config.go PredefinedTable разворачивается в алфавит, таблица только ASCII, room = len(table)^from ≥ 2^31, from > 0). Форма длины — infra/conf/common.go Int32Range.UnmarshalJSON: число (10 → 10-10) ЛИБО строка «10» / «10-20»; других форм нет. Ядро sing-box-lx (option/v2ray_xhttp.go session_table/session_length, transport/v2rayxhttp/meta.go parseRange) принимает «n» и «min-max» строкой, число маппер стрингифицирует канонично (10.0 → '10') тем же правилом, что у остальных числовых полей extra."
         },
         "seqPlacement": {
           "source": [

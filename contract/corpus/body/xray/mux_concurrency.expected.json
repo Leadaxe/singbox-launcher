@@ -5,10 +5,6 @@
   "nodes": [
     {
       "entry": {
-        "multiplex": {
-          "enabled": true,
-          "max_streams": 8
-        },
         "server": "a.example",
         "server_port": 443,
         "type": "vless",
@@ -16,7 +12,14 @@
       },
       "kind": "outbound",
       "label": "mux",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        {
+          "code": "xray_mux_unsupported",
+          "path": "enabled",
+          "value": "true"
+        }
+      ]
     }
   ],
   "v": 1

@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "transport": {
+          "path": "/p",
+          "session_length": "8",
+          "session_table": "Base62",
+          "type": "xhttp"
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "splithttp session snake",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

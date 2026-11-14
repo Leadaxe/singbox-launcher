@@ -188,6 +188,14 @@ Read when the link says `type=xhttp`; the reference page is [`_transports.md`](_
   - Also spelled: `sessionKey`, `sessionIDKey`
   - Type: string · Default: `""`
   - Maps to: [`transport.xhttp.session_key`](#body-transport-xhttp-session-key)
+- <a id="link-tr-xhttp-session-table"></a>**`session_table`** — Alphabet used to generate session ids (name or literal).
+  - Also spelled: `sessionTable`, `sessionIDTable`
+  - Type: string · Default: `""`
+  - Maps to: [`transport.xhttp.session_table`](#body-transport-xhttp-session-table)
+- <a id="link-tr-xhttp-session-length"></a>**`session_length`** — Session id length: a number or a min-max range.
+  - Also spelled: `sessionLength`, `sessionIDLength`
+  - Type: string · Default: `""`
+  - Maps to: [`transport.xhttp.session_length`](#body-transport-xhttp-session-length)
 - <a id="link-tr-xhttp-seq-placement"></a>**`seq_placement`** — Where the packet sequence number is carried.
   - Also spelled: `seqPlacement`
   - Type: enum: `path`, `query`, `header`, `cookie` · Default: `""`
@@ -614,9 +622,11 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Set by link parameter: [`seq_key`](#link-tr-xhttp-seq-key)
 - <a id="body-transport-xhttp-session-table"></a>**`transport.xhttp.session_table`** — Alphabet used to generate session ids.
   - Type: string
+  - Set by link parameter: [`session_table`](#link-tr-xhttp-session-table)
   - Meaningless without: `transport.session_length`
 - <a id="body-transport-xhttp-session-length"></a>**`transport.xhttp.session_length`** — Length range of the session id.
   - Type: string
+  - Set by link parameter: [`session_length`](#link-tr-xhttp-session-length)
   - Meaningless without: `transport.session_table`
 - <a id="body-transport-xhttp-uplink-data-placement"></a>**`transport.xhttp.uplink_data_placement`** — Where uplink data is carried.
   - Type: enum, `""`, `body`, `auto`, `header`, `cookie`

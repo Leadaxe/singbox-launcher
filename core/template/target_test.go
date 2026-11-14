@@ -344,3 +344,48 @@ func TestBundledTemplate_AutoRedirectLinuxOnly(t *testing.T) {
 		}
 	}
 }
+
+// lx.sniff_guard — защита, которую с ядра 1.14.4-lx.34 включает тот, кто
+// пишет конфиг (контракт 1.1.170): по умолчанию — обе секции и фильтр
+// sni_mismatch, persist только по настройке; секция с методом off не
+// пишется, блок без секций — тоже.
+func TestBundledTemplate_SniffGuardBlock(t *testing.T) {
+	spec := TargetSpec{GOOS: "darwin", GOARCH: "arm64", Target: TargetLocal}
+	render := func(vars map[string]string) string {
+		lx, _ := renderBundledTemplate(t, spec, vars)["lx"].(map[string]interface{})
+		if _, old := lx["quic_sniff_decoy"]; old {
+			t.Errorf("vars %v: lx.quic_sniff_decoy must never be written", vars)
+		}
+		guard, ok := lx["sniff_guard"]
+		if !ok {
+			return ""
+		}
+		out, _ := json.Marshal(guard) // ключи карты — по алфавиту
+		return string(out)
+	}
+	const nodes = `"nodes":{"sni_mismatch":true}`
+	const tls = `"tls":{"method":"record_fragment"}`
+	const quic = `"quic":{"detour_type":{"socks":"never"},"method":"decoy_first_byte"}`
+	cases := []struct {
+		vars map[string]string
+		want string
+	}{
+		{nil, "{" + nodes + "," + quic + "," + tls + "}"},
+		{map[string]string{"sniff_guard_quic": "off"}, "{" + nodes + "," + tls + "}"},
+		{map[string]string{"sniff_guard_tls": "off"}, "{" + nodes + "," + quic + "}"},
+		{map[string]string{"sniff_guard_tls": "off", "sniff_guard_quic": "off"}, ""},
+		// Выключенный фильтр пишется явным false: без ключа ядро берёт true.
+		{map[string]string{"sniff_guard_sni_mismatch": "false"}, `{"nodes":{"sni_mismatch":false},` + quic + "," + tls + "}"},
+		{
+			map[string]string{"sniff_guard_persist": "true", "sniff_guard_tls": "delay"},
+			`{` + nodes + `,"quic":{"detour_type":{"socks":"never"},"method":"decoy_first_byte","persist":true},"tls":{"method":"delay","persist":true}}`,
+		},
+		// Значения снятых переменных приманки на блок не влияют.
+		{map[string]string{"quic_sniff_decoy": "detour", "quic_sniff_decoy_send": "always"}, "{" + nodes + "," + quic + "," + tls + "}"},
+	}
+	for _, c := range cases {
+		if got := render(c.vars); got != c.want {
+			t.Errorf("vars %v: lx.sniff_guard = %s, want %s", c.vars, got, c.want)
+		}
+	}
+}

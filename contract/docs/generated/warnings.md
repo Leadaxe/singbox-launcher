@@ -129,6 +129,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`xray_cert_chain_pin_unsupported`](#xray_cert_chain_pin_unsupported) · `warning` — TLS: certificate pinning not applied
 - [`xray_domain_strategy_ignored`](#xray_domain_strategy_ignored) · `info` — WireGuard: address family preference not applied
 - [`xray_extra_entries_dropped`](#xray_extra_entries_dropped) · `warning` — Configuration: extra entries dropped
+- [`xray_mux_unsupported`](#xray_mux_unsupported) · `info` — Xray mux not applied
 - [`xray_reserved_base64_unsupported`](#xray_reserved_base64_unsupported) · `warning` — WireGuard: reserved bytes written as text not applied
 
 <a id="alias_shadowed"></a>
@@ -578,7 +579,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **{tag}: TLS fragmentation removed for the hop**
 
-- **What happened:** Node {tag} is routed through {target}, so its TLS runs inside the hop's tunnel, where splitting the ClientHello does not help against DPI. An explicit fragmentation setting would also turn off the record fragmentation the core applies to such nodes on its own and add a 500 ms pause per segment. The setting was removed; the core's own default applies.
+- **What happened:** Node {tag} is routed through {target}, so its TLS runs inside the hop's tunnel, where splitting the ClientHello does not help against DPI. An explicit fragmentation setting would also take the node out of the sniff guard, which protects such nodes from a sniffing relay, and add a 500 ms pause per segment. The setting was removed; the sniff guard (Settings) applies.
 - **Why it happens:** The node arrived with TLS fragmentation (from a subscription or a link), and you assigned a hop to it — personally, through its folder or in a chain.
 - **What you can do:**
   - Nothing to do: fragmentation belongs on the hop that connects directly.
@@ -2436,6 +2437,22 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Check that the first entry is the one you need: it is the one that became the node.
   - If you need the other servers too, split them into separate elements — one server per outbound.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="xray_mux_unsupported"></a>
+### xray_mux_unsupported
+
+**severity:** `info`
+
+**Xray mux not applied**
+
+- **What happened:** The element turns on Xray mux. The core does not speak Xray's mux protocol, so mux was removed and the node was imported without multiplexing.
+- **Why it happens:** Xray mux is the Mux.Cool protocol, while sing-box multiplexing is h2mux, smux or yamux. They are different protocols on the wire: an Xray server does not understand sing-box multiplexing and would refuse every connection. An Xray server always accepts plain connections too, so the node works without mux.
+- **What you can do:**
+  - Nothing needs doing: the node works without mux.
 
 **Where it comes from:**
 

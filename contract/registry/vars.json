@@ -362,29 +362,29 @@
       "in": "both",
       "note": "lx.mtu_align ядра (SPEC 120 форка, >= 1.14.3-lx.14); options clamp / fill / off, дефолт clamp = дефолт ядра. Эмитится строкой режима в корневой lx шаблона, кроме clamp (контракт 1.1.151, LxBox §709). except в шаблон не выносится."
     },
-    "quic_sniff_decoy": {
+    "sniff_guard_tls": {
       "type": "enum",
       "portable": false,
       "in": "both",
-      "note": "lx.quic_sniff_decoy ядра (SPEC 151 форка; объект {mode, outbound_type, detour_type, send} с 1.14.4-lx.33, строка и bool валят загрузку конфига). options off / detour / direct / all, дефолт шаблона off = дефолт ядра (контракт 1.1.163). Ключ только при значении из detour / direct / all (#in), иначе ключа нет. Норма эмиссии — одна для обеих сторон (контракт 1.1.166, LxBox §162 п.3): объект, mode и send всегда, outbound_type / detour_type только непустыми списками (#notEmpty) из quic_sniff_decoy_outbounds / quic_sniff_decoy_detours. Строка режима lx.30–lx.32 (нормы 1.1.152 и 1.1.164 «сторона с пином lx.30–lx.32») больше не пишется никем: пин обеих сторон — 1.14.4-lx.33. Оставшееся в состоянии true/false (bool из 1.1.151) через #in не эмитится; миграции нет. Граница версии ключа — registry/core_config.json."
+      "note": "lx.sniff_guard.tls.method ядра (FEATURE 019 / SPEC 060 форка, >= 1.14.4-lx.34). options record_fragment / fragment / delay / off, дефолт record_fragment (решение владельца 14.11.2026, контракт 1.1.170) — НЕ дефолт ядра: у ядра без метода секция выключена, а прежний авторазрез ClientHello под detour с lx.34 снят, поэтому защиту включает сторона, пишущая конфиг. Норма эмиссии — одна для обеих сторон: секция `tls: {method: <значение>}` при значении, отличном от off; при off секции нет; `persist: true` дописывается в секцию только при включённой sniff_guard_persist. delay секции не пишется (дефолт ядра 300ms). Общая карта detour_type и override не пишутся — дефолты ядра (direct / ssh / socks = clean, \"*\" = suspect; override false); фильтр nodes — var sniff_guard_sni_mismatch: явные tls.fragment / tls.record_fragment узла сильнее блока. Блок lx.sniff_guard не пишется, если обе секции off. Граница версии ключа — registry/core_config.json."
     },
-    "quic_sniff_decoy_send": {
+    "sniff_guard_quic": {
       "type": "enum",
       "portable": false,
       "in": "both",
-      "note": "lx.quic_sniff_decoy.send ядра (SPEC 151 форка, объект с 1.14.4-lx.33). options retry / always, дефолт retry = дефолт ядра: retry — байт-обманка только на повторе после неудачной первой попытки, always — на каждом соединении (поведение lx.30–lx.32); на wireguard не действует. Пишется всегда внутри объекта quic_sniff_decoy; #enable при quic_sniff_decoy != off (контракты 1.1.164 / 1.1.166, LxBox 709, §162)."
+      "note": "lx.sniff_guard.quic.method ядра (FEATURE 019 / SPEC 060 форка, >= 1.14.4-lx.34), замена снятой lx.quic_sniff_decoy. options decoy_first_byte / delay / off, дефолт decoy_first_byte (решение владельца 14.11.2026, контракт 1.1.170). Норма эмиссии — одна для обеих сторон: секция `quic: {method: <значение>, detour_type: {socks: never}}` при значении, отличном от off; при off секции нет; `persist: true` дописывается только при включённой sniff_guard_persist. `socks: never` — константа шаблона: через socks с UDP-over-TCP байт-приманка ломала туннель без сниффера на пути (полевой отчёт 06.11.2026). Ключ \"*\" в quic.detour_type НЕ пишется — старт suspect через зашифрованные релеи (дефолт ядра): AmneziaWG метку пути не учит и на clean-пути защиту не получил бы никогда. Значения снятых quic_sniff_decoy / quic_sniff_decoy_send / quic_sniff_decoy_outbounds / quic_sniff_decoy_detours в сохранённом состоянии и бэкапах игнорируются, в новые переменные не переносятся."
     },
-    "quic_sniff_decoy_outbounds": {
-      "type": "text_list",
+    "sniff_guard_sni_mismatch": {
+      "type": "bool",
       "portable": false,
       "in": "both",
-      "note": "lx.quic_sniff_decoy.outbound_type ядра (объект с 1.14.4-lx.33): типы узлов, которые шлют обманку перед своим QUIC-рукопожатием. ЗАКРЫТЫЙ список: text_list + options БЕЗ options_open (контракт 1.1.166; в 1.1.164 был options_open) — свободный ввод запрещён, ядро принимает только известные типы и на неизвестном не стартует. options ровно: masque, hysteria2, tuic, trusttunnel, vless, vmess, trojan, wireguard; дефолт masque = дефолт ядра. UI — множественный выбор только из списка. Пишется в объект только непустым списком (#notEmpty); пустой или отсутствующий список ядро читает как дефолтный. #enable при quic_sniff_decoy != off."
+      "note": "lx.sniff_guard.nodes.sni_mismatch ядра (>= 1.14.4-lx.34). Дефолт true = дефолт ядра (решение владельца 14.11.2026, контракт 1.1.170): защищаются только узлы, у которых SNI не совпадает с адресом server. Норма эмиссии — одна для обеих сторон: ключ пишется ВСЕГДА, значением переменной — `nodes: {sni_mismatch: true|false}`. Опускать его при false нельзя: без ключа ядро берёт true, и выключенная настройка ничего бы не выключала. nodes.outbound_type не пишется. Без метода в обеих секциях блока нет, и переменная ни на что не влияет; #enable — хотя бы один из sniff_guard_tls / sniff_guard_quic не off."
     },
-    "quic_sniff_decoy_detours": {
-      "type": "text_list",
+    "sniff_guard_persist": {
+      "type": "bool",
       "portable": false,
       "in": "both",
-      "note": "lx.quic_sniff_decoy.detour_type ядра (объект с 1.14.4-lx.33): обманка идёт, только если ближайшее реле (detour) одного из этих типов; за группой считается тип выбранного группой члена. ЗАКРЫТЫЙ список: text_list + options БЕЗ options_open (контракт 1.1.166; в 1.1.164 был options_open) — тип, которого сборка ядра не знает, валит старт. options ровно: vless, vmess, trojan, shadowsocks, socks, http, ssh, hysteria2, tuic, masque, trusttunnel, wireguard, anytls, naive, shadowtls; дефолт vless = дефолт ядра. UI — множественный выбор только из списка. Пишется в объект только непустым списком (#notEmpty). #enable при quic_sniff_decoy != off."
+      "note": "persist секций lx.sniff_guard ядра (>= 1.14.4-lx.34): метки зашифрованных релеев пишутся в experimental.cache_file и переживают перезапуск и применение нового конфига. ОДНА переменная на обе секции. Дефолт false = дефолт ядра (решение владельца 14.11.2026, контракт 1.1.170). Норма эмиссии: при true `persist: true` дописывается в каждую секцию, у которой есть метод; при false ключа нет. persist: true без включённого experimental.cache_file — отказ загрузки ядром, поэтому конфиг без cache_file (отдельный экземпляр ядра для проверки узлов) несёт блок без persist при любом значении переменной. #enable — хотя бы один из sniff_guard_tls / sniff_guard_quic не off."
     },
     "masque_idle_timeout": {
       "type": "enum",

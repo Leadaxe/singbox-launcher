@@ -271,7 +271,7 @@ func showFlagPickerPopup(
 	regexClear.Importance = widget.LowImportance
 	regexClear.SetToolTip(locale.T("Clear the pattern"))
 
-	regexRow := fynewidget.CategoryRow(invertChip, locale.T("Regex"),
+	regexRow := fynewidget.CategoryRow(invertChip, locale.TN(2, "Regex"),
 		container.NewBorder(nil, nil, nil,
 			container.NewHBox(regexCopy, regexClear),
 			regexEntry,

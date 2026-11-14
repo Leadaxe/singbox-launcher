@@ -2422,8 +2422,8 @@
       ],
       "title_en": "{tag}: TLS fragmentation removed for the hop",
       "title_ru": "{tag}: фрагментация TLS снята ради хопа",
-      "text_en": "Node {tag} is routed through {target}, so its TLS runs inside the hop's tunnel, where splitting the ClientHello does not help against DPI. An explicit fragmentation setting would also turn off the record fragmentation the core applies to such nodes on its own and add a 500 ms pause per segment. The setting was removed; the core's own default applies.",
-      "text_ru": "Узел {tag} ведётся через {target}, и его TLS идёт внутри туннеля хопа, где разбиение ClientHello против DPI не помогает. Явная фрагментация к тому же отключила бы разбиение TLS-записей, которое ядро само включает таким узлам, и добавила бы паузу 500 мс на сегмент. Настройка снята; действует умолчание ядра.",
+      "text_en": "Node {tag} is routed through {target}, so its TLS runs inside the hop's tunnel, where splitting the ClientHello does not help against DPI. An explicit fragmentation setting would also take the node out of the sniff guard, which protects such nodes from a sniffing relay, and add a 500 ms pause per segment. The setting was removed; the sniff guard (Settings) applies.",
+      "text_ru": "Узел {tag} ведётся через {target}, и его TLS идёт внутри туннеля хопа, где разбиение ClientHello против DPI не помогает. Явная фрагментация к тому же вывела бы узел из-под защиты от сниффинга, которая бережёт такие узлы от релея со сниффером, и добавила бы паузу 500 мс на сегмент. Настройка снята; действует защита от сниффинга (Settings).",
       "cause_en": "The node arrived with TLS fragmentation (from a subscription or a link), and you assigned a hop to it — personally, through its folder or in a chain.",
       "cause_ru": "Узел пришёл с фрагментацией TLS (из подписки или ссылки), а вы назначили ему хоп — лично, через папку или в цепочке.",
       "fix_en": [
@@ -2434,7 +2434,7 @@
         "Делать ничего не нужно: фрагментация нужна хопу, который подключается напрямую.",
         "Если фрагментация нужна самому хопу, включите её у узла-хопа."
       ],
-      "desc": "Контракт 1.1.84, факт ядра от LxBox §573: при непустом detour ядро само ставит record_fragment, если не заданы ни fragment, ни record_fragment; явный fragment этот дефолт отключает и даёт паузу 500 мс на сегмент. Связь tls.json body.fields.fragment conflicts {with: detour}; detour — managed-поле, его пишет сборка после санитайзера, связь проверяется по готовому телу сразу после проставления detour (тот же механизм, что у detour_with_listen_port). Уступает fragment, detour не трогается. Та же норма у LxBox.",
+      "desc": "Контракт 1.1.84, факт ядра от LxBox §573 (ядро до lx.33): при непустом detour ядро само ставит record_fragment, если не заданы ни fragment, ни record_fragment; явный fragment этот дефолт отключает и даёт паузу 500 мс на сегмент. Контракт 1.1.170 (ядро >= 1.14.4-lx.34): авторазреза под detour больше нет, его место занял блок lx.sniff_guard (var sniff_guard_tls); при override: false явный fragment узла сильнее блока — узел выпал бы из защиты и получил бы ту же паузу, поэтому норма снятия не меняется, изменились только тексты. Связь tls.json body.fields.fragment conflicts {with: detour}; detour — managed-поле, его пишет сборка после санитайзера, связь проверяется по готовому телу сразу после проставления detour (тот же механизм, что у detour_with_listen_port). Уступает fragment, detour не трогается. Та же норма у LxBox.",
       "dart": null,
       "go": "core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks — после проставления detour поля, уступающие ему, снимает core/config/nodelink_resolve.go:yieldToBuildDetour (вопрос к реестру — core/config/registry/registry.go:Registry.YieldsTo); владелец цепочки — core/config/outbound_generator.go:EmitNodeJSONs"
     },
@@ -2758,6 +2758,25 @@
       "desc": "grpcSettings.multiMode Xray-элемента при ИСТИННОМ значении. Эквивалента у ядра нет (V2RayGRPCOptions знает service_name/idle_timeout/ping_timeout/permit_without_stream); режим gun — сегодняшнее поведение, и он принимается молча. Ложное значение кода не даёт: терять нечего, когда режим и не просили. Парный случай authority кода НЕ имеет намеренно — та потеря поведения не меняет и шумела бы на каждом grpc-узле всех четырёх панелей.",
       "dart": null,
       "go": "правило реестра contract/registry/transports.json blocks.xray.grpc.multiMode.on_present (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
+    },
+    "xray_mux_unsupported": {
+      "severity": "info",
+      "params": [],
+      "title_en": "Xray mux not applied",
+      "title_ru": "Xray mux не применяется",
+      "text_en": "The element turns on Xray mux. The core does not speak Xray's mux protocol, so mux was removed and the node was imported without multiplexing.",
+      "text_ru": "Элемент включает Xray mux. Ядро не умеет протокол мультиплексирования Xray, поэтому mux снят, а узел импортирован без мультиплексирования.",
+      "cause_en": "Xray mux is the Mux.Cool protocol, while sing-box multiplexing is h2mux, smux or yamux. They are different protocols on the wire: an Xray server does not understand sing-box multiplexing and would refuse every connection. An Xray server always accepts plain connections too, so the node works without mux.",
+      "cause_ru": "Xray mux — это протокол Mux.Cool, а мультиплексирование sing-box — h2mux, smux или yamux. На проводе это разные протоколы: сервер Xray мультиплексирование sing-box не понимает и отверг бы каждое соединение. Обычные соединения сервер Xray принимает всегда, поэтому без mux узел работает.",
+      "fix_en": [
+        "Nothing needs doing: the node works without mux."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно: узел работает без mux."
+      ],
+      "desc": "mux.enabled Xray-элемента при ИСТИННОМ значении (D-146, контракт 1.1.169). Mux.Cool ≠ h2mux/smux/yamux: клиента Mux.Cool в ядре нет, а multiplex ядра сервер Xray принимает за обычное назначение. Ложное значение кода не даёт. Явный multiplex в sing-box JSON не затронут.",
+      "dart": null,
+      "go": "правило реестра contract/registry/multiplex.json blocks.xray.enabled.on_present (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
     },
     "fields_order_invalid": {
       "severity": "warning",

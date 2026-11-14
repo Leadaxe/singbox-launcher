@@ -79,7 +79,7 @@
         "managed": true,
         "desc_en": "Tag of the outbound this connection is routed through.",
         "desc_ru": "Тег узла, через который идёт это соединение.",
-        "impl": "reference:outbound. ПИШЕТ СБОРКА: detour вычисляется из Направлений и цепочек, в теле узла в state его быть не должно — санитайзер снимает. Непустой detour включает авто-record_fragment (SPEC 060). Конфликт с wireguard.listen_port."
+        "impl": "reference:outbound. ПИШЕТ СБОРКА: detour вычисляется из Направлений и цепочек, в теле узла в state его быть не должно — санитайзер снимает. Непустой detour у ядра до 1.14.4-lx.33 включает авто-record_fragment (SPEC 060 форка); с lx.34 путь через релей защищает блок lx.sniff_guard (контракт 1.1.170). Конфликт с wireguard.listen_port."
       },
       "bind_interface": {
         "type": "string",

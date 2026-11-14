@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "body_kind": "xray-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "security": "auto",
+        "server": "a.example",
+        "server_port": 443,
+        "type": "vmess",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "mux-str",
+      "scheme": "vmess",
+      "warnings": [
+        {
+          "code": "xray_mux_unsupported",
+          "path": "enabled",
+          "value": "true"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}
