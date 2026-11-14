@@ -12,6 +12,7 @@
 - Russian UI: the pattern row label in the emoji picker and in the server filter no longer runs under the field.
 
 ### Technical / Internal
+- `sing-box-lx 1.14.4-lx.35` (was 1.14.4-lx.33). A breaking config change in the core since lx.34: `lx.quic_sniff_decoy` is removed (any value fails the load) and a node routed through another node no longer gets its TLS ClientHello split automatically — both are replaced by `lx.sniff_guard`. The release also carries the upstream stable sync up to 2026-11-14 (uTLS, REALITY client, sing-tun).
 - Contract 1.1.170: `registry/vars.json` drops the four `quic_sniff_decoy*` variables and gains `sniff_guard_tls`, `sniff_guard_quic`, `sniff_guard_sni_mismatch`, `sniff_guard_persist`; `registry/core_config.json` gates `lx.sniff_guard` at `1.14.4-lx.34` and forbids `lx.quic_sniff_decoy` for any core. The config gate now drops forbidden keys when the executing core's version is unknown too (it used to skip the gate entirely).
 
 ## RU
@@ -24,4 +25,5 @@
 - Русский интерфейс: подпись строки шаблона в выборе эмодзи и в фильтре серверов больше не уезжает под поле.
 
 ### Техническое / Внутреннее
+- `sing-box-lx 1.14.4-lx.35` (было 1.14.4-lx.33). Несовместимое изменение конфига ядра с lx.34: ключ `lx.quic_sniff_decoy` удалён (любое значение — отказ загрузки), а узлу, который ведётся через другой узел, ядро больше не режет TLS ClientHello само — оба механизма заменяет `lx.sniff_guard`. В релизе также синк с upstream stable до 14.11.2026 (uTLS, клиент REALITY, sing-tun).
 - Контракт 1.1.170: из `registry/vars.json` сняты четыре переменные `quic_sniff_decoy*`, заведены `sniff_guard_tls`, `sniff_guard_quic`, `sniff_guard_sni_mismatch`, `sniff_guard_persist`; в `registry/core_config.json` блок `lx.sniff_guard` получил границу `1.14.4-lx.34`, а `lx.quic_sniff_decoy` запрещён для любого ядра. Гейт ключей конфига снимает запрещённые ключи и при неизвестной версии ядра-исполнителя (раньше гейт в этом случае не работал вовсе).
