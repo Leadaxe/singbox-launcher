@@ -579,7 +579,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **{tag}: TLS fragmentation removed for the hop**
 
-- **What happened:** Node {tag} is routed through {target}, so its TLS runs inside the hop's tunnel, where splitting the ClientHello does not help against DPI. An explicit fragmentation setting would also turn off the record fragmentation the core applies to such nodes on its own and add a 500 ms pause per segment. The setting was removed; the core's own default applies.
+- **What happened:** Node {tag} is routed through {target}, so its TLS runs inside the hop's tunnel, where splitting the ClientHello does not help against DPI. An explicit fragmentation setting would also take the node out of the sniff guard, which protects such nodes from a sniffing relay, and add a 500 ms pause per segment. The setting was removed; the sniff guard (Settings) applies.
 - **Why it happens:** The node arrived with TLS fragmentation (from a subscription or a link), and you assigned a hop to it — personally, through its folder or in a chain.
 - **What you can do:**
   - Nothing to do: fragmentation belongs on the hop that connects directly.

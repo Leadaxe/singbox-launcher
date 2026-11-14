@@ -2422,8 +2422,8 @@
       ],
       "title_en": "{tag}: TLS fragmentation removed for the hop",
       "title_ru": "{tag}: фрагментация TLS снята ради хопа",
-      "text_en": "Node {tag} is routed through {target}, so its TLS runs inside the hop's tunnel, where splitting the ClientHello does not help against DPI. An explicit fragmentation setting would also turn off the record fragmentation the core applies to such nodes on its own and add a 500 ms pause per segment. The setting was removed; the core's own default applies.",
-      "text_ru": "Узел {tag} ведётся через {target}, и его TLS идёт внутри туннеля хопа, где разбиение ClientHello против DPI не помогает. Явная фрагментация к тому же отключила бы разбиение TLS-записей, которое ядро само включает таким узлам, и добавила бы паузу 500 мс на сегмент. Настройка снята; действует умолчание ядра.",
+      "text_en": "Node {tag} is routed through {target}, so its TLS runs inside the hop's tunnel, where splitting the ClientHello does not help against DPI. An explicit fragmentation setting would also take the node out of the sniff guard, which protects such nodes from a sniffing relay, and add a 500 ms pause per segment. The setting was removed; the sniff guard (Settings) applies.",
+      "text_ru": "Узел {tag} ведётся через {target}, и его TLS идёт внутри туннеля хопа, где разбиение ClientHello против DPI не помогает. Явная фрагментация к тому же вывела бы узел из-под защиты от сниффинга, которая бережёт такие узлы от релея со сниффером, и добавила бы паузу 500 мс на сегмент. Настройка снята; действует защита от сниффинга (Settings).",
       "cause_en": "The node arrived with TLS fragmentation (from a subscription or a link), and you assigned a hop to it — personally, through its folder or in a chain.",
       "cause_ru": "Узел пришёл с фрагментацией TLS (из подписки или ссылки), а вы назначили ему хоп — лично, через папку или в цепочке.",
       "fix_en": [
@@ -2434,7 +2434,7 @@
         "Делать ничего не нужно: фрагментация нужна хопу, который подключается напрямую.",
         "Если фрагментация нужна самому хопу, включите её у узла-хопа."
       ],
-      "desc": "Контракт 1.1.84, факт ядра от LxBox §573: при непустом detour ядро само ставит record_fragment, если не заданы ни fragment, ни record_fragment; явный fragment этот дефолт отключает и даёт паузу 500 мс на сегмент. Связь tls.json body.fields.fragment conflicts {with: detour}; detour — managed-поле, его пишет сборка после санитайзера, связь проверяется по готовому телу сразу после проставления detour (тот же механизм, что у detour_with_listen_port). Уступает fragment, detour не трогается. Та же норма у LxBox.",
+      "desc": "Контракт 1.1.84, факт ядра от LxBox §573 (ядро до lx.33): при непустом detour ядро само ставит record_fragment, если не заданы ни fragment, ни record_fragment; явный fragment этот дефолт отключает и даёт паузу 500 мс на сегмент. Контракт 1.1.170 (ядро >= 1.14.4-lx.34): авторазреза под detour больше нет, его место занял блок lx.sniff_guard (var sniff_guard_tls); при override: false явный fragment узла сильнее блока — узел выпал бы из защиты и получил бы ту же паузу, поэтому норма снятия не меняется, изменились только тексты. Связь tls.json body.fields.fragment conflicts {with: detour}; detour — managed-поле, его пишет сборка после санитайзера, связь проверяется по готовому телу сразу после проставления detour (тот же механизм, что у detour_with_listen_port). Уступает fragment, detour не трогается. Та же норма у LxBox.",
       "dart": null,
       "go": "core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks — после проставления detour поля, уступающие ему, снимает core/config/nodelink_resolve.go:yieldToBuildDetour (вопрос к реестру — core/config/registry/registry.go:Registry.YieldsTo); владелец цепочки — core/config/outbound_generator.go:EmitNodeJSONs"
     },

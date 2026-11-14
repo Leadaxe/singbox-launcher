@@ -243,10 +243,9 @@ func gateConfigForTargetCore(cfg map[string]json.RawMessage, target template.Tar
 	if CoreVersionForTarget == nil {
 		return cfg
 	}
+	// Пустая версия не выход: запрещённые ключи (forbidden) гейт снимает и
+	// при неизвестной версии ядра.
 	version := strings.TrimSpace(CoreVersionForTarget(target))
-	if version == "" {
-		return cfg
-	}
 	out := make(map[string]json.RawMessage, len(cfg))
 	for k, v := range cfg {
 		out[k] = v
@@ -259,7 +258,7 @@ func gateConfigForTargetCore(cfg map[string]json.RawMessage, target template.Tar
 	if len(dropped) == 0 {
 		return cfg
 	}
-	debuglog.WarnLog("Build gate: config keys %s dropped — core %s does not know them (registry core_config min_core)",
+	debuglog.WarnLog("Build gate: config keys %s dropped — core %q does not accept them (registry core_config)",
 		strings.Join(dropped, ", "), version)
 	return out
 }

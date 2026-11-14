@@ -318,64 +318,49 @@
       ]
     },
     {
-      "name": "quic_sniff_decoy",
+      "name": "sniff_guard_tls",
       "type": "enum",
       "wizard_ui": "edit",
-      "title": "Anti-sniff decoy",
-      "tooltip": "Send one junk byte before the QUIC handshake so a relay that sniffs UDP cannot redirect the connection by its SNI. The byte goes only where a node opens QUIC (MASQUE, Hysteria2, TUIC, XHTTP over HTTP/3, AWG with ip=quic) and, by default, only on a retry after a failed first attempt. Through detour: only connections carried by another node; Direct: only this device's own socket; All: both. Needs core 1.14.4-lx.33 or newer — an older core runs without the decoy.",
-      "default_value": "off",
+      "title": "Sniff guard: TLS",
+      "tooltip": "Keeps a relay or a router that sniffs the first handshake packet (Xray sniffing with destOverride and no routeOnly) from redirecting a TLS node by its SNI. The core learns per path whether the guard is needed: it starts on through an encrypted relay, off on a direct path and through SSH or SOCKS. Record fragment (default): the ClientHello is split into several TLS records, no delay. Fragment: split by TCP segments, a pause through a relay. Delay: two pieces with a 300 ms pause. Off: no guard for TLS. A node with its own TLS fragment setting keeps it. Needs core 1.14.4-lx.34 or newer.",
+      "default_value": "record_fragment",
       "options": [
-        {"title": "Off (default)", "value": "off"},
-        {"title": "Through detour", "value": "detour"},
-        {"title": "Direct", "value": "direct"},
-        {"title": "All", "value": "all"}
+        {"title": "Record fragment (default)", "value": "record_fragment"},
+        {"title": "Fragment", "value": "fragment"},
+        {"title": "Delay", "value": "delay"},
+        {"title": "Off", "value": "off"}
       ]
     },
     {
-      "name": "quic_sniff_decoy_send",
+      "name": "sniff_guard_quic",
       "type": "enum",
       "wizard_ui": "edit",
-      "#enable": [{"#not": {"@quic_sniff_decoy": "off"}}],
-      "title": "Decoy sending",
-      "tooltip": "On retry: the first attempt goes without the byte, a failed one is repeated with it. Always: the byte goes on every dial. Does not apply to WireGuard: there the byte goes on every handshake.",
-      "default_value": "retry",
-      "options": [{"title": "On retry (default)", "value": "retry"}, {"title": "Always", "value": "always"}]
-    },
-    {
-      "name": "quic_sniff_decoy_outbounds",
-      "type": "text_list",
-      "wizard_ui": "edit",
-      "#enable": [{"#not": {"@quic_sniff_decoy": "off"}}],
-      "title": "Decoy node types",
-      "tooltip": "Node types that send the byte before their QUIC handshake. Empty means the core default (masque).",
-      "default_value": "masque",
-      "options": ["masque", "hysteria2", "tuic", "trusttunnel", "vless", "vmess", "trojan", "wireguard"]
-    },
-    {
-      "name": "quic_sniff_decoy_detours",
-      "type": "text_list",
-      "wizard_ui": "edit",
-      "#enable": [{"#not": {"@quic_sniff_decoy": "off"}}],
-      "title": "Decoy relay types",
-      "tooltip": "The byte goes only if the nearest relay (detour) is of one of these types. Behind a group the type of the member the group actually picked counts. Empty means the core default (vless).",
-      "default_value": "vless",
+      "title": "Sniff guard: QUIC",
+      "tooltip": "The same guard for nodes that open QUIC (MASQUE, Hysteria2, TUIC, TrustTunnel, XHTTP over HTTP/3, AmneziaWG with a QUIC masquerade). Decoy byte (default): one junk byte goes before the handshake, the server drops it, no delay. Delay: the second handshake packet is held for 300 ms; does nothing for AmneziaWG. Off: no guard for QUIC. Never applied through a SOCKS relay. Needs core 1.14.4-lx.34 or newer.",
+      "default_value": "decoy_first_byte",
       "options": [
-        "vless",
-        "vmess",
-        "trojan",
-        "shadowsocks",
-        "socks",
-        "http",
-        "ssh",
-        "hysteria2",
-        "tuic",
-        "masque",
-        "trusttunnel",
-        "wireguard",
-        "anytls",
-        "naive",
-        "shadowtls"
+        {"title": "Decoy byte (default)", "value": "decoy_first_byte"},
+        {"title": "Delay", "value": "delay"},
+        {"title": "Off", "value": "off"}
       ]
+    },
+    {
+      "name": "sniff_guard_sni_mismatch",
+      "type": "bool",
+      "wizard_ui": "edit",
+      "#enable": [{"#or": [{"#not": {"@sniff_guard_tls": "off"}}, {"#not": {"@sniff_guard_quic": "off"}}]}],
+      "title": "Sniff guard: only masked SNI",
+      "tooltip": "On (default): the guard covers only nodes whose SNI differs from the server address (REALITY, WARP, a decoy SNI, an IP server with a name) — the ones a sniffing relay actually breaks. A node whose SNI is its own server name passes such a relay anyway and is left untouched. Off: the guard covers every node that supports it.",
+      "default_value": "true"
+    },
+    {
+      "name": "sniff_guard_persist",
+      "type": "bool",
+      "wizard_ui": "edit",
+      "#enable": [{"#or": [{"#not": {"@sniff_guard_tls": "off"}}, {"#not": {"@sniff_guard_quic": "off"}}]}],
+      "title": "Sniff guard: remember relays",
+      "tooltip": "Keep what the core has learned about encrypted relays in its cache file, so it survives a restart and a config change. Off (default): every start begins from the starting states. Direct paths and SOCKS relays are never remembered.",
+      "default_value": "false"
     },
     {
       "name": "masque_idle_timeout",
@@ -569,14 +554,25 @@
     },
     "lx": {
       "#if mtu_align": [{"#not": {"@mtu_align": "clamp"}}, {"mtu_align": "@mtu_align"}],
-      "#if quic_sniff_decoy": [
-        {"@quic_sniff_decoy": {"#in": ["detour", "direct", "all"]}},
+      "#if sniff_guard": [
+        {"#or": [{"#not": {"@sniff_guard_tls": "off"}}, {"#not": {"@sniff_guard_quic": "off"}}]},
         {
-          "quic_sniff_decoy": {
-            "mode": "@quic_sniff_decoy",
-            "#if outbound_type": [{"@quic_sniff_decoy_outbounds": "#notEmpty"}, {"outbound_type": "@quic_sniff_decoy_outbounds"}],
-            "#if detour_type": [{"@quic_sniff_decoy_detours": "#notEmpty"}, {"detour_type": "@quic_sniff_decoy_detours"}],
-            "send": "@quic_sniff_decoy_send"
+          "sniff_guard": {
+            "nodes": {"sni_mismatch": "@sniff_guard_sni_mismatch"},
+            "#if tls": [
+              {"#not": {"@sniff_guard_tls": "off"}},
+              {"tls": {"method": "@sniff_guard_tls", "#if persist": ["@sniff_guard_persist", {"persist": true}]}}
+            ],
+            "#if quic": [
+              {"#not": {"@sniff_guard_quic": "off"}},
+              {
+                "quic": {
+                  "method": "@sniff_guard_quic",
+                  "#if persist": ["@sniff_guard_persist", {"persist": true}],
+                  "detour_type": {"socks": "never"}
+                }
+              }
+            ]
           }
         }
       ],

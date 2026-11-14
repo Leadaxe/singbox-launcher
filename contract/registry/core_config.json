@@ -12,7 +12,12 @@
     },
     "lx.quic_sniff_decoy": {
       "min_core": "1.14.4-lx.33",
-      "note": "SPEC 151 форка; var quic_sniff_decoy и три её спутника (send / outbounds / detours). Граница — объектная форма {mode, outbound_type, detour_type, send} (контракт 1.1.166): её пишут обе стороны, а ядро lx.30–lx.32 знает ключ только строкой режима и объект не загрузит — ядру старше lx.33 ключ снимается целиком, оно работает без обманки."
+      "forbidden": true,
+      "note": "SPEC 151 форка. Объектная форма жила только в 1.14.4-lx.33 (строка режима — в lx.30–lx.32), с lx.34 ключ удалён — любое значение, включая null, валит загрузку: «lx.quic_sniff_decoy is removed: the QUIC sniff decoy is configured by lx.sniff_guard.quic». Контракт 1.1.170, как lx.awg_masquerade в 1.1.164: запрещён всегда — четыре var quic_sniff_decoy* сняты из реестра, гейт снимает ключ из конфига при любой версии ядра, в том числе неизвестной (ядро lx.33 после этого работает без приманки — дефолт там и был off); min_core оставлен как история. Замена — lx.sniff_guard.quic."
+    },
+    "lx.sniff_guard": {
+      "min_core": "1.14.4-lx.34",
+      "note": "FEATURE 019 / SPEC 060 форка; var sniff_guard_tls, sniff_guard_quic, sniff_guard_sni_mismatch и sniff_guard_persist (контракт 1.1.170). Ядру старше lx.34 блок снимается целиком: оно его не знает («unknown field»), а TLS-узлам под detour там по-прежнему режет ClientHello сам (авто-record_fragment, снятый в lx.34). Граница стоит на релизе: тег выходит сразу lx.34. Пре-релиз -rc.K младше своего релиза — если появится 1.14.4-lx.34-rc.N, границу сдвинуть на 1.14.4-lx.34-rc.1 одной правкой, иначе rc-сборка останется и без блока, и без авторазреза."
     },
     "lx.awg_masquerade": {
       "min_core": "1.14.4-lx.31",
