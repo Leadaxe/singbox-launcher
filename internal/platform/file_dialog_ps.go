@@ -3,6 +3,7 @@ package platform
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 	"strings"
 	"unicode/utf16"
 )
@@ -39,6 +40,23 @@ func psEncodedCommand(script string) string {
 	return base64.StdEncoding.EncodeToString(raw)
 }
 
+// psEmit — команда PowerShell, печатающая строковое выражение expr в stdout
+// как base64 от UTF-8. Голый [Console]::Out пишет в кодовой странице консоли
+// (cp866 на русской Windows): путь с кириллицей приходил битым, и файл с
+// русским именем не открывался. Обратно — psDecodeOutput.
+func psEmit(expr string) string {
+	return "[Console]::Out.Write([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(" + expr + ")))"
+}
+
+// psDecodeOutput раскодирует stdout скрипта диалога (см. psEmit).
+func psDecodeOutput(out []byte) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(out)))
+	if err != nil {
+		return "", fmt.Errorf("file dialog: unexpected output: %w", err)
+	}
+	return string(raw), nil
+}
+
 // psDialogArgs — аргументы powershell для скрипта диалога. -STA нужен
 // WinForms-диалогам.
 func psDialogArgs(script string) []string {
@@ -46,7 +64,7 @@ func psDialogArgs(script string) []string {
 }
 
 // psOpenFileScript — OpenFileDialog: выбранный путь (или пути через перевод
-// строки при multiple) в stdout; отмена — пусто.
+// строки при multiple) в stdout через psEmit; отмена — пусто.
 func psOpenFileScript(prompt, filter string, multiple bool) string {
 	lines := []string{
 		"$caption = " + psValue(prompt),
@@ -59,10 +77,10 @@ func psOpenFileScript(prompt, filter string, multiple bool) string {
 	if multiple {
 		lines = append(lines,
 			"$d.Multiselect = $true",
-			"if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.FileNames | ForEach-Object { [Console]::Out.WriteLine($_) } }")
+			"if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { "+psEmit("($d.FileNames -join [char]10)")+" }")
 	} else {
 		lines = append(lines,
-			"if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }")
+			"if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { "+psEmit("$d.FileName")+" }")
 	}
 	return strings.Join(lines, "\n")
 }
@@ -79,6 +97,6 @@ func psSaveFileScript(prompt, defaultName, filter string) string {
 		"$d.Title = $caption",
 		"$d.FileName = $name",
 		"$d.Filter = $filter",
-		"if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }",
+		"if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { " + psEmit("$d.FileName") + " }",
 	}, "\n")
 }
