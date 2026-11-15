@@ -139,6 +139,13 @@ type Result struct {
 	// источника снова становится молчаливым.
 	ExcludedSources []SourceExclusion
 
+	// DetourStripped — узлы, у которых последний рубеж снял detour на
+	// недоступную цель (контракт 1.1.171): цели нет в собранном конфиге, узел
+	// ходит напрямую. Парсер о таких целях не знает (селектор шаблона
+	// появляется и исчезает от переключателей), поэтому вызывающий доливает
+	// записи detour_unavailable в отчёт сборки сам.
+	DetourStripped []DetourStripped
+
 	// TemplateWarnings — предупреждения подстановки шаблона (SPEC 143):
 	// мусор в числовой переменной, необъявленное имя, неизвестная директива.
 	// Конфиг при этом собран; вызывающий кладёт их в отчёт как
@@ -208,11 +215,12 @@ func BuildConfig(ctx BuildContext) (Result, error) {
 	// отчёт вместе с предупреждениями главного конфига.
 	var presetWarnings []template.TemplateWarning
 	ctx.Preset.templateWarnings = &presetWarnings
-	sections, excluded, err := buildOrderedSections(ctx, cfg, order)
+	sections, losses, err := buildOrderedSections(ctx, cfg, order)
 	if err != nil {
 		return Result{}, err
 	}
-	res.ExcludedSources = excluded
+	res.ExcludedSources = losses.excluded
+	res.DetourStripped = losses.stripped
 	res.TemplateWarnings = mergeTemplateWarnings(res.TemplateWarnings, presetWarnings)
 
 	// Шаг 3: финальная конкатенация. Раньше тут ещё писался блок-комментарий
@@ -334,11 +342,11 @@ func templateWarningKey(w template.TemplateWarning) string {
 // нужно route-секции для cleanup'а dangling outbound refs. В preview режиме
 // skipping: cache может быть неполный, false-positive drop'ы хуже чем
 // dangling в неприменяемом preview.
-func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, order []string) ([]string, []SourceExclusion, error) {
+func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, order []string) ([]string, graphLosses, error) {
 	out := make([]string, 0, len(order))
 
 	var finalOutboundTags map[string]bool
-	var excluded []SourceExclusion
+	var excluded graphLosses
 	if !ctx.ForPreview {
 		finalOutboundTags = collectAllFinalOutboundTags(ctx, cfg)
 		// Финальный рубеж по всему графу зависимостей (висячие ссылки,
@@ -371,7 +379,7 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 	if raw, ok := cfg["dns"]; ok {
 		formatted, fc, err := buildDNSSection(ctx, raw, finalOutboundTags)
 		if err != nil {
-			return nil, nil, fmt.Errorf("build: section %q: %w", "dns", err)
+			return nil, graphLosses{}, fmt.Errorf("build: section %q: %w", "dns", err)
 		}
 		dnsFormatted, dnsBuilt = formatted, true
 		ctx.dnsFailClosed = fc
@@ -393,7 +401,7 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 		}
 		formatted, err := buildSection(ctx, key, raw, finalOutboundTags)
 		if err != nil {
-			return nil, nil, fmt.Errorf("build: section %q: %w", key, err)
+			return nil, graphLosses{}, fmt.Errorf("build: section %q: %w", key, err)
 		}
 		out = append(out, fmt.Sprintf(`  "%s": %s`, key, formatted))
 	}

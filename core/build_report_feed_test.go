@@ -62,37 +62,33 @@ func TestFeedBuildReportFromParserCleanRun(t *testing.T) {
 	}
 }
 
-// Последний рубеж: одна потеря даёт ДВЕ записи — что потерял пользователь
-// (nodes_dropped, по ней раскрашивается строка Sources) и чего не хватило в
-// сборке (target_missing, субъект = сама цель, её и чинить).
-func TestFeedBuildReportFromSanitizer(t *testing.T) {
+// Последний рубеж снял хоп на недоступную цель (1.1.171): одна запись
+// emit_degraded с кодом detour_unavailable на пару источник × цель, адресат —
+// источник, узлы не снимаются.
+func TestFeedBuildReportFromDetourStripped(t *testing.T) {
 	t.Cleanup(config.ResetBuildReport)
 	gen := config.StartBuildReport()
 
-	FeedBuildReportFromSanitizer(gen, []build.SourceExclusion{{
-		SourceID:      "01BIG",
-		SourceLabel:   "Big Sub",
-		Reason:        "цель detour «vpn ②» не существует в конфиге",
-		DroppedNodes:  500,
-		MissingTarget: "vpn ②",
+	FeedBuildReportFromDetourStripped(gen, []build.DetourStripped{{
+		SourceID:    "01BIG",
+		SourceLabel: "Big Sub",
+		Target:      "vpn ②",
+		Nodes:       []string{"a", "b"},
 	}})
 
-	if n, reason := config.DroppedNodesForSource("01BIG"); n != 500 || reason == "" {
-		t.Errorf("снято %d узлов (причина %q), ожидалось 500 с причиной", n, reason)
+	if n, _ := config.DroppedNodesForSource("01BIG"); n != 0 {
+		t.Errorf("снятый хоп посчитан снятыми узлами: %d", n)
 	}
-
 	entries, _, _ := config.BuildReport()
-	var missing *config.BuildReportEntry
-	for i := range entries {
-		if entries[i].Kind == config.BuildReportTargetMissing {
-			missing = &entries[i]
-		}
+	if len(entries) != 1 {
+		t.Fatalf("записей %d, ожидалась одна: %+v", len(entries), entries)
 	}
-	if missing == nil {
-		t.Fatal("пропавшая цель detour не попала в отчёт отдельной записью")
+	e := entries[0]
+	if e.Kind != config.BuildReportEmitDegraded || e.Code != "detour_unavailable" || e.SourceID != "01BIG" {
+		t.Errorf("запись = %+v, ждали emit_degraded / detour_unavailable у 01BIG", e)
 	}
-	if missing.Subject != "vpn ②" {
-		t.Errorf("субъект записи о пропавшей цели = %q, ожидался сам тег цели", missing.Subject)
+	if e.Params["target"] != "vpn ②" || e.Params["count"] != "2" || e.Params["tags"] != "a, b" {
+		t.Errorf("параметры записи = %v", e.Params)
 	}
 }
 

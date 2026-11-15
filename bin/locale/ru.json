@@ -1018,8 +1018,8 @@
   "Chain %q did not build: %s": {
     "value": "Цепочка %q не собралась: %s"
   },
-  "%d node(s) dropped: detour target %q is gone": {
-    "value": "Снято узлов: %d — цели detour %q больше нет"
+  "%d node(s) now connect directly: detour target %q is unavailable": {
+    "value": "Напрямую теперь подключается узлов: %d — цель detour %q недоступна"
   },
   "node %q: %s removed — it cannot be combined with detour %q": {
     "value": "узел %q: %s снят — несовместим с detour %q"
@@ -1047,9 +1047,6 @@
   },
   "%s — %d node(s) skipped: %s": {
     "value": "%s — пропущено узлов: %d — %s"
-  },
-  "Detour target %q is missing from the build: %s": {
-    "value": "Цели перехода %q нет в сборке: %s"
   },
   "⚠ %d node(s) dropped: %s": {
     "value": "⚠ снято узлов: %d — %s"

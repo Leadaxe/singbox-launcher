@@ -187,38 +187,68 @@ func TestEmitE1_DisabledNodeNotEmitted(t *testing.T) {
 	}
 }
 
-// ── §4.E.2 — detour fail-closed, единой строгостью для всех типов ────
+// ── §4.E.2 — недоступный detour: хоп снят, узел живёт (1.1.171) ─────
 
-func TestEmitE2_DanglingDetourDropsCarrier(t *testing.T) {
-	carrier := canonServerNode("Tokyo", "Tokyo", "h.example", 443)
-	carrier.Detour = &configtypes.NodeLink{Tag: "ghost"}
-
-	res := runCanonicalBuild(t, []ProxySource{
-		canonFolder("F1", "", "", canonServerNode("NL-1", "NL-1", "nl.example", 443)),
-		canonRoot("S1", "Tokyo", carrier),
-	}, nil)
-
-	if hasTag(emittedTags(res), "Tokyo") {
-		t.Error("носитель висячего detour остался в конфиге — трафик пошёл бы напрямую молча")
+// detourUnavailableFor — запись detour_unavailable про цель target.
+func detourUnavailableFor(res *OutboundGenerationResult, target string) *EmissionWarning {
+	for i := range res.EmissionWarnings {
+		w := &res.EmissionWarnings[i]
+		if w.Code == codeDetourUnavailable && w.Params["target"] == target {
+			return w
+		}
 	}
-	if !strings.Contains(joinWarnings(res), "Tokyo") {
-		t.Errorf("деградация не названа пользователю: %v", res.EmissionWarnings)
-	}
+	return nil
 }
 
-func TestEmitE2_DisabledDetourTargetDropsCarrier(t *testing.T) {
-	target := canonServerNode("NL-1", "NL-1", "nl.example", 443)
-	target.Enabled = false
-	carrier := canonServerNode("Tokyo", "Tokyo", "h.example", 443)
-	carrier.Detour = &configtypes.NodeLink{FolderID: "F1", Tag: "NL-1"}
+// Контракт 1.1.171, D-148: недоступная цель detour — узел остаётся без хопа,
+// источник получает detour_unavailable (одна запись на пару источник × цель).
+// Три вида недоступности — нет тега, выключенный узел, выключенное
+// Направление — дают один исход.
+func TestEmitE2_UnavailableDetourStripsHopKeepsNode(t *testing.T) {
+	offNode := canonServerNode("NL-1", "NL-1", "nl.example", 443)
+	offNode.Enabled = false
+	ghost := canonServerNode("Tokyo", "Tokyo", "h.example", 443)
+	ghost.Detour = &configtypes.NodeLink{Tag: "ghost"}
+	viaOff := canonServerNode("Osaka", "Osaka", "o.example", 443)
+	viaOff.Detour = &configtypes.NodeLink{FolderID: "F1", Tag: "NL-1"}
+	viaDir := canonServerNode("Kyoto", "Kyoto", "k.example", 443)
+	viaDir.Detour = &configtypes.NodeLink{Tag: "paused-out"}
+	// Узел, ходящий через узел без хопа, свой хоп сохраняет: цель жива.
+	chained := canonServerNode("Nara", "Nara", "n.example", 443)
+	chained.Detour = &configtypes.NodeLink{Tag: "Tokyo"}
 
 	res := runCanonicalBuild(t, []ProxySource{
-		canonFolder("F1", "", "", target, canonServerNode("SE-1", "SE-1", "se.example", 443)),
-		canonRoot("S1", "Tokyo", carrier),
-	}, nil)
+		canonFolder("F1", "", "", offNode, canonServerNode("SE-1", "SE-1", "se.example", 443)),
+		canonRoot("S1", "Tokyo", ghost),
+		canonRoot("S2", "Osaka", viaOff),
+		canonRoot("S3", "Kyoto", viaDir),
+		canonRoot("S4", "Nara", chained),
+	}, []Direction{{Tag: "paused-out", Type: "selector", Disabled: true}})
 
-	if hasTag(emittedTags(res), "Tokyo") {
-		t.Error("выключенная цель detour: носитель обязан выпасть fail-closed")
+	for _, c := range []struct{ node, target, source string }{
+		{"Tokyo", "ghost", "S1"},
+		{"Osaka", "NL-1", "S2"},
+		{"Kyoto", "paused-out", "S3"},
+	} {
+		obj := emittedObject(t, res, c.node)
+		if obj == nil {
+			t.Errorf("%s: узел с недоступной целью detour выпал, а должен остаться: %v", c.node, emittedTags(res))
+			continue
+		}
+		if _, has := obj["detour"]; has {
+			t.Errorf("%s: detour на недоступную цель не снят: %v", c.node, obj["detour"])
+		}
+		w := detourUnavailableFor(res, c.target)
+		if w == nil {
+			t.Errorf("%s: нет записи detour_unavailable про %q: %v", c.node, c.target, res.EmissionWarnings)
+			continue
+		}
+		if w.SourceID != c.source || w.Params["count"] != "1" || w.Params["tags"] != c.node {
+			t.Errorf("%s: запись detour_unavailable = %+v, ждали источник %s, count 1, tags %s", c.node, *w, c.source, c.node)
+		}
+	}
+	if nara := emittedObject(t, res, "Nara"); nara == nil || nara["detour"] != "Tokyo" {
+		t.Errorf("узел через узел без хопа потерял свой detour: %v", nara)
 	}
 }
 
@@ -804,11 +834,9 @@ func TestEmitDisabledNodeConsumesNumVariable(t *testing.T) {
 
 // ── Фикс-раунд W4: WG с висячим detour не молчит ─────────────────────
 
-// Висячий detour у WG роняет носитель ровно так же, как у любого другого
-// узла: единая строгость detour, исключений по типу нет.
-func TestEmitWireguardDanglingDetourDropsNode(t *testing.T) {
-	// Висячая цель у WG — тот же fail-closed, что у любого узла: тихий
-	// прямой дозвон вместо заданного маршрута недопустим.
+// Висячий detour у WG снимается ровно так же, как у любого другого узла
+// (1.1.171): узел остаётся без хопа, исключений по типу нет.
+func TestEmitWireguardDanglingDetourStripsHop(t *testing.T) {
 	wg := configtypes.CanonicalNode{
 		Kind:       "server",
 		Tag:        "WG",
@@ -823,17 +851,15 @@ func TestEmitWireguardDanglingDetourDropsNode(t *testing.T) {
 		canonRoot("S1", "WG", wg),
 	}, nil)
 
-	if strings.Contains(strings.Join(res.EndpointsJSON, "\n"), `"WG"`) {
-		t.Errorf("узел с висячим detour попал в конфиг: %v", res.EndpointsJSON)
+	eps := strings.Join(res.EndpointsJSON, "\n")
+	if !strings.Contains(eps, `"WG"`) {
+		t.Errorf("WG с висячим detour выпал, а должен остаться: %v", res.EndpointsJSON)
 	}
-	found := false
-	for _, w := range EmissionWarningTexts(res.EmissionWarnings) {
-		if strings.Contains(w, "WG") && strings.Contains(w, "ghost") {
-			found = true
-		}
+	if strings.Contains(eps, `"detour"`) {
+		t.Errorf("висячий detour у WG не снят: %v", res.EndpointsJSON)
 	}
-	if !found {
-		t.Errorf("висячий detour у WG проглочен молча: %v", res.EmissionWarnings)
+	if w := detourUnavailableFor(res, "ghost"); w == nil || w.Params["tags"] != "WG" {
+		t.Errorf("висячий detour у WG снят молча: %v", res.EmissionWarnings)
 	}
 }
 

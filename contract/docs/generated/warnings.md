@@ -88,7 +88,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`scheme_unsupported`](#scheme_unsupported) · `error` — Link: scheme {scheme} is not supported
 - [`service_record_ignored`](#service_record_ignored) · `info` — Subscription: service record {scheme} skipped
 - [`source_detour_cycle`](#source_detour_cycle) · `error` — Node {tag} excluded: hops form a loop
-- [`source_detour_missing`](#source_detour_missing) · `error` — Source chain broken: {target} not found
 - [`source_detour_self`](#source_detour_self) · `error` — Node {tag} excluded: hop points at itself
 - [`ss_method_invalid`](#ss_method_invalid) · `error` — Unsupported encryption method {method}
 - [`ss_method_legacy`](#ss_method_legacy) · `info` — Shadowsocks: legacy cipher
@@ -1611,23 +1610,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Pick the hops so that they do not lead back to the node.
   - Or remove the hop from one of the nodes in the loop.
-
-**Where it comes from:**
-
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
-
-<a id="source_detour_missing"></a>
-### source_detour_missing
-
-**severity:** `error` · **params:** `target`, `count`
-
-**Source chain broken: {target} not found**
-
-- **What happened:** You routed this source through {target}, and that node is gone. All {count} of its nodes were excluded on purpose: without the assigned hop the traffic would go directly, past the boundary you set.
-- **Why it happens:** You assigned a hop to this source yourself, and the node serving as that hop is gone: it disappeared from its subscription after an update, was renamed, or was deleted.
-- **What you can do:**
-  - Assign an existing node as the hop for this source.
-  - Or remove the hop if the source no longer needs to go through one.
 
 **Where it comes from:**
 

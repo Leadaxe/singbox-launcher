@@ -550,7 +550,7 @@
         "Попросите у провайдера конфиг со всеми узлами, на которые он ссылается, и обновите подписку.",
         "Выберите другой узел из этой подписки."
       ],
-      "desc": "detour указывает на тег ИМПОРТИРУЕМОГО конфига, которого в нём нет или который узлом не стал (неподдержанный тип, битая запись) — FAIL-CLOSED (контракт 1.1.118, решение владельца 13.10.2026; до того цепочка обрезалась и узел ходил напрямую). Узел-носитель отбраковывается записью kind=unsupported на своей позиции с этим кодом. Та же строгость, что у source_detour_missing (detour источника, настроенный пользователем).",
+      "desc": "detour указывает на тег ИМПОРТИРУЕМОГО конфига, которого в нём нет или который узлом не стал (неподдержанный тип, битая запись) — FAIL-CLOSED (контракт 1.1.118, решение владельца 13.10.2026; до того цепочка обрезалась и узел ходил напрямую). Узел-носитель отбраковывается записью kind=unsupported на своей позиции с этим кодом. Строже, чем у detour, назначенного пользователем: там недоступная цель снимает хоп с detour_unavailable (1.1.171), а здесь норма D-128 не менялась.",
       "dart": "DetourTargetMissingWarning",
       "go": "core/config/subscription/detour_chain.go:singboxChainInfo.attachChain — отказ сборки цепочки (цель не найдена или не разобралась); отбраковку записывает core/config/subscription/singbox_import.go:parseSingboxConfig (rejected.addCoded)"
     },
@@ -1563,30 +1563,6 @@
       "dart": null,
       "go": "core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks — после проставления detour (core/config/nodelink_resolve.go:resolveCanonicalDetour) поля, уступающие ему по связи conflicts реестра, снимаются общим core/config/nodelink_resolve.go:yieldToBuildDetour (вопрос к реестру — core/config/registry/registry.go:Registry.YieldsTo); код — EmissionWarning.Code в отчёт сборки"
     },
-    "source_detour_missing": {
-      "severity": "error",
-      "params": [
-        "target",
-        "count"
-      ],
-      "title_en": "Source chain broken: {target} not found",
-      "title_ru": "Цепочка источника порвана: нет {target}",
-      "text_en": "You routed this source through {target}, and that node is gone. All {count} of its nodes were excluded on purpose: without the assigned hop the traffic would go directly, past the boundary you set.",
-      "text_ru": "Вы вели этот источник через {target}, и этот узел пропал. Все его узлы ({count}) исключены намеренно: без назначенного хопа трафик пошёл бы напрямую, мимо заданной вами границы.",
-      "cause_en": "You assigned a hop to this source yourself, and the node serving as that hop is gone: it disappeared from its subscription after an update, was renamed, or was deleted.",
-      "cause_ru": "Вы сами назначили этому источнику хоп, и узел, который был этим хопом, исчез: пропал из своей подписки после обновления, был переименован или удалён.",
-      "fix_en": [
-        "Assign an existing node as the hop for this source.",
-        "Or remove the hop if the source no longer needs to go through one."
-      ],
-      "fix_ru": [
-        "Назначьте этому источнику хопом существующий узел.",
-        "Или снимите хоп, если источнику больше не нужно идти через него."
-      ],
-      "desc": "Detour-узел, НАЗНАЧЕННЫЙ ПОЛЬЗОВАТЕЛЕМ на источник, не найден — все ноды источника дропаются fail-closed (трафик не должен уйти напрямую мимо приватной границы). Противоположная политика detour_target_missing — там detour приехал из чужого файла и узел живёт direct; различие by design. Desktop-фича. С 1.1.171 норма контракта для недоступной цели detour другая — detour_unavailable (хоп снимается, узел живёт, D-148); этот код ставит лаунчер, пока не перешёл на неё (TASKS_LXBOX §172 п.3).",
-      "dart": null,
-      "go": "EmissionWarning.Code в отчёт сборки, одна запись на пару источник→цель с числом узлов: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks (узлы выпадают fail-closed в core/config/nodelink_resolve.go:resolveCanonicalDetour)"
-    },
     "source_detour_self": {
       "severity": "error",
       "params": [
@@ -1606,7 +1582,7 @@
         "Назначьте хопом другой узел.",
         "Или выведите этот узел из папки, хопом которой он служит."
       ],
-      "desc": "Контракт 1.1.65. detour, НАЗНАЧЕННЫЙ ПОЛЬЗОВАТЕЛЕМ, разрешился в сам узел — узел выпадает fail-closed (та же политика, что source_detour_missing). Не путать с detour_cycle_broken: там кольцо пришло из импортированного конфига, ребро снимается и узел живёт. Desktop-фича.",
+      "desc": "Контракт 1.1.65. detour, НАЗНАЧЕННЫЙ ПОЛЬЗОВАТЕЛЕМ, разрешился в сам узел — узел выпадает fail-closed (самоссылка — не недоступная цель, detour_unavailable сюда не относится). Не путать с detour_cycle_broken: там кольцо пришло из импортированного конфига, ребро снимается и узел живёт. Desktop-фича.",
       "dart": null,
       "go": "EmissionWarning.Code в отчёт сборки: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks (узел роняет core/config/nodelink_resolve.go:resolveCanonicalDetour)"
     },
@@ -1629,7 +1605,7 @@
         "Подберите хопы так, чтобы они не вели обратно к узлу.",
         "Или снимите хоп у одного из узлов кольца."
       ],
-      "desc": "Контракт 1.1.65. Кольцо по рёбрам detour, НАЗНАЧЕННЫМ ПОЛЬЗОВАТЕЛЕМ, — все участники выпадают fail-closed (политика source_detour_missing). Не путать с detour_cycle_broken: там кольцо из импортированного конфига, замыкающее ребро снимается, узел живёт. Desktop-фича.",
+      "desc": "Контракт 1.1.65. Кольцо по рёбрам detour, НАЗНАЧЕННЫМ ПОЛЬЗОВАТЕЛЕМ, — все участники выпадают fail-closed (кольцо — не недоступная цель, detour_unavailable сюда не относится). Не путать с detour_cycle_broken: там кольцо из импортированного конфига, замыкающее ребро снимается, узел живёт. Desktop-фича.",
       "dart": null,
       "go": "EmissionWarning.Code в отчёт сборки: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks (кольца ищет core/config/nodelink_resolve.go:detectCanonicalDetourCycles)"
     },
@@ -1992,9 +1968,9 @@
         "Или выберите источнику или узлу другой хоп.",
         "Или снимите хоп, если прямое подключение вас устраивает."
       ],
-      "desc": "Контракт 1.1.171, TASKS_LXBOX §171/§172, задача LxBox 739, решение владельца 16.11.2026 (D-148): «если detour не доступен собираем без него и даем ⚠». Цель detour, назначенного пользователем источнику или узлу, в собранном конфиге недоступна — Направление выключено, узел-цель удалён, переименован, пропал из подписки или сам выпал из сборки, тега нет вовсе. Норма: detour снимается, узел остаётся в конфиге и ходит напрямую, ставится код. Отменяет для этого случая единую строгость detour SPEC 113-B (узел выбрасывался, source_detour_missing). Одна запись на пару (источник, цель): target — тег цели, как он записан в detour; count — сколько узлов источника потеряли хоп; tags — их теги через запятую; адресат — источник и каждый узел из tags (как node_detour_through_group); узел без источника — запись без адреса строки Sources. Каскада нет: узел, чей detour ведёт на узел без хопа, свой хоп не теряет — цель жива. Не затронуто: позиции цепочек (цепочка с пропавшей позицией выпадает целиком), detour на самого себя и кольца (source_detour_self, source_detour_cycle), висячий detour внутри импортируемого конфига (detour_target_missing, D-128). Desktop: лаунчер пока на прежней норме — носитель выпадает в core/config/nodelink_resolve.go:resolveCanonicalDetour с кодом source_detour_missing; переход ждёт подтверждения владельца (TASKS_LXBOX §172 п.3).",
+      "desc": "Контракт 1.1.171, TASKS_LXBOX §171/§172, задача LxBox 739, решение владельца 16.11.2026 (D-148): «если detour не доступен собираем без него и даем ⚠». Цель detour, назначенного пользователем источнику или узлу, в собранном конфиге недоступна — Направление выключено, узел-цель удалён, переименован, пропал из подписки или сам выпал из сборки, тега нет вовсе. Норма: detour снимается, узел остаётся в конфиге и ходит напрямую, ставится код. Отменяет для этого случая единую строгость detour SPEC 113-B (узел выбрасывался, source_detour_missing). Одна запись на пару (источник, цель): target — тег цели, как он записан в detour; count — сколько узлов источника потеряли хоп; tags — их теги через запятую; адресат — источник и каждый узел из tags (как node_detour_through_group); узел без источника — запись без адреса строки Sources. Каскада нет: узел, чей detour ведёт на узел без хопа, свой хоп не теряет — цель жива. Не затронуто: позиции цепочек (цепочка с пропавшей позицией выпадает целиком), detour на самого себя и кольца (source_detour_self, source_detour_cycle), висячий detour внутри импортируемого конфига (detour_target_missing, D-128). Заменяет снятый в 1.1.171 код source_detour_missing (error, узлы выбрасывались). Desktop: лаунчер на этой норме с 1.1.171 (подтверждение владельца 16.11.2026).",
       "dart": "services/builder/ (правило 1 граф-санитайзера: снятый недоступный detour) — задача 739",
-      "go": null
+      "go": "EmissionWarning.Code в отчёт сборки, одна запись на пару источник→цель: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks (хоп снимает core/config/nodelink_resolve.go:resolveCanonicalDetour); висячий тег, прошедший резолв (исчезнувший селектор шаблона), снимает правило 1 core/build/outbound_graph_sanitize.go:sanitizeEntryRefs, запись в отчёт — core/build_report_feed.go:FeedBuildReportFromDetourStripped"
     },
     "direction_filter_matched_nothing": {
       "severity": "warning",

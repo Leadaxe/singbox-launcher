@@ -1121,8 +1121,9 @@ func GenerateOutboundsFromParserConfig(
 		declaredOptionNames[tag] = true
 	}
 
-	// Detour узлов и состав Auto-групп канона: fail-closed по detour (с
-	// каскадом и кольцами), prune по членам.
+	// Detour узлов и состав Auto-групп канона: недоступная цель detour
+	// снимается с detour_unavailable (1.1.171), detour на себя и кольца —
+	// fail-closed, prune по членам.
 	var linkWarnings []EmissionWarning
 	allNodes, linkWarnings = ApplyCanonicalNodeLinks(parserConfig.ParserConfig.Proxies, nodesBySource, allNodes, linkTargets)
 	emissionWarnings = append(emissionWarnings, linkWarnings...)
@@ -1162,10 +1163,11 @@ func GenerateOutboundsFromParserConfig(
 	}
 
 	// SPEC 077 → SPEC 113-B: самоссылка и кольцо detour среди узлов. Fail-closed:
-	// выбрасывается УЗЕЛ-носитель, а не ключ detour, — снятие ключа отправило бы
-	// его трафик напрямую молча. Висячие detour на теги шаблонных/preset-групп
-	// здесь не трогаются: они сводятся только при финальной сборке, и решение
-	// принимает граф-санитайзер (core/build), которому виден полный набор тегов.
+	// выбрасывается УЗЕЛ-носитель — кольцо не недоступная цель, и снять
+	// detour значило бы выбрать за пользователя, чей переход не важен. Висячие
+	// detour (на теги шаблонных/preset-групп и на выброшенных здесь) не
+	// трогаются: их снимает с detour_unavailable граф-санитайзер (core/build),
+	// которому виден полный набор тегов.
 	allNodes = sanitizeNodeDetours(allNodes)
 	// Локальные селекторы собираются по nodesBySource — выброшенный узел не
 	// должен остаться в составе группы призраком.
@@ -1589,8 +1591,9 @@ func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 //     замкнувший его: у кольца нет виноватого, и оставить часть значило бы
 //     решить за пользователя, чей переход не важен.
 //
-// Выпадение каскадирует до фикспойнта: узел, ходивший через выброшенного,
-// выбрасывается следом — иначе у него остался бы detour в никуда.
+// Каскада нет (контракт 1.1.171): узел, ходивший через выброшенного, остаётся
+// с висячим detour, и его снимает граф-санитайзер (core/build, правило 1) с
+// записью detour_unavailable — цель недоступна, узел ходит напрямую.
 //
 // Detour на теги вне набора узлов (шаблонные/preset-группы, служебные
 // outbound'ы) здесь не трогается — они сводятся только при финальной сборке, и
@@ -1685,18 +1688,6 @@ func sanitizeNodeDetours(nodes []*ParsedNode) []*ParsedNode {
 
 	if len(dropped) == 0 {
 		return nodes
-	}
-	// Выпадение носителя делает висячими ссылки тех, кто ходил через него.
-	// Каскад до фикспойнта: цель исчезла — исчезает и ссылающийся.
-	for changed := true; changed; {
-		changed = false
-		for tag, target := range detourOf {
-			if !dropped[tag] && dropped[target] {
-				debuglog.WarnLog("Parser: node %q dialed through excluded %q — excluded as well (fail-closed)", tag, target)
-				dropped[tag] = true
-				changed = true
-			}
-		}
 	}
 
 	kept := make([]*ParsedNode, 0, len(nodes))

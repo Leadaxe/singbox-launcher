@@ -201,10 +201,12 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		return fmt.Errorf("build: %w", err)
 	}
 
-	// SPEC 113-B: последний рубеж мог выбросить узлы источника за недоступную
-	// цель detour (исчез селектор шаблона — выключили мульти-VPN). Парсер про
-	// это не знал, поэтому записи доливаются в отчёт поверх его собственных.
+	// Последний рубеж мог снять detour на недоступную цель (исчез селектор
+	// шаблона — выключили мульти-VPN; контракт 1.1.171) или выбросить узлы
+	// кольца через detour (SPEC 113-B). Парсер про это не знал, поэтому
+	// записи доливаются в отчёт поверх его собственных.
 	FeedBuildReportFromSanitizer(gen, res.ExcludedSources)
+	FeedBuildReportFromDetourStripped(gen, res.DetourStripped)
 	// SPEC 143: мусор в переменных шаблона и директивы новее приложения —
 	// та же попытка, конфиг собран, Save не блокируется.
 	FeedBuildReportFromTemplate(gen, res.TemplateWarnings)
