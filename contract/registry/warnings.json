@@ -1583,7 +1583,7 @@
         "Назначьте этому источнику хопом существующий узел.",
         "Или снимите хоп, если источнику больше не нужно идти через него."
       ],
-      "desc": "Detour-узел, НАЗНАЧЕННЫЙ ПОЛЬЗОВАТЕЛЕМ на источник, не найден — все ноды источника дропаются fail-closed (трафик не должен уйти напрямую мимо приватной границы). Противоположная политика detour_target_missing — там detour приехал из чужого файла и узел живёт direct; различие by design. Desktop-фича.",
+      "desc": "Detour-узел, НАЗНАЧЕННЫЙ ПОЛЬЗОВАТЕЛЕМ на источник, не найден — все ноды источника дропаются fail-closed (трафик не должен уйти напрямую мимо приватной границы). Противоположная политика detour_target_missing — там detour приехал из чужого файла и узел живёт direct; различие by design. Desktop-фича. С 1.1.171 норма контракта для недоступной цели detour другая — detour_unavailable (хоп снимается, узел живёт, D-148); этот код ставит лаунчер, пока не перешёл на неё (TASKS_LXBOX §172 п.3).",
       "dart": null,
       "go": "EmissionWarning.Code в отчёт сборки, одна запись на пару источник→цель с числом узлов: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks (узлы выпадают fail-closed в core/config/nodelink_resolve.go:resolveCanonicalDetour)"
     },
@@ -1969,31 +1969,31 @@
       "dart": "services/builder/ (состав групп) — код в отчёт сборки, если ваша сборка тоже рвёт кольцо узел→группа по членству",
       "go": "EmissionWarning.Code в отчёт сборки (адресат — источник, DirectionTag — группа): core/config/detour_group_cycle.go:detourCycleWarnings; узел из состава снимает core/config/detour_group_cycle.go:dropNodesDetouringThroughGroup"
     },
-    "detour_direction_off": {
+    "detour_unavailable": {
       "severity": "warning",
       "params": [
-        "direction",
+        "target",
         "count",
         "tags"
       ],
-      "title_en": "Direction {direction} is off: hop removed",
-      "title_ru": "Направление {direction} выключено: хоп снят",
-      "text_en": "This source (or its node) was routed through direction {direction}, and the direction is turned off. The hop was removed from {count} node(s) ({tags}): they stay in the config and now connect directly, not through {direction}.",
-      "text_ru": "Этот источник (или его узел) вёлся через Направление {direction}, а Направление выключено. У узлов ({tags}; всего {count}) хоп снят: они остались в конфиге и теперь подключаются напрямую, не через {direction}.",
-      "cause_en": "Direction {direction} was turned off, while this source or its node still has it as the hop. A turned-off direction is not in the config, so there is nothing to dial through.",
-      "cause_ru": "Направление {direction} выключено, а у этого источника или его узла оно по-прежнему назначено хопом. Выключенного Направления в конфиге нет, и вести узлы через него некуда.",
+      "title_en": "Hop {target} unavailable: hop removed",
+      "title_ru": "Хоп {target} недоступен: хоп снят",
+      "text_en": "This source (or its node) was routed through {target}, and {target} is not available in the config. The hop was removed from {count} node(s) ({tags}): they stay in the config and now connect directly, not through {target}.",
+      "text_ru": "Этот источник (или его узел) вёлся через {target}, а {target} в конфиге недоступен. У узлов ({tags}; всего {count}) хоп снят: они остались в конфиге и теперь подключаются напрямую, не через {target}.",
+      "cause_en": "The hop assigned to this source or its node is not in the config: the direction was turned off, or the node serving as the hop was deleted, renamed, or disappeared from its subscription after an update.",
+      "cause_ru": "Хопа, назначенного этому источнику или его узлу, в конфиге нет: Направление выключено, либо узел, который был хопом, удалён, переименован или пропал из своей подписки после обновления.",
       "fix_en": [
-        "If the nodes must go through {direction}, turn the direction back on.",
+        "If the nodes must go through {target}, bring it back: turn the direction on, or restore the node.",
         "Or choose another hop for the source or the node.",
         "Or remove the hop if a direct connection is what you want."
       ],
       "fix_ru": [
-        "Если узлы обязаны ходить через {direction}, включите Направление обратно.",
+        "Если узлы обязаны ходить через {target}, верните его: включите Направление или восстановите узел.",
         "Или выберите источнику или узлу другой хоп.",
         "Или снимите хоп, если прямое подключение вас устраивает."
       ],
-      "desc": "Контракт 1.1.171, TASKS_LXBOX §171/§172, задача LxBox 739, решение владельца 16.11.2026 (D-148). detour источника или узла указывает на Направление, которое есть в настройках, но выключено: в собранном конфиге цели нет. Норма: detour снимается, узел остаётся и ходит напрямую, код ставится — осознанное исключение из единой строгости detour (SPEC 113-B): Направление выключил сам пользователь, это его выбор, а не пропажа цели. Узнаётся по состоянию (тег detour совпадает с тегом Направления в настройках, Направление выключено), а не по тексту ошибки резолва. Прочие висячие цели — узел удалён, переименован, пропал из подписки, Направления с таким тегом в настройках нет — по-прежнему source_detour_missing, fail-closed. Одна запись на пару (источник, Направление): direction — тег Направления, count — сколько узлов источника потеряли хоп, tags — их теги через запятую; адресат — источник и каждый узел из tags (как node_detour_through_group); узел без источника — запись без адреса строки Sources. Каскад: узел, чей detour вёл на узел без хопа, сам хоп не теряет — цель жива. Desktop: поведение лаунчера в этом случае ждёт решения владельца; до него выключенное Направление не входит в цели резолва (core/config/nodelink_resolve.go:allRootLinkTargets), носитель выпадает в core/config/nodelink_resolve.go:resolveCanonicalDetour с кодом source_detour_missing.",
-      "dart": "services/builder/ (правило 1 граф-санитайзера: снятый detour на выключенное Направление) — задача 739",
+      "desc": "Контракт 1.1.171, TASKS_LXBOX §171/§172, задача LxBox 739, решение владельца 16.11.2026 (D-148): «если detour не доступен собираем без него и даем ⚠». Цель detour, назначенного пользователем источнику или узлу, в собранном конфиге недоступна — Направление выключено, узел-цель удалён, переименован, пропал из подписки или сам выпал из сборки, тега нет вовсе. Норма: detour снимается, узел остаётся в конфиге и ходит напрямую, ставится код. Отменяет для этого случая единую строгость detour SPEC 113-B (узел выбрасывался, source_detour_missing). Одна запись на пару (источник, цель): target — тег цели, как он записан в detour; count — сколько узлов источника потеряли хоп; tags — их теги через запятую; адресат — источник и каждый узел из tags (как node_detour_through_group); узел без источника — запись без адреса строки Sources. Каскада нет: узел, чей detour ведёт на узел без хопа, свой хоп не теряет — цель жива. Не затронуто: позиции цепочек (цепочка с пропавшей позицией выпадает целиком), detour на самого себя и кольца (source_detour_self, source_detour_cycle), висячий detour внутри импортируемого конфига (detour_target_missing, D-128). Desktop: лаунчер пока на прежней норме — носитель выпадает в core/config/nodelink_resolve.go:resolveCanonicalDetour с кодом source_detour_missing; переход ждёт подтверждения владельца (TASKS_LXBOX §172 п.3).",
+      "dart": "services/builder/ (правило 1 граф-санитайзера: снятый недоступный detour) — задача 739",
       "go": null
     },
     "direction_filter_matched_nothing": {
