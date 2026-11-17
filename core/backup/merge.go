@@ -30,6 +30,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/jsonfmt"
 )
 
 // mergeCounters — что сделало слияние, по видам записей.
@@ -251,7 +252,9 @@ func nodeBodyKey(n *state.Node) string {
 			// руками с нуля, и тот же узел, приехавший sing-box источником,
 			// обязаны узнаться. Xray-текст каноническому sing-box телу не
 			// равен по построению — отдельный префикс диалекту не нужен.
-			if key := canonicalJSONKey(json.RawMessage(raw)); key != "" {
+			// Комментарии исходника (контракт 1.1.172) в тело не входят:
+			// тот же узел с пометками и без них — одна запись.
+			if key := canonicalJSONKey(json.RawMessage(jsonfmt.StripComments(raw))); key != "" {
 				return "json\x00" + key
 			}
 			// Исходник объявлен JSON'ом, но не разбирается: сравниваем

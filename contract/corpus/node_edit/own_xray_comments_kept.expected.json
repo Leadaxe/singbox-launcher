@@ -1,0 +1,8 @@
+{
+  "origin": {
+    "kind": "xray",
+    "raw": "{\n  # Xray outbound с пометкой\n  \"tag\": \"xr\", \"protocol\": \"vless\", // протокол\n  \"settings\": {\"vnext\": [{\"address\": \"example-1.com\", \"port\": 443, \"users\": [{\"id\": \"11111111-2222-3333-4444-555555555555\"}]}]},\n  \"streamSettings\": {\"network\": \"tcp\", \"security\": \"none\"} /* конец */\n}"
+  },
+  "authored": false,
+  "rest_not_kept": false
+}

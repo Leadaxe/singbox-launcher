@@ -20,6 +20,7 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/jsonfmt"
 )
 
 // init подставляет реализацию в state: пакет config импортируется каждым
@@ -469,7 +470,9 @@ func materializeServerNode(uri string, configJSON json.RawMessage, authored bool
 // формы (NodeFromXrayJSON); sing-box — тело узла из документа, массива или
 // объекта → ручное тело. Возвращает вид происхождения текста.
 func parsedNodeFromJSONSource(raw json.RawMessage) (*configtypes.ParsedNode, string, error) {
-	text := strings.TrimSpace(string(raw))
+	// Комментарии исходника (контракт 1.1.172) разбору не нужны: узел
+	// собирается из текста без них, а origin.raw вызывающий хранит как набран.
+	text := strings.TrimSpace(jsonfmt.StripComments(string(raw)))
 	kind, sourceKind := subscription.ClassifyOriginText(text)
 	if kind == state.OriginKindXray {
 		node, err := subscription.NodeFromXrayJSON([]byte(text), sourceKind)

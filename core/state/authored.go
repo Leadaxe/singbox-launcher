@@ -3,6 +3,8 @@ package state
 import (
 	"encoding/json"
 	"strings"
+
+	"singbox-launcher/internal/jsonfmt"
 )
 
 // Authored — тело узла АВТОРСКОЕ (контракт 1.1.87, PARSING_PRINCIPLES
@@ -90,8 +92,11 @@ func classifyJSONOriginKind(raw string) string {
 
 // isJSONObjectOrArray — текст есть валидный JSON-объект или массив. Ссылка
 // и блок wg-quick так не начинаются; разбирать текст как узел здесь не
-// нужно — вид говорит лишь, КАК его читать.
+// нужно — вид говорит лишь, КАК его читать. Комментарии JSON-исходника
+// (контракт 1.1.172) снимаются перед проверкой: узел с пометками в тексте
+// остаётся авторским.
 func isJSONObjectOrArray(raw string) bool {
+	raw = strings.TrimSpace(jsonfmt.StripComments(raw))
 	if raw == "" || (raw[0] != '{' && raw[0] != '[') {
 		return false
 	}

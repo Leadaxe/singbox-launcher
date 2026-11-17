@@ -1,0 +1,8 @@
+{
+  "origin": {
+    "kind": "singbox",
+    "raw": "{\n  // пометка автора\n  \"type\": \"trojan\",\n  \"server\": \"example-1.com\", # хост\n  \"server_port\": 443,\n  /* пароль \"из письма\" */ \"password\": \"pass//not#comment\"\n}"
+  },
+  "authored": true,
+  "rest_not_kept": false
+}

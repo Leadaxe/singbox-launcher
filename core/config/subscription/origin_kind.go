@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/linkmap"
+	"singbox-launcher/internal/jsonfmt"
 )
 
 // Имена мапперов реестра (`mapper` вида источника, source_kinds.json) и
@@ -36,7 +37,14 @@ func ClassifyOriginText(text string) (kind, sourceKind string) {
 	if err != nil {
 		return "", ""
 	}
-	res := linkmap.ClassifySource(plans.Mappers(), strings.TrimSpace(text), originUnwrappers)
+	// JSON-исходник может нести комментарии (контракт 1.1.172): таблица
+	// видов разбирает JSON строго, поэтому классифицируется текст без них.
+	// Хранится — как набран.
+	t := strings.TrimSpace(text)
+	if IsJSONOriginText(t) {
+		t = strings.TrimSpace(jsonfmt.StripComments(t))
+	}
+	res := linkmap.ClassifySource(plans.Mappers(), t, originUnwrappers)
 	// Оболочка без распаковщика (контейнер `vpn://` в поле происхождения)
 	// объявляет вид, но содержимого не даёт — вид у содержимого, и назвать
 	// его нечем.
@@ -79,9 +87,10 @@ var originUnwrappers = map[string]linkmap.Unwrapper{
 
 // IsJSONOriginText — текст есть JSON-объект или массив (валидный JSON,
 // начинающийся с `{` или `[`). Это проверка ФОРМЫ, не диалекта: ссылка и
-// блок wg-quick так не начинаются.
+// блок wg-quick так не начинаются. Комментарии `//`, `/* */`, `#` вне строк
+// допустимы (контракт 1.1.172) и снимаются перед проверкой.
 func IsJSONOriginText(text string) bool {
-	t := strings.TrimSpace(text)
+	t := strings.TrimSpace(jsonfmt.StripComments(text))
 	if t == "" || (t[0] != '{' && t[0] != '[') {
 		return false
 	}
