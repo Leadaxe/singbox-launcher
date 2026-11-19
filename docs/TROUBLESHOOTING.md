@@ -1,8 +1,13 @@
 # Troubleshooting
 
-Known problems and where their solutions live. Quick first checks are in the
-[README troubleshooting table](../README.md#troubleshooting); build problems on
-Linux are in [BUILD_LINUX.md](BUILD_LINUX.md#troubleshooting).
+Known problems and where their solutions live. Setting up from scratch — download,
+the core, a subscription, Start — is the [README quick start](../README.md#quick-start);
+quick first checks are in the [README troubleshooting table](../README.md#troubleshooting);
+build problems on Linux are in [BUILD_LINUX.md](BUILD_LINUX.md#troubleshooting).
+
+Most answers start with the logs. **🔍 Diagnostics → Log window** shows the launcher's
+own log (**Internal**), the core's output (**Core**) and the Clash API client (**API**);
+**Logs folder** opens the files themselves (`sing-box.log` is the core).
 
 Russian version: [TROUBLESHOOTING.ru.md](TROUBLESHOOTING.ru.md).
 
@@ -12,6 +17,70 @@ Russian version: [TROUBLESHOOTING.ru.md](TROUBLESHOOTING.ru.md).
 
 After about 30 s of a frozen window the launcher writes `ui-freeze-<date-time>.txt` to the logs folder (Diagnostics → **Logs folder**).
 Attach that file and the main log to the issue — it shows what the window was waiting for.
+
+### The core does not start, the log says `FATAL`
+
+Start fails, or the core stops right after it, and the **Core** tab of the log window
+(or `sing-box.log`) has a line with `FATAL` or `start service:`. The text after it is
+the cause; the frequent ones:
+
+- **`default outbound not found: proxy-out`** (or `auto-proxy-out`, another group),
+  **`dependency[X] not found for outbound[Y]`**, **`outbound detour not found`**.
+  The config points at a group, node or server that is not in it. Typical
+  causes: a group got no nodes at all (the subscription came back empty or failed, or
+  a filter left nothing), a Direction or node that a rule or another node refers to was
+  removed, or `config.json` was edited by hand or taken from another program. Current
+  versions guard against all of these when they build the config: a group's default
+  that is not in its list is dropped, an empty Directions list is refilled from the
+  template, a hop through a missing node is removed. So first update the launcher.
+  Then open **⚙️ Configurator**: check on **Sources** that the subscription brings
+  nodes, on **Directions** that each group has members, and press **Save** — the
+  config is rebuilt from your settings. Editing `config.json` by hand does not help:
+  it is regenerated on every build.
+- **`listen tcp 127.0.0.1:9090: bind: address already in use`** (on Windows:
+  `Only one usage of each socket address … is normally permitted`). The Clash API port
+  is taken — usually by another VPN client (Clash, v2rayN, Hiddify, another sing-box)
+  or by a second copy of the launcher. Close it, or move the launcher to another
+  port: Configurator → **Settings** → **Clash API address** (for example
+  `127.0.0.1:9091`) → **Save**. The same error on `7890` is the local proxy port —
+  **Proxy-in listen port** on the same tab.
+- **`initialize outbound[…] <type>[<name>]: …`** — the core rejected one node. The
+  launcher turns such nodes off by itself and starts without them: a banner
+  `1 server disabled` with a **Show** button appears over the node list. If the
+  banner keeps growing, the link format is not supported by this core — open an
+  issue with the link (without the password/uuid).
+
+If the line says something else, attach `sing-box.log` and the launcher log to an
+issue.
+
+### `x509` and other certificate errors
+
+A subscription does not update, nodes fail, and the log has a certificate error. What
+the text says:
+
+- **`certificate has expired or is not yet valid`** — almost always the clock. Turn on
+  automatic time and time zone in the system; the date matters as much as the time.
+- **`x509: certificate signed by unknown authority`** — the certificate is not
+  trusted. Two causes:
+  1. Something between you and the server substitutes certificates: HTTPS scanning in
+     an antivirus (Kaspersky "Scan encrypted connections", ESET "SSL/TLS filtering"
+     and the like) or a corporate proxy. Exclude `singbox-launcher` and `sing-box`
+     from that scanning, or turn it off, and check again.
+  2. The system's root certificates are outdated (an old Windows without updates).
+     Configurator → **Settings** → **TLS root certificate store**: `mozilla` or
+     `chrome` use the bundles built into the core instead of the system store. The
+     default `system` is the right choice when the system is up to date, and it is
+     the only one that accepts an antivirus' own certificates.
+- **`x509: cannot validate certificate for 1.2.3.4 because it doesn't contain any IP
+  SANs`**, **`certificate is valid for example.com, not 1.2.3.4`** — the node has no
+  SNI, the server address is an IP, and that IP was sent as the server name. The link
+  needs `sni=<domain from the server's certificate>` (`serverName` in Xray JSON); ask
+  the provider for a corrected link, or add `sni=` to it and add the node again.
+  `certificate is valid for A, not B` with a domain on both sides means the `sni` in
+  the link is wrong. `insecure=1` (`allowInsecure=1`) in the link switches the check
+  off — only if you accept that anyone in the middle can read the traffic.
+
+REALITY nodes fail differently — see the next section.
 
 ### A REALITY node shows "Error", the core log says `reality verification failed`
 
@@ -58,6 +127,72 @@ What to check, in order:
 
 If the link works for someone else on a current version and not for you, the cause is
 on your side (items 1, 2, 4, 5), not on the server.
+
+### Downloading the core, `wintun.dll` or translations hangs or fails
+
+Everything the launcher downloads comes from GitHub (the core from
+[sing-box-lx releases](https://github.com/Leadaxe/sing-box-lx/releases)); `wintun.dll`
+comes from wintun.net. When the direct download fails, the core is retried through two
+GitHub mirrors (`ghfast.top`, `gh-proxy.com`) and `wintun.dll` through this project's
+repository — so a slow or stuck progress bar is often the mirrors being tried one by
+one, each with its own timeout.
+
+If it still fails, the dialog names the reason and shows a link and the folder the
+file belongs in. A note about GitHub limiting anonymous requests means the current
+VPN node's address has used up the limit: wait about an hour or switch nodes. To do it
+by hand, on any network where GitHub opens:
+
+- **Core** — the **Local** tab shows the version it needs (for example `Download v1.14.4-lx.35`).
+  From that release take the archive for your system (`windows-amd64`,
+  `darwin-arm64`, `linux-amd64`, …), unpack it and put `sing-box` (`sing-box.exe`)
+  together with `libcronet.*`, if the archive has it, into the folder from the dialog.
+- **`wintun.dll`** — the archive from wintun.net, the `bin/amd64/wintun.dll` file
+  (`arm64` on ARM).
+- **Windows: avoid downloads altogether.** The installer and the
+  `singbox-launcher-<version>-win64-full.zip` archive already contain the core,
+  `wintun.dll`, the template and Mesa3D — nothing is downloaded on first launch.
+
+### The interface is in English
+
+The Russian translation is a separate file downloaded from GitHub; English is built in.
+**⚙️ Settings → Language**: pick **Русский**. If the list has only English, press **⬇**
+next to it (*Download translations*), then pick the language and restart the launcher.
+After a launcher update the translation is refreshed by itself in the background on the
+first start, and new strings appear after the next restart. If GitHub does not open, the
+download dialog shows the link to `ru.json` and the folder to save it in.
+
+Rule presets, template settings and their hints come from the template and stay in
+English.
+
+### Naive nodes are missing from the config
+
+`naive+https://` / `naive+quic://` nodes are dropped from the built config, and the
+launcher log has `sing-box core needs libcronet.dll next to the binary — re-download the
+core to get it` (`libcronet.dylib` / `libcronet.so` on macOS / Linux). The naive
+protocol needs the cronet library next to the core. **Local** → **Download** reinstalls
+the core together with it; when copying the core by hand, copy `libcronet.*` from the
+same archive too.
+
+### A WireGuard / WARP `.conf` or an Amnezia `vpn://` link adds nothing
+
+- **`.conf`** — paste the **text** of the file (the `[Interface]` and `[Peer]` blocks)
+  into **Sources**, or use **Add from file**; a file path is not a link. WARP configs
+  made by third-party generators are ordinary WireGuard configs and go the same way.
+- **`vpn://`** — only the WireGuard / AmneziaWG part of an Amnezia profile is imported.
+  A profile made for OpenVPN, Cloak or XRay has no such part, and the error lists the
+  containers it does have; export a WireGuard/AmneziaWG profile from Amnezia instead.
+
+Details: [Protocols.md — input forms that are not links](Protocols.md#input-forms-that-are-not-links).
+
+### Hand edits to `config.json` disappear
+
+`config.json` is rebuilt from the Configurator's settings on every Save, subscription
+update and rebuild, so edits made in the file are lost — and the **Final** tab shows the
+result read-only for the same reason. Make the change where it lives: nodes in
+**Sources**, groups in **Directions**, routing in **Rules** (a **Custom JSON** rule
+takes any sing-box rule), DNS in **DNS**, the TUN, the local proxy inbound
+(**Enable proxy-in**) and the ports in **Settings**. What the Configurator cannot
+express is the template's job — see [WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md).
 
 ## Linux
 
@@ -110,6 +245,25 @@ iptables on the host; confirmed on the same openSUSE setup in issue #129. If it 
 your profile, turn it on and press Start again. "TUN stack" → `gvisor` also works, at the
 cost of CPU and throughput.
 
+### Start asks for Linux capabilities again and again
+
+TUN on Linux needs the `cap_net_admin` and `cap_net_bind_service` capabilities **on the
+core** (`sing-box` in the data folder's `bin/`), not on the launcher. When they are
+missing, Start shows *Linux capabilities required* with the exact command — run it as
+shown, the path in it is the one your install uses:
+
+```bash
+sudo setcap 'cap_net_admin,cap_net_bind_service=+ep' <path to the core>/sing-box
+```
+
+It has
+to be repeated after every core update: writing a new file removes the capabilities.
+If the command succeeds and the dialog comes back anyway, the core lies on a partition
+mounted `nosuid` (often `/home`), where file capabilities are ignored. Then either run
+the launcher with `sudo`, or point it at a core on another partition with the
+`SINGBOX_LAUNCHER_CORE` environment variable (see
+[README — where data lives](../README.md#where-data-lives)).
+
 ## macOS
 
 ### TUN is up, but DNS queries go past the tunnel
@@ -159,6 +313,10 @@ The launcher runs without administrator rights (no UAC prompt at start), and TUN
 creates a network adapter and changes routes, which Windows allows only to
 administrators. The dialog offers:
 
+- **Install service** (Windows 10/11 x64 and arm64) — one UAC prompt installs the
+  `sing-box-lxd` system service and switches the launcher to the Daemon engine: the
+  core runs in the service, and later starts need no rights at all. See
+  [DAEMON_AND_REMOTE.md](DAEMON_AND_REMOTE.md).
 - **Restart as administrator** — one UAC prompt; the launcher restarts elevated with
   the same data folder (the window title ends with `(Administrator)`) and starts the
   VPN. On a standard user account Windows asks for an administrator's password, and
@@ -170,7 +328,59 @@ administrators. The dialog offers:
   open — close it first.
 
 To start elevated every time, use a shortcut with “Run as administrator”; Start with
-Windows (Settings → Connection) always starts the launcher without rights.
+Windows (Settings → Connection) always starts the launcher without rights — see
+[Start with Windows and connecting at sign-in](#start-with-windows-and-connecting-at-sign-in).
+
+### "Windows protected your PC" or "Unknown publisher"
+
+The installer and the launcher are not code-signed yet, so SmartScreen warns about a
+new file from an unknown publisher. Click **More info → Run anyway**. Before that you
+can check the file: the release has `checksums.txt`, and in PowerShell
+`Get-FileHash .\singbox-launcher-<version>-win64-setup.exe` must print the same SHA-256.
+Download only from [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases).
+
+### The antivirus deletes or blocks the launcher or `sing-box.exe`
+
+Windows Defender (`Trojan:Win32/Wacatac`, `Sabsik` and similar "machine-learning"
+verdicts), Kaspersky and others sometimes flag unsigned Go programs and VPN cores. Signs:
+the launcher vanishes after unpacking, or the core disappears right after
+**Download** and the **Local** tab asks to download it again.
+
+1. Check that the file is genuine: compare its SHA-256 with `checksums.txt` of the
+   launcher release (for the core — `SHA256SUMS` of the
+   [core release](https://github.com/Leadaxe/sing-box-lx/releases)).
+2. Restore it from quarantine and add exclusions for the program folder and the data
+   folder (`%LOCALAPPDATA%\singbox-launcher`, or the folder of a portable copy —
+   **⚙️ Settings → Storage** shows it). The core lives in that data folder's `bin\`.
+3. Report the false positive to the antivirus vendor — that is what removes the
+   verdict for everyone.
+
+HTTPS scanning in the same antivirus can also break connections — see
+[`x509` and other certificate errors](#x509-and-other-certificate-errors).
+
+### Start with Windows and connecting at sign-in
+
+**⚙️ Settings → Connection**:
+
+- **Start with Windows** — the launcher starts minimized to the tray when you sign in.
+- **Connect VPN at sign-in** — it also presses Start.
+
+Both are per-user and change only in a normal (not elevated) launcher; in an
+administrator window they are greyed out with *Change this in a normal start, not as
+administrator*. The Windows 7 build has neither.
+
+The launcher started at sign-in has no administrator rights, so with TUN on, Connect VPN
+at sign-in ends in the *TUN needs administrator rights* dialog every time. Choose one:
+
+- **Install service** in that dialog (Windows 10/11 x64 and arm64): the core moves into
+  the `sing-box-lxd` system service — one UAC prompt now, none afterwards. Details:
+  [DAEMON_AND_REMOTE.md](DAEMON_AND_REMOTE.md).
+- **Proxy mode** — no TUN, no rights needed.
+- **Task Scheduler** instead of Start with Windows: a task at sign-in with *Run with
+  highest privileges*, the program `singbox-launcher.exe` with the arguments
+  `-tray -start`, and a delay of 30–60 s (the launcher itself waits only about a second
+  before Start, while the network may not be up yet). Turn Start with Windows off then,
+  or two copies will start.
 
 ### “Sing-Box appears to be already running”, and Kill says it needs administrator rights
 
