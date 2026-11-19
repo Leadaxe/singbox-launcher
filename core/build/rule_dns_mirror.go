@@ -4,14 +4,16 @@ package build
 // D-137, TEMPLATE_LANG §6.11).
 //
 // Запись правила (rules[] inline|srs) может нести объект `dns`: «DNS-запросы
-// под это правило отвечает такой-то сервер» и «AAAA под это правило — пустым
-// ответом». Зеркала в state.DNS.Rules не хранятся — их выводит сборка из
+// под это правило отвечает такой-то сервер», «AAAA под это правило — пустым
+// ответом» и «HTTPS/SVCB под это правило — пустым ответом» (контракт 1.1.173). Зеркала в state.DNS.Rules не хранятся — их выводит сборка из
 // ВЫПУЩЕННЫХ маршрутных правил: правило выключено или наборы srs не скачаны —
 // зеркала нет, и ссылка на rule_set в нём всегда указывает на выпущенный
 // набор.
 //
-// Матчер и гейт — списки реестра (allowlists.json `rule_dns_mirror_match`,
-// `rule_dns_mirror_gate`): имён полей правила и видов записи здесь нет.
+// Матчер — список реестра (allowlists.json `rule_dns_mirror_match`): имён
+// полей правила здесь нет. Гейта по портам, протоколам и network нет с
+// контракта 1.1.173: такие ключи (`rule_dns_mirror_unseen`) в зеркало просто
+// не идут — DNS-опции действуют на домены правила при любом порте.
 
 import (
 	"fmt"
@@ -24,9 +26,13 @@ import (
 
 // Имена списков реестра для DNS-зеркала правила.
 const (
-	ruleDNSMirrorMatchList = "rule_dns_mirror_match"
-	ruleDNSMirrorGateList  = "rule_dns_mirror_gate"
+	ruleDNSMirrorMatchList  = "rule_dns_mirror_match"
+	ruleDNSMirrorUnseenList = "rule_dns_mirror_unseen"
+	ruleDNSBlockHTTPSList   = "rule_dns_block_https_domains"
 )
+
+// Типы запросов, которые глушит Block HTTPS (контракт 1.1.173, §6.11).
+var ruleDNSBlockHTTPSQueryTypes = []interface{}{"HTTPS", "SVCB"}
 
 // Тело глушилки AAAA: пустой авторитетный ответ, приложение берёт A.
 const (
@@ -40,18 +46,13 @@ const (
 const ruleDNSFixedTTL = 300
 
 // RuleDNSMirrorMatch — матчер DNS-зеркала по телу маршрутного правила (у srs —
-// с вписанным сборкой rule_set). ok == false — зеркала нет: тело несёт ключ
-// гейта или ни одного ключа матчера. Окно правила спрашивает то же самое,
-// чтобы опция была недоступна ровно там, где сборка её не выпустит.
+// с вписанным сборкой rule_set). ok == false — зеркала нет: в теле ни одного
+// ключа матчера (условия, видимого DNS-слою). Окно правила спрашивает то же
+// самое, чтобы опция была недоступна ровно там, где сборка её не выпустит.
 func RuleDNSMirrorMatch(routeBody map[string]interface{}) (match map[string]interface{}, ok bool) {
 	reg, err := registry.Get()
 	if err != nil || routeBody == nil {
 		return nil, false
-	}
-	for _, k := range reg.Allowlist(ruleDNSMirrorGateList) {
-		if v, has := routeBody[k]; has && !isZeroJSONValue(v) {
-			return nil, false
-		}
 	}
 	match = make(map[string]interface{})
 	for _, k := range reg.Allowlist(ruleDNSMirrorMatchList) {
@@ -65,11 +66,47 @@ func RuleDNSMirrorMatch(routeBody map[string]interface{}) (match map[string]inte
 	return match, true
 }
 
-// ruleDNSMirror — DNS-правила одного маршрутного правила: глушилка AAAA и/или
-// зеркало на сервер, в этом порядке.
+// bodyHasListKey — тело несёт хоть один ключ списка реестра с ненулевым
+// значением.
+func bodyHasListKey(routeBody map[string]interface{}, list string) bool {
+	reg, err := registry.Get()
+	if err != nil {
+		return false
+	}
+	for _, k := range reg.Allowlist(list) {
+		if v, has := routeBody[k]; has && !isZeroJSONValue(v) {
+			return true
+		}
+	}
+	return false
+}
+
+// RuleDNSBlockHTTPSAvailable — сборка выпустит Block HTTPS у правила с таким
+// выпущенным телом: матчер зеркала не пуст и правило либо вида srs, либо
+// несёт доменное условие (список реестра `rule_dns_block_https_domains`).
+func RuleDNSBlockHTTPSAvailable(routeBody map[string]interface{}, srs bool) bool {
+	if _, ok := RuleDNSMirrorMatch(routeBody); !ok {
+		return false
+	}
+	return srs || bodyHasListKey(routeBody, ruleDNSBlockHTTPSList)
+}
+
+// RuleDNSMirrorNarrowed — тело несёт условие, которого DNS-слой не видит
+// (порт, протокол, network — список реестра `rule_dns_mirror_unseen`):
+// DNS-опции правила действуют шире маршрутного правила, окно правила
+// подсказывает это.
+func RuleDNSMirrorNarrowed(routeBody map[string]interface{}) bool {
+	return bodyHasListKey(routeBody, ruleDNSMirrorUnseenList)
+}
+
+// ruleDNSMirror — DNS-правила одного маршрутного правила в порядке выпуска:
+// Block HTTPS, затем глушилка AAAA и зеркало на сервер либо локальный ответ.
 type ruleDNSMirror struct {
 	Num  int
 	Name string
+	// BlockHTTPS — тело глушилки HTTPS/SVCB; nil — опции нет или правилу она
+	// недоступна. Стоит первой и не зависит от режима ответа.
+	BlockHTTPS map[string]interface{}
 	// ForceIPv4 — тело глушилки; nil — опция выключена.
 	ForceIPv4 map[string]interface{}
 	// Fixed — локальный ответ адресами: два тела, A и AAAA; nil — режим не
@@ -95,6 +132,12 @@ func collectRuleDNSMirrors(route ResolvedRoute) []ruleDNSMirror {
 			continue
 		}
 		m := ruleDNSMirror{Num: r.Num, Name: r.Name}
+		if r.DNS.BlockHTTPS && RuleDNSBlockHTTPSAvailable(r.Body, r.Source == RouteSourceSrs) {
+			m.BlockHTTPS = cloneDNSRuleMap(match)
+			m.BlockHTTPS["query_type"] = append([]interface{}(nil), ruleDNSBlockHTTPSQueryTypes...)
+			m.BlockHTTPS["action"] = ruleDNSForceIPv4Action
+			m.BlockHTTPS["rcode"] = ruleDNSForceIPv4Rcode
+		}
 		if r.DNS.FixedActive() {
 			v4, v6 := r.DNS.FixedAddrs()
 			m.Fixed = []map[string]interface{}{
@@ -114,7 +157,7 @@ func collectRuleDNSMirrors(route ResolvedRoute) []ruleDNSMirror {
 			m.Server = cloneDNSRuleMap(match)
 			m.ServerTag = r.DNS.ServerTag
 		}
-		if m.ForceIPv4 == nil && m.Server == nil {
+		if m.BlockHTTPS == nil && m.ForceIPv4 == nil && m.Server == nil {
 			continue
 		}
 		out = append(out, m)
@@ -142,7 +185,8 @@ func ruleDNSFixedBody(match map[string]interface{}, qtype string, addrs []string
 }
 
 // RuleDNSMirror — DNS-правила одного маршрутного правила для показа (вкладка
-// Preview окна правила): глушилка AAAA и/или зеркало, в порядке выпуска.
+// Preview окна правила): Block HTTPS, глушилка AAAA, зеркало либо локальный
+// ответ — в порядке выпуска.
 // ServerTag — тег сервера зеркала; есть ли он в конфиге, решает сборка.
 type RuleDNSMirror struct {
 	Rules     []map[string]interface{}
@@ -155,6 +199,9 @@ func RuleDNSMirrors(route ResolvedRoute) []RuleDNSMirror {
 	var out []RuleDNSMirror
 	for _, m := range collectRuleDNSMirrors(route) {
 		var v RuleDNSMirror
+		if m.BlockHTTPS != nil {
+			v.Rules = append(v.Rules, m.BlockHTTPS)
+		}
 		v.Rules = append(v.Rules, m.Fixed...)
 		if m.ForceIPv4 != nil {
 			v.Rules = append(v.Rules, m.ForceIPv4)

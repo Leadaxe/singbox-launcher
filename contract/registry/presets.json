@@ -22,6 +22,7 @@
     "messengers": {"in": "desktop", "label": "Messengers", "note": "домены+process_name мессенджеров; per-platform ветки через @runtime.platform (desktop-расширение); platforms-фильтр windows/darwin/linux"},
     "games": {"in": "desktop", "label": "Games", "note": "geosite-category-games → direct"},
     "gaming-ports": {"in": "desktop", "label": "Gaming ports", "note": "игровые порты + Steam-диапазон → direct"},
+    "block-https": {"in": "both", "label": "Block HTTPS/SVCB records", "note": "Контракт 1.1.173, D-150, SPEC 181 лаунчера, LxBox 755 (issue LxBox #227): одно DNS-правило query_type [HTTPS, SVCB] → predefined NOERROR для всех доменов, без маршрутных правил и vars; браузер не получает ECH-конфиг, SNI открыт для правил по доменам. num 10 (сразу после traffic-processing), выключен по умолчанию, не locked, сортируемый (TEMPLATE_LANG §6.12). Тело одинаковое на обеих сторонах. Ссылка переносима"},
     "stop-http3": {"in": "desktop", "label": "Stop HTTP/3", "note": "UDP/443 → drop"},
 
     "traffic-processing": {"in": "mobile", "label": "Traffic Processing", "note": "sniff/hijack-dns/resolve первым правилом; locked, num=0, isSortable=false (mobile-расширения §264/§370); на desktop эта роль зашита в params[] route.rules"},

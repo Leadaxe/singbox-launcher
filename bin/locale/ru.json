@@ -5897,8 +5897,17 @@
   "Works only if the rule set contains domains.": {
     "value": "Работает, только если в наборе правил есть домены."
   },
-  "Unavailable for rules with ports, protocols or network, and for rules that match only IP addresses.": {
-    "value": "Недоступно для правил с портами, протоколами или network, а также для правил только по IP-адресам."
+  "Unavailable for rules that match only IP addresses, ports or protocols.": {
+    "value": "Недоступно для правил только по IP-адресам, портам или протоколам."
+  },
+  "Block HTTPS/SVCB records (no ECH)": {
+    "value": "Блокировать записи HTTPS/SVCB (без ECH)"
+  },
+  "DNS options apply to these domains on any port and protocol.": {
+    "value": "DNS-настройки действуют на эти домены при любом порте и протоколе."
+  },
+  "no HTTPS records": {
+    "value": "без записей HTTPS"
   },
   "DNS: %s": {
     "value": "DNS: %s"
@@ -5918,8 +5927,8 @@
   "Rule set not downloaded yet: the rule stays out of the config until it is.": {
     "value": "Набор правил ещё не скачан: пока его нет, правило в конфиг не попадает."
   },
-  "DNS options do not apply to this rule: it has ports, protocols or network, or matches only IP addresses.": {
-    "value": "DNS-настройки к этому правилу не применяются: в нём есть порты, протоколы или network, либо оно только по IP-адресам."
+  "DNS options do not apply to this rule: it has no condition DNS queries can match, such as domains, apps or a rule set.": {
+    "value": "DNS-настройки к этому правилу не применяются: в нём нет условия, видимого DNS-запросу, — доменов, приложений или набора правил."
   },
   "DNS server %s not found: its DNS rule stays out of the config.": {
     "value": "DNS-сервер %s не найден: DNS-правило в конфиг не попадёт."

@@ -857,6 +857,13 @@
       ]
     },
     {
+      "id": "block-https",
+      "label": "Block HTTPS/SVCB records",
+      "description": "Reply empty to HTTPS/SVCB DNS records (RFC 9460) for every domain, so apps such as Chrome do not use ECH and the site name stays visible to domain rules. Turn off to allow ECH; domain rules then miss ECH sites unless FakeIP is on.",
+      "num": 10,
+      "dns_rules": [{"query_type": ["HTTPS", "SVCB"], "action": "predefined", "rcode": "NOERROR"}]
+    },
+    {
       "id": "tailscale",
       "label": "Tailscale networks",
       "description": "Route each tailnet through its Tailscale node and resolve its names with the node's own DNS.",

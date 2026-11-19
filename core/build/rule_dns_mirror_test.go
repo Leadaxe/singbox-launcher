@@ -14,8 +14,8 @@ import (
 
 // TestRuleDNSMirror — DNS-зеркало собственного правила (SPEC 172, контракт
 // 1.1.130, TEMPLATE_LANG §6.11): поле `rules[].dns` проходит бэкап и диск без
-// потерь, а сборка выпускает зеркала по норме — матчер без IP, гейт, пустой
-// матчер, глушилка перед зеркалом, место перед слотом пресета с бо́льшим
+// потерь, а сборка выпускает зеркала по норме — матчер без IP и без портов
+// (гейта нет с 1.1.173), пустой матчер, Block HTTPS и глушилка перед зеркалом, место перед слотом пресета с бо́льшим
 // номером, выключенный сервер принудительно, удалённый — с предупреждением.
 func TestRuleDNSMirror(t *testing.T) {
 	t.Run("круг данных", func(t *testing.T) {
@@ -108,7 +108,7 @@ func TestRuleDNSMirror(t *testing.T) {
 			&state.RuleDNS{Enabled: true, ServerTag: "local_dns_resolver", ForceIPv4: true})
 		ports := rule(state.NewInlineRule("ports", map[string]interface{}{
 			"domain_suffix": []interface{}{"ports.example"}, "port": []interface{}{443},
-		}, "direct-out"), 1020, &state.RuleDNS{Enabled: true, ServerTag: "local_dns_resolver"})
+		}, "direct-out"), 1020, &state.RuleDNS{Enabled: true, ServerTag: "local_dns_resolver", BlockHTTPS: true})
 		ipOnly := rule(state.NewInlineRule("ip-only", map[string]interface{}{
 			"ip_cidr": []interface{}{"192.0.2.0/24"},
 		}, "direct-out"), 1030, &state.RuleDNS{Enabled: true, ServerTag: "local_dns_resolver", ForceIPv4: true})
@@ -116,15 +116,24 @@ func TestRuleDNSMirror(t *testing.T) {
 			&state.RuleDNS{Enabled: true, ServerTag: "deleted_server"})
 		fakeip := presetRule("fakeip", nil, true)
 		fakeip.Num = num(1130)
+		// Пресет block-https (контракт 1.1.173): одно DNS-правило без условий,
+		// слот у головы оси.
+		blockNum := template.RuleOrderSpecs(td.Presets)["block-https"].Num
+		if blockNum <= 0 || blockNum >= 940 {
+			t.Fatalf("block-https обязан стоять сразу после головы оси, num=%d", blockNum)
+		}
+		blockHTTPS := presetRule("block-https", nil, true)
+		blockHTTPS.Num = num(blockNum)
 
 		var warns []template.TemplateWarning
 		ctx := PresetMergeContext{
 			Presets: td.Presets,
-			Rules:   []state.Rule{corp, lists, ports, ipOnly, fakeip, gone},
+			Rules:   []state.Rule{blockHTTPS, corp, lists, ports, ipOnly, fakeip, gone},
 			DNS: state.DNSOptions{
 				Servers: []state.DNSServer{{Kind: state.DNSServerKindUser, Tag: "cf_doh", Enabled: false,
 					Body: map[string]interface{}{"type": "https", "server": "1.1.1.1"}}},
 				Rules: []state.DNSRule{
+					{Kind: state.DNSRuleKindPreset, Ref: "block-https", Enabled: true},
 					{Kind: state.DNSRuleKindUser, Enabled: true, Body: map[string]interface{}{"domain_suffix": "home.lan", "server": "local_dns_resolver"}},
 					{Kind: state.DNSRuleKindPreset, Ref: "fakeip", Enabled: true},
 				},
@@ -148,15 +157,19 @@ func TestRuleDNSMirror(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// Первые четыре — правило пользователя и пары зеркал перед слотом
-		// fakeip (1130): corp без ip_cidr, у lists глушилка раньше зеркала.
-		// ports (гейт), ip-only (пустой матчер) и gone (сервер удалён) не
-		// выпускаются — после fakeip чужих правил нет.
+		// Голова — правило пользователя и зеркала перед слотом fakeip (1130):
+		// corp без ip_cidr, у lists глушилка раньше зеркала, у ports (порт
+		// зеркалу не мешает и в матчер не идёт) Block HTTPS раньше зеркала.
+		// ip-only (пустой матчер) и gone (сервер удалён) не выпускаются —
+		// после fakeip чужих правил нет.
 		wantHead := []string{
+			`{"action":"predefined","query_type":["HTTPS","SVCB"],"rcode":"NOERROR"}`,
 			`{"domain_suffix":"home.lan","server":"local_dns_resolver"}`,
 			`{"domain_suffix":["corp.example"],"server":"cf_doh"}`,
 			`{"action":"predefined","ip_version":6,"rcode":"NOERROR","rule_set":"user:lists"}`,
 			`{"rule_set":"user:lists","server":"local_dns_resolver"}`,
+			`{"action":"predefined","domain_suffix":["ports.example"],"query_type":["HTTPS","SVCB"],"rcode":"NOERROR"}`,
+			`{"domain_suffix":["ports.example"],"server":"local_dns_resolver"}`,
 		}
 		if len(d.Rules) <= len(wantHead) {
 			t.Fatalf("dns.rules = %s", dns)

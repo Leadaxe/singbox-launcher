@@ -10488,3 +10488,21 @@ LxBox реализовал задачу 741 по контракту 1.1.172 (с�
 Версия не поднимается: требования к читателю не меняются, записан допуск для уже работающей стороны. Синк — по sha коммита с этим разделом.
 
 Задачи вам: подтвердить формулировку допуска в BACKUP.md §2; синк.
+
+## 175. Ответ лаунчера на LxBox 755 (issue #227) — контракт 1.1.173, Block HTTPS/SVCB (19.11.2026)
+
+Решения владельца по LxBox issue #227 внесены в норму; реализация лаунчера — SPEC 181, D-150. Синк — по sha коммита с этим разделом.
+
+1. **Пресет `block-https`** (`registry/presets.json` `in: both`, `TEMPLATE_LANG.md` §6.12): одно DNS-правило `{"query_type": ["HTTPS","SVCB"], "action": "predefined", "rcode": "NOERROR"}`, без vars и маршрутных правил; `num: 10`, выключен по умолчанию, не locked, сортируемый. Подпись и описание — ваш текст из шаблона LxBox дословно (лаунчер — `bin/wizard_template.json`, `default_enabled` не задан = выключен). У лаунчера `num` 10 свободен, итог тот же — сразу после `traffic-processing`. `force` в `fakeip` не тронут.
+2. **Поле `rules[].dns.blockHttps`** (`BACKUP.md` таблица `rules[]`, `schema/backup.schema.json`): bool, пишется только `true`. Выпуск: непустой матчер зеркала И (`srs` ИЛИ у `inline` хоть один ключ нового списка реестра `rule_dns_block_https_domains` = `domain`/`domain_suffix`/`domain_keyword`/`domain_regex`). Не зависит от `enabled`/`serverTag`, выпускается и при Fixed IP. Тело — `M + {query_type: [HTTPS, SVCB], action: predefined, rcode: NOERROR}`.
+3. **Порядок внутри правила** (§6.11): Block HTTPS → Force IPv4 (`ip_version: 6`) → сервер или пара Fixed IP. Место правила в `dns.rules` — по-прежнему §6.11 (ось, слоты пресетов).
+4. **Гейт снят.** `allowlists.json`: `rule_dns_mirror_gate` удалён, те же ключи — `rule_dns_mirror_unseen`: в матчер не идут, выпуск не блокируют (зеркало, Force IPv4, Fixed IP, Block HTTPS). Остаётся только «у правила есть условие, видимое DNS-слою» (ваш `dnsLayerEligible`). Подсказка в DNS-секции при порте / протоколе / network — «DNS options apply to these domains on any port and protocol».
+5. **Порты inline-правила** — на маршрутном правиле, не в headless-наборе (норма для стороны с матчером-набором, §6.11). У лаунчера наборов для inline нет — матчер inline-ключами, для него пункт ничего не меняет.
+6. **Принятые риски** (без предупреждений сборки): адресный `srs` под `blockHttps` валит старт ядра, как под `forceIpv4`; `query_type` переводит ядро 1.14 в новый DNS-режим.
+
+Корпус `corpus/rule_dns/` (+7): `inline_port_block_https`, `inline_network_force_ipv4`, `inline_block_https_no_domains`, `inline_block_https_ip_only`, `srs_block_https`, `inline_fixed_block_https`, `inline_block_https_force_ipv4_server`. Матчер в сравнении не участвует, как и раньше.
+
+UI лаунчера: галка «Block HTTPS/SVCB records (no ECH)» в DNS-вкладке окна правила; у inline ставится сама, когда доменное условие из пустого стало непустым (на любой вкладке, Form или JSON), при открытии сохранённого правила не трогается; у `srs` по умолчанию снята; недоступна, когда сборка не выпустит.
+
+Задачи вам: синк 1.1.173; раннер `rule_dns` на 11 кейсах; пресет и поле по своей спеке 755.
+

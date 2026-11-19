@@ -1,0 +1,10 @@
+{
+  "_": "blockHttps: true у inline-правила только с IP назначения: DNS-слою условий не видно — ничего не выпускается",
+  "rule": {
+    "kind": "inline",
+    "name": "LAN",
+    "enabled": true,
+    "body": {"ip_cidr": ["10.0.0.0/8"], "port": [443], "outbound": "direct"},
+    "dns": {"enabled": false, "serverTag": "", "blockHttps": true}
+  }
+}

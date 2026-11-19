@@ -1,0 +1,11 @@
+{
+  "_": "srs-правило с blockHttps: доменных ключей в теле нет, но у srs опция доступна — HTTPS/SVCB пустым NOERROR, затем зеркало на serverTag",
+  "rule": {
+    "kind": "srs",
+    "name": "Lists",
+    "enabled": true,
+    "refs": ["https://example.com/rules/lists.srs"],
+    "body": {"outbound": "proxy-out"},
+    "dns": {"enabled": true, "serverTag": "google_doh", "blockHttps": true}
+  }
+}

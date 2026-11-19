@@ -1069,6 +1069,10 @@
               "type": "boolean",
               "description": "AAAA-запросы под правило получают пустой ответ (NOERROR); пишется только true."
             },
+            "blockHttps": {
+              "type": "boolean",
+              "description": "Поддержка: обе (контракт 1.1.173). HTTPS/SVCB-запросы под правило получают пустой ответ (predefined NOERROR) — без ECH-конфига SNI открыт для правил по доменам. Выпускается у srs и у inline с доменным условием (domain, domain_suffix, domain_keyword, domain_regex), независимо от enabled/serverTag и в режиме fixedIps; стоит первым из DNS-правил правила. Пишется только true. Норма — TEMPLATE_LANG.md §6.11."
+            },
             "fixedIps": {
               "type": "array",
               "items": {

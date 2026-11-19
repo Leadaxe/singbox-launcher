@@ -1,0 +1,10 @@
+{
+  "_": "blockHttps + forceIpv4 + сервер: порядок внутри правила — Block HTTPS (query_type), глушилка AAAA (ip_version 6), зеркало на serverTag",
+  "rule": {
+    "kind": "inline",
+    "name": "Order",
+    "enabled": true,
+    "body": {"domain_suffix": ["order.example"], "domain_keyword": ["order"], "outbound": "proxy-out"},
+    "dns": {"enabled": true, "serverTag": "google_doh", "forceIpv4": true, "blockHttps": true}
+  }
+}

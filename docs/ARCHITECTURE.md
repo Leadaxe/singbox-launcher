@@ -611,7 +611,9 @@ build.BuildConfig  (pure)
             │      DNS mirrors of own rules (rules[].dns, SPEC 172) are derived from the
             │      resolved route (RuleDNSMirrorMatch: registry allowlists) and inserted
             │      before the first preset slot with a higher axis number
-            │      (RuleDNSMirrorIndex) — never stored in state.DNS.Rules;
+            │      (RuleDNSMirrorIndex) — never stored in state.DNS.Rules; per rule the
+            │      order is Block HTTPS (dns.blockHttps, SPEC 181) → Force IPv4 →
+            │      server or Fixed IP; ports/protocol/network do not gate them;
             │      template servers come from the catalog (SPEC 173, below): a catalog
             │      server is emitted only when state.DNS.Servers has its kind=template
             │      entry (required — always)

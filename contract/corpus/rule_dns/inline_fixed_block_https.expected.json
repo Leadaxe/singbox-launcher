@@ -1,0 +1,29 @@
+{
+  "dns_rules": [
+    {
+      "action": "predefined",
+      "query_type": [
+        "HTTPS",
+        "SVCB"
+      ],
+      "rcode": "NOERROR"
+    },
+    {
+      "action": "predefined",
+      "answer": [
+        "*. 300 IN A 192.168.1.10"
+      ],
+      "query_type": [
+        "A"
+      ],
+      "rcode": "NOERROR"
+    },
+    {
+      "action": "predefined",
+      "query_type": [
+        "AAAA"
+      ],
+      "rcode": "NOERROR"
+    }
+  ]
+}

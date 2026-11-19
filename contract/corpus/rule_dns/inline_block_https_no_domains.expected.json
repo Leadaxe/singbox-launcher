@@ -1,0 +1,7 @@
+{
+  "dns_rules": [
+    {
+      "server": "google_doh"
+    }
+  ]
+}

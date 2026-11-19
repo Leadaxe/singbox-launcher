@@ -1,0 +1,10 @@
+{
+  "_": "Домены + порт + blockHttps: порт выпуску не мешает (гейта нет) и остаётся на маршрутном правиле; одно DNS-правило — HTTPS/SVCB пустым NOERROR",
+  "rule": {
+    "kind": "inline",
+    "name": "Web",
+    "enabled": true,
+    "body": {"domain_suffix": ["example.com"], "port": [443], "outbound": "proxy-out"},
+    "dns": {"enabled": false, "serverTag": "", "blockHttps": true}
+  }
+}

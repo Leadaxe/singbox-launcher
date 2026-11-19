@@ -1,0 +1,15 @@
+{
+  "dns_rules": [
+    {
+      "action": "predefined",
+      "query_type": [
+        "HTTPS",
+        "SVCB"
+      ],
+      "rcode": "NOERROR"
+    },
+    {
+      "server": "google_doh"
+    }
+  ]
+}
