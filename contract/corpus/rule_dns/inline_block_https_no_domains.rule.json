@@ -1,10 +1,10 @@
 {
-  "_": "blockHttps: true у inline-правила без доменных условий (только процесс): Block HTTPS не эмитится; остаётся зеркало на serverTag — условие правила DNS-слою видно",
+  "_": "blockHttps: true у inline-правила без доменных условий (только приложение — package_name): Block HTTPS не эмитится; остаётся зеркало на serverTag — условие правила DNS-слою видно",
   "rule": {
     "kind": "inline",
     "name": "App",
     "enabled": true,
-    "body": {"process_name": ["app.exe"], "package_name": ["com.example.app"], "outbound": "direct"},
+    "body": {"package_name": ["com.example.app"], "outbound": "direct"},
     "dns": {"enabled": true, "serverTag": "google_doh", "blockHttps": true}
   }
 }
