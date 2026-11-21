@@ -8,6 +8,8 @@
 package business
 
 import (
+	"strings"
+
 	wizardtemplate "singbox-launcher/core/template"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -17,7 +19,8 @@ import (
 // (ExpandPreset.DNSServers — только used).
 //
 // Возвращает в порядке: для каждого preset-ref (в порядке PresetRefs) — теги
-// его bundled DNS, в порядке dns_servers[] declaration.
+// его bundled DNS, в порядке dns_servers[] declaration. Серверы, выключенные
+// галочкой (PresetRefState.DNSServerEnabled), пропускаются.
 func PresetBundledDNSTags(model *wizardmodels.WizardModel) []string {
 	if model == nil || model.TemplateData == nil {
 		return nil
@@ -40,9 +43,17 @@ func PresetBundledDNSTags(model *wizardmodels.WizardModel) []string {
 			continue
 		}
 		for _, ds := range frags.DNSServers {
-			if tag, ok := ds["tag"].(string); ok && tag != "" {
-				out = append(out, tag)
+			tag, ok := ds["tag"].(string)
+			if !ok || tag == "" {
+				continue
 			}
+			// Сервер, выключенный галочкой на вкладке DNS, в конфиг не попадёт —
+			// выбирать его нельзя. Тег без пространства пресета (for_each_node)
+			// выключателя не имеет.
+			if local := strings.TrimPrefix(tag, pr.Ref+":"); local != tag && !pr.IsDNSServerEnabled(local) {
+				continue
+			}
+			out = append(out, tag)
 		}
 	}
 	return out
