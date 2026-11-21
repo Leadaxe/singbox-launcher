@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -421,18 +422,27 @@ func newSettingsTitleLabelFor(text string, rowEnabled bool) *ttwidget.Label {
 // Пояснение — только с переносом строк: метка без Wrapping держит минимальную
 // ширину по всей длине текста и раздувает окно.
 func settingsSectionHeader(sec wizardtemplate.TemplateSection, withLine bool) fyne.CanvasObject {
-	header := container.NewVBox()
-	if withLine {
-		header.Add(settingsSeparatorBlock())
-	}
-	header.Add(widget.NewLabelWithStyle(sec.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
+	// Заголовок и пояснение стоят вплотную (отступ VBox между ними убран):
+	// шапка — одно целое, а не две строки формы. Пояснение — мелким кеглем
+	// обычным цветом: LowImportance совпадает с цветом погашенных строк и
+	// читается как неактивное поле.
+	text := container.New(layout.NewCustomPaddedVBoxLayout(0),
+		widget.NewLabelWithStyle(sec.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
 	if sec.Description != "" {
-		desc := widget.NewLabel(sec.Description)
+		desc := widget.NewRichText(&widget.TextSegment{
+			Text: sec.Description,
+			Style: widget.RichTextStyle{
+				ColorName: theme.ColorNameForeground,
+				SizeName:  theme.SizeNameCaptionText,
+			},
+		})
 		desc.Wrapping = fyne.TextWrapWord
-		desc.Importance = widget.LowImportance
-		header.Add(desc)
+		text.Add(desc)
 	}
-	return header
+	if !withLine {
+		return text
+	}
+	return container.NewVBox(settingsSeparatorBlock(), text)
 }
 
 // settingsSeparatorBlock — горизонтальная линия между строками Settings (vars.separator).
