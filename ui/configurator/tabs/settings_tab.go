@@ -452,6 +452,34 @@ func settingsVarIsMultiline(vd wizardtemplate.TemplateVar) bool {
 	return len(vd.Options) == 0 || vd.OptionsOpen
 }
 
+// settingsMultilineRows — число строк, видимых в многострочном поле Settings.
+const settingsMultilineRows = 3
+
+// settingsMultilineEntry — многострочное поле строки переменной; nil, если
+// переменная рисуется не им.
+func settingsMultilineEntry(vd wizardtemplate.TemplateVar, row fyne.CanvasObject) *widget.Entry {
+	if !settingsVarIsMultiline(vd) {
+		return nil
+	}
+	return findMultilineEntry(row)
+}
+
+func findMultilineEntry(o fyne.CanvasObject) *widget.Entry {
+	switch v := o.(type) {
+	case *widget.Entry:
+		if v.MultiLine {
+			return v
+		}
+	case *fyne.Container:
+		for _, child := range v.Objects {
+			if e := findMultilineEntry(child); e != nil {
+				return e
+			}
+		}
+	}
+	return nil
+}
+
 // settingsMultilineRow — строка многострочного поля: название и кнопка сброса
 // на своей строке, поле — под ними на всю ширину. Рядом с названием
 // многострочное поле получало остаток ширины после длинной подписи и
@@ -575,9 +603,21 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 			rowEnabled := wizardtemplate.VarUISatisfiedFor(vd, vi, resolved, tgt)
 			row := buildSettingsVarRow(presenter, model, td, vd, title, toolTip, rowEnabled, gs)
 			// Колесо над полем ввода двигает вкладку, а не уходит во
-			// внутреннюю прокрутку поля. Многострочному полю своя прокрутка
-			// нужна — его строка остаётся как есть.
-			if !settingsVarIsMultiline(vd) {
+			// внутреннюю прокрутку поля. Многострочное поле забирает колесо,
+			// только когда в нём есть что листать — строк больше, чем видно.
+			if e := settingsMultilineEntry(vd, row); e != nil {
+				var update func()
+				row, update = wheel.WrapWhile(row, func() bool {
+					return strings.Count(e.Text, "\n")+1 <= settingsMultilineRows
+				})
+				prev := e.OnChanged
+				e.OnChanged = func(s string) {
+					if prev != nil {
+						prev(s)
+					}
+					update()
+				}
+			} else {
 				row = wheel.Wrap(row)
 			}
 			rows.Add(row)
@@ -895,7 +935,7 @@ func buildVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmod
 		// множественный выбор, buildOptionsListVarRow); здесь свободный ввод.
 		titleLab := newSettingsTitleLabelFor(title, rowEnabled)
 		e := widget.NewMultiLineEntry()
-		e.SetMinRowsVisible(3)
+		e.SetMinRowsVisible(settingsMultilineRows)
 		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
 		if v, ok := store.stored(name); ok {
 			disp = v

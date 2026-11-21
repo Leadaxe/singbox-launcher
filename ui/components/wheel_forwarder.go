@@ -22,8 +22,9 @@ import (
 // слой реализует только fyne.Scrollable. Выпадающие списки — отдельное дерево
 // overlay, на них слой не действует.
 //
-// Строку с многострочным полем НЕ оборачивают: такому полю своя прокрутка
-// нужна, колесо над ним листает его текст.
+// У строки с многострочным полем слой условный (WrapWhile): пока текст поля
+// помещается целиком, слой включён и колесо двигает форму; когда строк больше,
+// чем видно, слой убирается, и колесо листает само поле.
 type WheelThrough struct {
 	scroll *container.Scroll
 }
@@ -40,6 +41,23 @@ func (t *WheelThrough) Wrap(obj fyne.CanvasObject) fyne.CanvasObject {
 	layer := &wheelLayer{owner: t}
 	layer.ExtendBaseWidget(layer)
 	return container.NewStack(obj, layer)
+}
+
+// WrapWhile — как Wrap, но слой действует, только пока active() истинно.
+// Возвращённую функцию вызывают после каждого изменения, от которого зависит
+// active: она включает или убирает слой.
+func (t *WheelThrough) WrapWhile(obj fyne.CanvasObject, active func() bool) (fyne.CanvasObject, func()) {
+	layer := &wheelLayer{owner: t}
+	layer.ExtendBaseWidget(layer)
+	update := func() {
+		if active() {
+			layer.Show()
+		} else {
+			layer.Hide()
+		}
+	}
+	update()
+	return container.NewStack(obj, layer), update
 }
 
 type wheelLayer struct {
