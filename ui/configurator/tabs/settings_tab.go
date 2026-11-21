@@ -442,6 +442,16 @@ func settingsSectionHeader(sec wizardtemplate.TemplateSection) fyne.CanvasObject
 	return text
 }
 
+// settingsVarIsMultiline — переменная рисуется многострочным полем свободного
+// ввода: text_list без закрытого списка options (у закрытого списка — чипы,
+// buildOptionsListVarRow).
+func settingsVarIsMultiline(vd wizardtemplate.TemplateVar) bool {
+	if strings.TrimSpace(vd.Type) != "text_list" {
+		return false
+	}
+	return len(vd.Options) == 0 || vd.OptionsOpen
+}
+
 // settingsMultilineRow — строка многострочного поля: название и кнопка сброса
 // на своей строке, поле — под ними на всю ширину. Рядом с названием
 // многострочное поле получало остаток ширины после длинной подписи и
@@ -498,6 +508,8 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	// машине. Строки вкладки при этом строятся из кэша и не ждут ни того,
 	// ни другого.
 	WarmUpInterfaceHints(model)
+
+	wheel := components.NewWheelThrough()
 
 	refresh := func() {
 		// SPEC 097: платформа ЦЕЛЕВОЙ машины, не той, где запущен лаунчер.
@@ -562,6 +574,12 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 			toolTip := wizardtemplate.VarDisplayTooltip(vd)
 			rowEnabled := wizardtemplate.VarUISatisfiedFor(vd, vi, resolved, tgt)
 			row := buildSettingsVarRow(presenter, model, td, vd, title, toolTip, rowEnabled, gs)
+			// Колесо над полем ввода двигает вкладку, а не уходит во
+			// внутреннюю прокрутку поля. Многострочному полю своя прокрутка
+			// нужна — его строка остаётся как есть.
+			if !settingsVarIsMultiline(vd) {
+				row = wheel.Wrap(row)
+			}
 			rows.Add(row)
 		}
 		// SPEC 066 follow-up: trap-state warning. After SPEC 066 made `tun`
@@ -581,9 +599,8 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	// Место под полосу прокрутки — одной колонкой справа от всей вкладки, как
 	// на вкладке DNS: полоса не ложится ни на рамки островов, ни на кнопки
 	// сброса в строках.
-	// NewVScrollWheelThrough: колесо двигает вкладку и над полем ввода —
-	// иначе его забирает внутренняя прокрутка поля.
-	scroll := components.NewVScrollWheelThrough(container.NewBorder(nil, nil, nil, components.NewScrollGutter(), box))
+	scroll := container.NewVScroll(container.NewBorder(nil, nil, nil, components.NewScrollGutter(), box))
+	wheel.SetScroll(scroll)
 	// Нижняя граница, а не высота: см. wizardTabScrollMinHeight.
 	scroll.SetMinSize(fyne.NewSize(0, wizardTabScrollMinHeight))
 
