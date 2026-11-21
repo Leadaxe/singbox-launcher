@@ -1,0 +1,10 @@
+{
+  "_": "Fixed IP + blockHttps: Block HTTPS эмитится и в режиме Fixed IP, стоит перед парой A/AAAA; serverTag и forceIpv4 при Fixed IP не эмитятся",
+  "rule": {
+    "kind": "inline",
+    "name": "NAS",
+    "enabled": true,
+    "body": {"domain": ["nas.home"], "outbound": "direct"},
+    "dns": {"enabled": true, "serverTag": "google_doh", "forceIpv4": true, "blockHttps": true, "fixedIps": ["192.168.1.10"]}
+  }
+}

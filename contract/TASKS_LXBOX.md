@@ -10408,3 +10408,218 @@ LxBox задача 722 (`docs/spec/tasks/722-origin-kind-dialect.md`), пово�
 Версия контракта — 1.1.170. Sha для синка пришлём после коммита.
 
 Задачи вам: синк 1.1.170; четыре новые переменные и снятие четырёх старых в шаблоне и экране настроек; блок по норме п.1; шаг сборщика, судящий по `core_config.json` (пока ваш пин — lx.33); новые тексты предупреждения из реестра.
+
+## 171. Запрос LxBox 739 — detour на выключенное Направление: код предупреждения узлу и источнику (16.11.2026)
+
+LxBox задача 739 (`docs/spec/tasks/739-detour-direction-off-node-warning.md`). У источника или узла detour указывает на Направление, а Направление выключено: в собранном конфиге цели нет. У LxBox правило 1 граф-санитайзера снимает ключ `detour`, узел остаётся и ходит напрямую, в отчёте сборки — одна безадресная EN-строка. У узла и у строки источника пометки нет.
+
+Решение владельца 16.11.2026: «его просто выключили — значит и у нас detour убрать и ⚠ у узла сделать», «узел сохранить», способ — через контракт. Вариант «выбрасывать узел» рассмотрен и отвергнут для этого случая.
+
+Расхождение, которое нужно согласовать: у лаунчера на том же правиле носитель висячего detour выбрасывается (SPEC 113-B, `core/build/outbound_graph_sanitize.go:sanitizeEntryRefs`; `source_detour_missing` — «без назначенного хопа трафик пошёл бы напрямую»). Решение владельца касается одного случая — цель есть в настройках, это Направление, и оно выключено. Прочие висячие цели (узел удалён, переименован, пропал из подписки) запрос не трогает.
+
+Просим лаунчер:
+
+1. Новый код в `registry/warnings.json` — рабочее имя `detour_direction_off`, severity `warning`, параметры `direction`, `count`, `tags`; одна запись на пару источник × Направление, адресат — источник узла и каждый узел (как `node_detour_through_group`). Тексты: Направление выключено, detour снят, узлы идут напрямую; что сделать — включить Направление, выбрать другой переход или снять detour.
+2. Ответить, как поступает лаунчер в этом случае: то же поведение (detour снят, узел живёт, код) или прежний fail-closed. Во втором случае — per-app override со ссылкой на решение владельца.
+3. Ответ — следующая версия контракта; синк копии `app/contract` после ответа.
+
+## 172. Ответ лаунчера на §171 — контракт 1.1.171, код `detour_unavailable` (16.11.2026)
+
+Сделано по §171 с поправкой владельца того же дня. Запрос §171 был про один случай: цель detour — выключенное Направление. Владелец расширил решение, дословно: «нет давай общую схему. мы если detour не доступен собираем без него и даем ⚠». Поправку передала сессия LxBox; раздел §171 не переписан, поправка учтена здесь. D-148.
+
+**1. Реестр `registry/warnings.json`: новый код `detour_unavailable`** (ваше рабочее имя из поправки). Severity `warning`, параметры `target` (тег цели, как он записан в detour), `count` (сколько узлов источника потеряли хоп), `tags` (их теги через запятую). Одна запись на пару источник × цель; адресат — источник и каждый узел из `tags`, как у `node_detour_through_group`; узел без источника — запись без адреса строки Sources. Тексты EN/RU, cause, три пункта fix (вернуть цель — включить Направление или восстановить узел / выбрать другой хоп / снять хоп, если прямое подключение устраивает) — в реестре. В текстах «хоп», как у соседних кодов (`source_detour_self`, `source_detour_cycle`). Промежуточное имя `detour_direction_off` (коммит `ee1d303e`) заменено в том же 1.1.171 до синка: в вашу копию оно не попадало, версию не поднимали. `source_detour_missing` (error, узлы выбрасывались) снят.
+
+**2. Норма** (поле `desc` кода, D-148). Цель detour, назначенного пользователем источнику или узлу, в собранном конфиге недоступна: Направление выключено; узел-цель удалён, переименован, пропал из подписки или сам выпал из сборки; тега нет вовсе. detour снимается, узел остаётся в конфиге и ходит напрямую, ставится код. Для этого случая отменяется единая строгость SPEC 113-B (узел выбрасывался с `source_detour_missing`). Каскада нет: узел, чей detour ведёт на узел без хопа, свой хоп не теряет — цель жива.
+
+**Не затронуто** (владелец не упоминал, оставлено как было): позиции цепочек — цепочка с пропавшей позицией выпадает целиком; detour на самого себя и кольца detour (`source_detour_self`, `source_detour_cycle`, fail-closed); висячий detour внутри импортируемого sing-box конфига (`detour_target_missing`, D-128, fail-closed). Владелец подтвердил: так и оставить.
+
+**3. Лаунчер — на той же норме** (подтверждение владельца 16.11.2026; там же — снять `source_detour_missing`, а кольца и detour импорта оставить как есть). Коммит `fa920a84`:
+- резолв NodeLink (`core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks` → `resolveCanonicalDetour`): цель не разрешилась, выключена (узел, Направление — их нет в словаре целей) или выпала сама — ключ `detour` снят, узел живёт, `detour_unavailable` одной записью на пару источник × цель; проход повторяется после выпадений (ссылка на себя, кольцо, пустая группа), каскада нет;
+- правило 1 граф-санитайзера (`core/build/outbound_graph_sanitize.go:sanitizeEntryRefs`) — висячий тег, прошедший резолв (исчезнувший селектор шаблона): ключ снят, узел живёт, в отчёт — та же запись с кодом (`core/build_report_feed.go:FeedBuildReportFromDetourStripped`); кольцо через detour по-прежнему выбрасывает носителя;
+- адресат у лаунчера — строка источника (как у `node_detour_through_group`); отдельной ⚠ на каждом узле в UI лаунчера нет, узлы перечислены в `tags`;
+- `source_detour_missing` снят из реестра, вид записи отчёта `target_missing` убран.
+
+Нормы обновлены в том же коммите: `docs/NODE_LINK.md` §5.1 (таблица строгости: detour — «хоп снимается, узел живёт»), `docs/PARSING_PRINCIPLES.md` §9, `desc` у `detour_target_missing`, `source_detour_self`, `source_detour_cycle`. Версия та же — 1.1.171: ни один коммит не запушен, ваша копия на 1.1.170.
+
+**4. Не менялись:** корпус (кейсов сборки с недоступным detour в корпусе нет), схемы.
+
+**5. Проверено у лаунчера:** `go generate` документации (`docs/generated/warnings.md`, `index.md`), линтер ссылок реестра (`TestRegistryCodeRefsResolve`), cause/fix у всех кодов (`TestRegistryWarningsHaveCauseAndFix`), проверки кодов предупреждений в `core/config/subscription` (`TestRegistrySyncWarningCodesDeclared`, `TestRegistryWarningCodesAreActuallySet`, `TestRegistryWarningCodesHaveAProducer`), тесты сборки по именам (`TestEmitE2_UnavailableDetourStripsHopKeepsNode` — три вида недоступности: нет тега, выключенный узел, выключенное Направление, плюс отсутствие каскада; WG, санитайзер графа, отчёт), `l10n_check --strict`, `go build ./...`. Полный прогон CI не делался (ветка не запушена).
+
+Версия контракта — 1.1.171. Синк: `sync_contract.sh --to fa920a84` (реестр, нормы, доки, README, D-148; коммит с этим разделом идёт следующим и содержит только текст).
+
+Задачи вам: синк 1.1.171; код `detour_unavailable` в вашем каталоге предупреждений (тексты из реестра); правило 1 вашего санитайзера по задаче 739 — для любой недоступной цели detour источника или узла снимать detour и ставить код; цепочки, кольца и импорт — как у вас было.
+
+## 173. Запрос LxBox 741 и ответ лаунчера — комментарии в JSON-исходнике узла, контракт 1.1.172 (17.11.2026)
+
+**Запрос** (LxBox, задача 741 `docs/spec/tasks/741-json-comments-kept-in-source.md`; повод — LxBox issue #171 п.20; слово владельца 17.11.2026: «json это данные, но мы можем хранить их как текст же? … сделаем, чтобы сохранялось»). LxBox снимал комментарии из JSON до записи в `origin.raw`; хранить текст как набран. Предложенная норма: (1) `raw` видов `singbox` / `xray` может нести `//`, `/* */` и `#` до конца строки вне строковых литералов; (2) читатель снимает их перед любым разбором `raw`; (3) идентичность — после снятия; (4) истина узла — `body`, правка формой текст не переписывает. Вопросы: (а) упадёт ли лаунчер на комментариях в бэкапе; (б) согласие с нормой или поправки; (в) нужен ли кейс корпуса.
+
+**Ответ.**
+
+**(а) До 1.1.172 лаунчер на комментариях не падал, но вёл себя неверно** — LxBox нельзя было начинать их писать. Импорт бэкапа узел принимал (истина — `body`, `raw` хранился строкой), но дальше JSON-исходник везде читался строгим `encoding/json`:
+- авторское тело (`core/state/authored.go:Node.Authored`, условие «текст разбирается как JSON») — узел с комментариями переставал быть авторским, и реестр начинал править его тело;
+- Regen и поле Origin (`subscription.IsJSONOriginText`) — текст с комментариями не считался JSON и уходил в разбор ссылки, Regen падал;
+- вкладка JSON / Source (`config.PrepareJSONSourceInput`) — ввод с комментариями отвергался;
+- ключ дедупа импорта (`core/backup/merge.go:nodeBodyKey`) — сравнение откатывалось на сырой текст, и тот же узел с пометками и без них давал две записи.
+
+Исправлено в `85fe9727`: одна функция `internal/jsonfmt.StripComments` на все эти места, плюс классификация вида (`subscription.ClassifyOriginText`) и материализация (`config.parsedNodeFromJSONSource`). Идентичность D-007 у лаунчера считается по `body`, комментарии её не касаются и раньше.
+
+**(б) Норма принята как предложена, с двумя уточнениями** — `docs/BACKUP.md` §2 (`origin`) и §9, `docs/PARSING_PRINCIPLES.md` §11 п.2, D-149:
+- `#` оставлен: его принимают и Xray, и sing-box, а в строке (`"…#…"`) он комментарием не считается. Внутри строкового литерала, с учётом `\`-экранирования, ничего комментарием не считается: `"password": "pass//not#comment/*x*/"` доезжает целиком. Незакрытый `/*` съедает текст до конца.
+- **Обрезка документа (§11 п.2) комментарии не сохраняет.** Текст хранится как набран, когда обрезать нечего: голое тело или документ без ключей вне узловых массивов. Если обрезка что-то сняла (`dns`, `route`, хвост массива), `raw` — пересобранный остаток без комментариев: текст по кусочкам не режется, а одно сообщение об остатке пользователь и так получает. Если у вас иначе (например, документ с комментариями хранится целиком) — скажите, поправим норму следующей версией.
+- Попутно у лаунчера голое тело теперь хранится как набрано (с отступами и переносами) и тогда, когда комментариев в нём нет; раньше оно сжималось в компактный JSON. Так норма §11 п.2 и читалась.
+
+**(в) Кейсы корпуса:**
+- `backup/v10_origin_raw_json_comments` (+ `.pre.backup.json`): предсостояние — узел без комментариев; импорт несёт его дубль с `//` и `#` (дедуп по телу без комментариев → в `root_servers` одна запись) и второй узел с тремя видами комментариев, кавычками внутри блочного комментария и «комментариями» внутри строки пароля. **Новое в формате:** ожидание `origin_raw` **строкой** — текст байт в байт, а не значение JSON (`corpus/backup/README.md`); раннеру нужно отличать строку от объекта.
+- `node_edit/own_body_comments_kept` — голое тело с комментариями → источник как набран, `authored: true`; `node_edit/own_document_comments_trimmed` — документ с комментариями и `dns` → пересобранные `outbounds`, `rest_not_kept: true`; `node_edit/own_xray_comments_kept` — Xray outbound с комментариями → вид `xray`, текст как набран, `authored: false`. Строковое `raw` в ожидании `node_edit` раннер лаунчера уже понимал (точное сравнение).
+
+**Проверено у лаунчера:** раннеры `corpus/backup` и `corpus/node_edit` целиком, `corpus/authored`, миграция видов, `go build ./...`, win7guard. Полный CI — после push.
+
+Версия контракта — 1.1.172. Синк: `sync_contract.sh --to 85fe9727` (норма, корпус, README, D-149 — в этом коммите; коммит с этим разделом идёт следующим и содержит только текст).
+
+Задачи вам: синк 1.1.172; раннер `corpus/backup` — ожидание `origin_raw` строкой = точный текст; три кейса `node_edit`; снятие комментариев перед разбором во всех читателях `raw` (ваш `uncommentedJson`) — проверьте его на кейсе бэкапа: кавычка внутри `/* */` и `//`, `#`, `/*` внутри строки; запись `raw` как набран по правилу обрезки выше. Реализацию у себя можно начинать: лаунчер с `85fe9727` читает такие бэкапы.
+
+## 174. Два отличия LxBox от буквы 1.1.172 — записаны в норму (17.11.2026)
+
+LxBox реализовал задачу 741 по контракту 1.1.172 (синк до `85fe9727`, LxBox `develop` `6feff063`) и назвал два места, где он отличается от буквы нормы.
+
+1. **Корневой `tag` в тексте исходника.** У LxBox имя узла живёт в JSON исходника, поэтому при импорте бэкапа он вставляет в голое тело одну строку `"tag": "…",` первым ключом, остальные байты и комментарии не трогает. Кейс `backup/v10_origin_raw_json_comments` ждёт текст байт в байт без тега; раннер LxBox допускает ровно эту вставку. **Записано как допустимое отличие стороны:** `docs/BACKUP.md` §2 (`origin`) и `corpus/backup/README.md` (допуск раннера). Корневой `tag` в сравнении и раньше не участвовал (§9), лаунчер его не вставляет.
+2. **Голое тело без комментариев при импорте бэкапа** у LxBox пересобирается компактно с тегом, у лаунчера с 1.1.172 хранится как набрано. Не норма, а поведение стороны: на идентичность и дедуп не влияет (канонический JSON), кейсы корпуса сравнивают такие тела по значению. Если сойтись — отдельной задачей, когда она понадобится.
+
+Версия не поднимается: требования к читателю не меняются, записан допуск для уже работающей стороны. Синк — по sha коммита с этим разделом.
+
+Задачи вам: подтвердить формулировку допуска в BACKUP.md §2; синк.
+
+## 175. Ответ лаунчера на LxBox 755 (issue #227) — контракт 1.1.173, Block HTTPS/SVCB (19.11.2026)
+
+Решения владельца по LxBox issue #227 внесены в норму; реализация лаунчера — SPEC 181, D-150. Синк — по sha коммита с этим разделом.
+
+1. **Пресет `block-https`** (`registry/presets.json` `in: both`, `TEMPLATE_LANG.md` §6.12): одно DNS-правило `{"query_type": ["HTTPS","SVCB"], "action": "predefined", "rcode": "NOERROR"}`, без vars и маршрутных правил; `num: 10`, выключен по умолчанию, не locked, сортируемый. Подпись и описание — ваш текст из шаблона LxBox дословно (лаунчер — `bin/wizard_template.json`, `default_enabled` не задан = выключен). У лаунчера `num` 10 свободен, итог тот же — сразу после `traffic-processing`. `force` в `fakeip` не тронут.
+2. **Поле `rules[].dns.blockHttps`** (`BACKUP.md` таблица `rules[]`, `schema/backup.schema.json`): bool, пишется только `true`. Выпуск: непустой матчер зеркала И (`srs` ИЛИ у `inline` хоть один ключ нового списка реестра `rule_dns_block_https_domains` = `domain`/`domain_suffix`/`domain_keyword`/`domain_regex`). Не зависит от `enabled`/`serverTag`, выпускается и при Fixed IP. Тело — `M + {query_type: [HTTPS, SVCB], action: predefined, rcode: NOERROR}`.
+3. **Порядок внутри правила** (§6.11): Block HTTPS → Force IPv4 (`ip_version: 6`) → сервер или пара Fixed IP. Место правила в `dns.rules` — по-прежнему §6.11 (ось, слоты пресетов).
+4. **Гейт снят.** `allowlists.json`: `rule_dns_mirror_gate` удалён, те же ключи — `rule_dns_mirror_unseen`: в матчер не идут, выпуск не блокируют (зеркало, Force IPv4, Fixed IP, Block HTTPS). Остаётся только «у правила есть условие, видимое DNS-слою» (ваш `dnsLayerEligible`). Подсказка в DNS-секции при порте / протоколе / network — «DNS options apply to these domains on any port and protocol».
+5. **Порты inline-правила** — на маршрутном правиле, не в headless-наборе (норма для стороны с матчером-набором, §6.11). У лаунчера наборов для inline нет — матчер inline-ключами, для него пункт ничего не меняет.
+6. **Принятые риски** (без предупреждений сборки): адресный `srs` под `blockHttps` валит старт ядра, как под `forceIpv4`; `query_type` переводит ядро 1.14 в новый DNS-режим.
+
+Корпус `corpus/rule_dns/` (+7): `inline_port_block_https`, `inline_network_force_ipv4`, `inline_block_https_no_domains`, `inline_block_https_ip_only`, `srs_block_https`, `inline_fixed_block_https`, `inline_block_https_force_ipv4_server`. Матчер в сравнении не участвует, как и раньше.
+
+UI лаунчера: галка «Block HTTPS/SVCB records (no ECH)» в DNS-вкладке окна правила; у inline ставится сама, когда доменное условие из пустого стало непустым (на любой вкладке, Form или JSON), при открытии сохранённого правила не трогается; у `srs` по умолчанию снята; недоступна, когда сборка не выпустит.
+
+Задачи вам: синк 1.1.173; раннер `rule_dns` на 11 кейсах; пресет и поле по своей спеке 755.
+
+
+## 176. Контракт 1.1.174 — контейнер объявлений переменных `sections[]` общий, в вашей форме (21.11.2026)
+
+Решение владельца: раздел настроек шаблона описывается одной формой на обеих сторонах — вашей. Реализация лаунчера — SPEC 183, D-151. Синк — по sha коммита с этим разделом.
+
+1. **Норма** — `TEMPLATE_LANG.md` §2.3 (новый). Объявления лежат в корневом `sections[]`; раздел — `{id, name, description?, chapter?, vars[]}`. `id` обязателен: kebab-case, уникален в шаблоне. `name` обязателен. `chapter` необязателен, по умолчанию `core` — как у вас; лаунчер поле читает и не использует (вкладка Settings одна). Неизвестное поле раздела пропускается.
+2. **Порядок объявлений** — разделы по порядку, внутри раздела переменные по порядку; имена уникальны по всему шаблону. У вас так и есть.
+3. **Плоский корневой `vars[]`** остаётся формой чтения: фрагменты корпуса (их не перекладываем) и шаблоны лаунчера прошлых версий.
+4. **Обе формы в одном шаблоне — ошибка загрузки.** Сегодня ваш разбор (`parser_config.dart`, `WizardTemplate.fromJson`) корневой `vars` рядом с `sections` молча не читает — по норме шаблон должен быть отвергнут.
+5. **Состав и порядок разделов не нормируются** (D-046). Общий смысл — общий `id`: `general`, `network`, `tun`, `dns`, `auto-proxy`, `dpi-bypass`, `sniff-guard`, `quic` — это ваши идентификаторы, лаунчер взял их как есть. Свои у лаунчера: `proxy-in`, `clash-api`; свои у вас: `vpn-mode`, `wireguard`, `internal`.
+6. **`{"separator": true}`** — расширение лаунчера для плоской формы; внутри раздела лаунчер его отвергает. У вас записи без `name` пропускаются — менять не нужно, в корпус не вынесено.
+7. **Подписи строк Sniff guard** у лаунчера приведены к вашим: «TLS method», «QUIC method», «Only nodes with a masked SNI», «Remember relays across restarts»; заголовок и описание раздела `sniff-guard` — ваш текст.
+
+Корпус `corpus/template/grammar/` (+2): `sections_container` (форма `sections`, неизвестное поле раздела, `chapter`), `sections_and_vars_rejected` (`"load": "reject"`). Ваш раннер читает фрагмент как плоский `vars` — для этих двух кейсов объявления нужно брать из `sections[]`.
+
+Задачи вам: синк 1.1.174; отказ загрузки при `sections` и корневом `vars` вместе; два кейса корпуса в раннере; подтвердить список общих `id` (или назвать, какие у вас значат другое).
+
+## 177. Ответ лаунчера на §157 — контракт 1.1.175, ссылка `tt://` (21.11.2026)
+
+Запись приехала: `registry/protocols/trusttunnel.json` → `mappers.uri`, `aliases: ["tt"]`, `emit.share_uri: true`. Решение владельца — «по черновику LxBox с поправками из спецификации», D-152. Синк — по sha коммита с этим разделом. Ваш черновик `assets/contract_draft/uri/trusttunnel.json` после синка снимается целиком.
+
+**Текстовая спецификация у AdGuard есть:** `DEEP_LINK.md` в корне `TrustTunnel/TrustTunnel` (status: version 2, последняя правка 18.11.2026). В §157 сказано, что её нет; диалект записан по ней и сверен с `deeplink/src/{encode,decode}.rs`.
+
+### 1. Декодер — примитив `tlv`, а не `tt_deeplink`
+
+Норма — `docs/MAPPER_ENGINE.md` §4a (новый), схема — `schema/registry_mapper.schema.json` (`tlv_dialect`, `mapper.tlv`, `emit.container`). Формат отличается от любого соседнего только набором тегов, поэтому он — таблица секции: `mappers.uri.tlv` (`in: query`, `wrap: base64url`, `varint: quic`, `fields[]` с типами `varint`/`string`/`bool`/`enum`/`string_list`/`der_pem`/`hostport`). Шаг формы — `"decode": ["tlv"]`, пространство `json` (как у вас). Объект — тот же, что отдаёт ваш `decodeTtPayload`, с отличиями:
+
+| Ключ | У вас сегодня | По записи |
+|---|---|---|
+| `upstream_protocol` | есть всегда (`http2`, если тега нет) | только `http3`: `http2` — умолчание формата (`default`), в объект не кладётся |
+| `certificate` | один PEM-блок на всё значение | блок на каждый DER-сертификат цепочки, блоки через `\n`, без хвостового перевода строки (спецификация: «Concatenated DER-encoded certificates») |
+| `tls_profile` | тега `0x10` нет | `enum` одним байтом: `0` chrome … `6` boringssl; `chrome` — умолчание, в объект не кладётся; байт вне таблицы — контейнер не прочитан |
+| строки не UTF-8 | отказ | U+FFFD по MAPPER_ENGINE §1 (серия битых байтов — один символ) |
+| `subscription_url` не `https://` | принимается | контейнер не прочитан (правило 7 спецификации) |
+| пустой пейлоад после base64 | отказ | пустой объект → `field_missing` у обязательной записи |
+| ссылка-подписка | исключение декодера | объект с одним `subscription_url`; снимает запись `subscription_only` |
+
+`address`, `server`, `server_port`, `extra_addresses` — как у вас (поле `hostport` с `host`/`port`/`rest`); `has_ipv6`, `skip_verification`, `anti_dpi` — только отличные от умолчания, как у вас.
+
+### 2. Расхождение с §157 по существу: `tls.server_name` ← `hostname`, не `custom_sni`
+
+У клиента AdGuard `custom_sni` — это SNI, а сертификат сверяется с `hostname` (`TrustTunnelClient/trusttunnel/src/client.cpp`: при заданном `custom_sni` — `name = custom_sni`, `remote_id = hostname`; README: «the importing client resolves the SNI and the certificate verification name»). У ядра `tls.server_name` один на оба смысла. С `custom_sni` в нём сертификат узла сверяется с чужим именем и соединение не устанавливается; с `hostname` — устанавливается, теряется только подмена SNI. Поэтому `hostname` → `tls.server_name`, а `custom_sni` — `maps_to: null` + `tt_field_unsupported`. Если у вас есть живой узел, которому нужен именно `custom_sni`, — пришлите, пересмотрим (нужна будет поддержка раздельного имени проверки в ядре).
+
+### 3. Записи и коды
+
+- `server` и `server_port` обязательны (`required`): адрес без порта — `field_missing`. `username`/`password` — как было: обязательность судит тело (`core_rejects`, §137).
+- `upstream_protocol` `http3` → `quic: true`; `skip_verification` → `tls.insecure`; `certificate` → `tls.certificate`; `scheme_sets."*"`: `tls.enabled: true`.
+- `tls_profile` → `tls.utls.fingerprint` + `tls.utls.enabled`: `chrome_canary` → `chrome`, `safari`, `firefox`, `okhttp` → `android`; `openssl`/`boringssl` — uTLS не включается, кода нет. При `http3` запись молчит (`when`) с кодом: ядро не совмещает uTLS с QUIC и сняло бы `quic`.
+- Метка: `json.name`, запасная — `fragment`, дальше `{scheme}-{server}-{server_port}` по `singbox_type`.
+- **Четыре различимых случая, о которых вы просили:**
+
+| Случай | Код | Вид |
+|---|---|---|
+| поле формата, которого нет в теле (`custom_sni`, `has_ipv6=false`, `anti_dpi`, `client_random_prefix`, `client_random_auth_key`, адреса со второго, `dns_upstreams`, `tls_profile` при `http3`) | `tt_field_unsupported` (warning, параметр `field`) | узел живёт; `path` — имя записи (у `tls_profile` при `http3` пути нет: код ставит `on_when_false`) |
+| `subscription_url` у полного узла | `tt_subscription_ignored` (info) | узел живёт |
+| ссылка-подписка (есть `subscription_url`, нет `hostname`, `address`, `username`, `password`) | `tt_subscription_only` (error) | отказ, `dropped[].code` |
+| битый контейнер, версия > 2, `tls_profile` вне таблицы, `subscription_url` не `https://` | `form_unrecognized` | отказ |
+
+  Нет адреса, порта или пароля при непустом узле — `field_missing`, отдельного `tt_deeplink_invalid` нет. `uri_param_unknown` и `service_record_ignored` из черновика здесь больше не ставятся.
+- Запись `subscription_only` — селектор с пустой таблицей значений и `on_invalid: drop`: любое значение — промах, промах селектора снимает узел кодом раньше проверки `required` (MAPPER_ENGINE §7, как у `transport_unsupported`). Новых действий движку не понадобилось.
+
+### 4. Эмит
+
+`emit.container: "tlv"`, `form_from: {"type": {"*": "tt"}}`, `json_map`: `version` `=2`, `hostname` ← `tls.server_name|server` (цепочка через `|` — новое в `json_map`), `username`, `password`, `server`+`server_port` (адрес собирает поле `hostport`, IPv6 в скобках), `tls_profile` ← `$param.tls_profile` (`emit_value_map`: chrome, firefox, safari, android → okhttp; прочие отпечатки формат не выражает — поле не пишется), `skip_verification` ← `tls.insecure`, `certificate` ← `tls.certificate` (PEM → DER подряд), `upstream_protocol` ← `$param.upstream_protocol`, `name` ← `$label`.
+
+**Порядок тегов в §157 записан по старому энкодеру.** Действующий (`deeplink/src/encode.rs`, тот же у `scripts/config_to_deeplink.py`): version, hostname, username, password, address, client_random_prefix, client_random_auth_key, tls_profile, custom_sni, has_ipv6, skip_verification, anti_dpi, certificate, upstream_protocol, name, dns_upstreams, subscription_url — он и стоит в `emit.param_order`. Значение, равное умолчанию формата, не пишется. Критерий паритета выполнен: `tt → тело → tt` байт в байт на кейсах `http2_basic`, `ipv6_address`, `cert_chain_two`, `tls_profile_firefox`, `tls_profile_okhttp` (раннер лаунчера `TestContractTLVEmitByteParity`).
+
+### 5. Корпус
+
+`corpus/uri/trusttunnel/` — 30 кейсов; каталог назван по файлу протокола, а не `tt`. 13 ссылок собраны энкодером AdGuard `scripts/config_to_deeplink.py`, остальные — вручную по спецификации (версии 0/1/3, неизвестный тег, явные умолчания, обрыв TLV, булево `02`, `tls_profile` `7F`, подписка не https, не base64, повтор тега, двухбайтовая длина, метка из фрагмента). Тела приняты `sing-box check` ядра 1.14.4-lx.35.
+
+### 6. Задачи вам
+
+1. Синк 1.1.175; снять черновик `contract_draft/uri/trusttunnel.json`.
+2. Декодер формы `tlv` по диалекту секции вместо `tt_deeplink` (ваши `readVarint`/`encodeTlv`/`splitHostPort` ложатся в него как есть); отличия объекта — таблица п. 1.
+3. `emit.container: "tlv"` и цепочка `|` в `json_map`; побайтный паритет на пяти кейсах п. 4.
+4. Раннер корпуса `uri/trusttunnel/` — 30/30.
+5. Три кода в вашей таблице предупреждений; тексты — `registry/warnings.json`.
+
+Вторая очередь, в эту версию не входит: подписка TrustTunnel (`subscription_url`, ответ JSON `version: 1`) и форма Add server.
+
+## 178. Контракт 1.1.176 — подписка TrustTunnel и форма узла (21.11.2026)
+
+Вторая очередь вашего §157, решение владельца, D-153, у лаунчера — SPEC 184. Синк — по sha коммита с этим разделом.
+
+### 1. Ответ подписки — вид источника `trusttunnel_endpoint_json`
+
+Узел AdGuard TrustTunnel по адресу подписки (`[subscription]` в `vpn.toml`; GET, HTTP Basic Auth) отдаёт один объект: `{version: 1, hostname, address, username, password, has_ipv6, upstream_protocol, anti_dpi, skip_verification, certificate?, custom_sni?, client_random_prefix?, name?, dns_upstreams?}` (`TrustTunnel/lib/src/subscription.rs`, `SubscriptionResponse`). `address` — одна строка `host:port`, `certificate` — PEM, `upstream_protocol` — `http2`/`http3`.
+
+Ключи объекта совпадают с полями контейнера ссылки, поэтому своей секции записей у объекта нет. `registry/source_kinds.json`: вид с `unwrap: "container_link"`, `container: {scheme: "tt", omit: ["version"], set: {version: 2}}`, `redetect: true`. Норма — `MAPPER_ENGINE.md` §2.1: объект сериализуется диалектом `tlv` секции (тем же кодом, что обратный ход 1.1.175), текст `tt://?…` идёт на повторный детект. Узел получается ровно тот же, что из ссылки, с теми же кодами (`tt_field_unsupported` и т.д.); **происхождение узла — ссылка `tt://`, `origin.kind` = `uri`**. Бэкап и схема происхождения не меняются.
+
+Признак вида: объект с ключами `hostname`, `address`, `username`, `password` и без `type`, `protocol`, `outbounds`, `endpoints`. Приоритет 36.
+
+Загрузка: адрес подписки — обычный URL источника вида `https://user:pass@host/path`; логин и пароль из userinfo уходят заголовком `Authorization: Basic`. У лаунчера это делает стандартный HTTP-клиент; у вас — проверьте, что клиент не отбрасывает userinfo. Ответы узла: 401 — нет или неверные учётные данные, 403 — подписка выключена, 404 — путь или SNI не тот, 405 — не GET.
+
+### 2. Ссылка-указатель на подписку
+
+Ссылка `tt://`, в которой только `subscription_url`, по-прежнему не узел: отказ `tt_subscription_only`. Новое: у кода параметр `subscription_url`, и движок кладёт в него адрес из ссылки (значение, отвергнутое селектором `subscription_only`, — общий механизм `on_invalid: drop` у селектора, первый параметр кода принимает значение). **Сторона, принимающая вставленный источник, заводит по этому адресу подписку вместо отказа.** У лаунчера — вставка на вкладке Sources: строка-указатель уходит в подписки наравне с `https://…`. В списке ссылок (`connections`) и в теле чужой подписки строка остаётся отказом с кодом. Правило общее: признак — имя параметра кода, а не схема.
+
+`subscription_url` у полного узла — как было: узел из статических полей, `tt_subscription_ignored`.
+
+### 3. Форма узла
+
+`registry/protocols/trusttunnel.json` → `body.form` и `form` у полей (примитивы 1.1.123, новых нет): `connection` — `server`*, `server_port`*, `username`*, `password`*; `tls` — `server_name`, `insecure`, `utls.fingerprint` (`exclude_fields: ["alpn", "reality"]`, `fixed: {"tls.enabled": true}`); `advanced` — `quic`, `quic_congestion_control` (виден при `quic`), `health_check`, `idle_timeout`. ALPN в форме нет намеренно: ядро ставит его само по протоколу узла, а непустой ALPN без `h2`/`h3` валит старт.
+
+### 4. Корпус
+
+- `corpus/body/trusttunnel/` — `subscription_basic` (минимальный ответ с `name` и `dns_upstreams`), `subscription_full` (IPv6-адрес, `http3`, сертификат, `custom_sni`, `client_random_prefix`, `anti_dpi`, `has_ipv6: false`). `meta.body_kind` у лаунчера — `uri-list`: после распаковки тело есть список из одной ссылки.
+- `corpus/form/trusttunnel_form.json` — 2 кейса.
+
+### 5. Задачи вам
+
+1. Синк 1.1.176.
+2. Распаковщик `container_link` на уровне документа (переиспользует ваш энкодер `tlv` из 1.1.175) и вид `trusttunnel_endpoint_json`; раннер `body/trusttunnel` 2/2.
+3. При добавлении источника: ссылка `tt://` с отказом `tt_subscription_only` → подписка с URL из параметра `subscription_url`; Basic Auth из userinfo при загрузке.
+4. Форма узла TrustTunnel по `body.form`, если формы по реестру у вас рисуются; раннер `form/trusttunnel_form` 2/2.
+5. Тексты `tt_subscription_only` обновлены — забрать из `registry/warnings.json`.

@@ -62,7 +62,11 @@ type TemplateData struct {
 	RawConfig json.RawMessage
 	Params    []TemplateParam
 	// Vars — объявления переменных шаблона; RawTemplate — полный JSON файла для default_node и ResolveTemplateVars.
-	Vars        []TemplateVar
+	Vars []TemplateVar
+	// Sections — разделы объявлений (SPEC 183): заголовки групп строк
+	// Settings. nil у шаблона в плоской форме vars[]; связь с переменной —
+	// TemplateVar.Section.
+	Sections    []TemplateSection
 	RawTemplate json.RawMessage `json:"-"`
 
 	// Presets — параметризованные preset bundles (SPEC 053). Единственный источник
@@ -288,11 +292,18 @@ func ParseTemplateData(raw []byte) (*TemplateData, error) {
 		DNSOptions   json.RawMessage `json:"dns_options,omitempty"`
 		Presets      json.RawMessage `json:"presets,omitempty"`
 		Params       []TemplateParam `json:"params"`
-		Vars         []TemplateVar   `json:"vars"`
+		// Vars заполняет DecodeVarContainer: объявления лежат в sections[]
+		// или в плоском vars[] (SPEC 183).
+		Vars []TemplateVar `json:"-"`
 	}
 	if err := json.Unmarshal(raw, &root); err != nil {
 		return nil, fmt.Errorf("invalid JSON in %s: %w", TemplateFileName, err)
 	}
+	declVars, sections, err := DecodeVarContainer(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", TemplateFileName, err)
+	}
+	root.Vars = declVars
 
 	// SPEC 109: записи `dns_options.servers` бывают в двух формах — плоской
 	// (наша) и вложенной `{vars, server}` (LxBox). Разворачиваем вложенные
@@ -379,6 +390,7 @@ func ParseTemplateData(raw []byte) (*TemplateData, error) {
 		RawConfig:             rawConfig,
 		Params:                root.Params,
 		Vars:                  root.Vars,
+		Sections:              sections,
 		RawTemplate:           rawFull,
 		Presets:               presets,
 		PresetWarnings:        presetWarns,

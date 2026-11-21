@@ -16,10 +16,14 @@
 //
 // # Разная строгость по виду ребра — намеренно
 //
-//   - detour и позиции цепочек — FAIL-CLOSED: нерезолвящаяся, выключенная
-//     или недоступная цель означает, что носитель ссылки деградирует с ⚠, а
-//     не молча идёт напрямую. Анонимность не понижается тихо. Кольца по
-//     этим рёбрам — тоже fail-closed.
+//   - detour — СНЯТИЕ С ⚠ (контракт 1.1.171, D-148, решение владельца
+//     16.11.2026: «если detour не доступен собираем без него и даем ⚠»):
+//     нерезолвящаяся, выключенная или выпавшая цель — хоп снимается, узел
+//     остаётся и ходит напрямую, источник получает detour_unavailable. Не
+//     молча: предупреждение называет цель и узлы. detour на самого себя и
+//     кольца detour — по-прежнему fail-closed (это не недоступная цель).
+//   - позиции цепочек — FAIL-CLOSED: маршрут без хопа — другой маршрут,
+//     цепочка выпадает целиком.
 //   - члены Auto — PRUNE: битый или выключенный член выпадает из состава с
 //     предупреждением; группа, потерявшая всех, не эмитится (пустой urltest
 //     роняет старт ядра).
@@ -228,7 +232,7 @@ type NodeLinkResolution struct {
 //
 // Выключенный узел до этой точки не доезжает вовсе: эмиссия его не создаёт
 // (canonical_emit.go), поэтому «выключенная цель» и «отсутствующая цель» —
-// один исход, и он fail-closed для detour/хопов.
+// один исход: detour снимается (detour_unavailable), цепочка выпадает.
 func (t *NodeLinkTargets) Resolve(link configtypes.NodeLink) NodeLinkResolution {
 	tag := strings.TrimSpace(link.Tag)
 	if tag == "" {
@@ -305,50 +309,54 @@ func ApplyCanonicalNodeLinks(
 	// Верхняя граница защитная — каждый содержательный проход что-то
 	// удаляет, их конечное число.
 	//
-	// Потерянная цель detour (source_detour_missing) пишется ОДНОЙ записью на
-	// пару «источник → цель» с числом узлов: у папки на полсотни узлов с
-	// общим detour иначе было бы полсотни одинаковых строк отчёта. Каждый
-	// узел по-прежнему называется в логе.
-	var missing []detourMissingGroup
-	for iter := 0; iter <= len(allNodes)+1; iter++ {
-		changed := false
-		for _, n := range allNodes {
-			if n == nil || dropped[n] {
-				continue
-			}
-			if reason, lostTarget := resolveCanonicalDetour(n, targets, dropped); reason != "" {
-				dropped[n] = true
-				if lostTarget != "" {
-					missing = addDetourMissing(missing, addr(n, ""), lostTarget, n.Tag)
-				} else {
-					// Без потерянной цели resolveCanonicalDetour роняет узел
-					// только за detour на самого себя.
-					w := addr(n, "")
-					w.Code = codeSourceDetourSelf
-					w.Params = map[string]string{"tag": n.Tag}
-					w.Text = registryWarningText(w.Code, w.Params, reason)
-					warnings = append(warnings, w)
+	// Недоступная цель detour (detour_unavailable, контракт 1.1.171) пишется
+	// ОДНОЙ записью на пару «источник → цель» с числом узлов: у папки на
+	// полсотни узлов с общим detour иначе было бы полсотни одинаковых строк
+	// отчёта. Узел, потерявший хоп, остаётся — и считается один раз, сколько
+	// бы проходов его ни видели.
+	var unavailable []detourUnavailableGroup
+	stripped := make(map[*ParsedNode]bool)
+	// resolveDetours — проход резолва detour по живым узлам. Выпадение
+	// (detour на себя, кольцо, пустая группа) может сделать недоступной цель
+	// уже разрешённого detour — поэтому проход повторяется после каждого из
+	// них, и такой хоп снимается здесь, с кодом, а не доезжает висячим до
+	// граф-санитайзера.
+	resolveDetours := func() {
+		for iter := 0; iter <= len(allNodes)+1; iter++ {
+			changed := false
+			for _, n := range allNodes {
+				if n == nil || dropped[n] || stripped[n] {
+					continue
 				}
+				reason, lostTarget := resolveCanonicalDetour(n, targets, dropped)
+				if reason == "" {
+					continue
+				}
+				if lostTarget != "" {
+					// Хоп снят, узел живёт: каскада нет — цель тех, кто ходит
+					// через этот узел, жива.
+					stripped[n] = true
+					unavailable = addDetourUnavailable(unavailable, addr(n, ""), lostTarget, n.Tag)
+					debuglog.WarnLog("nodelink: %s", reason)
+					continue
+				}
+				// Без потерянной цели resolveCanonicalDetour роняет узел только
+				// за detour на самого себя.
+				dropped[n] = true
+				w := addr(n, "")
+				w.Code = codeSourceDetourSelf
+				w.Params = map[string]string{"tag": n.Tag}
+				w.Text = registryWarningText(w.Code, w.Params, reason)
+				warnings = append(warnings, w)
 				debuglog.WarnLog("nodelink: %s", reason)
 				changed = true
 			}
-		}
-		if !changed {
-			break
+			if !changed {
+				return
+			}
 		}
 	}
-	for _, m := range missing {
-		w := m.w
-		w.Code = codeSourceDetourMissing
-		w.Params = map[string]string{"target": m.target, "count": strconv.Itoa(m.count)}
-		// Имена узлов — в запасном тексте (лог, строка Sources): отчёт
-		// переводит запись по коду, а человеку, читающему лог, нужно знать,
-		// кого именно сняли.
-		w.Text = registryWarningText(w.Code, w.Params,
-			locale.Tf(emitDetourTargetMissingText, m.count, m.target)) +
-			" (" + detourMissingNodeList(m.nodes) + ")"
-		warnings = append(warnings, w)
-	}
+	resolveDetours()
 
 	// Кольца detour: то, что осталось после фикспойнта и ходит по кругу.
 	if cycled := detectCanonicalDetourCycles(allNodes, dropped); len(cycled) > 0 {
@@ -362,6 +370,7 @@ func ApplyCanonicalNodeLinks(
 			warnings = append(warnings, w)
 			debuglog.WarnLog("nodelink: %s", reason)
 		}
+		resolveDetours()
 	}
 
 	// Связи тела с detour, который сборка только что проставила: в теле
@@ -369,7 +378,7 @@ func ApplyCanonicalNodeLinks(
 	// связь реестра `conflicts {with: detour}` при санитайзе не сработала бы
 	// никогда. detour не уступает (fail-closed) — уступает поле, с кодом связи.
 	for _, n := range allNodes {
-		if n == nil || dropped[n] || n.CanonicalDetour == nil {
+		if n == nil || dropped[n] || stripped[n] || n.CanonicalDetour == nil {
 			continue
 		}
 		target, _ := n.Outbound[buildDetourField].(string)
@@ -393,6 +402,7 @@ func ApplyCanonicalNodeLinks(
 	}
 
 	// Auto-группы — prune: состав фильтруется, пустая группа не эмитится.
+	groupsDropped := false
 	for _, n := range allNodes {
 		if n == nil || dropped[n] || n.Scheme != configtypes.SchemeGroup {
 			continue
@@ -413,7 +423,14 @@ func ApplyCanonicalNodeLinks(
 			w.Params = map[string]string{"tag": n.Tag}
 			warnings = append(warnings, w)
 			debuglog.WarnLog("nodelink: %s", reason)
+			groupsDropped = true
 		}
+	}
+	if groupsDropped {
+		resolveDetours()
+	}
+	for _, u := range unavailable {
+		warnings = append(warnings, u.warning())
 	}
 
 	if len(dropped) == 0 {
@@ -429,10 +446,11 @@ func ApplyCanonicalNodeLinks(
 	return kept, warnings
 }
 
-// resolveCanonicalDetour штампует detour узлу. Возвращает непустую причину,
-// если носитель обязан выпасть (fail-closed); lostTarget — имя цели, когда
-// причина в том, что цели нет (не разрешилась или сама выпала): такие узлы
-// сводятся в одну запись source_detour_missing на пару источник→цель.
+// resolveCanonicalDetour штампует detour узлу. Непустая причина — detour не
+// проставлен. lostTarget непуст, когда цели нет (не разрешилась, выключена
+// или сама выпала): ключ detour снят, узел живёт, такие узлы сводятся в одну
+// запись detour_unavailable на пару источник→цель. Пустой lostTarget при
+// непустой причине — detour на самого себя: носитель выпадает.
 func resolveCanonicalDetour(n *ParsedNode, targets *NodeLinkTargets, dropped map[*ParsedNode]bool) (reason, lostTarget string) {
 	if n.CanonicalDetour == nil {
 		return "", ""
@@ -452,9 +470,11 @@ func resolveCanonicalDetour(n *ParsedNode, targets *NodeLinkTargets, dropped map
 		if target == "" {
 			target = res.Problem
 		}
+		delete(n.Outbound, buildDetourField)
 		return locale.Tf(emitDetourUnresolvedText, n.Tag, res.Problem), target
 	}
 	if res.Node != nil && dropped[res.Node] {
+		delete(n.Outbound, buildDetourField)
 		return locale.Tf(emitDetourTargetDroppedText, n.Tag, res.Tag), res.Tag
 	}
 	if res.Tag == n.Tag {
@@ -475,7 +495,7 @@ const buildDetourField = "detour"
 // проверка локализации (tools/l10n) резолвит locale.T(const) только по
 // константам того же файла.
 const (
-	emitDetourTargetMissingText = "%d node(s) dropped: detour target %q is gone"
+	emitDetourUnavailableText   = "%d node(s) now connect directly: detour target %q is unavailable"
 	emitDetourFieldYieldText    = "node %q: %s removed — it cannot be combined with detour %q"
 	// emitNotAppliedMarkText — пометка строки отчёта сборки, чьё правило
 	// НЕ применено к авторскому телу (контракт 1.1.87).
@@ -535,24 +555,37 @@ func withoutBodyPath(m map[string]interface{}, parts []string) map[string]interf
 	return m
 }
 
-// detourMissingGroup — узлы одного источника, выпавшие из-за одной и той же
-// потерянной цели detour.
-type detourMissingGroup struct {
+// detourUnavailableGroup — узлы одного источника, потерявшие хоп из-за одной
+// и той же недоступной цели detour.
+type detourUnavailableGroup struct {
 	w      EmissionWarning // адресат (источник)
 	target string
-	count  int
 	nodes  []string
 }
 
-func addDetourMissing(groups []detourMissingGroup, w EmissionWarning, target, node string) []detourMissingGroup {
+func addDetourUnavailable(groups []detourUnavailableGroup, w EmissionWarning, target, node string) []detourUnavailableGroup {
 	for i := range groups {
 		if groups[i].w.SourceID == w.SourceID && groups[i].w.SourceLabel == w.SourceLabel && groups[i].target == target {
-			groups[i].count++
 			groups[i].nodes = append(groups[i].nodes, node)
 			return groups
 		}
 	}
-	return append(groups, detourMissingGroup{w: w, target: target, count: 1, nodes: []string{node}})
+	return append(groups, detourUnavailableGroup{w: w, target: target, nodes: []string{node}})
+}
+
+// warning — запись detour_unavailable группы: параметры реестра и запасной
+// текст для лога и строки Sources.
+func (g detourUnavailableGroup) warning() EmissionWarning {
+	w := g.w
+	w.Code = codeDetourUnavailable
+	w.Params = map[string]string{
+		"target": g.target,
+		"count":  strconv.Itoa(len(g.nodes)),
+		"tags":   detourMissingNodeList(g.nodes),
+	}
+	w.Text = registryWarningText(w.Code, w.Params,
+		locale.Tf(emitDetourUnavailableText, len(g.nodes), g.target)+" ("+detourMissingNodeList(g.nodes)+")")
+	return w
 }
 
 // detourMissingNodeList — имена снятых узлов для запасного текста; длинный

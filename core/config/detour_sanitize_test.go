@@ -2,10 +2,9 @@ package config
 
 import "testing"
 
-// SPEC 077 → SPEC 113-B: единая строгость. Прежние тесты этого файла
-// фиксировали fail-open («detour снят, узел ходит напрямую»); поведение
-// инвертировано — снятие ключа и есть тот молчаливый прямой дозвон, ради
-// запрета которого писан SPEC 113-B. Выбрасывается носитель.
+// SPEC 077 → SPEC 113-B: самоссылка и кольцо detour — fail-closed, носитель
+// выбрасывается. Недоступная цель (контракт 1.1.171) здесь не решается: узел
+// с висячим detour остаётся, хоп снимает граф-санитайзер с detour_unavailable.
 
 func nodeWithDetour(tag, detour string) *ParsedNode {
 	ob := map[string]interface{}{"type": "vless", "tag": tag}
@@ -98,16 +97,19 @@ func TestSanitizeNodeDetours_ThreeCycleDropsAll(t *testing.T) {
 	}
 }
 
-// Каскад: D ходил через участника кольца — выпадает следом, иначе у него
-// остался бы detour в никуда.
-func TestSanitizeNodeDetours_CascadeAfterRing(t *testing.T) {
+// Каскада нет (1.1.171): D ходил через участника кольца — остаётся с висячим
+// detour, хоп снимет граф-санитайзер с detour_unavailable.
+func TestSanitizeNodeDetours_NoCascadeAfterRing(t *testing.T) {
 	a := nodeWithDetour("A", "B")
 	b := nodeWithDetour("B", "A")
 	d := nodeWithDetour("D", "A")
 	e := nodeWithDetour("E", "")
 	kept := tagsOf(sanitizeNodeDetours([]*ParsedNode{a, b, d, e}))
-	if kept["D"] {
-		t.Error("узел, ходивший через выброшенный, обязан выпасть следом")
+	if !kept["D"] {
+		t.Error("узел, ходивший через выброшенный, выпадать не должен — цель недоступна, хоп снимет санитайзер")
+	}
+	if kept["A"] || kept["B"] {
+		t.Errorf("участники кольца остались: %v", kept)
 	}
 	if !kept["E"] {
 		t.Error("узел без detour к кольцу отношения не имеет и выпадать не должен")

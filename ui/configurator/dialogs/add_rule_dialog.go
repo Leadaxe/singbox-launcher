@@ -738,6 +738,13 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	fixedIPError.Importance = widget.DangerImportance
 	fixedIPError.Hide()
 	forceIPv4Check := widget.NewCheck(locale.T("Force IPv4 (drop AAAA)"), nil)
+	// Block HTTPS (контракт 1.1.173): HTTPS/SVCB под правило — пустым ответом,
+	// чтобы браузер не взял ECH и SNI остался открытым для правил по доменам.
+	blockHTTPSCheck := widget.NewCheck(locale.T("Block HTTPS/SVCB records (no ECH)"), nil)
+	dnsNarrowNote := widget.NewLabel(locale.T("DNS options apply to these domains on any port and protocol."))
+	dnsNarrowNote.Wrapping = fyne.TextWrapWord
+	dnsNarrowNote.Importance = widget.LowImportance
+	dnsNarrowNote.Hide()
 	dnsHint := widget.NewLabel("")
 	dnsHint.Wrapping = fyne.TextWrapWord
 	dnsHint.Importance = widget.LowImportance
@@ -745,6 +752,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	if initialDNS != nil {
 		dnsServerSelect.SetSelected(initialDNS.ServerTag)
 		forceIPv4Check.SetChecked(initialDNS.ForceIPv4)
+		blockHTTPSCheck.SetChecked(initialDNS.BlockHTTPS)
 		fixedIPEntry.SetText(strings.Join(initialDNS.FixedIPs, "\n"))
 		switch {
 		case len(initialDNS.FixedIPs) > 0:
@@ -784,9 +792,10 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	}
 	currentRuleDNS := func() *corestate.RuleDNS {
 		d := &corestate.RuleDNS{
-			Enabled:   answerRadio.Selected == answerServer,
-			ServerTag: dnsServerSelect.Selected,
-			ForceIPv4: forceIPv4Check.Checked,
+			Enabled:    answerRadio.Selected == answerServer,
+			ServerTag:  dnsServerSelect.Selected,
+			ForceIPv4:  forceIPv4Check.Checked,
+			BlockHTTPS: blockHTTPSCheck.Checked,
 		}
 		if answerRadio.Selected == answerFixed {
 			d.FixedIPs, _ = fixedIPs()
@@ -813,9 +822,41 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		}
 		return body
 	}
+	// currentRuleIsSRS — правило уйдёт в запись вида srs: тип формы или тело
+	// JSON-вкладки со ссылкой на наборы формы.
+	currentRuleIsSRS := func(body map[string]interface{}) bool {
+		if activeTabIsRaw {
+			return body != nil && srsRuleSetsForRawBody(body) != nil
+		}
+		return ruleSel.Type() == wizardmodels.RuleTypeSRS
+	}
+	// hadDomains — у inline-правила было доменное условие при прошлой
+	// проверке. Галка Block HTTPS ставится сама, когда домены появились из
+	// пустого (решение 1.1.173); при открытии — состояние сохранённого
+	// правила, его галку не трогаем.
+	hadDomains := false
+	if isEdit && editRule.Rule.Rule != nil {
+		hadDomains = build.RuleDNSBlockHTTPSAvailable(editRule.Rule.Rule, false)
+	}
 	updateDNSAvailability := func() {
 		body := currentRuleBody()
 		_, ok := build.RuleDNSMirrorMatch(body)
+		isSRS := currentRuleIsSRS(body)
+		hasDomains := !isSRS && build.RuleDNSBlockHTTPSAvailable(body, false)
+		if hasDomains && !hadDomains {
+			blockHTTPSCheck.SetChecked(true)
+		}
+		hadDomains = hasDomains
+		if ok && build.RuleDNSBlockHTTPSAvailable(body, isSRS) {
+			blockHTTPSCheck.Enable()
+		} else {
+			blockHTTPSCheck.Disable()
+		}
+		if ok && build.RuleDNSMirrorNarrowed(body) {
+			dnsNarrowNote.Show()
+		} else {
+			dnsNarrowNote.Hide()
+		}
 		hint := ""
 		mode := answerRadio.Selected
 		if mode == answerServer {
@@ -856,7 +897,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			dnsServerSelect.Disable()
 			fixedIPEntry.Disable()
 			if body != nil {
-				hint = locale.T("Unavailable for rules with ports, protocols or network, and for rules that match only IP addresses.")
+				hint = locale.T("Unavailable for rules that match only IP addresses, ports or protocols.")
 			}
 		}
 		dnsHint.SetText(hint)
@@ -888,6 +929,8 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		fixedIPNote,
 		fixedIPError,
 		forceIPv4Check,
+		blockHTTPSCheck,
+		dnsNarrowNote,
 		dnsHint,
 	)
 
@@ -1537,7 +1580,7 @@ func rulePreviewText(model *wizardmodels.WizardModel, in rulePreviewInput) strin
 	dnsSec := &rulePreviewSection{}
 	mirrors := build.RuleDNSMirrors(route)
 	if !in.dns.IsZero() && len(route.Rules) > 0 && len(mirrors) == 0 {
-		notes = append(notes, locale.T("DNS options do not apply to this rule: it has ports, protocols or network, or matches only IP addresses."))
+		notes = append(notes, locale.T("DNS options do not apply to this rule: it has no condition DNS queries can match, such as domains, apps or a rule set."))
 	}
 	enabled := make(map[string]bool)
 	for _, t := range wizardbusiness.DNSEnabledTagOptions(model) {

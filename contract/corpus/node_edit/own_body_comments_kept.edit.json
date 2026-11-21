@@ -1,0 +1,9 @@
+{
+  "_comment": "Голое тело с тремя видами комментариев и «комментарием» внутри строки: обрезать нечего — источник хранится как набран, с комментариями; тело авторское (контракт 1.1.172, BACKUP.md §2 origin; LxBox 741).",
+  "container": "own",
+  "origin": {
+    "kind": "singbox",
+    "raw": "{\"type\":\"trojan\",\"server\":\"example-2.com\",\"server_port\":443,\"password\":\"testpass581\"}"
+  },
+  "input": "{\n  // пометка автора\n  \"type\": \"trojan\",\n  \"server\": \"example-1.com\", # хост\n  \"server_port\": 443,\n  /* пароль \"из письма\" */ \"password\": \"pass//not#comment\"\n}"
+}

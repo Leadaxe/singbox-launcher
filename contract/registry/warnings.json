@@ -550,7 +550,7 @@
         "Попросите у провайдера конфиг со всеми узлами, на которые он ссылается, и обновите подписку.",
         "Выберите другой узел из этой подписки."
       ],
-      "desc": "detour указывает на тег ИМПОРТИРУЕМОГО конфига, которого в нём нет или который узлом не стал (неподдержанный тип, битая запись) — FAIL-CLOSED (контракт 1.1.118, решение владельца 13.10.2026; до того цепочка обрезалась и узел ходил напрямую). Узел-носитель отбраковывается записью kind=unsupported на своей позиции с этим кодом. Та же строгость, что у source_detour_missing (detour источника, настроенный пользователем).",
+      "desc": "detour указывает на тег ИМПОРТИРУЕМОГО конфига, которого в нём нет или который узлом не стал (неподдержанный тип, битая запись) — FAIL-CLOSED (контракт 1.1.118, решение владельца 13.10.2026; до того цепочка обрезалась и узел ходил напрямую). Узел-носитель отбраковывается записью kind=unsupported на своей позиции с этим кодом. Строже, чем у detour, назначенного пользователем: там недоступная цель снимает хоп с detour_unavailable (1.1.171), а здесь норма D-128 не менялась.",
       "dart": "DetourTargetMissingWarning",
       "go": "core/config/subscription/detour_chain.go:singboxChainInfo.attachChain — отказ сборки цепочки (цель не найдена или не разобралась); отбраковку записывает core/config/subscription/singbox_import.go:parseSingboxConfig (rejected.addCoded)"
     },
@@ -1563,30 +1563,6 @@
       "dart": null,
       "go": "core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks — после проставления detour (core/config/nodelink_resolve.go:resolveCanonicalDetour) поля, уступающие ему по связи conflicts реестра, снимаются общим core/config/nodelink_resolve.go:yieldToBuildDetour (вопрос к реестру — core/config/registry/registry.go:Registry.YieldsTo); код — EmissionWarning.Code в отчёт сборки"
     },
-    "source_detour_missing": {
-      "severity": "error",
-      "params": [
-        "target",
-        "count"
-      ],
-      "title_en": "Source chain broken: {target} not found",
-      "title_ru": "Цепочка источника порвана: нет {target}",
-      "text_en": "You routed this source through {target}, and that node is gone. All {count} of its nodes were excluded on purpose: without the assigned hop the traffic would go directly, past the boundary you set.",
-      "text_ru": "Вы вели этот источник через {target}, и этот узел пропал. Все его узлы ({count}) исключены намеренно: без назначенного хопа трафик пошёл бы напрямую, мимо заданной вами границы.",
-      "cause_en": "You assigned a hop to this source yourself, and the node serving as that hop is gone: it disappeared from its subscription after an update, was renamed, or was deleted.",
-      "cause_ru": "Вы сами назначили этому источнику хоп, и узел, который был этим хопом, исчез: пропал из своей подписки после обновления, был переименован или удалён.",
-      "fix_en": [
-        "Assign an existing node as the hop for this source.",
-        "Or remove the hop if the source no longer needs to go through one."
-      ],
-      "fix_ru": [
-        "Назначьте этому источнику хопом существующий узел.",
-        "Или снимите хоп, если источнику больше не нужно идти через него."
-      ],
-      "desc": "Detour-узел, НАЗНАЧЕННЫЙ ПОЛЬЗОВАТЕЛЕМ на источник, не найден — все ноды источника дропаются fail-closed (трафик не должен уйти напрямую мимо приватной границы). Противоположная политика detour_target_missing — там detour приехал из чужого файла и узел живёт direct; различие by design. Desktop-фича.",
-      "dart": null,
-      "go": "EmissionWarning.Code в отчёт сборки, одна запись на пару источник→цель с числом узлов: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks (узлы выпадают fail-closed в core/config/nodelink_resolve.go:resolveCanonicalDetour)"
-    },
     "source_detour_self": {
       "severity": "error",
       "params": [
@@ -1606,7 +1582,7 @@
         "Назначьте хопом другой узел.",
         "Или выведите этот узел из папки, хопом которой он служит."
       ],
-      "desc": "Контракт 1.1.65. detour, НАЗНАЧЕННЫЙ ПОЛЬЗОВАТЕЛЕМ, разрешился в сам узел — узел выпадает fail-closed (та же политика, что source_detour_missing). Не путать с detour_cycle_broken: там кольцо пришло из импортированного конфига, ребро снимается и узел живёт. Desktop-фича.",
+      "desc": "Контракт 1.1.65. detour, НАЗНАЧЕННЫЙ ПОЛЬЗОВАТЕЛЕМ, разрешился в сам узел — узел выпадает fail-closed (самоссылка — не недоступная цель, detour_unavailable сюда не относится). Не путать с detour_cycle_broken: там кольцо пришло из импортированного конфига, ребро снимается и узел живёт. Desktop-фича.",
       "dart": null,
       "go": "EmissionWarning.Code в отчёт сборки: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks (узел роняет core/config/nodelink_resolve.go:resolveCanonicalDetour)"
     },
@@ -1629,7 +1605,7 @@
         "Подберите хопы так, чтобы они не вели обратно к узлу.",
         "Или снимите хоп у одного из узлов кольца."
       ],
-      "desc": "Контракт 1.1.65. Кольцо по рёбрам detour, НАЗНАЧЕННЫМ ПОЛЬЗОВАТЕЛЕМ, — все участники выпадают fail-closed (политика source_detour_missing). Не путать с detour_cycle_broken: там кольцо из импортированного конфига, замыкающее ребро снимается, узел живёт. Desktop-фича.",
+      "desc": "Контракт 1.1.65. Кольцо по рёбрам detour, НАЗНАЧЕННЫМ ПОЛЬЗОВАТЕЛЕМ, — все участники выпадают fail-closed (кольцо — не недоступная цель, detour_unavailable сюда не относится). Не путать с detour_cycle_broken: там кольцо из импортированного конфига, замыкающее ребро снимается, узел живёт. Desktop-фича.",
       "dart": null,
       "go": "EmissionWarning.Code в отчёт сборки: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks (кольца ищет core/config/nodelink_resolve.go:detectCanonicalDetourCycles)"
     },
@@ -1968,6 +1944,33 @@
       "desc": "Группа (Направление или группа свёртки папки) не взяла в состав узлы, которые своим detour ходят через эту же группу (SPEC 077 follow-up). Ядро на таком кольце отвергает ВЕСЬ конфиг (`dependency[X] not found for outbound[Y]`), и сообщение указывает не на тот узел, который трогал пользователь. Кольцо рвётся по членству, а не по переходу: узел остаётся в конфиге и ходит через свой detour (снять detour молча значило бы отправить трафик напрямую мимо заданной границы, SPEC 113-B). Одна запись на пару (источник, группа): detour чаще всего задан у источника целиком, и подписка на полсотни узлов дала бы полсотни одинаковых строк. Адресат — источник узла (строка Sources с пометкой); у узла без источника — запись без адреса. Живой случай: подписка Liberty с detour на «Jump server» и фильтр (🔥|🗽) у самого «Jump server» — в Мастере читалось как «фильтр не сработал».",
       "dart": "services/builder/ (состав групп) — код в отчёт сборки, если ваша сборка тоже рвёт кольцо узел→группа по членству",
       "go": "EmissionWarning.Code в отчёт сборки (адресат — источник, DirectionTag — группа): core/config/detour_group_cycle.go:detourCycleWarnings; узел из состава снимает core/config/detour_group_cycle.go:dropNodesDetouringThroughGroup"
+    },
+    "detour_unavailable": {
+      "severity": "warning",
+      "params": [
+        "target",
+        "count",
+        "tags"
+      ],
+      "title_en": "Hop {target} unavailable: hop removed",
+      "title_ru": "Хоп {target} недоступен: хоп снят",
+      "text_en": "This source (or its node) was routed through {target}, and {target} is not available in the config. The hop was removed from {count} node(s) ({tags}): they stay in the config and now connect directly, not through {target}.",
+      "text_ru": "Этот источник (или его узел) вёлся через {target}, а {target} в конфиге недоступен. У узлов ({tags}; всего {count}) хоп снят: они остались в конфиге и теперь подключаются напрямую, не через {target}.",
+      "cause_en": "The hop assigned to this source or its node is not in the config: the direction was turned off, or the node serving as the hop was deleted, renamed, or disappeared from its subscription after an update.",
+      "cause_ru": "Хопа, назначенного этому источнику или его узлу, в конфиге нет: Направление выключено, либо узел, который был хопом, удалён, переименован или пропал из своей подписки после обновления.",
+      "fix_en": [
+        "If the nodes must go through {target}, bring it back: turn the direction on, or restore the node.",
+        "Or choose another hop for the source or the node.",
+        "Or remove the hop if a direct connection is what you want."
+      ],
+      "fix_ru": [
+        "Если узлы обязаны ходить через {target}, верните его: включите Направление или восстановите узел.",
+        "Или выберите источнику или узлу другой хоп.",
+        "Или снимите хоп, если прямое подключение вас устраивает."
+      ],
+      "desc": "Контракт 1.1.171, TASKS_LXBOX §171/§172, задача LxBox 739, решение владельца 16.11.2026 (D-148): «если detour не доступен собираем без него и даем ⚠». Цель detour, назначенного пользователем источнику или узлу, в собранном конфиге недоступна — Направление выключено, узел-цель удалён, переименован, пропал из подписки или сам выпал из сборки, тега нет вовсе. Норма: detour снимается, узел остаётся в конфиге и ходит напрямую, ставится код. Отменяет для этого случая единую строгость detour SPEC 113-B (узел выбрасывался, source_detour_missing). Одна запись на пару (источник, цель): target — тег цели, как он записан в detour; count — сколько узлов источника потеряли хоп; tags — их теги через запятую; адресат — источник и каждый узел из tags (как node_detour_through_group); узел без источника — запись без адреса строки Sources. Каскада нет: узел, чей detour ведёт на узел без хопа, свой хоп не теряет — цель жива. Не затронуто: позиции цепочек (цепочка с пропавшей позицией выпадает целиком), detour на самого себя и кольца (source_detour_self, source_detour_cycle), висячий detour внутри импортируемого конфига (detour_target_missing, D-128). Заменяет снятый в 1.1.171 код source_detour_missing (error, узлы выбрасывались). Desktop: лаунчер на этой норме с 1.1.171 (подтверждение владельца 16.11.2026).",
+      "dart": "services/builder/ (правило 1 граф-санитайзера: снятый недоступный detour) — задача 739",
+      "go": "EmissionWarning.Code в отчёт сборки, одна запись на пару источник→цель: core/config/nodelink_resolve.go:ApplyCanonicalNodeLinks (хоп снимает core/config/nodelink_resolve.go:resolveCanonicalDetour); висячий тег, прошедший резолв (исчезнувший селектор шаблона), снимает правило 1 core/build/outbound_graph_sanitize.go:sanitizeEntryRefs, запись в отчёт — core/build_report_feed.go:FeedBuildReportFromDetourStripped"
     },
     "direction_filter_matched_nothing": {
       "severity": "warning",
@@ -2827,6 +2830,73 @@
       "desc": "Контракт 1.1.63, SPEC 142 C9: `item_forbidden` у tailscale advertise_routes — `0.0.0.0/0` и `::/0` после normalize cidr_masked. Ядро: protocol/tailscale/endpoint.go NewEndpoint — «`advertise_routes` cannot be default, use `advertise_exit_node` instead.», отказ всего конфига. Прежде элемент отбивала только форма добавления узла, и вход singbox/бэкап несли его в ядро.",
       "dart": null,
       "go": "правило реестра contract/registry/protocols/tailscale.json body.fields.advertise_routes.item_forbidden; исполнение — core/config/nodeflow/sanitize.go:sanitizer.filterItems"
+    },
+    "tt_field_unsupported": {
+      "severity": "warning",
+      "params": [
+        "field"
+      ],
+      "title_en": "TrustTunnel link: {field} not applied",
+      "title_ru": "Ссылка TrustTunnel: {field} не применяется",
+      "text_en": "The link sets {field}, which the core's TrustTunnel node cannot express. The node was imported without it; whether it connects depends on what the server requires.",
+      "text_ru": "Ссылка задаёт {field}, а узел TrustTunnel ядра такую настройку выразить не может. Узел импортирован без неё; соединится ли он, зависит от требований сервера.",
+      "cause_en": "The tt:// link is the format of the AdGuard TrustTunnel clients and carries their own settings: a separate SNI (custom_sni), a TLS client-random prefix or key the server recognises the client by, the anti-DPI mode, extra endpoint addresses, the profile's DNS servers, an IPv6 ban, a ClientHello profile together with HTTP/3. The sing-box outbound has no field for them.",
+      "cause_ru": "Ссылка tt:// — формат клиентов AdGuard TrustTunnel и несёт их собственные настройки: отдельный SNI (custom_sni), префикс или ключ TLS client random, по которым сервер опознаёт клиента, режим anti-DPI, запасные адреса узла, DNS-серверы профиля, запрет IPv6, профиль ClientHello вместе с HTTP/3. У outbound sing-box полей под них нет.",
+      "fix_en": [
+        "Nothing to do if the node connects.",
+        "If it does not: client_random_prefix and client_random_auth_key are how some servers admit clients — ask the provider for access without them, or use the AdGuard TrustTunnel client for this server."
+      ],
+      "fix_ru": [
+        "Если узел соединяется, делать ничего не нужно.",
+        "Если нет: по client_random_prefix и client_random_auth_key некоторые серверы допускают клиентов — попросите у провайдера доступ без них либо используйте для этого сервера клиент AdGuard TrustTunnel."
+      ],
+      "desc": "Поле deep link TrustTunnel, которого нет в теле trusttunnel (контракт 1.1.175): custom_sni, has_ipv6 (false), anti_dpi, client_random_prefix, client_random_auth_key, адреса со второго (field = address), dns_upstreams, tls_profile при http3. Узел живёт. Один код на поле (path — имя записи). severity warning, а не info: без client_random узел, чьи правила его требуют, не соединится.",
+      "dart": null,
+      "go": "правило реестра contract/registry/protocols/trusttunnel.json mappers.uri.params.<поле>.on_present / tls_profile.on_when_false (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
+    },
+    "tt_subscription_ignored": {
+      "severity": "info",
+      "params": [],
+      "title_en": "TrustTunnel link: subscription address not used",
+      "title_ru": "Ссылка TrustTunnel: адрес подписки не используется",
+      "text_en": "Besides the server, the link carries a subscription address. The server was imported from the link itself; the subscription is not read, so later changes on the provider's side will not arrive on their own.",
+      "text_ru": "Кроме сервера, ссылка несёт адрес подписки. Сервер импортирован из самой ссылки; подписка не читается, поэтому последующие изменения на стороне провайдера сами не придут.",
+      "cause_en": "A version 2 tt:// link may carry subscription_url next to the static connection parameters; AdGuard clients refresh the server from it. This application does not read TrustTunnel subscriptions yet.",
+      "cause_ru": "Ссылка tt:// версии 2 может нести subscription_url рядом со статическими параметрами соединения; клиенты AdGuard обновляют по нему сервер. Это приложение подписки TrustTunnel пока не читает.",
+      "fix_en": [
+        "Nothing to do: the node works.",
+        "If the server stops working, ask the provider for a fresh link."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно: узел работает.",
+        "Если сервер перестанет работать, попросите у провайдера свежую ссылку."
+      ],
+      "desc": "subscription_url (тег 0x0E) у ссылки с полным узлом (контракт 1.1.175). Статические поля — запасной вход формата, они и становятся узлом; подписка — вторая очередь.",
+      "dart": null,
+      "go": "правило реестра contract/registry/protocols/trusttunnel.json mappers.uri.params.subscription_url.on_present (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
+    },
+    "tt_subscription_only": {
+      "severity": "error",
+      "params": [
+        "subscription_url"
+      ],
+      "title_en": "TrustTunnel link: a subscription link, not a server",
+      "title_ru": "Ссылка TrustTunnel: это ссылка-подписка, а не сервер",
+      "text_en": "The link carries only a subscription address and no server of its own, so there is no node to import from it. Added as a source on its own, it becomes a subscription: the server is fetched from that address.",
+      "text_ru": "Ссылка несёт только адрес подписки, своего сервера в ней нет — узла из неё не получить. Добавленная отдельным источником, она становится подпиской: сервер забирается по этому адресу.",
+      "cause_en": "A version 2 tt:// link may consist of subscription_url alone; an AdGuard client then fetches the server parameters from that address. There is no node in such a link to import.",
+      "cause_ru": "Ссылка tt:// версии 2 может состоять из одного subscription_url; клиент AdGuard тогда забирает параметры сервера по этому адресу. Узла, который можно импортировать, в такой ссылке нет.",
+      "fix_en": [
+        "Add the link as a source of its own (Sources → Add): it is turned into a subscription.",
+        "Or ask the provider for a link with the server parameters."
+      ],
+      "fix_ru": [
+        "Добавьте ссылку отдельным источником (Sources → Add): она превратится в подписку.",
+        "Либо попросите у провайдера ссылку с параметрами сервера."
+      ],
+      "desc": "Ссылка-подписка tt://: есть subscription_url, нет ни hostname, ни address, ни username, ни password (правило 6 DEEP_LINK.md). Узел не строится — отказ разбора (dropped). Параметр subscription_url несёт адрес подписки (контракт 1.1.176): сторона, принимающая вставленный источник, заводит по нему подписку вместо отказа; в списке ссылок и в теле подписки строка остаётся отказом с этим кодом. Ответ по адресу — вид источника trusttunnel_endpoint_json.",
+      "dart": null,
+      "go": "правило реестра contract/registry/protocols/trusttunnel.json mappers.uri.params.subscription_only.on_invalid (drop у селектора); исполнение — core/config/linkmap/exec.go:execOne; адрес подписки из отказа — core/config/subscription/source_loader.go:SubscriptionURLOfLink"
     }
   }
 }

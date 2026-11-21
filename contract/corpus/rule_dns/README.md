@@ -39,3 +39,14 @@
 - в `fixedIps` нет ни одного разбираемого адреса — режима нет, зеркало по
   `enabled` / `serverTag` и глушилка, как без `fixedIps`
   (`fixed_unparsable_falls_back`).
+- Block HTTPS (`blockHttps`, контракт 1.1.173): правило
+  `query_type: [HTTPS, SVCB]` пустым NOERROR — первым из DNS-правил правила
+  (`inline_port_block_https`); порядок Block HTTPS → глушилка AAAA → зеркало
+  на `serverTag` (`inline_block_https_force_ipv4_server`); при Fixed IP —
+  перед парой A/AAAA (`inline_fixed_block_https`); у `srs` без доменных ключей
+  в теле — выпускается (`srs_block_https`); у `inline` без доменного условия
+  — не выпускается, остальные опции как были (`inline_block_https_no_domains`);
+  у `inline` только с IP назначения — ничего (`inline_block_https_ip_only`);
+- гейта портов / протоколов / network нет (1.1.173): у правила с `port` или
+  `network` опции выпускаются, эти ключи в DNS-правило не идут
+  (`inline_port_block_https`, `inline_network_force_ipv4`).

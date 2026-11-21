@@ -1,0 +1,9 @@
+{
+  "dns_rules": [
+    {
+      "action": "predefined",
+      "ip_version": 6,
+      "rcode": "NOERROR"
+    }
+  ]
+}

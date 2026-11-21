@@ -1,0 +1,9 @@
+{
+  "_comment": "Документ с комментариями и dns: обрезка сняла остаток — источник пересобран из узловых массивов, комментариев в нём нет; об остатке одно сообщение (контракт 1.1.172).",
+  "container": "own",
+  "origin": {
+    "kind": "singbox",
+    "raw": "{\"type\":\"trojan\",\"server\":\"example-2.com\",\"server_port\":443,\"password\":\"testpass581\"}"
+  },
+  "input": "{\n  // документ с пометками\n  \"outbounds\": [{\"type\": \"trojan\", \"server\": \"example-1.com\", \"server_port\": 443, \"password\": \"testpass580\"}], # узел\n  \"dns\": {\"servers\": [{\"type\": \"local\", \"tag\": \"d\"}]} /* остаток */\n}"
+}

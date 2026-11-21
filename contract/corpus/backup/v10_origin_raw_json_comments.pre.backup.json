@@ -1,0 +1,26 @@
+{
+  "lx_backup": 2,
+  "exported_by": {
+    "app": "launcher",
+    "version": "corpus",
+    "platform": "test"
+  },
+  "exported_at": "2026-11-17T00:00:00Z",
+  "sources": [
+    {
+      "kind": "server",
+      "tag": "plain-root",
+      "enabled": true,
+      "origin": {
+        "kind": "singbox",
+        "raw": "{\"type\":\"trojan\",\"server\":\"example-1.com\",\"server_port\":443,\"password\":\"testpass741\"}"
+      },
+      "body": {
+        "type": "trojan",
+        "server": "example-1.com",
+        "server_port": 443,
+        "password": "testpass741"
+      }
+    }
+  ]
+}

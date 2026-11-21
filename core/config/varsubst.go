@@ -149,7 +149,7 @@ type templateVarDefaults struct {
 }
 
 // loadTemplateVarDefaults reads only what we need from wizard_template.json:
-// the `vars` array. Each var contributes its `default_value` (in string
+// the variable declarations (`sections[].vars[]` or flat `vars[]`). Each var contributes its `default_value` (in string
 // form — for object form per-platform default we pick `"default"` first,
 // else current GOOS, else any). Types "bool" and "int" tracked for coercion.
 //
@@ -167,14 +167,14 @@ func loadTemplateVarDefaults(l paths.Layout) templateVarDefaults {
 		debuglog.DebugLog("varsubst: cannot read %s: %v", path, err)
 		return out
 	}
-	var root struct {
-		Vars []json.RawMessage `json:"vars"`
-	}
-	if err := json.Unmarshal(raw, &root); err != nil {
+	// Форму контейнера (sections[] или плоский vars[], SPEC 183) знает
+	// только template.DecodeVarContainerRaw.
+	declared, _, _, err := template.DecodeVarContainerRaw(raw)
+	if err != nil {
 		debuglog.DebugLog("varsubst: cannot parse %s: %v", path, err)
 		return out
 	}
-	for _, vRaw := range root.Vars {
+	for _, vRaw := range declared {
 		var v struct {
 			Name         string          `json:"name"`
 			Type         string          `json:"type"`

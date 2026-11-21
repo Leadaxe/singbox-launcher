@@ -33,6 +33,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`detour_cycle_broken`](#detour_cycle_broken) · `error` — Node dropped: detour loop through {target}
 - [`detour_target_missing`](#detour_target_missing) · `error` — Node dropped: detour target {target} not found
 - [`detour_to_group`](#detour_to_group) · `error` — Node dropped: detour target {target} is a group
+- [`detour_unavailable`](#detour_unavailable) · `warning` — Hop {target} unavailable: hop removed
 - [`detour_with_listen_port`](#detour_with_listen_port) · `warning` — {tag}: listening port removed for the hop
 - [`detour_with_tls_fragment`](#detour_with_tls_fragment) · `info` — {tag}: TLS fragmentation removed for the hop
 - [`dialer_proxy_unusable`](#dialer_proxy_unusable) · `error` — Preceding proxy {target} is unusable
@@ -87,7 +88,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`scheme_unsupported`](#scheme_unsupported) · `error` — Link: scheme {scheme} is not supported
 - [`service_record_ignored`](#service_record_ignored) · `info` — Subscription: service record {scheme} skipped
 - [`source_detour_cycle`](#source_detour_cycle) · `error` — Node {tag} excluded: hops form a loop
-- [`source_detour_missing`](#source_detour_missing) · `error` — Source chain broken: {target} not found
 - [`source_detour_self`](#source_detour_self) · `error` — Node {tag} excluded: hop points at itself
 - [`ss_method_invalid`](#ss_method_invalid) · `error` — Unsupported encryption method {method}
 - [`ss_method_legacy`](#ss_method_legacy) · `info` — Shadowsocks: legacy cipher
@@ -107,6 +107,9 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`tls_not_applicable_quic`](#tls_not_applicable_quic) · `info` — QUIC: TLS field {path} not applicable
 - [`transport_header_unsupported`](#transport_header_unsupported) · `error` — TCP header obfuscation {value} is not supported
 - [`transport_unsupported`](#transport_unsupported) · `warning` — Transport replaced with {fallback}
+- [`tt_field_unsupported`](#tt_field_unsupported) · `warning` — TrustTunnel link: {field} not applied
+- [`tt_subscription_ignored`](#tt_subscription_ignored) · `info` — TrustTunnel link: subscription address not used
+- [`tt_subscription_only`](#tt_subscription_only) · `error` — TrustTunnel link: a subscription link, not a server
 - [`tuic_congestion_invalid`](#tuic_congestion_invalid) · `warning` — Field removed: unknown congestion control
 - [`tuic_udp_relay_mode_invalid`](#tuic_udp_relay_mode_invalid) · `warning` — Field removed: unknown UDP relay mode
 - [`type_invalid`](#type_invalid) · `warning` — Field {path} removed: wrong type
@@ -549,6 +552,24 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Point the detour at a specific node instead of a group in the source config, then refresh the subscription.
   - Pick another node from this subscription.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="detour_unavailable"></a>
+### detour_unavailable
+
+**severity:** `warning` · **params:** `target`, `count`, `tags`
+
+**Hop {target} unavailable: hop removed**
+
+- **What happened:** This source (or its node) was routed through {target}, and {target} is not available in the config. The hop was removed from {count} node(s) ({tags}): they stay in the config and now connect directly, not through {target}.
+- **Why it happens:** The hop assigned to this source or its node is not in the config: the direction was turned off, or the node serving as the hop was deleted, renamed, or disappeared from its subscription after an update.
+- **What you can do:**
+  - If the nodes must go through {target}, bring it back: turn the direction on, or restore the node.
+  - Or choose another hop for the source or the node.
+  - Or remove the hop if a direct connection is what you want.
 
 **Where it comes from:**
 
@@ -1597,23 +1618,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
-<a id="source_detour_missing"></a>
-### source_detour_missing
-
-**severity:** `error` · **params:** `target`, `count`
-
-**Source chain broken: {target} not found**
-
-- **What happened:** You routed this source through {target}, and that node is gone. All {count} of its nodes were excluded on purpose: without the assigned hop the traffic would go directly, past the boundary you set.
-- **Why it happens:** You assigned a hop to this source yourself, and the node serving as that hop is gone: it disappeared from its subscription after an update, was renamed, or was deleted.
-- **What you can do:**
-  - Assign an existing node as the hop for this source.
-  - Or remove the hop if the source no longer needs to go through one.
-
-**Where it comes from:**
-
-- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
-
 <a id="source_detour_self"></a>
 ### source_detour_self
 
@@ -1966,6 +1970,57 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Check that the node works after the replacement — if it does not connect, pick another node.
   - Ask the subscription provider for a link in a format sing-box supports.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="tt_field_unsupported"></a>
+### tt_field_unsupported
+
+**severity:** `warning` · **params:** `field`
+
+**TrustTunnel link: {field} not applied**
+
+- **What happened:** The link sets {field}, which the core's TrustTunnel node cannot express. The node was imported without it; whether it connects depends on what the server requires.
+- **Why it happens:** The tt:// link is the format of the AdGuard TrustTunnel clients and carries their own settings: a separate SNI (custom_sni), a TLS client-random prefix or key the server recognises the client by, the anti-DPI mode, extra endpoint addresses, the profile's DNS servers, an IPv6 ban, a ClientHello profile together with HTTP/3. The sing-box outbound has no field for them.
+- **What you can do:**
+  - Nothing to do if the node connects.
+  - If it does not: client_random_prefix and client_random_auth_key are how some servers admit clients — ask the provider for access without them, or use the AdGuard TrustTunnel client for this server.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="tt_subscription_ignored"></a>
+### tt_subscription_ignored
+
+**severity:** `info`
+
+**TrustTunnel link: subscription address not used**
+
+- **What happened:** Besides the server, the link carries a subscription address. The server was imported from the link itself; the subscription is not read, so later changes on the provider's side will not arrive on their own.
+- **Why it happens:** A version 2 tt:// link may carry subscription_url next to the static connection parameters; AdGuard clients refresh the server from it. This application does not read TrustTunnel subscriptions yet.
+- **What you can do:**
+  - Nothing to do: the node works.
+  - If the server stops working, ask the provider for a fresh link.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="tt_subscription_only"></a>
+### tt_subscription_only
+
+**severity:** `error` · **params:** `subscription_url`
+
+**TrustTunnel link: a subscription link, not a server**
+
+- **What happened:** The link carries only a subscription address and no server of its own, so there is no node to import from it. Added as a source on its own, it becomes a subscription: the server is fetched from that address.
+- **Why it happens:** A version 2 tt:// link may consist of subscription_url alone; an AdGuard client then fetches the server parameters from that address. There is no node in such a link to import.
+- **What you can do:**
+  - Add the link as a source of its own (Sources → Add): it is turned into a subscription.
+  - Or ask the provider for a link with the server parameters.
 
 **Where it comes from:**
 

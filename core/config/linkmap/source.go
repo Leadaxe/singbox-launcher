@@ -1,6 +1,8 @@
 package linkmap
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 
 	"singbox-launcher/core/config/registry"
@@ -107,6 +109,18 @@ func ClassifySource(set *registry.MapperSet, text string, unwrappers map[string]
 			return res
 		}
 		un, ok := unwrappers[kind.Unwrap]
+		if kind.Unwrap == unwrapContainerLink {
+			// Распаковщик движка, а не вызывающего: ему нужны объявление
+			// вида и диалект секции, а не только текст.
+			k := kind
+			un, ok = func(text string) ([]string, error) {
+				link, err := containerLink(set, k, text)
+				if err != nil {
+					return nil, err
+				}
+				return []string{link}, nil
+			}, true
+		}
 		if !ok {
 			res.UnwrapFailed = kind.Unwrap
 			return res
@@ -351,4 +365,77 @@ func MatchesUnwrap(set *registry.MapperSet, unwrap, text string) bool {
 		}
 	}
 	return false
+}
+
+// unwrapContainerLink — имя распаковщика «объект JSON → ссылка с контейнером»
+// (контракт 1.1.176).
+const unwrapContainerLink = "container_link"
+
+// containerLink печатает документ-объект ссылкой по диалекту `tlv` секции,
+// которая ведёт объявленное видом написание схемы.
+//
+// Ключи объекта — имена полей диалекта; ключи из `container.omit` и ключи,
+// которых в таблице нет, в контейнер не идут; `container.set` дописывает
+// значения поверх. Порядок записей — как у
+// обратного хода секции (`emit.param_order`).
+func containerLink(set *registry.MapperSet, kind registry.SourceKind, text string) (string, error) {
+	if kind.Container == nil || kind.Container.Scheme == "" {
+		return "", fmt.Errorf("linkmap: у вида %q нет объявления container", kind.SourceKind)
+	}
+	scheme := strings.ToLower(kind.Container.Scheme)
+	var m *registry.Mapper
+	for _, name := range set.Schemes() {
+		cand, ok := set.Mapper(name, "uri")
+		if !ok || cand.TLV == nil || cand.Detect == nil {
+			continue
+		}
+		for _, s := range cand.Detect.SchemeIn {
+			if strings.ToLower(s) == scheme {
+				m = cand
+			}
+		}
+	}
+	if m == nil {
+		return "", fmt.Errorf("linkmap: написание схемы %q не ведёт ни одна секция с контейнером", scheme)
+	}
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(text)), &obj); err != nil {
+		return "", fmt.Errorf("linkmap: container_link: %w", err)
+	}
+	for _, key := range kind.Container.Omit {
+		delete(obj, key)
+	}
+	for key, v := range kind.Container.Set {
+		obj[key] = v
+	}
+	var order []string
+	if m.Emit != nil && len(m.Emit.ParamOrder) > 0 {
+		_ = json.Unmarshal(m.Emit.ParamOrder, &order)
+	}
+	payload, err := encodeTLV(m.TLV, obj, order)
+	if err != nil {
+		return "", err
+	}
+	if m.TLV.In == tlvInQuery {
+		return scheme + "://?" + payload, nil
+	}
+	return scheme + "://" + payload, nil
+}
+
+// UnwrapContainerDocument — документ целиком, если его вид объявлен
+// распаковщиком `container_link`, ссылкой; ok == false — вид другой либо
+// объект ссылкой не выражается.
+//
+// Отдельный вход нужен пути подписки: он режет тело на строки сам и видов
+// источника не спрашивает, а ответ-объект должен дойти до него строкой.
+func UnwrapContainerDocument(set *registry.MapperSet, text string) (string, bool) {
+	kind, sel := SelectSource(set, NewContent(text))
+	if sel.Index < 0 || kind.Unwrap != unwrapContainerLink {
+		return "", false
+	}
+	link, err := containerLink(set, kind, text)
+	if err != nil {
+		return "", false
+	}
+	return link, true
 }

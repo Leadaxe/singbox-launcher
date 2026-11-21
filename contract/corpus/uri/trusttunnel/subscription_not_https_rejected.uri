@@ -1,0 +1,3 @@
+# subscription_url не https:// — form_unrecognized (правило 7 спецификации)
+# источник: собрано по DEEP_LINK.md вручную (энкодер AdGuard такого не пишет)
+tt://?AAECARF2cG4uZXhhbXBsZS0xLmNvbQUFdXNlcjEGB3Bhc3MxMjMCEDIwMy4wLjExMy4xMDo0NDMOGmh0dHA6Ly9zdWIuZXhhbXBsZS0xLmNvbS9z

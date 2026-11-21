@@ -7,6 +7,14 @@
     "optimistic": true,
     "rules": [
       {
+        "action": "predefined",
+        "query_type": [
+          "HTTPS",
+          "SVCB"
+        ],
+        "rcode": "NOERROR"
+      },
+      {
         "query_type": [
           "A",
           "AAAA"

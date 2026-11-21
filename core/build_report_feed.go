@@ -14,6 +14,7 @@
 package core
 
 import (
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/build"
@@ -269,15 +270,9 @@ func feedParserDiagnosticsOnFailure(res *config.OutboundGenerationResult) {
 }
 
 // FeedBuildReportFromSanitizer кладёт в отчёт потери ПОСЛЕДНЕГО РУБЕЖА:
-// узлы, снятые граф-санитайзером за недоступную цель detour.
-//
-// На одну потерю приходятся ДВЕ записи, когда пропавшая цель известна, и они
-// отвечают на разные вопросы. nodes_dropped — что потерял пользователь
-// («Источник X: снято N узлов»); по ней раскрашивается строка Sources, и она
-// же есть у потери без внятной цели (кольцо ссылок). target_missing — ЧЕГО не
-// хватило в сборке; субъект там сама цель, потому что чинить надо её, а не
-// пострадавший источник. Схлопнув их в одну, пришлось бы выбирать между «что
-// сломалось» и «что чинить».
+// узлы, выброшенные граф-санитайзером за кольцо через detour, — одна запись
+// nodes_dropped на источник («Источник X: снято N узлов»), по ней
+// раскрашивается строка Sources.
 func FeedBuildReportFromSanitizer(gen config.BuildGeneration, list []build.SourceExclusion) {
 	if len(list) == 0 {
 		return
@@ -294,15 +289,41 @@ func FeedBuildReportFromSanitizer(gen config.BuildGeneration, list []build.Sourc
 			Reason:      e.Reason,
 			NodeCount:   e.DroppedNodes,
 		})
-		if e.MissingTarget != "" {
-			entries = append(entries, config.BuildReportEntry{
-				Kind:        config.BuildReportTargetMissing,
-				Subject:     e.MissingTarget,
-				SourceID:    e.SourceID,
-				SourceLabel: e.SourceLabel,
-				Reason:      e.Reason,
-			})
+	}
+	config.AddBuildReportEntries(gen, entries)
+}
+
+// FeedBuildReportFromDetourStripped кладёт в отчёт узлы, у которых последний
+// рубеж снял detour на недоступную цель (контракт 1.1.171): одна запись
+// emit_degraded с кодом detour_unavailable на пару источник × цель — та же
+// форма, что у записи резолва NodeLink, поэтому строка Sources встаёт с ⚠ у
+// источника одинаково, где бы хоп ни сняли. Текст UI берёт из реестра по
+// коду; Reason — запасная строка.
+func FeedBuildReportFromDetourStripped(gen config.BuildGeneration, list []build.DetourStripped) {
+	if len(list) == 0 {
+		return
+	}
+	entries := make([]config.BuildReportEntry, 0, len(list))
+	for _, e := range list {
+		tags := strings.Join(e.Nodes, ", ")
+		if len(e.Nodes) > 5 {
+			tags = strings.Join(e.Nodes[:5], ", ") + ", …"
 		}
+		debuglog.WarnLog("build report: source %q: detour target %q unavailable, hop removed from %d node(s): %s",
+			e.SourceLabel, e.Target, len(e.Nodes), tags)
+		entries = append(entries, config.BuildReportEntry{
+			Kind:        config.BuildReportEmitDegraded,
+			Subject:     e.SourceLabel,
+			SourceID:    e.SourceID,
+			SourceLabel: e.SourceLabel,
+			Reason:      locale.Tf("%d node(s) now connect directly: detour target %q is unavailable", len(e.Nodes), e.Target) + " (" + tags + ")",
+			Code:        "detour_unavailable",
+			Params: map[string]string{
+				"target": e.Target,
+				"count":  strconv.Itoa(len(e.Nodes)),
+				"tags":   tags,
+			},
+		})
 	}
 	config.AddBuildReportEntries(gen, entries)
 }

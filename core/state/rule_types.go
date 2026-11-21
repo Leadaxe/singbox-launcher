@@ -130,6 +130,12 @@ type RuleDNS struct {
 	ServerTag string `json:"serverTag"`
 	// ForceIPv4 — AAAA-запросы под правило получают пустой ответ.
 	ForceIPv4 bool `json:"forceIpv4,omitempty"`
+	// BlockHTTPS — HTTPS/SVCB-запросы (тип 65/64) под правило получают
+	// пустой ответ (контракт 1.1.173, TEMPLATE_LANG §6.11): клиент не узнаёт
+	// ECH-конфиг и шлёт открытый SNI, по которому правило и срабатывает.
+	// Эмитится у srs и у inline с доменным условием, независимо от
+	// Enabled/ServerTag и в режиме Fixed IP.
+	BlockHTTPS bool `json:"blockHttps,omitempty"`
 	// FixedIPs — локальный ответ (контракт 1.1.139, TEMPLATE_LANG §6.11):
 	// DNS-запросы под правило получают эти адреса, IPv4/IPv6 строками как
 	// введены. Режим действует, когда хоть одна строка разбирается как IP
@@ -141,7 +147,7 @@ type RuleDNS struct {
 // IsZero — ни одна опция не включена, тег и адреса пусты: объект можно не
 // писать.
 func (d *RuleDNS) IsZero() bool {
-	return d == nil || (!d.Enabled && !d.ForceIPv4 && d.ServerTag == "" && len(d.FixedIPs) == 0)
+	return d == nil || (!d.Enabled && !d.ForceIPv4 && !d.BlockHTTPS && d.ServerTag == "" && len(d.FixedIPs) == 0)
 }
 
 // FixedAddrs — адреса локального ответа по семействам, в порядке записи;

@@ -1,0 +1,14 @@
+{
+  "rules": [],
+  "warnings": [],
+  "root_servers": [
+    "plain-root",
+    "commented-root"
+  ],
+  "origin_kind": {
+    "commented-root": "singbox"
+  },
+  "origin_raw": {
+    "commented-root": "// пометка: основной сервер, «ключ» менять в декабре\n{\n  \"type\": \"trojan\", /* блочный \"комментарий\" с кавычками */\n  \"server\": \"example-2.com\",\n  \"server_port\": 443, # решётка до конца строки\n  \"password\": \"pass//not#comment/*x*/\",\n  \"tls\": {\"enabled\": true, \"server_name\": \"example-2.com\"}\n}"
+  }
+}

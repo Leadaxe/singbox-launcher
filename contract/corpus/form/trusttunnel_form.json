@@ -1,0 +1,77 @@
+{
+  "v": 1,
+  "scheme": "trusttunnel",
+  "cases": [
+    {
+      "name": "quic",
+      "comment": "trusttunnel с quic: quic_congestion_control виден (visible_when quic = true). TLS: server_name, insecure и отпечаток uTLS; alpn и reality исключены (exclude_fields), tls.enabled — fixed.",
+      "body": {
+        "server": "vpn.example.com",
+        "server_port": 443,
+        "username": "u",
+        "password": "p",
+        "quic": true
+      },
+      "expect": {
+        "visible": [
+          "server",
+          "server_port",
+          "username",
+          "password",
+          "quic",
+          "quic_congestion_control",
+          "health_check",
+          "idle_timeout",
+          "tls",
+          "tls.server_name",
+          "tls.insecure",
+          "tls.utls.fingerprint"
+        ],
+        "required": [
+          "server",
+          "server_port",
+          "username",
+          "password"
+        ],
+        "missing": [],
+        "choices": {},
+        "out_of_range": []
+      }
+    },
+    {
+      "name": "no_quic_missing_password",
+      "comment": "trusttunnel без quic: quic_congestion_control скрыт. Пароль не задан — Missing: имя и пароль у формы обязательны, ядро без них не стартует.",
+      "body": {
+        "server": "vpn.example.com",
+        "server_port": 443,
+        "username": "u"
+      },
+      "expect": {
+        "visible": [
+          "server",
+          "server_port",
+          "username",
+          "password",
+          "quic",
+          "health_check",
+          "idle_timeout",
+          "tls",
+          "tls.server_name",
+          "tls.insecure",
+          "tls.utls.fingerprint"
+        ],
+        "required": [
+          "server",
+          "server_port",
+          "username",
+          "password"
+        ],
+        "missing": [
+          "password"
+        ],
+        "choices": {},
+        "out_of_range": []
+      }
+    }
+  ]
+}

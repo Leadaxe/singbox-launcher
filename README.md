@@ -47,7 +47,7 @@ Four layers that together define the product:
 
 ### Core engines and remote machines
 
-- **Two core engines behind one seam.** *Classic* (default, all platforms) spawns and supervises `sing-box run` and talks to it over the Clash API. *Daemon* (macOS) drives the core inside a long-lived system service (`sing-box lxd`) over gRPC + admin REST — the same in-process model the Android line uses. UI, tray, shortcuts and the Debug API all go through the active engine, so nothing above the seam knows which one is running.
+- **Two core engines behind one seam.** *Classic* (default, all platforms) spawns and supervises `sing-box run` and talks to it over the Clash API. *Daemon* (macOS; Windows 10/11 x64 and arm64) drives the core inside a long-lived system service (`sing-box lxd`) over gRPC + admin REST — the same in-process model the Android line uses. UI, tray, shortcuts and the Debug API all go through the active engine, so nothing above the seam knows which one is running.
 - **Daemon mode benefits** — sudo once (the launcher prepares the install command for **your own** Terminal and never runs anything privileged itself), the VPN keeps running after you quit the launcher (opt-out toggle), config changes swap the core in place with subprocess validation and auto-rollback to the last working config, plus richer observability: live status, connections, core logs and a **balancer pool** view over gRPC.
 - **Remote machines** — pair a router / VPS / another Mac over mTLS with a one-time invite (`address#fingerprint#code`). Each machine gets its own registry entry (name, platform, architecture, address), its own wizard profile and built `config.json`, and its own Start / Stop / Deploy — a config built for the router can no longer be deployed to the VPS.
 - **Deploy delivers resources, not just JSON** — rule-sets and subscription bodies the machine's config references are shipped into its resource store alongside the config.
@@ -113,7 +113,7 @@ Four layers that together define the product:
 
 1. Download from [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) and install (see [Installation](#installation)).
 2. Open the app → **Local** tab → click **Download** to fetch the matching `sing-box` binary (and `wintun.dll` on Windows). The core is the `sing-box-lx` fork (XHTTP + AmneziaWG 2.0) from its GitHub Releases — on every platform, including the Windows 7 32-bit `legacy-windows-7` build (with a GitHub-proxy mirror fallback if GitHub is blocked).
-3. Click **Wizard** → paste your subscription URL on the **Sources** tab → step through Directions / Rules / DNS / Settings / Files → **Save**.
+3. Click **⚙️ Configurator** → paste your subscription URL on the **Sources** tab → look through Directions / Rules / DNS / Settings / Final → **Save**. Which rule presets to tick: [what each preset does](#declarative-routing-with-preset-bundles).
 4. Back on **Local** → **Start**. Servers are in the same tab's left column; monitor traffic via the **Traffic Profiler** button in Diagnostics.
 
 ### Command-line flags
@@ -146,6 +146,28 @@ Two-level rule model:
 
 - **Preset bundles** (community-maintained template) — self-contained rule packs with typed variables (`enum`, `dns_server`, `outbound` with whitelists), local SRS rule-sets, conditional fragments (`if` / `if_or`), and DNS-server definitions. Toggle as checkboxes. Includes ready-made bundles like `ru-direct` (Russian traffic → direct), `ads-all` (ad-block via SRS), Telegram routing, BitTorrent splitting, and more.
 - **User rules** — your own rules with 5 typed kinds: IP/CIDR, domains (suffix/keyword/regex), processes (name or path regex), SRS URLs, raw JSON.
+
+**What each preset does.** Configurator → **Rules** → **📚 Add from library** adds a copy of a preset to your list; each rule has a checkbox and its own **Direction:**. Rules are checked top to bottom, and traffic that matches none goes to **Default direction:** at the bottom of the tab (`proxy-out` — the VPN — by default). Preset names, settings and hints come from the template and are in English in both UI languages.
+
+| Preset | New profile | What it does (default direction) |
+| --- | --- | --- |
+| Traffic Processing | on | Detects protocol and domain, sends DNS into the tunnel; always first. Without it domain rules do not fire |
+| Tailscale networks, Tunnel ingress, Tunnel routes | on | Matter only with Tailscale or client-tunnel nodes (WireGuard, AWG, OpenVPN, OpenConnect) |
+| Private IPs · Local/LAN domains | on | LAN addresses and `.local`/`.lan` names → `direct-out` |
+| Block Ads (ads-all, soft) | on | Ad domains → `reject` |
+| BitTorrent | on | Torrent traffic → `direct-out` |
+| Russian domains & IPs | off | `.ru`/`.su`/`.рф`, Russian services and their CDNs, Russian IP ranges → `direct-out`, resolved through Yandex DNS. For "Russia direct, everything else through the VPN" |
+| Russia-only services | off | The short list of services that work only from a Russian address (`geosite-ru-available-only-inside`) → the `ru VPN 🇷🇺` group (direct, or a Russian node if you have one) |
+| Russian blocked resources | off | IP ranges of resources blocked in Russia → `proxy-out`. For the opposite setup: set **Default direction** to `direct-out`, and only blocked resources go through the VPN |
+| Israel-specific sites · AI services · Messengers | off | Israeli IPs; Claude, ChatGPT, Perplexity, Gemini; Telegram, WhatsApp, Discord, Signal, Zoom (domains and programs) → `proxy-out` |
+| Games | off | Domains of game services (`geosite-category-games`) → `direct-out` |
+| Gaming ports | off | Popular game ports and Steam's 27000–27100, TCP and UDP → `direct-out` |
+| Stop HTTP/3 | off | Drops UDP 443 so browsers fall back to TCP; may slow Google/YouTube |
+| FakeIP (faster connect) | off | Answers proxied lookups from a synthetic pool; keep it below the Russian/direct rules |
+
+The three Russian presets bring the `ru VPN 🇷🇺` group (nodes with 🇷🇺 in the name) and keep such nodes out of `proxy-out` / `auto-proxy-out`, so traffic meant for the VPN does not exit in Russia.
+
+**Games.** Online games often connect by IP and to their own ports, so a domain rule alone (**Games**) misses part of the traffic. To keep a game off the VPN reliably, add a rule by program: **➕ Add Rule** → **Processes** → pick the game's process, or tick **Match by path** and give the game folder (`*\Steam\*`, `*/steam/*`) — every program inside it matches — then set its **Direction** to `direct-out`. **Gaming ports** covers popular ports on top of that.
 
 Matchers cover the full sing-box surface: domain (4 variants), IP CIDR, ports, network, protocol, process, package name, GeoSite / GeoIP via SRS, composite rules with `invert`, per-rule outbound chains through selectors (urltest / failover).
 
@@ -266,7 +288,7 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Privacy controls in Sett
 - **Universal** (recommended): macOS 11+ (Big Sur), supports Apple Silicon and Intel.
 - **Intel-only legacy build**: macOS 10.15+ (Catalina).
 - [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — fork core (XHTTP + AmneziaWG 2.0) auto-downloaded via the Local tab.
-- **Daemon mode** (optional, macOS only) additionally needs a core built with the `lxd` subcommand (`with_lx_command`). The pinned `RequiredCoreVersion` ships it (the current value lives in `internal/constants/constants.go` — the single source of truth). See [docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md).
+- **Daemon mode** (optional; macOS, Windows 10/11 x64 and arm64) additionally needs a core built with the `lxd` subcommand (`with_lx_command`). The pinned `RequiredCoreVersion` ships it (the current value lives in `internal/constants/constants.go` — the single source of truth). See [docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md).
 
 ### Linux
 
@@ -430,16 +452,21 @@ To run GUI tests locally, set `TEST_PACKAGE` manually inside the script or invok
 
 | Symptom | First check |
 | --- | --- |
-| sing-box won't start | Download via **Local → Download**, then verify `config.json` exists. Check `bin/logs/sing-box.log`. |
-| Wizard opens but Save fails | Inspect Internal log in **Log window**; schema validation error message is logged. |
+| sing-box won't start | **Local → Download** fetches the core. If Start still fails, open **🔍 Diagnostics → Log window → Core** and read the `FATAL` line — see [the core does not start](docs/TROUBLESHOOTING.md#the-core-does-not-start-the-log-says-fatal) (`default outbound not found`, `dependency[…] not found`, port 9090 in use). |
+| Core / `wintun.dll` / translations do not download (GitHub blocked) | Mirrors are tried automatically; otherwise download by hand or use the Windows installer / `win64-full.zip`, which need no downloads — see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#downloading-the-core-wintundll-or-translations-hangs-or-fails). |
+| `x509: …` certificate errors | Clock, antivirus HTTPS scanning, an IP sent as SNI — see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#x509-and-other-certificate-errors). |
+| Configurator Save fails | Read the Internal tab of the **Log window**; the validation error is logged there. |
 | Server list is empty / disabled | sing-box is not running (the list is intentionally inert until the engine is up). |
 | Subscription returns empty / errors | Check **Subscription identification** in Settings — HWID-binding panels need `Send device ID` enabled. Look at the ⚠ badge tooltip for provider announce. |
-| Windows: Start shows “TUN needs administrator rights” | The launcher runs without administrator rights; TUN needs them. Choose **Restart as administrator** or **Switch to proxy mode** — see [Installation → Windows](#windows-1). |
-| TUN doesn't capture traffic (Linux/macOS) | TUN interface usually needs root: `sudo ./singbox-launcher` or `sudo setcap cap_net_admin+ep ./singbox-launcher` (Linux). |
+| Windows: Start shows “TUN needs administrator rights” | The launcher runs without administrator rights; TUN needs them. Choose **Install service**, **Restart as administrator** or **Switch to proxy mode** — see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#start-shows-tun-needs-administrator-rights). |
+| Windows: SmartScreen or the antivirus blocks the launcher or `sing-box.exe` | The files are not code-signed; check the SHA-256 against `checksums.txt` and add exclusions — see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#the-antivirus-deletes-or-blocks-the-launcher-or-sing-boxexe). |
+| Windows: VPN at sign-in | **⚙️ Settings → Connection** — see [Start with Windows](docs/TROUBLESHOOTING.md#start-with-windows-and-connecting-at-sign-in); with TUN it needs the service or Task Scheduler. |
+| Linux: TUN asks for capabilities on every start | `setcap` goes on the core, not the launcher; repeat it after every core update; it is ignored on a `nosuid` partition — see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#start-asks-for-linux-capabilities-again-and-again). |
 | Linux: password asked on VPN start/stop or network change | `systemd-resolved` + Polkit authorize each `resolvectl` D-Bus action separately — see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#linux). |
+| The interface is in English | **⚙️ Settings → Language** → Русский; if it is not listed, press **⬇** next to it and restart. |
 | Win7 32-bit: tray icon shows but window is blank / empty frame | OpenGL 2.0 vs Fyne's 2.1+ requirement — see [docs/WIN7_OPENGL.md](docs/WIN7_OPENGL.md) for the Mesa3D drop-in fix. |
 | Subscription auto-update silent | Open **Settings → Subscriptions** — confirm `Auto-update subscriptions` is on. Heartbeat is hourly; immediate retry fires on VPN-event. |
-| Need full state for a bug report | **Diagnostics → Copy snapshot** packages template + state + cache + config into one JSON. |
+| Need full state for a bug report | Debug API `GET /debug/snapshot` packages template + state + cache + config into one JSON (see [docs/API.md](docs/API.md)); otherwise attach the files from **🔍 Diagnostics → Logs folder**. |
 
 ## Contributing
 

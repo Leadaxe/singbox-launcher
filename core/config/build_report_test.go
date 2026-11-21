@@ -21,24 +21,23 @@ func TestBuildReportAcceptsEveryKind(t *testing.T) {
 		{Kind: BuildReportNodesDropped, Subject: "Big Sub", SourceID: "01BIG", SourceLabel: "Big Sub", Reason: "цель detour исчезла", NodeCount: 500},
 		{Kind: BuildReportChainFailed, Subject: "двойной прыжок", Reason: "позиция не найдена"},
 		{Kind: BuildReportCoreUnsupported, Subject: "naive", Reason: "ядро без with_naive_outbound", NodeCount: 3, Code: "naive_unavailable"},
-		{Kind: BuildReportTargetMissing, Subject: "vpn-select", SourceID: "01BIG", SourceLabel: "Big Sub", Reason: "селектор шаблона выключен"},
 	})
 
 	entries, ready, _ := BuildReport()
-	if len(entries) != 5 {
-		t.Fatalf("в отчёте %d записей, ожидалось 5", len(entries))
+	if len(entries) != 4 {
+		t.Fatalf("в отчёте %d записей, ожидалось 4", len(entries))
 	}
 	if ready {
 		t.Error("отчёт объявлен готовым без FinishBuildReport — Save открылся бы посреди сборки")
 	}
 
-	seen := make(map[BuildReportKind]int, 5)
+	seen := make(map[BuildReportKind]int, 4)
 	for _, e := range entries {
 		seen[e.Kind]++
 	}
 	for _, kind := range []BuildReportKind{
 		BuildReportSourceExcluded, BuildReportNodesDropped,
-		BuildReportChainFailed, BuildReportCoreUnsupported, BuildReportTargetMissing,
+		BuildReportChainFailed, BuildReportCoreUnsupported,
 	} {
 		if seen[kind] != 1 {
 			t.Errorf("вид %q попал в отчёт %d раз, ожидался 1", kind, seen[kind])

@@ -49,6 +49,9 @@ type DetourChoice struct {
 	// (удалена, выключена, папка пропала). Показывается, чтобы его было
 	// видно и можно было сменить.
 	Missing bool
+	// Loop — группа свёртки, из которой переходы ведут обратно к носителю:
+	// показывается, но выбрать её нельзя (SPEC 182).
+	Loop bool
 }
 
 // DetourKind — ветка дерева, в которой стоит опция.
@@ -61,6 +64,8 @@ const (
 	DetourKindDirection
 	// DetourKindNode — конкретный узел.
 	DetourKindNode
+	// DetourKindReplaceGroup — группа свёртки источника (SPEC 182).
+	DetourKindReplaceGroup
 )
 
 // detourNodeMarker prefixes single-node option keys so a node labelled like a
@@ -73,6 +78,7 @@ const detourNodeMarker = "» "
 // Предлагаются только устойчивые, осмысленные цели:
 //   - Направления и активные группы пресетов (GetAvailableOutbounds), кроме
 //     служебных (detourExcludedBuiltins);
+//   - группы свёртки чужих источников (ReplaceGroupTargets, SPEC 182);
 //   - верхние узлы-серверы (кроме самого источника).
 //
 // options[0] — всегда noneLabel (сбрасывает detour). Повисший прежний выбор
@@ -151,7 +157,27 @@ func detourOptionsFor(model *wizardmodels.WizardModel, holder detourHolder, none
 		}
 	}
 
+	// Группы свёртки — отдельной веткой, общим с цепочкой списком. Их теги
+	// могут прийти и через опции Направлений (GetAvailableOutbounds отдаёт
+	// объявленные имена из addOutbounds) — там они пропускаются, чтобы
+	// группа не оказалась в двух ветках.
+	groups := ReplaceGroupTargets(model, LinkHolder{
+		SourceID: holder.selfID, FolderID: holder.selfFolderID, RawTag: holder.selfRawTag,
+	})
+	groupTags := map[string]struct{}{}
+	twinOf := map[string]ReplaceGroupTarget{}
+	for _, g := range groups {
+		groupTags[g.Tag] = struct{}{}
+		if g.TwinTag != "" {
+			groupTags[g.TwinTag] = struct{}{}
+			twinOf[g.TwinTag] = g
+		}
+	}
+
 	for _, tag := range GetAvailableOutbounds(model) {
+		if _, isGroup := groupTags[tag]; isGroup {
+			continue
+		}
 		if _, isBuiltin := detourExcludedBuiltins[tag]; isBuiltin {
 			continue // service/auto outbound — never a chain hop
 		}
@@ -164,6 +190,16 @@ func detourOptionsFor(model *wizardmodels.WizardModel, holder detourHolder, none
 		options = append(options, tag)
 		inOptions[tag] = struct{}{}
 		choices[tag] = DetourChoice{Link: &corestate.NodeLink{Tag: tag}, Label: tag, Kind: DetourKindDirection, Display: tag}
+	}
+
+	for _, g := range groups {
+		if _, dup := inOptions[g.Tag]; dup {
+			continue
+		}
+		options = append(options, g.Tag)
+		inOptions[g.Tag] = struct{}{}
+		choices[g.Tag] = DetourChoice{Link: &corestate.NodeLink{Tag: g.Tag}, Label: g.Tag,
+			Kind: DetourKindReplaceGroup, Display: g.Tag, Loop: g.Loop}
 	}
 
 	cur := holder.cur
@@ -229,12 +265,18 @@ func detourOptionsFor(model *wizardmodels.WizardModel, holder detourHolder, none
 			options = append(options, selected) // dangling — keep visible/clearable
 			// Ветку повисшей цели определяет то, чем тег был: выключенный
 			// верхний узел остаётся в «Узлах», остальное — Направление.
-			kind := DetourKindDirection
-			if modelHasRootNodeTag(model, cur.Tag) {
+			// Двойник `<tag>-auto` живой группы целью не предлагается, но
+			// ссылка на него рабочая — «пропавшей» она не помечается.
+			kind, missing, loop := DetourKindDirection, true, false
+			if g, isTwin := twinOf[cur.Tag]; isTwin {
+				kind, missing, loop = DetourKindReplaceGroup, false, g.Loop
+			} else if modelHasRootNodeTag(model, cur.Tag) {
 				kind = DetourKindNode
+			} else if modelHasReplaceTag(model, cur.Tag) {
+				kind = DetourKindReplaceGroup
 			}
 			choices[selected] = DetourChoice{Link: &corestate.NodeLink{Tag: cur.Tag}, Label: cur.Tag,
-				Kind: kind, Display: cur.Tag, Missing: true}
+				Kind: kind, Display: cur.Tag, Missing: missing, Loop: loop}
 		}
 	default:
 		// Ссылка на узел ПАПКИ. Узлы папок пикер не перечисляет (их сотни),
@@ -277,6 +319,17 @@ func modelHasRootNodeTag(model *wizardmodels.WizardModel, tag string) bool {
 	for i := range model.Sources {
 		s := &model.Sources[i]
 		if s.Kind == wizardmodels.SourceKindServer && strings.TrimSpace(s.NodeTagOrLabel()) == tag {
+			return true
+		}
+	}
+	return false
+}
+
+// modelHasReplaceTag — носит ли это имя свёртка какого-либо источника
+// (включённого или нет), считая двойник режима both.
+func modelHasReplaceTag(model *wizardmodels.WizardModel, tag string) bool {
+	for _, t := range ModelReplaceTags(model) {
+		if strings.TrimSpace(t) == tag {
 			return true
 		}
 	}

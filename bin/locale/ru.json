@@ -985,6 +985,15 @@
   "Directions": {
     "value": "Направления"
   },
+  "Replace groups": {
+    "value": "Группы свёртки"
+  },
+  "leads back here": {
+    "value": "ведёт обратно сюда"
+  },
+  "This group cannot be used here: its own nodes connect through this entry, so the path would loop back.": {
+    "value": "Эту группу здесь выбрать нельзя: её узлы сами подключаются через эту запись, путь замкнулся бы в кольцо."
+  },
   "DNS": {
     "value": "DNS"
   },
@@ -1018,8 +1027,8 @@
   "Chain %q did not build: %s": {
     "value": "Цепочка %q не собралась: %s"
   },
-  "%d node(s) dropped: detour target %q is gone": {
-    "value": "Снято узлов: %d — цели detour %q больше нет"
+  "%d node(s) now connect directly: detour target %q is unavailable": {
+    "value": "Напрямую теперь подключается узлов: %d — цель detour %q недоступна"
   },
   "node %q: %s removed — it cannot be combined with detour %q": {
     "value": "узел %q: %s снят — несовместим с detour %q"
@@ -1047,9 +1056,6 @@
   },
   "%s — %d node(s) skipped: %s": {
     "value": "%s — пропущено узлов: %d — %s"
-  },
-  "Detour target %q is missing from the build: %s": {
-    "value": "Цели перехода %q нет в сборке: %s"
   },
   "⚠ %d node(s) dropped: %s": {
     "value": "⚠ снято узлов: %d — %s"
@@ -1490,6 +1496,9 @@
   "DNS servers": {
     "value": "DNS-серверы"
   },
+  "DNS rules": {
+    "value": "DNS-правила"
+  },
   "No DNS servers.": {
     "value": "Нет DNS-серверов."
   },
@@ -1504,9 +1513,6 @@
   },
   "Default domain resolver:": {
     "value": "Резолвер доменов по умолчанию:"
-  },
-  "Rules (JSON object with \"rules\" array)": {
-    "value": "Правила (JSON-объект с массивом \"rules\")"
   },
   "{\n  \"rules\": [\n    {\"rule_set\":\"example\",\"server\":\"tag\"}\n  ]\n}": {
     "value": "{\n  \"rules\": [\n    {\"rule_set\":\"example\",\"server\":\"tag\"}\n  ]\n}"
@@ -1633,9 +1639,6 @@
   },
   "No DNS rules.": {
     "value": "Нет DNS-правил."
-  },
-  "Toggle between unified list view and raw JSON editor (user rules only).": {
-    "value": "Переключить между списком правил и редактором JSON (только user-правила)."
   },
   "⬇ srs": {
     "value": "⬇ srs"
@@ -5852,6 +5855,18 @@
   "e.g. 30s": {
     "value": "например, 30s"
   },
+  "e.g. 5m": {
+    "value": "например, 5m"
+  },
+  "Health check": {
+    "value": "Проверка сессии"
+  },
+  "Probe an idle session before reusing it": {
+    "value": "Проверять простаивавшую сессию перед повторным использованием"
+  },
+  "TrustTunnel": {
+    "value": "TrustTunnel"
+  },
   "Upload, Mbps": {
     "value": "Отдача, Мбит/с"
   },
@@ -5900,8 +5915,17 @@
   "Works only if the rule set contains domains.": {
     "value": "Работает, только если в наборе правил есть домены."
   },
-  "Unavailable for rules with ports, protocols or network, and for rules that match only IP addresses.": {
-    "value": "Недоступно для правил с портами, протоколами или network, а также для правил только по IP-адресам."
+  "Unavailable for rules that match only IP addresses, ports or protocols.": {
+    "value": "Недоступно для правил только по IP-адресам, портам или протоколам."
+  },
+  "Block HTTPS/SVCB records (no ECH)": {
+    "value": "Блокировать записи HTTPS/SVCB (без ECH)"
+  },
+  "DNS options apply to these domains on any port and protocol.": {
+    "value": "DNS-настройки действуют на эти домены при любом порте и протоколе."
+  },
+  "no HTTPS records": {
+    "value": "без записей HTTPS"
   },
   "DNS: %s": {
     "value": "DNS: %s"
@@ -5921,8 +5945,8 @@
   "Rule set not downloaded yet: the rule stays out of the config until it is.": {
     "value": "Набор правил ещё не скачан: пока его нет, правило в конфиг не попадает."
   },
-  "DNS options do not apply to this rule: it has ports, protocols or network, or matches only IP addresses.": {
-    "value": "DNS-настройки к этому правилу не применяются: в нём есть порты, протоколы или network, либо оно только по IP-адресам."
+  "DNS options do not apply to this rule: it has no condition DNS queries can match, such as domains, apps or a rule set.": {
+    "value": "DNS-настройки к этому правилу не применяются: в нём нет условия, видимого DNS-запросу, — доменов, приложений или набора правил."
   },
   "DNS server %s not found: its DNS rule stays out of the config.": {
     "value": "DNS-сервер %s не найден: DNS-правило в конфиг не попадёт."

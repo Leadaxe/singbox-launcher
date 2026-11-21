@@ -267,6 +267,10 @@ func classifyInputLines(input string, timing interface{ LogTiming(string, time.D
 		}
 		if subscription.IsSubscriptionURL(line) {
 			subscriptions = append(subscriptions, line)
+		} else if u, ok := subscription.SubscriptionURLOfLink(line); ok {
+			// Ссылка-указатель на подписку (узла в ней нет): источником
+			// становится адрес, который она несёт.
+			subscriptions = append(subscriptions, u)
 		} else if subscription.IsDirectLink(line) {
 			connections = append(connections, line)
 			// Исходник ссылки — она сама; отдельного raw у неё нет.

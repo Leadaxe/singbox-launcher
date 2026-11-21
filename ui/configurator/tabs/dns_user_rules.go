@@ -650,14 +650,15 @@ func showViewAllDNSRulesDialog(presenter *wizardpresentation.WizardPresenter, pa
 	)
 	help.Wrapping = fyne.TextWrapWord
 
-	rich := widget.NewRichTextFromMarkdown("```json\n" + string(body) + "\n```")
-	rich.Wrapping = fyne.TextWrapWord
-	scroll := container.NewScroll(rich)
+	// fynewidget.NewJSONView — общий просмотр JSON: своя прокрутка, выделение
+	// мышью и копирование. RichText с переносом строк внутри Scroll длинный
+	// список правил до конца не показывал.
+	jsonView := fynewidget.NewJSONView(string(body))
 
 	content := container.NewBorder(
 		container.NewVBox(header, help),
 		nil, nil, nil,
-		scroll,
+		jsonView.Object(),
 	)
 	d := internaldialogs.NewCustom("DNS Rules Preview", content, nil, "Close", parent)
 	d.Resize(fyne.NewSize(620, 520))

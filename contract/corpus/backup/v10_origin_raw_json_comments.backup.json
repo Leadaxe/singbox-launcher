@@ -1,0 +1,45 @@
+{
+  "lx_backup": 2,
+  "exported_by": {
+    "app": "lxbox",
+    "version": "corpus",
+    "platform": "test"
+  },
+  "exported_at": "2026-11-17T00:00:00Z",
+  "sources": [
+    {
+      "kind": "server",
+      "tag": "commented-twin",
+      "enabled": true,
+      "origin": {
+        "kind": "singbox",
+        "raw": "{\n  // тот же сервер, что plain-root, — дубль\n  \"type\": \"trojan\",\n  \"tag\": \"commented-twin\",\n  \"server\": \"example-1.com\",\n  \"server_port\": 443,\n  \"password\": \"testpass741\" # пароль из письма\n}"
+      },
+      "body": {
+        "type": "trojan",
+        "server": "example-1.com",
+        "server_port": 443,
+        "password": "testpass741"
+      }
+    },
+    {
+      "kind": "server",
+      "tag": "commented-root",
+      "enabled": true,
+      "origin": {
+        "kind": "singbox",
+        "raw": "// пометка: основной сервер, «ключ» менять в декабре\n{\n  \"type\": \"trojan\", /* блочный \"комментарий\" с кавычками */\n  \"server\": \"example-2.com\",\n  \"server_port\": 443, # решётка до конца строки\n  \"password\": \"pass//not#comment/*x*/\",\n  \"tls\": {\"enabled\": true, \"server_name\": \"example-2.com\"}\n}"
+      },
+      "body": {
+        "type": "trojan",
+        "server": "example-2.com",
+        "server_port": 443,
+        "password": "pass//not#comment/*x*/",
+        "tls": {
+          "enabled": true,
+          "server_name": "example-2.com"
+        }
+      }
+    }
+  ]
+}

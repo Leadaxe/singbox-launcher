@@ -1,0 +1,27 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "203.0.113.10",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "vpn.example-1.com"
+        },
+        "type": "trusttunnel",
+        "username": "user1"
+      },
+      "kind": "outbound",
+      "scheme": "trusttunnel",
+      "warnings": [
+        {
+          "code": "tt_subscription_ignored",
+          "path": "subscription_url",
+          "value": "https://user1:pass123@sub.example-1.com/s/abc"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

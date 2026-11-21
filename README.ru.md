@@ -53,7 +53,7 @@
 
 ### Движки ядра и удалённые машины
 
-- **Два движка ядра за одним швом.** *Classic* (по умолчанию, все платформы) спавнит и супервизит `sing-box run` и говорит с ним по Clash API. *Daemon* (macOS) управляет ядром внутри долгоживущей системной службы (`sing-box lxd`) по gRPC + admin REST — та же модель «ядро внутри процесса», что и в Android-линии. UI, трей, горячие клавиши и Debug API ходят к ядру только через активный движок, поэтому ничто выше шва не знает, какой из них работает.
+- **Два движка ядра за одним швом.** *Classic* (по умолчанию, все платформы) спавнит и супервизит `sing-box run` и говорит с ним по Clash API. *Daemon* (macOS; Windows 10/11 x64 и arm64) управляет ядром внутри долгоживущей системной службы (`sing-box lxd`) по gRPC + admin REST — та же модель «ядро внутри процесса», что и в Android-линии. UI, трей, горячие клавиши и Debug API ходят к ядру только через активный движок, поэтому ничто выше шва не знает, какой из них работает.
 - **Что даёт daemon-режим** — sudo один раз (лаунчер готовит команду установки для **вашего** терминала и сам ничего привилегированного не запускает), выход из лаунчера может оставлять VPN работать (отключаемо галочкой), смена конфига подменяет ядро на месте с валидацией сабпроцессом и автооткатом на последний рабочий конфиг, плюс богатая наблюдаемость: живой статус, соединения, логи ядра и экран **пула балансировщика** по gRPC.
 - **Удалённые машины** — роутер / VPS / другой Mac сопрягаются по mTLS одноразовым приглашением (`адрес#отпечаток#код`). У каждой машины своя запись в реестре (имя, платформа, архитектура, адрес), свой профиль визарда и собранный `config.json`, свои Start / Stop / Deploy — конфиг, собранный для роутера, больше нельзя задеплоить на VPS.
 - **Deploy везёт не только JSON** — rule-set'ы и тела подписок, на которые ссылается конфиг машины, уезжают в её ресурсное хранилище вместе с конфигом.
@@ -121,8 +121,8 @@
 
 1. Скачайте релиз с [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) и установите (см. [Установка](#установка)).
 2. Откройте приложение → вкладка **Локально** → кнопка **Download** скачает `sing-box` (и `wintun.dll` на Windows). Если GitHub недоступен, работает fallback на GitHub-зеркала.
-3. Кнопка **Wizard** → вставьте subscription URL на вкладке **Sources** → пройдите Directions / Rules / DNS / Settings / Files → **Save**.
-4. Назад на **Локально** → **Start**. Серверы — в левой колонке той же вкладки; за трафиком наблюдайте через кнопку **Traffic Profiler** в Diagnostics.
+3. Кнопка **⚙️ Конфигуратор** → вставьте адрес подписки на вкладке **Источники** → просмотрите Направления / Правила / DNS / Настройки / Итог → **Сохранить**. Какие пресеты правил включить: [что делает каждый пресет](#декларативная-маршрутизация-через-preset-bundles).
+4. Назад на **Локально** → **Start**. Серверы — в левой колонке той же вкладки; за трафиком наблюдайте через кнопку **Traffic Profiler** в Диагностике.
 
 ### Флаги командной строки
 
@@ -154,6 +154,28 @@ singbox-launcher -start -tray   # комбинация — headless autostart-с
 
 - **Preset bundles** (community-maintained template) — самодостаточные rule-pack'и с типизированными переменными (`enum`, `dns_server`, `outbound` с whitelist'ами), локальными SRS rule-sets, условными фрагментами (`if` / `if_or`), и определениями DNS-серверов. Включаются чекбоксами. В комплекте готовые наборы: `ru-direct` (российский трафик → direct), `ads-all` (ad-block через SRS), маршрутизация Telegram, разделение BitTorrent и др.
 - **User rules** — ваши собственные правила с 5 типизированными kind'ами: IP/CIDR, домены (suffix / keyword / regex), процессы (по имени или regex пути), SRS URL, raw JSON.
+
+**Что делает каждый пресет.** Конфигуратор → **Правила** → **📚 Добавить из библиотеки** добавляет в список копию пресета; у каждого правила есть галочка и своё **Направление:**. Правила проверяются сверху вниз, а трафик, не попавший ни в одно, уходит в **Направление по умолчанию:** внизу вкладки (по умолчанию `proxy-out`, то есть VPN). Названия пресетов, их настройки и подсказки приходят из шаблона и остаются английскими в обоих языках интерфейса.
+
+| Пресет | В новом профиле | Что делает (направление по умолчанию) |
+| --- | --- | --- |
+| Traffic Processing | вкл. | Определяет протокол и домен, заворачивает DNS в туннель; всегда первый. Без него доменные правила не срабатывают |
+| Tailscale networks, Tunnel ingress, Tunnel routes | вкл. | Нужны только с узлами Tailscale или клиентскими туннелями (WireGuard, AWG, OpenVPN, OpenConnect) |
+| Private IPs · Local/LAN domains | вкл. | Адреса локальной сети и имена `.local`/`.lan` → `direct-out` |
+| Block Ads (ads-all, soft) | вкл. | Рекламные домены → `reject` |
+| BitTorrent | вкл. | Торрент-трафик → `direct-out` |
+| Russian domains & IPs | выкл. | `.ru`/`.su`/`.рф`, российские сервисы и их CDN, российские диапазоны IP → `direct-out`, имена резолвятся через Яндекс DNS. Для схемы «Россия напрямую, остальное через VPN» |
+| Russia-only services | выкл. | Короткий список сервисов, которые работают только с российского адреса (`geosite-ru-available-only-inside`) → группа `ru VPN 🇷🇺` (напрямую или через российский узел, если он есть) |
+| Russian blocked resources | выкл. | Диапазоны IP ресурсов, заблокированных в России → `proxy-out`. Для обратной схемы: поставьте **Направление по умолчанию** `direct-out`, и через VPN пойдут только заблокированные ресурсы |
+| Israel-specific sites · AI services · Messengers | выкл. | Израильские IP; Claude, ChatGPT, Perplexity, Gemini; Telegram, WhatsApp, Discord, Signal, Zoom (домены и программы) → `proxy-out` |
+| Games | выкл. | Домены игровых сервисов (`geosite-category-games`) → `direct-out` |
+| Gaming ports | выкл. | Популярные игровые порты и диапазон Steam 27000–27100, TCP и UDP → `direct-out` |
+| Stop HTTP/3 | выкл. | Отбрасывает UDP 443, и браузеры переходят на TCP; может замедлить Google/YouTube |
+| FakeIP (faster connect) | выкл. | Отвечает на проксируемые DNS-запросы адресами из синтетического пула; держите его ниже российских и «прямых» правил |
+
+Три российских пресета добавляют группу `ru VPN 🇷🇺` (узлы с 🇷🇺 в имени) и убирают такие узлы из `proxy-out` / `auto-proxy-out`, чтобы трафик, предназначенный для VPN, не выходил в России.
+
+**Игры.** Онлайн-игры часто подключаются по IP и на свои порты, поэтому одно доменное правило (**Games**) ловит не весь трафик. Чтобы надёжно пустить игру мимо VPN, добавьте правило по программе: **➕ Добавить правило** → **Процессы** → выберите процесс игры или включите **Поиск по пути** и укажите папку игры (`*\Steam\*`, `*/steam/*`) — подойдёт любая программа внутри неё, — затем поставьте **Направление** `direct-out`. **Gaming ports** дополнительно покрывает популярные порты.
 
 Matchers покрывают полную поверхность sing-box: domain (4 варианта), IP CIDR, порты, network, protocol, process, package name, GeoSite / GeoIP через SRS, composite rules с `invert`, per-rule outbound chain через селекторы (urltest / failover).
 
@@ -273,7 +295,7 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Контроли при�
 
 - **Universal** (рекомендуется): macOS 11+ (Big Sur), поддерживает Apple Silicon и Intel.
 - **Intel-only legacy build**: macOS 10.15+ (Catalina).
-- **Daemon-режим** (опционально, только macOS) дополнительно требует ядра, собранного с сабкомандой `lxd` (`with_lx_command`). Пин `RequiredCoreVersion` её включает (актуальное значение — в `internal/constants/constants.go`, единственный источник истины). См. [docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md).
+- **Daemon-режим** (опционально; macOS, Windows 10/11 x64 и arm64) дополнительно требует ядра, собранного с сабкомандой `lxd` (`with_lx_command`). Пин `RequiredCoreVersion` её включает (актуальное значение — в `internal/constants/constants.go`, единственный источник истины). См. [docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md).
 - [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — форк-ядро (XHTTP + AmneziaWG), авто-загрузка через вкладку Локально.
 
 ### Linux
@@ -383,7 +405,7 @@ chmod +x singbox-launcher
 См. платформо-специфичные гайды:
 
 - **Windows** — [docs/BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md) (Go 1.24+, требуется GCC, опционально `rsrc` для иконки)
-- **macOS** — `./build/build_darwin.sh [universal|arm64|intel|catalina]`, опционально `-i` для установки/обновления в `/Applications`
+- **macOS** — `./build/build_darwin.sh [universal|arm64|intel|catalina]`, опционально `-i` для установки/обновления в `/Applications`. Без типа сборки собирает **под архитектуру этого Mac** — быстрый путь для локальной работы; для релизной сборки передайте `universal`
 - **Linux** — [docs/BUILD_LINUX.md](docs/BUILD_LINUX.md) (Go 1.24+, OpenGL + X11 dev-пакеты, или Docker-сборка)
 
 Quick reference:
@@ -392,7 +414,10 @@ Quick reference:
 git clone https://github.com/Leadaxe/singbox-launcher.git
 cd singbox-launcher
 
-# macOS — universal binary, установка в /Applications
+# macOS — сборка под этот Mac и установка в /Applications
+./build/build_darwin.sh -i
+
+# macOS — universal binary (релизы)
 ./build/build_darwin.sh -i universal
 
 # Linux — сборочный скрипт с проверкой пакетов
@@ -435,16 +460,21 @@ build\test_windows.bat   # Windows
 
 | Симптом | Что проверить первым |
 | --- | --- |
-| sing-box не стартует | **Локально → Download**, затем проверьте наличие `config.json`. Смотрите `bin/logs/sing-box.log`. |
-| Визард открывается, но Save падает | Internal log в **Log window** — там лог schema-validation. |
-| Вкладка Clash API недоступна | sing-box не запущен (вкладка намеренно disabled, пока движок не поднят). |
+| sing-box не стартует | **Локально → Скачать** ставит ядро. Если Start всё равно не работает, откройте **🔍 Диагностика → Окно логов → Ядро** и прочитайте строку `FATAL` — см. [ядро не запускается](docs/TROUBLESHOOTING.ru.md#ядро-не-запускается-в-логе-fatal) (`default outbound not found`, `dependency[…] not found`, занят порт 9090). |
+| Не скачиваются ядро / `wintun.dll` / переводы (GitHub заблокирован) | Зеркала пробуются автоматически; иначе скачайте руками или возьмите установщик для Windows / `win64-full.zip`, которым загрузки не нужны — см. [docs/TROUBLESHOOTING.ru.md](docs/TROUBLESHOOTING.ru.md#скачивание-ядра-wintundll-или-переводов-зависает-или-падает). |
+| Ошибки сертификатов `x509: …` | Часы, проверка HTTPS в антивирусе, IP вместо SNI — см. [docs/TROUBLESHOOTING.ru.md](docs/TROUBLESHOOTING.ru.md#ошибки-x509-и-другие-ошибки-сертификатов). |
+| Конфигуратор не сохраняет | Вкладка «Внутренний» в **Окне логов** — там записана ошибка проверки. |
+| Список серверов пуст / неактивен | sing-box не запущен (список намеренно неактивен, пока движок не поднят). |
 | Подписка возвращает пусто / ошибки | Проверьте **Subscription identification** в Settings — HWID-binding панели требуют `Send device ID` включённым. Смотрите tooltip ⚠ badge — там announce от провайдера. |
-| Windows: Start показывает «Для TUN нужны права администратора» | Лаунчер работает без прав администратора, а TUN они нужны. Выберите **Перезапустить от имени администратора** или **Перейти в режим прокси** — см. [Установка → Windows](#windows-1). |
-| TUN не захватывает трафик (Linux/macOS) | Для TUN-интерфейса обычно нужен root: `sudo ./singbox-launcher` или `sudo setcap cap_net_admin+ep ./singbox-launcher` (Linux). |
+| Windows: Start показывает «Для TUN нужны права администратора» | Лаунчер работает без прав администратора, а TUN они нужны. Выберите **Установить службу**, **Перезапустить от имени администратора** или **Перейти в режим прокси** — см. [docs/TROUBLESHOOTING.ru.md](docs/TROUBLESHOOTING.ru.md#start-показывает-для-tun-нужны-права-администратора). |
+| Windows: SmartScreen или антивирус блокирует лаунчер или `sing-box.exe` | Файлы не подписаны; сверьте SHA-256 с `checksums.txt` и добавьте исключения — см. [docs/TROUBLESHOOTING.ru.md](docs/TROUBLESHOOTING.ru.md#антивирус-удаляет-или-блокирует-лаунчер-или-sing-boxexe). |
+| Windows: VPN при входе в систему | **⚙️ Настройки → Подключение** — см. [запуск вместе с Windows](docs/TROUBLESHOOTING.ru.md#запуск-вместе-с-windows-и-подключение-при-входе); с TUN нужна служба или Планировщик заданий. |
+| Linux: TUN просит capabilities при каждом старте | `setcap` ставится на ядро, а не на лаунчер; повторять после каждого обновления ядра; на разделе с `nosuid` не действует — см. [docs/TROUBLESHOOTING.ru.md](docs/TROUBLESHOOTING.ru.md#start-снова-и-снова-просит-linux-capabilities). |
 | Linux: пароль спрашивают при старте/остановке VPN или смене сети | `systemd-resolved` + Polkit авторизуют каждое действие `resolvectl` по D-Bus отдельно — см. [docs/TROUBLESHOOTING.ru.md](docs/TROUBLESHOOTING.ru.md#linux). |
+| Интерфейс на английском | **⚙️ Настройки → Язык** → Русский; если его нет в списке, нажмите **⬇** рядом и перезапустите лаунчер. |
 | Win7 32-bit: иконка в трее есть, окно пустое / без виджетов | OpenGL 2.0 против требования Fyne 2.1+ — см. [docs/WIN7_OPENGL.md](docs/WIN7_OPENGL.md), drop-in фикс через Mesa3D. |
 | Auto-update подписок молчит | Откройте **Settings → Subscriptions** — убедитесь, что `Auto-update subscriptions` включён. Heartbeat раз в час; immediate retry срабатывает на VPN-event. |
-| Нужен полный state для bug-report | **Diagnostics → Copy snapshot** упакует template + state + cache + config одним JSON. |
+| Нужен полный state для bug-report | Debug API `GET /debug/snapshot` упакует template + state + cache + config одним JSON (см. [docs/API.ru.md](docs/API.ru.md)); иначе приложите файлы из **🔍 Диагностика → Папка логов**. |
 
 ## Вклад в проект
 

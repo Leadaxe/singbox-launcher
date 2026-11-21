@@ -3,16 +3,156 @@
   "scheme": "trusttunnel",
   "kind": "outbound",
   "singbox_type": "trusttunnel",
-  "aliases": [],
+  "aliases": [
+    "tt"
+  ],
   "sources": [
+    "uri",
     "singbox"
   ],
   "extension": null,
-  "note": "Outbound форка (sing-box-lx protocol/trusttunnel, option/trusttunnel.go, include/trusttunnel.go; FEATURE 018, ядро с 1.14.3-lx.21): AdGuard TrustTunnel — proxy CONNECT с Basic-auth внутри HTTP/2 поверх TLS либо HTTP/3 поверх QUIC. Ядро регистрирует тип только при теге сборки with_trusttunnel, но гейта по ядру у записи НЕТ (решение владельца 29.10.2026: «в новых лаунчерах будут новые ядра»): узел уходит в конфиг на любом ядре, старое ядро отвергает конфиг целиком («unknown outbound type: trusttunnel»), и страховка core-rejected (PARSING_PRINCIPLES §9) выключает узел по имени. Контракт 1.1.141 (29.10.2026): запись добавлена, потому что без неё узел из sing-box JSON шёл слепой копией, а проверка кандидата локальным ядром старше lx.21 ложно сообщала «машина откажет на Deploy». Описаны ВСЕ поля option/trusttunnel.go TrustTunnelOutboundOptions с правилами ядра (сверено по protocol/trusttunnel/outbound.go NewOutbound). Два правила ядра таблицей не выражены и записаны словами: (1) tls.server_name обязателен, когда server — IP-адрес (сервер маршрутизирует по SNI и рвёт ClientHello без него); (2) непустой tls.alpn обязан содержать протокол узла — h2 без quic, h3 с quic (пустой alpn ядро заполняет само). Оба — отказ старта ВСЕГО конфига; ловит страховка core-rejected. URI-формы у протокола нет: узел приходит как sing-box JSON (своя запись, документ, подписка). Формы Add server нет (вторая очередь, как у OpenConnect до SPEC 167).",
-  "uri": null,
+  "note": "Outbound форка (sing-box-lx protocol/trusttunnel, option/trusttunnel.go, include/trusttunnel.go; FEATURE 018, ядро с 1.14.3-lx.21): AdGuard TrustTunnel — proxy CONNECT с Basic-auth внутри HTTP/2 поверх TLS либо HTTP/3 поверх QUIC. Ядро регистрирует тип только при теге сборки with_trusttunnel, но гейта по ядру у записи НЕТ (решение владельца 29.10.2026: «в новых лаунчерах будут новые ядра»): узел уходит в конфиг на любом ядре, старое ядро отвергает конфиг целиком («unknown outbound type: trusttunnel»), и страховка core-rejected (PARSING_PRINCIPLES §9) выключает узел по имени. Контракт 1.1.141 (29.10.2026): запись добавлена, потому что без неё узел из sing-box JSON шёл слепой копией, а проверка кандидата локальным ядром старше lx.21 ложно сообщала «машина откажет на Deploy». Описаны ВСЕ поля option/trusttunnel.go TrustTunnelOutboundOptions с правилами ядра (сверено по protocol/trusttunnel/outbound.go NewOutbound). Два правила ядра таблицей не выражены и записаны словами: (1) tls.server_name обязателен, когда server — IP-адрес (сервер маршрутизирует по SNI и рвёт ClientHello без него); (2) непустой tls.alpn обязан содержать протокол узла — h2 без quic, h3 с quic (пустой alpn ядро заполняет само). Оба — отказ старта ВСЕГО конфига; ловит страховка core-rejected. Контракт 1.1.175 (21.11.2026): URI-форма `tt://` — deep link клиентов AdGuard TrustTunnel, бинарный контейнер TLV (секция mappers.uri, диалект tlv); ссылка-подписка (только subscription_url) узлом не является — tt_subscription_only. Форма Add server — контракт 1.1.176 (`body.form`): адрес, порт, имя и пароль; TLS — SNI, проверка сертификата, отпечаток uTLS (ALPN и Reality в форме нет: ALPN ядро ставит само по протоколу узла); дополнительно — QUIC, управление перегрузкой, health check, idle timeout. Ответ подписки TrustTunnel (объект JSON) — вид источника trusttunnel_endpoint_json (source_kinds.json).",
+  "uri": {
+    "userinfo": {
+      "meaning": "none (container scheme)",
+      "desc_en": "No userinfo: the whole entry is a binary container inside the link.",
+      "desc_ru": "Userinfo нет: вся запись лежит бинарным контейнером внутри ссылки.",
+      "impl": "`tt://?<base64url без паддинга>` над TLV: тег и длина — целые QUIC (RFC 9000 §16), значение по типу поля. Authority и путь пустые, пейлоад — вся строка query без имени и знака `=`. Референс — DEEP_LINK.md и крейт `deeplink` репозитория TrustTunnel/TrustTunnel (version 2). Метка после `#` формату не принадлежит, но читается запасной (имя узла формат несёт тегом `name`)."
+    },
+    "query": {
+      "hostname": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": null,
+        "aliases": [],
+        "maps_to": "tls.server_name",
+        "desc_en": "Endpoint hostname: the name the certificate is verified against.",
+        "desc_ru": "Имя узла: по нему проверяется сертификат.",
+        "impl": "Тег 0x01. Ключ контейнера (не URL-query). У клиентов AdGuard это и SNI, и имя проверки сертификата, пока не задан custom_sni."
+      },
+      "address": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": null,
+        "aliases": [],
+        "maps_to": "server",
+        "desc_en": "Endpoint address as host:port; the tag repeats, the first one becomes the node address.",
+        "desc_ru": "Адрес узла host:port; тег повторяется, адресом узла становится первый.",
+        "impl": "Тег 0x02, IPv6 в скобках. Первый адрес → server + server_port; адреса со второго в теле не выражаются (tt_field_unsupported)."
+      },
+      "username": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": null,
+        "aliases": [],
+        "maps_to": "username",
+        "desc_en": "Account user name.",
+        "desc_ru": "Имя пользователя учётной записи.",
+        "impl": "Тег 0x05."
+      },
+      "password": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": null,
+        "aliases": [],
+        "maps_to": "password",
+        "desc_en": "Account password.",
+        "desc_ru": "Пароль учётной записи.",
+        "impl": "Тег 0x06. Секрет."
+      },
+      "upstream_protocol": {
+        "type": "string",
+        "values": [
+          "http2",
+          "http3"
+        ],
+        "allowlist": null,
+        "default": "http2",
+        "aliases": [],
+        "maps_to": "quic",
+        "desc_en": "Carrier protocol: http2 or http3.",
+        "desc_ru": "Несущий протокол: http2 или http3.",
+        "impl": "Тег 0x09, один байт: 0x01 http2, 0x02 http3. http3 → quic: true."
+      },
+      "skip_verification": {
+        "type": "bool",
+        "values": [],
+        "allowlist": null,
+        "default": false,
+        "aliases": [],
+        "maps_to": "tls.insecure",
+        "desc_en": "Do not verify the endpoint certificate.",
+        "desc_ru": "Не проверять сертификат узла.",
+        "impl": "Тег 0x07."
+      },
+      "certificate": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": null,
+        "aliases": [],
+        "maps_to": "tls.certificate",
+        "desc_en": "Endpoint certificate chain (DER in the link, PEM in the node).",
+        "desc_ru": "Цепочка сертификатов узла (в ссылке DER, в узле PEM).",
+        "impl": "Тег 0x08: DER-сертификаты подряд. В тело едет строкой PEM-блоков."
+      },
+      "tls_profile": {
+        "type": "string",
+        "values": [
+          "chrome",
+          "chrome_canary",
+          "safari",
+          "firefox",
+          "okhttp",
+          "openssl",
+          "boringssl"
+        ],
+        "allowlist": null,
+        "default": "chrome",
+        "aliases": [],
+        "maps_to": "tls.utls.fingerprint",
+        "desc_en": "ClientHello profile the client imitates.",
+        "desc_ru": "Профиль ClientHello, под который маскируется клиент.",
+        "impl": "Тег 0x10, один байт. Переводится в отпечаток uTLS; при http3 не применяется (ядро не совмещает uTLS с QUIC)."
+      },
+      "name": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "desc_en": "Node label shown to the user.",
+        "desc_ru": "Подпись узла, которую видит пользователь.",
+        "impl": "Тег 0x0C."
+      }
+    }
+  },
   "emit": {
-    "share_uri": false,
-    "note": "Share-URI не эмитится — URI-формы у схемы нет. Тело эмитится по body.order; wildcard `*` в корне нет — неописанный ключ снимается санитайзером (unknown_key)."
+    "share_uri": true,
+    "param_order": [
+      "version",
+      "hostname",
+      "username",
+      "password",
+      "address",
+      "client_random_prefix",
+      "client_random_auth_key",
+      "tls_profile",
+      "custom_sni",
+      "has_ipv6",
+      "skip_verification",
+      "anti_dpi",
+      "certificate",
+      "upstream_protocol",
+      "name",
+      "dns_upstreams",
+      "subscription_url"
+    ],
+    "note": "Эмит — `tt://?` + base64url без паддинга над TLV (mappers.uri.emit, container tlv). Порядок тегов — как у энкодера AdGuard (deeplink/src/encode.rs): version, hostname, username, password, address, client_random_prefix, client_random_auth_key, tls_profile, custom_sni, has_ipv6, skip_verification, anti_dpi, certificate, upstream_protocol, name, dns_upstreams, subscription_url. Пишется только то, что есть в теле: version=2, hostname, username, password, address, tls_profile (не chrome), skip_verification (true), certificate, upstream_protocol (http3), name. Значение, равное умолчанию формата, не пишется."
   },
   "refs": {
     "go": [
@@ -29,6 +169,16 @@
     "lx_only": true,
     "min_core": "1.14.3-lx.21",
     "build_tag": "with_trusttunnel",
+    "form": {
+      "blocks": [
+        "connection",
+        "tls",
+        "advanced"
+      ],
+      "fixed": {
+        "tls.enabled": true
+      }
+    },
     "order": [
       "server",
       "server_port",
@@ -45,6 +195,10 @@
     "fields": {
       "server": {
         "type": "ref",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "ref": "dialer.common",
         "desc_en": "Server address: domain or IP.",
         "desc_ru": "Адрес сервера: домен или IP.",
@@ -52,6 +206,10 @@
       },
       "server_port": {
         "type": "ref",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "ref": "dialer.common",
         "desc_en": "Server port.",
         "desc_ru": "Порт сервера.",
@@ -59,6 +217,10 @@
       },
       "username": {
         "type": "string",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "role": "credential",
         "required": true,
         "core_rejects": true,
@@ -68,6 +230,10 @@
       },
       "password": {
         "type": "string",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "secret": true,
         "required": true,
         "core_rejects": true,
@@ -84,6 +250,9 @@
       },
       "quic": {
         "type": "bool",
+        "form": {
+          "block": "advanced"
+        },
         "default": false,
         "conflicts": [
           {
@@ -99,6 +268,12 @@
       },
       "quic_congestion_control": {
         "type": "enum",
+        "form": {
+          "block": "advanced",
+          "visible_when": {
+            "quic": true
+          }
+        },
         "values": [
           "",
           "bbr",
@@ -118,6 +293,9 @@
       },
       "health_check": {
         "type": "bool",
+        "form": {
+          "block": "advanced"
+        },
         "default": false,
         "desc_en": "Probe the session with CONNECT _check before reusing it after idle.",
         "desc_ru": "Проверять сессию запросом CONNECT _check перед повторным использованием после простоя.",
@@ -125,12 +303,22 @@
       },
       "idle_timeout": {
         "type": "duration",
+        "form": {
+          "block": "advanced"
+        },
         "desc_en": "How long an idle session is kept before it is torn down.",
         "desc_ru": "Сколько держать простаивающую сессию до закрытия.",
         "impl": "option/trusttunnel.go IdleTimeout (badoption.Duration, указатель). Пусто — lx.trusttunnel.idle_timeout ядра, иначе 5m (protocol/trusttunnel/outbound.go idleWindow); отрицательное ядро поднимает до 0 (сессия не держится). Ядро значение не отвергает."
       },
       "tls": {
         "type": "ref",
+        "form": {
+          "block": "tls",
+          "exclude_fields": [
+            "alpn",
+            "reality"
+          ]
+        },
         "ref": "tls",
         "required": true,
         "core_rejects": true,
@@ -150,6 +338,432 @@
     "note": "Описаны все поля option/trusttunnel.go TrustTunnelOutboundOptions (контракт 1.1.141, ядро 1.14.3-lx.22). Wildcard `*` не стоит: все ключи структуры ядра известны, и неописанный ключ снимается кодом unknown_key (норма описанного тела, как у naive и vless); новый ключ форка заводится здесь вместе с бампом `core`. Гейта по ядру нет намеренно — см. note схемы."
   },
   "mappers": {
+    "uri": {
+      "body_source": "uri",
+      "detect": {
+        "scheme_in": [
+          "tt"
+        ]
+      },
+      "tlv": {
+        "in": "query",
+        "wrap": "base64url",
+        "varint": "quic",
+        "unknown_tag": "skip",
+        "fields": [
+          {
+            "tag": 0,
+            "name": "version",
+            "type": "varint",
+            "max": 2,
+            "desc_en": "Format version.",
+            "desc_ru": "Версия формата.",
+            "impl": "Тега нет — версия 0. Больше 2 — ссылка не прочитана (form_unrecognized): клиент обязан отвергнуть версию новее известной."
+          },
+          {
+            "tag": 1,
+            "name": "hostname",
+            "type": "string"
+          },
+          {
+            "tag": 2,
+            "name": "address",
+            "type": "hostport",
+            "host": "server",
+            "port": "server_port",
+            "rest": "extra_addresses",
+            "impl": "Первый адрес даёт ключи address, server (без скобок IPv6) и server_port; адреса со второго — список extra_addresses."
+          },
+          {
+            "tag": 3,
+            "name": "custom_sni",
+            "type": "string"
+          },
+          {
+            "tag": 4,
+            "name": "has_ipv6",
+            "type": "bool",
+            "default": true
+          },
+          {
+            "tag": 5,
+            "name": "username",
+            "type": "string"
+          },
+          {
+            "tag": 6,
+            "name": "password",
+            "type": "string"
+          },
+          {
+            "tag": 7,
+            "name": "skip_verification",
+            "type": "bool",
+            "default": false
+          },
+          {
+            "tag": 8,
+            "name": "certificate",
+            "type": "der_pem",
+            "impl": "Цепочка DER подряд; в объекте — PEM, блок на сертификат, блоки через перевод строки, без хвостового перевода."
+          },
+          {
+            "tag": 9,
+            "name": "upstream_protocol",
+            "type": "enum",
+            "values": {
+              "1": "http2",
+              "2": "http3"
+            },
+            "default": "http2"
+          },
+          {
+            "tag": 10,
+            "name": "anti_dpi",
+            "type": "bool",
+            "default": false
+          },
+          {
+            "tag": 11,
+            "name": "client_random_prefix",
+            "type": "string"
+          },
+          {
+            "tag": 12,
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "tag": 13,
+            "name": "dns_upstreams",
+            "type": "string_list"
+          },
+          {
+            "tag": 14,
+            "name": "subscription_url",
+            "type": "string",
+            "prefix": "https://",
+            "impl": "Значение не с https:// — ссылка не прочитана (правило 7 спецификации)."
+          },
+          {
+            "tag": 15,
+            "name": "client_random_auth_key",
+            "type": "string"
+          },
+          {
+            "tag": 16,
+            "name": "tls_profile",
+            "type": "enum",
+            "values": {
+              "0": "chrome",
+              "1": "chrome_canary",
+              "2": "safari",
+              "3": "firefox",
+              "4": "okhttp",
+              "5": "openssl",
+              "6": "boringssl"
+            },
+            "default": "chrome",
+            "impl": "Байт вне таблицы — ссылка не прочитана: спецификация требует отвергать неизвестный профиль."
+          }
+        ],
+        "impl": "DEEP_LINK.md репозитория TrustTunnel/TrustTunnel, version 2 (теги 0x0F и 0x10 добавлены без смены версии). Неизвестный тег пропускается; повтор тега — побеждает последний, кроме address. Значение, равное умолчанию формата (`default`), в объект не кладётся: тега нет и тег с умолчанием — одно и то же."
+      },
+      "forms": [
+        {
+          "id": "deeplink",
+          "detect": {
+            "default": true
+          },
+          "decode": [
+            "tlv"
+          ],
+          "space": "json",
+          "impl": "Одна форма. Декодер `tlv` раскрывает пейлоад по диалекту секции в объект JSON; дальше его читают обычные записи (`json.<ключ>`). Пейлоад не раскрылся (обёртка не base64, обрыв TLV, булево не 0/1, байт enum вне таблицы, версия больше 2, subscription_url не https) — form_unrecognized."
+        }
+      ],
+      "label": {
+        "source": [
+          "json.name",
+          "fragment"
+        ],
+        "normalize": [
+          "strip_control",
+          "trim"
+        ],
+        "fallback": {
+          "template": "{scheme}-{server}-{server_port}",
+          "scheme_source": "singbox_type"
+        }
+      },
+      "defaults": {
+        "type": "trusttunnel"
+      },
+      "scheme_sets": {
+        "*": {
+          "tls.enabled": true
+        }
+      },
+      "params": {
+        "subscription_only": {
+          "source": "json.subscription_url",
+          "selector": true,
+          "maps_to": null,
+          "when": {
+            "json.hostname": {
+              "absent": true
+            },
+            "json.address": {
+              "absent": true
+            },
+            "json.username": {
+              "absent": true
+            },
+            "json.password": {
+              "absent": true
+            }
+          },
+          "value_map": {
+            "": null
+          },
+          "on_invalid": {
+            "action": "drop",
+            "code": "tt_subscription_only"
+          },
+          "round_trip": false,
+          "round_trip_why": "запись снимает ссылку-подписку; в теле узла ей нечего обращать",
+          "impl": "Ссылка-подписка: только subscription_url, полей узла нет (правило 6 спецификации). Узла в ней нет — запись-селектор снимает её кодом tt_subscription_only раньше проверки обязательных полей. Таблица значений пуста намеренно: любое значение — промах, а промах селектора с on_invalid drop снимает узел. Есть хоть одно из hostname/address/username/password — запись молчит, и ссылку судят обычные правила (неполный узел — field_missing)."
+        },
+        "version": {
+          "source": "json.version",
+          "maps_to": null,
+          "impl": "Версию судит диалект (max 2); в теле ей места нет."
+        },
+        "address": {
+          "source": "json.address",
+          "maps_to": null,
+          "impl": "Первый адрес как написан. В тело едут его производные server и server_port."
+        },
+        "server": {
+          "source": "json.server",
+          "maps_to": "server",
+          "required": true
+        },
+        "server_port": {
+          "source": "json.server_port",
+          "maps_to": "server_port",
+          "type": "int",
+          "required": true,
+          "impl": "Адрес без порта (или с портом вне 1–65535) узлом не является: порт формат несёт внутри адреса, умолчания у него нет."
+        },
+        "username": {
+          "source": "json.username",
+          "maps_to": "username"
+        },
+        "password": {
+          "source": "json.password",
+          "maps_to": "password"
+        },
+        "hostname": {
+          "source": "json.hostname",
+          "maps_to": "tls.server_name",
+          "impl": "hostname — имя проверки сертификата (remote_id у клиента AdGuard) и, без custom_sni, SNI. У ядра имя одно (tls.server_name: и SNI, и проверка), поэтому в тело едет hostname: с ним сертификат узла проверяется."
+        },
+        "custom_sni": {
+          "source": "json.custom_sni",
+          "maps_to": null,
+          "on_present": {
+            "action": "note",
+            "code": "tt_field_unsupported",
+            "params": {
+              "field": "custom_sni"
+            }
+          },
+          "impl": "custom_sni — SNI, отличный от имени проверки сертификата (клиент AdGuard шлёт custom_sni, а сертификат сверяет с hostname). У ядра tls.server_name один на оба смысла: поставить в него custom_sni значило бы сверять сертификат с чужим именем — узел не соединится. Узел идёт с SNI = hostname, потеря названа кодом."
+        },
+        "upstream_protocol": {
+          "source": "json.upstream_protocol",
+          "maps_to": "quic",
+          "type": "bool",
+          "value_map": {
+            "http3": true,
+            "http2": null
+          },
+          "impl": "http3 → quic: true; http2 — умолчание формата, в объекте его нет."
+        },
+        "skip_verification": {
+          "source": "json.skip_verification",
+          "maps_to": "tls.insecure",
+          "type": "bool"
+        },
+        "certificate": {
+          "source": "json.certificate",
+          "maps_to": "tls.certificate"
+        },
+        "tls_profile": {
+          "source": "json.tls_profile",
+          "maps_to": "tls.utls.fingerprint",
+          "value_map": {
+            "chrome_canary": "chrome",
+            "safari": "safari",
+            "firefox": "firefox",
+            "okhttp": "android",
+            "openssl": null,
+            "boringssl": null
+          },
+          "emit_value_map": {
+            "chrome": "chrome",
+            "firefox": "firefox",
+            "safari": "safari",
+            "android": "okhttp"
+          },
+          "implies": {
+            "tls.utls.enabled": true
+          },
+          "when": {
+            "json.upstream_protocol": {
+              "absent": true
+            }
+          },
+          "on_when_false": {
+            "action": "note",
+            "code": "tt_field_unsupported",
+            "params": {
+              "field": "tls_profile"
+            }
+          },
+          "impl": "Профиль ClientHello → отпечаток uTLS: chrome_canary → chrome, safari, firefox, okhttp → android. chrome — умолчание формата, в объекте его нет, и uTLS ради него не включается: узел без тега идёт TLS-стеком ядра, как и до этой записи. openssl и boringssl — «без маскировки под браузер», uTLS не включается. При http3 запись молчит с кодом: ядро не совмещает uTLS с QUIC и при конфликте сняло бы quic. Обратно: chrome/firefox/safari/android; прочие отпечатки формат не выражает, поле не пишется."
+        },
+        "has_ipv6": {
+          "source": "json.has_ipv6",
+          "maps_to": null,
+          "on_present": {
+            "action": "note",
+            "code": "tt_field_unsupported",
+            "params": {
+              "field": "has_ipv6"
+            }
+          },
+          "impl": "В объекте только false (умолчание формата — true). Запрет IPv6 через узел в теле не выражается."
+        },
+        "anti_dpi": {
+          "source": "json.anti_dpi",
+          "maps_to": null,
+          "on_present": {
+            "action": "note",
+            "code": "tt_field_unsupported",
+            "params": {
+              "field": "anti_dpi"
+            }
+          },
+          "impl": "Режим клиента AdGuard; у ядра такого поля нет."
+        },
+        "client_random_prefix": {
+          "source": "json.client_random_prefix",
+          "maps_to": null,
+          "on_present": {
+            "action": "note",
+            "code": "tt_field_unsupported",
+            "params": {
+              "field": "client_random_prefix"
+            }
+          },
+          "impl": "Префикс TLS client_random, по которому узел опознаёт клиента. У ядра поля нет; узел, чьи правила требуют префикс, соединение отвергнет."
+        },
+        "client_random_auth_key": {
+          "source": "json.client_random_auth_key",
+          "maps_to": null,
+          "on_present": {
+            "action": "note",
+            "code": "tt_field_unsupported",
+            "params": {
+              "field": "client_random_auth_key"
+            }
+          },
+          "impl": "Ключ, из которого клиент выводит client_random. У ядра поля нет; узел, требующий такой авторизации, соединение отвергнет."
+        },
+        "extra_addresses": {
+          "source": "json.extra_addresses.0",
+          "maps_to": null,
+          "on_present": {
+            "action": "note",
+            "code": "tt_field_unsupported",
+            "params": {
+              "field": "address"
+            }
+          },
+          "impl": "Адреса со второго: клиент AdGuard выбирает лучший пингом, у ядра адрес один. Код один на узел, значение — второй адрес."
+        },
+        "dns_upstreams": {
+          "source": "json.dns_upstreams.0",
+          "maps_to": null,
+          "on_present": {
+            "action": "note",
+            "code": "tt_field_unsupported",
+            "params": {
+              "field": "dns_upstreams"
+            }
+          },
+          "impl": "DNS-серверы профиля клиента; DNS узла ведут настройки приложения. Код один на узел, значение — первый сервер."
+        },
+        "subscription_url": {
+          "source": "json.subscription_url",
+          "maps_to": null,
+          "on_present": {
+            "action": "note",
+            "code": "tt_subscription_ignored"
+          },
+          "impl": "Полный узел с адресом подписки: статические поля — запасной вход, они и становятся узлом; сама подписка не читается (вторая очередь)."
+        }
+      },
+      "unknown_key": {
+        "action": "drop",
+        "code": "uri_param_unknown",
+        "impl": "Все ключи диалекта объявлены записями; правило остаётся на случай поля, которое таблица диалекта узнает раньше, чем записи секции."
+      },
+      "emit": {
+        "form": "deeplink",
+        "container": "tlv",
+        "form_from": {
+          "type": {
+            "*": "tt"
+          }
+        },
+        "param_order": [
+          "version",
+          "hostname",
+          "username",
+          "password",
+          "address",
+          "client_random_prefix",
+          "client_random_auth_key",
+          "tls_profile",
+          "custom_sni",
+          "has_ipv6",
+          "skip_verification",
+          "anti_dpi",
+          "certificate",
+          "upstream_protocol",
+          "name",
+          "dns_upstreams",
+          "subscription_url"
+        ],
+        "json_map": {
+          "version": "=2",
+          "hostname": "tls.server_name|server",
+          "username": "username",
+          "password": "password",
+          "server": "server",
+          "server_port": "server_port",
+          "tls_profile": "$param.tls_profile",
+          "skip_verification": "tls.insecure",
+          "certificate": "tls.certificate",
+          "upstream_protocol": "$param.upstream_protocol",
+          "name": "$label"
+        },
+        "impl": "Объект собирается по json_map и сериализуется диалектом tlv секции. hostname ← tls.server_name, иначе server; адрес собирает поле hostport из server и server_port (IPv6 в скобках). custom_sni, has_ipv6, anti_dpi, client_random_*, dns_upstreams, subscription_url не пишутся: тело их не хранит."
+      }
+    },
     "singbox": {
       "detect": {
         "json": {

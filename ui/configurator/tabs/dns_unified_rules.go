@@ -123,11 +123,15 @@ func ruleDNSMirrorText(cr *wizardmodels.RuleState) string {
 	if _, ok := build.RuleDNSMirrorMatch(cr.Rule.Rule); !ok {
 		return ""
 	}
+	var parts []string
+	if cr.DNS.BlockHTTPS && build.RuleDNSBlockHTTPSAvailable(cr.Rule.Rule, ruleStateIsSRS(cr)) {
+		parts = append(parts, locale.T("no HTTPS records"))
+	}
 	if cr.DNS.FixedActive() {
 		v4, v6 := cr.DNS.FixedAddrs()
-		return fmt.Sprintf(locale.T("Fixed IP: %s"), strings.Join(append(v4, v6...), ", "))
+		parts = append(parts, fmt.Sprintf(locale.T("Fixed IP: %s"), strings.Join(append(v4, v6...), ", ")))
+		return strings.Join(parts, " · ")
 	}
-	var parts []string
 	if cr.DNS.Enabled && cr.DNS.ServerTag != "" {
 		parts = append(parts, fmt.Sprintf(locale.T("DNS: %s"), cr.DNS.ServerTag))
 	}
@@ -135,6 +139,11 @@ func ruleDNSMirrorText(cr *wizardmodels.RuleState) string {
 		parts = append(parts, locale.T("IPv4 only"))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// ruleStateIsSRS — правило Конфигуратора уходит в запись вида srs.
+func ruleStateIsSRS(cr *wizardmodels.RuleState) bool {
+	return wizardmodels.DetermineRuleType(cr.Rule.Rule) == wizardmodels.RuleTypeSRS && len(cr.Rule.RuleSets) > 0
 }
 
 // ruleDNSServerUsers — имена включённых правил, чьё DNS-зеркало ведёт на

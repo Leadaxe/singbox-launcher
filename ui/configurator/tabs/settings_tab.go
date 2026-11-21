@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -17,6 +18,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -414,6 +416,81 @@ func newSettingsTitleLabelFor(text string, rowEnabled bool) *ttwidget.Label {
 	return l
 }
 
+// settingsSectionHeader — шапка раздела Settings (sections[], SPEC 183):
+// заголовок и пояснение над островом строк раздела. Тексты приходят из шаблона
+// и не переводятся — как подписи и подсказки переменных.
+//
+// Заголовок и пояснение стоят вплотную (отступ VBox между ними убран): шапка —
+// одно целое, а не две строки формы. Пояснение — мелким кеглем обычным цветом:
+// LowImportance совпадает с цветом погашенных строк и читается как неактивное
+// поле. Только с переносом строк: метка без Wrapping держит минимальную ширину
+// по всей длине текста и раздувает окно.
+func settingsSectionHeader(sec wizardtemplate.TemplateSection) fyne.CanvasObject {
+	text := container.New(layout.NewCustomPaddedVBoxLayout(0),
+		widget.NewLabelWithStyle(sec.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
+	if sec.Description != "" {
+		desc := widget.NewRichText(&widget.TextSegment{
+			Text: sec.Description,
+			Style: widget.RichTextStyle{
+				ColorName: theme.ColorNameForeground,
+				SizeName:  theme.SizeNameCaptionText,
+			},
+		})
+		desc.Wrapping = fyne.TextWrapWord
+		text.Add(desc)
+	}
+	return text
+}
+
+// settingsVarIsMultiline — переменная рисуется многострочным полем свободного
+// ввода: text_list без закрытого списка options (у закрытого списка — чипы,
+// buildOptionsListVarRow).
+func settingsVarIsMultiline(vd wizardtemplate.TemplateVar) bool {
+	if strings.TrimSpace(vd.Type) != "text_list" {
+		return false
+	}
+	return len(vd.Options) == 0 || vd.OptionsOpen
+}
+
+// settingsMultilineRows — число строк, видимых в многострочном поле Settings.
+const settingsMultilineRows = 3
+
+// settingsMultilineEntry — многострочное поле строки переменной; nil, если
+// переменная рисуется не им.
+func settingsMultilineEntry(vd wizardtemplate.TemplateVar, row fyne.CanvasObject) *widget.Entry {
+	if !settingsVarIsMultiline(vd) {
+		return nil
+	}
+	return findMultilineEntry(row)
+}
+
+func findMultilineEntry(o fyne.CanvasObject) *widget.Entry {
+	switch v := o.(type) {
+	case *widget.Entry:
+		if v.MultiLine {
+			return v
+		}
+	case *fyne.Container:
+		for _, child := range v.Objects {
+			if e := findMultilineEntry(child); e != nil {
+				return e
+			}
+		}
+	}
+	return nil
+}
+
+// settingsMultilineRow — строка многострочного поля: название и кнопка сброса
+// на своей строке, поле — под ними на всю ширину. Рядом с названием
+// многострочное поле получало остаток ширины после длинной подписи и
+// выглядело узким столбиком.
+func settingsMultilineRow(title, reset, field fyne.CanvasObject) fyne.CanvasObject {
+	return container.NewVBox(
+		container.NewBorder(nil, nil, nil, reset, title),
+		field,
+	)
+}
+
 // settingsSeparatorBlock — горизонтальная линия между строками Settings (vars.separator).
 // Цвет InputBorder заметнее стандартного theme.Separator в тёмной теме; сверху/снизу — отступ.
 func settingsSeparatorBlock() fyne.CanvasObject {
@@ -460,6 +537,8 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	// ни другого.
 	WarmUpInterfaceHints(model)
 
+	wheel := components.NewWheelThrough()
+
 	refresh := func() {
 		// SPEC 097: платформа ЦЕЛЕВОЙ машины, не той, где запущен лаунчер.
 		// Для local Target нормализуется в runtime.GOOS, так что поведение
@@ -478,6 +557,15 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 		// SPEC 107: индекс гейтов пересобирается вместе со строками — он
 		// производный от текущего набора виджетов и живёт ровно столько же.
 		gs.SettingsGates = newGateIndex()
+		// SPEC 183: шапка и остров раздела создаются перед первой нарисованной
+		// строкой раздела — раздел без видимых строк (другая платформа,
+		// удалённая цель) не оставляет ни шапки, ни рамки.
+		sectionByID := make(map[string]wizardtemplate.TemplateSection, len(td.Sections))
+		for _, sec := range td.Sections {
+			sectionByID[sec.ID] = sec
+		}
+		drawnSection := ""
+		var sectionRows *fyne.Container
 		for _, vd := range td.Vars {
 			if !settingsVarVisible(vd, goos, tgt.IsRemote()) {
 				continue
@@ -495,11 +583,44 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 				!wizardtemplate.VarUISatisfiedFor(vd, vi, resolved, tgt) {
 				continue
 			}
+			// Строки раздела лежат островом — в рамке с подложкой, как списки
+			// вкладки DNS; шапка раздела — над островом. Строки шаблона в
+			// плоской форме (без разделов) идут прямо в общий столбец.
+			rows := box
+			if vd.Section != "" {
+				if vd.Section != drawnSection {
+					if sec, ok := sectionByID[vd.Section]; ok {
+						box.Add(settingsSectionHeader(sec))
+					}
+					sectionRows = container.NewVBox()
+					box.Add(fynewidget.NewFramedPanel(sectionRows))
+					drawnSection = vd.Section
+				}
+				rows = sectionRows
+			}
 			title := wizardtemplate.VarDisplayTitle(vd)
 			toolTip := wizardtemplate.VarDisplayTooltip(vd)
 			rowEnabled := wizardtemplate.VarUISatisfiedFor(vd, vi, resolved, tgt)
 			row := buildSettingsVarRow(presenter, model, td, vd, title, toolTip, rowEnabled, gs)
-			box.Add(row)
+			// Колесо над полем ввода двигает вкладку, а не уходит во
+			// внутреннюю прокрутку поля. Многострочное поле забирает колесо,
+			// только когда в нём есть что листать — строк больше, чем видно.
+			if e := settingsMultilineEntry(vd, row); e != nil {
+				var update func()
+				row, update = wheel.WrapWhile(row, func() bool {
+					return strings.Count(e.Text, "\n")+1 <= settingsMultilineRows
+				})
+				prev := e.OnChanged
+				e.OnChanged = func(s string) {
+					if prev != nil {
+						prev(s)
+					}
+					update()
+				}
+			} else {
+				row = wheel.Wrap(row)
+			}
+			rows.Add(row)
 		}
 		// SPEC 066 follow-up: trap-state warning. After SPEC 066 made `tun`
 		// user-disableable on Win/Linux, the combination tun=false +
@@ -515,7 +636,11 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	gs.RefreshSettingsFromModel = refresh
 	refresh()
 
-	scroll := container.NewVScroll(box)
+	// Место под полосу прокрутки — одной колонкой справа от всей вкладки, как
+	// на вкладке DNS: полоса не ложится ни на рамки островов, ни на кнопки
+	// сброса в строках.
+	scroll := container.NewVScroll(container.NewBorder(nil, nil, nil, components.NewScrollGutter(), box))
+	wheel.SetScroll(scroll)
 	// Нижняя граница, а не высота: см. wizardTabScrollMinHeight.
 	scroll.SetMinSize(fyne.NewSize(0, wizardTabScrollMinHeight))
 
@@ -810,7 +935,7 @@ func buildVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmod
 		// множественный выбор, buildOptionsListVarRow); здесь свободный ввод.
 		titleLab := newSettingsTitleLabelFor(title, rowEnabled)
 		e := widget.NewMultiLineEntry()
-		e.SetMinRowsVisible(3)
+		e.SetMinRowsVisible(settingsMultilineRows)
 		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
 		if v, ok := store.stored(name); ok {
 			disp = v
@@ -828,13 +953,13 @@ func buildVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmod
 		// правды и принимает ручной ввод: интерфейс может ещё не существовать.
 		if lanIfacePickApplies(name) {
 			field, addBtn := buildLANIfacePickField(gs, model, e)
-			row := container.NewBorder(nil, nil, titleLab, resetBtn, field)
+			row := settingsMultilineRow(titleLab, resetBtn, field)
 			setVarFieldToolTip(toolTip, titleLab, e)
 			applySettingsRowDisabled(rowEnabled, resetBtn, e, addBtn)
 			bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, e, addBtn)
 			return row
 		}
-		row := container.NewBorder(nil, nil, titleLab, resetBtn, e)
+		row := settingsMultilineRow(titleLab, resetBtn, e)
 		setVarFieldToolTip(toolTip, titleLab, e)
 		applySettingsRowDisabled(rowEnabled, resetBtn, e)
 		bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, e)

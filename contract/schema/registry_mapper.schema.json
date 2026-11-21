@@ -201,7 +201,7 @@
         },
         "decode": {
           "type": "array",
-          "description": "Конвейер декодеров оболочки: url, percent, base64, base64url, 'base64?' (try-decode с фолбэком «не base64 → как есть»), json, ini, {reparse: url|authority}. Шаг записывается строкой (область применения — весь текст) либо объектом {decoder, scope}, где scope называет часть ссылки: all (умолчание) | userinfo | authority. Область нужна там, где base64 накрывает РАЗНЫЕ куски в разных формах одной схемы: SIP002 у ss кодирует только userinfo, legacy — весь authority, а метка '#…' в обеих формах остаётся открытым текстом снаружи (PRIMITIVES §0.10).",
+          "description": "Конвейер декодеров оболочки: url, percent, base64, base64url, 'base64?' (try-decode с фолбэком «не base64 → как есть»), json, ini, tlv (контракт 1.1.175: бинарный контейнер по диалекту `tlv` секции — где лежит пейлоад и как он устроен, объявляет диалект, шаг пишется строкой), {reparse: url|authority}. Шаг записывается строкой (область применения — весь текст) либо объектом {decoder, scope}, где scope называет часть ссылки: all (умолчание) | userinfo | authority. Область нужна там, где base64 накрывает РАЗНЫЕ куски в разных формах одной схемы: SIP002 у ss кодирует только userinfo, legacy — весь authority, а метка '#…' в обеих формах остаётся открытым текстом снаружи (PRIMITIVES §0.10).",
           "items": {
             "oneOf": [
               {
@@ -980,6 +980,122 @@
         }
       }
     },
+    "tlv_dialect": {
+      "description": "Диалект БИНАРНОГО контейнера «тег–длина–значение» (контракт 1.1.175, MAPPER_ENGINE §4a). Декодер формы `tlv` раскрывает по нему пейлоад ссылки в объект пространства `json`; обратный ход `emit.container: \"tlv\"` собирает объект обратно. Тег и длина — целые кодировки `varint`, значение — по типу поля. Ключ объекта есть тогда, когда тег был во входе и значение не равно `default` поля.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "in",
+        "wrap",
+        "varint",
+        "fields"
+      ],
+      "properties": {
+        "in": {
+          "enum": [
+            "query",
+            "authority"
+          ],
+          "description": "Где в ссылке лежит пейлоад: query — всё после `?` до `#` (`схема://?<пейлоад>`), authority — после `://`. Обратный ход пишет туда же."
+        },
+        "wrap": {
+          "enum": [
+            "base64url"
+          ],
+          "description": "Текстовая обёртка байтов (RFC 4648 §5). Читаются оба алфавита base64 и написания с паддингом и без; пишется base64url без паддинга."
+        },
+        "varint": {
+          "enum": [
+            "quic"
+          ],
+          "description": "Кодировка тега и длины: RFC 9000 §16 — два старших бита первого байта задают ширину 1/2/4/8 байт, big-endian. На выходе — кратчайшая ширина."
+        },
+        "unknown_tag": {
+          "enum": [
+            "skip",
+            "reject"
+          ],
+          "description": "Тег, которого нет в таблице: skip — пропустить (умолчание), reject — контейнер не прочитан."
+        },
+        "fields": {
+          "type": "array",
+          "description": "Таблица полей. Повтор тега: у поля `hostport` с `rest` — следующий элемент списка, у остальных побеждает последний.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tag",
+              "name",
+              "type"
+            ],
+            "properties": {
+              "tag": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "name": {
+                "type": "string",
+                "description": "Ключ объекта."
+              },
+              "type": {
+                "enum": [
+                  "varint",
+                  "string",
+                  "bool",
+                  "enum",
+                  "string_list",
+                  "der_pem",
+                  "hostport"
+                ],
+                "description": "varint — целое той же кодировкой, число; string — UTF-8 (битые байты → U+FFFD, пустая строка = поля нет); bool — ровно один байт 0x00/0x01, иное — контейнер не прочитан; enum — один байт, имя по `values`, байт вне таблицы — контейнер не прочитан; string_list — подряд «длина + UTF-8», массив строк (пустой = поля нет); der_pem — DER-структуры подряд, в объекте строка PEM-блоков CERTIFICATE (base64 по 64 символа, блоки через `\\n`, без хвостового перевода строки); hostport — `хост:порт`, IPv6 в скобках."
+              },
+              "values": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "У enum: байт десятичной строкой → имя. На выходе имя вне таблицы не пишется."
+              },
+              "default": {
+                "description": "Умолчание ФОРМАТА: значение, равное ему, в объект не кладётся и на выходе не пишется."
+              },
+              "max": {
+                "type": "integer",
+                "description": "У varint: значение больше — контейнер не прочитан."
+              },
+              "prefix": {
+                "type": "string",
+                "description": "У string: значение обязано начинаться так, иначе контейнер не прочитан."
+              },
+              "host": {
+                "type": "string",
+                "description": "У hostport: ключ адреса без скобок IPv6."
+              },
+              "port": {
+                "type": "string",
+                "description": "У hostport: ключ порта (число 1–65535); порта нет или он негоден — ключа нет."
+              },
+              "rest": {
+                "type": "string",
+                "description": "У hostport: ключ списка вхождений со второго (строки как написаны). На выходе первое значение собирается из `host` и `port`, когда ключа `name` в объекте нет."
+              },
+              "desc_en": {
+                "type": "string"
+              },
+              "desc_ru": {
+                "type": "string"
+              },
+              "impl": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "impl": {
+          "type": "string"
+        }
+      }
+    },
     "mapper": {
       "description": "Одна секция-маппер: вид источника у одного протокола.",
       "type": "object",
@@ -1007,6 +1123,9 @@
         "ini_dialect": {
           "$ref": "#/definitions/ini_dialect",
           "description": "Диалект ini протокола. Один на протокол (1.1.140): секция с формой пространства ini без своего ini_dialect берёт диалект соседней секции того же протокола — текст .conf один, каким бы входом он ни приехал (голый файл mappers.conf или base64 под ссылкой, форма conf_b64 у mappers.uri)."
+        },
+        "tlv": {
+          "$ref": "#/definitions/tlv_dialect"
         },
         "overlays": {
           "type": "array",
@@ -1185,10 +1304,17 @@
                 },
                 "json_map": {
                   "type": "object",
-                  "description": "Форма, собирающая не query-ссылку, а base64(JSON): карта «ключ JSON → путь тела» (vmess v2rayn, shareuri_vmess.go:20-35). Значение — путь тела либо литерал.",
+                  "description": "Форма, собирающая не query-ссылку, а base64(JSON): карта «ключ JSON → путь тела» (vmess v2rayn, shareuri_vmess.go:20-35). Значение — путь тела, `$label`, `$param.<имя>` либо литерал `=…`; цепочка через `|` (контракт 1.1.175) берёт первую ссылку, давшую значение (`tls.server_name|server`).",
                   "additionalProperties": {
                     "type": "string"
                   }
+                },
+                "container": {
+                  "enum": [
+                    "json",
+                    "tlv"
+                  ],
+                  "description": "Чем сериализуется объект формы-контейнера, собранный по json_map (контракт 1.1.175): json (умолчание) — `схема://base64(JSON)`; tlv — байты по диалекту `tlv` секции в её обёртке, пейлоад кладётся туда, откуда его читает разбор (`tlv.in`). Объект и порядок его ключей (param_order) собираются одинаково."
                 },
                 "json_always": {
                   "type": "object",
@@ -1264,7 +1390,32 @@
         },
         "unwrap": {
           "type": "string",
-          "description": "Оболочка-декодер: base64, amnezia_vpn."
+          "description": "Оболочка-декодер: base64_utf8, amnezia_vpn, container_link (контракт 1.1.176: документ — объект JSON с ключами контейнера; печатается ссылкой по диалекту `tlv` секции, ведущей написание `container.scheme`)."
+        },
+        "container": {
+          "type": "object",
+          "description": "Объявление распаковщика container_link (контракт 1.1.176, MAPPER_ENGINE §2.1).",
+          "additionalProperties": false,
+          "required": [
+            "scheme"
+          ],
+          "properties": {
+            "scheme": {
+              "type": "string",
+              "description": "Написание схемы ссылки: секция `mappers.uri` с этим написанием в `detect.scheme_in` и с диалектом `tlv`."
+            },
+            "omit": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Ключи объекта, которые в контейнер не идут (служебные поля оболочки)."
+            },
+            "set": {
+              "type": "object",
+              "description": "Значения, которые распаковщик пишет в контейнер сам, поверх объекта: «ключ → значение»."
+            }
+          }
         },
         "redetect": {
           "type": "boolean",

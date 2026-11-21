@@ -40,12 +40,14 @@ const templateCorpusRelPath = "../../contract/corpus/template"
 type corpusCase struct {
 	name     string // относительный путь без суффикса, напр. "predicates/p1_bare_bool_true"
 	template struct {
-		Vars    []TemplateVar   `json:"vars"`
+		Vars    []TemplateVar   `json:"-"` // DecodeVarContainer
 		Config  json.RawMessage `json:"config"`
 		Changed string          `json:"_changed"`
 	}
 	vars     map[string]*string // nil-значение = optional-var (§5.1)
 	expected corpusExpected
+	// containerErr — отказ разбора контейнера объявлений (SPEC 183).
+	containerErr error
 }
 
 type corpusExpected struct {
@@ -73,6 +75,9 @@ func loadCorpusCase(t *testing.T, base string) corpusCase {
 	if err := json.Unmarshal(raw, &c.template); err != nil {
 		t.Fatalf("parse template: %v", err)
 	}
+	// Контейнер объявлений (sections[] или плоский vars[], SPEC 183): отказ
+	// разбора — вердикт рубежа загрузки, а не поломка кейса.
+	c.template.Vars, _, c.containerErr = DecodeVarContainer(raw)
 
 	rawVars, err := os.ReadFile(base + ".vars.json")
 	if err != nil {
@@ -213,7 +218,10 @@ func TestContractCorpusTemplate(t *testing.T) {
 			// ДО рантайма и независимо от него: reject-кейс обязан и
 			// отвергаться валидатором, и выполнять рантайм-ожидания в
 			// толерантном прогоне ниже.
-			loadErr := ValidateWizardTemplate(c.template.Vars, nil, c.template.Config)
+			loadErr := c.containerErr
+			if loadErr == nil {
+				loadErr = ValidateWizardTemplate(c.template.Vars, nil, c.template.Config)
+			}
 			switch c.expected.Load {
 			case "", "accept":
 				if loadErr != nil {

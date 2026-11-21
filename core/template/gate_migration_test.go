@@ -29,12 +29,17 @@ func TestGateMigrationProducesIdenticalConfig(t *testing.T) {
 	build := func(src []byte) string {
 		t.Helper()
 		var td struct {
-			Vars   []TemplateVar   `json:"vars"`
+			Vars   []TemplateVar   `json:"-"` // DecodeVarContainer
 			Params []TemplateParam `json:"params"`
 			Config json.RawMessage `json:"config"`
 		}
 		if err := json.Unmarshal(src, &td); err != nil {
 			t.Fatalf("parse: %v", err)
+		}
+		if vs, _, err := DecodeVarContainer(src); err != nil {
+			t.Fatalf("vars: %v", err)
+		} else {
+			td.Vars = vs
 		}
 		out, err := ApplyTemplateWithVarsFor(td.Config, td.Params, td.Vars, nil, src, LocalTarget())
 		if err != nil {

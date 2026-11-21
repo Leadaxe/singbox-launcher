@@ -1436,13 +1436,22 @@ func corpusNodeByKey(dst *state.State, key string) *state.Node {
 }
 
 // checkOriginRaw — источник своих узлов после импорта: сравнение по
-// значению JSON (контракт 1.1.165, PARSING_PRINCIPLES §11 п.6).
+// значению JSON (контракт 1.1.165, PARSING_PRINCIPLES §11 п.6); ожидание
+// строкой — текст байт в байт (контракт 1.1.172: комментарии исходника
+// импорт хранит как есть).
 func checkOriginRaw(t *testing.T, dst *state.State, exp corpusExpectation) {
 	t.Helper()
 	for key, want := range exp.OriginRaw {
 		node := corpusNodeByKey(dst, key)
 		if node == nil || node.Origin == nil {
 			t.Errorf("origin_raw %q: узла с источником нет", key)
+			continue
+		}
+		var text string
+		if json.Unmarshal(want, &text) == nil {
+			if node.Origin.Raw != text {
+				t.Errorf("origin_raw %q: %q, ожидалось как есть %q", key, node.Origin.Raw, text)
+			}
 			continue
 		}
 		var got, exp interface{}

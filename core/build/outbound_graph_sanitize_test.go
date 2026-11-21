@@ -187,43 +187,30 @@ func TestSanitizeKeepsHealthyGraph(t *testing.T) {
 	}
 }
 
-// SPEC 115 §2 — снятые узлы группируются по источнику И несут число.
-//
-// Санитайзер работает по узлам, а отчёт показывает источники: у подписки на
-// полсотни узлов один сломанный переход снимает их все разом, и без счётчика
-// пометка «источник пострадал» не отличала бы потерю одного узла от потери
-// всей подписки. Пропавшая цель называется отдельным полем — по нему отчёт
-// заводит свой вид записи, а не разбирает обратно человеческий текст.
-func TestSanitizeCountsDroppedNodesPerSource(t *testing.T) {
+// Снятые хопы группируются по паре источник × цель и несут узлы: у подписки
+// на полсотни узлов одна пропавшая цель иначе дала бы полсотни строк отчёта.
+func TestSanitizeGroupsStrippedHopsPerSourceAndTarget(t *testing.T) {
 	origins := map[string]NodeOrigin{
 		"Big 1":   {SourceID: "01BIG", SourceLabel: "Big Sub"},
 		"Big 2":   {SourceID: "01BIG", SourceLabel: "Big Sub"},
 		"Big 3":   {SourceID: "01BIG", SourceLabel: "Big Sub"},
 		"Small 1": {SourceID: "01SML", SourceLabel: "Small Sub"},
 	}
-	_, excluded := sanitizeWithOrigins(t, []string{
+	_, losses := sanitizeWithOrigins(t, []string{
 		`{"tag":"Big 1","type":"vless","server":"a","detour":"gone"}`,
 		`{"tag":"Big 2","type":"vless","server":"b","detour":"gone"}`,
-		`{"tag":"Big 3","type":"vless","server":"c","detour":"gone"}`,
+		`{"tag":"Big 3","type":"vless","server":"c","detour":"other-gone"}`,
 		`{"tag":"Small 1","type":"vless","server":"d","detour":"gone"}`,
 	}, origins)
 
-	if len(excluded) != 2 {
-		t.Fatalf("записей об источниках %d, ожидалось 2 (по одной на источник)", len(excluded))
+	if len(losses.stripped) != 3 {
+		t.Fatalf("записей %d, ожидалось 3 (Big×gone, Big×other-gone, Small×gone): %+v", len(losses.stripped), losses.stripped)
 	}
-	byID := make(map[string]SourceExclusion, 2)
-	for _, e := range excluded {
-		byID[e.SourceID] = e
+	count := map[string]int{}
+	for _, e := range losses.stripped {
+		count[e.SourceID+"/"+e.Target] = len(e.Nodes)
 	}
-	if got := byID["01BIG"].DroppedNodes; got != 3 {
-		t.Errorf("у Big Sub снято %d узлов, ожидалось 3", got)
-	}
-	if got := byID["01SML"].DroppedNodes; got != 1 {
-		t.Errorf("у Small Sub снято %d узлов, ожидался 1", got)
-	}
-	for id, e := range byID {
-		if e.MissingTarget != "gone" {
-			t.Errorf("у %s пропавшая цель = %q, ожидалась «gone»", id, e.MissingTarget)
-		}
+	if count["01BIG/gone"] != 2 || count["01BIG/other-gone"] != 1 || count["01SML/gone"] != 1 {
+		t.Errorf("группировка по паре источник × цель неверна: %v", count)
 	}
 }

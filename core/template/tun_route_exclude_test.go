@@ -10,11 +10,16 @@ import (
 func tunInboundFromTemplate(t *testing.T, raw json.RawMessage, state map[string]string) map[string]interface{} {
 	t.Helper()
 	var root struct {
-		Vars   []TemplateVar   `json:"vars"`
+		Vars   []TemplateVar   `json:"-"` // DecodeVarContainer
 		Params []TemplateParam `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &root); err != nil {
 		t.Fatal(err)
+	}
+	if vs, _, err := DecodeVarContainer(raw); err != nil {
+		t.Fatal(err)
+	} else {
+		root.Vars = vs
 	}
 	var inbounds json.RawMessage
 	for _, p := range root.Params {

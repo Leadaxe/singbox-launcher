@@ -28,7 +28,10 @@ func SecretUnresolved(s string) bool {
 // TemplateVar описывает элемент секции vars шаблона.
 type TemplateVar struct {
 	// Separator: декоративная горизонтальная линия на вкладке Settings (без name/type/плейсхолдеров).
-	Separator    bool            `json:"separator,omitempty"`
+	Separator bool `json:"separator,omitempty"`
+	// Section — id раздела sections[], в котором объявлена переменная
+	// (SPEC 183); пусто у плоской формы vars[]. Заполняет DecodeVarContainer.
+	Section      string          `json:"-"`
 	Name         string          `json:"name"`
 	Type         string          `json:"type"`
 	DefaultValue VarDefaultValue `json:"default_value,omitempty"`

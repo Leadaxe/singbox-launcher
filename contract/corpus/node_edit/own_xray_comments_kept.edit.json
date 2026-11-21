@@ -1,0 +1,9 @@
+{
+  "_comment": "Xray outbound с комментариями: вид — xray (классификация по тексту без комментариев), источник как набран, тело — перевод (контракт 1.1.172).",
+  "container": "own",
+  "origin": {
+    "kind": "singbox",
+    "raw": "{\"type\":\"trojan\",\"server\":\"example-2.com\",\"server_port\":443,\"password\":\"testpass581\"}"
+  },
+  "input": "{\n  # Xray outbound с пометкой\n  \"tag\": \"xr\", \"protocol\": \"vless\", // протокол\n  \"settings\": {\"vnext\": [{\"address\": \"example-1.com\", \"port\": 443, \"users\": [{\"id\": \"11111111-2222-3333-4444-555555555555\"}]}]},\n  \"streamSettings\": {\"network\": \"tcp\", \"security\": \"none\"} /* конец */\n}"
+}

@@ -1,0 +1,10 @@
+{
+  "_": "network + forceIpv4: гейт портов/протоколов/network снят — глушилка AAAA выпускается, network в DNS-правило не идёт",
+  "rule": {
+    "kind": "inline",
+    "name": "UDP only",
+    "enabled": true,
+    "body": {"domain_suffix": ["voice.example"], "network": ["udp"], "outbound": "direct"},
+    "dns": {"enabled": false, "serverTag": "", "forceIpv4": true}
+  }
+}

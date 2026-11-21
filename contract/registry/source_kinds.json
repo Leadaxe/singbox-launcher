@@ -168,6 +168,43 @@
         "impl": "Признак диалекта — ключ `protocol` у ЭЛЕМЕНТА: без него полный конфиг Xray забирала бы ветка `singbox_config` (50), у которой признак `outbounds` без проверки диалекта, и Xray-элементы уехали бы в sing-box-маппер, который их не читает (узлов ноль). Отрицание `type` — как у пары 30/31: неоднозначный конфиг остаётся за sing-box."
       },
       {
+        "source_kind": "trusttunnel_endpoint_json",
+        "priority": 36,
+        "detect": {
+          "json": {
+            "type_of": {
+              "$root": "object"
+            },
+            "required_keys": [
+              "hostname",
+              "address",
+              "username",
+              "password"
+            ],
+            "key_absent": [
+              "type",
+              "protocol",
+              "outbounds",
+              "endpoints"
+            ]
+          }
+        },
+        "unwrap": "container_link",
+        "container": {
+          "scheme": "tt",
+          "omit": [
+            "version"
+          ],
+          "set": {
+            "version": 2
+          }
+        },
+        "redetect": true,
+        "desc_en": "The JSON answer of a TrustTunnel subscription: one object with the endpoint parameters (`hostname`, `address`, `username`, `password`, …). It is printed as a `tt://` link and read as a list of one link.",
+        "desc_ru": "JSON-ответ подписки TrustTunnel: один объект с параметрами узла (`hostname`, `address`, `username`, `password`, …). Печатается ссылкой `tt://` и читается как список из одной ссылки.",
+        "impl": "Контракт 1.1.176. Узел AdGuard TrustTunnel отдаёт по адресу подписки (`[subscription]` в vpn.toml, HTTP Basic Auth из userinfo адреса) объект `{version: 1, hostname, address, username, password, has_ipv6, upstream_protocol, anti_dpi, skip_verification, certificate?, custom_sni?, client_random_prefix?, name?, dns_upstreams?}` (TrustTunnel lib/src/subscription.rs SubscriptionResponse). Имена ключей — те же, что у полей контейнера ссылки `tt://`, поэтому второй таблицы записей нет: распаковщик `container_link` печатает объект ссылкой по диалекту `tlv` секции, ведущей написание `container.scheme`, и текст уходит на повторный детект (`uri_lines`). `omit: [version]` — версия ответа подписки (1) версией контейнера не является; `set: {version: 2}` — версия контейнера, которую обязан писать энкодер. `address` — одна строка `host:port`, `certificate` — PEM. Признак — четыре обязательных ключа и отсутствие `type`/`protocol`/`outbounds`/`endpoints`: объект sing-box и Xray их несёт. Приоритет 36 — между видами Xray и одиночным sing-box outbound; предикаты с ними не пересекаются."
+      },
+      {
         "source_kind": "singbox_outbound",
         "priority": 40,
         "detect": {

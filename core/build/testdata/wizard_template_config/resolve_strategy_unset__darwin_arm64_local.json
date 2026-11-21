@@ -7,6 +7,14 @@
     "optimistic": true,
     "rules": [
       {
+        "action": "predefined",
+        "query_type": [
+          "HTTPS",
+          "SVCB"
+        ],
+        "rcode": "NOERROR"
+      },
+      {
         "rule_set": [
           "russian:ru-domains",
           "russian:ru-services"

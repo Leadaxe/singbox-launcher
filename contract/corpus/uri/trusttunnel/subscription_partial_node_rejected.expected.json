@@ -1,0 +1,12 @@
+{
+  "dropped": [
+    {
+      "code": "field_missing",
+      "index": 0,
+      "reason": "emit_error",
+      "ref": "tt://?AAECARF2cG4uZXhhbXBsZS0xLmNvbQUFdXNlcjECEDIwMy4wLjExMy4xMDo0NDMOG2h0dHBzOi8vc3ViLmV4YW1wbGUtMS5jb20vcw"
+    }
+  ],
+  "nodes": [],
+  "v": 1
+}

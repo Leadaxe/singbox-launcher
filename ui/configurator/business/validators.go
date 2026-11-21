@@ -68,6 +68,12 @@ func ValidateDNSModel(model *wizardmodels.WizardModel) error {
 	if enabledCount == 0 {
 		return fmt.Errorf("at least one enabled DNS server is required")
 	}
+	// Серверы включённых пресетов — такие же допустимые цели, как свои: их
+	// предлагают выпадающие списки (DNSEnabledTagOptions), и сборка кладёт их
+	// в dns.servers. Без них сохранение отвергало выбор, сделанный в списке.
+	for _, tag := range PresetBundledDNSTags(model) {
+		enabledTags[tag] = struct{}{}
+	}
 	if model.DNSFinal != "" {
 		if _, ok := enabledTags[model.DNSFinal]; !ok {
 			return fmt.Errorf("dns.final %q must be an enabled server tag", model.DNSFinal)

@@ -1,0 +1,32 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "203.0.113.10",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "vpn.example-1.com"
+        },
+        "type": "trusttunnel",
+        "username": "user1"
+      },
+      "kind": "outbound",
+      "scheme": "trusttunnel",
+      "warnings": [
+        {
+          "code": "tt_field_unsupported",
+          "path": "client_random_prefix",
+          "value": "aabbcc"
+        },
+        {
+          "code": "tt_field_unsupported",
+          "path": "client_random_auth_key",
+          "value": "00112233445566778899aabbccddeeff"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

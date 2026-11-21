@@ -41,8 +41,8 @@ const (
 	emitLinkGroupFinalTagText = "it has no node %q — this looks like the final tag of group %q; pick the target again"
 	emitLinkTargetUnknownText = "target %q is not among nodes, Directions and folder replacements"
 
-	emitDetourUnresolvedText    = "node %q dropped: the detour target did not resolve (%s) — a hop set up for anonymity may not silently become a direct dial"
-	emitDetourTargetDroppedText = "node %q dropped: its detour target %q fell out of the config itself"
+	emitDetourUnresolvedText    = "node %q: hop removed, the detour target did not resolve (%s) — the node connects directly"
+	emitDetourTargetDroppedText = "node %q: hop removed, its detour target %q fell out of the config itself — the node connects directly"
 	emitDetourSelfText          = "node %q dropped: its detour points at itself"
 	emitDetourCycleText         = "node %q dropped: detour loop — the chain of hops leads traffic back to itself"
 
@@ -54,7 +54,7 @@ const (
 
 // Коды реестра (contract/registry/warnings.json), которые ставит сборка.
 const (
-	codeSourceDetourMissing        = "source_detour_missing"
+	codeDetourUnavailable          = "detour_unavailable"
 	codeSourceDetourSelf           = "source_detour_self"
 	codeSourceDetourCycle          = "source_detour_cycle"
 	codeGroupEmpty                 = "group_empty"

@@ -71,6 +71,8 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		return guiState.Window
 	}
 	serversBox := container.NewVBox()
+	// Список — на утопленной подложке с зеброй: иначе он сливается с формой.
+	serversPanel := fynewidget.NewListPanel(serversBox)
 
 	// SPEC 173: «Add from template» — попап со всем каталогом шаблона
 	// (отсутствующий сервер возвращается, имеющийся копируется своим),
@@ -102,13 +104,9 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		m := presenter.Model()
 		syncTemplateButtons()
 		if len(m.DNSServers) == 0 {
-			g := components.NewScrollGutter()
-			serversBox.Add(container.NewHBox(
-				widget.NewLabel(locale.T("No DNS servers.")),
-				layout.NewSpacer(),
-				g,
-			))
+			serversBox.Add(widget.NewLabel(locale.T("No DNS servers.")))
 			serversBox.Refresh()
+			fynewidget.RefreshListPanel(serversPanel)
 			return
 		}
 		// Bundled DNS-серверы от активных preset'ов — добавляются В КОНЕЦ
@@ -240,8 +238,6 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				}
 				setTooltip(enCheck, locale.T(tooltipForDNSServerCheck(locked)))
 
-				rowGutter := components.NewScrollGutter()
-
 				// SPEC unify: Edit/Del — только для user-added entries.
 				// Template entries (read-only) получают View JSON вместо Edit.
 				var right *fyne.Container
@@ -269,7 +265,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 						delBtn.Disable()
 						delBtn.SetToolTip(dnsUsedByText(usedBy))
 					}
-					right = container.NewHBox(buildRowEditDelCluster(viewBtn, delBtn), rowGutter)
+					right = container.NewHBox(buildRowEditDelCluster(viewBtn, delBtn))
 				} else {
 					editBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.TN(1, "Edit"), theme.DocumentCreateIcon(), func() {
 						showDNSServerEditor(presenter, dialogParent(), idx)
@@ -285,7 +281,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 						delBtn.Disable()
 						delBtn.SetToolTip(dnsUsedByText(usedBy))
 					}
-					right = container.NewHBox(buildRowEditDelCluster(editBtn, delBtn), rowGutter)
+					right = container.NewHBox(buildRowEditDelCluster(editBtn, delBtn))
 				}
 				// Border: check left, content center (tap/hover → check via fynewidget), buttons right — avoids zero-width label in HBox-only row.
 				// Shared row tail (see row_scaffold.go); DNS servers have no ↑/↓ so
@@ -299,6 +295,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 			serversBox.Add(r)
 		}
 		serversBox.Refresh()
+		fynewidget.RefreshListPanel(serversPanel)
 	}
 	guiState.RefreshDNSList = refreshList
 
@@ -324,14 +321,6 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	setTooltip(addFromTemplateBtn, locale.T("Pick a template DNS server: a deleted one comes back with the template's defaults, one already in the list is added as your own copy."))
 	setTooltip(addAllDefaultsBtn, locale.T("Return every deleted template DNS server, with the template's defaults."))
 	syncTemplateButtons()
-
-	serversScroll := container.NewVScroll(serversBox)
-	// Доля высоты окна, а не константа: при растягивании окна список
-	// серверов растёт вместе с ним, а на низком экране не выпихивает
-	// кнопки навигации под Dock (тот же механизм, что на других вкладках).
-	// Минимум скромный: высоту список берёт растяжением в Border ниже, а
-	// это лишь нижняя граница, чтобы на низком окне он не схлопнулся.
-	serversScroll.SetMinSize(fyne.NewSize(0, 160))
 
 	serversLabel := widget.NewLabel(locale.T("DNS servers"))
 	serversLabel.Importance = widget.MediumImportance
@@ -424,7 +413,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	rulesHeight.SetMinSize(fyne.NewSize(0, wizardTabScrollMinHeight))
 	rulesBlock := container.NewStack(rulesHeight, rulesScroll)
 
-	rulesLabel := widget.NewLabel(locale.T("Rules (JSON object with \"rules\" array)"))
+	rulesLabel := widget.NewLabel(locale.T("DNS rules"))
 	rulesLabel.Importance = widget.MediumImportance
 
 	strategyTip := varTooltip(wizardmodels.VarDNSStrategy)
@@ -515,19 +504,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	// interleaved, drag ↑↓). Вместо двух разделённых секций bundled +
 	// user — один VBox dispatch'ит по DNSRuleOrder.
 	unifiedRulesBox := container.NewVBox()
-	// rawRulesEntry — JSON-редактор для raw-JSON toggle (Phase 3 deferred mode).
-	rawRulesEntry := fynewidget.NewJSONEditor("")
-	rawRulesScroll := container.NewScroll(rawRulesEntry.Object())
-	rawRulesScroll.Direction = container.ScrollBoth
-	rawRulesHeight := canvas.NewRectangle(color.Transparent)
-	rawRulesHeight.SetMinSize(fyne.NewSize(0, 200))
-	rawRulesBlock := container.NewStack(rawRulesHeight, rawRulesScroll)
-	rawRulesBlock.Hide() // list view by default
-
-	// rawJSONMode — toggle между list view и raw-JSON edit. Reflected
-	// in the toggle button icon (DocumentCreateIcon → ViewRestoreIcon).
-	rawJSONMode := false
-
+	rulesPanel := fynewidget.NewListPanel(unifiedRulesBox)
 	var refreshAll func()
 	rebuildUnified := func() {
 		unifiedRulesBox.Objects = unifiedRulesBox.Objects[:0]
@@ -544,15 +521,9 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 			unifiedRulesBox.Add(widget.NewLabel(locale.T("No DNS rules.")))
 		}
 		unifiedRulesBox.Refresh()
+		fynewidget.RefreshListPanel(rulesPanel)
 	}
-	refreshAll = func() {
-		if rawJSONMode {
-			// Sync entry text from model when re-entering view.
-			rawRulesEntry.SetText(wizardmodels.DNSUserRulesToText(presenter.Model().DNSUserRules))
-		} else {
-			rebuildUnified()
-		}
-	}
+	refreshAll = rebuildUnified
 
 	previousRefresh := guiState.RefreshDNSList
 	guiState.RefreshDNSList = func() {
@@ -561,57 +532,9 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	}
 	refreshAll()
 
-	// Raw-JSON toggle — choice (b) from the spec: small icon button at the
-	// top-right of the rules section. Click → swap unified list for the raw
-	// multi-line editor with the current DNSUserRules serialized; click
-	// again → parse text, replace DNSUserRules, rebuild DNSRuleOrder.
-	toggleBtn := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), nil)
-	toggleBtn.Importance = widget.LowImportance
-	setTooltip(toggleBtn, locale.T("Toggle between unified list view and raw JSON editor (user rules only)."))
-	toggleBtn.OnTapped = func() {
-		m := presenter.Model()
-		if !rawJSONMode {
-			// Switch to raw view: serialize current DNSUserRules.
-			rawRulesEntry.SetText(wizardmodels.DNSUserRulesToText(m.DNSUserRules))
-			unifiedRulesBox.Hide()
-			rawRulesBlock.Show()
-			rawJSONMode = true
-			toggleBtn.SetIcon(theme.ViewRestoreIcon())
-		} else {
-			// Switch to list view: parse text, replace DNSUserRules, rebuild order.
-			newRules := wizardmodels.DNSUserRulesFromText(rawRulesEntry.Text())
-			m.DNSUserRules = newRules
-			m.DNSRulesText = wizardmodels.DNSUserRulesToText(newRules)
-			if gs := presenter.GUIState(); gs != nil && gs.DNSRulesEntry != nil {
-				gs.DNSRulesEntry.SetText(m.DNSRulesText)
-			}
-			// Drop existing user slots and re-append in text order; preset
-			// slots stay in their current positions. ReconcileDNSRuleOrder
-			// won't add user slots because indices already exist — so do it
-			// manually: filter out user-slots, then append fresh ones.
-			kept := make([]wizardmodels.DNSRuleSlot, 0, len(m.DNSRuleOrder))
-			for _, s := range m.DNSRuleOrder {
-				if s.Kind != wizardmodels.DNSSlotKindUser {
-					kept = append(kept, s)
-				}
-			}
-			for i := range m.DNSUserRules {
-				kept = append(kept, wizardmodels.DNSRuleSlot{
-					Kind:  wizardmodels.DNSSlotKindUser,
-					Index: i,
-				})
-			}
-			m.DNSRuleOrder = kept
-			presenter.MarkAsChanged()
-			rawRulesBlock.Hide()
-			unifiedRulesBox.Show()
-			rawJSONMode = false
-			toggleBtn.SetIcon(theme.DocumentCreateIcon())
-			rebuildUnified()
-		}
-	}
-
-	// [+ Add Rule] и [View All DNS Rules] кнопки внизу секции Rules.
+	// [View All DNS Rules] и [+ Add Rule] — в шапке списка справа, как кнопки
+	// у списка серверов. Правка правил общим JSON убрана: правило правится в
+	// своём окне, общий JSON только смотрят.
 	addRuleBtn := widget.NewButton(locale.T("+ Add Rule"), func() {
 		showEditUserDNSRuleDialog(presenter, dialogParent(), -1, refreshAll)
 	})
@@ -620,47 +543,39 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		showViewAllDNSRulesDialog(presenter, dialogParent())
 	})
 	viewAllBtn.Importance = widget.LowImportance
-	rulesButtons := container.NewHBox(addRuleBtn, layout.NewSpacer(), viewAllBtn)
 
 	// Hide legacy MultiLineEntry rulesBlock — kept in code only for presenter
 	// sync compat (SyncGUIToModel reads it on every Save). The toggle above
 	// replaces it as the user-facing raw editor.
 	_ = rulesBlock
 
-	rulesHeader := container.NewHBox(rulesLabel, layout.NewSpacer(), toggleBtn)
+	rulesHeader := container.NewHBox(rulesLabel, layout.NewSpacer(), viewAllBtn, addRuleBtn)
 
-	// Border, а не VBox: VBox даёт каждому элементу ровно его минимальную
-	// высоту и не растягивает ни один — весь остаток высоты окна уходил в
-	// пустоту под последней строкой. Здесь список серверов стоит в центре
-	// и забирает всё, что осталось от шапки и нижнего блока, а список
-	// правил внутри нижнего блока держит свою долю окна.
-	//
-	// Разделитель после serversScroll убран: VScroll рисует собственную
-	// границу снизу, и своя линия сразу за ней давала две подряд.
+	// Ни у списка серверов, ни у списка правил своей прокрутки нет: оба
+	// растут на полную высоту, а прокручивается вся вкладка целиком.
 	bottom := container.NewVBox(
 		strategyAndCacheRow,
 		cacheBlock,
 		widget.NewSeparator(),
 		rulesHeader,
-		unifiedRulesBox,
-		rawRulesBlock,
-		rulesButtons,
+		rulesPanel,
 		widget.NewSeparator(),
 		finalAndResolverRow,
 		noStaleRow,
 	)
-	// Снаружи — VScroll: Scroll отдаёт содержимому max(его минимум, размер
-	// окна), поэтому на высоком окне Border по-прежнему растягивает список
-	// серверов, а минимум вкладки перестаёт быть минимумом всего Мастера.
-	// Без него нижний блок (кэш, список правил без прокрутки, кнопки,
-	// строка Final) плюс список серверов давали ~650pt, AppTabs брал этот
-	// максимум по всем вкладкам, и окно нельзя было сжать ни на одной.
-	return container.NewVScroll(container.NewBorder(
-		serversHeader,
-		bottom,
-		nil, nil,
-		serversScroll,
-	))
+	// Снаружи — VScroll: без него сумма обоих списков и нижнего блока
+	// стала бы минимумом вкладки, AppTabs брал этот максимум по всем
+	// вкладкам, и окно нельзя было бы сжать ни на одной.
+	// Место под полосу прокрутки — одной колонкой справа от всей вкладки
+	// (приём components.WrapInScrollWithGutter, только прокрутка вертикальная):
+	// полоса не ложится ни на рамки панелей, ни на кнопки шапки. Своих
+	// распорок в строках поэтому нет.
+	return container.NewVScroll(container.NewBorder(nil, nil, nil, components.NewScrollGutter(),
+		container.NewVBox(
+			serversHeader,
+			serversPanel,
+			bottom,
+		)))
 }
 
 func dnsServerSummaryFromInvalidRaw(raw json.RawMessage) string {

@@ -9,6 +9,13 @@
 // хранится; массив — форма ВВОДА: при правке одного узла в источник идёт
 // первый элемент. О несохранённом остатке вызывающий сообщает одним
 // сообщением (RestDropped).
+//
+// Комментарии `//`, `/* */`, `#` (контракт 1.1.172, BACKUP.md §2): если
+// обрезать нечего — голое тело или документ без ключей вне узловых
+// массивов, — источник хранится текстом КАК НАБРАН, с комментариями и
+// форматированием. Если обрезка что-то сняла (остаток документа, хвост
+// массива), источник — пересобранный остаток, комментариев в нём нет: текст
+// по кусочкам не режется.
 package config
 
 import (
@@ -18,6 +25,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/subscription"
+	"singbox-launcher/internal/jsonfmt"
 	"singbox-launcher/core/state"
 )
 
@@ -28,8 +36,9 @@ type JSONSourceInput struct {
 	// SourceKind — имя вида реестра (source_kinds.json), по которому выбрана
 	// форма; для диагностики.
 	SourceKind string
-	// Source — текст, который станет origin.raw: тело, обрезанный документ
-	// или первый элемент массива (компактный JSON).
+	// Source — текст, который станет origin.raw: ввод как набран, когда
+	// обрезать нечего; иначе обрезанный документ или первый элемент массива
+	// (компактный JSON без комментариев).
 	Source string
 	// RestDropped — во вводе было что-то кроме сохранённого: другие ключи
 	// документа или элементы массива после первого.
@@ -62,8 +71,9 @@ func PrepareJSONSourceInput(text string) (*JSONSourceInput, error) {
 		return nil, fmt.Errorf("the JSON is not a node source the registry knows (sing-box or Xray)")
 	}
 	in := &JSONSourceInput{Kind: kind, SourceKind: sourceKind}
-	element := []byte(trimmed)
-	if trimmed[0] == '[' {
+	stripped := strings.TrimSpace(jsonfmt.StripComments(trimmed))
+	element := []byte(stripped)
+	if stripped[0] == '[' {
 		var list []json.RawMessage
 		if err := json.Unmarshal(element, &list); err != nil {
 			return nil, fmt.Errorf("array: %w", err)
@@ -79,6 +89,10 @@ func PrepareJSONSourceInput(text string) (*JSONSourceInput, error) {
 		return nil, err
 	}
 	in.Source = source
+	if stripped[0] == '{' && !restDropped {
+		// Обрезать нечего: источник — ввод как набран (1.1.172).
+		in.Source = trimmed
+	}
 	in.RestDropped = in.RestDropped || restDropped
 	return in, nil
 }

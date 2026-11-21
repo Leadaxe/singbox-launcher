@@ -64,11 +64,6 @@ const (
 	// стенограмма: у подписки на 500 узлов причина одна, повторённая 500 раз.
 	BuildReportSourceParseFailed BuildReportKind = "source_parse_failed"
 
-	// BuildReportTargetMissing — цель detour не существует в собранном
-	// конфиге. Отдельный вид от nodes_dropped: там субъект — источник и
-	// счётчик узлов, здесь — сама несуществующая цель.
-	BuildReportTargetMissing BuildReportKind = "target_missing"
-
 	// BuildReportFetchDegraded — деградация ПОСЛЕДНЕГО ОБНОВЛЕНИЯ подписки,
 	// прочитанная из состояния (SPEC 118 W4, Т3/Р8): битая запись тела,
 	// потерянный член группы, обрезка капом, недостоверный ответ.

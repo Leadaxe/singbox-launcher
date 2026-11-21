@@ -124,7 +124,6 @@ func finalReportLines(entries []config.BuildReportEntry) []finalReportLine {
 		config.BuildReportTemplateDegraded:  0,
 		config.BuildReportSourceParseFailed: 1,
 		config.BuildReportSourceExcluded:    2,
-		config.BuildReportTargetMissing:     3,
 		config.BuildReportNodesDropped:      4,
 		config.BuildReportChainFailed:       5,
 		// Деградации обновления и эмиссии — частичные потери у источника,
@@ -188,8 +187,6 @@ func finalReportEntryText(e config.BuildReportEntry) string {
 			subject = title
 		}
 		return locale.Tf("%s — %d node(s) skipped: %s", subject, e.NodeCount, e.Reason)
-	case config.BuildReportTargetMissing:
-		return locale.Tf("Detour target %q is missing from the build: %s", subject, e.Reason)
 	case config.BuildReportTemplateDegraded:
 		// Текст реестра у кодов template_* уже называет переменную или
 		// директиву через {name}/{key}; субъект перед ним дал бы «tun_mtu:

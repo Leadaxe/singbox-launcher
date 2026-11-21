@@ -1,0 +1,53 @@
+{
+  "meta": {
+    "body_kind": "uri-list"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "quic": true,
+        "server": "2001:db8::1",
+        "server_port": 8443,
+        "tls": {
+          "certificate": "-----BEGIN CERTIFICATE-----\nMIIBjjCCATOgAwIBAgIUTmdszD0wE9gSTErHCsowrKweCWEwCgYIKoZIzj0EAwIw\nHDEaMBgGA1UEAwwRdnBuLmV4YW1wbGUtYS5jb20wHhcNMjYxMTIxMTk0NzU4WhcN\nMzYxMTE4MTk0NzU4WjAcMRowGAYDVQQDDBF2cG4uZXhhbXBsZS1hLmNvbTBZMBMG\nByqGSM49AgEGCCqGSM49AwEHA0IABPZxuanyyBZ6vSV4+gxFAYHGLZi0iMEoZLZC\nYJuVwRvN95DfntFH2UMRfqwfGi9CKX3IabSD0qKtJMLl+B3TiKejUzBRMB0GA1Ud\nDgQWBBRJXa9suEc2688znXH4xMbX4fLVvjAfBgNVHSMEGDAWgBRJXa9suEc2688z\nnXH4xMbX4fLVvjAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0kAMEYCIQCd\n6JBEazXZce241wwVIweXWzkbvyGNHm9V9GLxxjp+oAIhAIE8ZDJjTrs+p1UjWxqQ\n8TxfB1RJ2V655pahXUTgFUx+\n-----END CERTIFICATE-----",
+          "enabled": true,
+          "server_name": "vpn.example-1.com"
+        },
+        "type": "trusttunnel",
+        "username": "user1"
+      },
+      "kind": "outbound",
+      "label": "Full",
+      "scheme": "trusttunnel",
+      "warnings": [
+        {
+          "code": "tt_field_unsupported",
+          "path": "custom_sni",
+          "value": "cdn.example-2.org"
+        },
+        {
+          "code": "tt_field_unsupported",
+          "path": "has_ipv6",
+          "value": "false"
+        },
+        {
+          "code": "tt_field_unsupported",
+          "path": "anti_dpi",
+          "value": "true"
+        },
+        {
+          "code": "tt_field_unsupported",
+          "path": "client_random_prefix",
+          "value": "a0b0/f0f0"
+        },
+        {
+          "code": "tt_field_unsupported",
+          "path": "dns_upstreams",
+          "value": "tls://1.1.1.1"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

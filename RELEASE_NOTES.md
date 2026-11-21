@@ -4,6 +4,14 @@
 
 ---
 
+### Выжимка (RU) — v2.4.4
+
+Патч после v2.4.3, ядро `sing-box-lx 1.14.4-lx.35` (без изменений), контракт 1.1.176. **TrustTunnel:** ссылки `tt://` читаются и пишутся, ссылка с одним адресом подписки и адрес подписки TrustTunnel становятся подпиской, в Add server — тип TrustTunnel с формой. **Правила по доменам на сайтах Cloudflare с ECH:** пресет Block HTTPS/SVCB records и галка в окне правила. **DNS-настройки правила** работают с портами, протоколами и network. **Detour:** источник с недоступным хопом больше не выбрасывается, узлы идут напрямую с предупреждением; свёрнутый в группу источник можно выбрать как detour. **Settings** сгруппированы под заголовками. Комментарии в JSON-исходнике узла сохраняются; DNS-сервер пресета можно выбрать как Final DNS. Полностью — [docs/release_notes/2-4-4.md](docs/release_notes/2-4-4.md).
+
+### Highlights (EN) — v2.4.4
+
+A patch release after v2.4.3, core `sing-box-lx 1.14.4-lx.35` (unchanged), contract 1.1.176. **TrustTunnel:** `tt://` links are read and written, a link carrying only a subscription address and a TrustTunnel subscription URL become a subscription, Add server has a TrustTunnel type with a form. **Domain rules on Cloudflare sites with ECH:** the Block HTTPS/SVCB records preset and a checkbox in the rule window. **A rule's DNS options** work with ports, protocols and network. **Detour:** a source whose hop is unavailable is no longer dropped, its nodes connect directly with a warning; a source folded into a group can be picked as a detour. **Settings** are grouped under headings. Comments in a node's JSON source are kept; a preset DNS server can be chosen as Final DNS. Full notes — [docs/release_notes/2-4-4.md](docs/release_notes/2-4-4.md).
+
 ### Выжимка (RU) — v2.4.3
 
 Патч после v2.4.2, ядро `sing-box-lx 1.14.4-lx.35` (было 1.14.4-lx.33), контракт 1.1.170. **Защита от сниффинга вместо QUIC-приманки:** в Settings — **Sniff guard: TLS** и **Sniff guard: QUIC** (обе включены), **only masked SNI** и **remember relays**; в конфиг пишется блок ядра `lx.sniff_guard`, четыре настройки **Anti-sniff decoy** убраны. Блок действует с ядром `1.14.4-lx.34` — после обновления поставьте новое ядро из Core Dashboard. **XHTTP:** `sessionIDTable` / `sessionIDLength` из Xray доезжают до узла. **Подписки Xray:** элемент с включённым `mux` импортируется без mux и соединяется. Подробно — [docs/release_notes/2-4-3.md](docs/release_notes/2-4-3.md).
@@ -820,6 +828,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.4.4** | [docs/release_notes/2-4-4.md](docs/release_notes/2-4-4.md) |
 | **v2.4.3** | [docs/release_notes/2-4-3.md](docs/release_notes/2-4-3.md) |
 | **v2.4.2** | [docs/release_notes/2-4-2.md](docs/release_notes/2-4-2.md) |
 | **v2.4.1** | [docs/release_notes/2-4-1.md](docs/release_notes/2-4-1.md) |
