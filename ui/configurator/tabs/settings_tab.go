@@ -442,6 +442,17 @@ func settingsSectionHeader(sec wizardtemplate.TemplateSection) fyne.CanvasObject
 	return text
 }
 
+// settingsMultilineRow — строка многострочного поля: название и кнопка сброса
+// на своей строке, поле — под ними на всю ширину. Рядом с названием
+// многострочное поле получало остаток ширины после длинной подписи и
+// выглядело узким столбиком.
+func settingsMultilineRow(title, reset, field fyne.CanvasObject) fyne.CanvasObject {
+	return container.NewVBox(
+		container.NewBorder(nil, nil, nil, reset, title),
+		field,
+	)
+}
+
 // settingsSeparatorBlock — горизонтальная линия между строками Settings (vars.separator).
 // Цвет InputBorder заметнее стандартного theme.Separator в тёмной теме; сверху/снизу — отступ.
 func settingsSeparatorBlock() fyne.CanvasObject {
@@ -883,13 +894,13 @@ func buildVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmod
 		// правды и принимает ручной ввод: интерфейс может ещё не существовать.
 		if lanIfacePickApplies(name) {
 			field, addBtn := buildLANIfacePickField(gs, model, e)
-			row := container.NewBorder(nil, nil, titleLab, resetBtn, field)
+			row := settingsMultilineRow(titleLab, resetBtn, field)
 			setVarFieldToolTip(toolTip, titleLab, e)
 			applySettingsRowDisabled(rowEnabled, resetBtn, e, addBtn)
 			bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, e, addBtn)
 			return row
 		}
-		row := container.NewBorder(nil, nil, titleLab, resetBtn, e)
+		row := settingsMultilineRow(titleLab, resetBtn, e)
 		setVarFieldToolTip(toolTip, titleLab, e)
 		applySettingsRowDisabled(rowEnabled, resetBtn, e)
 		bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, e)
