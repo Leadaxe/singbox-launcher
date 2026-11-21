@@ -14,6 +14,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 )
 
 // Окно Service (SPEC 161 §5, SPEC 162 §4.2–§4.4): пульт и раннбук
@@ -29,11 +30,6 @@ import (
 // Виджеты с вводом и состоянием (приглашение, секрет, скачивание ядра,
 // раскрытые секции, строки локальной службы) создаются один раз — иначе тик
 // стирал бы введённое.
-
-// serviceTabScrollMinHeight — минимум прокрутки раскрытой секции: без
-// константы высокая Core задавала бы минимальную высоту окна своим
-// содержимым (см. ui/configurator/tabs/scroll_height.go).
-const serviceTabScrollMinHeight = 160
 
 const (
 	serviceWindowWidth  = 640
@@ -137,10 +133,12 @@ type serviceView struct {
 	// acc — Troubleshooting. Секции (AccordionItem) создаются один раз, их
 	// флаг Open живёт в самих элементах и переживает Refresh: перестройка
 	// меняет только Title и содержимое прокрутки секции.
-	acc     *widget.Accordion
-	order   []serviceTab
-	items   map[serviceTab]*widget.AccordionItem
-	scrolls map[serviceTab]*container.Scroll
+	acc   *widget.Accordion
+	order []serviceTab
+	items map[serviceTab]*widget.AccordionItem
+	// bodies — содержимое секций. Своей прокрутки у секции нет: она растёт на
+	// полную высоту, а прокручивается окно целиком.
+	bodies map[serviceTab]*fyne.Container
 
 	// Создаются один раз и переживают перестройку секций.
 	rows       localServiceRows
@@ -159,7 +157,7 @@ func newServiceView(ac *core.AppController, win fyne.Window, src serviceSource, 
 	v := &serviceView{
 		ac: ac, win: win, src: src, wantTab: tab,
 		items:    make(map[serviceTab]*widget.AccordionItem),
-		scrolls:  make(map[serviceTab]*container.Scroll),
+		bodies:   make(map[serviceTab]*fyne.Container),
 		sections: make(map[string]*widget.Accordion),
 	}
 	v.rows = src.LocalRows(win)
@@ -170,22 +168,23 @@ func newServiceView(ac *core.AppController, win fyne.Window, src serviceSource, 
 	v.acc = widget.NewAccordion()
 	v.acc.MultiOpen = false
 	for _, t := range v.order {
-		scroll := container.NewVScroll(widget.NewLabel(""))
-		scroll.SetMinSize(fyne.NewSize(0, serviceTabScrollMinHeight))
+		body := container.NewStack()
 		if t == serviceTabUninstall {
 			// Uninstall — готовая панель локального источника, не зависит от
 			// снапшота и не перестраивается.
-			scroll.Content = container.NewPadded(v.rows.Uninstall)
+			body.Add(v.rows.Uninstall)
 		}
-		item := widget.NewAccordionItem(serviceTabName(t), scroll)
-		v.items[t], v.scrolls[t] = item, scroll
+		item := widget.NewAccordionItem(serviceTabName(t), fynewidget.NewFramedPanel(body))
+		v.items[t], v.bodies[t] = item, body
 		v.acc.Items = append(v.acc.Items, item)
 	}
 	v.initSelect = widget.NewSelect(serviceInitOptions(), nil)
 	v.stateLabel = serviceNoteLabel("", widget.MediumImportance)
 	v.cmdBar = newServiceCommandBar(v)
 	v.header = container.NewVBox()
-	v.root = container.NewBorder(v.header, nil, nil, nil, container.NewVScroll(v.acc))
+	// Одна прокрутка на всё окно, место под её полосу — колонкой справа.
+	v.root = container.NewStack(container.NewVScroll(container.NewBorder(nil, nil, nil, components.NewScrollGutter(),
+		container.NewVBox(v.header, v.acc))))
 
 	v.update(true)
 	src.Poll(func() { v.update(false) })
@@ -246,9 +245,9 @@ func (v *serviceView) render() {
 	titles, first := serviceDiagnosis(s)
 	for _, t := range v.order {
 		if build, ok := builders[t]; ok {
-			scroll := v.scrolls[t]
-			scroll.Content = container.NewPadded(build(c))
-			scroll.Refresh()
+			body := v.bodies[t]
+			body.Objects = []fyne.CanvasObject{build(c)}
+			body.Refresh()
 		}
 		title := serviceTabName(t)
 		if d := titles[t]; d != "" {

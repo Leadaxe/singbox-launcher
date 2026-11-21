@@ -104,3 +104,31 @@ func RefreshListPanel(panel *fyne.Container) {
 	panel.Layout.Layout(panel.Objects, panel.Size())
 	panel.Refresh()
 }
+
+// NewFramedPanel — тот же блок, что NewListPanel, но для произвольного
+// содержимого (не списка строк): подложка с контуром и скруглёнными углами,
+// содержимое с внутренним отступом, без зебры.
+func NewFramedPanel(content fyne.CanvasObject) *fyne.Container {
+	bg := canvas.NewRectangle(color.Transparent)
+	bg.CornerRadius = theme.InputRadiusSize()
+	return container.New(&framedPanelLayout{bg: bg}, bg, container.NewPadded(content))
+}
+
+type framedPanelLayout struct{ bg *canvas.Rectangle }
+
+func (l *framedPanelLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	m := objects[1].MinSize()
+	return fyne.NewSize(m.Width+2*listPanelStroke, m.Height+2*listPanelStroke)
+}
+
+func (l *framedPanelLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	// Цвета берутся при раскладке, а не при создании: смена темы меняет их.
+	l.bg.FillColor = theme.Color(theme.ColorNameInputBackground)
+	l.bg.StrokeColor = theme.Color(theme.ColorNameInputBorder)
+	l.bg.StrokeWidth = listPanelStroke
+	l.bg.Move(fyne.NewPos(0, 0))
+	l.bg.Resize(size)
+	l.bg.Refresh()
+	objects[1].Move(fyne.NewPos(listPanelStroke, listPanelStroke))
+	objects[1].Resize(fyne.NewSize(size.Width-2*listPanelStroke, size.Height-2*listPanelStroke))
+}
