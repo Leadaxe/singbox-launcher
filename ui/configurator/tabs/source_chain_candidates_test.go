@@ -96,7 +96,7 @@ func TestChainHopCandidatesFoldedFolderOffersOnlyReplaceTags(t *testing.T) {
 	if _, ok := candidateByTag(cands, "d1"); ok {
 		t.Error("узел СВЁРНУТОЙ папки предложен позицией — в конфиге его тега нет")
 	}
-	// both → селектор + `-auto`-двойник (формула твинов).
+	// both → селектор; `-auto`-двойник известен форме, но не предлагается.
 	for _, want := range []string{"de", "de-auto"} {
 		c, ok := candidateByTag(cands, want)
 		if !ok {
@@ -105,6 +105,10 @@ func TestChainHopCandidatesFoldedFolderOffersOnlyReplaceTags(t *testing.T) {
 		}
 		if c.Link.FolderID != "" || c.Link.Tag != want {
 			t.Errorf("тег замены %q адресован не корневой ссылкой: %+v", want, c.Link)
+		}
+		// SPEC 182: двойник узнаётся, но в выбор не предлагается.
+		if c.Known != (want == "de-auto") {
+			t.Errorf("тег замены %q: Known=%v", want, c.Known)
 		}
 	}
 }

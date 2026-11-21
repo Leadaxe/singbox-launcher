@@ -16,7 +16,8 @@ import (
 
 // detourTreePicker — выбор цели detour двухуровневым деревом: кнопка с
 // подписью текущего выбора открывает под собой попап, где «без detour»
-// стоит первым, а цели разложены по веткам «Направления» и «Узлы».
+// стоит первым, а цели разложены по веткам «Направления», «Группы свёртки»
+// и «Узлы».
 //
 // Плоский Select смешивал группы и узлы в одну простыню, и отличал их только
 // маркер «» » перед узлом. Принадлежность теперь показывает ветка.
@@ -109,6 +110,9 @@ func (p *detourTreePicker) display(opt string) string {
 	if c.Missing {
 		return c.Display + " ⚠ " + locale.T("(missing)")
 	}
+	if c.Loop {
+		return c.Display + " ⚠ " + locale.T("leads back here")
+	}
 	return c.Display
 }
 
@@ -117,7 +121,8 @@ func (p *detourTreePicker) show() {
 	if p.win == nil {
 		return
 	}
-	branches := []wizardbusiness.DetourKind{wizardbusiness.DetourKindDirection, wizardbusiness.DetourKindNode}
+	branches := []wizardbusiness.DetourKind{wizardbusiness.DetourKindDirection,
+		wizardbusiness.DetourKindReplaceGroup, wizardbusiness.DetourKindNode}
 	children := map[wizardbusiness.DetourKind][]string{}
 	for _, opt := range p.options {
 		if opt == p.none {
@@ -152,8 +157,11 @@ func (p *detourTreePicker) show() {
 
 	branchTitle := func(b wizardbusiness.DetourKind) string {
 		title := locale.T("Directions")
-		if b == wizardbusiness.DetourKindNode {
+		switch b {
+		case wizardbusiness.DetourKindNode:
 			title = locale.T("Nodes")
+		case wizardbusiness.DetourKindReplaceGroup:
+			title = locale.T("Replace groups")
 		}
 		return title + " (" + strconv.Itoa(len(children[b])) + ")"
 	}
@@ -189,6 +197,7 @@ func (p *detourTreePicker) show() {
 					icon.SetResource(detourChevronRight)
 				}
 				label.TextStyle = fyne.TextStyle{Bold: true}
+				label.Importance = widget.MediumImportance
 				label.SetText(branchTitle(row.branch))
 				return
 			}
@@ -199,6 +208,12 @@ func (p *detourTreePicker) show() {
 				icon.SetResource(nil)
 			}
 			label.TextStyle = fyne.TextStyle{}
+			// Группа, замыкающая кольцо, видна, но приглушена: выбрать её
+			// нельзя (SPEC 182).
+			label.Importance = widget.MediumImportance
+			if p.choices[row.opt].Loop {
+				label.Importance = widget.LowImportance
+			}
 			label.SetText(p.display(row.opt))
 		},
 	)
@@ -241,6 +256,9 @@ func (p *detourTreePicker) show() {
 			list.Refresh()
 			resize()
 			return
+		}
+		if p.choices[row.opt].Loop && row.opt != p.selected {
+			return // кольцо: строка видна, но не выбирается
 		}
 		p.hide()
 		if row.opt == p.selected {

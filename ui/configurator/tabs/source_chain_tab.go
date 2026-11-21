@@ -716,11 +716,17 @@ func (f *chainForm) pickHop() {
 	}
 	var options []string
 	byLabel := make(map[string]corestate.NodeLink, len(f.cands))
+	// looped — группы свёртки, замыкающие кольцо: в списке видны с ⚠, но
+	// позицией не встают (SPEC 182).
+	looped := map[string]bool{}
 	for _, c := range f.cands {
-		if chosen[hopLinkKey(c.Link)] {
+		if chosen[hopLinkKey(c.Link)] || c.Known {
 			continue
 		}
 		label := c.Display() + "   —   " + c.KindText()
+		if c.Loop {
+			label += "   ⚠ " + locale.T("leads back here")
+		}
 		// Две папки вправе нести узел под одним финальным тегом (уникализация
 		// живёт на сборке, не в модели) — подпись тогда одна, а ссылки разные.
 		// Разводим суффиксом, иначе вторая опция была бы недостижима.
@@ -732,6 +738,9 @@ func (f *chainForm) pickHop() {
 		}
 		options = append(options, label)
 		byLabel[label] = c.Link
+		if c.Loop {
+			looped[label] = true
+		}
 	}
 	if len(options) == 0 {
 		dialog.ShowInformation(locale.T("Add hop"),
@@ -751,6 +760,11 @@ func (f *chainForm) pickHop() {
 			}
 			link, exists := byLabel[sel.Selected]
 			if !exists {
+				return
+			}
+			if looped[sel.Selected] {
+				dialog.ShowInformation(locale.T("Add hop"),
+					locale.T("This group cannot be used here: its own nodes connect through this entry, so the path would loop back."), f.parent)
 				return
 			}
 			f.hops = append(f.hops, link)

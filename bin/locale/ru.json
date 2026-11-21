@@ -985,6 +985,15 @@
   "Directions": {
     "value": "Направления"
   },
+  "Replace groups": {
+    "value": "Группы свёртки"
+  },
+  "leads back here": {
+    "value": "ведёт обратно сюда"
+  },
+  "This group cannot be used here: its own nodes connect through this entry, so the path would loop back.": {
+    "value": "Эту группу здесь выбрать нельзя: её узлы сами подключаются через эту запись, путь замкнулся бы в кольцо."
+  },
   "DNS": {
     "value": "DNS"
   },

@@ -26,6 +26,7 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -55,6 +56,12 @@ type chainHopCandidate struct {
 	// отвергаются — так циклы невозможны по построению), и форма обязана
 	// предупредить, а не дать молча собрать деградирующую позицию.
 	Below bool
+	// Loop — группа свёртки, из которой переходы ведут обратно к этой
+	// цепочке: в списке видна, выбрать нельзя (SPEC 182).
+	Loop bool
+	// Known — позиция узнаётся (уже стоящая в цепочке не красится
+	// «не найдена»), но в выбор не предлагается: двойник `<tag>-auto`.
+	Known bool
 }
 
 // Display — как строка выглядит в списке и в пикере.
@@ -175,17 +182,31 @@ func collectChainHopCandidates(
 			}
 		}
 
-		// Замены свёрнутых папок: свёрнутая папка представлена в пуле
-		// Направлений (и в целях ссылок) ТОЛЬКО своими replace-тегами — её
-		// узлы под своими именами адресовать нельзя, и предлагать их значило
-		// бы вести к fail-closed.
+		// Группы свёртки — тем же списком, что у пикера detour
+		// (ReplaceGroupTargets): свёрнутая папка представлена в целях ссылок
+		// ТОЛЬКО именем свёртки — её узлы под своими именами адресовать
+		// нельзя. Двойник `<tag>-auto` режима both в выбор не идёт, но
+		// узнаётся, если уже стоит позицией.
+		selfID := ""
 		for i := range model.Sources {
-			src := &model.Sources[i]
-			if src.Replace == nil || !src.Enabled {
-				continue
+			if s := &model.Sources[i]; s.Kind == corestate.SourceKindChain && s.NodeTagOrLabel() == selfTag {
+				selfID = s.ID
+				break
 			}
-			for _, tag := range chainReplaceTags(src.Replace) {
-				addRoot(tag, hopKindGroup)
+		}
+		for _, g := range wizardbusiness.ReplaceGroupTargets(model, wizardbusiness.LinkHolder{SourceID: selfID}) {
+			before := len(out)
+			addRoot(g.Tag, hopKindGroup)
+			if len(out) > before {
+				out[len(out)-1].Loop = g.Loop
+			}
+			if g.TwinTag != "" {
+				before = len(out)
+				addRoot(g.TwinTag, hopKindGroup)
+				if len(out) > before {
+					out[len(out)-1].Known = true
+					out[len(out)-1].Loop = g.Loop
+				}
 			}
 		}
 
@@ -231,19 +252,6 @@ func collectChainHopCandidates(
 	tail := out[head:]
 	sort.SliceStable(tail, func(i, j int) bool { return tail[i].Display() < tail[j].Display() })
 	return out
-}
-
-// chainReplaceTags — теги замены свёрнутой папки.
-//
-// Делегирует канонической формуле сборки (config.FolderReplaceTags), а не
-// повторяет её: разойдись они — и форма предлагала бы позицией тег, которого
-// в конфиге нет (или прятала бы существующий). Перевод формы нужен только
-// потому, что у модели и у сборки разные экземпляры одной структуры.
-func chainReplaceTags(r *corestate.FolderReplace) []string {
-	if r == nil {
-		return nil
-	}
-	return config.FolderReplaceTags(&configtypes.FolderReplace{Mode: r.Mode, Tag: r.Tag})
 }
 
 // chainFolderIDsBySourceIndex — «индекс источника → id папки» для источников,
