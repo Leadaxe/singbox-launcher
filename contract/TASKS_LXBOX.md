@@ -10586,3 +10586,40 @@ UI лаунчера: галка «Block HTTPS/SVCB records (no ECH)» в DNS-в�
 5. Три кода в вашей таблице предупреждений; тексты — `registry/warnings.json`.
 
 Вторая очередь, в эту версию не входит: подписка TrustTunnel (`subscription_url`, ответ JSON `version: 1`) и форма Add server.
+
+## 178. Контракт 1.1.176 — подписка TrustTunnel и форма узла (21.11.2026)
+
+Вторая очередь вашего §157, решение владельца, D-153, у лаунчера — SPEC 184. Синк — по sha коммита с этим разделом.
+
+### 1. Ответ подписки — вид источника `trusttunnel_endpoint_json`
+
+Узел AdGuard TrustTunnel по адресу подписки (`[subscription]` в `vpn.toml`; GET, HTTP Basic Auth) отдаёт один объект: `{version: 1, hostname, address, username, password, has_ipv6, upstream_protocol, anti_dpi, skip_verification, certificate?, custom_sni?, client_random_prefix?, name?, dns_upstreams?}` (`TrustTunnel/lib/src/subscription.rs`, `SubscriptionResponse`). `address` — одна строка `host:port`, `certificate` — PEM, `upstream_protocol` — `http2`/`http3`.
+
+Ключи объекта совпадают с полями контейнера ссылки, поэтому своей секции записей у объекта нет. `registry/source_kinds.json`: вид с `unwrap: "container_link"`, `container: {scheme: "tt", omit: ["version"], set: {version: 2}}`, `redetect: true`. Норма — `MAPPER_ENGINE.md` §2.1: объект сериализуется диалектом `tlv` секции (тем же кодом, что обратный ход 1.1.175), текст `tt://?…` идёт на повторный детект. Узел получается ровно тот же, что из ссылки, с теми же кодами (`tt_field_unsupported` и т.д.); **происхождение узла — ссылка `tt://`, `origin.kind` = `uri`**. Бэкап и схема происхождения не меняются.
+
+Признак вида: объект с ключами `hostname`, `address`, `username`, `password` и без `type`, `protocol`, `outbounds`, `endpoints`. Приоритет 36.
+
+Загрузка: адрес подписки — обычный URL источника вида `https://user:pass@host/path`; логин и пароль из userinfo уходят заголовком `Authorization: Basic`. У лаунчера это делает стандартный HTTP-клиент; у вас — проверьте, что клиент не отбрасывает userinfo. Ответы узла: 401 — нет или неверные учётные данные, 403 — подписка выключена, 404 — путь или SNI не тот, 405 — не GET.
+
+### 2. Ссылка-указатель на подписку
+
+Ссылка `tt://`, в которой только `subscription_url`, по-прежнему не узел: отказ `tt_subscription_only`. Новое: у кода параметр `subscription_url`, и движок кладёт в него адрес из ссылки (значение, отвергнутое селектором `subscription_only`, — общий механизм `on_invalid: drop` у селектора, первый параметр кода принимает значение). **Сторона, принимающая вставленный источник, заводит по этому адресу подписку вместо отказа.** У лаунчера — вставка на вкладке Sources: строка-указатель уходит в подписки наравне с `https://…`. В списке ссылок (`connections`) и в теле чужой подписки строка остаётся отказом с кодом. Правило общее: признак — имя параметра кода, а не схема.
+
+`subscription_url` у полного узла — как было: узел из статических полей, `tt_subscription_ignored`.
+
+### 3. Форма узла
+
+`registry/protocols/trusttunnel.json` → `body.form` и `form` у полей (примитивы 1.1.123, новых нет): `connection` — `server`*, `server_port`*, `username`*, `password`*; `tls` — `server_name`, `insecure`, `utls.fingerprint` (`exclude_fields: ["alpn", "reality"]`, `fixed: {"tls.enabled": true}`); `advanced` — `quic`, `quic_congestion_control` (виден при `quic`), `health_check`, `idle_timeout`. ALPN в форме нет намеренно: ядро ставит его само по протоколу узла, а непустой ALPN без `h2`/`h3` валит старт.
+
+### 4. Корпус
+
+- `corpus/body/trusttunnel/` — `subscription_basic` (минимальный ответ с `name` и `dns_upstreams`), `subscription_full` (IPv6-адрес, `http3`, сертификат, `custom_sni`, `client_random_prefix`, `anti_dpi`, `has_ipv6: false`). `meta.body_kind` у лаунчера — `uri-list`: после распаковки тело есть список из одной ссылки.
+- `corpus/form/trusttunnel_form.json` — 2 кейса.
+
+### 5. Задачи вам
+
+1. Синк 1.1.176.
+2. Распаковщик `container_link` на уровне документа (переиспользует ваш энкодер `tlv` из 1.1.175) и вид `trusttunnel_endpoint_json`; раннер `body/trusttunnel` 2/2.
+3. При добавлении источника: ссылка `tt://` с отказом `tt_subscription_only` → подписка с URL из параметра `subscription_url`; Basic Auth из userinfo при загрузке.
+4. Форма узла TrustTunnel по `body.form`, если формы по реестру у вас рисуются; раннер `form/trusttunnel_form` 2/2.
+5. Тексты `tt_subscription_only` обновлены — забрать из `registry/warnings.json`.

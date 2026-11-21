@@ -11,7 +11,7 @@
     "singbox"
   ],
   "extension": null,
-  "note": "Outbound форка (sing-box-lx protocol/trusttunnel, option/trusttunnel.go, include/trusttunnel.go; FEATURE 018, ядро с 1.14.3-lx.21): AdGuard TrustTunnel — proxy CONNECT с Basic-auth внутри HTTP/2 поверх TLS либо HTTP/3 поверх QUIC. Ядро регистрирует тип только при теге сборки with_trusttunnel, но гейта по ядру у записи НЕТ (решение владельца 29.10.2026: «в новых лаунчерах будут новые ядра»): узел уходит в конфиг на любом ядре, старое ядро отвергает конфиг целиком («unknown outbound type: trusttunnel»), и страховка core-rejected (PARSING_PRINCIPLES §9) выключает узел по имени. Контракт 1.1.141 (29.10.2026): запись добавлена, потому что без неё узел из sing-box JSON шёл слепой копией, а проверка кандидата локальным ядром старше lx.21 ложно сообщала «машина откажет на Deploy». Описаны ВСЕ поля option/trusttunnel.go TrustTunnelOutboundOptions с правилами ядра (сверено по protocol/trusttunnel/outbound.go NewOutbound). Два правила ядра таблицей не выражены и записаны словами: (1) tls.server_name обязателен, когда server — IP-адрес (сервер маршрутизирует по SNI и рвёт ClientHello без него); (2) непустой tls.alpn обязан содержать протокол узла — h2 без quic, h3 с quic (пустой alpn ядро заполняет само). Оба — отказ старта ВСЕГО конфига; ловит страховка core-rejected. Контракт 1.1.175 (21.11.2026): URI-форма `tt://` — deep link клиентов AdGuard TrustTunnel, бинарный контейнер TLV (секция mappers.uri, диалект tlv); ссылка-подписка (только subscription_url) узлом не является — tt_subscription_only. Формы Add server нет (вторая очередь, как у OpenConnect до SPEC 167).",
+  "note": "Outbound форка (sing-box-lx protocol/trusttunnel, option/trusttunnel.go, include/trusttunnel.go; FEATURE 018, ядро с 1.14.3-lx.21): AdGuard TrustTunnel — proxy CONNECT с Basic-auth внутри HTTP/2 поверх TLS либо HTTP/3 поверх QUIC. Ядро регистрирует тип только при теге сборки with_trusttunnel, но гейта по ядру у записи НЕТ (решение владельца 29.10.2026: «в новых лаунчерах будут новые ядра»): узел уходит в конфиг на любом ядре, старое ядро отвергает конфиг целиком («unknown outbound type: trusttunnel»), и страховка core-rejected (PARSING_PRINCIPLES §9) выключает узел по имени. Контракт 1.1.141 (29.10.2026): запись добавлена, потому что без неё узел из sing-box JSON шёл слепой копией, а проверка кандидата локальным ядром старше lx.21 ложно сообщала «машина откажет на Deploy». Описаны ВСЕ поля option/trusttunnel.go TrustTunnelOutboundOptions с правилами ядра (сверено по protocol/trusttunnel/outbound.go NewOutbound). Два правила ядра таблицей не выражены и записаны словами: (1) tls.server_name обязателен, когда server — IP-адрес (сервер маршрутизирует по SNI и рвёт ClientHello без него); (2) непустой tls.alpn обязан содержать протокол узла — h2 без quic, h3 с quic (пустой alpn ядро заполняет само). Оба — отказ старта ВСЕГО конфига; ловит страховка core-rejected. Контракт 1.1.175 (21.11.2026): URI-форма `tt://` — deep link клиентов AdGuard TrustTunnel, бинарный контейнер TLV (секция mappers.uri, диалект tlv); ссылка-подписка (только subscription_url) узлом не является — tt_subscription_only. Форма Add server — контракт 1.1.176 (`body.form`): адрес, порт, имя и пароль; TLS — SNI, проверка сертификата, отпечаток uTLS (ALPN и Reality в форме нет: ALPN ядро ставит само по протоколу узла); дополнительно — QUIC, управление перегрузкой, health check, idle timeout. Ответ подписки TrustTunnel (объект JSON) — вид источника trusttunnel_endpoint_json (source_kinds.json).",
   "uri": {
     "userinfo": {
       "meaning": "none (container scheme)",
@@ -169,6 +169,16 @@
     "lx_only": true,
     "min_core": "1.14.3-lx.21",
     "build_tag": "with_trusttunnel",
+    "form": {
+      "blocks": [
+        "connection",
+        "tls",
+        "advanced"
+      ],
+      "fixed": {
+        "tls.enabled": true
+      }
+    },
     "order": [
       "server",
       "server_port",
@@ -185,6 +195,10 @@
     "fields": {
       "server": {
         "type": "ref",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "ref": "dialer.common",
         "desc_en": "Server address: domain or IP.",
         "desc_ru": "Адрес сервера: домен или IP.",
@@ -192,6 +206,10 @@
       },
       "server_port": {
         "type": "ref",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "ref": "dialer.common",
         "desc_en": "Server port.",
         "desc_ru": "Порт сервера.",
@@ -199,6 +217,10 @@
       },
       "username": {
         "type": "string",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "role": "credential",
         "required": true,
         "core_rejects": true,
@@ -208,6 +230,10 @@
       },
       "password": {
         "type": "string",
+        "form": {
+          "block": "connection",
+          "required": true
+        },
         "secret": true,
         "required": true,
         "core_rejects": true,
@@ -224,6 +250,9 @@
       },
       "quic": {
         "type": "bool",
+        "form": {
+          "block": "advanced"
+        },
         "default": false,
         "conflicts": [
           {
@@ -239,6 +268,12 @@
       },
       "quic_congestion_control": {
         "type": "enum",
+        "form": {
+          "block": "advanced",
+          "visible_when": {
+            "quic": true
+          }
+        },
         "values": [
           "",
           "bbr",
@@ -258,6 +293,9 @@
       },
       "health_check": {
         "type": "bool",
+        "form": {
+          "block": "advanced"
+        },
         "default": false,
         "desc_en": "Probe the session with CONNECT _check before reusing it after idle.",
         "desc_ru": "Проверять сессию запросом CONNECT _check перед повторным использованием после простоя.",
@@ -265,12 +303,22 @@
       },
       "idle_timeout": {
         "type": "duration",
+        "form": {
+          "block": "advanced"
+        },
         "desc_en": "How long an idle session is kept before it is torn down.",
         "desc_ru": "Сколько держать простаивающую сессию до закрытия.",
         "impl": "option/trusttunnel.go IdleTimeout (badoption.Duration, указатель). Пусто — lx.trusttunnel.idle_timeout ядра, иначе 5m (protocol/trusttunnel/outbound.go idleWindow); отрицательное ядро поднимает до 0 (сессия не держится). Ядро значение не отвергает."
       },
       "tls": {
         "type": "ref",
+        "form": {
+          "block": "tls",
+          "exclude_fields": [
+            "alpn",
+            "reality"
+          ]
+        },
         "ref": "tls",
         "required": true,
         "core_rejects": true,

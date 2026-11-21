@@ -109,7 +109,7 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`transport_unsupported`](#transport_unsupported) · `warning` — Transport replaced with {fallback}
 - [`tt_field_unsupported`](#tt_field_unsupported) · `warning` — TrustTunnel link: {field} not applied
 - [`tt_subscription_ignored`](#tt_subscription_ignored) · `info` — TrustTunnel link: subscription address not used
-- [`tt_subscription_only`](#tt_subscription_only) · `error` — TrustTunnel link: subscription links are not supported
+- [`tt_subscription_only`](#tt_subscription_only) · `error` — TrustTunnel link: a subscription link, not a server
 - [`tuic_congestion_invalid`](#tuic_congestion_invalid) · `warning` — Field removed: unknown congestion control
 - [`tuic_udp_relay_mode_invalid`](#tuic_udp_relay_mode_invalid) · `warning` — Field removed: unknown UDP relay mode
 - [`type_invalid`](#type_invalid) · `warning` — Field {path} removed: wrong type
@@ -2012,14 +2012,15 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="tt_subscription_only"></a>
 ### tt_subscription_only
 
-**severity:** `error`
+**severity:** `error` · **params:** `subscription_url`
 
-**TrustTunnel link: subscription links are not supported**
+**TrustTunnel link: a subscription link, not a server**
 
-- **What happened:** The link carries only a subscription address and no server of its own. Nothing was imported: this application does not read TrustTunnel subscriptions yet.
+- **What happened:** The link carries only a subscription address and no server of its own, so there is no node to import from it. Added as a source on its own, it becomes a subscription: the server is fetched from that address.
 - **Why it happens:** A version 2 tt:// link may consist of subscription_url alone; an AdGuard client then fetches the server parameters from that address. There is no node in such a link to import.
 - **What you can do:**
-  - Ask the provider for a link with the server parameters (the endpoint exports one with --format deeplink for a client).
+  - Add the link as a source of its own (Sources → Add): it is turned into a subscription.
+  - Or ask the provider for a link with the server parameters.
 
 **Where it comes from:**
 

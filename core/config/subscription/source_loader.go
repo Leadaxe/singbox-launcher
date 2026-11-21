@@ -1,11 +1,13 @@
 package subscription
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/linkmap"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -135,6 +137,38 @@ func IsSubscriptionURL(input string) bool {
 	trimmed := strings.TrimSpace(input)
 	return strings.HasPrefix(trimmed, "http://") ||
 		strings.HasPrefix(trimmed, "https://")
+}
+
+// subscriptionURLParam — параметр кода отказа, в котором едет адрес подписки.
+//
+// Ссылка бывает не узлом, а указателем на подписку: формат несёт в ней только
+// адрес, откуда клиент забирает параметры сервера. Секция реестра снимает
+// такую ссылку кодом, первый параметр которого назван `subscription_url`
+// (warnings.json), и движок кладёт в него отвергнутое значение. Имя
+// параметра и есть признак — кодов и схем здесь не названо.
+const subscriptionURLParam = "subscription_url"
+
+// SubscriptionURLOfLink — адрес подписки, на которую указывает ссылка.
+// ok == false — строка не ссылка, ссылка несёт узел либо отвергнута по иной
+// причине.
+func SubscriptionURLOfLink(line string) (string, bool) {
+	line = strings.TrimSpace(line)
+	if !IsDirectLink(line) {
+		return "", false
+	}
+	_, err := ParseNode(line, nil)
+	if err == nil {
+		return "", false
+	}
+	var rej *linkmap.RejectError
+	if !errors.As(err, &rej) {
+		return "", false
+	}
+	u := strings.TrimSpace(rej.Params[subscriptionURLParam])
+	if !IsSubscriptionURL(u) {
+		return "", false
+	}
+	return u, true
 }
 
 // MakeTagUnique makes a tag unique by appending a number if it already exists in tagCounts.

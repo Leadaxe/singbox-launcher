@@ -5855,6 +5855,18 @@
   "e.g. 30s": {
     "value": "например, 30s"
   },
+  "e.g. 5m": {
+    "value": "например, 5m"
+  },
+  "Health check": {
+    "value": "Проверка сессии"
+  },
+  "Probe an idle session before reusing it": {
+    "value": "Проверять простаивавшую сессию перед повторным использованием"
+  },
+  "TrustTunnel": {
+    "value": "TrustTunnel"
+  },
   "Upload, Mbps": {
     "value": "Отдача, Мбит/с"
   },

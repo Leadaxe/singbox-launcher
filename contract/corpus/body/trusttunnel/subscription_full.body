@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "hostname": "vpn.example-1.com",
+  "address": "[2001:db8::1]:8443",
+  "username": "user1",
+  "password": "pass123",
+  "has_ipv6": false,
+  "upstream_protocol": "http3",
+  "anti_dpi": true,
+  "skip_verification": false,
+  "certificate": "-----BEGIN CERTIFICATE-----\nMIIBjjCCATOgAwIBAgIUTmdszD0wE9gSTErHCsowrKweCWEwCgYIKoZIzj0EAwIw\nHDEaMBgGA1UEAwwRdnBuLmV4YW1wbGUtYS5jb20wHhcNMjYxMTIxMTk0NzU4WhcN\nMzYxMTE4MTk0NzU4WjAcMRowGAYDVQQDDBF2cG4uZXhhbXBsZS1hLmNvbTBZMBMG\nByqGSM49AgEGCCqGSM49AwEHA0IABPZxuanyyBZ6vSV4+gxFAYHGLZi0iMEoZLZC\nYJuVwRvN95DfntFH2UMRfqwfGi9CKX3IabSD0qKtJMLl+B3TiKejUzBRMB0GA1Ud\nDgQWBBRJXa9suEc2688znXH4xMbX4fLVvjAfBgNVHSMEGDAWgBRJXa9suEc2688z\nnXH4xMbX4fLVvjAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0kAMEYCIQCd\n6JBEazXZce241wwVIweXWzkbvyGNHm9V9GLxxjp+oAIhAIE8ZDJjTrs+p1UjWxqQ\n8TxfB1RJ2V655pahXUTgFUx+\n-----END CERTIFICATE-----\n",
+  "custom_sni": "cdn.example-2.org",
+  "client_random_prefix": "a0b0/f0f0",
+  "name": "Full",
+  "dns_upstreams": [
+    "tls://1.1.1.1",
+    "tls://8.8.8.8"
+  ]
+}

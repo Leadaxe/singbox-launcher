@@ -1,0 +1,1 @@
+{"version":1,"hostname":"vpn.example-1.com","address":"203.0.113.10:443","username":"user1","password":"pass123","has_ipv6":true,"upstream_protocol":"http2","anti_dpi":false,"skip_verification":false,"name":"Acme Corp VPN","dns_upstreams":["tls://1.1.1.1"]}

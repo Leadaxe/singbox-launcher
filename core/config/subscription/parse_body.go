@@ -35,6 +35,7 @@ import (
 	"sync"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/linkmap"
 	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
@@ -329,6 +330,15 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 		capN:     capN,
 		idCounts: make(map[string]int),
 		dedup:    newSourceDedup(),
+	}
+
+	// Ответ-объект с ключами контейнера (вид источника с распаковщиком
+	// `container_link`, контракт 1.1.176) печатается ссылкой и дальше идёт
+	// обычной строкой списка: происхождение узла — эта ссылка.
+	if plans, err := linkmap.Planes(); err == nil {
+		if link, ok := linkmap.UnwrapContainerDocument(plans.Mappers(), contentStr); ok {
+			contentStr = link
+		}
 	}
 
 	bodyKind := ClassifySubscriptionBody(contentStr)

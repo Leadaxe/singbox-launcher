@@ -114,6 +114,14 @@ var nodeFormCommonSides = map[string]nodeFormSide{
 	"quic_congestion_control": {
 		label: "Congestion control", // l10n-key
 	},
+	"health_check": {
+		label: "Health check",                            // l10n-key
+		hint:  "Probe an idle session before reusing it", // l10n-key
+	},
+	"idle_timeout": {
+		label: "Idle timeout", // l10n-key
+		hint:  "e.g. 5m",      // l10n-key
+	},
 	"server_ports": {
 		label: "Port hopping",                         // l10n-key
 		hint:  "Ranges, comma-separated: 20000:30000", // l10n-key
@@ -417,6 +425,8 @@ var NodeFormSchemes = []NodeFormScheme{
 		Label: "Naive"}, // l10n-key
 	{Scheme: "masque",
 		Label: "MASQUE"}, // l10n-key
+	{Scheme: "trusttunnel",
+		Label: "TrustTunnel"}, // l10n-key
 	{Scheme: "socks",
 		Label: "SOCKS5"}, // l10n-key
 	{Scheme: "http",

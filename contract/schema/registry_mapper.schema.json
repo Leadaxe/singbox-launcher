@@ -1390,7 +1390,32 @@
         },
         "unwrap": {
           "type": "string",
-          "description": "Оболочка-декодер: base64, amnezia_vpn."
+          "description": "Оболочка-декодер: base64_utf8, amnezia_vpn, container_link (контракт 1.1.176: документ — объект JSON с ключами контейнера; печатается ссылкой по диалекту `tlv` секции, ведущей написание `container.scheme`)."
+        },
+        "container": {
+          "type": "object",
+          "description": "Объявление распаковщика container_link (контракт 1.1.176, MAPPER_ENGINE §2.1).",
+          "additionalProperties": false,
+          "required": [
+            "scheme"
+          ],
+          "properties": {
+            "scheme": {
+              "type": "string",
+              "description": "Написание схемы ссылки: секция `mappers.uri` с этим написанием в `detect.scheme_in` и с диалектом `tlv`."
+            },
+            "omit": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Ключи объекта, которые в контейнер не идут (служебные поля оболочки)."
+            },
+            "set": {
+              "type": "object",
+              "description": "Значения, которые распаковщик пишет в контейнер сам, поверх объекта: «ключ → значение»."
+            }
+          }
         },
         "redetect": {
           "type": "boolean",

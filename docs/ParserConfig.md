@@ -599,7 +599,7 @@ When you press **"Update Config"** on the "Core" tab (or use the Config Wizard):
    - ✅ **Amnezia** (`vpn://` — a `.vpn` profile, converted into `wireguard://`)
    - ✅ **AnyTLS** (`anytls://`)
    - ✅ **MASQUE** (`masque://` — CONNECT-IP / WARP; fork core `1.14.0-lx.26+`)
-   - ✅ **TrustTunnel** (`tt://` — AdGuard TrustTunnel deep link; fork core `1.14.3-lx.21+`)
+   - ✅ **TrustTunnel** (`tt://` — AdGuard TrustTunnel deep link; fork core `1.14.3-lx.21+`). A link that carries only a subscription address is added as a subscription; a TrustTunnel subscription URL answers with one JSON object and is read as that server.
 
 4. **Extracting information**
    - From every URI the parser takes:

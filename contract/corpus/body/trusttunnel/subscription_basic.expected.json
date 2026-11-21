@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "body_kind": "uri-list"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "203.0.113.10",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "vpn.example-1.com"
+        },
+        "type": "trusttunnel",
+        "username": "user1"
+      },
+      "kind": "outbound",
+      "label": "Acme Corp VPN",
+      "scheme": "trusttunnel",
+      "warnings": [
+        {
+          "code": "tt_field_unsupported",
+          "path": "dns_upstreams",
+          "value": "tls://1.1.1.1"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

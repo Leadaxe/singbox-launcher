@@ -2877,22 +2877,26 @@
     },
     "tt_subscription_only": {
       "severity": "error",
-      "params": [],
-      "title_en": "TrustTunnel link: subscription links are not supported",
-      "title_ru": "Ссылка TrustTunnel: ссылки-подписки не поддержаны",
-      "text_en": "The link carries only a subscription address and no server of its own. Nothing was imported: this application does not read TrustTunnel subscriptions yet.",
-      "text_ru": "Ссылка несёт только адрес подписки, своего сервера в ней нет. Ничего не импортировано: подписки TrustTunnel это приложение пока не читает.",
+      "params": [
+        "subscription_url"
+      ],
+      "title_en": "TrustTunnel link: a subscription link, not a server",
+      "title_ru": "Ссылка TrustTunnel: это ссылка-подписка, а не сервер",
+      "text_en": "The link carries only a subscription address and no server of its own, so there is no node to import from it. Added as a source on its own, it becomes a subscription: the server is fetched from that address.",
+      "text_ru": "Ссылка несёт только адрес подписки, своего сервера в ней нет — узла из неё не получить. Добавленная отдельным источником, она становится подпиской: сервер забирается по этому адресу.",
       "cause_en": "A version 2 tt:// link may consist of subscription_url alone; an AdGuard client then fetches the server parameters from that address. There is no node in such a link to import.",
       "cause_ru": "Ссылка tt:// версии 2 может состоять из одного subscription_url; клиент AdGuard тогда забирает параметры сервера по этому адресу. Узла, который можно импортировать, в такой ссылке нет.",
       "fix_en": [
-        "Ask the provider for a link with the server parameters (the endpoint exports one with --format deeplink for a client)."
+        "Add the link as a source of its own (Sources → Add): it is turned into a subscription.",
+        "Or ask the provider for a link with the server parameters."
       ],
       "fix_ru": [
-        "Попросите у провайдера ссылку с параметрами сервера (узел выдаёт её командой экспорта с --format deeplink для клиента)."
+        "Добавьте ссылку отдельным источником (Sources → Add): она превратится в подписку.",
+        "Либо попросите у провайдера ссылку с параметрами сервера."
       ],
-      "desc": "Ссылка-подписка tt://: есть subscription_url, нет ни hostname, ни address, ни username, ни password (правило 6 DEEP_LINK.md). Узел не строится — отказ разбора (dropped). Отличается от field_missing: запись не битая, а другого рода. Подписка TrustTunnel — вторая очередь (контракт 1.1.175).",
+      "desc": "Ссылка-подписка tt://: есть subscription_url, нет ни hostname, ни address, ни username, ни password (правило 6 DEEP_LINK.md). Узел не строится — отказ разбора (dropped). Параметр subscription_url несёт адрес подписки (контракт 1.1.176): сторона, принимающая вставленный источник, заводит по нему подписку вместо отказа; в списке ссылок и в теле подписки строка остаётся отказом с этим кодом. Ответ по адресу — вид источника trusttunnel_endpoint_json.",
       "dart": null,
-      "go": "правило реестра contract/registry/protocols/trusttunnel.json mappers.uri.params.subscription_only.on_invalid (drop у селектора); исполнение — core/config/linkmap/exec.go:execOne"
+      "go": "правило реестра contract/registry/protocols/trusttunnel.json mappers.uri.params.subscription_only.on_invalid (drop у селектора); исполнение — core/config/linkmap/exec.go:execOne; адрес подписки из отказа — core/config/subscription/source_loader.go:SubscriptionURLOfLink"
     }
   }
 }
