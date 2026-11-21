@@ -18,6 +18,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -415,17 +416,16 @@ func newSettingsTitleLabelFor(text string, rowEnabled bool) *ttwidget.Label {
 	return l
 }
 
-// settingsSectionHeader — шапка раздела Settings (sections[], SPEC 183): линия
-// (кроме первого раздела на вкладке), заголовок и пояснение. Тексты приходят
-// из шаблона и не переводятся — как подписи и подсказки переменных.
+// settingsSectionHeader — шапка раздела Settings (sections[], SPEC 183):
+// заголовок и пояснение над островом строк раздела. Тексты приходят из шаблона
+// и не переводятся — как подписи и подсказки переменных.
 //
-// Пояснение — только с переносом строк: метка без Wrapping держит минимальную
-// ширину по всей длине текста и раздувает окно.
-func settingsSectionHeader(sec wizardtemplate.TemplateSection, withLine bool) fyne.CanvasObject {
-	// Заголовок и пояснение стоят вплотную (отступ VBox между ними убран):
-	// шапка — одно целое, а не две строки формы. Пояснение — мелким кеглем
-	// обычным цветом: LowImportance совпадает с цветом погашенных строк и
-	// читается как неактивное поле.
+// Заголовок и пояснение стоят вплотную (отступ VBox между ними убран): шапка —
+// одно целое, а не две строки формы. Пояснение — мелким кеглем обычным цветом:
+// LowImportance совпадает с цветом погашенных строк и читается как неактивное
+// поле. Только с переносом строк: метка без Wrapping держит минимальную ширину
+// по всей длине текста и раздувает окно.
+func settingsSectionHeader(sec wizardtemplate.TemplateSection) fyne.CanvasObject {
 	text := container.New(layout.NewCustomPaddedVBoxLayout(0),
 		widget.NewLabelWithStyle(sec.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
 	if sec.Description != "" {
@@ -439,10 +439,7 @@ func settingsSectionHeader(sec wizardtemplate.TemplateSection, withLine bool) fy
 		desc.Wrapping = fyne.TextWrapWord
 		text.Add(desc)
 	}
-	if !withLine {
-		return text
-	}
-	return container.NewVBox(settingsSeparatorBlock(), text)
+	return text
 }
 
 // settingsSeparatorBlock — горизонтальная линия между строками Settings (vars.separator).
@@ -509,14 +506,15 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 		// SPEC 107: индекс гейтов пересобирается вместе со строками — он
 		// производный от текущего набора виджетов и живёт ровно столько же.
 		gs.SettingsGates = newGateIndex()
-		// SPEC 183: заголовок раздела встаёт перед первой нарисованной
+		// SPEC 183: шапка и остров раздела создаются перед первой нарисованной
 		// строкой раздела — раздел без видимых строк (другая платформа,
-		// удалённая цель) не оставляет ни линии, ни заголовка.
+		// удалённая цель) не оставляет ни шапки, ни рамки.
 		sectionByID := make(map[string]wizardtemplate.TemplateSection, len(td.Sections))
 		for _, sec := range td.Sections {
 			sectionByID[sec.ID] = sec
 		}
 		drawnSection := ""
+		var sectionRows *fyne.Container
 		for _, vd := range td.Vars {
 			if !settingsVarVisible(vd, goos, tgt.IsRemote()) {
 				continue
@@ -534,17 +532,26 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 				!wizardtemplate.VarUISatisfiedFor(vd, vi, resolved, tgt) {
 				continue
 			}
-			if vd.Section != "" && vd.Section != drawnSection {
-				if sec, ok := sectionByID[vd.Section]; ok {
-					box.Add(settingsSectionHeader(sec, len(box.Objects) > 0))
+			// Строки раздела лежат островом — в рамке с подложкой, как списки
+			// вкладки DNS; шапка раздела — над островом. Строки шаблона в
+			// плоской форме (без разделов) идут прямо в общий столбец.
+			rows := box
+			if vd.Section != "" {
+				if vd.Section != drawnSection {
+					if sec, ok := sectionByID[vd.Section]; ok {
+						box.Add(settingsSectionHeader(sec))
+					}
+					sectionRows = container.NewVBox()
+					box.Add(fynewidget.NewFramedPanel(sectionRows))
+					drawnSection = vd.Section
 				}
-				drawnSection = vd.Section
+				rows = sectionRows
 			}
 			title := wizardtemplate.VarDisplayTitle(vd)
 			toolTip := wizardtemplate.VarDisplayTooltip(vd)
 			rowEnabled := wizardtemplate.VarUISatisfiedFor(vd, vi, resolved, tgt)
 			row := buildSettingsVarRow(presenter, model, td, vd, title, toolTip, rowEnabled, gs)
-			box.Add(row)
+			rows.Add(row)
 		}
 		// SPEC 066 follow-up: trap-state warning. After SPEC 066 made `tun`
 		// user-disableable on Win/Linux, the combination tun=false +
@@ -560,7 +567,10 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	gs.RefreshSettingsFromModel = refresh
 	refresh()
 
-	scroll := container.NewVScroll(box)
+	// Место под полосу прокрутки — одной колонкой справа от всей вкладки, как
+	// на вкладке DNS: полоса не ложится ни на рамки островов, ни на кнопки
+	// сброса в строках.
+	scroll := container.NewVScroll(container.NewBorder(nil, nil, nil, components.NewScrollGutter(), box))
 	// Нижняя граница, а не высота: см. wizardTabScrollMinHeight.
 	scroll.SetMinSize(fyne.NewSize(0, wizardTabScrollMinHeight))
 
