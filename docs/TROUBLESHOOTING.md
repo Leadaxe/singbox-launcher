@@ -128,6 +128,36 @@ What to check, in order:
 If the link works for someone else on a current version and not for you, the cause is
 on your side (items 1, 2, 4, 5), not on the server.
 
+### A node through a `detour` does not work, the same server works directly
+
+A node whose **Detour** is another node (a relay — a subscription node, WARP, any
+selector) shows "Error", while nodes on the same server without a detour work, and so
+does the relay itself. On the **Core** tab of the logs window there are lines like
+`open connection to … using outbound/…[<node>]: context deadline exceeded` (after about
+15 s) or `unexpected HTTP response status: 502` (a WebSocket relay behind a CDN).
+Typical for REALITY and other nodes whose SNI is not their server's name (`sni` of a
+camouflage site, a WARP SNI, an IP server with a name).
+
+What it means: the relay sniffs the first handshake packet and sends the connection to
+the host named by its SNI instead of the node's server — for REALITY that is the
+camouflage site (`gateway.icloud.com:<node port>`), where nothing answers. This is a
+relay-side setting (Xray sniffing with `destOverride` and no `routeOnly`), the node and
+its server are fine.
+
+The fix is the core's sniff guard (core `1.14.4-lx.34` and newer):
+Configurator → **Settings** → **Sniff guard: TLS** — `Record fragment` (the default) —
+and **Sniff guard: QUIC** for MASQUE, Hysteria2, TUIC and other QUIC nodes; keep
+**Sniff guard: only masked SNI** on. **Save** — the config is rebuilt and the core
+restarted. Up to core `lx.33` the core split the ClientHello of such nodes by itself;
+since `lx.34` only this block does, and a config without it leaves the node unprotected.
+
+If there are no **Sniff guard** rows on **Settings**, the template in use is older than
+the launcher. After an update the template shipped with the launcher replaces the old
+one on the first start; if the rows are still missing (a dev build, a template put into
+the data folder by hand), **⚙️ Settings → Storage** shows which file is read: remove
+`wizard_template.json` from the data folder's `bin/` and restart — the launcher takes
+the shipped template or downloads a fresh one. Then reopen the Configurator and Save.
+
 ### Downloading the core, `wintun.dll` or translations hangs or fails
 
 Everything the launcher downloads comes from GitHub (the core from
