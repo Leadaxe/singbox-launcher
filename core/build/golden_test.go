@@ -251,12 +251,17 @@ func parseGoldenTemplate(raw []byte) (*template.TemplateData, error) {
 		ParserConfig json.RawMessage          `json:"parser_config"`
 		Config       json.RawMessage          `json:"config"`
 		Params       []template.TemplateParam `json:"params"`
-		Vars         []template.TemplateVar   `json:"vars"`
+		Vars         []template.TemplateVar   `json:"-"` // DecodeVarContainer
 		DNSOptions   json.RawMessage          `json:"dns_options"`
 		Presets      json.RawMessage          `json:"presets"`
 	}
 	if err := json.Unmarshal(raw, &root); err != nil {
 		return nil, err
+	}
+	if vs, _, err := template.DecodeVarContainer(raw); err != nil {
+		return nil, err
+	} else {
+		root.Vars = vs
 	}
 	td := &template.TemplateData{
 		RawConfig:     root.Config,

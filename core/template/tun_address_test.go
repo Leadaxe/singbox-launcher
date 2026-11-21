@@ -39,11 +39,16 @@ func loadShippedTemplate(t *testing.T) json.RawMessage {
 func tunAddressFromTemplate(t *testing.T, raw json.RawMessage, state map[string]string) interface{} {
 	t.Helper()
 	var root struct {
-		Vars   []TemplateVar   `json:"vars"`
+		Vars   []TemplateVar   `json:"-"` // DecodeVarContainer
 		Params []TemplateParam `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &root); err != nil {
 		t.Fatal(err)
+	}
+	if vs, _, err := DecodeVarContainer(raw); err != nil {
+		t.Fatal(err)
+	} else {
+		root.Vars = vs
 	}
 	// Секций inbounds в шаблоне несколько (TUN и mixed proxy-in) — нужна та,
 	// что гейтится по @tun.

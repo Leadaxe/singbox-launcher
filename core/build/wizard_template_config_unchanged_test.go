@@ -75,7 +75,16 @@ func wizardTemplateCases() []wizardTemplateCase {
 		// шаблоне у неё непустое умолчание, поэтому пустоту даёт правка
 		// шаблона: умолчание снято.
 		{name: "resolve_strategy_unset", patch: func(root map[string]interface{}) {
+			// Объявления лежат в sections[].vars[] (SPEC 183); плоский
+			// vars[] — форма шаблонов до неё.
 			vars, _ := root["vars"].([]interface{})
+			sections, _ := root["sections"].([]interface{})
+			for _, rawSec := range sections {
+				if sec, ok := rawSec.(map[string]interface{}); ok {
+					secVars, _ := sec["vars"].([]interface{})
+					vars = append(vars, secVars...)
+				}
+			}
 			for _, raw := range vars {
 				if v, ok := raw.(map[string]interface{}); ok && v["name"] == "resolve_strategy" {
 					delete(v, "default_value")

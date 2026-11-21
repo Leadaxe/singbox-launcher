@@ -20,12 +20,17 @@ func TestAutoRouteIsUserControlled(t *testing.T) {
 		t.Skipf("шаблон недоступен: %v", err)
 	}
 	var td struct {
-		Vars   []TemplateVar   `json:"vars"`
+		Vars   []TemplateVar   `json:"-"` // DecodeVarContainer
 		Params []TemplateParam `json:"params"`
 		Config json.RawMessage `json:"config"`
 	}
 	if err := json.Unmarshal(raw, &td); err != nil {
 		t.Fatal(err)
+	}
+	if vs, _, err := DecodeVarContainer(raw); err != nil {
+		t.Fatal(err)
+	} else {
+		td.Vars = vs
 	}
 
 	if _, ok := VarByName(td.Vars, "auto_route"); !ok {

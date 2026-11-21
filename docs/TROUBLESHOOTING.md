@@ -145,15 +145,15 @@ relay-side setting (Xray sniffing with `destOverride` and no `routeOnly`), the n
 its server are fine.
 
 The fix is the core's sniff guard (core `1.14.4-lx.34` and newer):
-Configurator → **Settings** → **Sniff guard: TLS** — `Record fragment` (the default) —
-and **Sniff guard: QUIC** for MASQUE, Hysteria2, TUIC and other QUIC nodes; keep
-**Sniff guard: only masked SNI** on. **Save** — the config is rebuilt and the core
+Configurator → **Settings** → section **Sniff guard**: **TLS method** — `Record fragment`
+(the default) — and **QUIC method** for MASQUE, Hysteria2, TUIC and other QUIC nodes;
+keep **Only nodes with a masked SNI** on. **Save** — the config is rebuilt and the core
 restarted. Up to core `lx.33` the core split the ClientHello of such nodes by itself;
 since `lx.34` only this block does, and a config without it leaves the node unprotected.
 
-If there are no **Sniff guard** rows on **Settings**, the template in use is older than
+If there is no **Sniff guard** section on **Settings**, the template in use is older than
 the launcher. After an update the template shipped with the launcher replaces the old
-one on the first start; if the rows are still missing (a dev build, a template put into
+one on the first start; if the section is still missing (a dev build, a template put into
 the data folder by hand), **⚙️ Settings → Storage** shows which file is read: remove
 `wizard_template.json` from the data folder's `bin/` and restart — the launcher takes
 the shipped template or downloads a fresh one. Then reopen the Configurator and Save.

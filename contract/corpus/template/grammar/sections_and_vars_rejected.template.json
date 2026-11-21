@@ -1,0 +1,6 @@
+{
+  "_comment": "§2.3: шаблон несёт одну форму контейнера. sections[] и корневой vars[] вместе — ошибка загрузки: молча выбрать одну из двух значило бы потерять объявления второй",
+  "sections": [{"id": "network", "name": "Network", "vars": [{"name": "host", "type": "text", "default_value": "example-1.com"}]}],
+  "vars": [{"name": "mtu", "type": "int", "default_value": "1400"}],
+  "config": {"log": {"level": "info"}}
+}

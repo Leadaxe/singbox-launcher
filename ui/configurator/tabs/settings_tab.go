@@ -414,6 +414,27 @@ func newSettingsTitleLabelFor(text string, rowEnabled bool) *ttwidget.Label {
 	return l
 }
 
+// settingsSectionHeader — шапка раздела Settings (sections[], SPEC 183): линия
+// (кроме первого раздела на вкладке), заголовок и пояснение. Тексты приходят
+// из шаблона и не переводятся — как подписи и подсказки переменных.
+//
+// Пояснение — только с переносом строк: метка без Wrapping держит минимальную
+// ширину по всей длине текста и раздувает окно.
+func settingsSectionHeader(sec wizardtemplate.TemplateSection, withLine bool) fyne.CanvasObject {
+	header := container.NewVBox()
+	if withLine {
+		header.Add(settingsSeparatorBlock())
+	}
+	header.Add(widget.NewLabelWithStyle(sec.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
+	if sec.Description != "" {
+		desc := widget.NewLabel(sec.Description)
+		desc.Wrapping = fyne.TextWrapWord
+		desc.Importance = widget.LowImportance
+		header.Add(desc)
+	}
+	return header
+}
+
 // settingsSeparatorBlock — горизонтальная линия между строками Settings (vars.separator).
 // Цвет InputBorder заметнее стандартного theme.Separator в тёмной теме; сверху/снизу — отступ.
 func settingsSeparatorBlock() fyne.CanvasObject {
@@ -478,6 +499,14 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 		// SPEC 107: индекс гейтов пересобирается вместе со строками — он
 		// производный от текущего набора виджетов и живёт ровно столько же.
 		gs.SettingsGates = newGateIndex()
+		// SPEC 183: заголовок раздела встаёт перед первой нарисованной
+		// строкой раздела — раздел без видимых строк (другая платформа,
+		// удалённая цель) не оставляет ни линии, ни заголовка.
+		sectionByID := make(map[string]wizardtemplate.TemplateSection, len(td.Sections))
+		for _, sec := range td.Sections {
+			sectionByID[sec.ID] = sec
+		}
+		drawnSection := ""
 		for _, vd := range td.Vars {
 			if !settingsVarVisible(vd, goos, tgt.IsRemote()) {
 				continue
@@ -494,6 +523,12 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 			if wizardtemplate.VarConditionIsTargetOnly(vd) &&
 				!wizardtemplate.VarUISatisfiedFor(vd, vi, resolved, tgt) {
 				continue
+			}
+			if vd.Section != "" && vd.Section != drawnSection {
+				if sec, ok := sectionByID[vd.Section]; ok {
+					box.Add(settingsSectionHeader(sec, len(box.Objects) > 0))
+				}
+				drawnSection = vd.Section
 			}
 			title := wizardtemplate.VarDisplayTitle(vd)
 			toolTip := wizardtemplate.VarDisplayTooltip(vd)

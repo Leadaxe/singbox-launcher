@@ -107,12 +107,17 @@ func renderBundledTemplate(t *testing.T, target TargetSpec, stateVars map[string
 		t.Skipf("bundled template not readable (%v)", err)
 	}
 	var root struct {
-		Vars   []TemplateVar              `json:"vars"`
+		Vars   []TemplateVar              `json:"-"` // DecodeVarContainer
 		Config map[string]json.RawMessage `json:"config"`
 		Params []TemplateParam            `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &root); err != nil {
 		t.Fatalf("parse %s: %v", path, err)
+	}
+	if vs, _, err := DecodeVarContainer(raw); err != nil {
+		t.Fatalf("vars of %s: %v", path, err)
+	} else {
+		root.Vars = vs
 	}
 	cfg, err := json.Marshal(root.Config)
 	if err != nil {

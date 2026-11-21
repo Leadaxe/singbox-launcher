@@ -92,10 +92,10 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 		}
 		nm := strings.TrimSpace(v.Name)
 		if nm == "" {
-			return fmt.Errorf("vars[%d]: empty name", i)
+			return fmt.Errorf("%s: empty name", varCtx(i, v))
 		}
 		if !validWizardVarNameRE.MatchString(nm) {
-			return fmt.Errorf("vars[%d]: invalid name %q (expected [A-Za-z_][A-Za-z0-9_]*)", i, nm)
+			return fmt.Errorf("%s: invalid name %q (expected [A-Za-z_][A-Za-z0-9_]*)", varCtx(i, v), nm)
 		}
 		if _, dup := names[nm]; dup {
 			return fmt.Errorf("vars: duplicate name %q", nm)
@@ -108,7 +108,7 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 			return fmt.Errorf("template: vars[].name %q is reserved for the node of %s/%s; rename", nm, NodeLoopKey, NodeLoopDoKey)
 		}
 		if v.Unique && strings.TrimSpace(v.Type) != "text_list" {
-			return fmt.Errorf("vars[%d]: unique is allowed only for type text_list, var %q has type %q", i, nm, v.Type)
+			return fmt.Errorf("%s: unique is allowed only for type text_list, var %q has type %q", varCtx(i, v), nm, v.Type)
 		}
 		// options ортогональны type (SPEC 143 Т8), кроме bool: у флага два
 		// значения, и список поверх них либо дублирует чекбокс, либо
@@ -116,7 +116,7 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 		// ничего не значит (TEMPLATE_LANG §2.1) — по правилу толерантности
 		// §1 поле просто игнорируется.
 		if strings.TrimSpace(v.Type) == "bool" && len(v.Options) > 0 {
-			return fmt.Errorf("vars[%d]: bool var %q must not set options", i, nm)
+			return fmt.Errorf("%s: bool var %q must not set options", varCtx(i, v), nm)
 		}
 		names[nm] = struct{}{}
 		varByName[nm] = v
@@ -128,7 +128,7 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 	// а не молчаливый false в рантайме.
 	earlier := map[string]TemplateVar{}
 	for i, v := range vars {
-		ctx := fmt.Sprintf("vars[%d]", i)
+		ctx := varCtx(i, v)
 		if err := validateOuterIfRefs(ctx, v.If, v.IfOr, varByName); err != nil {
 			return err
 		}

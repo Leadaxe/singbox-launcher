@@ -863,6 +863,14 @@ Template, locales and core are **read** through a `DataDir → AppDir` chain;
 creates the writable side (`Data/bin`, `Data/bin/rule-sets`, `Logs`) — AppDir is
 never touched.
 
+- **Template variable container.** Variables are declared in root `sections[]`
+  (`{id, name, description, chapter, vars[]}`, the form shared with LxBox —
+  `contract/docs/TEMPLATE_LANG.md` §2.3) or, in templates shipped before SPEC 183,
+  in the flat root `vars[]`. `core/template.DecodeVarContainer` is the only reader of
+  the container: it flattens sections into `TemplateData.Vars` in declaration order
+  (each `TemplateVar` keeps its `Section` id) and returns `TemplateData.Sections`.
+  Everything downstream — defaults, substitution, build — works on the flat list;
+  the Settings tab draws a heading above the first visible row of a section.
 - **Template.** `core/template.ResolveTemplate(Layout)` is the single rule used by
   every read site. Order-by-location has one deliberate exception: if AppDir's
   `wizard_template.json` carries a version marker (`wizard_template.version`)

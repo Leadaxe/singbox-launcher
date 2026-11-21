@@ -1,0 +1,22 @@
+{
+  "_comment": "§2.3: объявления лежат в sections[]; порядок объявлений — разделы по порядку, внутри раздела переменные по порядку. Результат подстановки тот же, что у плоского vars[] с теми же объявлениями. chapter необязателен, неизвестное поле раздела молча игнорируется",
+  "sections": [
+    {
+      "id": "network",
+      "name": "Network",
+      "description": "Connection and routing behavior",
+      "future_section_field": {"whatever": true},
+      "vars": [
+        {"name": "host", "type": "text", "default_value": "example-1.com"},
+        {"name": "mtu", "type": "int", "default_value": "1400"}
+      ]
+    },
+    {
+      "id": "sniff-guard",
+      "name": "Sniff guard",
+      "chapter": "core",
+      "vars": [{"name": "guard", "type": "bool", "default_value": "true"}]
+    }
+  ],
+  "config": {"server": "@host", "mtu": "@mtu", "guard": "@guard"}
+}

@@ -34,493 +34,556 @@
     ],
     "parser": {"reload": "12h", "last_updated": "2026-04-11T12:00:00Z"}
   },
-  "vars": [
+  "sections": [
     {
-      "name": "tun",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "title": "Enable TUN",
-      "tooltip": "Route traffic through sing-box TUN inbound. Requires administrator privileges. If you disable TUN, enable Proxy-in below and point your browser/system to that proxy — otherwise no traffic will flow through sing-box.",
-      "default_value": {"windows": "true", "linux": "true", "darwin": "true", "default": "false"}
-    },
-    {
-      "name": "gateway_mode",
-      "type": "bool",
-      "wizard_ui": "target",
-      "title": "Gateway mode (share to LAN)",
-      "tooltip": "The machine forwards other devices’ traffic (router/gateway), not just its own. Enables LAN interface selection for TUN, makes proxy-in listen on 0.0.0.0 and turns process matching off. Independent of the config target: a gateway can be a remote router or this Mac (Internet Sharing).",
-      "default_value": "false",
-      "#enable": ["@tun"]
-    },
-    {
-      "name": "gateway_include_interface",
-      "type": "text_list",
-      "wizard_ui": "target",
-      "title": "LAN interfaces (include_interface)",
-      "tooltip": "sing-box tun include_interface — which interfaces to route into TUN, one per line (for example br-vpn). Empty means all traffic of the machine — usually NOT what you want on a router with two wifi networks.",
-      "default_value": "",
-      "#enable": ["@tun", "@gateway_mode"]
-    },
-    {
-      "name": "tun_interface_name",
-      "type": "text",
-      "wizard_ui": "edit",
-      "title": "TUN interface name",
-      "tooltip": "sing-box tun interface_name — explicit TUN device name. Always set: the core default cannot be relied on, and on a router the name is needed for firewall rules and routes. Defaults to lxd-tun0 for a remote target (lxd daemon).",
-      "default_value": {"default": {"#if": [{"@runtime.target": "remote"}, "lxd-tun0", "singbox-tun0"]}},
-      "#enable": ["@tun"]
-    },
-    {
-      "name": "tun_address",
-      "type": "text",
-      "wizard_ui": "edit",
-      "title": "TUN interface address",
-      "tooltip": "CIDR address for the TUN interface (inbounds address). IPv4 is required; the IPv6 address is set separately by the Enable IPv6 switch below.",
-      "default_value": "172.16.0.1/30",
-      "#enable": ["@tun"]
-    },
-    {
-      "name": "tun_address_exclude",
-      "type": "text_list",
-      "wizard_ui": "edit",
-      "title": "TUN route exclude addresses (route_exclude_address)",
-      "tooltip": "sing-box tun route_exclude_address — CIDR prefixes that auto_route leaves out of the tunnel at the OS routing level, one per line (for example 10.0.0.0/8 or fd00::/8). Traffic to these networks never enters the core: no rules, no sniffing, not visible in the profiler. Empty means nothing is excluded — LAN access is normally covered by the Private IPs rule preset inside the core. Use this only when traffic must not touch the tunnel at all: strict_route on Windows, the subnet of a second VPN, management access to a router. Whatever is listed here can no longer be reached through the VPN.",
-      "default_value": "",
-      "#enable": ["@tun", "@auto_route"]
-    },
-    {
-      "name": "ipv6_enabled",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "title": "Enable IPv6",
-      "tooltip": "Add an IPv6 address to the tunnel and let name resolution return IPv6. Off by default: with no IPv6 address on the tunnel, an IPv6 answer has nowhere to go and the site fails to open. Turn on only if your network has working IPv6. On: resolution prefers IPv4 but IPv6 is allowed; off: IPv4 only.",
-      "default_value": "false",
-      "#enable": ["@tun"],
-      "#on_change": {
-        "#set": {
-          "@dns_strategy": {"#if": ["@ipv6_enabled", "prefer_ipv4", "ipv4_only"]},
-          "@resolve_strategy": {"#if": ["@ipv6_enabled", "prefer_ipv4", "ipv4_only"]}
+      "id": "tun",
+      "name": "TUN",
+      "description": "Virtual network interface",
+      "vars": [
+        {
+          "name": "tun",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "title": "Enable TUN",
+          "tooltip": "Route traffic through sing-box TUN inbound. Requires administrator privileges. If you disable TUN, enable Proxy-in below and point your browser/system to that proxy — otherwise no traffic will flow through sing-box.",
+          "default_value": {"windows": "true", "linux": "true", "darwin": "true", "default": "false"}
+        },
+        {
+          "name": "gateway_mode",
+          "type": "bool",
+          "wizard_ui": "target",
+          "title": "Gateway mode (share to LAN)",
+          "tooltip": "The machine forwards other devices’ traffic (router/gateway), not just its own. Enables LAN interface selection for TUN, makes proxy-in listen on 0.0.0.0 and turns process matching off. Independent of the config target: a gateway can be a remote router or this Mac (Internet Sharing).",
+          "default_value": "false",
+          "#enable": ["@tun"]
+        },
+        {
+          "name": "gateway_include_interface",
+          "type": "text_list",
+          "wizard_ui": "target",
+          "title": "LAN interfaces (include_interface)",
+          "tooltip": "sing-box tun include_interface — which interfaces to route into TUN, one per line (for example br-vpn). Empty means all traffic of the machine — usually NOT what you want on a router with two wifi networks.",
+          "default_value": "",
+          "#enable": ["@tun", "@gateway_mode"]
+        },
+        {
+          "name": "tun_interface_name",
+          "type": "text",
+          "wizard_ui": "edit",
+          "title": "TUN interface name",
+          "tooltip": "sing-box tun interface_name — explicit TUN device name. Always set: the core default cannot be relied on, and on a router the name is needed for firewall rules and routes. Defaults to lxd-tun0 for a remote target (lxd daemon).",
+          "default_value": {"default": {"#if": [{"@runtime.target": "remote"}, "lxd-tun0", "singbox-tun0"]}},
+          "#enable": ["@tun"]
+        },
+        {
+          "name": "tun_address",
+          "type": "text",
+          "wizard_ui": "edit",
+          "title": "TUN interface address",
+          "tooltip": "CIDR address for the TUN interface (inbounds address). IPv4 is required; the IPv6 address is set separately by the Enable IPv6 switch below.",
+          "default_value": "172.16.0.1/30",
+          "#enable": ["@tun"]
+        },
+        {
+          "name": "tun_address_exclude",
+          "type": "text_list",
+          "wizard_ui": "edit",
+          "title": "TUN route exclude addresses (route_exclude_address)",
+          "tooltip": "sing-box tun route_exclude_address — CIDR prefixes that auto_route leaves out of the tunnel at the OS routing level, one per line (for example 10.0.0.0/8 or fd00::/8). Traffic to these networks never enters the core: no rules, no sniffing, not visible in the profiler. Empty means nothing is excluded — LAN access is normally covered by the Private IPs rule preset inside the core. Use this only when traffic must not touch the tunnel at all: strict_route on Windows, the subnet of a second VPN, management access to a router. Whatever is listed here can no longer be reached through the VPN.",
+          "default_value": "",
+          "#enable": ["@tun", "@auto_route"]
+        },
+        {
+          "name": "ipv6_enabled",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "title": "Enable IPv6",
+          "tooltip": "Add an IPv6 address to the tunnel and let name resolution return IPv6. Off by default: with no IPv6 address on the tunnel, an IPv6 answer has nowhere to go and the site fails to open. Turn on only if your network has working IPv6. On: resolution prefers IPv4 but IPv6 is allowed; off: IPv4 only.",
+          "default_value": "false",
+          "#enable": ["@tun"],
+          "#on_change": {
+            "#set": {
+              "@dns_strategy": {"#if": ["@ipv6_enabled", "prefer_ipv4", "ipv4_only"]},
+              "@resolve_strategy": {"#if": ["@ipv6_enabled", "prefer_ipv4", "ipv4_only"]}
+            }
+          }
+        },
+        {
+          "name": "tun_address6",
+          "type": "text",
+          "wizard_ui": "edit",
+          "title": "TUN IPv6 address",
+          "tooltip": "CIDR IPv6 address for the TUN interface. Applied only when Enable IPv6 is on.",
+          "default_value": "fdfe:dcba:9876::1/126",
+          "#enable": ["@tun", "@ipv6_enabled"]
+        },
+        {
+          "name": "tun_mtu",
+          "type": "int",
+          "wizard_ui": "edit",
+          "title": "TUN MTU",
+          "tooltip": "Maximum transmission unit for the TUN interface (numeric value in JSON). Default 9000 matches sing-box.",
+          "default_value": "9000",
+          "#enable": ["@tun"]
+        },
+        {
+          "name": "auto_route",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "title": "Auto-route system traffic",
+          "tooltip": "Adds routes so the system sends traffic through the tunnel. Turning this off leaves the tunnel up but routes nothing into it — you then route traffic yourself (custom routes, another gateway). Almost always should stay on.",
+          "default_value": "true",
+          "#enable": ["@tun"]
+        },
+        {
+          "name": "strict_route",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "title": "TUN strict route",
+          "tooltip": "sing-box tun strict_route: stricter routing (fewer leaks); may break some LAN or split setups. Keep it off in gateway mode — otherwise the local network is cut off.",
+          "default_value": "false",
+          "#enable": ["@tun"]
+        },
+        {
+          "name": "auto_redirect",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "title": "TUN auto redirect (Linux)",
+          "tooltip": "sing-box tun auto_redirect, Linux only: TCP is redirected into the core with nftables (or iptables) rules instead of the system stack's local forwarder, which host firewalls such as firewalld silently drop (issue #129). Recommended by sing-box on Linux; needs auto_route and nftables or iptables on the machine. On by default for this computer, off for remote machines (routers).",
+          "default_value": {"default": {"#if": [{"@runtime.target": "local"}, "true", "false"]}},
+          "#enable": ["@tun", "@auto_route", "{\"@runtime.platform\": \"linux\"}"]
+        },
+        {
+          "name": "tun_stack",
+          "type": "enum",
+          "wizard_ui": "edit",
+          "title": "TUN stack",
+          "tooltip": "sing-box inbound tun stack (system, gvisor, mixed). Mixed uses system TCP stack and gvisor UDP stack.",
+          "default_value": {
+            "default": {
+              "#if": [{"#and": [{"@runtime.platform": "windows"}, {"@runtime.arch": "386"}]}, "gvisor", "system"]
+            }
+          },
+          "options": ["system", "gvisor", "mixed"],
+          "#enable": ["@tun"]
         }
-      }
+      ]
     },
     {
-      "name": "tun_address6",
-      "type": "text",
-      "wizard_ui": "edit",
-      "title": "TUN IPv6 address",
-      "tooltip": "CIDR IPv6 address for the TUN interface. Applied only when Enable IPv6 is on.",
-      "default_value": "fdfe:dcba:9876::1/126",
-      "#enable": ["@tun", "@ipv6_enabled"]
-    },
-    {
-      "name": "tun_mtu",
-      "type": "int",
-      "wizard_ui": "edit",
-      "title": "TUN MTU",
-      "tooltip": "Maximum transmission unit for the TUN interface (numeric value in JSON). Default 9000 matches sing-box.",
-      "default_value": "9000",
-      "#enable": ["@tun"]
-    },
-    {
-      "name": "auto_route",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "title": "Auto-route system traffic",
-      "tooltip": "Adds routes so the system sends traffic through the tunnel. Turning this off leaves the tunnel up but routes nothing into it — you then route traffic yourself (custom routes, another gateway). Almost always should stay on.",
-      "default_value": "true",
-      "#enable": ["@tun"]
-    },
-    {
-      "name": "strict_route",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "title": "TUN strict route",
-      "tooltip": "sing-box tun strict_route: stricter routing (fewer leaks); may break some LAN or split setups. Keep it off in gateway mode — otherwise the local network is cut off.",
-      "default_value": "false",
-      "#enable": ["@tun"]
-    },
-    {
-      "name": "auto_redirect",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "title": "TUN auto redirect (Linux)",
-      "tooltip": "sing-box tun auto_redirect, Linux only: TCP is redirected into the core with nftables (or iptables) rules instead of the system stack's local forwarder, which host firewalls such as firewalld silently drop (issue #129). Recommended by sing-box on Linux; needs auto_route and nftables or iptables on the machine. On by default for this computer, off for remote machines (routers).",
-      "default_value": {"default": {"#if": [{"@runtime.target": "local"}, "true", "false"]}},
-      "#enable": ["@tun", "@auto_route", "{\"@runtime.platform\": \"linux\"}"]
-    },
-    {
-      "name": "tun_stack",
-      "type": "enum",
-      "wizard_ui": "edit",
-      "title": "TUN stack",
-      "tooltip": "sing-box inbound tun stack (system, gvisor, mixed). Mixed uses system TCP stack and gvisor UDP stack.",
-      "default_value": {
-        "default": {
-          "#if": [{"#and": [{"@runtime.platform": "windows"}, {"@runtime.arch": "386"}]}, "gvisor", "system"]
+      "id": "proxy-in",
+      "name": "Local proxy",
+      "description": "Local proxy inbound for apps that connect through a proxy",
+      "vars": [
+        {
+          "name": "enable_proxy_in",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "title": "Enable proxy-in",
+          "tooltip": "Adds mixed inbound proxy-in and route.rules for proxy-in. Can be enabled on any platform for experiments.",
+          "default_value": {"darwin": "true", "default": "false"}
+        },
+        {
+          "name": "proxy_in_listen",
+          "type": "text",
+          "wizard_ui": "edit",
+          "title": "Proxy-in listen address",
+          "tooltip": "Listen address for mixed inbound proxy-in. Defaults to 0.0.0.0 only in gateway mode (clients from the LAN); otherwise 127.0.0.1 — on a server an unauthenticated proxy on 0.0.0.0 would be wide open.",
+          "default_value": {"default": {"#if": ["@gateway_mode", "0.0.0.0", "127.0.0.1"]}},
+          "#enable": ["@enable_proxy_in"]
+        },
+        {
+          "name": "proxy_in_listen_port",
+          "type": "int",
+          "wizard_ui": "edit",
+          "title": "Proxy-in listen port",
+          "tooltip": "Listen port for mixed inbound proxy-in.",
+          "default_value": "7890",
+          "#enable": ["@enable_proxy_in"]
+        },
+        {
+          "name": "proxy_in_set_system_proxy",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "title": "Proxy-in set system proxy",
+          "tooltip": "Set the system proxy through mixed inbound proxy-in. Local target only: a remote machine has no user session whose proxy settings we could change.",
+          "default_value": {
+            "default": {
+              "#if": [{"#and": [{"@runtime.target": "local"}, {"@runtime.platform": "darwin"}]}, "true", "false"]
+            }
+          },
+          "#enable": ["@enable_proxy_in"]
+        },
+        {
+          "name": "proxy_in_auth_enabled",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "title": "Proxy-in require authentication",
+          "tooltip": "When enabled, clients connecting to mixed inbound proxy-in must provide a username and password.",
+          "default_value": "false",
+          "#enable": ["@enable_proxy_in"]
+        },
+        {
+          "name": "proxy_in_username",
+          "type": "text",
+          "wizard_ui": "edit",
+          "title": "Proxy-in username",
+          "tooltip": "Username for mixed inbound proxy-in authentication.",
+          "default_value": "",
+          "#enable": ["@enable_proxy_in", "@proxy_in_auth_enabled"]
+        },
+        {
+          "name": "proxy_in_password",
+          "type": "secret",
+          "wizard_ui": "edit",
+          "title": "Proxy-in password",
+          "tooltip": "Password for mixed inbound proxy-in authentication.",
+          "default_value": "",
+          "#enable": ["@enable_proxy_in", "@proxy_in_auth_enabled"]
         }
-      },
-      "options": ["system", "gvisor", "mixed"],
-      "#enable": ["@tun"]
-    },
-    {"separator": true},
-    {
-      "name": "enable_proxy_in",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "title": "Enable proxy-in",
-      "tooltip": "Adds mixed inbound proxy-in and route.rules for proxy-in. Can be enabled on any platform for experiments.",
-      "default_value": {"darwin": "true", "default": "false"}
+      ]
     },
     {
-      "name": "proxy_in_listen",
-      "type": "text",
-      "wizard_ui": "edit",
-      "title": "Proxy-in listen address",
-      "tooltip": "Listen address for mixed inbound proxy-in. Defaults to 0.0.0.0 only in gateway mode (clients from the LAN); otherwise 127.0.0.1 — on a server an unauthenticated proxy on 0.0.0.0 would be wide open.",
-      "default_value": {"default": {"#if": ["@gateway_mode", "0.0.0.0", "127.0.0.1"]}},
-      "#enable": ["@enable_proxy_in"]
-    },
-    {
-      "name": "proxy_in_listen_port",
-      "type": "int",
-      "wizard_ui": "edit",
-      "title": "Proxy-in listen port",
-      "tooltip": "Listen port for mixed inbound proxy-in.",
-      "default_value": "7890",
-      "#enable": ["@enable_proxy_in"]
-    },
-    {
-      "name": "proxy_in_set_system_proxy",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "title": "Proxy-in set system proxy",
-      "tooltip": "Set the system proxy through mixed inbound proxy-in. Local target only: a remote machine has no user session whose proxy settings we could change.",
-      "default_value": {
-        "default": {
-          "#if": [{"#and": [{"@runtime.target": "local"}, {"@runtime.platform": "darwin"}]}, "true", "false"]
+      "id": "network",
+      "name": "Network",
+      "description": "Connection and routing behavior",
+      "vars": [
+        {
+          "name": "resolve_strategy",
+          "type": "enum",
+          "wizard_ui": "edit",
+          "title": "Route resolve strategy",
+          "tooltip": "Resolution strategy for the route rule with action resolve, applied to connections from every inbound and endpoint (sing-box: prefer_ipv4, prefer_ipv6, ipv4_only, ipv6_only).",
+          "default_value": "ipv4_only",
+          "options": ["prefer_ipv4", "prefer_ipv6", "ipv4_only", "ipv6_only"]
+        },
+        {
+          "name": "auto_detect_interface",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "title": "Auto-detect outbound interface",
+          "tooltip": "sing-box route.auto_detect_interface: detect default interface for outbound; turn off if routing is wrong with multiple uplinks.",
+          "default_value": "true"
+        },
+        {
+          "name": "bind_interface",
+          "type": "interface",
+          "wizard_ui": "edit",
+          "title": "Outbound network interface",
+          "tooltip": "sing-box route.default_interface: force all outbound traffic through this interface. Leave empty to follow the system default route. Set it when the machine has several uplinks (Wi-Fi plus a LAN cable) and only one of them actually reaches the internet.",
+          "default_value": ""
+        },
+        {
+          "name": "mtu_align",
+          "type": "enum",
+          "wizard_ui": "edit",
+          "title": "Tunnel MTU alignment",
+          "tooltip": "sing-box-lx lx.mtu_align — how a node riding inside another tunnel (chain, detour, WARP) fits its packets into the outer path MTU. Clamp (default) fills in an MTU the node does not set and lowers one that does not fit; fill only fills in a missing MTU and keeps an explicit one, warning if it does not fit; off changes nothing. MTU is never raised.",
+          "default_value": "clamp",
+          "options": [
+            {"title": "Clamp (default)", "value": "clamp"},
+            {"title": "Fill", "value": "fill"},
+            {"title": "Off", "value": "off"}
+          ]
+        },
+        {
+          "name": "route_final",
+          "type": "text",
+          "wizard_ui": "hidden",
+          "title": "Final outbound",
+          "tooltip": "sing-box config.route.final — the outbound used for any traffic that didn't match any rule. Edited via Configurator → Rules tab → 'Final outbound' dropdown (UI surface lives there because the available choices depend on the current outbound list, which is dynamic).",
+          "default_value": "proxy-out"
         }
-      },
-      "#enable": ["@enable_proxy_in"]
-    },
-    {
-      "name": "proxy_in_auth_enabled",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "title": "Proxy-in require authentication",
-      "tooltip": "When enabled, clients connecting to mixed inbound proxy-in must provide a username and password.",
-      "default_value": "false",
-      "#enable": ["@enable_proxy_in"]
-    },
-    {
-      "name": "proxy_in_username",
-      "type": "text",
-      "wizard_ui": "edit",
-      "title": "Proxy-in username",
-      "tooltip": "Username for mixed inbound proxy-in authentication.",
-      "default_value": "",
-      "#enable": ["@enable_proxy_in", "@proxy_in_auth_enabled"]
-    },
-    {
-      "name": "proxy_in_password",
-      "type": "secret",
-      "wizard_ui": "edit",
-      "title": "Proxy-in password",
-      "tooltip": "Password for mixed inbound proxy-in authentication.",
-      "default_value": "",
-      "#enable": ["@enable_proxy_in", "@proxy_in_auth_enabled"]
-    },
-    {"separator": true},
-    {
-      "name": "resolve_strategy",
-      "type": "enum",
-      "wizard_ui": "edit",
-      "title": "Route resolve strategy",
-      "tooltip": "Resolution strategy for the route rule with action resolve, applied to connections from every inbound and endpoint (sing-box: prefer_ipv4, prefer_ipv6, ipv4_only, ipv6_only).",
-      "default_value": "ipv4_only",
-      "options": ["prefer_ipv4", "prefer_ipv6", "ipv4_only", "ipv6_only"]
-    },
-    {
-      "name": "auto_detect_interface",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "title": "Auto-detect outbound interface",
-      "tooltip": "sing-box route.auto_detect_interface: detect default interface for outbound; turn off if routing is wrong with multiple uplinks.",
-      "default_value": "true"
-    },
-    {
-      "name": "bind_interface",
-      "type": "interface",
-      "wizard_ui": "edit",
-      "title": "Outbound network interface",
-      "tooltip": "sing-box route.default_interface: force all outbound traffic through this interface. Leave empty to follow the system default route. Set it when the machine has several uplinks (Wi-Fi plus a LAN cable) and only one of them actually reaches the internet.",
-      "default_value": ""
-    },
-    {
-      "name": "cert_store",
-      "type": "enum",
-      "wizard_ui": "edit",
-      "title": "TLS root certificate store",
-      "tooltip": "sing-box certificate.store — which CA bundle to trust for outbound TLS validation. 'system' uses your OS cert store. 'mozilla' / 'chrome' use built-in bundles, useful when the OS store is broken (e.g. Windows updates not applied, or x509 'unknown authority' errors). 'none' disables CA validation entirely — only for testing. https://sing-box.sagernet.org/configuration/certificate/",
-      "default_value": "system",
-      "options": [
-        {"title": "System (default — OS trust store)", "value": "system"},
-        {"title": "Mozilla CA bundle (built-in)", "value": "mozilla"},
-        {"title": "Chrome Root Store (built-in)", "value": "chrome"}
-      ]
-    },
-    {"separator": true},
-    {
-      "name": "tls_fragment",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "title": "TLS fragment (anti-DPI)",
-      "tooltip": "Split the TLS ClientHello across packets so a DPI cannot match the SNI in one read. Applied to first-hop TLS proxy outbounds. Helps against RU/TSPU SNI blocking. sing-box tls.fragment.",
-      "default_value": "false"
-    },
-    {
-      "name": "tls_record_fragment",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "title": "TLS record fragment",
-      "tooltip": "Split every TLS record, not just the ClientHello (stronger, slightly slower). sing-box tls.record_fragment. Use with TLS fragment.",
-      "default_value": "false",
-      "#enable": ["@tls_fragment"]
-    },
-    {
-      "name": "tls_fragment_fallback_delay",
-      "type": "text",
-      "wizard_ui": "edit",
-      "title": "Fragment fallback delay",
-      "tooltip": "sing-box tls.fragment_fallback_delay — delay before falling back if fragmentation stalls (e.g. 500ms). Leave empty for the core default.",
-      "default_value": "",
-      "#enable": ["@tls_fragment"]
-    },
-    {
-      "name": "tls_mixed_case_sni",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "title": "Mixed-case SNI",
-      "tooltip": "Randomize the letter case of the SNI hostname. TLS SNI is case-insensitive (RFC 6066) so servers accept it, but a case-sensitive DPI blocklist match is defeated. Punycode labels are left intact.",
-      "default_value": "false"
-    },
-    {"separator": true},
-    {
-      "name": "mtu_align",
-      "type": "enum",
-      "wizard_ui": "edit",
-      "title": "Tunnel MTU alignment",
-      "tooltip": "sing-box-lx lx.mtu_align — how a node riding inside another tunnel (chain, detour, WARP) fits its packets into the outer path MTU. Clamp (default) fills in an MTU the node does not set and lowers one that does not fit; fill only fills in a missing MTU and keeps an explicit one, warning if it does not fit; off changes nothing. MTU is never raised.",
-      "default_value": "clamp",
-      "options": [
-        {"title": "Clamp (default)", "value": "clamp"},
-        {"title": "Fill", "value": "fill"},
-        {"title": "Off", "value": "off"}
       ]
     },
     {
-      "name": "sniff_guard_tls",
-      "type": "enum",
-      "wizard_ui": "edit",
-      "title": "Sniff guard: TLS",
-      "tooltip": "Keeps a relay or a router that sniffs the first handshake packet (Xray sniffing with destOverride and no routeOnly) from redirecting a TLS node by its SNI. The core learns per path whether the guard is needed: it starts on through an encrypted relay, off on a direct path and through SSH or SOCKS. Record fragment (default): the ClientHello is split into several TLS records, no delay. Fragment: split by TCP segments, a pause through a relay. Delay: two pieces with a 300 ms pause. Off: no guard for TLS. A node with its own TLS fragment setting keeps it. Needs core 1.14.4-lx.34 or newer.",
-      "default_value": "record_fragment",
-      "options": [
-        {"title": "Record fragment (default)", "value": "record_fragment"},
-        {"title": "Fragment", "value": "fragment"},
-        {"title": "Delay", "value": "delay"},
-        {"title": "Off", "value": "off"}
+      "id": "dpi-bypass",
+      "name": "TLS Fragmentation",
+      "description": "Splits the TLS handshake so it carries no single-packet signature.",
+      "vars": [
+        {
+          "name": "tls_fragment",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "title": "TLS fragment (anti-DPI)",
+          "tooltip": "Split the TLS ClientHello across packets so a DPI cannot match the SNI in one read. Applied to first-hop TLS proxy outbounds. Helps against RU/TSPU SNI blocking. sing-box tls.fragment.",
+          "default_value": "false"
+        },
+        {
+          "name": "tls_record_fragment",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "title": "TLS record fragment",
+          "tooltip": "Split every TLS record, not just the ClientHello (stronger, slightly slower). sing-box tls.record_fragment. Use with TLS fragment.",
+          "default_value": "false",
+          "#enable": ["@tls_fragment"]
+        },
+        {
+          "name": "tls_fragment_fallback_delay",
+          "type": "text",
+          "wizard_ui": "edit",
+          "title": "Fragment fallback delay",
+          "tooltip": "sing-box tls.fragment_fallback_delay — delay before falling back if fragmentation stalls (e.g. 500ms). Leave empty for the core default.",
+          "default_value": "",
+          "#enable": ["@tls_fragment"]
+        },
+        {
+          "name": "tls_mixed_case_sni",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "title": "Mixed-case SNI",
+          "tooltip": "Randomize the letter case of the SNI hostname. TLS SNI is case-insensitive (RFC 6066) so servers accept it, but a case-sensitive DPI blocklist match is defeated. Punycode labels are left intact.",
+          "default_value": "false"
+        }
       ]
     },
     {
-      "name": "sniff_guard_quic",
-      "type": "enum",
-      "wizard_ui": "edit",
-      "title": "Sniff guard: QUIC",
-      "tooltip": "The same guard for nodes that open QUIC (MASQUE, Hysteria2, TUIC, TrustTunnel, XHTTP over HTTP/3, AmneziaWG with a QUIC masquerade). Decoy byte (default): one junk byte goes before the handshake, the server drops it, no delay. Delay: the second handshake packet is held for 300 ms; does nothing for AmneziaWG. Off: no guard for QUIC. Never applied through a SOCKS relay. Needs core 1.14.4-lx.34 or newer.",
-      "default_value": "decoy_first_byte",
-      "options": [
-        {"title": "Decoy byte (default)", "value": "decoy_first_byte"},
-        {"title": "Delay", "value": "delay"},
-        {"title": "Off", "value": "off"}
+      "id": "sniff-guard",
+      "name": "Sniff guard",
+      "description": "Keeps a relay or router that reads the server name from the first handshake packet from redirecting the connection by that name. The core learns from connection outcomes which paths need it.",
+      "vars": [
+        {
+          "name": "sniff_guard_tls",
+          "type": "enum",
+          "wizard_ui": "edit",
+          "title": "TLS method",
+          "tooltip": "Keeps a relay or a router that sniffs the first handshake packet (Xray sniffing with destOverride and no routeOnly) from redirecting a TLS node by its SNI. The core learns per path whether the guard is needed: it starts on through an encrypted relay, off on a direct path and through SSH or SOCKS. Record fragment (default): the ClientHello is split into several TLS records, no delay. Fragment: split by TCP segments, a pause through a relay. Delay: two pieces with a 300 ms pause. Off: no guard for TLS. A node with its own TLS fragment setting keeps it. Needs core 1.14.4-lx.34 or newer.",
+          "default_value": "record_fragment",
+          "options": [
+            {"title": "Record fragment (default)", "value": "record_fragment"},
+            {"title": "Fragment", "value": "fragment"},
+            {"title": "Delay", "value": "delay"},
+            {"title": "Off", "value": "off"}
+          ]
+        },
+        {
+          "name": "sniff_guard_quic",
+          "type": "enum",
+          "wizard_ui": "edit",
+          "title": "QUIC method",
+          "tooltip": "The same guard for nodes that open QUIC (MASQUE, Hysteria2, TUIC, TrustTunnel, XHTTP over HTTP/3, AmneziaWG with a QUIC masquerade). Decoy byte (default): one junk byte goes before the handshake, the server drops it, no delay. Delay: the second handshake packet is held for 300 ms; does nothing for AmneziaWG. Off: no guard for QUIC. Never applied through a SOCKS relay. Needs core 1.14.4-lx.34 or newer.",
+          "default_value": "decoy_first_byte",
+          "options": [
+            {"title": "Decoy byte (default)", "value": "decoy_first_byte"},
+            {"title": "Delay", "value": "delay"},
+            {"title": "Off", "value": "off"}
+          ]
+        },
+        {
+          "name": "sniff_guard_sni_mismatch",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "#enable": [{"#or": [{"#not": {"@sniff_guard_tls": "off"}}, {"#not": {"@sniff_guard_quic": "off"}}]}],
+          "title": "Only nodes with a masked SNI",
+          "tooltip": "On (default): the guard covers only nodes whose SNI differs from the server address (REALITY, WARP, a decoy SNI, an IP server with a name) — the ones a sniffing relay actually breaks. A node whose SNI is its own server name passes such a relay anyway and is left untouched. Off: the guard covers every node that supports it.",
+          "default_value": "true"
+        },
+        {
+          "name": "sniff_guard_persist",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "#enable": [{"#or": [{"#not": {"@sniff_guard_tls": "off"}}, {"#not": {"@sniff_guard_quic": "off"}}]}],
+          "title": "Remember relays across restarts",
+          "tooltip": "Keep what the core has learned about encrypted relays in its cache file, so it survives a restart and a config change. Off (default): every start begins from the starting states. Direct paths and SOCKS relays are never remembered.",
+          "default_value": "false"
+        }
       ]
     },
     {
-      "name": "sniff_guard_sni_mismatch",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "#enable": [{"#or": [{"#not": {"@sniff_guard_tls": "off"}}, {"#not": {"@sniff_guard_quic": "off"}}]}],
-      "title": "Sniff guard: only masked SNI",
-      "tooltip": "On (default): the guard covers only nodes whose SNI differs from the server address (REALITY, WARP, a decoy SNI, an IP server with a name) — the ones a sniffing relay actually breaks. A node whose SNI is its own server name passes such a relay anyway and is left untouched. Off: the guard covers every node that supports it.",
-      "default_value": "true"
-    },
-    {
-      "name": "sniff_guard_persist",
-      "type": "bool",
-      "wizard_ui": "edit",
-      "#enable": [{"#or": [{"#not": {"@sniff_guard_tls": "off"}}, {"#not": {"@sniff_guard_quic": "off"}}]}],
-      "title": "Sniff guard: remember relays",
-      "tooltip": "Keep what the core has learned about encrypted relays in its cache file, so it survives a restart and a config change. Off (default): every start begins from the starting states. Direct paths and SOCKS relays are never remembered.",
-      "default_value": "false"
-    },
-    {
-      "name": "masque_idle_timeout",
-      "type": "enum",
-      "wizard_ui": "edit",
-      "title": "MASQUE idle timeout",
-      "tooltip": "sing-box-lx lx.masque.idle_timeout — close the tunnel of a MASQUE node (WARP) after this long without traffic and reopen it on the next connection. Applies to nodes without their own idle timeout; a node's own value wins. Off keeps tunnels up.",
-      "default_value": "off",
-      "options": [
-        {"title": "Off (default)", "value": "off"},
-        {"title": "2m", "value": "2m"},
-        {"title": "5m", "value": "5m"},
-        {"title": "15m", "value": "15m"},
-        {"title": "30m", "value": "30m"}
-      ]
-    },
-    {"separator": true},
-    {
-      "name": "urltest_url",
-      "type": "text",
-      "wizard_ui": "edit",
-      "title": "URLTest URL",
-      "tooltip": "sing-box urltest.url — endpoint to probe for latency when selecting the fastest node in auto-proxy-out. Pick a preset or type any HTTP(S) URL that returns a quick response.",
-      "default_value": "https://cp.cloudflare.com/generate_204",
-      "options_open": true,
-      "options": [
-        "https://cp.cloudflare.com/generate_204",
-        "http://www.gstatic.com/generate_204",
-        "https://www.google.com/generate_204",
-        "http://connectivitycheck.gstatic.com/generate_204"
+      "id": "quic",
+      "name": "QUIC",
+      "description": "MASQUE (HTTP/3), Hysteria2, TUIC and AWG with QUIC masquerade (ip=quic).",
+      "vars": [
+        {
+          "name": "masque_idle_timeout",
+          "type": "enum",
+          "wizard_ui": "edit",
+          "title": "MASQUE idle timeout",
+          "tooltip": "sing-box-lx lx.masque.idle_timeout — close the tunnel of a MASQUE node (WARP) after this long without traffic and reopen it on the next connection. Applies to nodes without their own idle timeout; a node's own value wins. Off keeps tunnels up.",
+          "default_value": "off",
+          "options": [
+            {"title": "Off (default)", "value": "off"},
+            {"title": "2m", "value": "2m"},
+            {"title": "5m", "value": "5m"},
+            {"title": "15m", "value": "15m"},
+            {"title": "30m", "value": "30m"}
+          ]
+        }
       ]
     },
     {
-      "name": "urltest_interval",
-      "type": "enum",
-      "wizard_ui": "edit",
-      "title": "URLTest interval",
-      "tooltip": "sing-box urltest.interval — how often to re-probe all nodes in auto-proxy-out. Pick a preset.",
-      "default_value": "5m",
-      "options": [
-        {"title": "1m (aggressive)", "value": "1m"},
-        {"title": "5m (default)", "value": "5m"},
-        {"title": "10m", "value": "10m"},
-        {"title": "30m (battery-sparing)", "value": "30m"},
-        {"title": "1h", "value": "1h"}
+      "id": "auto-proxy",
+      "name": "Auto Proxy",
+      "description": "URLTest tuning for the auto groups",
+      "vars": [
+        {
+          "name": "urltest_url",
+          "type": "text",
+          "wizard_ui": "edit",
+          "title": "URLTest URL",
+          "tooltip": "sing-box urltest.url — endpoint to probe for latency when selecting the fastest node in auto-proxy-out. Pick a preset or type any HTTP(S) URL that returns a quick response.",
+          "default_value": "https://cp.cloudflare.com/generate_204",
+          "options_open": true,
+          "options": [
+            "https://cp.cloudflare.com/generate_204",
+            "http://www.gstatic.com/generate_204",
+            "https://www.google.com/generate_204",
+            "http://connectivitycheck.gstatic.com/generate_204"
+          ]
+        },
+        {
+          "name": "urltest_interval",
+          "type": "enum",
+          "wizard_ui": "edit",
+          "title": "URLTest interval",
+          "tooltip": "sing-box urltest.interval — how often to re-probe all nodes in auto-proxy-out. Pick a preset.",
+          "default_value": "5m",
+          "options": [
+            {"title": "1m (aggressive)", "value": "1m"},
+            {"title": "5m (default)", "value": "5m"},
+            {"title": "10m", "value": "10m"},
+            {"title": "30m (battery-sparing)", "value": "30m"},
+            {"title": "1h", "value": "1h"}
+          ]
+        },
+        {
+          "name": "urltest_tolerance",
+          "type": "int",
+          "wizard_ui": "edit",
+          "title": "URLTest tolerance (ms)",
+          "tooltip": "sing-box urltest.tolerance — don't switch node unless the new fastest one beats the current by this many milliseconds. Higher = less flap.",
+          "default_value": "100",
+          "options": [
+            {"title": "50 ms (twitchy)", "value": "50"},
+            {"title": "100 ms (default)", "value": "100"},
+            {"title": "200 ms", "value": "200"},
+            {"title": "500 ms (stable)", "value": "500"}
+          ]
+        }
       ]
     },
     {
-      "name": "urltest_tolerance",
-      "type": "int",
-      "wizard_ui": "edit",
-      "title": "URLTest tolerance (ms)",
-      "tooltip": "sing-box urltest.tolerance — don't switch node unless the new fastest one beats the current by this many milliseconds. Higher = less flap.",
-      "default_value": "100",
-      "options": [
-        {"title": "50 ms (twitchy)", "value": "50"},
-        {"title": "100 ms (default)", "value": "100"},
-        {"title": "200 ms", "value": "200"},
-        {"title": "500 ms (stable)", "value": "500"}
+      "id": "general",
+      "name": "General",
+      "description": "Logging and core settings",
+      "vars": [
+        {
+          "name": "log_level",
+          "type": "enum",
+          "wizard_ui": "edit",
+          "title": "Log level",
+          "tooltip": "Sing-box log.level (trace, debug, info, warn, error, fatal, panic).",
+          "default_value": "warn",
+          "options": ["trace", "debug", "info", "warn", "error", "fatal", "panic"]
+        },
+        {
+          "name": "cert_store",
+          "type": "enum",
+          "wizard_ui": "edit",
+          "title": "TLS root certificate store",
+          "tooltip": "sing-box certificate.store — which CA bundle to trust for outbound TLS validation. 'system' uses your OS cert store. 'mozilla' / 'chrome' use built-in bundles, useful when the OS store is broken (e.g. Windows updates not applied, or x509 'unknown authority' errors). 'none' disables CA validation entirely — only for testing. https://sing-box.sagernet.org/configuration/certificate/",
+          "default_value": "system",
+          "options": [
+            {"title": "System (default — OS trust store)", "value": "system"},
+            {"title": "Mozilla CA bundle (built-in)", "value": "mozilla"},
+            {"title": "Chrome Root Store (built-in)", "value": "chrome"}
+          ]
+        }
       ]
     },
-    {"separator": true},
     {
-      "name": "log_level",
-      "type": "enum",
-      "wizard_ui": "edit",
-      "title": "Log level",
-      "tooltip": "Sing-box log.level (trace, debug, info, warn, error, fatal, panic).",
-      "default_value": "warn",
-      "options": ["trace", "debug", "info", "warn", "error", "fatal", "panic"]
-    },
-    {"separator": true},
-    {
-      "name": "clash_api",
-      "type": "text",
-      "wizard_ui": "edit",
-      "title": "Clash API address",
-      "tooltip": "Host:port for external_controller (Clash-compatible REST API).",
-      "default_value": "127.0.0.1:9090",
-      "#enable": ["{\"@runtime.target\": \"local\"}"]
-    },
-    {
-      "name": "clash_secret",
-      "type": "secret",
-      "wizard_ui": "edit",
-      "title": "Clash API secret",
-      "tooltip": "Secret for the Clash API. Use the refresh button to generate a random value.",
-      "default_value": "CHANGE_THIS_TO_YOUR_SECRET_TOKEN",
-      "#enable": ["{\"@runtime.target\": \"local\"}"]
+      "id": "clash-api",
+      "name": "Clash API",
+      "description": "Local control API of the core",
+      "vars": [
+        {
+          "name": "clash_api",
+          "type": "text",
+          "wizard_ui": "edit",
+          "title": "Clash API address",
+          "tooltip": "Host:port for external_controller (Clash-compatible REST API).",
+          "default_value": "127.0.0.1:9090",
+          "#enable": ["{\"@runtime.target\": \"local\"}"]
+        },
+        {
+          "name": "clash_secret",
+          "type": "secret",
+          "wizard_ui": "edit",
+          "title": "Clash API secret",
+          "tooltip": "Secret for the Clash API. Use the refresh button to generate a random value.",
+          "default_value": "CHANGE_THIS_TO_YOUR_SECRET_TOKEN",
+          "#enable": ["{\"@runtime.target\": \"local\"}"]
+        }
+      ]
     },
     {
-      "name": "dns_strategy",
-      "type": "enum",
-      "wizard_ui": "fix",
-      "title": "Strategy",
-      "tooltip": "sing-box config.dns.strategy.",
-      "comment": "DNS tab only: sing-box config.dns.strategy.",
-      "default_value": "ipv4_only",
-      "options": ["prefer_ipv4", "prefer_ipv6", "ipv4_only", "ipv6_only"]
-    },
-    {
-      "name": "dns_default_domain_resolver",
-      "type": "text",
-      "wizard_ui": "fix",
-      "title": "Default DNS domain resolver",
-      "tooltip": "sing-box config.route.default_domain_resolver (server tag).",
-      "comment": "DNS tab only: route.default_domain_resolver (server tag).",
-      "default_value": "direct_dns_resolver"
-    },
-    {
-      "name": "dns_resolver_no_stale",
-      "type": "bool",
-      "wizard_ui": "fix",
-      "title": "Never serve stale answers for node hostnames",
-      "tooltip": "Resolve a node's hostname again once its TTL expires instead of dialing a cached address. Keeps nodes alive with providers that rotate addresses.",
-      "comment": "DNS tab only: route.default_domain_resolver.disable_optimistic_cache.",
-      "default_value": "true"
-    },
-    {
-      "name": "dns_final",
-      "type": "text",
-      "wizard_ui": "fix",
-      "title": "Final",
-      "tooltip": "sing-box config.dns.final (server tag).",
-      "comment": "DNS tab only: config.dns.final (server tag).",
-      "default_value": "direct_dns_resolver"
-    },
-    {
-      "name": "dns_cache_capacity",
-      "type": "int",
-      "wizard_ui": "fix",
-      "title": "DNS cache size",
-      "tooltip": "Number of cached answers.",
-      "comment": "DNS tab only: config.dns.cache_capacity (entries, 1024..65535; the core raises lower values to 1024).",
-      "default_value": "4000"
-    },
-    {
-      "name": "dns_optimistic",
-      "type": "bool",
-      "wizard_ui": "fix",
-      "title": "Serve stale answers",
-      "tooltip": "Answer from cache at once and refresh in the background.",
-      "comment": "DNS tab only: config.dns.optimistic.",
-      "default_value": "true"
-    },
-    {
-      "name": "dns_store_cache",
-      "type": "bool",
-      "wizard_ui": "fix",
-      "title": "Keep DNS cache after restart",
-      "comment": "DNS tab only: config.experimental.cache_file.store_dns.",
-      "default_value": "true"
-    },
-    {
-      "name": "route_final",
-      "type": "text",
-      "wizard_ui": "hidden",
-      "title": "Final outbound",
-      "tooltip": "sing-box config.route.final — the outbound used for any traffic that didn't match any rule. Edited via Configurator → Rules tab → 'Final outbound' dropdown (UI surface lives there because the available choices depend on the current outbound list, which is dynamic).",
-      "default_value": "proxy-out"
+      "id": "dns",
+      "name": "DNS",
+      "description": "Domain name resolution",
+      "vars": [
+        {
+          "name": "dns_strategy",
+          "type": "enum",
+          "wizard_ui": "fix",
+          "title": "Strategy",
+          "tooltip": "sing-box config.dns.strategy.",
+          "comment": "DNS tab only: sing-box config.dns.strategy.",
+          "default_value": "ipv4_only",
+          "options": ["prefer_ipv4", "prefer_ipv6", "ipv4_only", "ipv6_only"]
+        },
+        {
+          "name": "dns_default_domain_resolver",
+          "type": "text",
+          "wizard_ui": "fix",
+          "title": "Default DNS domain resolver",
+          "tooltip": "sing-box config.route.default_domain_resolver (server tag).",
+          "comment": "DNS tab only: route.default_domain_resolver (server tag).",
+          "default_value": "direct_dns_resolver"
+        },
+        {
+          "name": "dns_resolver_no_stale",
+          "type": "bool",
+          "wizard_ui": "fix",
+          "title": "Never serve stale answers for node hostnames",
+          "tooltip": "Resolve a node's hostname again once its TTL expires instead of dialing a cached address. Keeps nodes alive with providers that rotate addresses.",
+          "comment": "DNS tab only: route.default_domain_resolver.disable_optimistic_cache.",
+          "default_value": "true"
+        },
+        {
+          "name": "dns_final",
+          "type": "text",
+          "wizard_ui": "fix",
+          "title": "Final",
+          "tooltip": "sing-box config.dns.final (server tag).",
+          "comment": "DNS tab only: config.dns.final (server tag).",
+          "default_value": "direct_dns_resolver"
+        },
+        {
+          "name": "dns_cache_capacity",
+          "type": "int",
+          "wizard_ui": "fix",
+          "title": "DNS cache size",
+          "tooltip": "Number of cached answers.",
+          "comment": "DNS tab only: config.dns.cache_capacity (entries, 1024..65535; the core raises lower values to 1024).",
+          "default_value": "4000"
+        },
+        {
+          "name": "dns_optimistic",
+          "type": "bool",
+          "wizard_ui": "fix",
+          "title": "Serve stale answers",
+          "tooltip": "Answer from cache at once and refresh in the background.",
+          "comment": "DNS tab only: config.dns.optimistic.",
+          "default_value": "true"
+        },
+        {
+          "name": "dns_store_cache",
+          "type": "bool",
+          "wizard_ui": "fix",
+          "title": "Keep DNS cache after restart",
+          "comment": "DNS tab only: config.experimental.cache_file.store_dns.",
+          "default_value": "true"
+        }
+      ]
     }
   ],
   "config": {

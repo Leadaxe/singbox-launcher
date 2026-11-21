@@ -20,7 +20,7 @@ choices.
   "parser_config": { ... },
   "config":        { ... },
   "dns_options":   { ... },
-  "vars":     [ ... ],
+  "sections": [ ... ],
   "params":   [ ... ],
   "presets":  [ ... ]
 }
@@ -31,7 +31,8 @@ choices.
 | `parser_config` | object | Subscription parser settings + static outbound groups (selector/urltest). Subscription nodes are injected here. |
 | `config` | object | Base sing-box config skeleton (`route`, `experimental`, `inbounds`, …) into which `@var` are substituted and `params` are applied. |
 | `dns_options` | object | DNS tab: `servers[]` — the template server catalog, seeded into the state list once (SPEC 173); `rules[]` — default rules. |
-| `vars` | array | Typed template variables → **Settings** rows, sources for `@`-placeholders. |
+| `sections` | array | Sections of typed template variables (§3.5) → headed groups of **Settings** rows; the variables are the sources for `@`-placeholders. |
+| `vars` | array | The same variables as a flat list, without sections — the form of templates shipped before SPEC 183; still read. A template carries one of the two, both together is a load error. |
 | `params` | array | Patches to `config` by dot-path with conditions (`if`) and a merge mode. |
 | `presets` | array | Presets for the **Rules** tab (rules, rule_set, DNS, outbounds). |
 
@@ -64,7 +65,8 @@ are not substituted.
 
 ## 3. `vars[]` — variables
 
-Each element describes one variable (a row on the **Settings** tab).
+Variables are declared in `sections[].vars[]` (§3.5) or, in older templates, in the flat
+root `vars[]`. Each element describes one variable (a row on the **Settings** tab).
 
 | Field | Type | Description |
 |---|---|---|
@@ -101,15 +103,17 @@ a number in both the plain field and the combo box.
 ```json
 "default_value": "system"                              // 1. scalar (string/number/bool)
 "default_value": {"win7": "gvisor", "default": "system"}  // 2. by platform
-"default_value": {"#if": { ... }}                      // 3. #if expression (only @runtime.*)
+"default_value": {"#if": { ... }}                      // 3. #if expression
 ```
 
 **By platform** — key lookup order: `win7` (only `windows`/`386`) → `<goos>`
 (`windows`/`linux`/`darwin`) → `default`.
 
-**`#if`** (§4) is evaluated at runtime; inside it **only** `@runtime.*` globals are allowed,
-references to other vars are forbidden (load error). It may also appear in a platform key:
-`{"default": {"#if": {...}}}`.
+**`#if`** (§4) is evaluated at runtime; inside it `@runtime.*` globals and variables
+declared **above** this one are allowed (SPEC 097). Defaults are resolved in one pass in
+declaration order — sections in order, variables in order inside a section — so a
+reference to a variable declared below, or to an unknown name, is a load error. It may
+also appear in a platform key: `{"default": {"#if": {...}}}`.
 
 ### 3.3 `if` / `if_or` (outer condition)
 
@@ -128,7 +132,39 @@ references to other vars are forbidden (load error). It may also appear in a pla
 {"separator": true}
 ```
 A horizontal line between Settings rows. No `name`/`type`/`default_value`/etc.
-(only `platforms` and `wizard_ui: "hidden"` are allowed).
+(only `platforms` and `wizard_ui: "hidden"` are allowed). Only in the flat root `vars[]`;
+inside a section it is a load error — the section itself is the group.
+
+### 3.5 `sections[]` — sections
+
+```json
+"sections": [
+  {
+    "id": "sniff-guard",
+    "name": "Sniff guard",
+    "description": "Keeps a relay or router … from redirecting the connection.",
+    "vars": [ { "name": "sniff_guard_tls", ... } ]
+  }
+]
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Required. Stable identifier, kebab-case (`[a-z0-9]+(-[a-z0-9]+)*`), unique in the template. |
+| `name` | string | Required. Section heading on the **Settings** tab. |
+| `description` | string | Text under the heading. |
+| `chapter` | string | Owner screen of the section in LxBox (default `core`); the launcher reads and ignores it. |
+| `vars` | array | Required. Variable declarations (§3). |
+
+- The heading is drawn above the first visible row of the section; a section with no
+  visible row for the current target and platform is not drawn at all.
+- Section texts come from the template and are not translated, like variable titles.
+- Declaration order is sections in order, variables in order inside a section; variable
+  names are unique across the whole template.
+- The container is shared with LxBox (contract `TEMPLATE_LANG.md` §2.3); which sections
+  exist and what they hold is each side's own. A section with the same meaning carries
+  the same `id` on both sides: `general`, `network`, `tun`, `dns`, `auto-proxy`,
+  `dpi-bypass`, `sniff-guard`, `quic`.
 
 ---
 
@@ -345,6 +381,7 @@ expressions (`@…`, `#if`, outer `if[]`) and long lists.
 | `options[]` | multiline — each element on its own line |
 | outer `if` / `if_or` | its own line, **at the end** of the object |
 | `{"separator": true}` | one line |
+| section — `id`, `name`, `description` | each on its own line, then `vars` |
 | simple preset var (`out`, …) — whole thing (including `default`) | one line |
 
 ```jsonc
@@ -450,6 +487,10 @@ With an else branch (both branches are objects); value arrays are written **as i
 | `bare var-ref "x" in if[]; use "@x"` | an `if`/`if_or` element without `@`. |
 | `vars[].name "runtime" is reserved` | name taken by the `@runtime.*` namespace. |
 | `@x is not declared in vars` | `@var` in `config`/`params` without a declaration in `vars`. |
+| `template sets both sections and vars` | variables are declared in one container: `sections[]` or the flat `vars[]`. |
+| `sections[N]: empty id` / `invalid id` / `sections: duplicate id` | a section needs a unique kebab-case `id`. |
+| `sections[<id>]: empty name` / `vars is required` | a section needs `name` and `vars`. |
+| `separator is not allowed inside a section` | drop the separator — the section is the group. |
 | `#if has both "and" and "or"` | both present in a long-form `#if` body — only one allowed. |
 | `#if missing "value"` | no required `value` in a long-form `#if` body. |
 | `#if: array form needs 2 or 3 elements` | a short-form `#if` with one element or four and more. |
