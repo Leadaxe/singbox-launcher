@@ -1496,6 +1496,9 @@
   "DNS servers": {
     "value": "DNS-серверы"
   },
+  "DNS rules": {
+    "value": "DNS-правила"
+  },
   "No DNS servers.": {
     "value": "Нет DNS-серверов."
   },
@@ -1510,9 +1513,6 @@
   },
   "Default domain resolver:": {
     "value": "Резолвер доменов по умолчанию:"
-  },
-  "Rules (JSON object with \"rules\" array)": {
-    "value": "Правила (JSON-объект с массивом \"rules\")"
   },
   "{\n  \"rules\": [\n    {\"rule_set\":\"example\",\"server\":\"tag\"}\n  ]\n}": {
     "value": "{\n  \"rules\": [\n    {\"rule_set\":\"example\",\"server\":\"tag\"}\n  ]\n}"
@@ -1639,9 +1639,6 @@
   },
   "No DNS rules.": {
     "value": "Нет DNS-правил."
-  },
-  "Toggle between unified list view and raw JSON editor (user rules only).": {
-    "value": "Переключить между списком правил и редактором JSON (только user-правила)."
   },
   "⬇ srs": {
     "value": "⬇ srs"

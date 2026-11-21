@@ -413,7 +413,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	rulesHeight.SetMinSize(fyne.NewSize(0, wizardTabScrollMinHeight))
 	rulesBlock := container.NewStack(rulesHeight, rulesScroll)
 
-	rulesLabel := widget.NewLabel(locale.T("Rules (JSON object with \"rules\" array)"))
+	rulesLabel := widget.NewLabel(locale.T("DNS rules"))
 	rulesLabel.Importance = widget.MediumImportance
 
 	strategyTip := varTooltip(wizardmodels.VarDNSStrategy)
@@ -505,19 +505,6 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	// user — один VBox dispatch'ит по DNSRuleOrder.
 	unifiedRulesBox := container.NewVBox()
 	rulesPanel := fynewidget.NewListPanel(unifiedRulesBox)
-	// rawRulesEntry — JSON-редактор для raw-JSON toggle (Phase 3 deferred mode).
-	rawRulesEntry := fynewidget.NewJSONEditor("")
-	rawRulesScroll := container.NewScroll(rawRulesEntry.Object())
-	rawRulesScroll.Direction = container.ScrollBoth
-	rawRulesHeight := canvas.NewRectangle(color.Transparent)
-	rawRulesHeight.SetMinSize(fyne.NewSize(0, 200))
-	rawRulesBlock := container.NewStack(rawRulesHeight, rawRulesScroll)
-	rawRulesBlock.Hide() // list view by default
-
-	// rawJSONMode — toggle между list view и raw-JSON edit. Reflected
-	// in the toggle button icon (DocumentCreateIcon → ViewRestoreIcon).
-	rawJSONMode := false
-
 	var refreshAll func()
 	rebuildUnified := func() {
 		unifiedRulesBox.Objects = unifiedRulesBox.Objects[:0]
@@ -536,14 +523,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		unifiedRulesBox.Refresh()
 		fynewidget.RefreshListPanel(rulesPanel)
 	}
-	refreshAll = func() {
-		if rawJSONMode {
-			// Sync entry text from model when re-entering view.
-			rawRulesEntry.SetText(wizardmodels.DNSUserRulesToText(presenter.Model().DNSUserRules))
-		} else {
-			rebuildUnified()
-		}
-	}
+	refreshAll = rebuildUnified
 
 	previousRefresh := guiState.RefreshDNSList
 	guiState.RefreshDNSList = func() {
@@ -552,57 +532,9 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	}
 	refreshAll()
 
-	// Raw-JSON toggle — choice (b) from the spec: small icon button at the
-	// top-right of the rules section. Click → swap unified list for the raw
-	// multi-line editor with the current DNSUserRules serialized; click
-	// again → parse text, replace DNSUserRules, rebuild DNSRuleOrder.
-	toggleBtn := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), nil)
-	toggleBtn.Importance = widget.LowImportance
-	setTooltip(toggleBtn, locale.T("Toggle between unified list view and raw JSON editor (user rules only)."))
-	toggleBtn.OnTapped = func() {
-		m := presenter.Model()
-		if !rawJSONMode {
-			// Switch to raw view: serialize current DNSUserRules.
-			rawRulesEntry.SetText(wizardmodels.DNSUserRulesToText(m.DNSUserRules))
-			rulesPanel.Hide()
-			rawRulesBlock.Show()
-			rawJSONMode = true
-			toggleBtn.SetIcon(theme.ViewRestoreIcon())
-		} else {
-			// Switch to list view: parse text, replace DNSUserRules, rebuild order.
-			newRules := wizardmodels.DNSUserRulesFromText(rawRulesEntry.Text())
-			m.DNSUserRules = newRules
-			m.DNSRulesText = wizardmodels.DNSUserRulesToText(newRules)
-			if gs := presenter.GUIState(); gs != nil && gs.DNSRulesEntry != nil {
-				gs.DNSRulesEntry.SetText(m.DNSRulesText)
-			}
-			// Drop existing user slots and re-append in text order; preset
-			// slots stay in their current positions. ReconcileDNSRuleOrder
-			// won't add user slots because indices already exist — so do it
-			// manually: filter out user-slots, then append fresh ones.
-			kept := make([]wizardmodels.DNSRuleSlot, 0, len(m.DNSRuleOrder))
-			for _, s := range m.DNSRuleOrder {
-				if s.Kind != wizardmodels.DNSSlotKindUser {
-					kept = append(kept, s)
-				}
-			}
-			for i := range m.DNSUserRules {
-				kept = append(kept, wizardmodels.DNSRuleSlot{
-					Kind:  wizardmodels.DNSSlotKindUser,
-					Index: i,
-				})
-			}
-			m.DNSRuleOrder = kept
-			presenter.MarkAsChanged()
-			rawRulesBlock.Hide()
-			rulesPanel.Show()
-			rawJSONMode = false
-			toggleBtn.SetIcon(theme.DocumentCreateIcon())
-			rebuildUnified()
-		}
-	}
-
-	// [+ Add Rule] и [View All DNS Rules] кнопки внизу секции Rules.
+	// [View All DNS Rules] и [+ Add Rule] — в шапке списка справа, как кнопки
+	// у списка серверов. Правка правил общим JSON убрана: правило правится в
+	// своём окне, общий JSON только смотрят.
 	addRuleBtn := widget.NewButton(locale.T("+ Add Rule"), func() {
 		showEditUserDNSRuleDialog(presenter, dialogParent(), -1, refreshAll)
 	})
@@ -611,14 +543,13 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		showViewAllDNSRulesDialog(presenter, dialogParent())
 	})
 	viewAllBtn.Importance = widget.LowImportance
-	rulesButtons := container.NewHBox(addRuleBtn, layout.NewSpacer(), viewAllBtn)
 
 	// Hide legacy MultiLineEntry rulesBlock — kept in code only for presenter
 	// sync compat (SyncGUIToModel reads it on every Save). The toggle above
 	// replaces it as the user-facing raw editor.
 	_ = rulesBlock
 
-	rulesHeader := container.NewHBox(rulesLabel, layout.NewSpacer(), toggleBtn)
+	rulesHeader := container.NewHBox(rulesLabel, layout.NewSpacer(), viewAllBtn, addRuleBtn)
 
 	// Ни у списка серверов, ни у списка правил своей прокрутки нет: оба
 	// растут на полную высоту, а прокручивается вся вкладка целиком.
@@ -628,8 +559,6 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		widget.NewSeparator(),
 		rulesHeader,
 		rulesPanel,
-		rawRulesBlock,
-		rulesButtons,
 		widget.NewSeparator(),
 		finalAndResolverRow,
 		noStaleRow,
