@@ -581,7 +581,9 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	// Место под полосу прокрутки — одной колонкой справа от всей вкладки, как
 	// на вкладке DNS: полоса не ложится ни на рамки островов, ни на кнопки
 	// сброса в строках.
-	scroll := container.NewVScroll(container.NewBorder(nil, nil, nil, components.NewScrollGutter(), box))
+	// NewVScrollWheelThrough: колесо двигает вкладку и над полем ввода —
+	// иначе его забирает внутренняя прокрутка поля.
+	scroll := components.NewVScrollWheelThrough(container.NewBorder(nil, nil, nil, components.NewScrollGutter(), box))
 	// Нижняя граница, а не высота: см. wizardTabScrollMinHeight.
 	scroll.SetMinSize(fyne.NewSize(0, wizardTabScrollMinHeight))
 
