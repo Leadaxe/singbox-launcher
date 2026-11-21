@@ -26,7 +26,6 @@ import (
 	"singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/fynewidget"
-	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -298,16 +297,13 @@ func buildPresetBundledDNSRowFromResolved(
 		cwc.Check.Disable()
 	}
 
-	// rowGutter — reserved space под scrollbar (visual паритет с template-rows).
-	rowGutter := components.NewScrollGutter()
-
 	var right *fyne.Container
 	if onView != nil {
 		viewBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("View"), theme.SearchIcon(), onView, rowGetter)
 		viewBtn.Importance = widget.LowImportance
-		right = container.NewHBox(viewBtn, rowGutter)
+		right = container.NewHBox(viewBtn)
 	} else {
-		right = container.NewHBox(rowGutter)
+		right = container.NewHBox()
 	}
 
 	rowInner := container.NewBorder(nil, nil, cwc.CheckLeading, right, cwc.Content)
