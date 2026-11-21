@@ -107,6 +107,9 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`tls_not_applicable_quic`](#tls_not_applicable_quic) · `info` — QUIC: TLS field {path} not applicable
 - [`transport_header_unsupported`](#transport_header_unsupported) · `error` — TCP header obfuscation {value} is not supported
 - [`transport_unsupported`](#transport_unsupported) · `warning` — Transport replaced with {fallback}
+- [`tt_field_unsupported`](#tt_field_unsupported) · `warning` — TrustTunnel link: {field} not applied
+- [`tt_subscription_ignored`](#tt_subscription_ignored) · `info` — TrustTunnel link: subscription address not used
+- [`tt_subscription_only`](#tt_subscription_only) · `error` — TrustTunnel link: subscription links are not supported
 - [`tuic_congestion_invalid`](#tuic_congestion_invalid) · `warning` — Field removed: unknown congestion control
 - [`tuic_udp_relay_mode_invalid`](#tuic_udp_relay_mode_invalid) · `warning` — Field removed: unknown UDP relay mode
 - [`type_invalid`](#type_invalid) · `warning` — Field {path} removed: wrong type
@@ -1967,6 +1970,56 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Check that the node works after the replacement — if it does not connect, pick another node.
   - Ask the subscription provider for a link in a format sing-box supports.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="tt_field_unsupported"></a>
+### tt_field_unsupported
+
+**severity:** `warning` · **params:** `field`
+
+**TrustTunnel link: {field} not applied**
+
+- **What happened:** The link sets {field}, which the core's TrustTunnel node cannot express. The node was imported without it; whether it connects depends on what the server requires.
+- **Why it happens:** The tt:// link is the format of the AdGuard TrustTunnel clients and carries their own settings: a separate SNI (custom_sni), a TLS client-random prefix or key the server recognises the client by, the anti-DPI mode, extra endpoint addresses, the profile's DNS servers, an IPv6 ban, a ClientHello profile together with HTTP/3. The sing-box outbound has no field for them.
+- **What you can do:**
+  - Nothing to do if the node connects.
+  - If it does not: client_random_prefix and client_random_auth_key are how some servers admit clients — ask the provider for access without them, or use the AdGuard TrustTunnel client for this server.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="tt_subscription_ignored"></a>
+### tt_subscription_ignored
+
+**severity:** `info`
+
+**TrustTunnel link: subscription address not used**
+
+- **What happened:** Besides the server, the link carries a subscription address. The server was imported from the link itself; the subscription is not read, so later changes on the provider's side will not arrive on their own.
+- **Why it happens:** A version 2 tt:// link may carry subscription_url next to the static connection parameters; AdGuard clients refresh the server from it. This application does not read TrustTunnel subscriptions yet.
+- **What you can do:**
+  - Nothing to do: the node works.
+  - If the server stops working, ask the provider for a fresh link.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="tt_subscription_only"></a>
+### tt_subscription_only
+
+**severity:** `error`
+
+**TrustTunnel link: subscription links are not supported**
+
+- **What happened:** The link carries only a subscription address and no server of its own. Nothing was imported: this application does not read TrustTunnel subscriptions yet.
+- **Why it happens:** A version 2 tt:// link may consist of subscription_url alone; an AdGuard client then fetches the server parameters from that address. There is no node in such a link to import.
+- **What you can do:**
+  - Ask the provider for a link with the server parameters (the endpoint exports one with --format deeplink for a client).
 
 **Where it comes from:**
 

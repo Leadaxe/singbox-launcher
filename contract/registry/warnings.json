@@ -2830,6 +2830,69 @@
       "desc": "Контракт 1.1.63, SPEC 142 C9: `item_forbidden` у tailscale advertise_routes — `0.0.0.0/0` и `::/0` после normalize cidr_masked. Ядро: protocol/tailscale/endpoint.go NewEndpoint — «`advertise_routes` cannot be default, use `advertise_exit_node` instead.», отказ всего конфига. Прежде элемент отбивала только форма добавления узла, и вход singbox/бэкап несли его в ядро.",
       "dart": null,
       "go": "правило реестра contract/registry/protocols/tailscale.json body.fields.advertise_routes.item_forbidden; исполнение — core/config/nodeflow/sanitize.go:sanitizer.filterItems"
+    },
+    "tt_field_unsupported": {
+      "severity": "warning",
+      "params": [
+        "field"
+      ],
+      "title_en": "TrustTunnel link: {field} not applied",
+      "title_ru": "Ссылка TrustTunnel: {field} не применяется",
+      "text_en": "The link sets {field}, which the core's TrustTunnel node cannot express. The node was imported without it; whether it connects depends on what the server requires.",
+      "text_ru": "Ссылка задаёт {field}, а узел TrustTunnel ядра такую настройку выразить не может. Узел импортирован без неё; соединится ли он, зависит от требований сервера.",
+      "cause_en": "The tt:// link is the format of the AdGuard TrustTunnel clients and carries their own settings: a separate SNI (custom_sni), a TLS client-random prefix or key the server recognises the client by, the anti-DPI mode, extra endpoint addresses, the profile's DNS servers, an IPv6 ban, a ClientHello profile together with HTTP/3. The sing-box outbound has no field for them.",
+      "cause_ru": "Ссылка tt:// — формат клиентов AdGuard TrustTunnel и несёт их собственные настройки: отдельный SNI (custom_sni), префикс или ключ TLS client random, по которым сервер опознаёт клиента, режим anti-DPI, запасные адреса узла, DNS-серверы профиля, запрет IPv6, профиль ClientHello вместе с HTTP/3. У outbound sing-box полей под них нет.",
+      "fix_en": [
+        "Nothing to do if the node connects.",
+        "If it does not: client_random_prefix and client_random_auth_key are how some servers admit clients — ask the provider for access without them, or use the AdGuard TrustTunnel client for this server."
+      ],
+      "fix_ru": [
+        "Если узел соединяется, делать ничего не нужно.",
+        "Если нет: по client_random_prefix и client_random_auth_key некоторые серверы допускают клиентов — попросите у провайдера доступ без них либо используйте для этого сервера клиент AdGuard TrustTunnel."
+      ],
+      "desc": "Поле deep link TrustTunnel, которого нет в теле trusttunnel (контракт 1.1.175): custom_sni, has_ipv6 (false), anti_dpi, client_random_prefix, client_random_auth_key, адреса со второго (field = address), dns_upstreams, tls_profile при http3. Узел живёт. Один код на поле (path — имя записи). severity warning, а не info: без client_random узел, чьи правила его требуют, не соединится.",
+      "dart": null,
+      "go": "правило реестра contract/registry/protocols/trusttunnel.json mappers.uri.params.<поле>.on_present / tls_profile.on_when_false (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
+    },
+    "tt_subscription_ignored": {
+      "severity": "info",
+      "params": [],
+      "title_en": "TrustTunnel link: subscription address not used",
+      "title_ru": "Ссылка TrustTunnel: адрес подписки не используется",
+      "text_en": "Besides the server, the link carries a subscription address. The server was imported from the link itself; the subscription is not read, so later changes on the provider's side will not arrive on their own.",
+      "text_ru": "Кроме сервера, ссылка несёт адрес подписки. Сервер импортирован из самой ссылки; подписка не читается, поэтому последующие изменения на стороне провайдера сами не придут.",
+      "cause_en": "A version 2 tt:// link may carry subscription_url next to the static connection parameters; AdGuard clients refresh the server from it. This application does not read TrustTunnel subscriptions yet.",
+      "cause_ru": "Ссылка tt:// версии 2 может нести subscription_url рядом со статическими параметрами соединения; клиенты AdGuard обновляют по нему сервер. Это приложение подписки TrustTunnel пока не читает.",
+      "fix_en": [
+        "Nothing to do: the node works.",
+        "If the server stops working, ask the provider for a fresh link."
+      ],
+      "fix_ru": [
+        "Делать ничего не нужно: узел работает.",
+        "Если сервер перестанет работать, попросите у провайдера свежую ссылку."
+      ],
+      "desc": "subscription_url (тег 0x0E) у ссылки с полным узлом (контракт 1.1.175). Статические поля — запасной вход формата, они и становятся узлом; подписка — вторая очередь.",
+      "dart": null,
+      "go": "правило реестра contract/registry/protocols/trusttunnel.json mappers.uri.params.subscription_url.on_present (note); исполнение — core/config/linkmap/exec.go:execState.applyEntry"
+    },
+    "tt_subscription_only": {
+      "severity": "error",
+      "params": [],
+      "title_en": "TrustTunnel link: subscription links are not supported",
+      "title_ru": "Ссылка TrustTunnel: ссылки-подписки не поддержаны",
+      "text_en": "The link carries only a subscription address and no server of its own. Nothing was imported: this application does not read TrustTunnel subscriptions yet.",
+      "text_ru": "Ссылка несёт только адрес подписки, своего сервера в ней нет. Ничего не импортировано: подписки TrustTunnel это приложение пока не читает.",
+      "cause_en": "A version 2 tt:// link may consist of subscription_url alone; an AdGuard client then fetches the server parameters from that address. There is no node in such a link to import.",
+      "cause_ru": "Ссылка tt:// версии 2 может состоять из одного subscription_url; клиент AdGuard тогда забирает параметры сервера по этому адресу. Узла, который можно импортировать, в такой ссылке нет.",
+      "fix_en": [
+        "Ask the provider for a link with the server parameters (the endpoint exports one with --format deeplink for a client)."
+      ],
+      "fix_ru": [
+        "Попросите у провайдера ссылку с параметрами сервера (узел выдаёт её командой экспорта с --format deeplink для клиента)."
+      ],
+      "desc": "Ссылка-подписка tt://: есть subscription_url, нет ни hostname, ни address, ни username, ни password (правило 6 DEEP_LINK.md). Узел не строится — отказ разбора (dropped). Отличается от field_missing: запись не битая, а другого рода. Подписка TrustTunnel — вторая очередь (контракт 1.1.175).",
+      "dart": null,
+      "go": "правило реестра contract/registry/protocols/trusttunnel.json mappers.uri.params.subscription_only.on_invalid (drop у селектора); исполнение — core/config/linkmap/exec.go:execOne"
     }
   }
 }

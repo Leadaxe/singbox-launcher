@@ -1,0 +1,3 @@
+# два адреса (IPv4 + IPv6), dns_upstreams, anti_dpi, has_ipv6=false: узел из первого адреса, остальное — tt_field_unsupported
+# источник: энкодер AdGuard TrustTunnel scripts/config_to_deeplink.py (DEEP_LINK.md, version 2)
+tt://?AAECARF2cG4uZXhhbXBsZS0xLmNvbQUFdXNlcjEGB3Bhc3MxMjMCEDIwMy4wLjExMy4xMDo0NDMCE1syMDAxOmRiODo6MTBdOjg0NDMEAQAKAQENIAcxLjEuMS4xF3RsczovL2Rucy5leGFtcGxlLTEuY29t

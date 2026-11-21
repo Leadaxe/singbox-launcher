@@ -10522,3 +10522,67 @@ UI лаунчера: галка «Block HTTPS/SVCB records (no ECH)» в DNS-в�
 Корпус `corpus/template/grammar/` (+2): `sections_container` (форма `sections`, неизвестное поле раздела, `chapter`), `sections_and_vars_rejected` (`"load": "reject"`). Ваш раннер читает фрагмент как плоский `vars` — для этих двух кейсов объявления нужно брать из `sections[]`.
 
 Задачи вам: синк 1.1.174; отказ загрузки при `sections` и корневом `vars` вместе; два кейса корпуса в раннере; подтвердить список общих `id` (или назвать, какие у вас значат другое).
+
+## 177. Ответ лаунчера на §157 — контракт 1.1.175, ссылка `tt://` (21.11.2026)
+
+Запись приехала: `registry/protocols/trusttunnel.json` → `mappers.uri`, `aliases: ["tt"]`, `emit.share_uri: true`. Решение владельца — «по черновику LxBox с поправками из спецификации», D-152. Синк — по sha коммита с этим разделом. Ваш черновик `assets/contract_draft/uri/trusttunnel.json` после синка снимается целиком.
+
+**Текстовая спецификация у AdGuard есть:** `DEEP_LINK.md` в корне `TrustTunnel/TrustTunnel` (status: version 2, последняя правка 18.11.2026). В §157 сказано, что её нет; диалект записан по ней и сверен с `deeplink/src/{encode,decode}.rs`.
+
+### 1. Декодер — примитив `tlv`, а не `tt_deeplink`
+
+Норма — `docs/MAPPER_ENGINE.md` §4a (новый), схема — `schema/registry_mapper.schema.json` (`tlv_dialect`, `mapper.tlv`, `emit.container`). Формат отличается от любого соседнего только набором тегов, поэтому он — таблица секции: `mappers.uri.tlv` (`in: query`, `wrap: base64url`, `varint: quic`, `fields[]` с типами `varint`/`string`/`bool`/`enum`/`string_list`/`der_pem`/`hostport`). Шаг формы — `"decode": ["tlv"]`, пространство `json` (как у вас). Объект — тот же, что отдаёт ваш `decodeTtPayload`, с отличиями:
+
+| Ключ | У вас сегодня | По записи |
+|---|---|---|
+| `upstream_protocol` | есть всегда (`http2`, если тега нет) | только `http3`: `http2` — умолчание формата (`default`), в объект не кладётся |
+| `certificate` | один PEM-блок на всё значение | блок на каждый DER-сертификат цепочки, блоки через `\n`, без хвостового перевода строки (спецификация: «Concatenated DER-encoded certificates») |
+| `tls_profile` | тега `0x10` нет | `enum` одним байтом: `0` chrome … `6` boringssl; `chrome` — умолчание, в объект не кладётся; байт вне таблицы — контейнер не прочитан |
+| строки не UTF-8 | отказ | U+FFFD по MAPPER_ENGINE §1 (серия битых байтов — один символ) |
+| `subscription_url` не `https://` | принимается | контейнер не прочитан (правило 7 спецификации) |
+| пустой пейлоад после base64 | отказ | пустой объект → `field_missing` у обязательной записи |
+| ссылка-подписка | исключение декодера | объект с одним `subscription_url`; снимает запись `subscription_only` |
+
+`address`, `server`, `server_port`, `extra_addresses` — как у вас (поле `hostport` с `host`/`port`/`rest`); `has_ipv6`, `skip_verification`, `anti_dpi` — только отличные от умолчания, как у вас.
+
+### 2. Расхождение с §157 по существу: `tls.server_name` ← `hostname`, не `custom_sni`
+
+У клиента AdGuard `custom_sni` — это SNI, а сертификат сверяется с `hostname` (`TrustTunnelClient/trusttunnel/src/client.cpp`: при заданном `custom_sni` — `name = custom_sni`, `remote_id = hostname`; README: «the importing client resolves the SNI and the certificate verification name»). У ядра `tls.server_name` один на оба смысла. С `custom_sni` в нём сертификат узла сверяется с чужим именем и соединение не устанавливается; с `hostname` — устанавливается, теряется только подмена SNI. Поэтому `hostname` → `tls.server_name`, а `custom_sni` — `maps_to: null` + `tt_field_unsupported`. Если у вас есть живой узел, которому нужен именно `custom_sni`, — пришлите, пересмотрим (нужна будет поддержка раздельного имени проверки в ядре).
+
+### 3. Записи и коды
+
+- `server` и `server_port` обязательны (`required`): адрес без порта — `field_missing`. `username`/`password` — как было: обязательность судит тело (`core_rejects`, §137).
+- `upstream_protocol` `http3` → `quic: true`; `skip_verification` → `tls.insecure`; `certificate` → `tls.certificate`; `scheme_sets."*"`: `tls.enabled: true`.
+- `tls_profile` → `tls.utls.fingerprint` + `tls.utls.enabled`: `chrome_canary` → `chrome`, `safari`, `firefox`, `okhttp` → `android`; `openssl`/`boringssl` — uTLS не включается, кода нет. При `http3` запись молчит (`when`) с кодом: ядро не совмещает uTLS с QUIC и сняло бы `quic`.
+- Метка: `json.name`, запасная — `fragment`, дальше `{scheme}-{server}-{server_port}` по `singbox_type`.
+- **Четыре различимых случая, о которых вы просили:**
+
+| Случай | Код | Вид |
+|---|---|---|
+| поле формата, которого нет в теле (`custom_sni`, `has_ipv6=false`, `anti_dpi`, `client_random_prefix`, `client_random_auth_key`, адреса со второго, `dns_upstreams`, `tls_profile` при `http3`) | `tt_field_unsupported` (warning, параметр `field`) | узел живёт; `path` — имя записи (у `tls_profile` при `http3` пути нет: код ставит `on_when_false`) |
+| `subscription_url` у полного узла | `tt_subscription_ignored` (info) | узел живёт |
+| ссылка-подписка (есть `subscription_url`, нет `hostname`, `address`, `username`, `password`) | `tt_subscription_only` (error) | отказ, `dropped[].code` |
+| битый контейнер, версия > 2, `tls_profile` вне таблицы, `subscription_url` не `https://` | `form_unrecognized` | отказ |
+
+  Нет адреса, порта или пароля при непустом узле — `field_missing`, отдельного `tt_deeplink_invalid` нет. `uri_param_unknown` и `service_record_ignored` из черновика здесь больше не ставятся.
+- Запись `subscription_only` — селектор с пустой таблицей значений и `on_invalid: drop`: любое значение — промах, промах селектора снимает узел кодом раньше проверки `required` (MAPPER_ENGINE §7, как у `transport_unsupported`). Новых действий движку не понадобилось.
+
+### 4. Эмит
+
+`emit.container: "tlv"`, `form_from: {"type": {"*": "tt"}}`, `json_map`: `version` `=2`, `hostname` ← `tls.server_name|server` (цепочка через `|` — новое в `json_map`), `username`, `password`, `server`+`server_port` (адрес собирает поле `hostport`, IPv6 в скобках), `tls_profile` ← `$param.tls_profile` (`emit_value_map`: chrome, firefox, safari, android → okhttp; прочие отпечатки формат не выражает — поле не пишется), `skip_verification` ← `tls.insecure`, `certificate` ← `tls.certificate` (PEM → DER подряд), `upstream_protocol` ← `$param.upstream_protocol`, `name` ← `$label`.
+
+**Порядок тегов в §157 записан по старому энкодеру.** Действующий (`deeplink/src/encode.rs`, тот же у `scripts/config_to_deeplink.py`): version, hostname, username, password, address, client_random_prefix, client_random_auth_key, tls_profile, custom_sni, has_ipv6, skip_verification, anti_dpi, certificate, upstream_protocol, name, dns_upstreams, subscription_url — он и стоит в `emit.param_order`. Значение, равное умолчанию формата, не пишется. Критерий паритета выполнен: `tt → тело → tt` байт в байт на кейсах `http2_basic`, `ipv6_address`, `cert_chain_two`, `tls_profile_firefox`, `tls_profile_okhttp` (раннер лаунчера `TestContractTLVEmitByteParity`).
+
+### 5. Корпус
+
+`corpus/uri/trusttunnel/` — 30 кейсов; каталог назван по файлу протокола, а не `tt`. 13 ссылок собраны энкодером AdGuard `scripts/config_to_deeplink.py`, остальные — вручную по спецификации (версии 0/1/3, неизвестный тег, явные умолчания, обрыв TLV, булево `02`, `tls_profile` `7F`, подписка не https, не base64, повтор тега, двухбайтовая длина, метка из фрагмента). Тела приняты `sing-box check` ядра 1.14.4-lx.35.
+
+### 6. Задачи вам
+
+1. Синк 1.1.175; снять черновик `contract_draft/uri/trusttunnel.json`.
+2. Декодер формы `tlv` по диалекту секции вместо `tt_deeplink` (ваши `readVarint`/`encodeTlv`/`splitHostPort` ложатся в него как есть); отличия объекта — таблица п. 1.
+3. `emit.container: "tlv"` и цепочка `|` в `json_map`; побайтный паритет на пяти кейсах п. 4.
+4. Раннер корпуса `uri/trusttunnel/` — 30/30.
+5. Три кода в вашей таблице предупреждений; тексты — `registry/warnings.json`.
+
+Вторая очередь, в эту версию не входит: подписка TrustTunnel (`subscription_url`, ответ JSON `version: 1`) и форма Add server.

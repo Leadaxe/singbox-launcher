@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"singbox-launcher/core/config/registry"
 	"singbox-launcher/core/config/subscription"
 )
 
@@ -59,6 +60,18 @@ func TestCorpusBodiesPassSingboxCheck(t *testing.T) {
 	}
 	sort.Strings(cases)
 
+	// Теги сборки ядра проверки. Протокол, которому реестр объявил `build_tag`,
+	// а ядро собрано без него, ядру не показываем: оно отвергло бы конфиг
+	// целиком как «unknown outbound type», и это сказало бы о сборке ядра на
+	// этой машине, а не о конвейере. Гейтом сборки это снять нельзя: у части
+	// протоколов гейта по ядру нет намеренно (trusttunnel, контракт 1.1.141).
+	coreTags := coreTagsOfBinary(t, binary)
+	reg, err := registry.Get()
+	if err != nil {
+		t.Fatalf("registry.Get: %v", err)
+	}
+	skippedByTag := map[string]int{}
+
 	var outbounds []map[string]interface{}
 	var endpoints []map[string]interface{}
 	used := map[string]bool{}
@@ -71,6 +84,10 @@ func TestCorpusBodiesPassSingboxCheck(t *testing.T) {
 		if err != nil || node == nil {
 			// Кейс-отбраковка: узла нет и проверять нечего — это законная
 			// часть корпуса (битые ссылки лежат там намеренно).
+			continue
+		}
+		if schema, ok := reg.Body(node.Scheme); ok && schema.BuildTag != "" && !coreTags[schema.BuildTag] {
+			skippedByTag[schema.BuildTag]++
 			continue
 		}
 		body, _, drop := materializeParsedNodeBody(node)
@@ -106,6 +123,9 @@ func TestCorpusBodiesPassSingboxCheck(t *testing.T) {
 		outbounds = append(outbounds, entry)
 	}
 
+	for tag, n := range skippedByTag {
+		t.Logf("ядро проверки собрано без %s: %d узлов корпуса ему не показаны", tag, n)
+	}
 	if len(outbounds)+len(endpoints) == 0 {
 		t.Skip("корпус не дал ни одного собираемого узла")
 	}
@@ -193,6 +213,26 @@ func coreVersionOfBinary(t *testing.T, binary string) string {
 		t.Fatalf("не разобрать версию ядра: %s", out)
 	}
 	return m[1]
+}
+
+var coreTagsLine = regexp.MustCompile(`(?m)^Tags:\s*(\S+)`)
+
+// coreTagsOfBinary — теги сборки бинаря ядра (строка `Tags:` его `version`).
+func coreTagsOfBinary(t *testing.T, binary string) map[string]bool {
+	t.Helper()
+	out, err := exec.Command(binary, "version").CombinedOutput()
+	if err != nil {
+		t.Fatalf("sing-box version: %v\n%s", err, out)
+	}
+	tags := map[string]bool{}
+	if m := coreTagsLine.FindStringSubmatch(string(out)); m != nil {
+		for _, tag := range strings.Split(m[1], ",") {
+			if tag = strings.TrimSpace(tag); tag != "" {
+				tags[tag] = true
+			}
+		}
+	}
+	return tags
 }
 
 // uncheckableFields — поля, чьё значение этот тест проверить не может:

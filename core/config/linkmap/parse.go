@@ -105,7 +105,7 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 			}
 			continue
 		}
-		body, err := unwrapBody(form, text)
+		body, err := unwrapBody(plan.Mapper, form, text)
 		if err != nil {
 			// Форма не разворачивается — она просто не эта форма; ошибку
 			// придержим на случай, если не подойдёт ни одна.
@@ -154,7 +154,7 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 
 	if fallback >= 0 {
 		form := forms[fallback]
-		body, err := unwrapBody(form, text)
+		body, err := unwrapBody(plan.Mapper, form, text)
 		if err != nil {
 			return nil, form, rejectUnrecognized(err)
 		}
@@ -181,7 +181,7 @@ func UnwrapURI(plan *Plan, text string) (*Space, registry.Form, error) {
 // json.Unmarshal, ни для предиката detect. Поэтому у формы с чужим
 // пространством оболочка снимается здесь, один раз, — и detect, и lexSpace
 // видят ровно одно и то же тело.
-func unwrapBody(form registry.Form, text string) (string, error) {
+func unwrapBody(m *registry.Mapper, form registry.Form, text string) (string, error) {
 	body := text
 	// scoped — конвейер формы содержал декодер с ОБЛАСТЬЮ (`scope`).
 	// Ровно он и порождает оболочку в результате, и ровно он же её снимает
@@ -195,6 +195,22 @@ func unwrapBody(form registry.Form, text string) (string, error) {
 		if name == "" {
 			// Объектная форма {"reparse": …} — смена пространства, а не
 			// декодирование текста.
+			continue
+		}
+		if name == decoderTLV {
+			// Бинарный контейнер (контракт 1.1.175): где в ссылке лежит
+			// пейлоад и как он устроен, объявляет диалект секции, а не
+			// шаг конвейера. Результат — текст объекта JSON без оболочки:
+			// снимать `схема://` и метку дальше нечего.
+			var dialect *registry.TLVDialect
+			if m != nil {
+				dialect = m.TLV
+			}
+			next, err := decodeTLV(dialect, body)
+			if err != nil {
+				return "", err
+			}
+			body = next
 			continue
 		}
 		if scope != scopeAll {
@@ -519,7 +535,7 @@ func overlayScalar(v interface{}) string {
 // applyDecoder применяет один декодер конвейера формы.
 //
 // Имена декодеров закрытые и общие для всех схем: url, percent, base64,
-// base64url, base64?, json, ini. "base64?" — «попробовать, а не вышло —
+// base64url, base64?, json, ini, tlv. "base64?" — «попробовать, а не вышло —
 // оставить как есть» (живые подписки шлют обе формы под одной схемой).
 // decodeSpec читает один шаг конвейера формы: имя декодера и область его
 // применения (PRIMITIVES §0.10).

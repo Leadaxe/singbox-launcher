@@ -1,0 +1,3 @@
+# ссылка-подписка: только version и subscription_url — не узел (tt_subscription_only)
+# источник: энкодер AdGuard TrustTunnel scripts/config_to_deeplink.py (DEEP_LINK.md, version 2)
+tt://?AAECDi1odHRwczovL3VzZXIxOnBhc3MxMjNAc3ViLmV4YW1wbGUtMS5jb20vcy9hYmM

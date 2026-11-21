@@ -1,0 +1,3 @@
+# subscription_url и неполный узел (нет password): не ссылка-подписка — field_missing
+# источник: собрано по DEEP_LINK.md вручную (энкодер AdGuard такого не пишет)
+tt://?AAECARF2cG4uZXhhbXBsZS0xLmNvbQUFdXNlcjECEDIwMy4wLjExMy4xMDo0NDMOG2h0dHBzOi8vc3ViLmV4YW1wbGUtMS5jb20vcw

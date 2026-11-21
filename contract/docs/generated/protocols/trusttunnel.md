@@ -4,7 +4,7 @@
 
 [← index](../index.md) · [diagnosed problems](../warnings.md)
 
-`trusttunnel` — an outbound, sing-box type `trusttunnel`. Accepted from: sing-box JSON.
+`trusttunnel` — an outbound, sing-box type `trusttunnel`. Also written as `tt`. Accepted from: share link, sing-box JSON.
 
 <sub>Schema checked against core `1.14.3-lx.22`</sub>
 
@@ -13,53 +13,146 @@
 | `scheme` | `trusttunnel` |
 | `singbox_type` | `trusttunnel` |
 | `kind` | `outbound` |
-| `sources` | `singbox` |
+| `aliases` | `tt` |
+| `sources` | `uri`, `singbox` |
 | Core the schema was checked against | `1.14.3-lx.22` |
 
 ## How to read this page
 
 ```
-sing-box JSON       node body              sanitizer            core config
-or a form field ──▶ sing-box JSON,    ──▶  checks each     ──▶  what sing-box
-                    stored in state         body field's         is actually
-                                            value                started with
+share link          mapper                node body              sanitizer            core config
+trusttunnel://…?…   ──▶ link parameter   ──▶  sing-box JSON,    ──▶  checks each     ──▶  what sing-box
+                     becomes a body         stored in state        body field's         is actually
+                     field                                         value                started with
 ```
 
-- **Body fields** — the node body itself: the sing-box JSON kept in the launcher state, with the rule applied to each value.
+- **Link parameters** — the dictionary of the share link: every parameter this scheme understands, and the body field each one becomes. The TLS and transport parameters shared with other schemes are listed here too, not only on their reference pages.
+- **Body fields** — the node body itself: the sing-box JSON kept in the launcher state. The rules here hold for every input alike — a share link, sing-box JSON, Xray JSON or a hand-filled form — because they are checked after the input has already become a body.
 - **Diagnosed problems** — every warning code a node of this scheme can carry, and the field that raises it.
 - **Replacements** — what is silently rewritten on the way in: other spellings of the same name, values normalized or substituted, and structural decisions the mapper takes before any value is judged.
 - **Degradation** — the same rules grouped by outcome: what drops the node, what only drops a field, and what is merely worth knowing.
 
-A bad value never breaks the whole config: the field is dropped, replaced or — at worst — the single node is.
+A bad value never breaks the whole config: the field is dropped, replaced or — at worst — the single node is. Each link parameter says which of the three happens to it, taken from the rule of the body field it maps to.
 
 ## Link parameters
 
-The scheme has no link form: it comes from sing-box JSON only.
+Everything a link of this scheme can carry, including the TLS and transport parameters shared with other schemes. **Maps to** points at the body field the value lands in; **If invalid** is that field's own rule.
+
+### Common
+
+- <a id="link-common-userinfo"></a>**`userinfo`** — No userinfo: the whole entry is a binary container inside the link.
+  - Type: `none (container scheme)`
+- <a id="link-common-host"></a>**`host`** — The authority of the link: everything before `:` in `scheme://…@host:port`.
+  - Maps to: [`server`](#body-server)
+  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+- <a id="link-common-port"></a>**`port`** — The authority of the link: everything after `:` in `scheme://…@host:port`.
+  - Maps to: [`server_port`](#body-server-port)
+  - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
+
+### Protocol-specific
+
+- <a id="link-proto-hostname"></a>**`hostname`** — Endpoint hostname: the name the certificate is verified against.
+  - Type: string
+  - Maps to: [`tls.server_name`](#body-tls-server-name)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="link-proto-address"></a>**`address`** — Endpoint address as host:port; the tag repeats, the first one becomes the node address.
+  - Type: string
+  - Maps to: [`server`](#body-server)
+  - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
+- <a id="link-proto-username"></a>**`username`** — Account user name.
+  - Type: string
+  - Maps to: [`username`](#body-username)
+- <a id="link-proto-password"></a>**`password`** — Account password.
+  - Type: string
+  - Maps to: [`password`](#body-password)
+- <a id="link-proto-upstream-protocol"></a>**`upstream_protocol`** — Carrier protocol: http2 or http3.
+  - Type: string: `http2`, `http3` · Default: `http2`
+  - Maps to: [`quic`](#body-quic)
+- <a id="link-proto-skip-verification"></a>**`skip_verification`** — Do not verify the endpoint certificate.
+  - Type: bool · Default: `false`
+  - Maps to: [`tls.insecure`](#body-tls-insecure)
+  - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
+- <a id="link-proto-certificate"></a>**`certificate`** — Endpoint certificate chain (DER in the link, PEM in the node).
+  - Type: string
+  - Maps to: [`tls.certificate`](#body-tls-certificate)
+- <a id="link-proto-tls-profile"></a>**`tls_profile`** — ClientHello profile the client imitates.
+  - Type: string: `chrome`, `chrome_canary`, `safari`, `firefox`, `okhttp`, `openssl`, `boringssl` · Default: `chrome`
+  - Maps to: [`tls.utls.fingerprint`](#body-tls-utls-fingerprint)
+  - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown) · Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome) · Replaced: `random` → `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
+- <a id="link-proto-name"></a>**`name`** — Node label shown to the user.
+  - Type: string · Default: `""`
+
+### TLS / REALITY
+
+Shared across every scheme that carries a TLS block; the reference page is [`_tls.md`](_tls.md).
+
+- <a id="link-tls-security"></a>**`security`** — Whether the link asks for TLS, and in which flavour.
+  - Type: enum: `""`, `none`, `tls`, `reality` · Default: `""`
+  - Maps to: [`tls.enabled`](#body-tls-enabled)
+- <a id="link-tls-sni"></a>**`sni`** — Server name sent in SNI.
+  - Also spelled: `peer`
+  - Type: string · Default: `""`
+  - Maps to: [`tls.server_name`](#body-tls-server-name)
+  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
+- <a id="link-tls-alpn"></a>**`alpn`** — Comma-separated list of ALPN protocols.
+  - Type: string · Default: `""`
+  - Maps to: [`tls.alpn`](#body-tls-alpn)
+- <a id="link-tls-insecure"></a>**`insecure`** — Skip server certificate verification.
+  - Also spelled: `allowInsecure`, `allowinsecure`, `allow_insecure`, `allow-insecure`, `skipCertVerify`, `skipcertverify`, `skip_cert_verify`, `skip-cert-verify`, `noverify`
+  - Type: bool · Default: `false`
+  - Maps to: [`tls.insecure`](#body-tls-insecure)
+  - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
+- <a id="link-tls-fp"></a>**`fp`** — Browser fingerprint mimicked in the ClientHello.
+  - Also spelled: `fingerprint`
+  - Type: enum (other spellings of the same value are accepted): `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized` (allowlist `utls_fingerprints`) · Default: `""`
+  - Maps to: [`tls.utls.fingerprint`](#body-tls-utls-fingerprint)
+  - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown) · Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome) · Replaced: `random` → `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
+- <a id="link-tls-ech"></a>**`ech`** — Encrypted Client Hello parameters in the Xray form.
+  - Also spelled: `echfq`
+  - Type: string · Default: `""`
+  - Maps to: nothing — the parameter is read and then deliberately dropped
+- <a id="link-tls-pbk"></a>**`pbk`** — Server REALITY public key.
+  - Type: string — X25519 public key: base64url or base64std, padded or not, decoding to exactly 32 bytes; anything else is not a valid key
+  - Maps to: [`tls.reality.public_key`](#body-tls-reality-public-key)
+  - If invalid: removed → [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
+- <a id="link-tls-sid"></a>**`sid`** — REALITY short ID.
+  - Type: string — hex only, lowercase, even length and at most 16 characters; an empty short_id is legal (a zero [8]byte)
+  - Maps to: [`tls.reality.short_id`](#body-tls-reality-short-id)
+  - If invalid: removed → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid) · If the value had to be cleaned up: [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
+- <a id="link-tls-key-share"></a>**`key_share`** — Key exchange used in the REALITY ClientHello.
+  - Type: enum: `""`, `hybrid`, `classical` — a closed core enum, hybrid or classical; trimmed and lower-cased; an empty string means the key is absent, not invalid · Default: `""`
+  - Maps to: [`tls.reality.key_share`](#body-tls-reality-key-share)
+  - If invalid: removed → [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
 
 ## Body fields
 
-The node body itself — the sing-box JSON kept in the launcher state. The path is the one used in that body.
+The node body itself — the sing-box JSON kept in the launcher state. The path is the one used in that body, and the rules below apply to every input alike: a share link, sing-box JSON, Xray JSON or a hand-filled form.
 
 - <a id="body-server"></a>**`server`** — Server address: domain or IP.
   - Type: string, format `host`
   - Required: the node is dropped without it
+  - Set by link parameter: [`host`](#link-common-host), [`address`](#link-proto-address)
   - If invalid: node dropped → [`field_missing`](../warnings.md#field_missing)
 - <a id="body-server-port"></a>**`server_port`** — Server port.
   - Type: uint16, format `port`, `1–65535`
   - Required: the node is dropped without it
+  - Set by link parameter: [`port`](#link-common-port)
   - If invalid: node dropped → [`port_invalid`](../warnings.md#port_invalid)
 - <a id="body-username"></a>**`username`** — Account user name (HTTP Basic auth).
   - Type: string, role `credential`
   - Required: the node is dropped without it
+  - Set by link parameter: [`username`](#link-proto-username)
 - <a id="body-password"></a>**`password`** — Account password (HTTP Basic auth).
   - Type: string, secret
   - Required: the node is dropped without it
+  - Set by link parameter: [`password`](#link-proto-password)
 - <a id="body-network"></a>**`network`** — Networks this outbound handles.
   - Type: listable_string, `tcp`, `udp`, normalized: `trim_lower`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="body-quic"></a>**`quic`** — Use HTTP/3 over QUIC instead of HTTP/2 over TLS.
   - Type: bool
   - Default: `false`
+  - Set by link parameter: [`upstream_protocol`](#link-proto-upstream-protocol)
   - Conflicts with: `tls.utls.enabled` when `quic` is `true`
 - <a id="body-quic-congestion-control"></a>**`quic_congestion_control`** — QUIC congestion control algorithm.
   - Type: enum, `""`, `bbr`, `cubic`, `reno`, normalized: `trim_lower`
@@ -75,6 +168,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-enabled"></a>**`tls.enabled`** — Enable TLS for this outbound.
   - Type: bool
   - Default: `false`
+  - Set by link parameter: [`security`](#link-tls-security)
 - <a id="body-tls-engine"></a>**`tls.engine`** — TLS implementation used for the handshake.
   - Type: enum, `""`, `go`, `apple`, `windows`, normalized: `trim_lower`
   - Default: `go`
@@ -85,13 +179,16 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Conflicts with: `tls.reality.enabled`
 - <a id="body-tls-server-name"></a>**`tls.server_name`** — Server name sent in SNI and verified in the certificate.
   - Type: string, format `host`
+  - Set by link parameter: [`hostname`](#link-proto-hostname), [`sni`](#link-tls-sni)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="body-tls-insecure"></a>**`tls.insecure`** — Skip server certificate verification.
   - Type: bool
   - Default: `false`
+  - Set by link parameter: [`skip_verification`](#link-proto-skip-verification), [`insecure`](#link-tls-insecure)
   - Accepted with a notice for `true` → [`tls_insecure`](../warnings.md#tls_insecure)
 - <a id="body-tls-alpn"></a>**`tls.alpn`** — ALPN protocols offered in the handshake.
   - Type: listable_string, normalized: `trim`
+  - Set by link parameter: [`alpn`](#link-tls-alpn)
 - <a id="body-tls-min-version"></a>**`tls.min_version`** — Minimum accepted TLS version.
   - Type: enum, `1.0`, `1.1`, `1.2`, `1.3`
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
@@ -105,6 +202,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
 - <a id="body-tls-certificate"></a>**`tls.certificate`** — Trusted server certificate in PEM form.
   - Type: listable_string
+  - Set by link parameter: [`certificate`](#link-proto-certificate)
 - <a id="body-tls-certificate-path"></a>**`tls.certificate_path`** — Path to a file with the trusted certificate.
   - Type: string
 - <a id="body-tls-certificate-public-key-sha256"></a>**`tls.certificate_public_key_sha256`** — Pinned SHA-256 hashes of the server public key.
@@ -179,6 +277,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-utls-fingerprint"></a>**`tls.utls.fingerprint`** — Browser fingerprint used for the ClientHello.
   - Type: enum, `""`, `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `edge`, `safari`, `360`, `qq`, `ios`, `android`, `random`, `randomized`, normalized: `trim_lower`
   - Default: `chrome`
+  - Set by link parameter: [`tls_profile`](#link-proto-tls-profile), [`fp`](#link-tls-fp)
   - If invalid: replaced with `chrome` → [`utls_fp_unknown`](../warnings.md#utls_fp_unknown)
   - Accepted with a notice for anything except `chrome`, `chrome_psk`, `chrome_psk_shuffle`, `chrome_padding_psk_shuffle`, `chrome_pq`, `chrome_pq_psk`, `chrome_155`, `firefox`, `safari`, `random`, when `tls.reality.enabled` is set → [`reality_fp_not_chrome`](../warnings.md#reality_fp_not_chrome)
   - Replaced: `random` → `chrome` when `tls.reality.enabled` is `true` → [`reality_fp_random_pinned`](../warnings.md#reality_fp_random_pinned)
@@ -194,15 +293,18 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-tls-reality-public-key"></a>**`tls.reality.public_key`** — Server REALITY public key (x25519).
   - Type: string, format `base64_32`, normalized: `base64_rawurl`
   - Required: the node is dropped without it
+  - Set by link parameter: [`pbk`](#link-tls-pbk)
   - If invalid: removed → [`reality_pbk_invalid`](../warnings.md#reality_pbk_invalid)
 - <a id="body-tls-reality-short-id"></a>**`tls.reality.short_id`** — REALITY short ID (hex, even length).
   - Type: string, format `hex`, `…–16`, len `even`, normalized: `hex_only`
+  - Set by link parameter: [`sid`](#link-tls-sid)
   - If invalid: removed → [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
   - If the value had to be cleaned up: [`reality_short_id_invalid`](../warnings.md#reality_short_id_invalid)
   - Meaningless without: `tls.reality.public_key`
 - <a id="body-tls-reality-key-share"></a>**`tls.reality.key_share`** — Key exchange used in the REALITY ClientHello.
   - Type: enum, `""`, `hybrid`, `classical`, normalized: `trim_lower`
   - Default: `""`
+  - Set by link parameter: [`key_share`](#link-tls-key-share)
   - If invalid: removed → [`reality_key_share_invalid`](../warnings.md#reality_key_share_invalid)
   - Meaningless without: `tls.reality.public_key`
   - Only written when: core ≥ `1.14.1-lx.4`, lx fork only

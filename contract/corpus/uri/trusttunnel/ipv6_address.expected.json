@@ -1,0 +1,21 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "2001:db8::1",
+        "server_port": 8443,
+        "tls": {
+          "enabled": true,
+          "server_name": "vpn.example-1.com"
+        },
+        "type": "trusttunnel",
+        "username": "user1"
+      },
+      "kind": "outbound",
+      "label": "v6",
+      "scheme": "trusttunnel"
+    }
+  ],
+  "v": 1
+}

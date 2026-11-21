@@ -1,0 +1,3 @@
+# tls_profile=safari при http3: ядро не совмещает uTLS с QUIC — профиль не применяется (tt_field_unsupported), quic остаётся
+# источник: энкодер AdGuard TrustTunnel scripts/config_to_deeplink.py (DEEP_LINK.md, version 2)
+tt://?AAECARF2cG4uZXhhbXBsZS0xLmNvbQUFdXNlcjEGB3Bhc3MxMjMCEDIwMy4wLjExMy4xMDo0NDMQAQIJAQI

@@ -1,0 +1,20 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+        "server": "203.0.113.10",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "vpn.example-1.com"
+        },
+        "type": "trusttunnel",
+        "username": "user1"
+      },
+      "kind": "outbound",
+      "scheme": "trusttunnel"
+    }
+  ],
+  "v": 1
+}

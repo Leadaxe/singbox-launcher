@@ -1467,6 +1467,9 @@ func (st *emitState) emitContainer() (string, error) {
 			st.jsonObj[k] = v
 		}
 	}
+	if st.spec.Container == containerTLV {
+		return st.emitTLV()
+	}
 	raw, err := st.marshalContainer()
 	if err != nil {
 		return "", err
@@ -1474,11 +1477,36 @@ func (st *emitState) emitContainer() (string, error) {
 	return st.scheme + "://" + base64.StdEncoding.EncodeToString(raw), nil
 }
 
+// emitTLV сериализует собранный объект контейнера байтами по диалекту `tlv`
+// секции (контракт 1.1.175) и кладёт пейлоад туда же, откуда его читает
+// разбор.
+func (st *emitState) emitTLV() (string, error) {
+	d := st.plan.Mapper.TLV
+	payload, err := encodeTLV(d, st.jsonObj, st.paramOrder())
+	if err != nil {
+		return "", err
+	}
+	if d.In == tlvInQuery {
+		return st.scheme + "://?" + payload, nil
+	}
+	return st.scheme + "://" + payload, nil
+}
+
 // containerValue читает значение одного ключа контейнера.
 //
 // Ссылка — путь ТЕЛА (`tls.server_name`), имя собранного параметра
 // (`$param.<имя>`), метка (`$label`), либо литерал (`=…`).
 func (st *emitState) containerValue(ref string, byName map[string]string) (interface{}, bool) {
+	// Цепочка: у литерала разделитель — часть значения, поэтому литерал
+	// цепочкой не режется.
+	if !strings.HasPrefix(ref, containerLiteral) && strings.Contains(ref, containerAlt) {
+		for _, one := range strings.Split(ref, containerAlt) {
+			if v, ok := st.containerValue(strings.TrimSpace(one), byName); ok {
+				return v, true
+			}
+		}
+		return nil, false
+	}
 	switch {
 	case ref == "":
 		return nil, false
@@ -1507,6 +1535,11 @@ const (
 	containerLabel   = "$label"
 	containerLiteral = "="
 	containerParam   = "$param."
+	// containerAlt — разделитель цепочки ссылок: берётся первая, давшая
+	// значение (`tls.server_name|server`).
+	containerAlt = "|"
+	// containerTLV — значение `emit.container` бинарной формы.
+	containerTLV = "tlv"
 )
 
 // marshalContainer печатает контейнер в объявленном порядке ключей.

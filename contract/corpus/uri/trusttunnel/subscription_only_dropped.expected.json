@@ -1,0 +1,12 @@
+{
+  "dropped": [
+    {
+      "code": "tt_subscription_only",
+      "index": 0,
+      "reason": "parse_error",
+      "ref": "tt://?AAECDi1odHRwczovL3VzZXIxOnBhc3MxMjNAc3ViLmV4YW1wbGUtMS5jb20vcy9hYmM"
+    }
+  ],
+  "nodes": [],
+  "v": 1
+}

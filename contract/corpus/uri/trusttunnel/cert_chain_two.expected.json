@@ -1,0 +1,22 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "203.0.113.10",
+        "server_port": 443,
+        "tls": {
+          "certificate": "-----BEGIN CERTIFICATE-----\nMIIBjjCCATOgAwIBAgIUTmdszD0wE9gSTErHCsowrKweCWEwCgYIKoZIzj0EAwIw\nHDEaMBgGA1UEAwwRdnBuLmV4YW1wbGUtYS5jb20wHhcNMjYxMTIxMTk0NzU4WhcN\nMzYxMTE4MTk0NzU4WjAcMRowGAYDVQQDDBF2cG4uZXhhbXBsZS1hLmNvbTBZMBMG\nByqGSM49AgEGCCqGSM49AwEHA0IABPZxuanyyBZ6vSV4+gxFAYHGLZi0iMEoZLZC\nYJuVwRvN95DfntFH2UMRfqwfGi9CKX3IabSD0qKtJMLl+B3TiKejUzBRMB0GA1Ud\nDgQWBBRJXa9suEc2688znXH4xMbX4fLVvjAfBgNVHSMEGDAWgBRJXa9suEc2688z\nnXH4xMbX4fLVvjAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0kAMEYCIQCd\n6JBEazXZce241wwVIweXWzkbvyGNHm9V9GLxxjp+oAIhAIE8ZDJjTrs+p1UjWxqQ\n8TxfB1RJ2V655pahXUTgFUx+\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIIBjTCCATOgAwIBAgIUEIpAOqK6NQe8uW//7BrtB8pU2aIwCgYIKoZIzj0EAwIw\nHDEaMBgGA1UEAwwRdnBuLmV4YW1wbGUtYi5jb20wHhcNMjYxMTIxMTk0NzU4WhcN\nMzYxMTE4MTk0NzU4WjAcMRowGAYDVQQDDBF2cG4uZXhhbXBsZS1iLmNvbTBZMBMG\nByqGSM49AgEGCCqGSM49AwEHA0IABNNYjV/EoDCG7tMMqPsyWIgyRcbwYMBhSjsa\nYxTZSmnKStbig0KymUwIrVjhqywKwZQkqHNV8B+zeHf9suI9RMqjUzBRMB0GA1Ud\nDgQWBBR6soDqDZqcxzDgxVjvxziVuYvUxTAfBgNVHSMEGDAWgBR6soDqDZqcxzDg\nxVjvxziVuYvUxTAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0gAMEUCICUD\n/1z9MgnultSCThDdj5wk94rg4ECSrwSj4rrTVrxdAiEAsEKptQAIqCUQz0HaqWNy\neL4ONAKPdzM8iMtngi++BeQ=\n-----END CERTIFICATE-----",
+          "enabled": true,
+          "server_name": "vpn.example-1.com"
+        },
+        "type": "trusttunnel",
+        "username": "user1"
+      },
+      "kind": "outbound",
+      "label": "chain",
+      "scheme": "trusttunnel"
+    }
+  ],
+  "v": 1
+}

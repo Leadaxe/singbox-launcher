@@ -1,0 +1,3 @@
+# полный узел + subscription_url: узел из статических полей, подписка не читается (tt_subscription_ignored)
+# источник: энкодер AdGuard TrustTunnel scripts/config_to_deeplink.py (DEEP_LINK.md, version 2)
+tt://?AAECARF2cG4uZXhhbXBsZS0xLmNvbQUFdXNlcjEGB3Bhc3MxMjMCEDIwMy4wLjExMy4xMDo0NDMOLWh0dHBzOi8vdXNlcjE6cGFzczEyM0BzdWIuZXhhbXBsZS0xLmNvbS9zL2FiYw

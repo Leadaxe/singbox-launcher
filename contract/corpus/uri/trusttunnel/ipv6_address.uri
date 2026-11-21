@@ -1,0 +1,3 @@
+# единственный адрес IPv6 в скобках: server без скобок, порт из адреса
+# источник: энкодер AdGuard TrustTunnel scripts/config_to_deeplink.py (DEEP_LINK.md, version 2)
+tt://?AAECARF2cG4uZXhhbXBsZS0xLmNvbQUFdXNlcjEGB3Bhc3MxMjMCElsyMDAxOmRiODo6MV06ODQ0MwwCdjY

@@ -241,7 +241,7 @@ An array of objects describing proxy-server sources.
 | Field          | Type      | Required | Description |
 |---------------|----------|--------------|----------|
 | `source`      | string   | Yes           | The subscription URL. All 14 protocols from the [the generated scheme index](../contract/docs/generated/index.md) table: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS, HTTP(S) CONNECT proxy. Base64 and plain text are both accepted, as is a **JSON array** of full Xray configs (`[ {...}, ... ]`), see above. |
-| `connections` | array    | No          | An array of direct links. All 13 schemes from the [the generated scheme index](../contract/docs/generated/index.md) table: `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `tuic://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`/`awg://`, `vpn://` (Amnezia), `masque://`, `anytls://`. Can be combined with subscriptions. WireGuard nodes land in the config's `endpoints` section (sing-box ≥ 1.11). NaïveProxy requires sing-box ≥ 1.13.0 + the `with_naive_outbound` build tag (fork core `1.14.0-lx.4+`). More in [URI formats for direct links](#uri-formats-for-direct-links). |
+| `connections` | array    | No          | An array of direct links. All 14 schemes from the [the generated scheme index](../contract/docs/generated/index.md) table: `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `tuic://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`/`awg://`, `vpn://` (Amnezia), `masque://`, `anytls://`, `tt://` (TrustTunnel). Can be combined with subscriptions. WireGuard nodes land in the config's `endpoints` section (sing-box ≥ 1.11). NaïveProxy requires sing-box ≥ 1.13.0 + the `with_naive_outbound` build tag (fork core `1.14.0-lx.4+`). More in [URI formats for direct links](#uri-formats-for-direct-links). |
 | `skip`        | array    | No          | A list of filters. If at least one matches, the node is skipped. |
 | `chain`       | object   | No          | **SPEC 110.** Makes this source a hop chain instead of a subscription or a server: `hops` (positions in packet order), `idle_timeout`, `interrupt_exist_connections` (cut live user connections on a runtime position toggle, SPEC 124), `strip_evasion`, `strip`, `rewrite`. Such a source has no `source` and no `connections` — it materializes into a single `chain` outbound whose tag comes from `tag_mask`. Requires a core built with `with_lx_chain`. See [Hop chains](#hop-chains). |
 | `tag_prefix`  | string   | No          | A prefix added to every node tag from this source (version 4). Applied before the original tag. Supports the variables `{$tag}`, `{$scheme}`, `{$protocol}`, `{$server}`, `{$port}`, `{$label}`, `{$comment}`, `{$num}`. Ignored when `tag_mask` is set. |
@@ -599,6 +599,7 @@ When you press **"Update Config"** on the "Core" tab (or use the Config Wizard):
    - ✅ **Amnezia** (`vpn://` — a `.vpn` profile, converted into `wireguard://`)
    - ✅ **AnyTLS** (`anytls://`)
    - ✅ **MASQUE** (`masque://` — CONNECT-IP / WARP; fork core `1.14.0-lx.26+`)
+   - ✅ **TrustTunnel** (`tt://` — AdGuard TrustTunnel deep link; fork core `1.14.3-lx.21+`)
 
 4. **Extracting information**
    - From every URI the parser takes:
