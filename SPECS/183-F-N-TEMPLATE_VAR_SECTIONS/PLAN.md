@@ -5,7 +5,7 @@
 - `vars_resolve.go`: `TemplateSection {ID, Name, Description, Chapter string}`; у `TemplateVar` — поле `Section string` с `json:"-"` (id раздела, пусто у плоской формы).
 - Новый файл `var_sections.go`: единственная функция разбора контейнера — `DecodeVarContainer(raw []byte) (vars []TemplateVar, sections []TemplateSection, err error)`. Читает корневые `sections` и `vars`; обе формы сразу — ошибка; из `sections` разворачивает плоский список, проставляя `Section`; проверяет `id` (непустой, kebab-case, уникальный), непустой `name`, отсутствие `separator` внутри раздела; `chapter` по умолчанию `core`.
 - `loader.go`: корневая структура перестаёт читать `vars` сама и зовёт `DecodeVarContainer`; `TemplateData` получает `Sections []TemplateSection`.
-- `template_validate.go`: `validateVarsSeparator` остаётся для плоской формы; тексты ошибок раздела — в `DecodeVarContainer`.
+- `template_validate.go`: `validateVarsSeparator` остаётся для плоской формы; тексты ошибок раздела — в `DecodeVarContainer`. Контекст ошибок переменной из раздела — `sections[<id>].vars[<name>]` вместо `vars[N]`.
 - `core/config/varsubst.go:171`: свой разбор корневого `vars` заменить вызовом `DecodeVarContainer`.
 - Тестовые структуры с `json:"vars"`, читающие поставляемый шаблон (`target_test.go`, `tun_address_test.go`, `contract_template_test.go`, `auto_route_test.go`, `gate_migration_test.go`), перевести на `DecodeVarContainer`. Фрагменты корпуса остаются плоскими и читаются той же функцией.
 
@@ -20,7 +20,7 @@
 
 ## 3. Шаблон и документы
 
-- `bin/wizard_template.json`: переложить в `sections[]` по таблице SPEC §2.3, убрать разделители, укоротить четыре подписи Sniff guard; затем `go run ./tools/tplfmt -w bin/wizard_template.json` (формат общий, сам `tplfmt` не меняется). Перед перекладкой проверить, что перенос `cert_store`, `log_level`, `mtu_align`, `route_final` не ломает порядок зависимостей умолчаний (`default_value` с `#if` на другие переменные).
+- `bin/wizard_template.json`: переложить в `sections[]` по таблице SPEC §2.3, убрать разделители, укоротить четыре подписи Sniff guard; затем `go run ./tools/tplfmt -w bin/wizard_template.json` (формат общий, сам `tplfmt` не меняется).
 - `docs/WIZARD_TEMPLATE.md`: §1 (корневая таблица), §3 — раздел про `sections[]`, §3.4 — разделитель только в плоской форме, §8.1 — раскладка раздела, §9 — новые ошибки загрузки.
 - `docs/TROUBLESHOOTING.md`, `.ru.md`: раздел про detour — новые названия строк.
 - `docs/ARCHITECTURE.md` — если упоминает плоский `vars[]`; `docs/release_notes/upcoming.md` (EN + RU).
@@ -41,6 +41,6 @@
 
 ## Риски
 
-- **Порядок умолчаний.** Перенос переменной в другой раздел меняет её место в однопроходном разрешении. Страхуют эталонные тесты конфига.
+- **Порядок умолчаний — не риск, а готовая ошибка загрузки.** Перенос переменной в другой раздел меняет её место в однопроходном разрешении, но ссылку вперёд в `default_value.#if` валидатор отвергает при загрузке (`ValidateWizardTemplate`, SPEC 097). Он работает по развёрнутому списку и с разделами не меняется. В шаблоне такая зависимость одна (`proxy_in_listen` ← `gateway_mode`), раскладка SPEC §2.3 её не трогает. Доработка: в тексте ошибки вместо `vars[N]` называть раздел и имя переменной (`sections[tun].vars[gateway_mode]`), у плоской формы текст прежний.
 - **Второй читатель формы.** Любой код, читающий корневой `vars` из сырого JSON мимо `DecodeVarContainer`, на новом шаблоне молча получит пустой список. Перед закрытием — греп по `json:"vars"` и `"vars"` во всём репозитории.
 - **Длинное описание раздела** без переноса раздувает окно — см. п. 2.
