@@ -41,16 +41,16 @@ type refsField struct {
 
 func newRefsField(ctx *ruleFormCtx, label string, initial []string, onChange func()) *refsField {
 	f := &refsField{}
-	f.entry = widget.NewMultiLineEntry()
+	grow := newGrowEntry()
+	f.entry = &grow.Entry
 	f.entry.SetPlaceHolder(locale.T(ruleRefsPlaceholderText))
-	f.entry.Wrapping = fyne.TextWrapWord
-	f.entry.SetMinRowsVisible(ruleEntryRows)
 	f.entry.SetText(strings.Join(initial, "\n"))
 	f.entry.OnChanged = func(string) {
 		if onChange != nil {
 			onChange()
 		}
 	}
+	grow.watch()
 	// SPEC 187: набор с диска — строка file://… в том же поле.
 	f.add = widget.NewButton(locale.T("Add file…"), func() { f.pickFile(ctx) })
 	f.help = widget.NewButton("?", func() {
@@ -66,7 +66,7 @@ func newRefsField(ctx *ruleFormCtx, label string, initial []string, onChange fun
 	hint.Importance = widget.LowImportance
 	f.box = container.NewVBox(
 		container.NewBorder(nil, nil, nil, container.NewHBox(layout.NewSpacer(), f.add, f.help), title),
-		wheelEntry(ctx.wheel, f.entry),
+		wheelEntry(ctx.wheel, grow),
 		hint,
 	)
 	return f

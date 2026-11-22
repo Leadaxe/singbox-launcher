@@ -81,9 +81,9 @@ func newRuleDNSTab(model *wizardmodels.WizardModel, initial *corestate.RuleDNS, 
 	d.answer = widget.NewRadioGroup([]string{d.answerDefault, d.answerServer, d.answerFixed}, nil)
 	d.answer.Required = true
 	d.server = widget.NewSelect(d.serverOptions, nil)
-	d.fixed = widget.NewMultiLineEntry()
+	fixedGrow := newGrowEntry()
+	d.fixed = &fixedGrow.Entry
 	d.fixed.SetPlaceHolder("192.168.1.10")
-	d.fixed.SetMinRowsVisible(ruleEntryRows)
 	d.fixedNote = widget.NewLabel(locale.T("One address per line, IPv4 or IPv6."))
 	d.fixedNote.Importance = widget.LowImportance
 	d.fixedError = widget.NewLabel("")
@@ -137,9 +137,10 @@ func newRuleDNSTab(model *wizardmodels.WizardModel, initial *corestate.RuleDNS, 
 	d.server.OnChanged = func(string) { changed() }
 	d.forceIPv4.OnChanged = func(bool) { changed() }
 	d.blockHTTPS.OnChanged = func(bool) { changed() }
-	// Колесо над полем адресов двигает вкладку (WheelThrough окна); прячется
-	// и показывается строка целиком, вместе со слоем.
-	d.fixedRow = wheelEntry(wheel, d.fixed)
+	// Поле адресов растёт по содержимому; колесо над ним двигает вкладку
+	// (WheelThrough окна); прячется и показывается строка целиком, со слоем.
+	fixedGrow.watch()
+	d.fixedRow = wheelEntry(wheel, fixedGrow)
 
 	d.box = container.NewVBox(
 		widget.NewLabel(locale.T("Answer")),

@@ -107,31 +107,109 @@ type ruleFormCtx struct {
 
 func (c *ruleFormCtx) window() fyne.Window { return c.win }
 
-// ruleEntryRows — видимых строк у многострочных полей окна правила.
-const ruleEntryRows = 3
-
 // wheelEntry — поле под слоем колеса формы (components.WheelThrough, как на
 // вкладке Settings): колесо над полем двигает форму, а не уходит во
-// внутреннюю прокрутку поля. Многострочное поле забирает колесо, только когда
-// строк больше, чем видно. Звать после того, как полю задан OnChanged.
-func wheelEntry(w *components.WheelThrough, e *widget.Entry) fyne.CanvasObject {
+// внутреннюю прокрутку поля. Многострочные поля окна — growEntry: своей
+// прокрутки у них нет, поэтому слой безусловный.
+func wheelEntry(w *components.WheelThrough, e fyne.CanvasObject) fyne.CanvasObject {
 	if w == nil {
 		return e
 	}
-	if !e.MultiLine {
-		return w.Wrap(e)
-	}
-	obj, update := w.WrapWhile(e, func() bool {
-		return strings.Count(e.Text, "\n")+1 <= ruleEntryRows
-	})
-	prev := e.OnChanged
-	e.OnChanged = func(s string) {
+	return w.Wrap(e)
+}
+
+// growEntry — многострочное поле, растущее по содержимому: высота всегда =
+// занятые строки + 1 пустая, своей прокрутки нет (прокручивается форма).
+// Строки визуальные — с переносом по текущей ширине поля (перенос по словам,
+// слово длиннее строки рвётся), поэтому длинные ссылки не раздувают окно по
+// ширине и не дают горизонтальной прокрутки. Пустое поле — одна строка, а с
+// многострочной подсказкой — по строкам подсказки, чтобы она не обрезалась.
+//
+// Высота пересчитывается на каждое изменение текста (OnChanged, его
+// оборачивает watch — звать после того, как полю задан OnChanged) и на каждое
+// изменение ширины (Resize).
+type growEntry struct {
+	widget.Entry
+	measure *widget.RichText
+	lastW   float32
+	rows    int
+}
+
+func newGrowEntry() *growEntry {
+	g := &growEntry{}
+	g.MultiLine = true
+	g.Wrapping = fyne.TextWrapWord
+	g.ExtendBaseWidget(g)
+	g.measure = widget.NewRichTextWithText("")
+	g.measure.Wrapping = fyne.TextWrapWord
+	g.rows = 1
+	g.SetMinRowsVisible(1)
+	return g
+}
+
+// watch подключает пересчёт высоты к изменениям текста и считает её сразу.
+func (g *growEntry) watch() {
+	prev := g.OnChanged
+	g.OnChanged = func(s string) {
 		if prev != nil {
 			prev(s)
 		}
-		update()
+		g.sync()
 	}
-	return obj
+	g.sync()
+}
+
+// Resize — новая ширина меняет число строк переноса.
+func (g *growEntry) Resize(size fyne.Size) {
+	g.Entry.Resize(size)
+	if size.Width != g.lastW {
+		g.lastW = size.Width
+		g.sync()
+	}
+}
+
+func (g *growEntry) sync() {
+	var n int
+	if g.Text == "" {
+		n = 1
+		if g.PlaceHolder != "" {
+			if p := g.visualRows(g.PlaceHolder); p > n {
+				n = p
+			}
+		}
+	} else {
+		n = g.visualRows(g.Text) + 1
+	}
+	if n != g.rows {
+		g.rows = n
+		g.SetMinRowsVisible(n)
+	}
+}
+
+// visualRows — сколько строк занимает text при ширине поля: тот же разбор
+// переноса, что у текста внутри поля (RichText шириной области текста).
+func (g *growEntry) visualRows(text string) int {
+	lines := strings.Count(text, "\n") + 1
+	w := g.Size().Width - 2*theme.InputBorderSize()
+	if w <= 0 {
+		return lines
+	}
+	height := func(t string) float32 {
+		g.measure.Segments[0].(*widget.TextSegment).Text = t
+		g.measure.Resize(fyne.NewSize(w, g.measure.Size().Height))
+		g.measure.Refresh()
+		return g.measure.MinSize().Height
+	}
+	one := height("x")
+	step := height("x\nx") - one
+	if step <= 0 {
+		return lines
+	}
+	rows := int((height(text)-one)/step+0.5) + 1
+	if rows < lines {
+		rows = lines
+	}
+	return rows
 }
 
 func (c *ruleFormCtx) changed() {
@@ -348,15 +426,15 @@ func newCondField(ctx *ruleFormCtx, k registry.RuleConditionKey, initial interfa
 		f := &processesField{list: newProcessListField(ctx.app, condValueStrings(initial), onChange)}
 		return f, labeled(f.list.object())
 	default: // lines, cidr_lines
-		f := &linesField{entry: widget.NewMultiLineEntry()}
-		f.entry.Wrapping = fyne.TextWrapWord
-		f.entry.SetMinRowsVisible(ruleEntryRows)
+		g := newGrowEntry()
+		f := &linesField{entry: &g.Entry}
 		if k.Placeholder != "" {
 			f.entry.SetPlaceHolder(locale.T(k.Placeholder))
 		}
 		f.entry.SetText(strings.Join(condValueStrings(initial), "\n"))
 		f.entry.OnChanged = func(string) { onChange() }
-		return f, labeled(wheelEntry(ctx.wheel, f.entry))
+		g.watch()
+		return f, labeled(wheelEntry(ctx.wheel, g))
 	}
 }
 
