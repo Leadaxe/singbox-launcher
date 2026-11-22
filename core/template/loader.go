@@ -75,6 +75,11 @@ type TemplateData struct {
 	// custom (inline/srs) правила создаются юзером через +Add Rule.
 	Presets []Preset
 
+	// AllPresets — те же пресеты ДО платформенного фильтра. Presets отобраны
+	// под ОС лаунчера; сборка для чужой машины берёт отбор под её ОС через
+	// ForTarget (SPEC 186).
+	AllPresets []Preset
+
 	// PresetWarnings — non-fatal warnings от LoadPresets (validation issues).
 	// Логируются callsite'ом через debuglog.
 	PresetWarnings []PresetWarning
@@ -393,6 +398,7 @@ func ParseTemplateData(raw []byte) (*TemplateData, error) {
 		Sections:              sections,
 		RawTemplate:           rawFull,
 		Presets:               presets,
+		AllPresets:            allPresets,
 		PresetWarnings:        presetWarns,
 		DefaultFinal:          defaultFinal,
 		DefaultDomainResolver: defaultDomainResolver,
@@ -607,6 +613,19 @@ func GetEffectiveConfigForWarnings(rawConfig json.RawMessage, params []TemplateP
 		return nil, nil, nil, err
 	}
 	return sections, order, warnings, nil
+}
+
+// ForTarget — шаблон для цели сборки: копия, в которой Presets отобраны по ОС
+// цели, а не лаунчера (SPEC 186). Пресет «только linux» обязан попасть в
+// конфиг роутера и при сборке на macOS. Исходный шаблон не меняется; без
+// AllPresets (шаблон собран не загрузчиком) возвращается он сам.
+func (td *TemplateData) ForTarget(target TargetSpec) *TemplateData {
+	if td == nil || td.AllPresets == nil {
+		return td
+	}
+	cp := *td
+	cp.Presets = filterPresetsByPlatform(td.AllPresets, target.Normalized().GOOS)
+	return &cp
 }
 
 // filterPresetsByPlatform — отбирает presets совместимые с runtime ОС.

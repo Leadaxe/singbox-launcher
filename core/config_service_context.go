@@ -27,6 +27,9 @@ import (
 // SPEC 045, когда поле BuildContext.ParserConfigJSON удалили вместе с блоком
 // `@ParserConfig` в config.json — аргумент игнорировался).
 func (ac *AppController) buildContextFromState(s *state.State, cache *build.ParsedCache, td *template.TemplateData) build.BuildContext {
+	// SPEC 186: пресеты — под ОС цели состояния (у local отбор тот же, что
+	// сделал загрузчик).
+	td = td.ForTarget(build.TargetSpecFromState(s))
 	ctx := build.BuildContext{
 		Template:   td,
 		Cache:      cache,

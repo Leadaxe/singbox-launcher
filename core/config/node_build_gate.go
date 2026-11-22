@@ -28,6 +28,7 @@ import (
 
 	"github.com/muhammadmuzzammil1998/jsonc"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/nodeflow"
 	"singbox-launcher/internal/debuglog"
 )
@@ -68,6 +69,25 @@ func coreCapabilitiesForBuild() nodeflow.CoreInfo {
 	return info
 }
 
+// coreInfoFor — ядро и ОС машины, для которой идёт сборка (SPEC 186): у чужой
+// машины — её ОС и версия ядра из паспорта, у своей (nil) — локальные пробы.
+func coreInfoFor(target *configtypes.BuildTarget) nodeflow.CoreInfo {
+	if target == nil {
+		return coreInfoForBuild()
+	}
+	return nodeflow.CoreInfo{Version: strings.TrimSpace(target.CoreVersion), GOOS: target.GOOS}
+}
+
+// coreCapabilitiesFor — coreInfoFor плюс теги сборки ядра. Теги ядра чужой
+// машины неизвестны (паспорт демона их не несёт), и гейт по тегу для неё не
+// применяется: теги локального ядра — догадка о другом бинаре.
+func coreCapabilitiesFor(target *configtypes.BuildTarget) nodeflow.CoreInfo {
+	if target == nil {
+		return coreCapabilitiesForBuild()
+	}
+	return coreInfoFor(target)
+}
+
 // gateLoggedOnce снимает повтор WARN-строки: одна подписка приносит сотни
 // узлов одного провайдера, и снятое у всех поле дало бы сотни одинаковых
 // строк в логе сборки. Ключ — пара (тег поля, версия ядра), не тег узла:
@@ -82,11 +102,11 @@ var gateLoggedOnce sync.Map
 // последний рубеж перед `sing-box check`, а не первый, и потеря узла из-за
 // сбоя разбора собственного тела была бы хуже, чем ключ, который ядро и так
 // отвергнет с внятным сообщением.
-func gateBodyForCore(scheme, tag string, body []byte) ([]byte, bool) {
+func gateBodyForCore(scheme, tag string, body []byte, target *configtypes.BuildTarget) ([]byte, bool) {
 	if len(body) == 0 {
 		return body, false
 	}
-	core := coreInfoForBuild()
+	core := coreInfoFor(target)
 	out, dropped, err := nodeflow.GateForCore(scheme, body, core)
 	if err != nil {
 		debuglog.WarnLog("Build gate: узел %q (%s): тело не разобралось (%v) — пропускаем как есть", tag, scheme, err)

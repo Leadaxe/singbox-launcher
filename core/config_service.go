@@ -173,6 +173,11 @@ func (svc *ConfigService) GenerateOutboundsFromParserConfig(
 ) (*config.OutboundGenerationResult, error) {
 	layout := svc.ac.FileService.Layout
 	subst := config.BuildVarSubstituterFromDisk(layout)
+	// SPEC 186: сборка для чужой машины подставляет `@vars` её профиля, а не
+	// локального state.json.
+	if parserConfig != nil && parserConfig.BuildTarget != nil {
+		subst = config.BuildVarSubstituterFor(layout, parserConfig.BuildTarget.SettingsVars)
+	}
 	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
 
 	return config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback,

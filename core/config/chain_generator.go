@@ -40,6 +40,16 @@ func chainSupported() (bool, string) {
 	return ChainSupportProbe()
 }
 
+// chainSupportedFor — вердикт для машины-цели сборки (SPEC 186). Теги сборки
+// ядра чужой машины неизвестны, а локальная проба говорит о другом бинаре —
+// для неё действует то же безопасное умолчание, что без пробы.
+func chainSupportedFor(target *configtypes.BuildTarget) (bool, string) {
+	if target != nil {
+		return true, ""
+	}
+	return chainSupported()
+}
+
 // ChainSupportedByCore — вердикт пробы для UI: форма показывает
 // предупреждение до того, как пользователь настроит маршрут, который не
 // попадёт в конфиг. Та же функция, что зовёт эмиттер, — иначе форма и

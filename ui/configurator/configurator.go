@@ -164,6 +164,7 @@ func RebuildMachineConfig(machineID string) (string, error) {
 	model.TemplateData = templateData
 	model.DataDir = ac.FileService.Layout.Data
 	model.Target = target.Normalized()
+	model.SyncTemplateToTarget()
 	model.ResourceDir = machine.ResourceDir()
 	model.MachineID = target.MachineIDOrEmpty()
 	// Окна нет: UpdateUI презентера без окна ничего не делает, диалоги
@@ -181,6 +182,7 @@ func RebuildMachineConfig(machineID string) (string, error) {
 		return "", err
 	}
 	model.Target = restoreMachineTargetFromState(target, stateFile)
+	model.SyncTemplateToTarget()
 	presenter.InitializeTemplateState()
 	if len(model.DNSServers) == 0 {
 		wizardbusiness.ApplyWizardDNSTemplate(model)
@@ -330,6 +332,7 @@ func buildWizardWindow(
 	// директории читать. Поставить его после загрузки значило бы прочитать
 	// local-состояние и записать его в папку машины.
 	model.Target = target.Normalized()
+	model.SyncTemplateToTarget()
 	model.ResourceDir = resourceDir
 	model.MachineID = target.MachineIDOrEmpty()
 
@@ -429,6 +432,7 @@ func buildWizardWindow(
 			// Legacy-файлы без meta.target падают обратно на реестр целиком.
 			if target.IsRemote() {
 				model.Target = restoreMachineTargetFromState(target, stateFile)
+				model.SyncTemplateToTarget()
 			}
 		}
 	} else {
@@ -1006,6 +1010,7 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 					return
 				}
 				model.TemplateData = templateData
+				model.SyncTemplateToTarget()
 			}
 
 			// Загружаем конфигурацию из config.json или шаблона

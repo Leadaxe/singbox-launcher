@@ -124,8 +124,21 @@ func knownPlaceholderFallback(name string) (interface{}, bool) {
 // Failure to read either file is non-fatal — substituter then knows nothing
 // and the caller falls through to the hard-coded URLTest fallback.
 func BuildVarSubstituterFromDisk(l paths.Layout) VarSubstituter {
+	return BuildVarSubstituterFor(l, loadStateSettingsVars(l.Data))
+}
+
+// BuildVarSubstituterFor — тот же подстановщик с переменными Settings,
+// заданными вызывающим, вместо чтения локального state.json: сборка для
+// чужой машины подставляет значения ЕЁ профиля (SPEC 186). Пустое значение —
+// как отсутствующее: работает умолчание шаблона.
+func BuildVarSubstituterFor(l paths.Layout, settingsVars map[string]string) VarSubstituter {
 	defaults := loadTemplateVarDefaults(l)
-	overrides := loadStateSettingsVars(l.Data)
+	overrides := make(map[string]string, len(settingsVars))
+	for name, value := range settingsVars {
+		if name != "" && value != "" {
+			overrides[name] = value
+		}
+	}
 	intVars := defaults.intNames
 	boolVars := defaults.boolNames
 

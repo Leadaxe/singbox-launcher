@@ -119,7 +119,7 @@ func TailscaleBuildAdditions(body map[string]interface{}, scheme, tag, stateDirI
 	}
 	applyTailscaleStateDirectory(emitted, scheme, TailscaleStateDirNameFor(stateDirID, tag), remoteRoot)
 	if raw, err := json.Marshal(emitted); err == nil {
-		if gated, changed := gateBodyForCore(scheme, tag, raw); changed {
+		if gated, changed := gateBodyForCore(scheme, tag, raw, nil); changed {
 			var out map[string]interface{}
 			if err := json.Unmarshal(gated, &out); err == nil {
 				emitted = out

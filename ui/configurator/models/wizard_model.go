@@ -322,3 +322,13 @@ func (m *WizardModel) SrsDir() string {
 	}
 	return platform.GetRuleSetsDirFor(m.DataDir, constants.ConfigTargetRemote, m.MachineID)
 }
+
+// SyncTemplateToTarget — пресеты шаблона под ОС цели модели (SPEC 186).
+// Зовётся после каждой установки Target: загрузчик отбирает пресеты под ОС
+// лаунчера, а конфиг машины собирается под её ОС.
+func (m *WizardModel) SyncTemplateToTarget() {
+	if m == nil || m.TemplateData == nil {
+		return
+	}
+	m.TemplateData = m.TemplateData.ForTarget(m.Target)
+}

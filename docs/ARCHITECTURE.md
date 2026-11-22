@@ -253,6 +253,16 @@ set it, so a machine path cannot leak into the local `config.json`. Window previ
 (source JSON tab, folder copy, Add server) use the same root via
 `wizardbusiness.TailscaleRemoteRootOf(model)`.
 
+The same rule covers the other machine-owned build inputs (SPEC 186), carried in the
+build-only field `ParserConfig.BuildTarget` (`wizardbusiness.BuildTargetOf(model)`,
+nil for Local): the node gate uses the machine's OS and the core version from its
+daemon passport instead of the launcher's probes (the machine's build tags are unknown,
+so the tag gate and the chain probe are not applied to it), and `@vars` in direction
+options resolve from the machine's Settings (`config.BuildVarSubstituterFor`). Template
+presets are filtered by the target OS: `TemplateData.Presets` holds the launcher-OS
+selection, `TemplateData.ForTarget(target)` re-selects from `AllPresets`, and the model
+calls it after every `Target` change (`WizardModel.SyncTemplateToTarget`).
+
 The traffic profiler windows (local singleton + one per machine) put the target into
 the title the same way (`WindowDeps.Subject` → `FormatRecordingTitle(subject, session)`),
 including while recording.

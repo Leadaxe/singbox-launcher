@@ -72,6 +72,7 @@ func (p *WizardPresenter) SwitchConfigTarget(next string) {
 	// новой директории.
 	nextSpec := targetSpecFor(next, p.model.Target)
 	p.model.Target = nextSpec
+	p.model.SyncTemplateToTarget()
 	debuglog.InfoLog("SwitchConfigTarget: %s → %s (%s/%s)", prev, next,
 		nextSpec.GOOS, nextSpec.GOARCH)
 
@@ -95,6 +96,7 @@ func (p *WizardPresenter) SwitchConfigTarget(next string) {
 	// помечаем как несохранённое, чтобы meta дописалась.
 	if !sameTarget(p.model.Target, nextSpec) {
 		p.model.Target = nextSpec
+		p.model.SyncTemplateToTarget()
 		p.MarkAsChanged()
 	}
 	p.invalidateParsedNodes()
@@ -159,6 +161,7 @@ func (p *WizardPresenter) SetTargetPlatform(goos, goarch string) {
 		ResourceDir: cur.ResourceDir,
 		SrsLocalDir: cur.SrsLocalDir,
 	}.Normalized()
+	p.model.SyncTemplateToTarget()
 	p.MarkAsChanged()
 	debuglog.InfoLog("SetTargetPlatform: remote target platform → %s/%s", goos, goarch)
 	// Платформа меняет видимость и дефолты vars — перестраиваем вкладки.
@@ -281,6 +284,7 @@ func (p *WizardPresenter) ApplyClonedState(stateFile *wizardmodels.WizardStateFi
 	}
 
 	p.model.Target = own
+	p.model.SyncTemplateToTarget()
 	// Ноды, разобранные для прежнего набора источников, к новому отношения
 	// не имеют — иначе превью и Save показали бы состав ДО клона.
 	p.invalidateParsedNodes()

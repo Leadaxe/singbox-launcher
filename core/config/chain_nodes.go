@@ -123,7 +123,7 @@ func ResolveChainSources(
 		return allNodes, nil, nil
 	}
 
-	supported, unsupportedReason := chainSupported()
+	supported, unsupportedReason := chainSupportedFor(parserConfig.BuildTarget)
 	if unsupportedReason == "" {
 		unsupportedReason = "the core does not support chains"
 	}

@@ -97,6 +97,27 @@ type ParserConfig struct {
 	// в глобале пакета config «с момента открытия окна», и с двумя открытыми
 	// Конфигураторами (SPEC 178) последний открытый диктовал путь обоим.
 	TailscaleRemoteStateDirRoot string `json:"-"`
+
+	// BuildTarget — машина-исполнитель, когда сборка идёт для чужой машины
+	// (SPEC 186). nil = своя машина: гейт узлов считает по локальному ядру,
+	// `@vars` берутся из локального состояния. Поле сборочной проекции, как
+	// TailscaleRemoteStateDirRoot: не сериализуется, ставится разбором окна
+	// машины.
+	BuildTarget *BuildTarget `json:"-"`
+}
+
+// BuildTarget — входы сборки узлов, которые принадлежат машине-цели, а не
+// компьютеру лаунчера (SPEC 186).
+type BuildTarget struct {
+	// GOOS — ОС машины (платформенный гейт полей узла).
+	GOOS string
+	// CoreVersion — версия ядра машины из кэша паспорта её демона; пусто —
+	// неизвестна, гейт по версии не применяется. Теги сборки её ядра паспорт
+	// не несёт: гейт по тегу и проба цепочек для машины не применяются.
+	CoreVersion string
+	// SettingsVars — переменные Settings профиля машины (name → value) для
+	// `@name` в опциях Направлений; пустое значение = умолчание шаблона.
+	SettingsVars map[string]string
 }
 
 // ProxySource represents a proxy subscription source
@@ -747,6 +768,10 @@ type ParsedJump struct {
 // It contains protocol-specific fields (Flow, etc.) and the generated
 // outbound configuration ready for JSON serialization.
 type ParsedNode struct {
+	// BuildTarget — машина-цель сборки (SPEC 186); nil = своя машина. Ставит
+	// генератор перед эмиссией: полевой гейт ядра считает по ней.
+	BuildTarget *BuildTarget `json:"-"`
+
 	Tag      string
 	Scheme   string
 	Server   string

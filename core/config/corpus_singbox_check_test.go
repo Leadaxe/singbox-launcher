@@ -96,7 +96,7 @@ func TestCorpusBodiesPassSingboxCheck(t *testing.T) {
 			// ровно поэтому ядру его и не показываем.
 			continue
 		}
-		gated, _ := gateBodyForCore(node.Scheme, caseTagOf(casePath), body)
+		gated, _ := gateBodyForCore(node.Scheme, caseTagOf(casePath), body, nil)
 		entry := map[string]interface{}{}
 		if err := json.Unmarshal(gated, &entry); err != nil {
 			t.Fatalf("%s: тело узла нечитаемо: %v", casePath, err)
