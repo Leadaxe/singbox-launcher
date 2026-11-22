@@ -80,7 +80,7 @@ func convertPresetRuleSetRemoteToLocal(rs map[string]interface{}, dataDir paths.
 	}
 	out["path"] = path
 	if _, has := out["format"]; !has {
-		out["format"] = "binary"
+		out["format"] = srstag.FormatFromRef(url)
 	}
 	return out, false
 }

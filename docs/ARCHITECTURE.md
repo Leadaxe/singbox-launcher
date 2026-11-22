@@ -1610,4 +1610,16 @@ the launcher keeps the file, the core reads it as `type: local`.
   graph edge: a target missing from the final outbound tags drops the set and
   its rule (`ResolveRouteChecked`), and a Direction rename rewrites it
   (`editRootNameRefs`, kind 8).
+- **File sets and JSON (SPEC 187)** — a `kind: srs` ref is `http(s)://` or
+  `file://`; the source is a property of the ref, not a rule kind. `fetchSRS`
+  has a `file://` transport (`copyFileRef`): the source file is copied into the
+  rule-set directory through the same tmp → validate → rename tail, the copy
+  takes the source mtime, and "unchanged" means equal size and mtime. Such a
+  set is compared on every sweep (the interval does not apply; `0` still turns
+  auto-update off) and its rule is always local (`build.RulePolicy`). The
+  format follows the extension of the ref path: `.json` → `source`, otherwise
+  `binary`. `internal/srstag` is the single place for it: a `.json` ref gets
+  the tag `<name>-<hash8>.json`, so `FileName(tag)` / `Format(tag)` /
+  `TagFromFileName(name)` derive the copy name and format from the tag alone
+  in the downloader, the loop, the build, Deploy resources and orphan GC.
 

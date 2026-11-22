@@ -1,0 +1,23 @@
+{
+  "rules": [
+    {
+      "name": "My files",
+      "enabled": false,
+      "refs": [
+        "file:///Users/a/my%20rules/corp.json",
+        "file:///C:/Rules/blocked.srs",
+        "https://example-5.com/lists.srs"
+      ]
+    },
+    {
+      "name": "Source list",
+      "enabled": true,
+      "refs": [
+        "https://example-5.com/domains.json"
+      ]
+    }
+  ],
+  "warnings": [
+    "backup_rule_ref_local_file"
+  ]
+}

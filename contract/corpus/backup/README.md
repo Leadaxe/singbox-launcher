@@ -523,6 +523,13 @@ Side-specific ожидание LxBox (ответ на вопрос 5, `TASKS_LXB
 Норма — `docs/BACKUP.md` §2 «Поля стороны LxBox», §10 (код
 `backup_group_degraded`); перечень — `TASKS_LXBOX.md` §16.7.
 
+**`v10_rule_file_ref`** — набор правил из локального файла (контракт 1.1.178):
+правило `kind: srs` с `file://`-ссылками обоих написаний (путь Unix с пробелом
+и путь Windows с буквой диска, `.json` и `.srs`) рядом с обычным URL и правило
+с одним URL `.json`. У лаунчера записи доезжают как есть, без предупреждений;
+у LxBox (`.expected.lxbox.json`) правило с `file://` ввезено выключенным с
+`backup_rule_ref_local_file`, `refs[]` сохранены.
+
 **`v10_rule_set_options`** — настройки наборов правила (контракт 1.1.177):
 `srs_mode`, `update_interval_hours`, `download_detour` у трёх правил `kind: srs`
 — все три заданы, период `0` («не обновлять») и правило без настроек. Ключ

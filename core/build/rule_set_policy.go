@@ -15,6 +15,7 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/platform"
+	"singbox-launcher/internal/srstag"
 )
 
 // RuleSetPolicy — итоговые настройки наборов одного правила.
@@ -54,6 +55,28 @@ func ResolveRuleSetPolicy(o state.RuleSetOptions, globals map[string]string) Rul
 	return p
 }
 
+// RulePolicy — настройки наборов правила с учётом его ссылок (SPEC 187):
+// правило kind=srs, у которого хотя бы один набор — локальный файл
+// (file://), целиком идёт в режиме local. Ядро по file:// не качает, а
+// правило — одна единица: делить его наборы между режимами незачем.
+func RulePolicy(rule state.Rule, globals map[string]string) RuleSetPolicy {
+	p := ResolveRuleSetPolicy(rule.RuleSetOptions(), globals)
+	if p.Remote && rule.Kind == state.RuleKindSrs && HasFileRef(rule.Refs) {
+		p.Remote = false
+	}
+	return p
+}
+
+// HasFileRef — среди ссылок на наборы есть локальный файл (file://).
+func HasFileRef(refs []string) bool {
+	for _, r := range refs {
+		if srstag.IsFileRef(r) {
+			return true
+		}
+	}
+	return false
+}
+
 // remoteRuleSetBody — запись rule_set для ядра в режиме remote. ok=false —
 // цель download_detour недоступна в итоговом конфиге: набор не эмитится
 // (ядро отвергло бы конфиг целиком). finalTags == nil — проверки нет (превью).
@@ -62,7 +85,7 @@ func remoteRuleSetBody(tag, format, rawURL string, p RuleSetPolicy, finalTags ma
 		return nil, false
 	}
 	if format == "" {
-		format = "binary"
+		format = srstag.FormatFromRef(rawURL)
 	}
 	rs := map[string]interface{}{
 		"tag":    tag,
@@ -124,7 +147,7 @@ func (c PresetMergeContext) RuleSetFetches() []RuleSetFetch {
 		if !rule.Enabled {
 			continue
 		}
-		policy := ResolveRuleSetPolicy(rule.RuleSetOptions(), globals)
+		policy := RulePolicy(rule, globals)
 		if policy.Remote {
 			continue
 		}

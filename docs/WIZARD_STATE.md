@@ -62,7 +62,7 @@ saved, where it goes at build time.
   current state untouched. Without a `state.json` the checkbox is locked on.
 - **`bin/subscriptions/<source_id>.raw`** — the per-source raw subscription body
   cache (atomic .tmp + rename). The read path parses `.raw` directly, no network.
-- **`bin/rule-sets/<tag>.srs`** — downloaded rule-sets.
+- **`bin/rule-sets/<tag>.srs`** (source-format sets: `<name>-<hash>.json`) — rule-set copies: downloaded by URL or copied from a `file://` ref (SPEC 187).
 
 **A remote machine** (SPEC 098): everything it owns lives under one directory,
 where `<id>` is the ID of its entry in the `bin/remote-daemons.json` registry:

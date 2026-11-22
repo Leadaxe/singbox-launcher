@@ -134,3 +134,14 @@ func (f *RuleSetOptionsForm) Value() corestate.RuleSetOptions {
 	}
 	return o
 }
+
+// SetModeLocked запирает выбор режима (SPEC 187): правило с набором-файлом
+// (file://) всегда идёт в режиме local, что бы ни стояло в поле. Значение
+// поля не меняется — убрали файл из правила, выбор вернулся.
+func (f *RuleSetOptionsForm) SetModeLocked(locked bool) {
+	if locked {
+		f.mode.Disable()
+		return
+	}
+	f.mode.Enable()
+}

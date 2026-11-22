@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"image/color"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -42,6 +43,7 @@ import (
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
+	"singbox-launcher/internal/srstag"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -73,9 +75,9 @@ func srsGroupDeadline(n int) time.Duration {
 	return d
 }
 
-func srsBtnDownload() string { return locale.T("⬇ srs") }
-func srsBtnLoading() string  { return locale.T("🔄 srs") }
-func srsBtnDone() string     { return locale.T("✔️ srs") }
+func srsBtnDownload() string { return locale.T("⬇ upd") }
+func srsBtnLoading() string  { return locale.T("🔄 upd") }
+func srsBtnDone() string     { return locale.T("✔️ upd") }
 
 // srsEntriesTooltip возвращает строку URL для tooltip кнопки SRS.
 // customRuleSRSEntries возвращает записи SRS для строки правила, если это пресет с rule_sets; иначе ok=false.
@@ -94,15 +96,19 @@ func customRuleSRSEntries(model *wizardmodels.WizardModel, customRule *wizardmod
 	if customRule == nil {
 		return nil, false
 	}
-	if ruleSetsRemote(model, customRule.SrsOptions) {
-		return nil, false
-	}
 	if wizardmodels.DetermineRuleType(customRule.Rule.Rule) != wizardmodels.RuleTypeSRS || len(customRule.Rule.RuleSets) == 0 {
 		return nil, false
 	}
 	entries = services.GetSRSEntries(customRule.Rule.RuleSets)
+	hasFile := false
 	for i := range entries {
 		entries[i].Tag = build.SRSTagFromURL(entries[i].URL)
+		hasFile = hasFile || srstag.IsFileRef(entries[i].URL)
+	}
+	// SPEC 187: правило с набором-файлом (file://) целиком идёт в режиме
+	// local (build.RulePolicy) — копии держит лаунчер, кнопка нужна.
+	if !hasFile && ruleSetsRemote(model, customRule.SrsOptions) {
+		return nil, false
 	}
 	return entries, true
 }
@@ -116,6 +122,24 @@ func ruleSetsRemote(model *wizardmodels.WizardModel, opts corestate.RuleSetOptio
 	return build.ResolveRuleSetPolicy(opts, model.SettingsVars).Remote
 }
 
+// srsMissingSourceHint — строка подсказки для набора-файла (file://, SPEC 187),
+// чей исходник пропал: правило работает на последней копии.
+func srsMissingSourceHint(entries []services.SRSEntry) string {
+	for _, e := range entries {
+		if !srstag.IsFileRef(e.URL) {
+			continue
+		}
+		p, err := srstag.PathFromFileRef(e.URL)
+		if err != nil {
+			continue
+		}
+		if _, statErr := os.Stat(filepath.FromSlash(p)); statErr != nil {
+			return "\n" + locale.T("Source file not found — the last copy is used")
+		}
+	}
+	return ""
+}
+
 // srsLastUpdatedHint — строка подсказки с датой загрузки наборов (самый
 // старый файл группы); пусто, если не скачан ни один.
 func srsLastUpdatedHint(model *wizardmodels.WizardModel, entries []services.SRSEntry) string {
@@ -123,7 +147,7 @@ func srsLastUpdatedHint(model *wizardmodels.WizardModel, entries []services.SRSE
 	for _, e := range entries {
 		path := services.RuleSRSPath(model.DataDir, e.Tag)
 		if dir := model.SrsDir(); dir != "" {
-			path = filepath.Join(dir, e.Tag+".srs")
+			path = filepath.Join(dir, srstag.FileName(e.Tag))
 		}
 		mod, ok := services.SRSFileModTime(path)
 		if !ok {
@@ -156,7 +180,7 @@ func srsEntriesTooltip(entries []services.SRSEntry) string {
 // auto-download-on-open сценария (open configurator → preset enabled но SRS
 // потёрты): мы тихо пробуем скачать, на failure только лог. Иначе при
 // каждом открытии configurator'а без сети юзера бы засыпало popup'ами.
-// Button text всё равно вернётся к "⬇ srs" — юзер увидит что не скачано и
+// Button text всё равно вернётся к "⬇ upd" — юзер увидит что не скачано и
 // может попробовать вручную.
 func runSRSDownloadAsync(
 	presenter *wizardpresentation.WizardPresenter,
@@ -603,7 +627,7 @@ func createCustomRuleSRSButton(
 	btn := fynewidget.NewHoverForwardTTButton(initialText, nil, rowGetter)
 	btn.Importance = widget.LowImportance
 	if t := srsEntriesTooltip(srsEntries); t != "" {
-		btn.SetToolTip(t + srsLastUpdatedHint(model, srsEntries))
+		btn.SetToolTip(t + srsLastUpdatedHint(model, srsEntries) + srsMissingSourceHint(srsEntries))
 	}
 	btn.OnTapped = func() {
 		runSRSDownloadAsync(presenter, model, guiState, srsEntries, btn.TTWidget(), outboundSelect, func() {

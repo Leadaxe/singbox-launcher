@@ -17,6 +17,7 @@ import (
 
 	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/srstag"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -99,7 +100,7 @@ func convertPresetRefToUserRules(
 				if url, ok := rs["url"].(string); ok && url != "" {
 					rsRaw, _ := json.Marshal(map[string]interface{}{
 						"type":   "remote",
-						"format": "binary",
+						"format": srstag.FormatFromRef(url),
 						"url":    url,
 					})
 					cr := wizardmodels.RuleState{

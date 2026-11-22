@@ -64,7 +64,7 @@
   положении.
 - **`bin/subscriptions/<source_id>.raw`** — per-source raw body cache подписки
   (atomic .tmp + rename). Read-path парсит .raw напрямую без сети.
-- **`bin/rule-sets/<tag>.srs`** — скачанные rule-set'ы.
+- **`bin/rule-sets/<tag>.srs`** (наборы исходного формата: `<имя>-<хеш>.json`) — копии наборов правил: скачанные по URL или скопированные по ссылке `file://` (SPEC 187).
 
 **Удалённая машина** (SPEC 098): всё её имущество — под одной директорией,
 где `<id>` = ID записи реестра `bin/remote-daemons.json`:

@@ -1640,14 +1640,14 @@
   "No DNS rules.": {
     "value": "Нет DNS-правил."
   },
-  "⬇ srs": {
-    "value": "⬇ srs"
+  "⬇ upd": {
+    "value": "⬇ upd"
   },
-  "🔄 srs": {
-    "value": "🔄 srs"
+  "🔄 upd": {
+    "value": "🔄 upd"
   },
-  "✔️ srs": {
-    "value": "✔️ srs"
+  "✔️ upd": {
+    "value": "✔️ upd"
   },
   "Template file bin/%s not found.": {
     "value": "Файл шаблона bin/%s не найден."
@@ -1694,8 +1694,8 @@
   "Drag to reorder": {
     "value": "Перетащите, чтобы изменить порядок"
   },
-  "Rule-set file not downloaded — this rule won't work until the SRS is fetched. The launcher is downloading it in the background; you can also click ⬇ srs to retry.": {
-    "value": "Файл rule-set не скачан — это правило не будет работать пока SRS не загружен. Launcher скачивает в фоне; можно нажать ⬇ srs для ручного retry."
+  "Rule-set file not downloaded — this rule won't work until the SRS is fetched. The launcher is downloading it in the background; you can also click ⬇ upd to retry.": {
+    "value": "Файл rule-set не скачан — это правило не будет работать пока SRS не загружен. Launcher скачивает в фоне; можно нажать ⬇ upd для ручного retry."
   },
   "Default direction:": {
     "value": "Направление по умолчанию:"
@@ -1786,11 +1786,11 @@
   "Custom JSON:": {
     "value": "Произвольный JSON:"
   },
-  "SRS URLs (one per line)\ne.g. https://raw.githubusercontent.com/.../file.srs": {
-    "value": "URL SRS-файлов (по одному на строку)\nнапр. https://raw.githubusercontent.com/.../file.srs"
+  "URLs or files (one per line), .srs or .json\ne.g. https://raw.githubusercontent.com/.../file.srs": {
+    "value": "URL или файлы (по одному на строку), .srs или .json\nнапр. https://raw.githubusercontent.com/.../file.srs"
   },
-  "SRS URLs (one per line):": {
-    "value": "URL SRS-файлов (по одному на строку):"
+  "Rule sets — URL or file (one per line):": {
+    "value": "Наборы правил — URL или файл (по одному на строку):"
   },
   "IP Addresses (CIDR)": {
     "value": "IP-адреса (CIDR)"
@@ -1801,8 +1801,29 @@
   "Processes": {
     "value": "Процессы"
   },
-  "SRS": {
-    "value": "SRS"
+  "Rule set": {
+    "value": "Набор правил"
+  },
+  "Add file…": {
+    "value": "Добавить файл…"
+  },
+  "Choose a rule-set file": {
+    "value": "Выберите файл набора правил"
+  },
+  "Rule-set file not found": {
+    "value": "Файл набора правил не найден"
+  },
+  "Not a rule-set file (.srs or .json expected)": {
+    "value": "Это не файл набора правил (нужен .srs или .json)"
+  },
+  "Network paths are not supported for rule sets": {
+    "value": "Сетевые пути для наборов правил не поддерживаются"
+  },
+  "Rule-set file path is not valid": {
+    "value": "Некорректный путь к файлу набора правил"
+  },
+  "Source file not found — the last copy is used": {
+    "value": "Исходный файл не найден — используется последняя копия"
   },
   "Custom JSON": {
     "value": "Произвольный JSON"
@@ -6229,5 +6250,8 @@
   },
   "For your own SRS rules, set DNS in the rule itself: Rules → edit the rule → DNS tab.": {
     "value": "Для своих SRS-правил DNS задаётся в самом правиле: Rules → изменить правило → вкладка DNS."
+  },
+  "The name conflicts with the rule %q — choose another one.": {
+    "value": "Имя конфликтует с правилом %q — выберите другое."
   }
 }

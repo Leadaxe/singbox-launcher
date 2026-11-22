@@ -26,6 +26,7 @@ import (
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
+	"singbox-launcher/internal/srstag"
 )
 
 const (
@@ -130,10 +131,13 @@ func refreshRuleSetFiles(ctx context.Context, fetches []build.RuleSetFetch, dir 
 	now := time.Now()
 	var jobs []job
 	for _, f := range fetches {
-		path := filepath.Join(dir, f.FileTag+".srs")
+		path := filepath.Join(dir, srstag.FileName(f.FileTag))
 		mod, exists := services.SRSFileModTime(path)
+		// SPEC 187: file://-набор сверяется с исходником на каждом обходе —
+		// сравнение размера и времени бесплатно, период к нему не применяется
+		// (0 по-прежнему выключает автообновление).
 		stale := exists && !opts.onlyMissing && f.IntervalHours > 0 &&
-			now.Sub(mod) >= time.Duration(f.IntervalHours)*time.Hour
+			(srstag.IsFileRef(f.URL) || now.Sub(mod) >= time.Duration(f.IntervalHours)*time.Hour)
 		if exists && !stale {
 			continue
 		}

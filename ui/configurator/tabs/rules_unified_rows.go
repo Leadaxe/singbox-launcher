@@ -33,7 +33,7 @@ import (
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
-	rulesTooltipSrsMissingEnabledText = "Rule-set file not downloaded — this rule won't work until the SRS is fetched. The launcher is downloading it in the background; you can also click ⬇ srs to retry."
+	rulesTooltipSrsMissingEnabledText = "Rule-set file not downloaded — this rule won't work until the SRS is fetched. The launcher is downloading it in the background; you can also click ⬇ upd to retry."
 )
 
 // buildUnifiedRuleRows — один обход через RuleOrder, рендерит tile per slot.
@@ -350,9 +350,9 @@ func buildSinglePresetRefRow(
 
 	// Auto-download silent: SRS missing у enabled preset'а — пробуем
 	// тихо скачать сразу. Failure не показывает popup (silent=true) —
-	// юзер увидит остающуюся ⚠ + ⬇ srs кнопку для ручного retry.
+	// юзер увидит остающуюся ⚠ + ⬇ upd кнопку для ручного retry.
 	// Success path: refreshRulesTabFromPresenter пересоберёт row → srsWarn
-	// исчезнет, btn станет "✔️ srs". Cascade safety: success-path не
+	// исчезнет, btn станет "✔️ upd". Cascade safety: success-path не
 	// re-kick'ает (после success !AllSRSDownloaded → false → check fails).
 	if srsMissingEnabled && srsHF != nil {
 		runSRSDownloadAsync(presenter, model, guiState, srsEntries, srsHF.TTWidget(), nil,

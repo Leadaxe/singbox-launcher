@@ -15,6 +15,7 @@ import (
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/paths"
+	"singbox-launcher/internal/srstag"
 )
 
 // RouteSource — discriminator происхождения route entry.
@@ -233,7 +234,7 @@ func resolvePresetRouteRule(
 		return
 	}
 	presetLabel := p.DisplayLabel()
-	policy := ResolveRuleSetPolicy(rule.RuleSetOptions(), globalVars)
+	policy := RulePolicy(rule, globalVars)
 
 	// RuleSets из preset.RuleSet (после ExpandPreset уже substituted + prefixed).
 	for _, rs := range frags.RuleSets {
@@ -350,7 +351,7 @@ func resolveSrsRouteRule(
 	id := corestate.StableRuleID(rule)
 	// state v8: список наборов — поле записи Refs (вид отдаёт его же).
 	urls := sb.Refs
-	policy := ResolveRuleSetPolicy(rule.RuleSetOptions(), globalVars)
+	policy := RulePolicy(rule, globalVars)
 	skipRule := func(reason string) {
 		out.RuleSets = append(out.RuleSets, ResolvedRouteRuleSet{
 			Tag:           corestate.SrsRuleSetTag(id, 0),
@@ -368,7 +369,7 @@ func resolveSrsRouteRule(
 	remoteBodies := make([]map[string]interface{}, 0, len(urls))
 	if policy.Remote {
 		for i, u := range urls {
-			rs, ok := remoteRuleSetBody(corestate.SrsRuleSetTag(id, i), "binary", u, policy, finalTags)
+			rs, ok := remoteRuleSetBody(corestate.SrsRuleSetTag(id, i), "", u, policy, finalTags)
 			if !ok {
 				skipRule("download_detour unavailable")
 				return
@@ -399,7 +400,7 @@ func resolveSrsRouteRule(
 		rs := map[string]interface{}{
 			"tag":    tag,
 			"type":   "local",
-			"format": "binary",
+			"format": srstag.FormatFromRef(urls[i]),
 			"path":   path,
 		}
 		if policy.Remote {

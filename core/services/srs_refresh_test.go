@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"singbox-launcher/internal/srstag"
 )
 
 // TestRefreshSRS — обновление набора (SPEC 185): устаревший файл заменяется,
@@ -100,5 +102,86 @@ func TestRefreshSRS(t *testing.T) {
 	}
 	if read() != "SRS\x03newer" {
 		t.Fatalf("HTTP 502 replaced the file: %q", read())
+	}
+}
+
+// TestRefreshSRSFileRef — набор из локального файла (file://, SPEC 187):
+// копия создаётся под именем от ссылки, правка исходника доезжает до копии,
+// неизменённый исходник копию не трогает, пропавший — не портит, а не-JSON
+// под ссылкой .json отвергается до замены.
+func TestRefreshSRSFileRef(t *testing.T) {
+	srcDir, dstDir := t.TempDir(), t.TempDir()
+	src := filepath.Join(srcDir, "my rules.json")
+	if err := os.WriteFile(src, []byte(`{"version":3,"rules":[{"domain":["a.example"]}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ref, err := srstag.FileRefFromPath(filepath.ToSlash(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := srstag.FormatFromRef(ref); got != srstag.FormatSource {
+		t.Fatalf("format = %q, want source", got)
+	}
+	tag := srstag.TagFromURL(ref)
+	name := srstag.FileName(tag)
+	if filepath.Ext(name) != ".json" || srstag.TagFromFileName(name) != tag {
+		t.Fatalf("file name %q does not round-trip tag %q", name, tag)
+	}
+	dst := filepath.Join(dstDir, name)
+	ctx := context.Background()
+
+	changed, err := RefreshSRS(ctx, ref, dst)
+	if err != nil || !changed {
+		t.Fatalf("first copy: changed=%v err=%v", changed, err)
+	}
+	if changed, err = RefreshSRS(ctx, ref, dst); err != nil || changed {
+		t.Fatalf("unchanged source: changed=%v err=%v", changed, err)
+	}
+
+	body2 := `{"version":3,"rules":[{"domain":["a.example","b.example"]}]}`
+	if err := os.WriteFile(src, []byte(body2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err = RefreshSRS(ctx, ref, dst); err != nil || !changed {
+		t.Fatalf("edited source: changed=%v err=%v", changed, err)
+	}
+	if got, _ := os.ReadFile(dst); string(got) != body2 {
+		t.Fatalf("copy = %q", got)
+	}
+
+	// Не JSON под ссылкой .json: копия остаётся прежней.
+	if err := os.WriteFile(src, []byte("SRS\x03binary-under-json-name"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = RefreshSRS(ctx, ref, dst); !errors.Is(err, ErrSRSInvalidContent) {
+		t.Fatalf("binary under .json: err=%v", err)
+	}
+	if got, _ := os.ReadFile(dst); string(got) != body2 {
+		t.Fatalf("copy damaged by a rejected source: %q", got)
+	}
+
+	// Исходник пропал: ошибка названа, копия цела.
+	if err := os.Remove(src); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = RefreshSRS(ctx, ref, dst); !errors.Is(err, ErrSRSSourceMissing) {
+		t.Fatalf("missing source: err=%v", err)
+	}
+	if got, _ := os.ReadFile(dst); string(got) != body2 {
+		t.Fatalf("copy damaged by a missing source: %q", got)
+	}
+
+	// Путь Windows и сетевой путь — строковая логика, без файловой системы.
+	if got, _ := srstag.FileRefFromPath(`C:\Rules\blocked.srs`); got != "file:///C:/Rules/blocked.srs" {
+		t.Fatalf("windows path ref = %q", got)
+	}
+	if got, _ := srstag.PathFromFileRef("file:///C:/Rules/blocked.srs"); got != "C:/Rules/blocked.srs" {
+		t.Fatalf("windows ref path = %q", got)
+	}
+	if _, err := srstag.FileRefFromPath(`\\server\share\x.srs`); !errors.Is(err, srstag.ErrNetworkPath) {
+		t.Fatalf("network path: err=%v", err)
+	}
+	if got := srstag.FileName(srstag.TagFromURL("https://example.com/a/list.srs")); filepath.Ext(got) != ".srs" {
+		t.Fatalf("srs url file name = %q", got)
 	}
 }

@@ -28,6 +28,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -39,14 +41,17 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/process"
+	"singbox-launcher/internal/srstag"
 
 	"singbox-launcher/core/build"
+	"singbox-launcher/core/services"
 	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/ui/components"
@@ -58,7 +63,7 @@ import (
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
 	addRulePlaceholderIpText      = "Enter IP addresses (CIDR format)\ne.g., 192.168.1.0/24"
-	addRulePlaceholderSrsUrlsText = "SRS URLs (one per line)\ne.g. https://raw.githubusercontent.com/.../file.srs"
+	addRulePlaceholderSrsUrlsText = "URLs or files (one per line), .srs or .json\ne.g. https://raw.githubusercontent.com/.../file.srs"
 	addRulePlaceholderUrlText     = "Enter domains or URLs (one per line)\ne.g., example.com"
 	addRuleArrayPastedText        = "Paste one rule at a time: the editor keeps one sing-box rule per entry"
 )
@@ -165,10 +170,12 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	srsURLsSizeRect := canvas.NewRectangle(color.Transparent)
 	srsURLsSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
 	srsURLsContainer := container.NewStack(srsURLsSizeRect, srsURLsScroll)
-	srsURLsLabel := widget.NewLabel(locale.T("SRS URLs (one per line):"))
+	srsURLsLabel := widget.NewLabel(locale.T("Rule sets — URL or file (one per line):"))
 	const runetfreedomSRSURL = "https://github.com/runetfreedom/russia-v2ray-rules-dat/tree/release/sing-box"
 	srsHintButton := widget.NewButton("?", nil)
-	srsLabelRow := container.NewHBox(srsURLsLabel, layout.NewSpacer(), srsHintButton)
+	// SPEC 187: набор с диска — строка file://… в том же поле.
+	srsAddFileButton := widget.NewButton(locale.T("Add file…"), nil)
+	srsLabelRow := container.NewHBox(srsURLsLabel, layout.NewSpacer(), srsAddFileButton, srsHintButton)
 
 	// Raw tab: JSON правила (синхронизация с формой при переключении вкладок)
 	rawTabEntry := fynewidget.NewJSONEditor("")
@@ -314,7 +321,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	typeLabelIP := locale.T("IP Addresses (CIDR)")
 	typeLabelDomain := locale.T("Domains/URLs")
 	typeLabelProcess := locale.T("Processes")
-	typeLabelSRS := locale.T("SRS")
+	typeLabelSRS := locale.T("Rule set")
 	typeLabelCustom := locale.T("Custom JSON")
 
 	ruleTypeRadio := widget.NewRadioGroup(
@@ -504,6 +511,11 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			if u == "" {
 				continue
 			}
+			// SPEC 187: вставленный путь и file://-ссылка — набор с диска.
+			u, err = normalizeRuleSetRef(u)
+			if err != nil {
+				return nil, nil, err
+			}
 			tag := srsTagFromURL(u)
 			if tag == "" {
 				continue
@@ -518,7 +530,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			entry := map[string]interface{}{
 				"tag":    tag,
 				"type":   "remote",
-				"format": "binary",
+				"format": srstag.FormatFromRef(u),
 				"url":    u,
 			}
 			raw, _ := json.Marshal(entry)
@@ -1010,6 +1022,17 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			dialog.ShowError(errors.New(locale.T("Rule name is required")), dialogWindow)
 			return
 		}
+		// Имя — источник идентификатора правила (state.StableRuleID): на нём
+		// держатся теги наборов и порядок. Два правила с одним идентификатором
+		// молча делили бы один набор, поэтому совпадение — отказ. Имя, которое
+		// не меняли, не проверяется: старое состояние с дублем остаётся
+		// редактируемым.
+		if editRule == nil || label != strings.TrimSpace(editRule.Rule.Label) {
+			if other := conflictingRuleName(model.CustomRules, editRule, label); other != "" {
+				dialog.ShowError(errors.New(locale.Tf("The name conflicts with the rule %q — choose another one.", other)), dialogWindow)
+				return
+			}
+		}
 		var ruleRaw map[string]interface{}
 		var srsRuleSets []json.RawMessage
 		selectedType := ruleSel.Type()
@@ -1163,7 +1186,23 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		updateButtonState()
 	}
 	pathPatternsEntry.OnChanged = func(string) { updateButtonState() }
-	srsURLsEntry.OnChanged = func(string) { updateButtonState() }
+	// SPEC 187: набор-файл в правиле — режим всегда local, выбор заперт.
+	syncSrsModeLock := func() {
+		locked := false
+		for _, line := range ParseLines(srsURLsEntry.Text, false) {
+			line = strings.TrimSpace(line)
+			if srstag.IsFileRef(line) || srstag.IsAbsPath(line) {
+				locked = true
+				break
+			}
+		}
+		srsOptionsForm.SetModeLocked(locked)
+	}
+	syncSrsModeLock()
+	srsURLsEntry.OnChanged = func(string) {
+		syncSrsModeLock()
+		updateButtonState()
+	}
 
 	// Helper to refresh selected processes UI (sorted by name)
 	var refreshSelectedProcessesUI func()
@@ -1451,6 +1490,39 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		return
 	}
 	dialogWindow = controller.UIService.Application.NewWindow(dialogTitle)
+	srsAddFileButton.OnTapped = func() {
+		appendFile := func(path string) {
+			ref, err := srstag.FileRefFromPath(path)
+			if err != nil {
+				dialog.ShowError(ruleSetFileError(path, err), dialogWindow)
+				return
+			}
+			text := strings.TrimRight(srsURLsEntry.Text, "\n")
+			if text != "" {
+				text += "\n"
+			}
+			srsURLsEntry.SetText(text + ref)
+		}
+		path, ok, err := platform.PickOpenFile(locale.T("Choose a rule-set file"), []string{"srs", "json"})
+		if err == platform.ErrNativeDialogUnavailable {
+			// Linux без zenity/kdialog — встроенный диалог Fyne.
+			fd := dialog.NewFileOpen(func(rc fyne.URIReadCloser, ferr error) {
+				if ferr != nil || rc == nil {
+					return
+				}
+				picked := rc.URI().Path()
+				_ = rc.Close()
+				appendFile(picked)
+			}, dialogWindow)
+			fd.SetFilter(storage.NewExtensionFileFilter([]string{".srs", ".json"}))
+			fd.Show()
+			return
+		}
+		if err != nil || !ok {
+			return
+		}
+		appendFile(path)
+	}
 	srsHintButton.OnTapped = func() {
 		msg := widget.NewLabel(locale.T("We recommend looking for suitable rule-set files in the project:"))
 		openBtn := widget.NewButton(locale.T("Open"), func() {
@@ -1652,4 +1724,59 @@ func rulePreviewText(model *wizardmodels.WizardModel, in rulePreviewInput) strin
 		text = "// " + strings.Join(notes, "\n// ") + "\n\n" + text
 	}
 	return text
+}
+
+// normalizeRuleSetRef приводит строку поля наборов к ссылке (SPEC 187):
+// абсолютный путь становится file://-ссылкой, а файл по file://-ссылке
+// проверяется — он должен существовать и быть набором своего формата. URL
+// возвращается как есть.
+func normalizeRuleSetRef(line string) (string, error) {
+	ref := line
+	if srstag.IsAbsPath(line) {
+		r, err := srstag.FileRefFromPath(line)
+		if err != nil {
+			return "", ruleSetFileError(line, err)
+		}
+		ref = r
+	}
+	if !srstag.IsFileRef(ref) {
+		return ref, nil
+	}
+	p, err := srstag.PathFromFileRef(ref)
+	if err != nil {
+		return "", ruleSetFileError(line, err)
+	}
+	path := filepath.FromSlash(p)
+	if info, statErr := os.Stat(path); statErr != nil || info.IsDir() {
+		return "", fmt.Errorf("%s: %s", locale.T("Rule-set file not found"), path)
+	}
+	if err := services.ValidateRuleSetFile(path, srstag.FormatFromRef(ref)); err != nil {
+		return "", fmt.Errorf("%s: %s", locale.T("Not a rule-set file (.srs or .json expected)"), path)
+	}
+	return ref, nil
+}
+
+// ruleSetFileError — понятная ошибка пути набора.
+func ruleSetFileError(path string, err error) error {
+	if errors.Is(err, srstag.ErrNetworkPath) {
+		return fmt.Errorf("%s: %s", locale.T("Network paths are not supported for rule sets"), path)
+	}
+	return fmt.Errorf("%s: %s", locale.T("Rule-set file path is not valid"), path)
+}
+
+// conflictingRuleName — имя другого пользовательского правила с тем же
+// идентификатором (state.StableRuleID), что дало бы имя label; пусто — конфликта
+// нет. self — редактируемое правило, оно не сравнивается с собой.
+func conflictingRuleName(rules []*wizardmodels.RuleState, self *wizardmodels.RuleState, label string) string {
+	id := corestate.StableRuleID(corestate.Rule{Kind: corestate.RuleKindInline, Name: label})
+	for _, rs := range rules {
+		if rs == nil || rs == self {
+			continue
+		}
+		other := strings.TrimSpace(rs.Rule.Label)
+		if other != "" && corestate.StableRuleID(corestate.Rule{Kind: corestate.RuleKindInline, Name: other}) == id {
+			return other
+		}
+	}
+	return ""
 }

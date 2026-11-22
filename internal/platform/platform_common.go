@@ -8,6 +8,7 @@ import (
 
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/paths"
+	"singbox-launcher/internal/srstag"
 )
 
 // ShortcutModifierLabel returns the human-visible label for the platform's
@@ -79,7 +80,7 @@ func GetRuleSetsDir(d paths.DataDir) string {
 // <DataDir>/bin/rule-sets/<tag>.srs. The only sanctioned way to compose it —
 // the path is emitted into config.json as rule_set[].path.
 func GetRuleSetPath(d paths.DataDir, tag string) string {
-	return filepath.Join(GetRuleSetsDir(d), tag+".srs")
+	return filepath.Join(GetRuleSetsDir(d), srstag.FileName(tag))
 }
 
 // GetTailscaleStateDir returns the root of tailnet state directories:

@@ -243,7 +243,7 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 			// Тег записи — content-addressed имя файла в bin/rule-sets/, тот же,
 			// что даёт диалог правила и downloader. Без него запись невидима
 			// для UI (GetSRSEntries отбрасывает записи без tag — кнопка
-			// «✔️ srs» и гейт скачивания пропадали после переоткрытия) и
+			// «✔️ upd» и гейт скачивания пропадали после переоткрытия) и
 			// валит сборку «Итога»: MergeRouteSection отвечает «remote entry
 			// missing tag» (репорт 1.5.4).
 			urls := sb.URLs()
@@ -252,7 +252,7 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 				rsRaw, _ := json.Marshal(map[string]interface{}{
 					"tag":    srstag.TagFromURL(u),
 					"type":   "remote",
-					"format": "binary",
+					"format": srstag.FormatFromRef(u),
 					"url":    u,
 				})
 				ruleSets = append(ruleSets, rsRaw)

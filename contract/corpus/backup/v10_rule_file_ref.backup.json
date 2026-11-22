@@ -1,0 +1,37 @@
+{
+  "lx_backup": 2,
+  "exported_by": {
+    "app": "launcher",
+    "version": "corpus",
+    "platform": "test"
+  },
+  "exported_at": "2026-11-22T00:00:00Z",
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "My files",
+      "enabled": true,
+      "num": 1000,
+      "refs": [
+        "file:///Users/a/my%20rules/corp.json",
+        "file:///C:/Rules/blocked.srs",
+        "https://example-5.com/lists.srs"
+      ],
+      "body": {
+        "outbound": "direct"
+      }
+    },
+    {
+      "kind": "srs",
+      "name": "Source list",
+      "enabled": true,
+      "num": 1010,
+      "refs": [
+        "https://example-5.com/domains.json"
+      ],
+      "body": {
+        "action": "reject"
+      }
+    }
+  ]
+}
