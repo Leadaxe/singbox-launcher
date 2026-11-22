@@ -50,13 +50,21 @@ func (e *condStackEditor) object() fyne.CanvasObject { return e.box }
 
 func (e *condStackEditor) newFrame(cond registryCond, values map[string]interface{}) *condFrame {
 	var f *condFrame
-	f = newCondFrame(e.ctx, cond, values, func() { e.removeFrame(f) })
+	f = newCondFrame(e.ctx, cond, values, func() {
+		c, err := f.read(false)
+		e.ctx.confirmRemove(wizardmodels.RuleCondStack{Conds: []wizardmodels.RuleCond{c}}, err,
+			locale.T("Remove this condition?"), func() { e.removeFrame(f) })
+	})
 	return f
 }
 
 func (e *condStackEditor) newGroup(g wizardmodels.RuleGroup) *groupEditor {
 	var ge *groupEditor
-	ge = newGroupEditor(e.ctx, g, func() { e.removeGroup(ge) })
+	ge = newGroupEditor(e.ctx, g, func() {
+		rg, err := ge.read(false)
+		e.ctx.confirmRemove(wizardmodels.RuleCondStack{Groups: []wizardmodels.RuleGroup{rg}}, err,
+			locale.T("Remove this rule group and everything in it?"), func() { e.removeGroup(ge) })
+	})
 	return ge
 }
 

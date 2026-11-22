@@ -16,6 +16,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -210,6 +211,22 @@ func (g *growEntry) visualRows(text string) int {
 		rows = lines
 	}
 	return rows
+}
+
+// confirmRemove — крестик рамки (условие, группа, правило группы): без данных
+// удаляет сразу, с данными — после подтверждения в окне правила, чтобы
+// случайный клик не стирал набранное. Заполненность — тем же
+// RuleCondTable.Empty, которым форма решает, что писать в тело при сохранении.
+func (c *ruleFormCtx) confirmRemove(stack wizardmodels.RuleCondStack, err error, question string, remove func()) {
+	if err == nil && c.table.Empty(stack) || c.win == nil {
+		remove()
+		return
+	}
+	dialog.ShowConfirm(locale.T("Confirmation"), question, func(ok bool) {
+		if ok {
+			remove()
+		}
+	}, c.win)
 }
 
 func (c *ruleFormCtx) changed() {

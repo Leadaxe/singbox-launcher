@@ -90,7 +90,10 @@ func (ge *groupEditor) relayout() {
 			ge.rulesBox.Add(ruleJoinLabel(join))
 		}
 		rule := r
-		remove := widget.NewButtonWithIcon("", theme.CancelIcon(), func() { ge.removeRule(rule) })
+		remove := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+			st, err := rule.read(false)
+			ge.ctx.confirmRemove(st, err, locale.T("Remove this rule?"), func() { ge.removeRule(rule) })
+		})
 		remove.Importance = widget.LowImportance
 		title := widget.NewLabel(locale.T("Rule"))
 		title.Importance = widget.LowImportance

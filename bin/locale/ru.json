@@ -6301,5 +6301,14 @@
   },
   "One per line, e.g. 00:11:22:33:44:55": {
     "value": "По одному в строке, например 00:11:22:33:44:55"
+  },
+  "Remove this condition?": {
+    "value": "Удалить это условие?"
+  },
+  "Remove this rule group and everything in it?": {
+    "value": "Удалить эту группу правил со всем содержимым?"
+  },
+  "Remove this rule?": {
+    "value": "Удалить это правило?"
   }
 }
