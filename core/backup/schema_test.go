@@ -387,6 +387,9 @@ func TestBackupWarningCodesAreActuallySet(t *testing.T) {
 	foreign := map[string]bool{
 		"backup_dns_entry_skipped": true,
 		"backup_warp_skipped":      true,
+		// Правило с набором-файлом (file://, контракт 1.1.178): выключает и
+		// называет LxBox; лаунчер запись переносит как есть.
+		"backup_rule_ref_local_file": true,
 	}
 	// Коды, которые лаунчер ставил только писателем 0.12 и с v1.6.0 не ставит
 	// вовсе (D-110): писатель 1.0 этих потерь не знает. В словаре контракта
