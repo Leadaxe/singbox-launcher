@@ -260,6 +260,70 @@ func TestRuleRefsLiftedIntoBody(t *testing.T) {
 	if got := byName(dst, "In memory"); string(got.Body) != `{"refs":["https://e.com/d.srs"],"outbound":"direct-out"}` || got.Refs != nil {
 		t.Errorf("запись старой формы экспортирована не в новой: %s (refs записи %v)", got.Body, got.Refs)
 	}
+
+	// ── Формы до v8: srs_url / srs_urls (state v6, v7), ref / refs (бэкап 0.12) ──
+	// Ссылки поднимаются в тело на каждом пути, порядок и дедуп сохраняются;
+	// legacy-вид (CustomRules) видит srs-правило со всеми наборами.
+	const legacyRules = `[
+	  {"kind": "srs", "enabled": true, "order_num": 1000, "body": {"name": "One", "srs_url": "https://e.com/a.srs", "outbound": "direct-out"}},
+	  {"kind": "srs", "enabled": true, "order_num": 1010, "body": {"name": "Many", "srs_url": "https://e.com/a.srs",
+	   "srs_urls": ["https://e.com/a.srs", "https://e.com/b.srs", "https://e.com/a.srs", "https://e.com/c.srs"], "outbound": "direct-out"}}
+	]`
+	legacyWant := map[string]string{
+		"One":  `{"refs":["https://e.com/a.srs"],"outbound":"direct-out"}`,
+		"Many": `{"refs":["https://e.com/a.srs","https://e.com/b.srs","https://e.com/c.srs"],"outbound":"direct-out"}`,
+	}
+	checkLegacy := func(stage string, st *state.State, view bool) {
+		t.Helper()
+		for name, want := range legacyWant {
+			r := byName(st, name)
+			if string(r.Body) != want || r.Refs != nil || r.Kind != state.RuleKindSrs {
+				t.Errorf("%s: %q: тело %s, refs записи %v, kind %q; ожидалось тело %s", stage, name, r.Body, r.Refs, r.Kind, want)
+			}
+			if !view {
+				continue
+			}
+			found := false
+			for _, cr := range st.CustomRules {
+				if cr.Label != name {
+					continue
+				}
+				found = true
+				if cr.Type != state.RuleTypeSRS || len(cr.RuleSet) != len(state.RuleRefs(r)) {
+					t.Errorf("%s: %q: legacy-вид Type %q, наборов %d, ожидалось srs и %d", stage, name, cr.Type, len(cr.RuleSet), len(state.RuleRefs(r)))
+				}
+			}
+			if !found {
+				t.Errorf("%s: %q нет в legacy-виде", stage, name)
+			}
+		}
+	}
+	for _, tc := range []struct{ stage, doc string }{
+		{"v6", `{"meta": {"version": 6}, "connections": {"sources": [], "outbounds": [], "defaults": {}}, "rules": ` + legacyRules + `}`},
+		{"v7", `{"meta": {"version": 7, "schema": "sources_v7"}, "sources": [], "directions": [], "rules": ` + legacyRules + `}`},
+	} {
+		st, err := state.Parse([]byte(tc.doc))
+		if err != nil {
+			t.Fatalf("%s: Parse: %v", tc.stage, err)
+		}
+		checkLegacy(tc.stage, st, true)
+	}
+	file012, _, err := backup.Parse([]byte(`{
+  "lx_backup": 1, "exported_by": {"app": "launcher", "version": "1.5.9", "platform": "darwin"}, "exported_at": "2025-06-15T15:06:40Z",
+  "rules": [
+    {"kind": "srs", "name": "One", "enabled": true, "ref": "https://e.com/a.srs", "outbound": "direct-out"},
+    {"kind": "srs", "name": "Many", "enabled": true, "ref": "https://e.com/a.srs",
+     "refs": ["https://e.com/a.srs", "https://e.com/b.srs", "https://e.com/a.srs", "https://e.com/c.srs"], "outbound": "direct-out"}
+  ]
+}`))
+	if err != nil {
+		t.Fatalf("0.12: Parse: %v", err)
+	}
+	dst012 := state.New()
+	if _, err := backup.ImportFile(dst012, file012, backup.ImportOptions{}); err != nil {
+		t.Fatalf("0.12: Import: %v", err)
+	}
+	checkLegacy("0.12", dst012, false)
 }
 
 // dropUpdatedAt — файл без строки meta.updated_at (её штампует Save).

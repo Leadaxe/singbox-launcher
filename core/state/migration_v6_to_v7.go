@@ -112,6 +112,14 @@ func migrateLegacyStateToV7(s *State, fromVersion int, lc LoadContext, legacy []
 	// состояние сохраняется сразу, поэтому отдельного прохода на загрузке нет.
 	NormalizeNodeLinks(s.Sources, s.Directions)
 
+	// SPEC 188: правила легаси-путей (v6 — ссылки `srs_url`/`srs_urls` в
+	// `Rule.Refs`, v5/v2–4 — из CustomRules) приходят к норме v9 тем же
+	// порядком, что у чтения v8 (disk_v8.go): ссылки в тело, затем старые
+	// теги наборов `user:<id>` → теги по имени правила. Без этого legacy-вид
+	// (CustomRules) и всё, что читает тело, видели srs-правило без наборов.
+	NormalizeRuleRecords(s.Rules)
+	MigrateRuleSetTagRefsV9(s.Rules, s.DNS.Rules)
+
 	// Шаг 8 (снос raw-кэша и переезд defaults) выполняется только после
 	// успешной записи v7-файла — см. Load; здесь лишь помечаем готовность.
 	s.Migration = m.rep

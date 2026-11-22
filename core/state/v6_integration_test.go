@@ -314,11 +314,19 @@ func TestParseV6_LegacySRSConversion(t *testing.T) {
 	if cr.Type != RuleTypeSRS {
 		t.Errorf("Type: %q want srs", cr.Type)
 	}
-	// rule_set ключ обязан быть в Rule — иначе DetermineRuleType вернёт raw.
-	if _, has := cr.Rule["rule_set"]; !has {
-		t.Errorf("Rule must contain rule_set hint for SRS detection: %+v", cr.Rule)
+	// Признак наборов обязан быть в Rule — иначе форма откроет правило как
+	// raw: хинт `rule_set` (форма «наборы + выход») или ссылки `refs` в теле
+	// (форма дерева условий, SPEC 188).
+	_, hasHint := cr.Rule["rule_set"]
+	_, hasRefs := cr.Rule[RuleKeyRefs]
+	if !hasHint && !hasRefs {
+		t.Errorf("Rule must carry rule_set hint or refs for SRS detection: %+v", cr.Rule)
 	}
 	if len(cr.RuleSet) != 1 {
 		t.Errorf("RuleSet count: %d", len(cr.RuleSet))
+	}
+	// Ссылка srs_url поднята в тело записи (SPEC 188): её видят сборка и UI.
+	if refs := RuleRefs(s.Rules[0]); len(refs) != 1 || refs[0] != "https://example.com/list.srs" || s.Rules[0].Refs != nil {
+		t.Errorf("srs_url не поднят в тело: body %s, refs записи %v", s.Rules[0].Body, s.Rules[0].Refs)
 	}
 }
