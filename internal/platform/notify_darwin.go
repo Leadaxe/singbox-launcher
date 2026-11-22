@@ -50,6 +50,11 @@ import (
 // этот список и при отказе шлёт через osascript, а дальше в этом процессе
 // старый API уже не пробует. Новый API здесь не вызывается совсем: на ad-hoc
 // подписи он всё равно отвечает ошибкой.
+//
+// У прежнего bundle id лаунчера (com.singbox.launcher, до v2.4.3) usernoted
+// такую отметку держит, поэтому бандл переименован в
+// com.leadaxe.singbox-launcher (build/build_darwin.sh); ID Fyne в
+// uiservice прежний, чтобы его настройки не потерялись.
 func SendNotification(title, content string) bool {
 	cTitle := C.CString(title)
 	defer C.free(unsafe.Pointer(cTitle))
