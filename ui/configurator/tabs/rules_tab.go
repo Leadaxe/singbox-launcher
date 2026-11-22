@@ -20,6 +20,7 @@ import (
 	"errors"
 	"image/color"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/services"
+	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
@@ -85,8 +87,14 @@ func srsBtnDone() string     { return locale.T("✔️ srs") }
 // CollectSrsCachedPaths → orphan GC (collectAllStageRuleSetTags). Без
 // override был bug: файл сохранялся под одним именем, sing-box искал под
 // другим (r.ID-based), orphan GC удалял реально-скачанный файл.
-func customRuleSRSEntries(customRule *wizardmodels.RuleState) (entries []services.SRSEntry, ok bool) {
+//
+// SPEC 185: у правила в режиме remote наборы качает ядро — файлов у лаунчера
+// нет, кнопка и гейт скачивания не нужны (ok=false).
+func customRuleSRSEntries(model *wizardmodels.WizardModel, customRule *wizardmodels.RuleState) (entries []services.SRSEntry, ok bool) {
 	if customRule == nil {
+		return nil, false
+	}
+	if ruleSetsRemote(model, customRule.SrsOptions) {
 		return nil, false
 	}
 	if wizardmodels.DetermineRuleType(customRule.Rule.Rule) != wizardmodels.RuleTypeSRS || len(customRule.Rule.RuleSets) == 0 {
@@ -97,6 +105,38 @@ func customRuleSRSEntries(customRule *wizardmodels.RuleState) (entries []service
 		entries[i].Tag = build.SRSTagFromURL(entries[i].URL)
 	}
 	return entries, true
+}
+
+// ruleSetsRemote — наборы правила качает ядро (режим remote, SPEC 185): своё
+// значение правила, иначе общее из Settings.
+func ruleSetsRemote(model *wizardmodels.WizardModel, opts corestate.RuleSetOptions) bool {
+	if model == nil {
+		return false
+	}
+	return build.ResolveRuleSetPolicy(opts, model.SettingsVars).Remote
+}
+
+// srsLastUpdatedHint — строка подсказки с датой загрузки наборов (самый
+// старый файл группы); пусто, если не скачан ни один.
+func srsLastUpdatedHint(model *wizardmodels.WizardModel, entries []services.SRSEntry) string {
+	var oldest time.Time
+	for _, e := range entries {
+		path := services.RuleSRSPath(model.DataDir, e.Tag)
+		if dir := model.SrsDir(); dir != "" {
+			path = filepath.Join(dir, e.Tag+".srs")
+		}
+		mod, ok := services.SRSFileModTime(path)
+		if !ok {
+			continue
+		}
+		if oldest.IsZero() || mod.Before(oldest) {
+			oldest = mod
+		}
+	}
+	if oldest.IsZero() {
+		return ""
+	}
+	return "\n\n" + locale.Tf("Last updated: %s", oldest.Format("2006-01-02 15:04"))
 }
 
 func srsEntriesTooltip(entries []services.SRSEntry) string {
@@ -341,7 +381,7 @@ func buildSingleCustomRuleRow(
 	dragGroup *fynewidget.DragReorderGroup,
 ) {
 	customRule := model.CustomRules[customIdx]
-	srsEntries, isSRSRule := customRuleSRSEntries(customRule)
+	srsEntries, isSRSRule := customRuleSRSEntries(model, customRule)
 
 	var row *fynewidget.HoverRow
 	rowGetter := func() *fynewidget.HoverRow { return row }
@@ -419,7 +459,7 @@ func createRuleEnableCheckbox(
 	var ch *widget.Check
 	ch = widget.NewCheck("", func(val bool) {
 		if val {
-			entries, isSRS := customRuleSRSEntries(customRule)
+			entries, isSRS := customRuleSRSEntries(model, customRule)
 			if isSRS && len(entries) > 0 && !services.AllSRSDownloadedIn(model.DataDir, model.SrsDir(), entries) {
 				if !guiState.UpdatingOutboundOptions && *srsButtonRef != nil {
 					*enableRuleOnSRSSuccess = true
@@ -563,7 +603,7 @@ func createCustomRuleSRSButton(
 	btn := fynewidget.NewHoverForwardTTButton(initialText, nil, rowGetter)
 	btn.Importance = widget.LowImportance
 	if t := srsEntriesTooltip(srsEntries); t != "" {
-		btn.SetToolTip(t)
+		btn.SetToolTip(t + srsLastUpdatedHint(model, srsEntries))
 	}
 	btn.OnTapped = func() {
 		runSRSDownloadAsync(presenter, model, guiState, srsEntries, btn.TTWidget(), outboundSelect, func() {

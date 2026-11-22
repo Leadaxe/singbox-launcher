@@ -39,6 +39,7 @@ import (
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
+	"singbox-launcher/ui/configurator/dialogs"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
@@ -298,6 +299,13 @@ func showEditPresetRefDialog(
 
 	formInner := container.NewVBox(formItems...)
 	formContent := container.NewVBox(formInner)
+	// SPEC 185: настройки наборов — только у пресета с remote rule_set.
+	var srsOptionsForm *dialogs.RuleSetOptionsForm
+	if len(presetRefSRSEntries(pr, tplPreset)) > 0 {
+		srsOptionsForm = dialogs.NewRuleSetOptionsForm(pr.SrsOptions,
+			wizardbusiness.EnsureDefaultAvailableOutbounds(wizardbusiness.GetAvailableOutbounds(model)), nil)
+		formContent.Add(srsOptionsForm.Box)
+	}
 
 	// ===== JSON tab: preview эмитнутого fragment'а =====
 	refreshJSON()
@@ -402,6 +410,9 @@ func showEditPresetRefDialog(
 		newVars, _, _ := corestate.NormalizeRecordVarMap(working,
 			wizardtemplate.PresetRecordVarDecls(tplPreset), "")
 		pr.Vars = newVars
+		if srsOptionsForm != nil {
+			pr.SrsOptions = srsOptionsForm.Value()
+		}
 		presenter.MarkAsChanged()
 		editWindow.Close()
 		refreshRulesTabFromPresenter(presenter, showAddRuleDialog)

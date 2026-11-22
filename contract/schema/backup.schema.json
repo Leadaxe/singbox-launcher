@@ -1092,7 +1092,16 @@
           "type": "integer",
           "minimum": 0,
           "default": 168,
-          "description": "kind: srs. Период обновления наборов, часы. Поддержка: LxBox. Лаунчер поле игнорирует молча: в состояние не кладёт и предупреждения не даёт. Отсутствие ключа в файле значение у приёмника не сбрасывает (BACKUP.md §2, «Поля стороны LxBox»)."
+          "description": "kind: srs|preset. Период обновления наборов правила, часы; 0 — не обновлять. Поддержка: обе (контракт 1.1.177; до него — поле стороны LxBox у kind: srs). Нет поля — общее значение приложения (у лаунчера переменная srs_update_interval_hours, умолчание 168)."
+        },
+        "srs_mode": {
+          "type": "string",
+          "enum": ["local", "remote"],
+          "description": "kind: srs|preset. Кто качает наборы правила: local — приложение, ядру уходит type:local; remote — ядро, ему уходит type:remote с url, update_interval и download_detour. Поддержка: лаунчер (контракт 1.1.177). Нет поля — общее значение (переменная srs_mode, умолчание local)."
+        },
+        "download_detour": {
+          "type": "string",
+          "description": "kind: srs|preset. Тег выхода, через который ядро качает наборы правила в режиме remote (rule_set[].download_detour). Поддержка: лаунчер (контракт 1.1.177). Нет поля — общее значение (переменная srs_download_detour); пусто — выход ядра по умолчанию."
         },
         "verbatim": {
           "type": "boolean",

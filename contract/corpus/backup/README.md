@@ -523,12 +523,21 @@ Side-specific ожидание LxBox (ответ на вопрос 5, `TASKS_LXB
 Норма — `docs/BACKUP.md` §2 «Поля стороны LxBox», §10 (код
 `backup_group_degraded`); перечень — `TASKS_LXBOX.md` §16.7.
 
+**`v10_rule_set_options`** — настройки наборов правила (контракт 1.1.177):
+`srs_mode`, `update_interval_hours`, `download_detour` у трёх правил `kind: srs`
+— все три заданы, период `0` («не обновлять») и правило без настроек. Ключ
+ожиданий правила `rule_set {srs_mode, update_interval_hours, download_detour}`
+необязателен; отсутствие поля внутри значит «у правила значения нет».
+У лаунчера доезжают все три поля, у LxBox (`.expected.lxbox.json`) — только
+`update_interval_hours`: `srs_mode` и `download_detour` — «Поддержка: лаунчер».
+
 **`v10_lxbox_fields`** — все объявленные поля стороны LxBox в одном файле:
 `native_prefs` в корне (1.1.158),
 `detour_policy` / `import_rules` / `import_rules_enabled` / `on_update_action`
 у подписки, `detour_policy` и `tag_policy {prefix}` у корневого сервера,
 `detour_policy` / `ping_url` / `ping_timeout_ms` у папки, `label` у цепочки,
 `members_rule` и `pool_badge` у группы с явным составом, `update_interval_hours`
+(с контракта 1.1.177 — общее поле, лаунчер его хранит)
 у srs-правила, `verbatim` у inline-правила, `description` у DNS-серверов. У
 лаунчера импорт проходит **без предупреждений**, а состояние такое же, как
 после импорта того же файла без этих полей (Go-тест

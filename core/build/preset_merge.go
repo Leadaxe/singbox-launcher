@@ -284,6 +284,11 @@ type PresetMergeContext struct {
 	// шаблонный тег; боевой путь обязан передавать поле.
 	EmittedRuleSetTags map[string]bool
 
+	// FinalOutboundTags (SPEC 185) — итоговое множество тегов выходов, по
+	// которому проверяется download_detour набора в режиме remote. nil —
+	// проверки нет (превью). Заполняется там же, где EmittedRuleSetTags.
+	FinalOutboundTags map[string]bool
+
 	// templateWarnings — накопитель предупреждений раскрытия пресетов и
 	// DNS-серверов (SPEC 143): заполняет BuildConfig, пишут MergePresetsInto*.
 	// nil — вызывающий отчёт не собирает, предупреждения остаются в логе.
@@ -352,7 +357,7 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 
 	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	tdVal := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars, PresetNodes: ctx.PresetNodes}
-	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())
+	resolved := ResolveRouteChecked(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues(), ctx.FinalOutboundTags)
 	ctx.noteTemplateWarnings(resolved.Warnings)
 
 	// Dedup по tag (template уже мог эмитить rule_sets).
@@ -680,7 +685,7 @@ func CollectEmittedRouteRuleSetTags(routeRaw json.RawMessage, routeCfg RouteConf
 	// PresetNodes — как в MergePresetsIntoRoute: наборы пресета for_each_node*
 	// раскрываются по узлам, без них множество было бы неполным (SPEC 153).
 	tdVal := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars, PresetNodes: ctx.PresetNodes}
-	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues())
+	resolved := ResolveRouteChecked(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues(), ctx.FinalOutboundTags)
 	for _, rs := range resolved.RuleSets {
 		if rs.Skipped || !rs.Enabled {
 			continue

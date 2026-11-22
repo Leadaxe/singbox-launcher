@@ -1568,3 +1568,36 @@ OpenConnectSubmitForm / OpenConnectSubmitBrowser / OpenConnectCancel
   listener are on this computer and the machine's core receives only the URL
   string. Cookie/header SSO (AnyConnect) is not supported: the dialog says so
   and sends nothing.
+### 11.11 Rule-set (.srs) refresh (SPEC 185)
+
+A rule-set in **local** mode is a refreshable resource, like a subscription:
+the launcher keeps the file, the core reads it as `type: local`.
+
+- **Who needs what** — `build.PresetMergeContext.RuleSetFetches()`
+  (`core/build/rule_set_policy.go`): the local-mode sets of the enabled rules
+  (`kind: srs` refs, preset `rule_set` entries after the same
+  `ExpandPresetForNodes` the build uses), each with its interval. Settings
+  resolve rule → template var (`srs_mode`, `srs_update_interval_hours`,
+  `srs_download_detour`) → built-in default (`ResolveRuleSetPolicy`).
+- **Loop** — `runScheduledSRSRefresh` (`core/srs_refresh.go`) rides the hourly
+  auto-update loop next to the subscription sweep: a file older than its
+  interval (mtime is the only freshness record) is fetched with a conditional
+  GET, validated (`SRS` magic or JSON) and renamed into place. At most two
+  downloads at once; a failure keeps the old file, is retried once after 15 s
+  and on the next VPN-state event, then not before an hour. The running core
+  reloads a replaced local set itself (fswatch), so the config is not rebuilt —
+  it is only marked stale when a file that was **missing** appeared.
+- **Build and start** — `RebuildConfigIfDirty` downloads only missing files
+  (20 s budget) before building; a `kind: srs` rule whose file is still absent
+  drops out (`DropUncachedSrsPaths`), like a preset rule. `rebuildConfigBeforeStart`
+  forces a build when `config.json` references a local set that is not on disk.
+- **Remote machines** — no background push. `services.PreDeployFunc`
+  (`RefreshMachineRuleSets`) refreshes the machine's `srs/` directory right
+  before `Deploy`, which then uploads the files whose SHA-256 changed.
+- **Remote mode** — the build emits `type: remote` with `url`,
+  `update_interval` and `download_detour` instead of a local path
+  (`remoteRuleSetBody`); the launcher keeps no file. `download_detour` is a
+  graph edge: a target missing from the final outbound tags drops the set and
+  its rule (`ResolveRouteChecked`), and a Direction rename rewrites it
+  (`editRootNameRefs`, kind 8).
+

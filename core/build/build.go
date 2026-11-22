@@ -367,6 +367,7 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 	// LxBox §578: узлы для for_each_node* — здесь состав окончателен (граф-санитайзер
 	// уже снял узлы с висячими ссылками) и финальные теги назначены.
 	ctx.Preset.PresetNodes = CollectPresetNodes(ctx.Cache, order)
+	ctx.Preset.FinalOutboundTags = finalOutboundTags
 	ctx.Preset.EmittedRuleSetTags = CollectEmittedRouteRuleSetTags(cfg["route"], ctx.Route, ctx.Preset)
 
 	// SPEC 129 Н10: секция dns собирается ПЕРВОЙ, независимо от порядка

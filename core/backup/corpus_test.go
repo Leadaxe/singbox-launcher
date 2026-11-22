@@ -36,6 +36,13 @@ import (
 
 const backupCorpusRelPath = "../../contract/corpus/backup"
 
+// corpusRuleSetExpectation — настройки наборов правила в ожиданиях.
+type corpusRuleSetExpectation struct {
+	Mode                string `json:"srs_mode"`
+	UpdateIntervalHours *int   `json:"update_interval_hours"`
+	DownloadDetour      string `json:"download_detour"`
+}
+
 // corpusRuleExpectation — одно правило оси в ожиданиях.
 type corpusRuleExpectation struct {
 	Name    string `json:"name"`
@@ -43,6 +50,10 @@ type corpusRuleExpectation struct {
 	// Refs — kind=srs: все URL наборов правила по порядку (D-100).
 	// Необязательно: отсутствие ключа значит «не проверяем».
 	Refs []string `json:"refs"`
+	// RuleSet — настройки наборов правила (контракт 1.1.177): режим, период
+	// обновления, выход загрузки. Необязательно: отсутствие ключа значит «не
+	// проверяем»; отсутствие поля внутри — «у правила значения нет».
+	RuleSet *corpusRuleSetExpectation `json:"rule_set"`
 	// Outbound — ЦЕЛЬ правила как вид, а не как кусок тела: тег outbound'а,
 	// либо `reject`, либо `drop` (state v8 §0: цель живёт внутри `body` в
 	// форме sing-box — `"outbound": <тег>` | `"action": "reject"` |
@@ -629,6 +640,7 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 		outbound string
 		vars     map[string]string
 		body     json.RawMessage
+		ruleSet  state.RuleSetOptions
 	}
 	all := make([]got, 0, len(dst.Rules))
 	add := func(r state.Rule) {
@@ -636,7 +648,7 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 		if r.Num != nil {
 			num = *r.Num
 		}
-		all = append(all, got{ruleName(r), r.Enabled, num, ruleRefs(r), ruleOutboundView(r), r.Vars, r.Body})
+		all = append(all, got{ruleName(r), r.Enabled, num, ruleRefs(r), ruleOutboundView(r), r.Vars, r.Body, r.RuleSetOptions()})
 	}
 	for _, r := range dst.Rules {
 		add(r)
@@ -655,6 +667,14 @@ func checkRules(t *testing.T, dst *state.State, exp corpusExpectation) {
 		}
 		if want.Refs != nil && !equalStrings(all[i].refs, want.Refs) {
 			t.Errorf("правило %q: наборы %v, ожидались %v", want.Name, all[i].refs, want.Refs)
+		}
+		if rs := want.RuleSet; rs != nil {
+			got := all[i].ruleSet
+			sameInterval := (rs.UpdateIntervalHours == nil) == (got.IntervalHours == nil) &&
+				(rs.UpdateIntervalHours == nil || *rs.UpdateIntervalHours == *got.IntervalHours)
+			if got.Mode != rs.Mode || got.DownloadDetour != rs.DownloadDetour || !sameInterval {
+				t.Errorf("правило %q: настройки наборов %+v, ожидались %+v", want.Name, got, *rs)
+			}
 		}
 		if want.Outbound != "" && all[i].outbound != want.Outbound {
 			t.Errorf("правило %q: цель %q, ожидалась %q", want.Name, all[i].outbound, want.Outbound)

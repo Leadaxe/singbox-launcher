@@ -1,0 +1,23 @@
+{
+  "rules": [
+    {
+      "name": "Remote lists",
+      "enabled": true,
+      "refs": ["https://example-5.com/lists.srs"],
+      "rule_set": { "update_interval_hours": 24 }
+    },
+    {
+      "name": "Never refreshed",
+      "enabled": true,
+      "refs": ["https://example-5.com/frozen.srs"],
+      "rule_set": { "update_interval_hours": 0 }
+    },
+    {
+      "name": "Defaults",
+      "enabled": true,
+      "refs": ["https://example-5.com/plain.srs"],
+      "rule_set": {}
+    }
+  ],
+  "warnings": []
+}

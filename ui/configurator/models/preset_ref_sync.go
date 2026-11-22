@@ -103,6 +103,7 @@ func presetStateRule(pr *PresetRefState) state.Rule {
 	r := state.NewPresetRule(pr.Ref, pr.Vars)
 	r.Enabled = pr.Enabled
 	r.Num = copyNum(pr.Num)
+	r.SetRuleSetOptions(pr.SrsOptions)
 	return r
 }
 
@@ -274,6 +275,7 @@ func customRuleStateToV6Rule(rs *RuleState) *state.Rule {
 			r.Enabled = rs.Enabled
 			r.Num = copyNum(rs.Num)
 			r.DNS = state.CloneRuleDNS(rs.DNS)
+			r.SetRuleSetOptions(rs.SrsOptions)
 			return &r
 		}
 	}
@@ -671,10 +673,11 @@ func SyncStateRulesToPresetRefs(rules []state.Rule) []*PresetRefState {
 			continue
 		}
 		out = append(out, &PresetRefState{
-			Ref:     r.Ref,
-			Enabled: r.Enabled,
-			Vars:    pb.Vars,
-			Num:     copyNum(r.Num),
+			Ref:        r.Ref,
+			Enabled:    r.Enabled,
+			Vars:       pb.Vars,
+			Num:        copyNum(r.Num),
+			SrsOptions: r.RuleSetOptions(),
 		})
 	}
 	return out

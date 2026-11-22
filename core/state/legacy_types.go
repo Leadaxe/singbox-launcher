@@ -45,6 +45,9 @@ type CustomRule struct {
 	// DNS — поле записи правила v8 (state.Rule.DNS) на пути в модель
 	// Конфигуратора и обратно; в легаси-форматы файла не пишется.
 	DNS *RuleDNS `json:"-"`
+	// SrsOptions — настройки наборов правила (state.Rule, SPEC 185) на том же
+	// пути; в легаси-форматы файла не пишется.
+	SrsOptions RuleSetOptions `json:"-"`
 }
 
 // LegacyDNSOptionsV5 — legacy v5 DNS-секция (servers + rules + scalars).

@@ -67,6 +67,8 @@ func NewConfigService(ac *AppController) *ConfigService {
 		}
 	}
 	services.CreateHTTPClientFunc = CreateHTTPClient
+	// SPEC 185 §2.3: перед Deploy наборы машины обновляются.
+	services.PreDeployFunc = ac.RefreshMachineRuleSets
 	return &ConfigService{ac: ac}
 }
 

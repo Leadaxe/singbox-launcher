@@ -56,6 +56,12 @@ func (r *RemoteRegistry) Deploy(id string, config []byte) (DeployResult, error) 
 		config = raw
 	}
 
+	// SPEC 185 §2.3: перед заливкой наборы машины обновляются (отсутствующие
+	// и с истёкшим периодом) — изменившиеся уедут ниже по сравнению SHA-256.
+	if PreDeployFunc != nil {
+		PreDeployFunc(id)
+	}
+
 	resources, err := CollectDeployResources(r.dataDir, id, config)
 	if err != nil {
 		return DeployResult{}, err
@@ -158,3 +164,7 @@ func (r *RemoteRegistry) AdminDo(id, method, path string, body []byte, contentTy
 	}
 	return client.Do(method, path, body, contentType)
 }
+
+// PreDeployFunc — шаг перед Deploy, внедряется контроллером (как
+// CreateHTTPClientFunc): обновление файлов наборов машины. nil — шага нет.
+var PreDeployFunc func(machineID string)

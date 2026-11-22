@@ -491,6 +491,48 @@
       ]
     },
     {
+      "id": "rule-sets",
+      "name": "Rule-sets",
+      "description": "Updates of rule-set (.srs) files; a rule can override these",
+      "vars": [
+        {
+          "name": "srs_mode",
+          "type": "text",
+          "wizard_ui": "edit",
+          "title": "Rule-set mode",
+          "tooltip": "Who downloads rule-sets. Local: the launcher downloads the file and refreshes it on the interval below; the core only reads it. Remote: the core downloads the rule-set itself — if the first download fails and there is no cached copy, the core will not start.",
+          "default_value": "local",
+          "options": [
+            {"title": "Local (default — the launcher downloads)", "value": "local"},
+            {"title": "Remote (the core downloads)", "value": "remote"}
+          ]
+        },
+        {
+          "name": "srs_update_interval_hours",
+          "type": "int",
+          "wizard_ui": "edit",
+          "title": "Rule-set update interval, hours",
+          "tooltip": "How often rule-sets are refreshed. 0 — never (only the srs button in Rules).",
+          "default_value": "168",
+          "options_open": true,
+          "options": [
+            {"title": "24 (daily)", "value": "24"},
+            {"title": "168 (weekly, default)", "value": "168"},
+            {"title": "720 (monthly)", "value": "720"},
+            {"title": "0 (never)", "value": "0"}
+          ]
+        },
+        {
+          "name": "srs_download_detour",
+          "type": "outbound",
+          "wizard_ui": "edit",
+          "title": "Rule-set download via",
+          "tooltip": "Remote mode only: the outbound the core downloads rule-sets through. Empty — the default outbound of the core.",
+          "default_value": ""
+        }
+      ]
+    },
+    {
       "id": "clash-api",
       "name": "Clash API",
       "description": "Local control API of the core",

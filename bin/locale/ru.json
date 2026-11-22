@@ -6199,5 +6199,32 @@
   },
   "This tunnel announces the default route, so it takes all traffic.": {
     "value": "Этот туннель объявляет маршрут по умолчанию и заберёт весь трафик."
+  },
+  "Remote: the core downloads the rule-set itself. If the first download fails and there is no cached copy, the core will not start.": {
+    "value": "Remote: набор скачивает само ядро. Если первая загрузка не удалась, а сохранённой копии нет, ядро не запустится."
+  },
+  "Default (from Settings)": {
+    "value": "По умолчанию (из Settings)"
+  },
+  "Local — the launcher downloads": {
+    "value": "Local — скачивает лаунчер"
+  },
+  "Remote — the core downloads": {
+    "value": "Remote — скачивает ядро"
+  },
+  "Download via (remote only):": {
+    "value": "Скачивать через (только remote):"
+  },
+  "Rule-set updates": {
+    "value": "Обновление наборов правил"
+  },
+  "Mode:": {
+    "value": "Режим:"
+  },
+  "Update interval, hours (empty — default, 0 — never):": {
+    "value": "Период обновления, часы (пусто — по умолчанию, 0 — никогда):"
+  },
+  "Last updated: %s": {
+    "value": "Обновлено: %s"
   }
 }

@@ -148,6 +148,22 @@ func ResolveRouteWithGlobals(
 	target template.TargetSpec,
 	globalVars map[string]string,
 ) ResolvedRoute {
+	return ResolveRouteChecked(state, td, dataDir, srsCachedPaths, target, globalVars, nil)
+}
+
+// ResolveRouteChecked — ResolveRouteWithGlobals со знанием итогового множества
+// тегов выходов (SPEC 185 §2.4): набор в режиме remote, чей download_detour
+// указывает на недоступную цель, не эмитится. finalTags == nil — проверки нет
+// (превью, вызовы без графа).
+func ResolveRouteChecked(
+	state *corestate.State,
+	td *template.TemplateData,
+	dataDir paths.DataDir,
+	srsCachedPaths map[string][]string,
+	target template.TargetSpec,
+	globalVars map[string]string,
+	finalTags map[string]bool,
+) ResolvedRoute {
 	var out ResolvedRoute
 	if state == nil || td == nil {
 		return out
@@ -169,11 +185,11 @@ func ResolveRouteWithGlobals(
 	for _, rule := range rules {
 		switch rule.Kind {
 		case corestate.RuleKindPreset:
-			resolvePresetRouteRule(&out, presetByID, rule, dataDir, emittedTags, target, globalVars, td.Vars, td.PresetNodes)
+			resolvePresetRouteRule(&out, presetByID, rule, dataDir, emittedTags, target, globalVars, td.Vars, td.PresetNodes, finalTags)
 		case corestate.RuleKindInline:
 			resolveInlineRouteRule(&out, rule)
 		case corestate.RuleKindSrs:
-			resolveSrsRouteRule(&out, rule, srsCachedPaths, emittedTags)
+			resolveSrsRouteRule(&out, rule, srsCachedPaths, emittedTags, globalVars, finalTags)
 		}
 	}
 
@@ -191,6 +207,7 @@ func resolvePresetRouteRule(
 	globalVars map[string]string,
 	globalDecls []template.TemplateVar,
 	nodes []template.PresetNode,
+	finalTags map[string]bool,
 ) {
 	p, ok := presetByID[rule.Ref]
 	if !ok {
@@ -216,6 +233,7 @@ func resolvePresetRouteRule(
 		return
 	}
 	presetLabel := p.DisplayLabel()
+	policy := ResolveRuleSetPolicy(rule.RuleSetOptions(), globalVars)
 
 	// RuleSets из preset.RuleSet (после ExpandPreset уже substituted + prefixed).
 	for _, rs := range frags.RuleSets {
@@ -226,7 +244,18 @@ func resolvePresetRouteRule(
 		if emittedTags[tag] {
 			continue
 		}
-		converted, skip := convertPresetRuleSetRemoteToLocal(rs, dataDir, target.ResourceDir, target.SrsLocalDir)
+		var converted map[string]interface{}
+		skip, skipReason := false, "remote .srs not cached"
+		rsType, _ := rs["type"].(string)
+		rsURL, _ := rs["url"].(string)
+		if policy.Remote && rsType == "remote" && rsURL != "" {
+			// SPEC 185: набор качает ядро — файл у лаунчера не нужен.
+			format, _ := rs["format"].(string)
+			body, ok := remoteRuleSetBody(tag, format, rsURL, policy, finalTags)
+			converted, skip, skipReason = body, !ok, "download_detour unavailable"
+		} else {
+			converted, skip = convertPresetRuleSetRemoteToLocal(rs, dataDir, target.ResourceDir, target.SrsLocalDir)
+		}
 		if skip {
 			out.RuleSets = append(out.RuleSets, ResolvedRouteRuleSet{
 				Tag:           tag,
@@ -235,7 +264,7 @@ func resolvePresetRouteRule(
 				PresetLabel:   presetLabel,
 				Enabled:       rule.Enabled,
 				Skipped:       true,
-				SkippedReason: "remote .srs not cached",
+				SkippedReason: skipReason,
 			})
 			continue
 		}
@@ -309,6 +338,8 @@ func resolveSrsRouteRule(
 	rule corestate.Rule,
 	srsCachedPaths map[string][]string,
 	emittedTags map[string]bool,
+	globalVars map[string]string,
+	finalTags map[string]bool,
 ) {
 	body, err := rule.DecodeBody()
 	if err != nil {
@@ -319,19 +350,40 @@ func resolveSrsRouteRule(
 	id := corestate.StableRuleID(rule)
 	// state v8: список наборов — поле записи Refs (вид отдаёт его же).
 	urls := sb.Refs
-	paths, hasCache := srsCachedPaths[id]
-	// Правило — одна единица: либо закэшированы все его наборы, либо оно
-	// пропускается целиком (частичный набор молча менял бы смысл правила).
-	if !hasCache || len(paths) != len(urls) {
+	policy := ResolveRuleSetPolicy(rule.RuleSetOptions(), globalVars)
+	skipRule := func(reason string) {
 		out.RuleSets = append(out.RuleSets, ResolvedRouteRuleSet{
 			Tag:           corestate.SrsRuleSetTag(id, 0),
 			Source:        RouteSourceSrs,
 			SrsID:         id,
 			Enabled:       rule.Enabled,
 			Skipped:       true,
-			SkippedReason: "srs file not cached",
+			SkippedReason: reason,
 		})
-		debuglog.WarnLog("route resolve: srs rule %q skipped: no cached file", sb.Name)
+		debuglog.WarnLog("route resolve: srs rule %q skipped: %s", sb.Name, reason)
+	}
+	// SPEC 185: в режиме remote наборы качает ядро — записи строятся по URL,
+	// кэш лаунчера не нужен. Недоступный download_detour снимает правило
+	// целиком, как нескачанный файл.
+	remoteBodies := make([]map[string]interface{}, 0, len(urls))
+	if policy.Remote {
+		for i, u := range urls {
+			rs, ok := remoteRuleSetBody(corestate.SrsRuleSetTag(id, i), "binary", u, policy, finalTags)
+			if !ok {
+				skipRule("download_detour unavailable")
+				return
+			}
+			remoteBodies = append(remoteBodies, rs)
+		}
+	}
+	paths, hasCache := srsCachedPaths[id]
+	if policy.Remote {
+		paths, hasCache = urls, len(urls) > 0
+	}
+	// Правило — одна единица: либо закэшированы все его наборы, либо оно
+	// пропускается целиком (частичный набор молча менял бы смысл правила).
+	if !hasCache || len(paths) != len(urls) {
+		skipRule("srs file not cached")
 		return
 	}
 	// Запись rule_set на каждый набор правила (репорт 1.5.5: из трёх srs в
@@ -349,6 +401,9 @@ func resolveSrsRouteRule(
 			"type":   "local",
 			"format": "binary",
 			"path":   path,
+		}
+		if policy.Remote {
+			rs = remoteBodies[i]
 		}
 		out.RuleSets = append(out.RuleSets, ResolvedRouteRuleSet{
 			Tag:     tag,

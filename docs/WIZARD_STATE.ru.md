@@ -418,6 +418,7 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 | `num` | int | необязательно | Позиция на разреженной оси порядка (SPEC 106; до v8 — `order_num`). Нет ключа = правило не размечено, номер раздаёт `MarkRuleOrder` при ближайшей загрузке. |
 | `refs` | string[] | `kind=srs` | URL наборов .srs в порядке ввода (до v8 — `body.srs_url` + `body.srs_urls`). Дедуп с сохранением порядка. |
 | `vars` | object | `kind=preset` | Значения переменных пресета (до v8 — `body.vars`) — **только diff** от template-дефолтов. Пустая карта = всё дефолтное. Bump'нули template → юзер автоматически получает новые дефолты для var'ов, которые не трогал. |
+| `srs_mode`, `update_interval_hours`, `download_detour` | string, int, string | `kind=srs` \| `preset`, необязательно | Настройки наборов правила (SPEC 185): кто качает наборы (`local` — лаунчер, `remote` — ядро), период обновления в часах (`0` — не обновлять) и выход, через который ядро качает в режиме remote. Нет поля — общее значение (переменные шаблона `srs_mode`, `srs_update_interval_hours`, `srs_download_detour`). |
 | `body` | raw JSON | `kind=inline` \| `srs` | **Правило sing-box как есть**: матчеры плюс цель — `"outbound": "<tag>"` либо `"action": "reject"` (+ `"method": "drop"`). У записи пресета тела нет — правило живёт в шаблоне. |
 
 **`rule_set` в `body` не хранится.** Сборка регистрирует по локальному набору на

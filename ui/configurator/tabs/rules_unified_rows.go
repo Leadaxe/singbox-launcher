@@ -101,6 +101,10 @@ func buildSinglePresetRefRow(
 		labelText += "  ·  " + wizardbusiness.PresetServedNodesLabel(served)
 	}
 	srsEntries := presetRefSRSEntries(pr, tplPreset)
+	// SPEC 185: в режиме remote наборы качает ядро — кнопки и гейта нет.
+	if ruleSetsRemote(model, pr.SrsOptions) {
+		srsEntries = nil
+	}
 
 	// SPEC 106: системное правило (sortable:false в шаблоне) — часть конфига,
 	// а не выбор пользователя: его нельзя двигать (позиция часть инварианта:
@@ -389,7 +393,7 @@ func makePresetSRSButton(
 		// К списку URL добавляем КАТАЛОГ, куда файлы лягут: профилей теперь
 		// несколько (свой и по одному на машину), и по одной галочке «скачано»
 		// не понять, чей это набор.
-		btn.TTWidget().SetToolTip(tip + "\n\n" + srsTargetDirHint(model))
+		btn.TTWidget().SetToolTip(tip + "\n\n" + srsTargetDirHint(model) + srsLastUpdatedHint(model, entries))
 	}
 	btn.OnTapped = func() {
 		runSRSDownloadAsync(presenter, model, guiState, entries, btn.TTWidget(), nil /* no outboundSelect */, func() {

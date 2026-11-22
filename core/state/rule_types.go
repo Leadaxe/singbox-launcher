@@ -65,6 +65,7 @@ const (
 //	  "num":     1000,             // позиция на оси; nil = не размечено
 //	  "refs":    ["https://…"],    // только srs
 //	  "vars":    {"out":"direct"}, // только preset
+//	  "srs_mode": "remote", "update_interval_hours": 24, "download_detour": "…", // srs|preset, SPEC 185
 //	  "body":    { … },            // inline|srs: правило sing-box как есть
 //	  "dns":     { … }             // inline|srs: DNS-зеркало, RuleDNS
 //	}
@@ -108,6 +109,15 @@ type Rule struct {
 	// Vars — значения переменных пресета (до v8 — body.vars). Только diff от
 	// template-дефолтов: пустая карта = всё дефолтное.
 	Vars map[string]string `json:"vars,omitempty"`
+
+	// SrsMode, UpdateIntervalHours, DownloadDetour — настройки наборов правила
+	// (srs|preset; SPEC 185, BACKUP.md таблица rules[]). Пустое значение = взять
+	// общее (переменные шаблона srs_mode / srs_update_interval_hours /
+	// srs_download_detour). Читать и писать — через RuleSetOptions /
+	// SetRuleSetOptions.
+	SrsMode             string `json:"srs_mode,omitempty"`
+	UpdateIntervalHours *int   `json:"update_interval_hours,omitempty"`
+	DownloadDetour      string `json:"download_detour,omitempty"`
 
 	// Body — правило sing-box КАК ЕСТЬ (inline|srs); у preset тела нет.
 	//

@@ -187,6 +187,10 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	//
 	// Записи парсерной стадии кладутся сразу, включая ПУСТОЙ итог: чистая
 	// сборка обязана снять прежние ⚠, иначе пометка переживёт свою причину.
+	// SPEC 185 §2.2: отсутствующие файлы наборов докачиваются до сборки —
+	// иначе правило молча выпало бы из конфига, хотя сеть есть.
+	ac.ensureMissingRuleSets(s, td)
+
 	gen := config.StartBuildReport()
 	FeedBuildReportFromParser(gen, parserRes)
 	// SPEC 118 W4: деградации последнего fetch — из состояния, не из разбора
@@ -427,6 +431,11 @@ func (ac *AppController) loadTemplateForBuild(l paths.Layout) (td *template.Temp
 // No state.json is not an error: config.json is then managed by hand and there
 // is nothing to rebuild it from.
 func (ac *AppController) rebuildConfigBeforeStart(forced bool) error {
+	// SPEC 185 §2.2: config.json ссылается на набор, которого нет на диске, —
+	// ядро упало бы на старте. Сборка докачает файл либо снимет правило.
+	if !forced && ac.configReferencesMissingRuleSet() {
+		forced = true
+	}
 	err := ac.RebuildConfigIfDirty(forced)
 	if errors.Is(err, state.ErrNotFound) {
 		debuglog.InfoLog("pre-start rebuild: no state.json — config.json is used as is")

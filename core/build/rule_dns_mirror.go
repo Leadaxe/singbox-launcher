@@ -233,7 +233,7 @@ func ruleDNSMirrorsForMerge(ctx PresetMergeContext) []ruleDNSMirror {
 	}
 	st := &corestate.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	td := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars, PresetNodes: ctx.PresetNodes}
-	return collectRuleDNSMirrors(ResolveRouteWithGlobals(st, &td, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues()))
+	return collectRuleDNSMirrors(ResolveRouteChecked(st, &td, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues(), ctx.FinalOutboundTags))
 }
 
 // ruleDNSMirrorServers — теги серверов, на которые ссылаются зеркала.

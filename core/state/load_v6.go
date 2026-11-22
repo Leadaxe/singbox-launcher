@@ -281,6 +281,7 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 				HasOutbound:      true,
 				RuleSet:          ruleSets,
 				DNS:              CloneRuleDNS(r.DNS),
+				SrsOptions:       r.RuleSetOptions(),
 				Rule: map[string]interface{}{
 					"rule_set": ruleSetHint,
 					"outbound": sb.Outbound,

@@ -170,6 +170,24 @@
       "in": "mobile",
       "note": "certificate.store; пара к cert_store (desktop), разрыв N1"
     },
+    "srs_mode": {
+      "type": "enum",
+      "portable": false,
+      "in": "desktop",
+      "note": "Общий режим наборов правил (SPEC 185 лаунчера, контракт 1.1.177): local — .srs качает лаунчер и отдаёт ядру type:local; remote — ядро качает само (type:remote). Значение у правила (rules[].srs_mode) сильнее. В конфиг напрямую не подставляется — читает сборка."
+    },
+    "srs_update_interval_hours": {
+      "type": "int",
+      "portable": false,
+      "in": "desktop",
+      "note": "Общий период обновления наборов правил, часы; 0 — не обновлять; default 168. Значение у правила (rules[].update_interval_hours) сильнее. Контракт 1.1.177."
+    },
+    "srs_download_detour": {
+      "type": "outbound",
+      "portable": false,
+      "in": "desktop",
+      "note": "Общий выход загрузки наборов ядром в режиме remote (rule_set[].download_detour); пусто — выход ядра по умолчанию. Значение у правила (rules[].download_detour) сильнее. Контракт 1.1.177."
+    },
     "strict_route": {
       "type": "bool",
       "portable": false,

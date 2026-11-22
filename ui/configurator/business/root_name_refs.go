@@ -213,6 +213,26 @@ func editRootNameRefs(model *wizardmodels.WizardModel, decide rootRefDecide) ([]
 	// переписывать бесполезно — тело не сохраняется, маршрут живёт в записи.
 	count += editDNSTemplateVarRefs(model, decide, note)
 
+	// 8. download_detour наборов правил (SPEC 185): у правила SRS, у пресета
+	// и общее значение (SettingsVars["srs_download_detour"]).
+	for _, rs := range model.CustomRules {
+		if rs != nil {
+			single(&rs.SrsOptions.DownloadDetour, firstNonEmptyRefName(rs.Rule.Label, rs.Rule.Description))
+		}
+	}
+	for _, ref := range model.PresetRefs {
+		if ref != nil {
+			single(&ref.SrsOptions.DownloadDetour, firstNonEmptyRefName(ref.Ref, "preset"))
+		}
+	}
+	if model.SettingsVars != nil {
+		if v, ok := model.SettingsVars[corestate.VarSrsDownloadDetour]; ok {
+			if next, act := decide(v); act == rootRefRename {
+				model.SettingsVars[corestate.VarSrsDownloadDetour] = next
+			}
+		}
+	}
+
 	return names, count
 }
 

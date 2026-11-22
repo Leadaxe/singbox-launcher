@@ -422,6 +422,7 @@ The `kind` discriminator: `preset` / `inline` / `srs`. A single ordered array; t
 | `num` | int | optional | The position on the sparse order axis (SPEC 106; `order_num` before v8). Absent = not yet placed — `MarkRuleOrder` assigns a number on the next load. |
 | `refs` | string[] | `kind=srs` | The URLs of the rule's .srs sets, in input order (`body.srs_url` + `body.srs_urls` before v8). Deduplicated, order preserved. |
 | `vars` | object | `kind=preset` | Preset var values (`body.vars` before v8) — **the diff only** against the template defaults. An empty map means everything is default. Bump the template → the user automatically gets the new defaults for vars they never touched. |
+| `srs_mode`, `update_interval_hours`, `download_detour` | string, int, string | `kind=srs` \| `preset`, optional | Rule-set settings of the rule (SPEC 185): who downloads the sets (`local` — the launcher, `remote` — the core), the refresh interval in hours (`0` — never) and the outbound the core downloads through in remote mode. Absent = the global value (template vars `srs_mode`, `srs_update_interval_hours`, `srs_download_detour`). |
 | `body` | raw JSON | `kind=inline` \| `srs` | **The sing-box route rule as it is**: matchers plus the target — `"outbound": "<tag>"`, or `"action": "reject"` (+ `"method": "drop"`). A preset record has no body — its rule lives in the template. |
 
 **`rule_set` is never stored in `body`.** The build registers one local rule-set

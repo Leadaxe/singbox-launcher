@@ -187,6 +187,13 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		outboundSelect.SetSelected(availableOutbounds[0])
 	}
 
+	// SPEC 185: настройки наборов правила SRS (режим, период, выход загрузки).
+	var srsOptionsInitial corestate.RuleSetOptions
+	if editRule != nil {
+		srsOptionsInitial = editRule.SrsOptions
+	}
+	srsOptionsForm := NewRuleSetOptionsForm(srsOptionsInitial, availableOutbounds, nil)
+
 	// Create map for fast outbound lookup (O(1) instead of O(n))
 	outboundMap := make(map[string]bool, len(availableOutbounds))
 	for _, opt := range availableOutbounds {
@@ -388,6 +395,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			pathModeRadio.Hide()
 			srsLabelRow.Hide()
 			srsURLsContainer.Hide()
+			srsOptionsForm.Box.Hide()
 			customContainer.Hide()
 			customLabel.Hide()
 		}
@@ -439,6 +447,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			hideAllFormTypeSpecific()
 			srsLabelRow.Show()
 			srsURLsContainer.Show()
+			srsOptionsForm.Box.Show()
 		}
 		showCustom := func() {
 			hideAllFormTypeSpecific()
@@ -1070,8 +1079,14 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 
 		ruleDNS := currentRuleDNS()
 
+		var srsOptions corestate.RuleSetOptions
+		if selectedType == wizardmodels.RuleTypeSRS {
+			srsOptions = srsOptionsForm.Value()
+		}
+
 		if isEdit {
 			editRule.DNS = ruleDNS
+			editRule.SrsOptions = srsOptions
 			editRule.Rule.Label = label
 			editRule.Rule.Rule = ruleRaw
 			editRule.Rule.HasOutbound = true
@@ -1102,8 +1117,9 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				// SPEC 106: номер оси — конец занятой пользовательской зоны,
 				// не хардкод: новое правило встаёт последним среди
 				// пользовательских и не вытесняет шаблонные якоря.
-				Num: wizardmodels.NextRuleNum(model),
-				DNS: ruleDNS,
+				Num:        wizardmodels.NextRuleNum(model),
+				DNS:        ruleDNS,
+				SrsOptions: srsOptions,
 			}
 			if model.CustomRules == nil {
 				model.CustomRules = make([]*wizardmodels.RuleState, 0)
@@ -1268,6 +1284,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		widget.NewSeparator(),
 		widget.NewLabel(locale.T("Direction:")),
 		outboundSelect,
+		srsOptionsForm.Box,
 	)
 
 	buttonsContainer := container.NewHBox(
@@ -1304,6 +1321,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				return buildRuleRaw(ruleSel.Type(), outboundSelect.Selected)
 			},
 			dns: currentRuleDNS(),
+			srs: srsOptionsForm.Value(),
 		}))
 	}
 
@@ -1521,6 +1539,7 @@ type rulePreviewInput struct {
 	rawSRS   func(map[string]interface{}) []json.RawMessage
 	form     func() (map[string]interface{}, []json.RawMessage, error)
 	dns      *corestate.RuleDNS
+	srs      corestate.RuleSetOptions // настройки наборов (SPEC 185)
 }
 
 // rulePreviewSection — секция конфига в превью; ключи в порядке конфига.
@@ -1555,6 +1574,7 @@ func rulePreviewText(model *wizardmodels.WizardModel, in rulePreviewInput) strin
 		Enabled:          true,
 		SelectedOutbound: outbound,
 		DNS:              in.dns,
+		SrsOptions:       in.srs,
 	}
 	rules := wizardmodels.EmitStateRulesWithoutOrder(nil, []*wizardmodels.RuleState{rs})
 	if body == nil || len(rules) == 0 {
@@ -1562,7 +1582,9 @@ func rulePreviewText(model *wizardmodels.WizardModel, in rulePreviewInput) strin
 	}
 
 	srsCached := build.CollectSrsCachedPaths(rules, model.DataDir, model.ResourceDir)
-	route := build.ResolveRouteWithGlobals(&corestate.State{Rules: rules}, &wizardtemplate.TemplateData{}, model.DataDir, srsCached, model.Target, nil)
+	// Общие значения настроек наборов (SPEC 185) — из Settings: без них превью
+	// показало бы local там, где сборка выпустит remote.
+	route := build.ResolveRouteWithGlobals(&corestate.State{Rules: rules}, &wizardtemplate.TemplateData{}, model.DataDir, srsCached, model.Target, model.SettingsVars)
 
 	var notes []string
 	routeSec := &rulePreviewSection{}
