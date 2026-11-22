@@ -140,35 +140,35 @@ func TestStableRuleID_LossyNamesStayDistinct(t *testing.T) {
 		t.Errorf("edge spaces changed the hash: %q vs %q", a, b)
 	}
 
-	// Одно правило на старый id — ссылки переписываются.
+	// Одно правило на старый id — ссылки переписываются на теги §6.13 (SPEC 188).
 	ads := NewSrsRule("Реклама", []string{"https://x/a.srs", "https://x/b.srs"}, "reject")
-	newID := StableRuleID(ads)
+	second := "Реклама:" + RefHash("https://x/b.srs", 8)
 	inline := NewInlineRule("Mix", map[string]interface{}{"rule_set": []string{"user:rule:2", "other"}}, "direct-out")
 	rules := []Rule{ads, inline}
 	dns := []DNSRule{
 		{Kind: DNSRuleKindUser, Body: map[string]interface{}{"rule_set": "user:rule", "server": "a"}},
 		{Kind: DNSRuleKindUser, Body: map[string]interface{}{"rule_set": []interface{}{"user:rule:2", "russian:ru-domains"}}},
 	}
-	if n := MigrateRuleSetTagRefs(rules, dns); n != 3 {
+	if n := MigrateRuleSetTagRefsV9(rules, dns); n != 3 {
 		t.Fatalf("rewritten refs: %d, want 3", n)
 	}
-	if got := dns[0].Body["rule_set"]; got != "user:"+newID {
+	if got := dns[0].Body["rule_set"]; got != "Реклама" {
 		t.Errorf("dns[0] rule_set = %v", got)
 	}
-	if got := dns[1].Body["rule_set"].([]interface{}); got[0] != "user:"+newID+":2" || got[1] != "russian:ru-domains" {
+	if got := dns[1].Body["rule_set"].([]interface{}); got[0] != second || got[1] != "russian:ru-domains" {
 		t.Errorf("dns[1] rule_set = %v", got)
 	}
-	if want := `"user:` + newID + `:2"`; !bytes.Contains(rules[1].Body, []byte(want)) {
+	if want, _ := json.Marshal(second); !bytes.Contains(rules[1].Body, want) {
 		t.Errorf("inline body %s lacks %s", rules[1].Body, want)
 	}
-	if n := MigrateRuleSetTagRefs(rules, dns); n != 0 {
+	if n := MigrateRuleSetTagRefsV9(rules, dns); n != 0 {
 		t.Errorf("second pass rewrote %d refs", n)
 	}
 
 	// Два правила на один старый id — адресат неизвестен, ссылка не трогается.
 	twins := []Rule{NewSrsRule("Реклама", []string{"https://x/a.srs"}, "reject"), NewSrsRule("Трекеры", []string{"https://x/b.srs"}, "reject")}
 	ambiguous := []DNSRule{{Kind: DNSRuleKindUser, Body: map[string]interface{}{"rule_set": "user:rule"}}}
-	if n := MigrateRuleSetTagRefs(twins, ambiguous); n != 0 || ambiguous[0].Body["rule_set"] != "user:rule" {
+	if n := MigrateRuleSetTagRefsV9(twins, ambiguous); n != 0 || ambiguous[0].Body["rule_set"] != "user:rule" {
 		t.Errorf("ambiguous ref rewritten: n=%d body=%v", n, ambiguous[0].Body)
 	}
 }

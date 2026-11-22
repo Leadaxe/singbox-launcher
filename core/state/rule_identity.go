@@ -29,8 +29,8 @@ import (
 //	srs       → sanitize(r.Name)
 //	unknown kind / пустое имя → "unnamed"
 //
-// Возвращаемое значение SAFE для использования как key в map'ах и как часть
-// sing-box tag'а (см. `"user:" + StableRuleID(r)` в build/rules_pipeline.go).
+// Возвращаемое значение SAFE для использования как key в map'ах. Теги наборов
+// правила от id не зависят с SPEC 188 (имя правила, rule_tags.go).
 //
 // Уникальность по списку rules валидируется на уровне UI add/edit (юзер не
 // может создать два правила с одинаковым label) и в state validator
@@ -60,7 +60,7 @@ func StableRuleID(r Rule) string {
 
 // LegacyRuleID — identity правила по алгоритму до появления хэша (до
 // 22.11.2026): только очищенное имя. Нужен, чтобы найти и переписать ссылки,
-// сохранённые со старыми тегами наборов (MigrateRuleSetTagRefs).
+// сохранённые со старыми тегами наборов (MigrateRuleSetTagRefsV9).
 func LegacyRuleID(r Rule) string {
 	switch r.Kind {
 	case RuleKindPreset:
@@ -83,32 +83,62 @@ func ruleNameHash(name string) string {
 	return hex.EncodeToString(sum[:4])
 }
 
-// MigrateRuleSetTagRefs переписывает сохранённые ссылки на теги наборов
-// srs-правил, чей id сменился с появлением хэша: `user:<старый id>` →
-// `user:<новый id>` (и `:N` для следующих наборов правила). Ссылки живут
-// текстом в телах пользовательских DNS-правил и inline-правил маршрута.
+// MigrateRuleSetTagRefsV9 переписывает сохранённые ссылки на старые теги
+// наборов собственных правил — `user:<id>` и `user:<id>:N` (схема до SPEC 188;
+// id — нынешний StableRuleID или прежний LegacyRuleID без хэша) — на теги
+// §6.13 (имя правила, StateRuleTags). N — позиция ссылки в прежнем порядке
+// ссылок правила (RuleRefs). Ссылки живут текстом в телах собственных правил
+// маршрута (рукописный `rule_set`) и пользовательских DNS-правил.
 //
-// Старый id, на который претендуют два правила, не переписывается: такая
-// ссылка и раньше указывала не туда, угадывать адресата нельзя. Возвращает
-// число переписанных ссылок; повторный вызов ничего не меняет.
-func MigrateRuleSetTagRefs(rules []Rule, dnsRules []DNSRule) int {
+// Старый тег, на который претендуют два правила, не переписывается: такая
+// ссылка и раньше указывала не туда, угадывать адресата нельзя. Старый тег,
+// совпадающий с новым тегом какого-либо правила, тоже не трогается — так
+// перезапись идемпотентна. Возвращает число переписанных ссылок; повторный
+// вызов ничего не меняет.
+func MigrateRuleSetTagRefsV9(rules []Rule, dnsRules []DNSRule) int {
 	claims := make(map[string]int)
 	for _, r := range rules {
-		if r.Kind == RuleKindSrs {
-			claims[LegacyRuleID(r)]++
+		if len(RuleRefs(r)) == 0 {
+			continue
+		}
+		ids := map[string]bool{StableRuleID(r): true, LegacyRuleID(r): true}
+		for id := range ids {
+			claims[id]++
+		}
+	}
+	if len(claims) == 0 {
+		return 0
+	}
+	tags := StateRuleTags(rules)
+	newTags := make(map[string]bool)
+	for i := range tags {
+		if tags[i].Base != "" {
+			newTags[tags[i].Base] = true
+		}
+		for _, t := range tags[i].refs {
+			newTags[t] = true
+		}
+		for _, t := range tags[i].inline {
+			newTags[t] = true
 		}
 	}
 	renames := make(map[string]string)
-	for _, r := range rules {
-		if r.Kind != RuleKindSrs {
+	for i, r := range rules {
+		refs := RuleRefs(r)
+		if len(refs) == 0 {
 			continue
 		}
-		oldID, newID := LegacyRuleID(r), StableRuleID(r)
-		if oldID == newID || claims[oldID] != 1 {
-			continue
-		}
-		for i := range RuleRefs(r) {
-			renames[SrsRuleSetTag(oldID, i)] = SrsRuleSetTag(newID, i)
+		for _, id := range []string{StableRuleID(r), LegacyRuleID(r)} {
+			if claims[id] != 1 {
+				continue
+			}
+			for n, u := range refs {
+				from, to := legacySrsRuleSetTag(id, n), tags[i].Ref(u)
+				if to == "" || from == to || newTags[from] {
+					continue
+				}
+				renames[from] = to
+			}
 		}
 	}
 	if len(renames) == 0 {
@@ -121,10 +151,13 @@ func MigrateRuleSetTagRefs(rules []Rule, dnsRules []DNSRule) int {
 			count += renameRuleSetRefs(dnsRules[i].Body, renames)
 		}
 	}
-	// Тело inline-правила — сырой JSON с сохранением порядка ключей: тег
-	// меняется как строковый литерал целиком, остальные байты не трогаются.
+	// Тело правила — сырой JSON с сохранением порядка ключей: тег меняется
+	// как строковый литерал целиком, остальные байты не трогаются.
 	for i := range rules {
-		if rules[i].Kind != RuleKindInline || !bytes.Contains(rules[i].Body, []byte(`"rule_set"`)) {
+		if rules[i].Kind != RuleKindInline && rules[i].Kind != RuleKindSrs {
+			continue
+		}
+		if !bytes.Contains(rules[i].Body, []byte(`"rule_set"`)) {
 			continue
 		}
 		body := rules[i].Body
@@ -178,13 +211,11 @@ func renameRuleSetRefs(body map[string]interface{}, renames map[string]string) i
 	return count
 }
 
-// SrsRuleSetTag — тег записи route.rule_set для i-го (с нуля) набора
-// srs-правила с identity id. Единая точка для сборки (resolve_route.go) и
-// legacy-проекции (load_v6.go): первый набор держит исторический тег
-// "user:<id>", остальные — "user:<id>:2", "user:<id>:3", … Разделитель ':'
-// не входит в алфавит sanitizeIDPart, поэтому тег второго набора правила
-// "foo" не совпадёт с тегом правила "foo 2" ("user:foo-2").
-func SrsRuleSetTag(id string, i int) string {
+// legacySrsRuleSetTag — тег записи route.rule_set i-го (с нуля) набора
+// правила с identity id по схеме до SPEC 188: "user:<id>", затем
+// "user:<id>:2", "user:<id>:3", … Сборка его больше не выпускает (теги —
+// rule_tags.go); нужен миграции ссылок на старые теги.
+func legacySrsRuleSetTag(id string, i int) string {
 	if i <= 0 {
 		return "user:" + id
 	}

@@ -368,6 +368,16 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 	// уже снял узлы с висячими ссылками) и финальные теги назначены.
 	ctx.Preset.PresetNodes = CollectPresetNodes(ctx.Cache, order)
 	ctx.Preset.FinalOutboundTags = finalOutboundTags
+	// SPEC 188 (§6.13): теги route.rule_set шаблона заняты до раздачи тегов
+	// наборам правил — одни и те же у всех разрешений маршрута этой сборки
+	// (route, DNS-зеркала, множество выпущенных тегов).
+	if ctx.Preset.TemplateRouteRuleSetTags == nil {
+		ctx.Preset.TemplateRouteRuleSetTags = []string{}
+		var route map[string]interface{}
+		if raw := cfg["route"]; len(raw) > 0 && json.Unmarshal(raw, &route) == nil {
+			ctx.Preset.TemplateRouteRuleSetTags = templateRouteRuleSetTagsFromRaw(route)
+		}
+	}
 	ctx.Preset.EmittedRuleSetTags = CollectEmittedRouteRuleSetTags(cfg["route"], ctx.Route, ctx.Preset)
 
 	// SPEC 129 Н10: секция dns собирается ПЕРВОЙ, независимо от порядка

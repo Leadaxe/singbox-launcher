@@ -1,0 +1,59 @@
+{
+  "rule_set": [
+    {
+      "tag": "Video (2)",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Video (2):f78fa2d2",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Video (2):inline",
+      "type": "inline",
+      "rules": [
+        {
+          "domain_suffix": [
+            "example-10.com"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "Video:inline",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Video:inline:inline",
+      "type": "inline",
+      "rules": [
+        {
+          "domain": [
+            "example-11.com"
+          ]
+        }
+      ]
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "Video (2)",
+        "Video (2):f78fa2d2",
+        "Video (2):inline"
+      ],
+      "outbound": "proxy-out"
+    },
+    {
+      "rule_set": [
+        "Video:inline",
+        "Video:inline:inline"
+      ],
+      "outbound": "direct"
+    }
+  ],
+  "dns_rules": []
+}

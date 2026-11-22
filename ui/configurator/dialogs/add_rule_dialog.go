@@ -1359,8 +1359,9 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			form: func() (map[string]interface{}, []json.RawMessage, error) {
 				return buildRuleRaw(ruleSel.Type(), outboundSelect.Selected)
 			},
-			dns: currentRuleDNS(),
-			srs: srsOptionsForm.Value(),
+			dns:     currentRuleDNS(),
+			srs:     srsOptionsForm.Value(),
+			editing: editRule,
 		}))
 	}
 
@@ -1612,6 +1613,10 @@ type rulePreviewInput struct {
 	form     func() (map[string]interface{}, []json.RawMessage, error)
 	dns      *corestate.RuleDNS
 	srs      corestate.RuleSetOptions // настройки наборов (SPEC 185)
+	// editing — правило модели, которое правит окно (nil — новое). Теги
+	// наборов зависят от всех правил оси и шаблона (SPEC 188, §6.13): превью
+	// собирает ось целиком, подставив правило окна на место editing.
+	editing *wizardmodels.RuleState
 }
 
 // rulePreviewSection — секция конфига в превью; ключи в порядке конфига.
@@ -1648,15 +1653,25 @@ func rulePreviewText(model *wizardmodels.WizardModel, in rulePreviewInput) strin
 		DNS:              in.dns,
 		SrsOptions:       in.srs,
 	}
-	rules := wizardmodels.EmitStateRulesWithoutOrder(nil, []*wizardmodels.RuleState{rs})
-	if body == nil || len(rules) == 0 {
+	own := wizardmodels.EmitStateRulesWithoutOrder(nil, []*wizardmodels.RuleState{rs})
+	if body == nil || len(own) == 0 {
 		return "// " + locale.T("Fill in the rule to see what it adds to the config.")
 	}
+	rules, ownNum := rulePreviewAxis(model, in.editing, rs, own[0])
 
 	srsCached := build.CollectSrsCachedPaths(rules, model.DataDir, model.ResourceDir)
+	td := &wizardtemplate.TemplateData{}
+	templateTags := []string{}
+	if model.TemplateData != nil {
+		td = &wizardtemplate.TemplateData{Presets: model.TemplateData.Presets, Vars: model.TemplateData.Vars}
+		templateTags = build.TemplateRouteRuleSetTags(model.TemplateData.Config["route"])
+	}
 	// Общие значения настроек наборов (SPEC 185) — из Settings: без них превью
-	// показало бы local там, где сборка выпустит remote.
-	route := build.ResolveRouteWithGlobals(&corestate.State{Rules: rules}, &wizardtemplate.TemplateData{}, model.DataDir, srsCached, model.Target, model.SettingsVars)
+	// показало бы local там, где сборка выпустит remote. Ось целиком и теги
+	// шаблона — как у сборки (SPEC 188): иначе превью показало бы тег `B`
+	// там, где сборка выпустит `B (2)`. В показ идёт только правило окна.
+	full := build.ResolveRouteTagged(&corestate.State{Rules: rules}, td, model.DataDir, srsCached, model.Target, model.SettingsVars, nil, templateTags)
+	route := rulePreviewOwn(full, own[0], ownNum)
 
 	var notes []string
 	routeSec := &rulePreviewSection{}
@@ -1724,6 +1739,52 @@ func rulePreviewText(model *wizardmodels.WizardModel, in rulePreviewInput) strin
 		text = "// " + strings.Join(notes, "\n// ") + "\n\n" + text
 	}
 	return text
+}
+
+// rulePreviewAxis — ось правил модели, в которой правило окна стоит на месте
+// editing (новое — в конце пользовательской зоны); второй результат — номер
+// правила окна на оси.
+func rulePreviewAxis(model *wizardmodels.WizardModel, editing, rs *wizardmodels.RuleState, own corestate.Rule) ([]corestate.Rule, int) {
+	customs := make([]*wizardmodels.RuleState, 0, len(model.CustomRules)+1)
+	found := false
+	for _, cr := range model.CustomRules {
+		if editing != nil && cr == editing {
+			cp := *rs
+			cp.Num = editing.Num
+			customs = append(customs, &cp)
+			found = true
+			continue
+		}
+		customs = append(customs, cr)
+	}
+	rules := wizardmodels.EmitStateRulesInAxisOrder(model.RuleOrder, model.PresetRefs, customs)
+	if found {
+		if editing.Num != nil {
+			return rules, *editing.Num
+		}
+		return rules, corestate.DefaultRuleNum
+	}
+	num := corestate.NextUserRuleNum(rules)
+	own.Num = &num
+	return append(rules, own), num
+}
+
+// rulePreviewOwn — из маршрута всей оси только правило окна: его правило
+// маршрута (имя и номер оси) и его наборы (id правила).
+func rulePreviewOwn(full build.ResolvedRoute, own corestate.Rule, num int) build.ResolvedRoute {
+	var out build.ResolvedRoute
+	id := corestate.StableRuleID(own)
+	for _, r := range full.Rules {
+		if (r.Source == build.RouteSourceInline || r.Source == build.RouteSourceSrs) && r.Name == own.Name && r.Num == num {
+			out.Rules = append(out.Rules, r)
+		}
+	}
+	for _, rs := range full.RuleSets {
+		if (rs.Source == build.RouteSourceInline || rs.Source == build.RouteSourceSrs) && rs.SrsID == id {
+			out.RuleSets = append(out.RuleSets, rs)
+		}
+	}
+	return out
 }
 
 // normalizeRuleSetRef приводит строку поля наборов к ссылке (SPEC 187):

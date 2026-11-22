@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"sort"
 
-	"singbox-launcher/core/config/registry"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 )
@@ -45,58 +44,65 @@ const (
 // с именем `*.` ядро подставляет под имя запроса (rewriteRecords).
 const ruleDNSFixedTTL = 300
 
-// RuleDNSMirrorMatch — матчер DNS-зеркала по телу маршрутного правила (у srs —
-// с вписанным сборкой rule_set). ok == false — зеркала нет: в теле ни одного
-// ключа матчера (условия, видимого DNS-слою). Окно правила спрашивает то же
-// самое, чтобы опция была недоступна ровно там, где сборка её не выпустит.
+// RuleDNSMirrorMatch — матчер DNS-зеркала по телу правила (тело записи с
+// refs или выпущенное, простое или дерево — §6.11, обход RuleDNSMirrorForBody).
+// ok == false — зеркала нет: ни в одном узле дерева нет условия, видимого
+// DNS-слою. Окно правила спрашивает то же самое, что выпускает сборка.
 func RuleDNSMirrorMatch(routeBody map[string]interface{}) (match map[string]interface{}, ok bool) {
-	reg, err := registry.Get()
-	if err != nil || routeBody == nil {
-		return nil, false
-	}
-	match = make(map[string]interface{})
-	for _, k := range reg.Allowlist(ruleDNSMirrorMatchList) {
-		if v, has := routeBody[k]; has && !isZeroJSONValue(v) {
-			match[k] = v
-		}
-	}
-	if len(match) == 0 {
-		return nil, false
-	}
-	return match, true
-}
-
-// bodyHasListKey — тело несёт хоть один ключ списка реестра с ненулевым
-// значением.
-func bodyHasListKey(routeBody map[string]interface{}, list string) bool {
-	reg, err := registry.Get()
-	if err != nil {
-		return false
-	}
-	for _, k := range reg.Allowlist(list) {
-		if v, has := routeBody[k]; has && !isZeroJSONValue(v) {
-			return true
-		}
-	}
-	return false
+	m, _ := RuleDNSMirrorForBody(routeBody)
+	return m, m != nil
 }
 
 // RuleDNSBlockHTTPSAvailable — сборка выпустит Block HTTPS у правила с таким
-// выпущенным телом: матчер зеркала не пуст и правило либо вида srs, либо
-// несёт доменное условие (список реестра `rule_dns_block_https_domains`).
+// телом: матчер зеркала не пуст и хоть в одном простом узле дерева есть
+// доменный ключ или ссылка на набор (§6.11). srs — UI-вид правила, у которого
+// ссылки сняты с тела (наборы — отдельным полем формы).
 func RuleDNSBlockHTTPSAvailable(routeBody map[string]interface{}, srs bool) bool {
-	if _, ok := RuleDNSMirrorMatch(routeBody); !ok {
-		return false
-	}
-	return srs || bodyHasListKey(routeBody, ruleDNSBlockHTTPSList)
+	m, domains := RuleDNSMirrorForBody(routeBody)
+	return m != nil && (srs || domains)
 }
 
-// RuleDNSMirrorNarrowed — тело несёт условие, которого DNS-слой не видит
-// (порт, протокол, network — список реестра `rule_dns_mirror_unseen`):
-// DNS-опции правила действуют шире маршрутного правила, окно правила
-// подсказывает это.
+// RuleDNSMirrorNarrowed — хоть один узел дерева несёт условие, которого
+// DNS-слой не видит (порт, протокол, network — список реестра
+// `rule_dns_mirror_unseen`): DNS-опции правила действуют шире маршрутного
+// правила, окно правила подсказывает это.
 func RuleDNSMirrorNarrowed(routeBody map[string]interface{}) bool {
-	return bodyHasListKey(routeBody, ruleDNSMirrorUnseenList)
+	keys := loadRuleTreeKeys()
+	found := false
+	corestate.WalkRuleTree(routeBody, func(_ []int, node map[string]interface{}, logical bool) bool {
+		if !logical && nodeHasAnyKey(node, keys.unseen) {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// ruleDNSMirrorBody — DNS-правило зеркала: матчер M + условие действия cond +
+// ключи действия. Ядро у logical не принимает query_type / ip_version, и
+// invert простого правила отрицал бы и условие действия, поэтому такой M
+// оборачивается в and из M и cond (§6.11); простой M без invert — ключи
+// рядом, как до 1.1.179 (config.json плоских правил прежний).
+func ruleDNSMirrorBody(match, cond, action map[string]interface{}) map[string]interface{} {
+	inv, _ := match[ruleTreeKeyInvert].(bool)
+	var body map[string]interface{}
+	if len(cond) > 0 && (corestate.IsLogicalRule(match) || inv) {
+		body = map[string]interface{}{
+			ruleTreeKeyType:  ruleTreeLogical,
+			ruleTreeKeyMode:  ruleTreeModeAnd,
+			ruleTreeKeyRules: []interface{}{cloneDNSRuleMap(match), cond},
+		}
+	} else {
+		body = cloneDNSRuleMap(match)
+		for k, v := range cond {
+			body[k] = v
+		}
+	}
+	for k, v := range action {
+		body[k] = v
+	}
+	return body
 }
 
 // ruleDNSMirror — DNS-правила одного маршрутного правила в порядке выпуска:
@@ -127,16 +133,15 @@ func collectRuleDNSMirrors(route ResolvedRoute) []ruleDNSMirror {
 		if r.Source != RouteSourceInline && r.Source != RouteSourceSrs {
 			continue
 		}
-		match, ok := RuleDNSMirrorMatch(r.Body)
-		if !ok {
+		match := r.Mirror
+		if match == nil {
 			continue
 		}
 		m := ruleDNSMirror{Num: r.Num, Name: r.Name}
-		if r.DNS.BlockHTTPS && RuleDNSBlockHTTPSAvailable(r.Body, r.Source == RouteSourceSrs) {
-			m.BlockHTTPS = cloneDNSRuleMap(match)
-			m.BlockHTTPS["query_type"] = append([]interface{}(nil), ruleDNSBlockHTTPSQueryTypes...)
-			m.BlockHTTPS["action"] = ruleDNSForceIPv4Action
-			m.BlockHTTPS["rcode"] = ruleDNSForceIPv4Rcode
+		predefined := map[string]interface{}{"action": ruleDNSForceIPv4Action, "rcode": ruleDNSForceIPv4Rcode}
+		if r.DNS.BlockHTTPS && r.MirrorDomains {
+			m.BlockHTTPS = ruleDNSMirrorBody(match,
+				map[string]interface{}{"query_type": append([]interface{}(nil), ruleDNSBlockHTTPSQueryTypes...)}, predefined)
 		}
 		if r.DNS.FixedActive() {
 			v4, v6 := r.DNS.FixedAddrs()
@@ -148,10 +153,8 @@ func collectRuleDNSMirrors(route ResolvedRoute) []ruleDNSMirror {
 			continue
 		}
 		if r.DNS.ForceIPv4 {
-			m.ForceIPv4 = cloneDNSRuleMap(match)
-			m.ForceIPv4["ip_version"] = ruleDNSForceIPv4Version
-			m.ForceIPv4["action"] = ruleDNSForceIPv4Action
-			m.ForceIPv4["rcode"] = ruleDNSForceIPv4Rcode
+			m.ForceIPv4 = ruleDNSMirrorBody(match,
+				map[string]interface{}{"ip_version": ruleDNSForceIPv4Version}, predefined)
 		}
 		if r.DNS.Enabled && r.DNS.ServerTag != "" {
 			m.Server = cloneDNSRuleMap(match)
@@ -170,18 +173,15 @@ func collectRuleDNSMirrors(route ResolvedRoute) []ruleDNSMirror {
 // зеркала, query_type, predefined NOERROR и записи `*. 300 IN <qtype> <ip>`;
 // без адресов — пустой NOERROR (приложение берёт другое семейство).
 func ruleDNSFixedBody(match map[string]interface{}, qtype string, addrs []string) map[string]interface{} {
-	body := cloneDNSRuleMap(match)
-	body["query_type"] = []interface{}{qtype}
-	body["action"] = ruleDNSForceIPv4Action
-	body["rcode"] = ruleDNSForceIPv4Rcode
+	action := map[string]interface{}{"action": ruleDNSForceIPv4Action, "rcode": ruleDNSForceIPv4Rcode}
 	if len(addrs) > 0 {
 		answer := make([]interface{}, 0, len(addrs))
 		for _, ip := range addrs {
 			answer = append(answer, fmt.Sprintf("*. %d IN %s %s", ruleDNSFixedTTL, qtype, ip))
 		}
-		body["answer"] = answer
+		action["answer"] = answer
 	}
-	return body
+	return ruleDNSMirrorBody(match, map[string]interface{}{"query_type": []interface{}{qtype}}, action)
 }
 
 // RuleDNSMirror — DNS-правила одного маршрутного правила для показа (вкладка
@@ -233,7 +233,7 @@ func ruleDNSMirrorsForMerge(ctx PresetMergeContext) []ruleDNSMirror {
 	}
 	st := &corestate.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	td := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars, PresetNodes: ctx.PresetNodes}
-	return collectRuleDNSMirrors(ResolveRouteChecked(st, &td, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues(), ctx.FinalOutboundTags))
+	return collectRuleDNSMirrors(ResolveRouteTagged(st, &td, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues(), ctx.FinalOutboundTags, ctx.TemplateRouteRuleSetTags))
 }
 
 // ruleDNSMirrorServers — теги серверов, на которые ссылаются зеркала.

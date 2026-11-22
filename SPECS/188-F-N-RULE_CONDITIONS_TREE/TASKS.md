@@ -45,21 +45,26 @@
   - Тесты, чьи ожидания зависели от старой формы, поправлены без прогона (`rule_types_test`, `migration_v7_to_v8_test`, `canonical_roundtrip_test` версия, `v6_integration_test`, `purity_test`, `schema_test`, `preset_ref_sync_test`, тесты `core/build` с картой кэша). Голдены `core/state/testdata/v8_roundtrip.json` (байт-в-байт против Save) и сценарий `real-v088-v8` не перегенерированы — разбор в CI (`GEN_V8_ROUNDTRIP_FIXTURE=1 … -run TestGenerateV8RoundtripFixture`).
 
 ## Волна 3 — сборка
-- [ ] `core/state/rule_tags.go`: `RuleTags`, `AllocateRuleTags`, `RefHash`
-- [ ] `core/state/rule_identity.go`: `legacySrsRuleSetTag`, `MigrateRuleSetTagRefsV9` (inline/srs тела + DNS `user`); вызов в `disk_v8.go`
-- [ ] `core/build/reserved_tags.go`: `ReservedRuleSetTags`
-- [ ] `core/build/preset_merge.go`: `PresetMergeContext.TemplateRouteRuleSetTags`; заполнение в `core/config_service_context.go`, `ui/configurator/business/create_config.go`, фолбэк из `routeRaw`
-- [ ] `core/build/rule_tree_emit.go`: `emitUserRule` — ссылки, inline-наборы, `rule_set` (рукописные + ссылки + inline), всё или ничего, висячие рукописные, дерево зеркала, `MirrorDomains`
-- [ ] `core/build/resolve_route.go`: раздача тегов до цикла, `resolveUserRouteRule`, поля `Mirror`/`MirrorDomains`
-- [ ] `core/build/rule_dns_mirror.go`: зеркало из `r.Mirror`, обёртка действий над `logical`, `RuleDNSMirrorForBody` для UI
-- [ ] Все четыре вызова `ResolveRouteChecked` с одинаковыми `rules`/`reserved` (`preset_merge.go:360`, `:688`, `rule_dns_mirror.go:236`, `add_rule_dialog.go:1659`)
-- [ ] `ui/configurator/dialogs/add_rule_dialog.go` `rulePreviewText`: все правила модели + шаблон
-- [ ] `ui/configurator/tabs/dns_unified_rules.go`, `add_rule_dialog.go` DNS-вкладка: `RuleDNSMirrorForBody` вместо плоских функций
-- [ ] Раннер `TestContractCorpusRuleTree` (`core/build/contract_rule_tree_test.go`)
-- [ ] Кейс миграции ссылок в `TestRuleRefsLiftedIntoBody`
-- [ ] `go build ./...`; `go test ./core/build -run 'TestContractCorpusRuleTree|TestContractCorpusRuleDNS' -count=1`; `go test ./core/state -run TestRuleRefsLiftedIntoBody -count=1`; `go test ./core/backup -run TestBackupCorpus -count=1`
+- [x] `core/state/rule_tags.go`: `RuleTags`, `AllocateRuleTags`, `RefHash`; плюс `RuleTagBase` (края обрезаны), `RuleNodePath`, `NodeRefs`, `NodeHasSetKeys`, `StateRuleTags` (ось состояния, занятые — префиксы пресетов, PLAN вопрос 9), `RuleSetKeysFromRegistry`
+- [x] `core/state/rule_identity.go`: `legacySrsRuleSetTag`, `MigrateRuleSetTagRefsV9` (тела inline/srs + DNS `user`; старый тег, совпавший с новым, не трогается — идемпотентность); вызов в `disk_v8.go`; UI-заглушка `load_v6.go` — новые теги
+- [x] `ReservedRuleSetTags` — в `core/build/rule_tree_emit.go` (отдельный файл не заводился)
+- [x] `core/build/preset_merge.go`: `PresetMergeContext.TemplateRouteRuleSetTags`; заполняет `BuildConfig` (`build.go`, из `cfg["route"]`) — один раз для всех разрешений маршрута сборки, поэтому `config_service_context.go` и `create_config.go` не правились; фолбэк из `routeRaw` в `MergePresetsIntoRoute` и `CollectEmittedRouteRuleSetTags`
+- [x] `core/build/rule_tree_emit.go`: `emitUserRule` — ссылки, inline-наборы, `rule_set` (рукописные + ссылки + inline), всё или ничего, `refs` на узле `logical` → невыпуск, дерево зеркала, `MirrorDomains`; `RuleDNSMirrorForBody`, `RuleDNSMirrorEmpty` (признак ⚠ для волны 4), `TemplateRouteRuleSetTags`
+- [x] `core/build/resolve_route.go`: `ResolveRouteTagged` (теги шаблона), раздача тегов до цикла, `resolveUserRouteRule`, поля `Mirror`/`MirrorDomains`; висячие рукописные `rule_set` — `dropDanglingHandwrittenRuleSets` (фикспойнт, правило и его наборы — Skipped, лог)
+- [x] `core/build/rule_dns_mirror.go`: зеркало из `r.Mirror`, обёртка действий над `logical` и над простым `M` с `invert` (контракт 1.1.180); `RuleDNSMirrorMatch`/`BlockHTTPSAvailable`/`Narrowed` — по дереву тела
+- [x] Все вызовы `ResolveRouteChecked` сборки → `ResolveRouteTagged` с `ctx.TemplateRouteRuleSetTags` (`preset_merge.go` ×2, `rule_dns_mirror.go`); превью окна — то же с тегами шаблона модели
+- [x] `ui/configurator/dialogs/add_rule_dialog.go` `rulePreviewText`: ось модели целиком (правило окна на месте редактируемого) + пресеты и теги шаблона; в показ — только правило окна
+- [x] `ui/configurator/tabs/dns_unified_rules.go`, DNS-вкладка окна: правок не потребовалось — экспортированные функции зеркала стали древесными под теми же именами
+- [x] Раннер `TestContractCorpusRuleTree` (`core/build/contract_rule_tree_test.go`): 15 кейсов (13 + 2 из 1.1.180)
+- [x] Кейс миграции ссылок в `TestRuleRefsLiftedIntoBody` (inline `user:Lists:2`, DNS `user:Lists`); ожидания сборки — новые теги, дерево выпускается
+- [x] Контракт 1.1.180 (пять решений по прогону LxBox + обёртка `invert`): TEMPLATE_LANG §6.11/§6.13, `corpus/rule_tree/README.md`, кейсы `disabled_derived_stable`, `invert_block_https`, changelog, TASKS_LXBOX §183; SPEC §4 «края обрезаны»
+- [x] `go build ./...`; по имени: `TestContractCorpusRuleTree`, `TestContractCorpusRuleDNS`, `TestRuleSetRemoteEmission`, `TestGoldenScenarios`, `TestWizardTemplateConfigUnchanged` (`core/build`); `TestRuleRefsLiftedIntoBody`, `TestStableRuleID_LossyNamesStayDistinct` (`core/state`); `TestBackupCorpus` (`core/backup`)
 - [ ] CI: `gh workflow run ci.yml --ref develop -f run_mode=tests`
 - [ ] Владельцу: свой `config.json`, `sing-box check`
+- Примечания волны 3 (23.11.2026):
+  - Теги шаблона неизвестны (`ResolveRouteChecked`, `templateTags == nil`) — рукописные `rule_set` на висячесть не проверяются (как `finalTags == nil` у download_detour). Боевой путь всегда передаёт теги.
+  - Рукописный `rule_set` в узле без `refs` оставлен байт-в-байт (список из одного тега не сворачивается в строку): `config.json` inline-правил прежний.
+  - config.json плоских правил без наборов не меняется; у правил с наборами меняются только теги (`user:<id>` → имя). Изменения сверх тегов: правило с `invert` и DNS-опцией получает `invert` в зеркале (SPEC §5), рукописный висячий `rule_set` снимает правило.
 
 ## Волна 4 — форма
 - [ ] `ui/configurator/models/rule_conditions.go`: модель стопки, `StackFromBody`, `Body`; сохранение исходных байт при неизменной стопке

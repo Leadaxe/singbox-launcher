@@ -213,7 +213,8 @@ func RebuildLegacyRuleView(s *State) {
 // с RulesV6 напрямую через новый edit dialog).
 func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 	out := make([]CustomRule, 0, len(rules))
-	for _, r := range rules {
+	var ruleTags []RuleTags // теги наборов — лениво, только если есть srs-вид
+	for ri, r := range rules {
 		body, err := r.DecodeBody()
 		if err != nil {
 			continue
@@ -285,15 +286,17 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 			// DetermineRuleType(cr.Rule) и игнорирует stored cr.Type. Чтобы
 			// SRS rule после re-open не превратилось в "Custom JSON",
 			// в cr.Rule кладём rule_set placeholder с identity-based тегами
-			// (те же, что эмитит build/resolve_route.go: SrsRuleSetTag).
+			// (теги §6.13 по состоянию — StateRuleTags, SPEC 188).
 			// Это чисто UI-hint — build path не использует cr.Rule для SRS,
 			// он берёт state.Rules напрямую.
-			id := StableRuleID(r)
-			var ruleSetHint interface{} = SrsRuleSetTag(id, 0)
+			if ruleTags == nil {
+				ruleTags = StateRuleTags(rules)
+			}
+			var ruleSetHint interface{} = ruleTags[ri].Ref(urls[0])
 			if len(urls) > 1 {
 				tags := make([]interface{}, 0, len(urls))
-				for i := range urls {
-					tags = append(tags, SrsRuleSetTag(id, i))
+				for _, u := range urls {
+					tags = append(tags, ruleTags[ri].Ref(u))
 				}
 				ruleSetHint = tags
 			}

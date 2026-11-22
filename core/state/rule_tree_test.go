@@ -37,16 +37,20 @@ const ruleRefsV8Fixture = `{
      "refs": ["https://e.com/b.srs"],
      "body": {"refs": ["https://e.com/a.srs"], "outbound": "direct-out"}},
     {"kind": "inline", "name": "Tree", "enabled": true, "num": 1040,
-     "body": {"type": "logical", "mode": "and", "rules": [{"source_ip_is_private": true}, {"refs": ["https://e.com/c.json"]}], "outbound": "direct-out"}}
+     "body": {"type": "logical", "mode": "and", "rules": [{"source_ip_is_private": true}, {"refs": ["https://e.com/c.json"]}], "outbound": "direct-out"}},
+    {"kind": "inline", "name": "Hand", "enabled": true, "num": 1050,
+     "body": {"rule_set": ["user:Lists:2"], "port": [80], "outbound": "direct-out"}}
   ],
-  "dns": {}
+  "dns": {"rules": [{"kind": "user", "enabled": true, "body": {"rule_set": "user:Lists", "server": "cf"}}]}
 }`
 
 // TestRuleRefsLiftedIntoBody — `refs` правила живёт в теле (контракт 1.1.179):
 // запись старой формы читается, сохраняется новой; ссылки и на записи, и в
 // дереве — главнее дерево; дерево со ссылками в под-правиле — srs и не роняет
 // сборку; плоское правило собирается в прежний вид; экспорт/импорт бэкапа
-// пишет lx_backup 3 и переносит форму без потерь.
+// пишет lx_backup 3 и переносит форму без потерь. Волна 3: рукописные ссылки
+// на старые теги user:<id> (тело правила, своё DNS-правило) переписываются на
+// теги §6.13 при загрузке; дерево со ссылками в под-правиле выпускается.
 func TestRuleRefsLiftedIntoBody(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
@@ -78,10 +82,12 @@ func TestRuleRefsLiftedIntoBody(t *testing.T) {
 		// ссылки и на записи, и в дереве — главнее дерево.
 		"Both": `{"refs":["https://e.com/a.srs"],"outbound":"direct-out"}`,
 		"Tree": `{"type":"logical","mode":"and","rules":[{"source_ip_is_private":true},{"refs":["https://e.com/c.json"]}],"outbound":"direct-out"}`,
+		// рукописная ссылка на старый тег user:<id>:2 — на тег §6.13 (волна 3).
+		"Hand": `{"rule_set":["Lists:589a1aec"],"port":[80],"outbound":"direct-out"}`,
 	}
 	wantKinds := map[string]state.RuleKind{
 		"Lists": state.RuleKindSrs, "Plain": state.RuleKindInline, "Old logical": state.RuleKindSrs,
-		"Both": state.RuleKindSrs, "Tree": state.RuleKindSrs,
+		"Both": state.RuleKindSrs, "Tree": state.RuleKindSrs, "Hand": state.RuleKindInline,
 	}
 	wantRefs := map[string][]string{
 		"Lists":       {"https://e.com/a.srs", "https://e.com/b.srs"},
@@ -112,6 +118,10 @@ func TestRuleRefsLiftedIntoBody(t *testing.T) {
 		lists := byName(st, "Lists")
 		if lists.DNS == nil || lists.DNS.ServerTag != "cf" || lists.SrsMode != state.SrsModeLocal {
 			t.Errorf("%s: dns и srs_mode остаются на записи: %+v", stage, lists)
+		}
+		// Своё DNS-правило со ссылкой на старый тег user:<id> — на тег §6.13.
+		if len(st.DNS.Rules) != 1 || st.DNS.Rules[0].Body["rule_set"] != "Lists" {
+			t.Errorf("%s: DNS-правило со старым тегом не переписано: %+v", stage, st.DNS.Rules)
 		}
 	}
 	checkRules("load", s)
@@ -162,24 +172,20 @@ func TestRuleRefsLiftedIntoBody(t *testing.T) {
 		}
 	}
 	route := build.ResolveRouteWithGlobals(s2, &template.TemplateData{}, "/data", cache, template.TargetSpec{}, nil)
-	var listsRule, treeRule map[string]interface{}
+	bodies := map[string]string{}
 	for _, rr := range route.Rules {
-		switch rr.Name {
-		case "Lists":
-			listsRule = rr.Body
-		case "Tree":
-			treeRule = rr.Body
+		b, _ := json.Marshal(rr.Body)
+		bodies[rr.Name] = string(b)
+	}
+	// Теги наборов — имя правила (§6.13, волна 3); дерево выпускается.
+	wantBuilt := map[string]string{
+		"Lists": `{"outbound":"direct-out","rule_set":["Lists","Lists:589a1aec"]}`,
+		"Tree":  `{"mode":"and","outbound":"direct-out","rules":[{"source_ip_is_private":true},{"rule_set":"Tree:86c39bbd"}],"type":"logical"}`,
+	}
+	for name, want := range wantBuilt {
+		if bodies[name] != want {
+			t.Errorf("правило %q собирается иначе:\n got %s\nwant %s", name, bodies[name], want)
 		}
-	}
-	wantLists := map[string]interface{}{
-		"rule_set": []string{"user:Lists", "user:Lists:2"},
-		"outbound": "direct-out",
-	}
-	if !reflect.DeepEqual(listsRule, wantLists) {
-		t.Errorf("плоское srs-правило собирается иначе: %v, ожидалось %v", listsRule, wantLists)
-	}
-	if treeRule != nil {
-		t.Errorf("дерево со ссылками в под-правиле эта волна не выпускает: %v", treeRule)
 	}
 
 	// ── Бэкап: экспорт пишет 3, импорт переносит форму ──

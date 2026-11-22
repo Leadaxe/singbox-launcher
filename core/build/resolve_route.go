@@ -15,7 +15,6 @@ import (
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/paths"
-	"singbox-launcher/internal/srstag"
 )
 
 // RouteSource — discriminator происхождения route entry.
@@ -34,15 +33,15 @@ const (
 
 // ResolvedRouteRuleSet — одна entry финального rule_set list'а.
 type ResolvedRouteRuleSet struct {
-	// Tag — финальный sing-box rule_set tag (с preset prefix для preset entries,
-	// "user:<id>" для srs entries).
+	// Tag — финальный sing-box rule_set tag (с preset prefix для preset entries;
+	// у собственных правил — по имени правила, TEMPLATE_LANG §6.13).
 	Tag string
 
 	// Body — готовое sing-box rule_set тело: {tag, type, format, rules|path|url}.
 	// Для preset remote rule_set, если файл не cached, Body=nil + Skipped=true.
 	Body map[string]interface{}
 
-	// Source — preset|srs (inline не создаёт rule_set).
+	// Source — preset | srs | inline (inline-набор правила без ссылок, SPEC 188).
 	Source RouteSource
 
 	// PresetID/Label — только для Source=preset.
@@ -65,6 +64,10 @@ type ResolvedRouteRuleSet struct {
 	// с «open …: no such file or directory». Так выключенные block-ads и
 	// russian ломали конфиг для роутера.
 	Enabled bool
+
+	// owner — номер записи-владельца на оси + 1 (0 — пресет): снятие правила
+	// по висячему рукописному rule_set снимает и его наборы.
+	owner int
 }
 
 // ResolvedRouteRule — одна entry финального route.rules[] list'а.
@@ -94,6 +97,22 @@ type ResolvedRouteRule struct {
 	// DNS — DNS-зеркало записи inline/srs (state.Rule.DNS, TEMPLATE_LANG
 	// §6.11); nil — опций нет.
 	DNS *corestate.RuleDNS
+
+	// Mirror — матчер DNS-зеркала по дереву выпущенного тела (§6.11, SPEC
+	// 188); nil — зеркало пустое. Считается при выпуске: только он знает,
+	// какие ключи ушли в inline-наборы и есть ли в них домены.
+	Mirror map[string]interface{}
+
+	// MirrorDomains — доменный ключ или ссылка на набор хоть в одном простом
+	// узле дерева: условие Block HTTPS (§6.11).
+	MirrorDomains bool
+
+	// handwritten — рукописные теги rule_set тела (проверка висячих после
+	// выпуска всей оси).
+	handwritten []string
+
+	// owner — номер записи на оси + 1 (0 — пресет).
+	owner int
 
 	// Active — прошёл if/if_or (только для preset; inline/srs всегда true).
 	Active bool
@@ -156,7 +175,8 @@ func ResolveRouteWithGlobals(
 // ResolveRouteChecked — ResolveRouteWithGlobals со знанием итогового множества
 // тегов выходов (SPEC 185 §2.4): набор в режиме remote, чей download_detour
 // указывает на недоступную цель, не эмитится. finalTags == nil — проверки нет
-// (превью, вызовы без графа).
+// (превью, вызовы без графа). Теги route.rule_set шаблона неизвестны —
+// рукописные rule_set правил на висячесть не проверяются (ResolveRouteTagged).
 func ResolveRouteChecked(
 	state *corestate.State,
 	td *template.TemplateData,
@@ -165,6 +185,26 @@ func ResolveRouteChecked(
 	target template.TargetSpec,
 	globalVars map[string]string,
 	finalTags map[string]bool,
+) ResolvedRoute {
+	return ResolveRouteTagged(state, td, dataDir, srsCachedPaths, target, globalVars, finalTags, nil)
+}
+
+// ResolveRouteTagged — ResolveRouteChecked с тегами route.rule_set шаблона
+// (SPEC 188, TEMPLATE_LANG §6.13): они заняты до раздачи тегов наборам
+// правил и считаются выпущенными при проверке рукописных rule_set.
+// templateTags == nil — шаблон неизвестен: теги раздаются без него, проверки
+// висячих рукописных ссылок нет. Все вызовы одной сборки обязаны передавать
+// одни и те же rules и templateTags — иначе теги наборов у маршрута и
+// DNS-зеркала разойдутся.
+func ResolveRouteTagged(
+	state *corestate.State,
+	td *template.TemplateData,
+	dataDir paths.DataDir,
+	srsCachedPaths map[string]string,
+	target template.TargetSpec,
+	globalVars map[string]string,
+	finalTags map[string]bool,
+	templateTags []string,
 ) ResolvedRoute {
 	var out ResolvedRoute
 	if state == nil || td == nil {
@@ -184,15 +224,23 @@ func ResolveRouteChecked(
 	// неотчуждаемыми (D-050): стёртое из state правило возвращается.
 	rules := corestate.NormalizeRuleOrder(state.Rules, template.RuleOrderSpecs(td.Presets))
 
-	for _, rule := range rules {
+	// Теги наборов правил — один раз на ось до выпуска (§6.13): заняты теги
+	// шаблона и наборов пресетов, базу и производные берут все записи
+	// inline|srs, включённые и нет.
+	reserved := ReservedRuleSetTags(presetByID, rules, templateTags)
+	keys := loadRuleTreeKeys()
+	ruleTags := corestate.AllocateRuleTags(rules, func(t string) bool { return reserved[t] }, keys.set)
+
+	for i, rule := range rules {
 		switch rule.Kind {
 		case corestate.RuleKindPreset:
 			resolvePresetRouteRule(&out, presetByID, rule, dataDir, emittedTags, target, globalVars, td.Vars, td.PresetNodes, finalTags)
-		case corestate.RuleKindInline:
-			resolveInlineRouteRule(&out, rule)
-		case corestate.RuleKindSrs:
-			resolveSrsRouteRule(&out, rule, srsCachedPaths, emittedTags, globalVars, finalTags)
+		case corestate.RuleKindInline, corestate.RuleKindSrs:
+			resolveUserRouteRule(&out, rule, i+1, ruleTags[i], srsCachedPaths, emittedTags, globalVars, finalTags, keys)
 		}
+	}
+	if templateTags != nil {
+		dropDanglingHandwrittenRuleSets(&out, templateTags)
 	}
 
 	return out
@@ -306,158 +354,124 @@ func resolvePresetRouteRule(
 	}
 }
 
-// resolveInlineRouteRule — kind=inline → direct route rule, no rule_set.
-//
-// state v8: тело записи — уже правило sing-box целиком (матчеры и цель в
-// форме `outbound` | `action`), поэтому оно едет в конфиг как есть.
-// DecodeBody здесь только валидирует запись (kind/name) — разбирать тело на
-// матчеры и цель, чтобы тут же склеить обратно, незачем.
-func resolveInlineRouteRule(out *ResolvedRoute, rule corestate.Rule) {
-	if _, err := rule.DecodeBody(); err != nil {
-		debuglog.WarnLog("route resolve: decode inline body: %v", err)
-		return
-	}
-	routeRule, err := rule.BodyMap()
-	if err != nil {
-		debuglog.WarnLog("route resolve: decode inline body: %v", err)
-		return
-	}
-	out.Rules = append(out.Rules, ResolvedRouteRule{
-		Body:     routeRule,
-		Source:   RouteSourceInline,
-		InlineID: corestate.StableRuleID(rule),
-		Name:     rule.Name,
-		DNS:      rule.DNS,
-		Active:   true,
-		Enabled:  rule.Enabled,
-		Num:      ruleNum(rule),
-	})
-}
-
-// resolveSrsRouteRule — kind=srs → local rule_set (from cache) + route rule.
-//
-// Ссылки — RuleRefs (обход дерева тела, контракт 1.1.179). Сборка этой волны
-// SPEC 188 выпускает только ссылки корневого простого правила: `refs` в
-// под-правилах `logical` — правило пропускается с записью в журнал (выпуск
-// дерева — волна 3, TEMPLATE_LANG §6.13).
-func resolveSrsRouteRule(
+// resolveUserRouteRule — запись inline|srs: дерево тела → записи rule_set
+// (ссылки и inline-наборы) + правило маршрута + матчер DNS-зеркала
+// (rule_tree_emit.go, TEMPLATE_LANG §6.13, §6.11). Всё или ничего: не доехал
+// хоть один набор дерева — правило не выпускается, его наборы — Skipped.
+func resolveUserRouteRule(
 	out *ResolvedRoute,
 	rule corestate.Rule,
+	owner int,
+	tags corestate.RuleTags,
 	srsCachedPaths map[string]string,
 	emittedTags map[string]bool,
 	globalVars map[string]string,
 	finalTags map[string]bool,
+	keys ruleTreeKeys,
 ) {
-	body, err := rule.DecodeBody()
-	if err != nil {
-		debuglog.WarnLog("route resolve: decode srs body: %v", err)
+	if _, err := rule.DecodeBody(); err != nil {
+		debuglog.WarnLog("route resolve: decode %s body: %v", rule.Kind, err)
 		return
 	}
-	sb := body.(*corestate.SrsBody)
-	id := corestate.StableRuleID(rule)
-	// Ссылки правила — все ссылки дерева тела по порядку (вид отдаёт RuleRefs).
-	urls := sb.Refs
 	policy := RulePolicy(rule, globalVars)
-	skipRule := func(reason string) {
-		out.RuleSets = append(out.RuleSets, ResolvedRouteRuleSet{
-			Tag:           corestate.SrsRuleSetTag(id, 0),
-			Source:        RouteSourceSrs,
-			SrsID:         id,
-			Enabled:       rule.Enabled,
-			Skipped:       true,
-			SkippedReason: reason,
-		})
-		debuglog.WarnLog("route resolve: srs rule %q skipped: %s", sb.Name, reason)
-	}
-	routeRule, err := rule.BodyMap()
-	if err != nil {
-		debuglog.WarnLog("route resolve: decode srs body: %v", err)
-		return
-	}
-	if corestate.BodyRefsNested(routeRule) {
-		skipRule("rule sets inside a rule group are not built yet")
-		return
-	}
-	// SPEC 185: в режиме remote наборы качает ядро — записи строятся по URL,
-	// кэш лаунчера не нужен. Недоступный download_detour снимает правило
-	// целиком, как нескачанный файл.
-	remoteBodies := make([]map[string]interface{}, 0, len(urls))
-	if policy.Remote {
-		for i, u := range urls {
-			rs, ok := remoteRuleSetBody(corestate.SrsRuleSetTag(id, i), "", u, policy, finalTags)
-			if !ok {
-				skipRule("download_detour unavailable")
-				return
-			}
-			remoteBodies = append(remoteBodies, rs)
-		}
-	}
-	// Копия набора привязана к ссылке (SPEC 188): путь берётся по самой
-	// ссылке, а не по номеру в списке правила. Правило — одна единица: либо
-	// закэшированы все его наборы, либо оно пропускается целиком (частичный
-	// набор молча менял бы смысл правила).
-	paths := make([]string, 0, len(urls))
-	if policy.Remote {
-		paths = append(paths, urls...)
-	} else {
-		for _, u := range urls {
-			p, ok := srsCachedPaths[u]
-			if !ok || p == "" {
-				break
-			}
-			paths = append(paths, p)
-		}
-	}
-	if len(urls) == 0 || len(paths) != len(urls) {
-		skipRule("srs file not cached")
-		return
-	}
-	// Запись rule_set на каждый набор правила (репорт 1.5.5: из трёх srs в
-	// одном правиле эмитился первый). Теги — corestate.SrsRuleSetTag: первый
-	// набор держит исторический "user:<id>", остальные "user:<id>:N".
-	tags := make([]string, 0, len(paths))
-	for i, path := range paths {
-		tag := corestate.SrsRuleSetTag(id, i)
-		tags = append(tags, tag)
-		if emittedTags[tag] {
+	e := emitUserRule(rule, tags, srsCachedPaths, policy, finalTags, keys)
+	for _, rs := range e.RuleSets {
+		rs.owner = owner
+		if !rs.Skipped && emittedTags[rs.Tag] {
 			continue
 		}
-		rs := map[string]interface{}{
-			"tag":    tag,
-			"type":   "local",
-			"format": srstag.FormatFromRef(urls[i]),
-			"path":   path,
+		out.RuleSets = append(out.RuleSets, rs)
+		if !rs.Skipped {
+			emittedTags[rs.Tag] = true
 		}
-		if policy.Remote {
-			rs = remoteBodies[i]
+	}
+	if e.Body == nil {
+		if len(e.RuleSets) == 0 && (rule.Kind == corestate.RuleKindSrs || e.SkipReason == ruleSkipRefsOnGroup) {
+			out.RuleSets = append(out.RuleSets, ResolvedRouteRuleSet{
+				Tag: tags.Base, Source: userRouteSource(rule), SrsID: corestate.StableRuleID(rule),
+				Enabled: rule.Enabled, Skipped: true, SkippedReason: e.SkipReason, owner: owner,
+			})
 		}
-		out.RuleSets = append(out.RuleSets, ResolvedRouteRuleSet{
-			Tag:     tag,
-			Body:    rs,
-			Source:  RouteSourceSrs,
-			SrsID:   id,
-			Enabled: rule.Enabled,
-		})
-		emittedTags[tag] = true
+		debuglog.WarnLog("route resolve: rule %q skipped: %s", rule.Name, e.SkipReason)
+		return
 	}
-	var ruleSetRef interface{} = tags[0]
-	if len(tags) > 1 {
-		ruleSetRef = tags
+	r := ResolvedRouteRule{
+		Body:          e.Body,
+		Source:        userRouteSource(rule),
+		Name:          rule.Name,
+		DNS:           rule.DNS,
+		Mirror:        e.Mirror,
+		MirrorDomains: e.MirrorDomains,
+		Active:        true,
+		Enabled:       rule.Enabled,
+		Num:           ruleNum(rule),
+		handwritten:   e.Handwritten,
+		owner:         owner,
 	}
-	// Тело записи едет как есть без `refs` (ключа ядро не знает), `rule_set`
-	// вписывает сборка по ссылкам — в состоянии его нет (ONE_NAMESPACE §1).
-	corestate.StripBodyRefs(routeRule)
-	routeRule["rule_set"] = ruleSetRef
-	out.Rules = append(out.Rules, ResolvedRouteRule{
-		Body:    routeRule,
-		Source:  RouteSourceSrs,
-		SrsID:   id,
-		Name:    rule.Name,
-		DNS:     rule.DNS,
-		Active:  true,
-		Enabled: rule.Enabled,
-		Num:     ruleNum(rule),
-	})
+	if r.Source == RouteSourceSrs {
+		r.SrsID = corestate.StableRuleID(rule)
+	} else {
+		r.InlineID = corestate.StableRuleID(rule)
+	}
+	out.Rules = append(out.Rules, r)
+}
+
+func userRouteSource(rule corestate.Rule) RouteSource {
+	if rule.Kind == corestate.RuleKindSrs {
+		return RouteSourceSrs
+	}
+	return RouteSourceInline
+}
+
+// dropDanglingHandwrittenRuleSets — рукописный rule_set собственного правила,
+// ссылающийся на тег, которого нет в итоговом route.rule_set (шаблон +
+// выпущенные включённые наборы), снимает правило целиком (§6.13), а с ним и
+// наборы этого правила (их некому держать). Снятие может сделать висячими
+// ссылки других правил — проход повторяется до фикспойнта, как у чистки
+// висячих rule_set пресетов (cleanDanglingRuleSetInRule).
+func dropDanglingHandwrittenRuleSets(out *ResolvedRoute, templateTags []string) {
+	for {
+		valid := make(map[string]bool, len(templateTags)+len(out.RuleSets))
+		for _, t := range templateTags {
+			valid[t] = true
+		}
+		for _, rs := range out.RuleSets {
+			if !rs.Skipped && rs.Enabled {
+				valid[rs.Tag] = true
+			}
+		}
+		changed := false
+		kept := out.Rules[:0]
+		for _, r := range out.Rules {
+			if !r.Enabled || len(r.handwritten) == 0 {
+				kept = append(kept, r)
+				continue
+			}
+			var dangling []string
+			for _, t := range r.handwritten {
+				if !valid[t] {
+					dangling = append(dangling, t)
+				}
+			}
+			if len(dangling) == 0 {
+				kept = append(kept, r)
+				continue
+			}
+			changed = true
+			reason := ruleSkipDanglingPrefix + joinTags(dedupStrings(dangling))
+			debuglog.WarnLog("route resolve: rule %q skipped: %s", r.Name, reason)
+			for i := range out.RuleSets {
+				rs := &out.RuleSets[i]
+				if r.owner != 0 && rs.owner == r.owner && !rs.Skipped {
+					rs.Skipped, rs.SkippedReason, rs.Body = true, reason, nil
+				}
+			}
+		}
+		out.Rules = kept
+		if !changed {
+			return
+		}
+	}
 }
 
 // ── Helper: silence unused json import (will be used by tests). ──

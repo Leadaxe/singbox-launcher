@@ -1,0 +1,58 @@
+{
+  "rule_set": [],
+  "route_rules": [
+    {
+      "domain_suffix": [
+        "example-12.com"
+      ],
+      "invert": true,
+      "outbound": "proxy-out"
+    }
+  ],
+  "dns_rules": [
+    {
+      "type": "logical",
+      "mode": "and",
+      "rules": [
+        {
+          "domain_suffix": [
+            "example-12.com"
+          ],
+          "invert": true
+        },
+        {
+          "query_type": [
+            "HTTPS",
+            "SVCB"
+          ]
+        }
+      ],
+      "action": "predefined",
+      "rcode": "NOERROR"
+    },
+    {
+      "type": "logical",
+      "mode": "and",
+      "rules": [
+        {
+          "domain_suffix": [
+            "example-12.com"
+          ],
+          "invert": true
+        },
+        {
+          "ip_version": 6
+        }
+      ],
+      "action": "predefined",
+      "rcode": "NOERROR"
+    },
+    {
+      "domain_suffix": [
+        "example-12.com"
+      ],
+      "invert": true,
+      "server": "cf"
+    }
+  ]
+}

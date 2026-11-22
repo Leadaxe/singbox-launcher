@@ -1,0 +1,25 @@
+{
+  "_": "Простое правило с invert под Block HTTPS и глушилкой AAAA: invert отрицает правило целиком, поэтому query_type / ip_version рядом с ним попали бы под отрицание — M оборачивается в and, invert остаётся внутри M (контракт 1.1.180). Зеркало на сервер — M с server на корне.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "NotAds",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "domain_suffix": [
+          "example-12.com"
+        ],
+        "invert": true,
+        "outbound": "proxy-out"
+      },
+      "dns": {
+        "enabled": true,
+        "serverTag": "cf",
+        "forceIpv4": true,
+        "blockHttps": true
+      }
+    }
+  ]
+}

@@ -287,6 +287,15 @@ type PresetMergeContext struct {
 	// шаблонный тег; боевой путь обязан передавать поле.
 	EmittedRuleSetTags map[string]bool
 
+	// TemplateRouteRuleSetTags (SPEC 188, TEMPLATE_LANG §6.13) — теги
+	// route.rule_set шаблона: заняты до раздачи тегов наборам правил и
+	// считаются выпущенными при проверке рукописных rule_set. Заполняет
+	// BuildConfig из route-секции шаблона; MergePresetsIntoRoute и
+	// CollectEmittedRouteRuleSetTags при nil берут их из своего routeRaw.
+	// nil у вызова без route-секции — теги без шаблона, проверки висячих
+	// рукописных ссылок нет.
+	TemplateRouteRuleSetTags []string
+
 	// FinalOutboundTags (SPEC 185) — итоговое множество тегов выходов, по
 	// которому проверяется download_detour набора в режиме remote. nil —
 	// проверки нет (превью). Заполняется там же, где EmittedRuleSetTags.
@@ -360,7 +369,11 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 
 	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	tdVal := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars, PresetNodes: ctx.PresetNodes}
-	resolved := ResolveRouteChecked(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues(), ctx.FinalOutboundTags)
+	templateTags := ctx.TemplateRouteRuleSetTags
+	if templateTags == nil {
+		templateTags = templateRouteRuleSetTagsFromRaw(route)
+	}
+	resolved := ResolveRouteTagged(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues(), ctx.FinalOutboundTags, templateTags)
 	ctx.noteTemplateWarnings(resolved.Warnings)
 
 	// Dedup по tag (template уже мог эмитить rule_sets).
@@ -651,17 +664,16 @@ func CollectEmittedRouteRuleSetTags(routeRaw json.RawMessage, routeCfg RouteConf
 	tags := make(map[string]bool, 8)
 
 	// (1) Теги из шаблонной route-секции.
+	templateTags := ctx.TemplateRouteRuleSetTags
 	if len(routeRaw) > 0 {
 		var route map[string]interface{}
 		if err := json.Unmarshal(routeRaw, &route); err == nil {
-			if arr, ok := route["rule_set"].([]interface{}); ok {
-				for _, rs := range arr {
-					if m, ok := rs.(map[string]interface{}); ok {
-						if t, _ := m["tag"].(string); t != "" {
-							tags[t] = true
-						}
-					}
-				}
+			fromRaw := templateRouteRuleSetTagsFromRaw(route)
+			for _, t := range fromRaw {
+				tags[t] = true
+			}
+			if templateTags == nil {
+				templateTags = fromRaw
 			}
 		}
 	}
@@ -688,7 +700,7 @@ func CollectEmittedRouteRuleSetTags(routeRaw json.RawMessage, routeCfg RouteConf
 	// PresetNodes — как в MergePresetsIntoRoute: наборы пресета for_each_node*
 	// раскрываются по узлам, без них множество было бы неполным (SPEC 153).
 	tdVal := template.TemplateData{Presets: ctx.Presets, Vars: ctx.TemplateVars, PresetNodes: ctx.PresetNodes}
-	resolved := ResolveRouteChecked(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues(), ctx.FinalOutboundTags)
+	resolved := ResolveRouteTagged(st, &tdVal, ctx.DataDir, ctx.SrsCachedPaths, ctx.Target, ctx.globalVarValues(), ctx.FinalOutboundTags, templateTags)
 	for _, rs := range resolved.RuleSets {
 		if rs.Skipped || !rs.Enabled {
 			continue

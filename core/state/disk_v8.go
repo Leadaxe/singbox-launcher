@@ -123,10 +123,12 @@ func parseV8(data []byte) (*State, error) {
 		debuglog.InfoLog("state: %d rules: rule set refs moved into the rule body", n)
 	}
 
-	// Ссылки на теги наборов srs-правил, сохранённые до появления хэша в id
-	// правила, переводятся на новые теги — в памяти, файл перепишет ближайшее
-	// сохранение.
-	MigrateRuleSetTagRefs(s.Rules, s.DNS.Rules)
+	// Ссылки на старые теги наборов (`user:<id>`, `user:<id>:N`) переводятся
+	// на теги §6.13 (имя правила, SPEC 188) — в памяти, файл перепишет
+	// ближайшее сохранение. После нормализации: ссылки правила — из дерева.
+	if n := MigrateRuleSetTagRefsV9(s.Rules, s.DNS.Rules); n > 0 {
+		debuglog.InfoLog("state: %d rule_set references moved to the rule-name tags", n)
+	}
 
 	// Legacy CustomRules view — как в v6/v7-парсе: UI-код до Phase 6 читает его.
 	s.CustomRules = legacyCustomRulesFromV6(s.Rules)

@@ -2,7 +2,7 @@
 
 Снято 23.11.2026 с `develop` (после cf619666). Адреса `файл:строка` — на этот
 снимок; после правок первой волны сдвигаются, имена функций — нет. Адреса
-`core/state`, `core/build` (карта кэша, `resolveSrsRouteRule`), `core/backup`
+`core/state`, `core/build` (карта кэша, выпуск правила), `core/backup` — волны 2–3
 (версии) и Debug API обновлены после волны 2 (хранение).
 
 ## 1. Реестр: типы и функции
@@ -32,22 +32,23 @@
 | `rule_tree.go:348` `ruleTreeFlatRefs` | тело = только `refs` + цель (UI-вид «наборы») |
 | `rule_identity.go:38` `StableRuleID` | identity: preset → `Ref`, inline/srs → `sanitize(Name)` (+ `-h8` имени при потере символов) |
 | `rule_identity.go:64` `LegacyRuleID` | identity до хэша (до 22.11.2026) — для миграции ссылок |
-| `rule_identity.go:94` `MigrateRuleSetTagRefs` | **образец будущей миграции**: `user:<legacy>` → `user:<stable>` в телах inline и DNS-правил `user`; неоднозначный старый id не трогает; число наборов — `RuleRefs` (`:110`) |
+| `rule_identity.go` `MigrateRuleSetTagRefsV9` (волна 3) | `user:<stable|legacy>` (+`:N`, N — позиция в `RuleRefs`) → тег §6.13 той же ссылки (`StateRuleTags`) в телах inline/srs и DNS-правил `user`; неоднозначный старый id и старый тег, равный новому, не трогает |
 | `rule_identity.go:146` `renameRuleSetRefs` | замена тегов в `rule_set` карты и в `rules[]` под-правил |
-| `rule_identity.go:187` `SrsRuleSetTag` | **нынешняя схема тегов**: `user:<id>`, `user:<id>:N` |
+| `rule_identity.go` `legacySrsRuleSetTag` | старая схема `user:<id>`, `user:<id>:N` — только для миграции |
+| `rule_tags.go` (волна 3) `AllocateRuleTags`, `RuleTags.Ref/Inline`, `RefHash`, `RuleTagBase`, `RuleNodePath`, `NodeRefs`, `NodeHasSetKeys`, `StateRuleTags` | **одна раздача тегов** §6.13: базы всем inline|srs оси, затем производные всем (вкл. выключенные); тег inline-набора узла без `refs` резервируется; h8 / h16 по всем ссылкам дерева |
 | `rule_identity.go:241` `CarryRuleMetadata` | провоз `Rule.ID` по `StableRuleID` при сохранении визарда |
 | `rule_set_options.go:63` `SetRuleSetOptions` | у правила без ссылок (`RuleRefs` пуст, не preset) настройки наборов очищаются |
 | `record_clone.go:14` `CloneRule` / `:43` `cloneRule` | копия записи (копирует `Refs` старой формы — до нормализации) |
 | `rule_order.go:254` `NormalizeRuleOrder` | ось: сортировка по `Num` + засев неотчуждаемых пресетов; порядок для тегов брать отсюда |
 | `disk_v8.go:35` `SchemaVersionV8 = 8`, `:42` `SchemaVersionV9 = 9` | мажоры файла (v9 — `refs` в теле); `diskStateV8`, `:66` `parseV8` (v8 и v9) |
 | `disk_v8.go:122` | `NormalizeRuleRecords` при чтении (подъём `refs`, вид) |
-| `disk_v8.go:129` | вызов `MigrateRuleSetTagRefs` (ссылки через `RuleRefs`) — место новой миграции волны 3 |
+| `disk_v8.go` (после `NormalizeRuleRecords`) | `MigrateRuleSetTagRefsV9` — рукописные ссылки на старые теги → теги §6.13 |
 | `disk_v8.go:132` | `legacyCustomRulesFromV6` — построение UI-вида |
 | `load_router.go:32` `Load`, `:132` `parseWithContext` | `meta >= 8` → `parseV8` (`:143`) |
 | `schema_gate.go:29` `SchemaMajor = 9`, `CheckSchemaCompatible` | гейт копирования/PATCH состояния машин: мажор выше — отказ |
 | `save.go:41`, `:136` | `Save`/`marshalDisk` пишут `SchemaVersionV9` (`meta.schema` прежний `sources_v8`) |
 | `state.go:45` `SchemaVersion` | алиас текущего мажора (9) |
-| `load_v6.go:214` `legacyCustomRulesFromV6` | запись → `CustomRule` для UI; srs не «наборы + выход» (`:245`, `ruleTreeFlatRefs`) — телом целиком (Custom JSON со ссылками); иначе `RuleSet` по URL, в `Rule` — заглушка `rule_set` с тегами `SrsRuleSetTag`, `Params` не восстанавливаются |
+| `load_v6.go:214` `legacyCustomRulesFromV6` | запись → `CustomRule` для UI; srs не «наборы + выход» (`ruleTreeFlatRefs`) — телом целиком (Custom JSON со ссылками); иначе `RuleSet` по URL, в `Rule` — заглушка `rule_set` с тегами `StateRuleTags` (снимается в волне 4), `Params` не восстанавливаются |
 | `legacy_types.go:43` `CustomRule.Params` | UI-состояние типа; на диск v8 не попадает (см. §4.5) |
 | `migration_v7_to_v8.go:160` `migrateV8Rule` | v7→v8: `refs` на запись (`:194-205`); в тело их поднимает `parseV8` |
 | `dns_options.go:70-74` | `DNSRuleKindPreset`, `DNSRuleKindUser` — свои DNS-правила |
@@ -60,8 +61,9 @@
 | `resolve_route.go:71` `ResolvedRouteRule` | правило маршрута: `Body, Source, InlineID/SrsID, Name, DNS, Num, Enabled` |
 | `resolve_route.go:160` `ResolveRouteChecked` | обход оси, `emittedTags` (first-wins), диспетчер по `Kind`; `srsCachedPaths map[ref]path` |
 | `resolve_route.go:201` `resolvePresetRouteRule` | наборы пресета (`<preset_id>:<tag>`), висячие → `cleanDanglingRuleSetInRule` (`:287`) |
-| `resolve_route.go:315` `resolveInlineRouteRule` | тело как есть; **рукописный `rule_set` без проверки висячих** |
-| `resolve_route.go:343` `resolveSrsRouteRule` | ссылки `RuleRefs`; `refs` ниже корня → пропуск с логом (`:377`, граница волны 2); теги `SrsRuleSetTag(id,i)`; кэш по ссылке `srsCachedPaths[u]` (`:404`), «всё или ничего»; `StripBodyRefs` (`:449`); `routeRule["rule_set"]` **перезаписывает** рукописный |
+| `resolve_route.go` `ResolveRouteTagged` (волна 3) | `ResolveRouteChecked` + теги `route.rule_set` шаблона: `ReservedRuleSetTags` → `AllocateRuleTags` до цикла; `dropDanglingHandwrittenRuleSets` после (templateTags == nil — без проверки) |
+| `resolve_route.go` `resolveUserRouteRule` (волна 3) | inline и srs одним путём через `emitUserRule`; наборы `Skipped` при невыпуске; `Mirror`, `MirrorDomains`, рукописные теги на `ResolvedRouteRule` |
+| `rule_tree_emit.go` (волна 3) `emitUserRule`, `rewriteRuleTree`, `ruleTreeMirror`, `RuleDNSMirrorForBody`, `RuleDNSMirrorEmpty`, `ReservedRuleSetTags`, `TemplateRouteRuleSetTags` | выпуск дерева §6.13 (ссылки, inline-наборы по `set` таблицы, `rule_set` = рукописные + ссылки + inline, всё или ничего, `refs` на `logical` — невыпуск) и зеркало §6.11 по дереву |
 | `resolve_route.go:447` `ruleNum` | номер оси, nil → `DefaultRuleNum` |
 | `rule_set_policy.go:34` `ResolveRuleSetPolicy`, `:62` `RulePolicy` | local/remote/интервал/detour правила; `file://` → local (`:64` по `RuleRefs`) |
 | `rule_set_policy.go:83` `remoteRuleSetBody` | `type: remote` запись набора |
@@ -80,7 +82,7 @@
 | `preset_expand.go:944-945` | имена списков `route_rule_conditions` / `dns_rule_conditions` |
 | `route_merge.go:173` `ResourceNameForSRS` | имя ресурса удалённой машины = `srstag.FileName(tag от URL)` |
 | `rule_dns_mirror.go:29-31` | имена списков реестра зеркала |
-| `rule_dns_mirror.go:52` `RuleDNSMirrorMatch` | матчер = ключи тела из `rule_dns_mirror_match`; пусто → зеркала нет; **плоский** |
+| `rule_dns_mirror.go` `RuleDNSMirrorMatch`, `RuleDNSBlockHTTPSAvailable`, `RuleDNSMirrorNarrowed` | по дереву тела (через `RuleDNSMirrorForBody`); `ruleDNSMirrorBody` — обёртка `and` над `logical` и над простым `M` с `invert`; `collectRuleDNSMirrors` берёт `r.Mirror` |
 | `rule_dns_mirror.go:87` `RuleDNSBlockHTTPSAvailable` | srs или доменный ключ |
 | `rule_dns_mirror.go:98` `RuleDNSMirrorNarrowed` | есть ключ из `rule_dns_mirror_unseen` → подсказка |
 | `rule_dns_mirror.go:121` `collectRuleDNSMirrors` | зеркала выпущенных правил: Block HTTPS, Fixed (A/AAAA), Force IPv4, server; `invert` **не переносится** |
@@ -190,7 +192,7 @@
 | `:1368` `syncFormToRaw`, `:1380` `syncRawToForm` | JSON ↔ форма через `DetermineRuleType` (`:1407`) |
 | `:1460` `tabs.OnSelected`, `:1492` окно, `:1536` `SetContent` | |
 | `:1560` `ruleArrayPastedError`, `:1570-1603` | помощники процессов |
-| `:1606` `rulePreviewInput`, `:1628` `rulePreviewText` | Preview: правило **одно**, `TemplateData{}` пустая (`:1659`) |
+| `rulePreviewInput`, `rulePreviewText`, `rulePreviewAxis`, `rulePreviewOwn` | Preview: ось модели целиком (правило окна на месте `editing`), пресеты и теги шаблона, `ResolveRouteTagged`; в показ — только правило окна (волна 3) |
 | `:1733` `normalizeRuleSetRef`, `:1760` `ruleSetFileError` | SPEC 187 |
 | `:1770` `conflictingRuleName` | |
 
@@ -223,7 +225,7 @@
 state.Load (load_router.go:32)
  └ parseWithContext → parseV8 (disk_v8.go:66)
     ├ NormalizeRuleRecords (rule_tree.go:229)          — refs записи → тело, kind
-    ├ MigrateRuleSetTagRefs (rule_identity.go:94)
+    ├ MigrateRuleSetTagRefsV9 (rule_identity.go) → StateRuleTags (rule_tags.go)
     └ legacyCustomRulesFromV6 (load_v6.go:214)            → UI-вид
 
 ConfigService / визард
@@ -233,12 +235,13 @@ ConfigService / визард
  │   └ ResolveRouteChecked (resolve_route.go:159)
  │       ├ NormalizeRuleOrder (rule_order.go:254)
  │       ├ resolvePresetRouteRule (:201) → ExpandPresetForNodes → cleanDanglingRuleSetInRule
- │       ├ resolveInlineRouteRule (:314)   — тело как есть
- │       └ resolveSrsRouteRule (:337)      — SrsRuleSetTag, RulePolicy, srsCachedPaths[id]
+ │       ├ ReservedRuleSetTags → AllocateRuleTags  — теги §6.13 один раз на ось
+ │       ├ resolveUserRouteRule → emitUserRule (rule_tree_emit.go) — наборы, тело, Mirror
+ │       └ dropDanglingHandwrittenRuleSets — висячие рукописные rule_set
  ├ CollectEmittedRouteRuleSetTags (preset_merge.go:647) → ResolveRouteChecked
  └ MergePresetsIntoDNS (preset_merge.go:436)
      ├ ruleDNSMirrorsForMerge (rule_dns_mirror.go:223) → ResolveRouteChecked → collectRuleDNSMirrors (:121)
-     │   └ RuleDNSMirrorMatch (:52) по allowlist rule_dns_mirror_match
+     │   └ r.Mirror (дерево зеркала из выпуска)
      ├ cleanDanglingDNSRule (preset_merge.go:720) — свои DNS-правила
      └ insertRuleDNSMirrors (rule_dns_mirror.go:274)
 
@@ -257,7 +260,7 @@ GC файлов: collectAllStageRuleSetTags (config_service.go:404)
 ShowAddRuleDialog (add_rule_dialog.go:78)
  ├ открытие: RuleState.Rule.Rule → DetermineRuleType → поля / Custom JSON
  ├ saveRule (:1019): buildRuleRaw | JSON → RuleState{Rule.Rule, Rule.RuleSets, Params, DNS, SrsOptions}
- └ Preview: rulePreviewText (:1628) → EmitStateRulesWithoutOrder → ResolveRouteWithGlobals → RuleDNSMirrors
+ └ Preview: rulePreviewText → rulePreviewAxis (ось модели) → ResolveRouteTagged → rulePreviewOwn → RuleDNSMirrors
 
 Сохранение визарда: EmitStateRulesInAxisOrder (preset_ref_sync.go:65)
  └ customRuleStateToV6Rule (:252) → NewSrsRule | NewInlineRule → state.Rules → Save
@@ -285,13 +288,17 @@ Debug API: stateRulesWith (state_endpoints.go:184) / stateedit.AddRule (rules.go
 
 ## 4. Выжимки по подсистемам
 
-### 4.1 Теги наборов сегодня
+### 4.1 Теги наборов (после волны 3)
 
-`user:<StableRuleID>` для первой ссылки, `user:<id>:N` для N-й
-(`rule_identity.go:187`); N — позиция в `RuleRefs` (после волны 2). Ссылки на эти теги текстом живут в телах inline-правил
-(Custom JSON) и своих DNS-правил; их переписывает `MigrateRuleSetTagRefs` при
-каждом чтении (`disk_v8.go:112`). Теги пресетов — `<preset_id>:<tag>`
-(`preset_expand.go:37`); шаблон тегов `rule_set` в `route` сейчас не несёт.
+Схема §6.13: база — имя правила (края обрезаны, пустое — `unnamed`), развод
+`B (2)`…; первая ссылка корня — `B'`, прочие — `B':<h8>`, inline-набор —
+`B'` / `B':inline` / `B':inline:<путь>`. Считает `core/state/rule_tags.go`
+(`AllocateRuleTags`) — сборка по оси `NormalizeRuleOrder` с занятыми тегами
+шаблона и пресетов (`ReservedRuleSetTags`), загрузка состояния — `StateRuleTags`
+(ось `SortRulesByNum`, занятые — префиксы `<preset_id>:`). Старые теги
+`user:<id>`, `user:<id>:N` в телах правил и своих DNS-правил переписывает
+`MigrateRuleSetTagRefsV9` при каждом чтении (`disk_v8.go`). Теги пресетов —
+`<preset_id>:<tag>` (`preset_expand.go:37`).
 
 ### 4.2 Файлы копий
 
