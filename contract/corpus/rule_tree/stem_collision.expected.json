@@ -1,0 +1,30 @@
+{
+  "rule_set": [
+    {
+      "tag": "Dup:ads-9b07008e",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Dup:ads-e0167f60",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Dup:other",
+      "type": "local",
+      "format": "binary"
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "Dup:ads-9b07008e",
+        "Dup:ads-e0167f60",
+        "Dup:other"
+      ],
+      "outbound": "proxy-out"
+    }
+  ],
+  "dns_rules": []
+}

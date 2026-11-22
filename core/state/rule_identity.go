@@ -84,17 +84,24 @@ func ruleNameHash(name string) string {
 }
 
 // MigrateRuleSetTagRefsV9 переписывает сохранённые ссылки на старые теги
-// наборов собственных правил — `user:<id>` и `user:<id>:N` (схема до SPEC 188;
-// id — нынешний StableRuleID или прежний LegacyRuleID без хэша) — на теги
-// §6.13 (имя правила, StateRuleTags). N — позиция ссылки в прежнем порядке
-// ссылок правила (RuleRefs). Ссылки живут текстом в телах собственных правил
-// маршрута (рукописный `rule_set`) и пользовательских DNS-правил.
+// наборов собственных правил на теги §6.13 (контракт 1.1.182, StateRuleTags).
+// Ссылки живут текстом в телах собственных правил маршрута (рукописный
+// `rule_set`) и пользовательских DNS-правил. Старые схемы:
 //
-// Старый тег, на который претендуют два правила, не переписывается: такая
-// ссылка и раньше указывала не туда, угадывать адресата нельзя. Старый тег,
-// совпадающий с новым тегом какого-либо правила, тоже не трогается — так
-// перезапись идемпотентна. Возвращает число переписанных ссылок; повторный
-// вызов ничего не меняет.
+//   - `user:<id>` и `user:<id>:N` (до SPEC 188; id — нынешний StableRuleID или
+//     прежний LegacyRuleID без хэша) → тег N-й ссылки правила в прежнем
+//     порядке ссылок (RuleRefs);
+//   - промежуточная схема develop (контракт 1.1.179–1.1.181): первая ссылка
+//     корня — B', прочие — `B':<h8>`, inline-набор корня со ссылками —
+//     `B':inline` → нынешние теги той же ссылки и того же inline-набора.
+//     Голый B' остаётся, если у правила есть свой inline-набор корня (теперь
+//     это его тег), иначе уходит на тег первой ссылки.
+//
+// Старый тег `user:<id>`, на который претендуют два правила, не
+// переписывается: такая ссылка и раньше указывала не туда, угадывать адресата
+// нельзя. Старый тег, совпадающий с нынешним тегом какого-либо правила, тоже не
+// трогается — так перезапись идемпотентна. Возвращает число переписанных
+// ссылок; повторный вызов ничего не меняет.
 func MigrateRuleSetTagRefsV9(rules []Rule, dnsRules []DNSRule) int {
 	claims := make(map[string]int)
 	for _, r := range rules {
@@ -110,11 +117,11 @@ func MigrateRuleSetTagRefsV9(rules []Rule, dnsRules []DNSRule) int {
 		return 0
 	}
 	tags := StateRuleTags(rules)
+	legacy := stateRuleTags(rules, true)
+	// Выданные теги: ссылки и inline-наборы (B' выдана, только если это тег
+	// inline-набора корня).
 	newTags := make(map[string]bool)
 	for i := range tags {
-		if tags[i].Base != "" {
-			newTags[tags[i].Base] = true
-		}
 		for _, t := range tags[i].refs {
 			newTags[t] = true
 		}
@@ -123,6 +130,12 @@ func MigrateRuleSetTagRefsV9(rules []Rule, dnsRules []DNSRule) int {
 		}
 	}
 	renames := make(map[string]string)
+	add := func(from, to string) {
+		if to == "" || from == "" || from == to || newTags[from] {
+			return
+		}
+		renames[from] = to
+	}
 	for i, r := range rules {
 		refs := RuleRefs(r)
 		if len(refs) == 0 {
@@ -133,12 +146,14 @@ func MigrateRuleSetTagRefsV9(rules []Rule, dnsRules []DNSRule) int {
 				continue
 			}
 			for n, u := range refs {
-				from, to := legacySrsRuleSetTag(id, n), tags[i].Ref(u)
-				if to == "" || from == to || newTags[from] {
-					continue
-				}
-				renames[from] = to
+				add(legacySrsRuleSetTag(id, n), tags[i].Ref(u))
 			}
+		}
+		for _, u := range refs {
+			add(legacy[i].Ref(u), tags[i].Ref(u))
+		}
+		for p, t := range legacy[i].inline {
+			add(t, tags[i].Inline(p))
 		}
 	}
 	if len(renames) == 0 {

@@ -34,7 +34,7 @@ func TestRuleSetRemoteEmission(t *testing.T) {
 			t.Fatalf("resolved: %+v", got)
 		}
 		want := map[string]interface{}{
-			"tag":             "ads", // тег набора — имя правила (SPEC 188, §6.13)
+			"tag":             "ads:ads", // тег набора — имя правила и stem ссылки (§6.13)
 			"type":            "remote",
 			"format":          "binary",
 			"url":             "https://raw.githubusercontent.com/acme/lists/main/ads.srs",

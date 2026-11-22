@@ -453,14 +453,16 @@ other conditions is the group itself.
 walks the tree: each link of `refs` becomes a `rule_set` entry, and the domain
 and address keys of a simple rule that has links (`domain*`, `ip_cidr`) go into
 the rule's own inline set. Tags: `B` = the rule name with edges trimmed
-(`unnamed` if empty), deduplicated along the axis as `B (2)`, `B (3)`, …; the
-first link of the root rule is `B`, any other link `B:<h8>` (first 8 hex of
-sha256 of the link), the inline set `B:inline` (root) or `B:inline:<path>`
-(tree leaf). The emitted rule gets `rule_set: [handwritten…, links…, inline]`.
-The old tags `user:<id>` / `user:<id>:N` are gone: a handwritten `rule_set`
-that pointed at them inside a rule body is rewritten on first load; anything
-outside rules (a template, a DNS rule written by hand elsewhere) has to be
-updated by hand. A handwritten `rule_set` naming a set that is not emitted drops
+(`unnamed` if empty), deduplicated along the axis as `B (2)`, `B (3)`, …; every
+link is `B:<stem>`, the stem being the file name from the link path without
+`.srs` / `.json` (contract 1.1.182: `Ai:geosite-google`); two links of a rule
+with the same stem get `B:<stem>-<h8>` both (first 8 hex of sha256 of the
+link), a link without a file name `B:<h8>`; the inline set of the root is `B`
+itself, of a tree leaf `B:inline:<path>`. The emitted rule gets
+`rule_set: [handwritten…, links…, inline]`. A handwritten `rule_set` pointing
+at earlier tags (`user:<id>` / `user:<id>:N` and the interim `B`, `B:<h8>`,
+`B:inline`) inside rule bodies and your own DNS rules is rewritten on first
+load; a template has to be updated by hand. A handwritten `rule_set` naming a set that is not emitted drops
 the rule instead of failing the core. Copy file names follow the link, not the
 tag, so nothing is downloaded again.
 
@@ -502,8 +504,8 @@ or their order.
   "enabled": true,
   "num": 1010,
   "body": {
-    "refs": ["https://example.com/netflix.srs"],   // `rule_set` is written by the build
-    "domain_suffix": ["nflxvideo.net"],            // goes into the inline set "Streaming:inline"
+    "refs": ["https://example.com/netflix.srs"],   // tag "Streaming:netflix", `rule_set` is written by the build
+    "domain_suffix": ["nflxvideo.net"],            // goes into the inline set "Streaming"
     "port": [443],
     "outbound": "direct-out"
   },

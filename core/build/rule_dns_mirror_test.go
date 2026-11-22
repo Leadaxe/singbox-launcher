@@ -166,8 +166,8 @@ func TestRuleDNSMirror(t *testing.T) {
 			`{"action":"predefined","query_type":["HTTPS","SVCB"],"rcode":"NOERROR"}`,
 			`{"domain_suffix":"home.lan","server":"local_dns_resolver"}`,
 			`{"domain_suffix":["corp.example"],"server":"cf_doh"}`,
-			`{"action":"predefined","ip_version":6,"rcode":"NOERROR","rule_set":"lists"}`,
-			`{"rule_set":"lists","server":"local_dns_resolver"}`,
+			`{"action":"predefined","ip_version":6,"rcode":"NOERROR","rule_set":"lists:lists"}`,
+			`{"rule_set":"lists:lists","server":"local_dns_resolver"}`,
 			`{"action":"predefined","domain_suffix":["ports.example"],"query_type":["HTTPS","SVCB"],"rcode":"NOERROR"}`,
 			`{"domain_suffix":["ports.example"],"server":"local_dns_resolver"}`,
 		}

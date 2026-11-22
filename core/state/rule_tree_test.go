@@ -87,7 +87,7 @@ func TestRuleRefsLiftedIntoBody(t *testing.T) {
 		"Both": `{"refs":["https://e.com/a.srs"],"outbound":"direct-out"}`,
 		"Tree": `{"type":"logical","mode":"and","rules":[{"source_ip_is_private":true},{"refs":["https://e.com/c.json"]}],"outbound":"direct-out"}`,
 		// рукописная ссылка на старый тег user:<id>:2 — на тег §6.13 (волна 3).
-		"Hand": `{"rule_set":["Lists:589a1aec"],"port":[80],"outbound":"direct-out"}`,
+		"Hand": `{"rule_set":["Lists:b"],"port":[80],"outbound":"direct-out"}`,
 		// пустой refs снимается при нормализации (порядок ключей прежний).
 		"Empty refs": `{"port":[22],"outbound":"direct-out"}`,
 		// refs на узле logical — запись хранится как есть (сборка не выпускает).
@@ -129,7 +129,7 @@ func TestRuleRefsLiftedIntoBody(t *testing.T) {
 			t.Errorf("%s: dns и srs_mode остаются на записи: %+v", stage, lists)
 		}
 		// Своё DNS-правило со ссылкой на старый тег user:<id> — на тег §6.13.
-		if len(st.DNS.Rules) != 1 || st.DNS.Rules[0].Body["rule_set"] != "Lists" {
+		if len(st.DNS.Rules) != 1 || st.DNS.Rules[0].Body["rule_set"] != "Lists:a" {
 			t.Errorf("%s: DNS-правило со старым тегом не переписано: %+v", stage, st.DNS.Rules)
 		}
 	}
@@ -197,10 +197,10 @@ func TestRuleRefsLiftedIntoBody(t *testing.T) {
 		b, _ := json.Marshal(rr.Body)
 		bodies[rr.Name] = string(b)
 	}
-	// Теги наборов — имя правила (§6.13, волна 3); дерево выпускается.
+	// Теги наборов — имя правила и stem ссылки (§6.13); дерево выпускается.
 	wantBuilt := map[string]string{
-		"Lists": `{"outbound":"direct-out","rule_set":["Lists","Lists:589a1aec"]}`,
-		"Tree":  `{"mode":"and","outbound":"direct-out","rules":[{"source_ip_is_private":true},{"rule_set":"Tree:86c39bbd"}],"type":"logical"}`,
+		"Lists": `{"outbound":"direct-out","rule_set":["Lists:a","Lists:b"]}`,
+		"Tree":  `{"mode":"and","outbound":"direct-out","rules":[{"source_ip_is_private":true},{"rule_set":"Tree:c"}],"type":"logical"}`,
 	}
 	for name, want := range wantBuilt {
 		if bodies[name] != want {

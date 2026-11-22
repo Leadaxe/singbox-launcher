@@ -1,0 +1,23 @@
+{
+  "_": "Формы stem: query и fragment отброшены (`ads.srs?token=…#x` → `ads`); без расширения — как есть (`noext`); снимается только последнее `.srs`/`.json` без учёта регистра (`geo.tar.srs` → `geo.tar`, `list.txt` → `list.txt`, `LIST.SRS` → `LIST`); регистр сохраняется, `LIST` и `list` — разные stem, хеша нет.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Shapes",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "https://example.com/rules/ads.srs?token=abc#x",
+          "https://example.com/rules/noext",
+          "https://example.com/geo.tar.srs",
+          "https://example.com/list.txt",
+          "https://example.com/LIST.SRS",
+          "https://example.com/list.srs"
+        ],
+        "outbound": "proxy-out"
+      }
+    }
+  ]
+}

@@ -1,12 +1,12 @@
 {
   "rule_set": [
     {
-      "tag": "X",
+      "tag": "X:ads (2)",
       "type": "local",
       "format": "binary"
     },
     {
-      "tag": "X:inline (2)",
+      "tag": "X",
       "type": "inline",
       "rules": [
         {
@@ -17,7 +17,7 @@
       ]
     },
     {
-      "tag": "X:inline",
+      "tag": "X:ads:lists",
       "type": "local",
       "format": "binary"
     }
@@ -25,13 +25,13 @@
   "route_rules": [
     {
       "rule_set": [
-        "X",
-        "X:inline (2)"
+        "X:ads (2)",
+        "X"
       ],
       "outbound": "proxy-out"
     },
     {
-      "rule_set": "X:inline",
+      "rule_set": "X:ads:lists",
       "outbound": "direct"
     }
   ],

@@ -142,7 +142,7 @@ func TestStableRuleID_LossyNamesStayDistinct(t *testing.T) {
 
 	// Одно правило на старый id — ссылки переписываются на теги §6.13 (SPEC 188).
 	ads := NewSrsRule("Реклама", []string{"https://x/a.srs", "https://x/b.srs"}, "reject")
-	second := "Реклама:" + RefHash("https://x/b.srs", 8)
+	first, second := "Реклама:a", "Реклама:b"
 	inline := NewInlineRule("Mix", map[string]interface{}{"rule_set": []string{"user:rule:2", "other"}}, "direct-out")
 	rules := []Rule{ads, inline}
 	dns := []DNSRule{
@@ -152,7 +152,7 @@ func TestStableRuleID_LossyNamesStayDistinct(t *testing.T) {
 	if n := MigrateRuleSetTagRefsV9(rules, dns); n != 3 {
 		t.Fatalf("rewritten refs: %d, want 3", n)
 	}
-	if got := dns[0].Body["rule_set"]; got != "Реклама" {
+	if got := dns[0].Body["rule_set"]; got != first {
 		t.Errorf("dns[0] rule_set = %v", got)
 	}
 	if got := dns[1].Body["rule_set"].([]interface{}); got[0] != second || got[1] != "russian:ru-domains" {
@@ -163,6 +163,30 @@ func TestStableRuleID_LossyNamesStayDistinct(t *testing.T) {
 	}
 	if n := MigrateRuleSetTagRefsV9(rules, dns); n != 0 {
 		t.Errorf("second pass rewrote %d refs", n)
+	}
+
+	// Промежуточная схема (контракт 1.1.179–1.1.181): первая ссылка корня — B',
+	// прочие — B':<h8>, inline корня со ссылками — B':inline. Голый B' у
+	// правила со своим inline-набором остаётся (теперь это его тег), у правила
+	// без него — уходит на тег первой ссылки.
+	ai := Rule{Kind: RuleKindSrs, Name: "Ai", Enabled: true, Body: json.RawMessage(`{"refs":["https://x/a.srs","https://x/b.srs"],"domain_suffix":["a.com"],"outbound":"proxy"}`)}
+	lists := Rule{Kind: RuleKindSrs, Name: "Lists", Enabled: true, Body: json.RawMessage(`{"refs":["https://x/c.srs","https://x/d.srs"],"outbound":"proxy"}`)}
+	hand := NewInlineRule("Hand", map[string]interface{}{"rule_set": []string{
+		"Ai", "Ai:" + RefHash("https://x/b.srs", 8), "Ai:inline", "Lists", "Lists:" + RefHash("https://x/d.srs", 8),
+	}}, "direct-out")
+	mid := []Rule{ai, lists, hand}
+	midDNS := []DNSRule{{Kind: DNSRuleKindUser, Body: map[string]interface{}{"rule_set": "Lists", "server": "a"}}}
+	if n := MigrateRuleSetTagRefsV9(mid, midDNS); n != 5 {
+		t.Fatalf("intermediate scheme: rewritten refs %d, want 5 (%s)", n, mid[2].Body)
+	}
+	if want := `"rule_set":["Ai","Ai:b","Ai","Lists:c","Lists:d"]`; !bytes.Contains(mid[2].Body, []byte(want)) {
+		t.Errorf("intermediate scheme: body %s lacks %s", mid[2].Body, want)
+	}
+	if got := midDNS[0].Body["rule_set"]; got != "Lists:c" {
+		t.Errorf("intermediate scheme: dns rule_set = %v", got)
+	}
+	if n := MigrateRuleSetTagRefsV9(mid, midDNS); n != 0 {
+		t.Errorf("intermediate scheme: second pass rewrote %d refs", n)
 	}
 
 	// Два правила на один старый id — адресат неизвестен, ссылка не трогается.

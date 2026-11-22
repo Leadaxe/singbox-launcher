@@ -1,17 +1,17 @@
 {
   "rule_set": [
     {
-      "tag": "Pair",
+      "tag": "Pair:pair-first",
       "type": "local",
       "format": "binary"
     },
     {
-      "tag": "Pair:433fb6f0a24ec65a",
+      "tag": "Pair:pair-e31a3654be43599e",
       "type": "local",
       "format": "binary"
     },
     {
-      "tag": "Pair:433fb6f07c8139b7",
+      "tag": "Pair:pair-e31a3654aec37891",
       "type": "local",
       "format": "binary"
     }
@@ -19,9 +19,9 @@
   "route_rules": [
     {
       "rule_set": [
-        "Pair",
-        "Pair:433fb6f0a24ec65a",
-        "Pair:433fb6f07c8139b7"
+        "Pair:pair-first",
+        "Pair:pair-e31a3654be43599e",
+        "Pair:pair-e31a3654aec37891"
       ],
       "outbound": "proxy-out"
     }

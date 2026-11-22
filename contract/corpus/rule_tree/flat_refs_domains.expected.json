@@ -1,17 +1,17 @@
 {
   "rule_set": [
     {
+      "tag": "Streaming:ads",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Streaming:trackers",
+      "type": "local",
+      "format": "binary"
+    },
+    {
       "tag": "Streaming",
-      "type": "local",
-      "format": "binary"
-    },
-    {
-      "tag": "Streaming:3cdcfd9d",
-      "type": "local",
-      "format": "binary"
-    },
-    {
-      "tag": "Streaming:inline",
       "type": "inline",
       "rules": [
         {
@@ -28,9 +28,9 @@
   "route_rules": [
     {
       "rule_set": [
-        "Streaming",
-        "Streaming:3cdcfd9d",
-        "Streaming:inline"
+        "Streaming:ads",
+        "Streaming:trackers",
+        "Streaming"
       ],
       "port": [
         443
@@ -41,9 +41,9 @@
   "dns_rules": [
     {
       "rule_set": [
-        "Streaming",
-        "Streaming:3cdcfd9d",
-        "Streaming:inline"
+        "Streaming:ads",
+        "Streaming:trackers",
+        "Streaming"
       ],
       "server": "cf"
     }

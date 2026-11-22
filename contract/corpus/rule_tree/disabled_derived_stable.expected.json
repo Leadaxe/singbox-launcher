@@ -1,17 +1,17 @@
 {
   "rule_set": [
     {
+      "tag": "Video (2):music",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Video (2):news",
+      "type": "local",
+      "format": "binary"
+    },
+    {
       "tag": "Video (2)",
-      "type": "local",
-      "format": "binary"
-    },
-    {
-      "tag": "Video (2):f78fa2d2",
-      "type": "local",
-      "format": "binary"
-    },
-    {
-      "tag": "Video (2):inline",
       "type": "inline",
       "rules": [
         {
@@ -22,12 +22,12 @@
       ]
     },
     {
-      "tag": "Video:inline",
+      "tag": "Video:news:eu (2)",
       "type": "local",
       "format": "binary"
     },
     {
-      "tag": "Video:inline:inline",
+      "tag": "Video:news",
       "type": "inline",
       "rules": [
         {
@@ -41,16 +41,16 @@
   "route_rules": [
     {
       "rule_set": [
-        "Video (2)",
-        "Video (2):f78fa2d2",
-        "Video (2):inline"
+        "Video (2):music",
+        "Video (2):news",
+        "Video (2)"
       ],
       "outbound": "proxy-out"
     },
     {
       "rule_set": [
-        "Video:inline",
-        "Video:inline:inline"
+        "Video:news:eu (2)",
+        "Video:news"
       ],
       "outbound": "direct"
     }

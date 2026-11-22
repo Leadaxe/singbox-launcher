@@ -1,7 +1,7 @@
 {
   "rule_set": [
     {
-      "tag": "Twice:e541b501",
+      "tag": "Twice:video",
       "type": "local",
       "format": "binary"
     }
@@ -12,13 +12,13 @@
       "mode": "or",
       "rules": [
         {
-          "rule_set": "Twice:e541b501",
+          "rule_set": "Twice:video",
           "port": [
             443
           ]
         },
         {
-          "rule_set": "Twice:e541b501",
+          "rule_set": "Twice:video",
           "source_ip_is_private": true
         }
       ],

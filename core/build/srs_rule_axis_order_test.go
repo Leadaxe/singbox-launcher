@@ -29,7 +29,7 @@ func TestSrsRuleKeepsAxisPosition(t *testing.T) {
 	if err := json.Unmarshal(out, &r); err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Rules) != 2 || r.Rules[0]["outbound"] != "direct-out" || r.Rules[1]["rule_set"] != "second-srs" {
+	if len(r.Rules) != 2 || r.Rules[0]["outbound"] != "direct-out" || r.Rules[1]["rule_set"] != "second-srs:list" {
 		t.Errorf("route.rules = %v; want inline (1000), затем srs (1010)", r.Rules)
 	}
 }

@@ -1643,15 +1643,17 @@ names condition keys.
    a record `refs` (old form) is lifted into the root of the body (a `logical`
    root is wrapped in `and`), `kind` is derived (`refs` in the tree → `srs`).
    `MigrateRuleSetTagRefsV9` (`rule_identity.go`) rewrites handwritten
-   `rule_set` references to the old `user:<id>` tags inside rule bodies and
-   `user` DNS rules. `RuleRefs` is the only reader of a rule's links.
+   `rule_set` references to the old `user:<id>` tags and to the interim
+   1.1.179–1.1.181 tags inside rule bodies and `user` DNS rules. `RuleRefs` is the only reader of a rule's links.
 2. **Tags** — `ResolveRouteTagged` (`core/build/resolve_route.go`) reserves the
    template's `route.rule_set` tags and every preset's tags
    (`ReservedRuleSetTags`), then `AllocateRuleTags` (`core/state/rule_tags.go`)
    hands out one base per inline/srs record along the axis — enabled or not,
    emitted or not — so the tag depends only on names and order and matches
-   LxBox: `B`, `B (2)`, …; links `B` / `B:<h8>`, inline sets `B:inline` /
-   `B:inline:<path>`.
+   LxBox: `B`, `B (2)`, …; links `B:<stem>` (`RefStem`: file name of the link
+   path without `.srs` / `.json`; same stem twice — `B:<stem>-<h8>` both,
+   no file name — `B:<h8>`), inline sets `B` (root) / `B:inline:<path>`
+   (contract 1.1.182).
 3. **Sets and route rule** — `emitUserRule` (`core/build/rule_tree_emit.go`)
    walks the tree: each link becomes a `rule_set` entry (local or remote by
    `RulePolicy`, file name from the link — `internal/srstag`), the set keys of

@@ -1,6 +1,6 @@
 # Корпус выпуска правила-дерева: наборы, теги, маршрут, DNS-зеркало
 
-Контракт 1.1.179–1.1.180 (SPEC 188 лаунчера, D-156, D-157). Нормы —
+Контракт 1.1.179–1.1.182 (SPEC 188 лаунчера, D-156, D-157, D-158). Нормы —
 `docs/TEMPLATE_LANG.md` §6.13 (наборы правила и их теги) и §6.11 (зеркало
 по дереву). Гоняют обе стороны: лаунчер — раннер `TestContractCorpusRuleTree`
 (`core/build/contract_rule_tree_test.go`, SPEC 188 волна 3), LxBox — свой
@@ -50,21 +50,27 @@
 
 | Кейс | Что проверяет |
 |---|---|
-| `flat_refs_domains` | плоское: 2 ссылки + `domain_suffix` + `ip_cidr` + `port` → `B`, `B:<h8>`, `B:inline`; `port` на правиле; зеркало с inline-набором (домены есть) |
-| `flat_refs_ip_only` | ссылка + `ip_cidr` → `B:inline` только с адресом исключён из зеркала |
+| `flat_refs_domains` | плоское: 2 ссылки + `domain_suffix` + `ip_cidr` + `port` → `B:ads`, `B:trackers`, inline `B`; `port` на правиле; зеркало с inline-набором (домены есть) |
+| `flat_refs_ip_only` | ссылка + `ip_cidr` → inline `B` только с адресом исключён из зеркала |
 | `flat_no_refs_bytes` | плоское без ссылок — тело на правиле как есть, наборов нет (критерий 5) |
-| `tree_and_or` | `and` [условия, `or` группа] → ссылка листа `B:<h8>`, `B:inline:1.0`; зеркало-дерево |
+| `tree_and_or` | `and` [условия, `or` группа] → ссылка листа `B:<stem>`, `B:inline:1.0`; зеркало-дерево |
 | `invert_port_dropped` | `not port 443` + DNS → зеркала нет, `mirror_empty` |
 | `invert_carried` | `invert` с доменами переносится в зеркало |
 | `single_child_unwrap` | после выброса пустых детей обёртка снята; `invert` обёртки переходит на ребёнка |
 | `same_ref_two_leaves` | одна ссылка в двух листах — один тег, одна запись |
-| `name_dedup` | тег шаблона и тег пресета заняты; выключенное правило берёт базу: `Ads (2)`, `Ads (3)`, `Ads (4)`, `blk:lists (2)` |
-| `derived_tag_collision` | правило `X` и правило `X:inline` → `X:inline (2)` у inline-набора `X` |
-| `h8_collision` | две ссылки с одинаковыми 8 hex → 16 hex у обеих (пара подобрана перебором) |
+| `name_dedup` | тег шаблона и тег пресета заняты; выключенное правило берёт базу: `Ads (2)`, `Ads (3)`, `Ads (4)`, `blk:lists (2)`; теги ссылок — от разведённой базы (`Ads (2):ads`) |
+| `derived_tag_collision` | правило `X` (ссылка `…/ads.srs`) и правило `X:ads` → тег ссылки `X`, равный занятой базе, — `X:ads (2)`; inline-набор `X` — чистый `X` |
+| `h8_collision` | две ссылки с одним stem и одинаковыми 8 hex → `B:<stem>-<16 hex>` у обеих (пара подобрана перебором) |
 | `ip_cidr_inbound_mirror` | лист `{ip_cidr, inbound}` с DNS → зеркало `{inbound}` на все запросы входа |
 | `block_https_over_tree` | Block HTTPS, глушилка AAAA, Fixed IP над `logical` — обёртка `and`; сервер — на корне `M` |
-| `disabled_derived_stable` | производные теги раздаются и выключенным записям (1.1.180): выключенное правило выше по оси теги соседей не меняет |
+| `disabled_derived_stable` | производные теги раздаются и выключенным записям (1.1.180): выключенное правило выше по оси держит `Video:news:eu`, правило `Video:news` получает `Video:news:eu (2)` |
 | `invert_block_https` | простое `M` с `invert` под Block HTTPS / глушилкой AAAA — обёртка `and`, `invert` остаётся внутри `M` (1.1.180); сервер — `M` с `server` |
+| `stem_ai_example` | пример нормы: `Ai:geosite-category-ai-!cn`, `Ai:geosite-google`, inline `Ai` (1.1.182) |
+| `stem_shapes` | query/fragment отброшены; без расширения; `geo.tar.srs` → `geo.tar`; `list.txt` как есть; `LIST.SRS` и `list.srs` — разные stem `LIST` и `list` |
+| `stem_empty` | пустой stem (`…/`, пустой путь, `.srs`) → `B:<h8>` |
+| `stem_collision` | stem `ads` у двух разных ссылок → `B:ads-<h8>` у обеих; повтор ссылки — один тег |
+| `stem_file_percent` | `file://` с `%20` (`My Set`, формат source по `.json`) и `%2F` внутри сегмента (`a/b`) |
 
 h8 — первые 8 hex sha256 строки ссылки (UTF-8, края обрезаны), нижний
-регистр.
+регистр. stem — последний сегмент пути ссылки без query/fragment,
+percent-decoded, без последнего `.srs` / `.json` (без учёта регистра); §6.13 п. 4.

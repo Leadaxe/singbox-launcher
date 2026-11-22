@@ -1,0 +1,36 @@
+{
+  "rule_set": [
+    {
+      "tag": "Empty:0c3ea75f",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Empty:100680ad",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Empty:80a9ae13",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Empty:named",
+      "type": "local",
+      "format": "binary"
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "Empty:0c3ea75f",
+        "Empty:100680ad",
+        "Empty:80a9ae13",
+        "Empty:named"
+      ],
+      "outbound": "proxy-out"
+    }
+  ],
+  "dns_rules": []
+}

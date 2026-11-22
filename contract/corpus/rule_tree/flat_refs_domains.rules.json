@@ -1,5 +1,5 @@
 {
-  "_": "Плоское правило: две ссылки + domain_suffix + ip_cidr + port. Первая ссылка — B, вторая — B:<h8>, inline-набор (домены и адрес) — B:inline последним; port остаётся на правиле. Зеркало: inline-набор с доменом не исключается, port выпадает.",
+  "_": "Плоское правило: две ссылки + domain_suffix + ip_cidr + port. Ссылки — B:<stem> (`Streaming:ads`, `Streaming:trackers`), inline-набор (домены и адрес) — чистый B последним; port остаётся на правиле. Зеркало: inline-набор с доменом не исключается, port выпадает.",
   "template_rule_set_tags": [],
   "rules": [
     {

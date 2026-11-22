@@ -1,12 +1,12 @@
 {
   "rule_set": [
     {
-      "tag": "Office",
+      "tag": "Office:office",
       "type": "local",
       "format": "binary"
     },
     {
-      "tag": "Office:inline",
+      "tag": "Office",
       "type": "inline",
       "rules": [
         {
@@ -20,15 +20,15 @@
   "route_rules": [
     {
       "rule_set": [
-        "Office",
-        "Office:inline"
+        "Office:office",
+        "Office"
       ],
       "outbound": "direct"
     }
   ],
   "dns_rules": [
     {
-      "rule_set": "Office",
+      "rule_set": "Office:office",
       "server": "cf"
     }
   ]

@@ -1,7 +1,7 @@
 {
   "rule_set": [
     {
-      "tag": "Mixed:80dedb22",
+      "tag": "Mixed:ads",
       "type": "local",
       "format": "binary"
     },
@@ -36,7 +36,7 @@
           "rules": [
             {
               "rule_set": [
-                "Mixed:80dedb22",
+                "Mixed:ads",
                 "Mixed:inline:1.0"
               ]
             },
@@ -67,7 +67,7 @@
           "rules": [
             {
               "rule_set": [
-                "Mixed:80dedb22",
+                "Mixed:ads",
                 "Mixed:inline:1.0"
               ]
             },

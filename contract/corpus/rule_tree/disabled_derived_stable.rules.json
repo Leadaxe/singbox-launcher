@@ -1,5 +1,5 @@
 {
-  "_": "Производные теги раздаются всем записям inline|srs, включённым и выключенным (контракт 1.1.180): выключенное «Video» выше по оси берёт базу Video и свой производный тег inline-набора (Video:inline занят базой третьего правила — Video:inline (2)), но в конфиг ничего не выпускает; теги соседей от его включения не зависят: Video (2), Video (2):<h8>, Video (2):inline и Video:inline, Video:inline:inline. Производный тег одного правила совпасть с производным другого не может (базы различны, суффиксы — `:<hex>`, `:inline`, `:inline:<путь>`), поэтому кейс закрепляет раздачу по всей оси, а не перенос суффикса.",
+  "_": "Производные теги раздаются всем записям inline|srs, включённым и выключенным (контракт 1.1.180): выключенное «Video» выше по оси берёт базу Video, тег ссылки `Video:news:eu` (stem ссылки …/news%3Aeu.srs — `news:eu`) и тег inline-набора `Video`, но в конфиг ничего не выпускает. Второе «Video» — база `Video (2)`: `Video (2):music`, `Video (2):news`, inline `Video (2)`. Правило «Video:news» со ссылкой …/eu.srs получает `Video:news:eu (2)`: тег `Video:news:eu` уже выдан выключенному правилу, и от его включения не зависит.",
   "template_rule_set_tags": [],
   "rules": [
     {
@@ -9,7 +9,7 @@
       "num": 1000,
       "body": {
         "refs": [
-          "https://example.com/rules/video.srs"
+          "https://example.com/rules/news%3Aeu.srs"
         ],
         "domain": [
           "example-9.com"
@@ -35,12 +35,12 @@
     },
     {
       "kind": "srs",
-      "name": "Video:inline",
+      "name": "Video:news",
       "enabled": true,
       "num": 1020,
       "body": {
         "refs": [
-          "https://example.com/rules/video.srs"
+          "https://example.com/rules/eu.srs"
         ],
         "domain": [
           "example-11.com"

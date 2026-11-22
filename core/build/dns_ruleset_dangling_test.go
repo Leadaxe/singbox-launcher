@@ -44,7 +44,7 @@ func TestDNSRuleSetRefsSurviveWhenTagIsEmitted(t *testing.T) {
 	srsRule := state.NewSrsRule("Ads", []string{"https://example.invalid/geosite-ads.srs"}, "direct-out")
 	srsRule.Enabled = true
 	srsID := state.StableRuleID(srsRule)
-	srsTag := "Ads" // тег набора — имя правила (SPEC 188 §4)
+	srsTag := "Ads:geosite-ads" // тег набора — имя правила и stem ссылки (§6.13)
 	srsFile := filepath.Join(srsPath, srsID+".srs")
 	if err := os.WriteFile(srsFile, []byte("stub"), 0o644); err != nil {
 		t.Fatalf("write srs: %v", err)
