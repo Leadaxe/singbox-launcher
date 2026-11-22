@@ -39,7 +39,11 @@ const ruleRefsV8Fixture = `{
     {"kind": "inline", "name": "Tree", "enabled": true, "num": 1040,
      "body": {"type": "logical", "mode": "and", "rules": [{"source_ip_is_private": true}, {"refs": ["https://e.com/c.json"]}], "outbound": "direct-out"}},
     {"kind": "inline", "name": "Hand", "enabled": true, "num": 1050,
-     "body": {"rule_set": ["user:Lists:2"], "port": [80], "outbound": "direct-out"}}
+     "body": {"rule_set": ["user:Lists:2"], "port": [80], "outbound": "direct-out"}},
+    {"kind": "inline", "name": "Empty refs", "enabled": true, "num": 1060,
+     "body": {"port": [22], "refs": [], "outbound": "direct-out"}},
+    {"kind": "inline", "name": "Group refs", "enabled": true, "num": 1070,
+     "body": {"type": "logical", "mode": "or", "refs": ["https://e.com/g.srs"], "rules": [{"port": [1]}, {"port": [2]}], "outbound": "direct-out"}}
   ],
   "dns": {"rules": [{"kind": "user", "enabled": true, "body": {"rule_set": "user:Lists", "server": "cf"}}]}
 }`
@@ -84,10 +88,15 @@ func TestRuleRefsLiftedIntoBody(t *testing.T) {
 		"Tree": `{"type":"logical","mode":"and","rules":[{"source_ip_is_private":true},{"refs":["https://e.com/c.json"]}],"outbound":"direct-out"}`,
 		// рукописная ссылка на старый тег user:<id>:2 — на тег §6.13 (волна 3).
 		"Hand": `{"rule_set":["Lists:589a1aec"],"port":[80],"outbound":"direct-out"}`,
+		// пустой refs снимается при нормализации (порядок ключей прежний).
+		"Empty refs": `{"port":[22],"outbound":"direct-out"}`,
+		// refs на узле logical — запись хранится как есть (сборка не выпускает).
+		"Group refs": `{"type":"logical","mode":"or","refs":["https://e.com/g.srs"],"rules":[{"port":[1]},{"port":[2]}],"outbound":"direct-out"}`,
 	}
 	wantKinds := map[string]state.RuleKind{
 		"Lists": state.RuleKindSrs, "Plain": state.RuleKindInline, "Old logical": state.RuleKindSrs,
 		"Both": state.RuleKindSrs, "Tree": state.RuleKindSrs, "Hand": state.RuleKindInline,
+		"Empty refs": state.RuleKindInline, "Group refs": state.RuleKindInline,
 	}
 	wantRefs := map[string][]string{
 		"Lists":       {"https://e.com/a.srs", "https://e.com/b.srs"},
@@ -141,6 +150,17 @@ func TestRuleRefsLiftedIntoBody(t *testing.T) {
 	if err := json.Unmarshal(raw, &disk); err != nil {
 		t.Fatal(err)
 	}
+	// Сборка до v9 читает meta.schema строкой: на v9 её разбор обязан упасть
+	// (файл новее приложения отвергается, а не читается с потерей srs-правил).
+	var oldReader struct {
+		Meta struct {
+			Version int    `json:"version"`
+			Schema  string `json:"schema"`
+		} `json:"meta"`
+	}
+	if err := json.Unmarshal(raw, &oldReader); err == nil {
+		t.Errorf("разбор v8 (meta.schema строкой) прочёл файл v9 без ошибки")
+	}
 	if disk.Meta.Version != state.SchemaVersionV9 {
 		t.Errorf("Save пишет meta.version %d, ожидалась %d", disk.Meta.Version, state.SchemaVersionV9)
 	}
@@ -186,6 +206,28 @@ func TestRuleRefsLiftedIntoBody(t *testing.T) {
 		if bodies[name] != want {
 			t.Errorf("правило %q собирается иначе:\n got %s\nwant %s", name, bodies[name], want)
 		}
+	}
+	// Ключ refs ядру не уходит ни в одной ветке; refs на узле logical —
+	// правило не выпускается, причина — в Skipped.
+	for name, b := range bodies {
+		if bytes.Contains([]byte(b), []byte(`"refs"`)) {
+			t.Errorf("правило %q уходит в config.json с ключом refs: %s", name, b)
+		}
+	}
+	if _, ok := bodies["Group refs"]; ok {
+		t.Errorf("правило с refs на узле logical выпущено: %s", bodies["Group refs"])
+	}
+	groupSkipped := false
+	for _, rs := range route.RuleSets {
+		if rs.Skipped && rs.Tag == "Group refs" && rs.SkippedReason != "" {
+			groupSkipped = true
+		}
+	}
+	if !groupSkipped {
+		t.Errorf("нет записи Skipped с причиной для правила с refs на узле logical: %+v", route.RuleSets)
+	}
+	if bodies["Empty refs"] != `{"outbound":"direct-out","port":[22]}` {
+		t.Errorf("правило с пустым refs: %s", bodies["Empty refs"])
 	}
 
 	// ── Бэкап: экспорт пишет 3, импорт переносит форму ──

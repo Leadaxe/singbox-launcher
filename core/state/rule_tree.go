@@ -190,6 +190,12 @@ func NormalizeRuleRecord(r *Rule) (changed bool) {
 	if err != nil {
 		return false
 	}
+	// Пустой `refs` (`[]`, `""`) — не ссылки: ключ снимается, иначе он уехал
+	// бы ядру в config.json (неизвестное поле — ядро не стартует).
+	if stripped, ok := stripEmptyRefs(r.Body, body); ok {
+		r.Body = stripped
+		changed = true
+	}
 	treeRefs := BodyRefs(body)
 	recRefs := dedupNonEmpty(r.Refs)
 	switch {
@@ -222,6 +228,45 @@ func NormalizeRuleRecord(r *Rule) (changed bool) {
 		changed = true
 	}
 	return changed
+}
+
+// stripEmptyRefs снимает ключ `refs` без единой ссылки со всех узлов дерева
+// (body правится на месте). Только у корня — сырой JSON без этого ключа в
+// порядке файла; ниже корня — тело заново (порядок ключей — алфавит: такое
+// тело пишет только рука). ok=false — снимать нечего. `refs` со ссылками на
+// узле `logical` не трогается: запись хранится как есть, сборка такое правило
+// не выпускает.
+func stripEmptyRefs(raw json.RawMessage, body map[string]interface{}) (json.RawMessage, bool) {
+	rootOnly, found := true, false
+	WalkRuleTree(body, func(path []int, node map[string]interface{}, _ bool) bool {
+		if _, has := node[ruleKeyRefs]; has && len(nodeRefs(node)) == 0 {
+			delete(node, ruleKeyRefs)
+			found = true
+			if len(path) > 0 {
+				rootOnly = false
+			}
+		}
+		return true
+	})
+	if !found {
+		return nil, false
+	}
+	if rootOnly {
+		if keys, vals, err := decodeObjectOrdered(bytes.TrimSpace(raw)); err == nil {
+			w := newOrderedObject()
+			for _, k := range keys {
+				if k != ruleKeyRefs {
+					w.put(k, vals[k])
+				}
+			}
+			return w.bytes(), true
+		}
+	}
+	out, err := json.Marshal(body)
+	if err != nil {
+		return nil, false
+	}
+	return out, true
 }
 
 // NormalizeRuleRecords — NormalizeRuleRecord по всем записям; число

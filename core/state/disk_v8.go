@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
@@ -41,9 +42,22 @@ const SchemaVersionV8 = 8
 // v8, прочитала бы v9 молча и выпустила бы `refs` ядру.
 const SchemaVersionV9 = 9
 
-// SchemaNameV8 — внутренний идентификатор схемы v8 (хранится в meta.schema).
-// Форма корня у v9 та же — имя не меняется; мажор держит meta.version.
+// SchemaNameV8 — внутренний идентификатор схемы v8 (хранится в meta.schema
+// строкой).
 const SchemaNameV8 = "sources_v8"
+
+// SchemaNameV9 — имя схемы v9 (поле name объекта meta.schema).
+const SchemaNameV9 = "sources_v9"
+
+// SchemaMetaV9 — значение meta.schema файла v9: ОБЪЕКТ, а не строка. Сборки до
+// v9 (2.4.x и develop до SPEC 188) читают любой meta.version >= 8 разбором v8
+// и ссылки srs-правил ищут на записи: v9 они прочли бы молча, с потерей всех
+// srs-правил при первом сохранении Конфигуратора. На объекте в строковом поле
+// их разбор падает с ошибкой — файл отвергается целиком. min_reader — мажор,
+// который файл читать умеет.
+func SchemaMetaV9() json.RawMessage {
+	return json.RawMessage(`{"name":"` + SchemaNameV9 + `","min_reader":` + strconv.Itoa(SchemaVersionV9) + `}`)
+}
 
 // diskStateV8 — корневая модель на диске v8. Используется ТОЛЬКО внутри
 // marshalDisk / parseV8 (порядок полей = порядок ключей файла).

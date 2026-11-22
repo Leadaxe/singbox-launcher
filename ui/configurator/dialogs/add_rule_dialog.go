@@ -1103,8 +1103,19 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		ruleDNS := currentRuleDNS()
 
 		var srsOptions corestate.RuleSetOptions
-		if selectedType == wizardmodels.RuleTypeSRS {
+		switch {
+		case selectedType == wizardmodels.RuleTypeSRS:
 			srsOptions = srsOptionsForm.Value()
+		case len(corestate.BodyRefs(ruleRaw)) > 0:
+			// Тело с `refs` в режиме JSON (SPEC 188: наборы рядом с условиями
+			// или в дереве): блок настроек наборов здесь скрыт, поэтому
+			// настройки правила остаются как были, а не обнуляются молча
+			// (srs_mode, update_interval_hours, download_detour).
+			if isEdit {
+				srsOptions = editRule.SrsOptions
+			} else {
+				srsOptions = srsOptionsForm.Value()
+			}
 		}
 
 		if isEdit {

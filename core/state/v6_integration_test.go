@@ -142,7 +142,10 @@ func TestSave_AlwaysWritesV8(t *testing.T) {
 	var probe struct {
 		Meta struct {
 			Version int    `json:"version"`
-			Schema  string `json:"schema"`
+			Schema  struct {
+				Name      string `json:"name"`
+				MinReader int    `json:"min_reader"`
+			} `json:"schema"`
 		} `json:"meta"`
 	}
 	if err := json.Unmarshal(raw, &probe); err != nil {
@@ -151,8 +154,8 @@ func TestSave_AlwaysWritesV8(t *testing.T) {
 	if probe.Meta.Version != SchemaVersionV9 {
 		t.Errorf("expected v8 save (single write path, SPEC 118/127), got version=%d", probe.Meta.Version)
 	}
-	if probe.Meta.Schema != SchemaNameV8 {
-		t.Errorf("expected schema %s, got %q", SchemaNameV8, probe.Meta.Schema)
+	if probe.Meta.Schema.Name != SchemaNameV9 || probe.Meta.Schema.MinReader != SchemaVersionV9 {
+		t.Errorf("expected schema {%s, %d}, got %+v", SchemaNameV9, SchemaVersionV9, probe.Meta.Schema)
 	}
 }
 
@@ -174,7 +177,10 @@ func TestSave_V8_WhenHasPresetRef(t *testing.T) {
 	var probe struct {
 		Meta struct {
 			Version int    `json:"version"`
-			Schema  string `json:"schema"`
+			Schema  struct {
+				Name      string `json:"name"`
+				MinReader int    `json:"min_reader"`
+			} `json:"schema"`
 		} `json:"meta"`
 	}
 	if err := json.Unmarshal(raw, &probe); err != nil {
@@ -183,8 +189,8 @@ func TestSave_V8_WhenHasPresetRef(t *testing.T) {
 	if probe.Meta.Version != SchemaVersionV9 {
 		t.Errorf("expected v8 save (SPEC 127), got %d", probe.Meta.Version)
 	}
-	if probe.Meta.Schema != SchemaNameV8 {
-		t.Errorf("expected schema %s, got %q", SchemaNameV8, probe.Meta.Schema)
+	if probe.Meta.Schema.Name != SchemaNameV9 || probe.Meta.Schema.MinReader != SchemaVersionV9 {
+		t.Errorf("expected schema {%s, %d}, got %+v", SchemaNameV9, SchemaVersionV9, probe.Meta.Schema)
 	}
 }
 

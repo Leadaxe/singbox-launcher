@@ -134,7 +134,7 @@ func (s *State) marshalDisk() ([]byte, error) {
 	out := diskStateV8{
 		Meta: MetaSection{
 			Version:   SchemaVersionV9,
-			Schema:    SchemaNameV8,
+			Schema:    SchemaMetaV9(),
 			Comment:   s.Comment,
 			CreatedAt: s.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: s.UpdatedAt.Format(time.RFC3339),
