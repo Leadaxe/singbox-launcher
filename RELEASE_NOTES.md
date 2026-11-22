@@ -4,6 +4,14 @@
 
 ---
 
+### Выжимка (RU) — следующий релиз (черновик)
+
+**Правило из условий:** вместо выбора одного типа правило собирается из условий — домены и наборы, порт, источник, процесс, протокол, сеть, входящий, Wi-Fi — связанных «И», плюс группы «all of / any of» с «Not». Теги наборов — имя правила. DNS-опции идут по дереву условий, ⚠ — если DNS их не видит. `state.json` v9 и бэкап `lx_backup: 3` старые версии не читают; прежнее состояние остаётся рядом как `state.json.v8.bak`. Бэкап нового формата читает LxBox с контрактом 1.1.181.
+
+### Highlights (EN) — next release (draft)
+
+**Rules built from conditions:** instead of picking one type, a rule is a stack of conditions — domains and rule sets, port, source, process, protocol, network, inbound, Wi-Fi — joined by AND, plus "all of / any of" groups with "Not". Rule-set tags are the rule name. DNS options follow the condition tree, with ⚠ when DNS cannot see them. `state.json` v9 and backup `lx_backup: 3` are not read by older versions; the previous state is kept as `state.json.v8.bak`. A new-format backup is read by LxBox with contract 1.1.181.
+
 ### Выжимка (RU) — v2.4.4
 
 Патч после v2.4.3, ядро `sing-box-lx 1.14.4-lx.35` (без изменений), контракт 1.1.176. **TrustTunnel:** ссылки `tt://` читаются и пишутся, ссылка с одним адресом подписки и адрес подписки TrustTunnel становятся подпиской, в Add server — тип TrustTunnel с формой. **Правила по доменам на сайтах Cloudflare с ECH:** пресет Block HTTPS/SVCB records и галка в окне правила. **DNS-настройки правила** работают с портами, протоколами и network. **Detour:** источник с недоступным хопом больше не выбрасывается, узлы идут напрямую с предупреждением; свёрнутый в группу источник можно выбрать как detour. **Settings** сгруппированы под заголовками. Комментарии в JSON-исходнике узла сохраняются; DNS-сервер пресета можно выбрать как Final DNS. Полностью — [docs/release_notes/2-4-4.md](docs/release_notes/2-4-4.md).

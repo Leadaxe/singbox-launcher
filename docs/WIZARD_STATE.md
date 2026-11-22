@@ -5,7 +5,26 @@
 The Configurator's declarative model: where it lives, how it is loaded, how it is
 saved, where it goes at build time.
 
-> **Schema v8 (SPEC 127) is what the launcher writes today.** Every record is
+> **Schema v9 (SPEC 188) is what the launcher writes today.** It differs from v8
+> in two places:
+>
+> - `meta.version` is `9`, and `meta.schema` is an **object**
+>   `{"name": "sources_v9", "min_reader": 9}` instead of a string. Builds before
+>   v9 fail to parse it and refuse the whole file — they do not read it with
+>   srs rules silently lost;
+> - a rule's set links `refs[]` live **inside `body`**, next to the other
+>   conditions, in any simple rule of the condition tree (`type: logical`
+>   nodes never carry `refs`). `refs` on the record is the old form: it is read
+>   and lifted into the body on load; when both exist, the body wins.
+>
+> The first save that turns a file of an older schema into v9 keeps the
+> original beside it — `state.json.v8.bak` for a v8 file (`.v7.bak` / `.v6.bak`
+> for older ones, the names of the migration copies below). An older launcher
+> refuses the v9 file; to go back, put the `.bak` in place of `state.json`.
+> The same applies to every remote machine state
+> (`wizard_states/remote/<id>/state.json`).
+>
+> **Schema v8 (SPEC 127).** Every record is
 > *application metadata + `body` = the sing-box object as it is* — one namespace
 > shared by the launcher state, the LxBox state and the backup file
 > (`contract/docs/ONE_NAMESPACE.md`). Compared with v7:
@@ -420,14 +439,30 @@ The `kind` discriminator: `preset` / `inline` / `srs`. A single ordered array; t
 | `name` | string | `kind=inline` \| `srs` | The display name. The source of `StableRuleID` — the same string that lived in `body.name` before v8. |
 | `enabled` | bool | always | The common toggle. |
 | `num` | int | optional | The position on the sparse order axis (SPEC 106; `order_num` before v8). Absent = not yet placed — `MarkRuleOrder` assigns a number on the next load. |
-| `refs` | string[] | `kind=srs` | The URLs of the rule's .srs sets, in input order (`body.srs_url` + `body.srs_urls` before v8). Deduplicated, order preserved. |
+| `refs` | string[] | old form, read only | Before v9 — the rule's set links (`http(s)://` or `file://`). Since v9 they live in `body.refs` of a simple rule (below); a record `refs` is lifted into the root of the body on load and never written. |
 | `vars` | object | `kind=preset` | Preset var values (`body.vars` before v8) — **the diff only** against the template defaults. An empty map means everything is default. Bump the template → the user automatically gets the new defaults for vars they never touched. |
 | `srs_mode`, `update_interval_hours`, `download_detour` | string, int, string | `kind=srs` \| `preset`, optional | Rule-set settings of the rule (SPEC 185): who downloads the sets (`local` — the launcher, `remote` — the core), the refresh interval in hours (`0` — never) and the outbound the core downloads through in remote mode. Absent = the global value (template vars `srs_mode`, `srs_update_interval_hours`, `srs_download_detour`). |
-| `body` | raw JSON | `kind=inline` \| `srs` | **The sing-box route rule as it is**: matchers plus the target — `"outbound": "<tag>"`, or `"action": "reject"` (+ `"method": "drop"`). A preset record has no body — its rule lives in the template. |
+| `body` | raw JSON | `kind=inline` \| `srs` | **The sing-box route rule as it is**, as a condition tree: a simple rule (conditions) or `type: logical` with `mode: and \| or`, `rules[]`, `invert`, nested without limit. The target — `"outbound": "<tag>"`, or `"action": "reject"` (+ `"method": "drop"`) — sits at the root only. A simple rule may carry `refs` (its set links). A preset record has no body — its rule lives in the template. |
 
-**`rule_set` is never stored in `body`.** The build registers one local rule-set
-per `refs[]` entry (`user:<id>`, `user:<id>:2`, …) and writes the list of tags
-into the emitted rule itself (`resolveSrsRouteRule`).
+**`kind` is derived** (since v9): `srs` when any simple rule of the tree has
+`refs`, `inline` otherwise. A rule with condition groups is stored as
+`logical and`: plain conditions first, then each group; a single group with no
+other conditions is the group itself.
+
+**Rule-set tags come from the rule name** (contract §6.13, SPEC 188). The build
+walks the tree: each link of `refs` becomes a `rule_set` entry, and the domain
+and address keys of a simple rule that has links (`domain*`, `ip_cidr`) go into
+the rule's own inline set. Tags: `B` = the rule name with edges trimmed
+(`unnamed` if empty), deduplicated along the axis as `B (2)`, `B (3)`, …; the
+first link of the root rule is `B`, any other link `B:<h8>` (first 8 hex of
+sha256 of the link), the inline set `B:inline` (root) or `B:inline:<path>`
+(tree leaf). The emitted rule gets `rule_set: [handwritten…, links…, inline]`.
+The old tags `user:<id>` / `user:<id>:N` are gone: a handwritten `rule_set`
+that pointed at them inside a rule body is rewritten on first load; anything
+outside rules (a template, a DNS rule written by hand elsewhere) has to be
+updated by hand. A handwritten `rule_set` naming a set that is not emitted drops
+the rule instead of failing the core. Copy file names follow the link, not the
+tag, so nothing is downloaded again.
 
 **Reading and writing the body.** `DecodeBody()` is the only reader: it returns a
 *view* (`PresetBody` / `InlineBody` / `SrsBody`) assembled from the record fields
@@ -460,17 +495,37 @@ or their order.
   }
 }
 
-// 3. SRS rule-set user rule — sets outside the body, target inside it
+// 3. Rule-set user rule — links inside the body, next to other conditions
 {
-  "kind": "srs",
-  "name": "Block ads (oisd)",
+  "kind": "srs",                       // derived: the tree has refs
+  "name": "Streaming",
   "enabled": true,
   "num": 1010,
-  "refs": [
-    "https://example.com/oisd.srs",
-    "https://example.com/extra.srs"    // one entry per set; `rule_set` is written by the build
-  ],
-  "body": { "action": "reject" }
+  "body": {
+    "refs": ["https://example.com/netflix.srs"],   // `rule_set` is written by the build
+    "domain_suffix": ["nflxvideo.net"],            // goes into the inline set "Streaming:inline"
+    "port": [443],
+    "outbound": "direct-out"
+  },
+  "dns": { "enabled": true, "serverTag": "cf" }
+}
+
+// 4. A tree: "port 443 AND (any of: ads set, private source)"
+{
+  "kind": "srs",
+  "name": "Ads on 443",
+  "enabled": true,
+  "num": 1020,
+  "body": {
+    "type": "logical", "mode": "and",
+    "rules": [
+      { "port": [443] },
+      { "type": "logical", "mode": "or", "rules": [
+          { "refs": ["https://example.com/oisd.srs"] },
+          { "source_ip_is_private": true } ] }
+    ],
+    "action": "reject"
+  }
 }
 ```
 
@@ -843,7 +898,7 @@ not write the field.
 |--------|--------|------|
 | `preset` | `{ref, enabled}` (ref = `<preset_id>`) | `{vars: {<name>: <value>, ...}}` — the diff against the template defaults only; an empty map means everything is default |
 | `inline` | `{id (ULID), enabled}` | `{name, match (a sing-box match object), outbound (tag|"reject"|"drop")}` |
-| `srs` | `{kind, name, enabled, num, refs[]}` | `{outbound}` \| `{action}` |
+| `srs` | `{kind, name, enabled, num}` | condition tree with `refs` inside + `{outbound}` \| `{action}` at the root |
 
 The order is the render order in the UI Rules tab (drag-reordering included),
 which is also the emission order in `config.json::route.rules[]`. It is persisted
@@ -972,10 +1027,11 @@ auto-upgrade for free.
 | sing-box 1.14 | `dns_options.independent_cache` is silently dropped (a legacy state still reads, new ones don't write it) | none |
 | v6 → v7 | sources to the top level, containers with `nodes[]`, links as `{folder_id, tag}`, per-node `enabled` (SPEC 118) | **`state.json.v6.bak`** before the first v7 write |
 | v7 → v8 | One namespace (SPEC 127): rules — `order_num` → `num`, `name` / `refs[]` / `vars` out of the body onto the record, `body` = the sing-box rule itself (target as `outbound` \| `action`); DNS — the flat body into `body`, `tag` stays outside; root `dns_options` → `dns`, `warp_accounts` → `warp`; node `sections` by the same rules. Runs on the raw document, so matcher keys and their order survive byte for byte. | **`state.json.v7.bak`** before the first v8 write |
+| v8 → v9 | SPEC 188: `refs` of the record → `body.refs` of the root simple rule (a `logical` root is wrapped in `and`); `meta.schema` becomes the object `{name: "sources_v9", min_reader: 9}`; handwritten `rule_set` references to the old `user:<id>` tags inside rule bodies → the rule-name tags. | **`state.json.v8.bak`** on the first v9 save |
 
-Save always writes the current shape — v8 today (SPEC 060 removed the dual write
+Save always writes the current shape — v9 today (SPEC 060 removed the dual write
 path long ago). Every older file is read by its own parser, migrated in the chain
-v5 → v6 → v7 → v8 and rewritten by the next Save; the file that was on disk is
+v5 → v6 → v7 → v8 → v9 and rewritten by the next Save; the file that was on disk is
 kept beside the new one as a `.bak` for the version it came from.
 
 ---

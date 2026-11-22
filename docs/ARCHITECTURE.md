@@ -619,7 +619,8 @@ build.BuildConfig  (pure)
             │      state entry yet gets its slot by the rule axis (state.PresetDNSSlotIndex,
             │      SPEC 171) — the same rule the Configurator and Debug API apply;
             │      DNS mirrors of own rules (rules[].dns, SPEC 172) are derived from the
-            │      resolved route (RuleDNSMirrorMatch: registry allowlists) and inserted
+            │      resolved route by the rule's condition tree (SPEC 188, §11.12;
+            │      RuleDNSMirrorMatch: registry allowlists) and inserted
             │      before the first preset slot with a higher axis number
             │      (RuleDNSMirrorIndex) — never stored in state.DNS.Rules; per rule the
             │      order is Block HTTPS (dns.blockHttps, SPEC 181) → Force IPv4 →
@@ -628,10 +629,12 @@ build.BuildConfig  (pure)
             │      server is emitted only when state.DNS.Servers has its kind=template
             │      entry (required — always)
             │
-            └─► MergeRouteSection → MergePresetsIntoRoute → ResolveRoute (pure)
+            └─► MergeRouteSection → MergePresetsIntoRoute → ResolveRouteTagged (pure)
                    walk state.Rules kind switch (preset / inline / srs),
                    ExpandPreset per preset-ref (canonical @var walker, eval if/if_or,
-                   prefix tags, clean dangling rule_set refs)
+                   prefix tags, clean dangling rule_set refs); own rules walk the
+                   body condition tree (rule sets from refs, tags from the rule
+                   name — §11.12)
             │
             ▼
 concat final JSON → atomicWriteConfig(config.json)
@@ -1167,7 +1170,7 @@ above did not.
 | **Full callback → event retirement** — wire `ConfigBuilt`/`StateChanged` subscriptions in the Core dashboard; retire `UpdateCoreStatusFunc`/`UpdateConfigStatusFunc`; make `VpnStateChanged` single-mechanism. | ADR-070-3 | **Needs GUI runtime verification.** UI status refresh is timing-sensitive (`fyne.Do` dispatch, dirty-marker styling); swapping the delivery mechanism must be observed live. Publishers are already in place so this is low-code-risk but high-verification-cost. |
 | **`JSONBuilder` full adoption** — migrate every protocol field generator in `GenerateNodeJSON` / selector generation onto `JSONBuilder` (insertion-order-safe), behind golden tests. | ADR-070-5 | **Partially done.** The builder exists and is used; finishing the migration is incremental and golden-test-guarded, but not blocking. |
 | ~~**Transport/TLS unification** — merge `uriTransportFromQuery` + `xrayTransportFromStreamSettings` into one `TransportSpec` builder, and the three TLS builders into one `TLSSpec` builder.~~ | ADR-070-6 | **No longer deferred — removed by SPEC 133.** Both hand-written paths are gone: the URI input and the Xray input are led by the same registry table through `core/config/linkmap`, so there is nothing left to merge. The round-trip risk the row describes is now covered by two runners — a byte-for-byte snapshot of the link and `parse(emit(body)) == body` over the whole corpus. |
-| **UI view decomposition** — `proxy_list_panel.go` (1701 LOC, still the largest despite the `_helpers`/`_render`/`_autorefresh` peels) → state+handlers; `add_rule_dialog.go` (1154 LOC) → editor-state/tabs/process-picker; `outbounds_configurator/edit_dialog.go` (1095 LOC) → edit-state/form-builder/template-resolver. | (supports ADR-070-1) | **Needs GUI runtime verification + ordered after dual-state.** These closures capture large mutable UI state; extracting it safely is best done once dual-state is gone, with live click-through verification. |
+| **UI view decomposition** — `proxy_list_panel.go` (1701 LOC, still the largest despite the `_helpers`/`_render`/`_autorefresh` peels) → state+handlers; `add_rule_dialog.go` — done in SPEC 188 (568 LOC; condition stack, DNS, Preview and process picker in their own files, §11.12); `outbounds_configurator/edit_dialog.go` (1095 LOC) → edit-state/form-builder/template-resolver. | (supports ADR-070-1) | **Needs GUI runtime verification + ordered after dual-state.** These closures capture large mutable UI state; extracting it safely is best done once dual-state is gone, with live click-through verification. |
 | **`config_service.go` decomposition** — the file split is **done** (1066 → 538 LOC, with `config_service_context.go` + `config_service_subscriptions.go` peeled off); what remains is promoting those to real `SubscriptionFetcher` / `ConfigContextBuilder` seams and splitting `UpdateConfigFromSubscriptions` itself. | (supports ADR-070-5) | **High concurrency risk.** Must preserve `SubscriptionMu` boundaries across new service seams; needs the existing `refresh_meta`/`update` tests plus runtime verification of auto-update + manual-update races. |
 | **CI import-graph check** enforcing L*n* → L*≤n*. | ADR-070-1 | **Planned tooling**, not yet built; would lock in the layer model and catch V1/V2-style regressions. |
 
@@ -1623,3 +1626,69 @@ the launcher keeps the file, the core reads it as `type: local`.
   `TagFromFileName(name)` derive the copy name and format from the tag alone
   in the downloader, the loop, the build, Deploy resources and orphan GC.
 
+### 11.12 Rule condition tree (SPEC 188)
+
+A user rule's `body` is a sing-box route rule as a condition tree: a simple
+rule (conditions), or `type: logical` with `mode: and | or`, `rules[]`,
+`invert`, nested without limit; the target sits at the root only. Rule-set
+links `refs` live inside any simple rule of the tree (state v9, `lx_backup: 3`,
+contract 1.1.179–1.1.181). The table "key → condition, field kind, goes to DNS,
+goes to a set" is `contract/registry/rule_conditions.json`
+(`core/config/registry/rule_conditions.go`); neither the form nor the build
+names condition keys.
+
+**Flow: body tree → tags → sets → route rule → DNS mirror.**
+
+1. **Load** — `parseV8` runs `NormalizeRuleRecords` (`core/state/rule_tree.go`):
+   a record `refs` (old form) is lifted into the root of the body (a `logical`
+   root is wrapped in `and`), `kind` is derived (`refs` in the tree → `srs`).
+   `MigrateRuleSetTagRefsV9` (`rule_identity.go`) rewrites handwritten
+   `rule_set` references to the old `user:<id>` tags inside rule bodies and
+   `user` DNS rules. `RuleRefs` is the only reader of a rule's links.
+2. **Tags** — `ResolveRouteTagged` (`core/build/resolve_route.go`) reserves the
+   template's `route.rule_set` tags and every preset's tags
+   (`ReservedRuleSetTags`), then `AllocateRuleTags` (`core/state/rule_tags.go`)
+   hands out one base per inline/srs record along the axis — enabled or not,
+   emitted or not — so the tag depends only on names and order and matches
+   LxBox: `B`, `B (2)`, …; links `B` / `B:<h8>`, inline sets `B:inline` /
+   `B:inline:<path>`.
+3. **Sets and route rule** — `emitUserRule` (`core/build/rule_tree_emit.go`)
+   walks the tree: each link becomes a `rule_set` entry (local or remote by
+   `RulePolicy`, file name from the link — `internal/srstag`), the set keys of
+   a simple rule with links (`domain*`, `ip_cidr`) go into its inline set,
+   `invert` and everything else stay on the rule, and the rule gets
+   `rule_set: [handwritten…, links…, inline]`. All or nothing: a set of the
+   tree that is not available drops the whole rule (`Skipped` + log).
+   `dropDanglingHandwrittenRuleSets` drops a rule whose handwritten `rule_set`
+   names a set that is not emitted, instead of letting the core fail.
+4. **DNS mirror** — `ruleTreeMirror` repeats the tree with only the keys of
+   `rule_dns_mirror_match`: an inline set without domain keys is dropped from
+   `rule_set`, empty children of `and`/`or` are dropped, a single child loses
+   its wrapper (its `invert` moves onto the child), `invert` is always carried.
+   An empty root means no mirror; `RuleDNSMirrorEmpty` is the ⚠ "DNS options
+   have no effect" of the DNS tab and the rule row. `collectRuleDNSMirrors`
+   (`rule_dns_mirror.go`) wraps Block HTTPS / Force IPv4 / Fixed IP actions over
+   a `logical` mirror (or a simple one with `invert`) in `and`, since the core
+   takes no `query_type` / `ip_version` on a `logical` root.
+
+**Form layout** (`ui/configurator`):
+
+| File | Role |
+|---|---|
+| `models/rule_conditions.go` | Stack model: `StackFromBody` / `Body`; an unchanged stack keeps the original body map |
+| `dialogs/add_rule_dialog.go` | Window: name, outbound, tabs Form / JSON / DNS / Preview, save; JSON ↔ form through the model |
+| `dialogs/rule_cond_stack.go` | Stack of condition frames, "AND" between them, "+ Condition" menu, "Rule group" below a separator |
+| `dialogs/rule_cond_frame.go` | One condition: fields by kind from the registry, "any of", one-of Process, Wi-Fi note by the target platform |
+| `dialogs/rule_cond_group.go` | Rule group: all of / any of, Not, nested rules, "+ Rule" (recursive) |
+| `dialogs/rule_cond_refs.go` | Rule-set field (URL or file, "Add file…"), private-IP box locked while links are set |
+| `dialogs/rule_dialog_dns.go`, `rule_dialog_preview.go`, `rule_process_picker.go`, `rule_set_options.go` | DNS tab with ⚠, Preview over the whole axis, process picker, rule-set settings |
+| `tabs/rules_tab.go`, `tabs/dns_unified_rules.go` | ⚠ in the rule row and in the DNS mirror row |
+
+A body with a key outside the table (or two Process ways in one simple rule, a
+target below the root, `logical` with extra keys) opens on the JSON tab.
+
+**Pre-v9 copy.** Builds before v9 refuse the v9 file (`meta.schema` is an
+object). The first `Save` that turns an older file into v9 keeps the original
+beside it as `<state>.v8.bak` (`.v7.bak` / `.v6.bak` for older files) —
+`keepPreV9File` in `core/state/save.go`, once, atomically, for the local and
+every remote machine state.

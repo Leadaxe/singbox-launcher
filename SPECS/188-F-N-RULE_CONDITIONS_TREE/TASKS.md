@@ -96,11 +96,12 @@
   - Ограничения формы (открывается вкладкой JSON): ключ вне таблицы и вне служебных; два способа Process в одном простом правиле; цель в под-правиле; `logical` с ключами сверх type/mode/rules/invert; `mode` не and/or. Значения `enum_multi` вне списка реестра у закрытого enum показываются полем «Other values».
 
 ## Волна 5 — закрытие
-- [ ] `docs/release_notes/upcoming.md` (EN Highlights, RU Основное)
-- [ ] `RELEASE_NOTES.md`
-- [ ] `docs/ARCHITECTURE.md`, `docs/WIZARD_STATE.md`
-- [ ] `IMPLEMENTATION_REPORT.md`
-- [ ] `SPECS/README.md`: строка 188
+- [x] `core/state/save.go` `keepPreV9File`: первое сохранение v9 оставляет рядом копию исходника (`<state>.v8.bak`, `.v7.bak` / `.v6.bak` для старших) — один раз, атомарно, ошибка — предупреждение; тест `TestStateV9FirstSaveKeepsPreviousFile` (332046f2)
+- [x] `docs/release_notes/upcoming.md` (EN Highlights, RU Основное, Technical)
+- [x] `RELEASE_NOTES.md` (выжимка следующего релиза, черновик)
+- [x] `docs/ARCHITECTURE.md` §11.12, `docs/WIZARD_STATE.md` (EN/RU); заодно `ARCHITECTURE_PACKAGES` (EN/RU), `PRODUCT_ANALYSIS` (EN/RU), `TROUBLESHOOTING`
+- [x] `IMPLEMENTATION_REPORT.md`
+- [x] `SPECS/README.md`: строка 188
 - [ ] CI зелёный на трёх платформах
 - [ ] Ответ LxBox по §182 получен; релиз — после LxBox
 - [ ] Папка → `188-F-C-RULE_CONDITIONS_TREE`
