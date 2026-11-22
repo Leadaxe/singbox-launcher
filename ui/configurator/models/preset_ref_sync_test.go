@@ -129,12 +129,14 @@ func TestEmitStateRulesWithoutOrder_Mixed(t *testing.T) {
 // TestStableRuleID_FromLegacyRuleState — SPEC 063: identity конвертированного
 // legacy RuleState вычислима через `state.StableRuleID` от resulting state.Rule.
 // Прежняя локальная `stableRuleID` (с префиксом "rule-") удалена; identity
-// теперь чистая sanitize(body.name).
+// теперь sanitize(body.name), плюс хэш имени, если очистка выбросила символы.
 func TestStableRuleID_FromLegacyRuleState(t *testing.T) {
 	cases := map[string]string{
-		"Hello World":            "Hello-World",
-		"Firefox через VPN":      "Firefox--VPN", // не-ASCII strip'нуто
-		"name with !@# symbols!": "name-with--symbols",
+		"Hello World": "Hello-World",
+		// Очистка выбросила символы — к id добавлен хэш имени (8 hex от
+		// SHA-256), иначе разные имена сходились бы в один id.
+		"Firefox через VPN":      "Firefox--VPN-c700a9f8",
+		"name with !@# symbols!": "name-with--symbols-31fdd86f",
 	}
 	for label, want := range cases {
 		rs := &RuleState{

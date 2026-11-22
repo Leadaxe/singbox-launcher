@@ -11,7 +11,14 @@
 // orphan GC). Изменяешь алгоритм identity — изменяешь его здесь.
 package state
 
-import "strconv"
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"strconv"
+	"strings"
+)
 
 // StableRuleID — pure-function identity правила. Не stored, не serialized.
 //
@@ -36,10 +43,139 @@ func StableRuleID(r Rule) string {
 		if r.Name == "" {
 			return "unnamed"
 		}
+		id, lossy := sanitizeIDPartLossy(r.Name)
+		if lossy {
+			// Очистка выбросила символы (кириллица, знаки) — разные имена
+			// сходились бы в один id: «Реклама» и «Трекеры» оба давали "rule",
+			// два правила делили один тег набора. Короткий хэш исходного имени
+			// возвращает различие. Имя из латиницы, цифр, '-', '_' и пробелов
+			// символов не теряет и держит прежний id.
+			return id + "-" + ruleNameHash(r.Name)
+		}
+		return id
+	default:
+		return "unnamed"
+	}
+}
+
+// LegacyRuleID — identity правила по алгоритму до появления хэша (до
+// 22.11.2026): только очищенное имя. Нужен, чтобы найти и переписать ссылки,
+// сохранённые со старыми тегами наборов (MigrateRuleSetTagRefs).
+func LegacyRuleID(r Rule) string {
+	switch r.Kind {
+	case RuleKindPreset:
+		return r.Ref
+	case RuleKindInline, RuleKindSrs:
+		if r.Name == "" {
+			return "unnamed"
+		}
 		return sanitizeIDPart(r.Name)
 	default:
 		return "unnamed"
 	}
+}
+
+// ruleNameHash — первые 8 hex-символов SHA-256 от имени правила без пробелов
+// по краям (лишний пробел в конце глазами не виден). Та же длина, что у имён
+// файлов наборов (internal/srstag).
+func ruleNameHash(name string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(name)))
+	return hex.EncodeToString(sum[:4])
+}
+
+// MigrateRuleSetTagRefs переписывает сохранённые ссылки на теги наборов
+// srs-правил, чей id сменился с появлением хэша: `user:<старый id>` →
+// `user:<новый id>` (и `:N` для следующих наборов правила). Ссылки живут
+// текстом в телах пользовательских DNS-правил и inline-правил маршрута.
+//
+// Старый id, на который претендуют два правила, не переписывается: такая
+// ссылка и раньше указывала не туда, угадывать адресата нельзя. Возвращает
+// число переписанных ссылок; повторный вызов ничего не меняет.
+func MigrateRuleSetTagRefs(rules []Rule, dnsRules []DNSRule) int {
+	claims := make(map[string]int)
+	for _, r := range rules {
+		if r.Kind == RuleKindSrs {
+			claims[LegacyRuleID(r)]++
+		}
+	}
+	renames := make(map[string]string)
+	for _, r := range rules {
+		if r.Kind != RuleKindSrs {
+			continue
+		}
+		oldID, newID := LegacyRuleID(r), StableRuleID(r)
+		if oldID == newID || claims[oldID] != 1 {
+			continue
+		}
+		for i := range r.Refs {
+			renames[SrsRuleSetTag(oldID, i)] = SrsRuleSetTag(newID, i)
+		}
+	}
+	if len(renames) == 0 {
+		return 0
+	}
+
+	count := 0
+	for i := range dnsRules {
+		if dnsRules[i].Kind == DNSRuleKindUser {
+			count += renameRuleSetRefs(dnsRules[i].Body, renames)
+		}
+	}
+	// Тело inline-правила — сырой JSON с сохранением порядка ключей: тег
+	// меняется как строковый литерал целиком, остальные байты не трогаются.
+	for i := range rules {
+		if rules[i].Kind != RuleKindInline || !bytes.Contains(rules[i].Body, []byte(`"rule_set"`)) {
+			continue
+		}
+		body := rules[i].Body
+		for from, to := range renames {
+			lit, _ := json.Marshal(from)
+			if n := bytes.Count(body, lit); n > 0 {
+				repl, _ := json.Marshal(to)
+				body = bytes.ReplaceAll(body, lit, repl)
+				count += n
+			}
+		}
+		rules[i].Body = body
+	}
+	return count
+}
+
+// renameRuleSetRefs — замена тегов в `rule_set` тела и его под-правил (`rules`
+// логического правила). Возвращает число замен.
+func renameRuleSetRefs(body map[string]interface{}, renames map[string]string) int {
+	count := 0
+	switch v := body["rule_set"].(type) {
+	case string:
+		if to, ok := renames[v]; ok {
+			body["rule_set"] = to
+			count++
+		}
+	case []interface{}:
+		for i, item := range v {
+			if tag, ok := item.(string); ok {
+				if to, ok := renames[tag]; ok {
+					v[i] = to
+					count++
+				}
+			}
+		}
+	case []string:
+		for i, tag := range v {
+			if to, ok := renames[tag]; ok {
+				v[i] = to
+				count++
+			}
+		}
+	}
+	if subs, ok := body["rules"].([]interface{}); ok {
+		for _, sub := range subs {
+			if m, ok := sub.(map[string]interface{}); ok {
+				count += renameRuleSetRefs(m, renames)
+			}
+		}
+	}
+	return count
 }
 
 // SrsRuleSetTag — тег записи route.rule_set для i-го (с нуля) набора
@@ -66,18 +202,28 @@ func SrsRuleSetTag(id string, i int) string {
 // без миграции). На этом id висят теги `rule_set` в конфиге и имена файлов
 // srs-кэша.
 func sanitizeIDPart(s string) string {
+	id, _ := sanitizeIDPartLossy(s)
+	return id
+}
+
+// sanitizeIDPartLossy — sanitizeIDPart плюс признак потери: lossy=true, если
+// из имени выброшен хотя бы один символ. Замена пробела на '-' потерей не
+// считается — иначе сменился бы id у всех правил с пробелом в имени.
+func sanitizeIDPartLossy(s string) (id string, lossy bool) {
 	out := make([]byte, 0, len(s))
 	for _, r := range s {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
 			out = append(out, byte(r))
 		} else if r == ' ' {
 			out = append(out, '-')
+		} else {
+			lossy = true
 		}
 	}
 	if len(out) == 0 {
-		return "rule"
+		return "rule", lossy
 	}
-	return string(out)
+	return string(out), lossy
 }
 
 // CarryRuleMetadata возвращает свежеэмитированные правила с восстановленными

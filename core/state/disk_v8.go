@@ -106,6 +106,11 @@ func parseV8(data []byte) (*State, error) {
 		s.UpdatedAt = t
 	}
 
+	// Ссылки на теги наборов srs-правил, сохранённые до появления хэша в id
+	// правила, переводятся на новые теги — в памяти, файл перепишет ближайшее
+	// сохранение.
+	MigrateRuleSetTagRefs(s.Rules, s.DNS.Rules)
+
 	// Legacy CustomRules view — как в v6/v7-парсе: UI-код до Phase 6 читает его.
 	s.CustomRules = legacyCustomRulesFromV6(s.Rules)
 
