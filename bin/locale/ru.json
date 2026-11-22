@@ -6226,5 +6226,8 @@
   },
   "Last updated: %s": {
     "value": "Обновлено: %s"
+  },
+  "For your own SRS rules, set DNS in the rule itself: Rules → edit the rule → DNS tab.": {
+    "value": "Для своих SRS-правил DNS задаётся в самом правиле: Rules → изменить правило → вкладка DNS."
   }
 }
