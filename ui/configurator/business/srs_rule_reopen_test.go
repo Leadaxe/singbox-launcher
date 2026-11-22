@@ -102,10 +102,20 @@ func TestSrsRuleSurvivesReopen(t *testing.T) {
 		t.Fatalf("config is not valid JSONC: %v", err)
 	}
 
+	const wantSrsTag = "YT:yt"
 	userSrsRules, inlineRules := 0, 0
 	for _, r := range cfg.Route.Rules {
-		if s, _ := r["rule_set"].(string); strings.HasPrefix(s, "user:") {
-			userSrsRules++
+		// Тег скачанного набора — <имя правила>:<имя файла> (SPEC 188, §6.13);
+		// ссылка в правиле маршрута — строка или список из одного тега.
+		switch v := r["rule_set"].(type) {
+		case string:
+			if v == wantSrsTag {
+				userSrsRules++
+			}
+		case []interface{}:
+			if len(v) == 1 && v[0] == wantSrsTag {
+				userSrsRules++
+			}
 		}
 		if d, ok := r["domain"].([]interface{}); ok && len(d) == 1 && d[0] == "example.com" {
 			inlineRules++
@@ -119,7 +129,7 @@ func TestSrsRuleSurvivesReopen(t *testing.T) {
 		if u, _ := rs["url"].(string); u == srsURL {
 			remoteSrs++
 		}
-		if tag, _ := rs["tag"].(string); strings.HasPrefix(tag, "user:") && rs["type"] == "local" {
+		if tag, _ := rs["tag"].(string); tag == wantSrsTag && rs["type"] == "local" {
 			localUser++
 		}
 	}
@@ -240,7 +250,7 @@ func TestSrsRuleKeepsAllRuleSetsAcrossReopen(t *testing.T) {
 		t.Fatalf("config is not valid JSONC: %v", err)
 	}
 
-	wantTags := []string{"user:Multi", "user:Multi:2", "user:Multi:3"}
+	wantTags := []string{"Multi:a", "Multi:b", "Multi:c"}
 	for i, tag := range wantTags {
 		found := 0
 		for _, rs := range cfg.Route.RuleSet {
