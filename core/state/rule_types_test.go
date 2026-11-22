@@ -119,8 +119,9 @@ func TestRule_RoundTrip_Inline(t *testing.T) {
 	if r.Num == nil || *r.Num != 1000 {
 		t.Errorf("num mismatch: %v", r.Num)
 	}
-	if got := StableRuleID(r); got != "Firefox--VPN" {
-		t.Errorf("StableRuleID: %q (want sanitize of name)", got)
+	// Имя теряет символы при очистке — к id добавлен хэш имени.
+	if got := StableRuleID(r); got != "Firefox--VPN-c700a9f8" {
+		t.Errorf("StableRuleID: %q (want sanitize of name plus its hash)", got)
 	}
 
 	body, err := r.DecodeBody()
