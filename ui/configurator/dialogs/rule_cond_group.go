@@ -58,7 +58,6 @@ func newGroupEditor(ctx *ruleFormCtx, g wizardmodels.RuleGroup, onRemove func())
 
 	title := widget.NewLabel(locale.T("Rule group"))
 	title.TextStyle = fyne.TextStyle{Bold: true}
-	title.Truncation = fyne.TextTruncateEllipsis
 	remove := widget.NewButtonWithIcon("", theme.CancelIcon(), onRemove)
 	remove.Importance = widget.LowImportance
 	addRule := widget.NewButton(locale.T("+ Rule"), func() {
@@ -66,13 +65,13 @@ func newGroupEditor(ctx *ruleFormCtx, g wizardmodels.RuleGroup, onRemove func())
 		ge.relayout()
 		ctx.changed()
 	})
+	// Шапка — одна строка в разрыве верхней линии рамки: название, режим,
+	// «Not», справа крестик.
 	body := container.NewVBox(
-		container.NewBorder(nil, nil, nil, remove, title),
-		container.NewHBox(ge.mode, ge.not),
 		ge.rulesBox,
 		container.NewHBox(addRule),
 	)
-	ge.obj = fynewidget.NewFramedPanel(body)
+	ge.obj = fynewidget.NewLegendPanel(container.NewHBox(title, ge.mode, ge.not), nil, remove, body)
 	ge.relayout()
 	return ge
 }
@@ -95,11 +94,7 @@ func (ge *groupEditor) relayout() {
 		remove.Importance = widget.LowImportance
 		title := widget.NewLabel(locale.T("Rule"))
 		title.Importance = widget.LowImportance
-		title.Truncation = fyne.TextTruncateEllipsis
-		ge.rulesBox.Add(fynewidget.NewFramedPanel(container.NewVBox(
-			container.NewBorder(nil, nil, nil, remove, title),
-			rule.object(),
-		)))
+		ge.rulesBox.Add(fynewidget.NewLegendPanel(title, nil, remove, rule.object()))
 	}
 	ge.rulesBox.Refresh()
 }

@@ -172,26 +172,24 @@ func newCondFrame(ctx *ruleFormCtx, cond registry.RuleCondition, values map[stri
 		ctx.changed()
 	}
 
+	// Шапка — одна строка в разрыве верхней линии рамки: название, «any of»,
+	// пометка платформы (усекается, а не переносится), справа крестик.
 	title := widget.NewLabel(locale.T(cond.Label))
 	title.TextStyle = fyne.TextStyle{Bold: true}
-	title.Truncation = fyne.TextTruncateEllipsis
-	right := container.NewHBox()
+	left := container.NewHBox(title)
 	if len(cond.Keys) > 1 && !cond.OneOf {
 		anyOf := widget.NewLabel(locale.T("any of"))
 		anyOf.Importance = widget.LowImportance
-		right.Add(anyOf)
+		left.Add(anyOf)
 	}
 	remove := widget.NewButtonWithIcon("", theme.CancelIcon(), onRemove)
 	remove.Importance = widget.LowImportance
-	right.Add(remove)
-	body := container.NewVBox(container.NewBorder(nil, nil, nil, right, title))
-
+	var note *widget.Label
 	if len(cond.Platforms) > 0 && !condPlatformHas(cond.Platforms, ctx.goos) {
-		note := widget.NewLabel("⚠ " + locale.T("Has no effect on this machine"))
+		note = widget.NewLabel("⚠ " + locale.T("Has no effect on this machine"))
 		note.Importance = widget.WarningImportance
-		note.Truncation = fyne.TextTruncateEllipsis
-		body.Add(note)
 	}
+	body := container.NewVBox()
 
 	if cond.OneOf {
 		var labels []string
@@ -232,7 +230,7 @@ func newCondFrame(ctx *ruleFormCtx, cond registry.RuleCondition, values map[stri
 
 	f.syncOneOf()
 	f.syncConflicts()
-	f.obj = fynewidget.NewFramedPanel(body)
+	f.obj = fynewidget.NewLegendPanel(left, note, remove, body)
 	return f
 }
 
