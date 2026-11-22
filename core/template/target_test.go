@@ -276,16 +276,15 @@ func TestBundledTemplate_GatewayIncludeInterface(t *testing.T) {
 		t.Errorf("mtu must be numeric, got %#v", tun["mtu"])
 	}
 
-	// Без gateway ключ присутствует, но пустой: ядро трактует [] как
-	// отсутствие поля (везде len(...)>0), поэтому фильтр не применяется.
-	// Ключ постоянный намеренно — так роль и платформа остаются
-	// независимыми осями (иначе include_interface пришлось бы вложить в
-	// платформенную ветку и потерять на macOS).
+	// Без gateway ключа нет вовсе (issue #160): значение, оставшееся в
+	// неактивном поле, не должно ограничивать TUN одним интерфейсом. Гейт —
+	// по роли (@gateway_mode), а не по платформе, поэтому оси по-прежнему
+	// независимы и на macOS-шлюзе ключ остаётся (ниже).
 	plain := renderBundledTemplate(t, TargetSpec{GOOS: "linux", GOARCH: "amd64", Target: TargetRemote},
-		map[string]string{"tun": "true"})
+		map[string]string{"tun": "true", "gateway_include_interface": "br-lan"})
 	plainTun := tunInbound(t, plain)
-	if inc, ok := plainTun["include_interface"].([]interface{}); !ok || len(inc) != 0 {
-		t.Errorf("non-gateway include_interface must be empty, got %#v", plainTun["include_interface"])
+	if v, has := plainTun["include_interface"]; has {
+		t.Errorf("non-gateway config must not carry include_interface, got %#v", v)
 	}
 
 	// macOS-gateway: имени нет (ядро его не примет), а фильтр интерфейсов
