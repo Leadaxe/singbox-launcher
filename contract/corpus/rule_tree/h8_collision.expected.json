@@ -1,0 +1,30 @@
+{
+  "rule_set": [
+    {
+      "tag": "Pair",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Pair:433fb6f0a24ec65a",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Pair:433fb6f07c8139b7",
+      "type": "local",
+      "format": "binary"
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "Pair",
+        "Pair:433fb6f0a24ec65a",
+        "Pair:433fb6f07c8139b7"
+      ],
+      "outbound": "proxy-out"
+    }
+  ],
+  "dns_rules": []
+}

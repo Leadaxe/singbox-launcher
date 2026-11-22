@@ -1,0 +1,20 @@
+{
+  "_": "Две ссылки правила с одинаковыми первыми 8 hex sha256 (433fb6f0) — у обеих тег из 16 hex. Первая ссылка корневого простого правила — B без хэша. Пара подобрана перебором один раз.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Pair",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "https://example.com/rules/pair-first.srs",
+          "https://example.com/rules/set-57516.srs",
+          "https://example.com/rules/set-119909.srs"
+        ],
+        "outbound": "proxy-out"
+      }
+    }
+  ]
+}

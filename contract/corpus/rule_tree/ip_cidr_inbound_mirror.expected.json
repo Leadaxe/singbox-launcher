@@ -1,0 +1,22 @@
+{
+  "rule_set": [],
+  "route_rules": [
+    {
+      "ip_cidr": [
+        "192.0.2.0/24"
+      ],
+      "inbound": [
+        "lan-in"
+      ],
+      "outbound": "direct"
+    }
+  ],
+  "dns_rules": [
+    {
+      "inbound": [
+        "lan-in"
+      ],
+      "server": "cf"
+    }
+  ]
+}

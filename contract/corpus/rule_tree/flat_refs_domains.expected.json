@@ -1,0 +1,51 @@
+{
+  "rule_set": [
+    {
+      "tag": "Streaming",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Streaming:3cdcfd9d",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Streaming:inline",
+      "type": "inline",
+      "rules": [
+        {
+          "domain_suffix": [
+            "example-1.com"
+          ],
+          "ip_cidr": [
+            "192.0.2.0/24"
+          ]
+        }
+      ]
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "Streaming",
+        "Streaming:3cdcfd9d",
+        "Streaming:inline"
+      ],
+      "port": [
+        443
+      ],
+      "outbound": "proxy-out"
+    }
+  ],
+  "dns_rules": [
+    {
+      "rule_set": [
+        "Streaming",
+        "Streaming:3cdcfd9d",
+        "Streaming:inline"
+      ],
+      "server": "cf"
+    }
+  ]
+}

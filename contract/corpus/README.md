@@ -34,8 +34,10 @@ corpus/
 ├── authored/<case>.body        # авторское тело своего сервера (1.1.87)
 ├── node_edit/<case>.edit.json  # правка JSON узла → источник (1.1.88,
 │     формат — TASKS_LXBOX §85)
-└── form/<scheme>_form.json     # тело → состояние формы по реестру
-      (1.1.122, формат — form/README.md)
+├── form/<scheme>_form.json     # тело → состояние формы по реестру
+│     (1.1.122, формат — form/README.md)
+└── rule_tree/<case>.rules.json # правило-дерево → наборы, теги, route.rules,
+      DNS-зеркало (1.1.179, формат — rule_tree/README.md)
 ```
 
 ## Формат файла кейса

@@ -809,6 +809,10 @@ type Registry struct {
 	// протокола). Схема без входа "singbox" узлом из чужого конфига не
 	// становится, даже если её тип ядру известен.
 	sources map[string][]string
+	// ruleConds — таблица условий простого правила (rule_conditions.json,
+	// контракт 1.1.179); ruleCondIdx — ключ тела → место в таблице.
+	ruleConds   []RuleCondition
+	ruleCondIdx map[string]ruleConditionIndex
 }
 
 // protocolFiles — схемы протоколов реестра. Список явный: embed.FS читается
@@ -987,6 +991,9 @@ func Load() (*Registry, error) {
 	}
 	for name, l := range lists.Allowlists {
 		reg.lists[name] = l.Values
+	}
+	if err := reg.loadRuleConditions(); err != nil {
+		return nil, err
 	}
 	return reg, nil
 }

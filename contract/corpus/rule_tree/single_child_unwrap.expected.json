@@ -1,0 +1,55 @@
+{
+  "rule_set": [],
+  "route_rules": [
+    {
+      "type": "logical",
+      "mode": "or",
+      "rules": [
+        {
+          "port": [
+            8080
+          ]
+        },
+        {
+          "domain": [
+            "example-5.com"
+          ]
+        }
+      ],
+      "outbound": "proxy-out"
+    },
+    {
+      "type": "logical",
+      "mode": "and",
+      "invert": true,
+      "rules": [
+        {
+          "network": [
+            "udp"
+          ]
+        },
+        {
+          "inbound": [
+            "tun-in"
+          ]
+        }
+      ],
+      "outbound": "direct"
+    }
+  ],
+  "dns_rules": [
+    {
+      "domain": [
+        "example-5.com"
+      ],
+      "server": "cf"
+    },
+    {
+      "inbound": [
+        "tun-in"
+      ],
+      "invert": true,
+      "server": "cf"
+    }
+  ]
+}

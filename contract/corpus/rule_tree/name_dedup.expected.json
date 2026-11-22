@@ -1,0 +1,34 @@
+{
+  "rule_set": [
+    {
+      "tag": "Ads (2)",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Ads (4)",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "blk:lists (2)",
+      "type": "local",
+      "format": "binary"
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": "Ads (2)",
+      "outbound": "block-out"
+    },
+    {
+      "rule_set": "Ads (4)",
+      "outbound": "block-out"
+    },
+    {
+      "rule_set": "blk:lists (2)",
+      "outbound": "direct"
+    }
+  ],
+  "dns_rules": []
+}

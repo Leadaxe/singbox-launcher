@@ -1,0 +1,65 @@
+{
+  "_": "Действия над деревом: ядро не принимает query_type / ip_version у корня logical, поэтому Block HTTPS, глушилка AAAA и Fixed IP оборачиваются в and из дерева M и условия действия; зеркало на сервер — M с server на корне. Порядок — §6.11.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "Tree",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "domain_suffix": [
+              "example-7.com"
+            ]
+          },
+          {
+            "process_name": [
+              "app.exe"
+            ]
+          }
+        ],
+        "outbound": "proxy-out"
+      },
+      "dns": {
+        "enabled": true,
+        "serverTag": "cf",
+        "forceIpv4": true,
+        "blockHttps": true
+      }
+    },
+    {
+      "kind": "inline",
+      "name": "TreeFixed",
+      "enabled": true,
+      "num": 1010,
+      "body": {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "domain_suffix": [
+              "example-7.com"
+            ]
+          },
+          {
+            "process_name": [
+              "app.exe"
+            ]
+          }
+        ],
+        "outbound": "direct"
+      },
+      "dns": {
+        "enabled": true,
+        "serverTag": "cf",
+        "fixedIps": [
+          "192.0.2.10"
+        ]
+      }
+    }
+  ]
+}

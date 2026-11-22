@@ -213,20 +213,23 @@
         "wifi_ssid",
         "wifi_bssid",
         "network_type",
+        "network_is_expensive",
         "source_ip_cidr",
         "source_ip_is_private",
         "inbound"
       ],
-      "note": "Ключи тела собственного правила маршрута (rules[] inline|srs), которые DNS-зеркало правила переносит в своё тело (TEMPLATE_LANG §6.11, контракт 1.1.130, D-137). rule_set — теги наборов, вписанные сборкой (srs) или написанные в теле. IP назначения (ip_cidr, ip_is_private) не переносятся: у DNS-запроса адреса назначения нет. Каждый ключ обязан быть в dns_rule_conditions. Ключ из тела, которого здесь нет (в том числе port, port_range, protocol, network — rule_dns_mirror_unseen), в зеркало не идёт и его не блокирует; гейта нет с контракта 1.1.173."
+      "note": "Ключи тела собственного правила маршрута (rules[] inline|srs), которые DNS-зеркало правила переносит в своё тело (TEMPLATE_LANG §6.11, контракт 1.1.130, D-137). rule_set — теги наборов, вписанные сборкой (srs) или написанные в теле. IP назначения (ip_cidr, ip_is_private) не переносятся: у DNS-запроса адреса назначения нет. Каждый ключ обязан быть в dns_rule_conditions. Ключ из тела, которого здесь нет (в том числе port, port_range, protocol, network, source_port, source_port_range — rule_dns_mirror_unseen), в зеркало не идёт и его не блокирует; гейта нет с контракта 1.1.173. С контракта 1.1.179 список применяется к КАЖДОМУ простому узлу дерева тела (TEMPLATE_LANG §6.11: зеркало повторяет дерево logical), network_is_expensive добавлен; для ключей таблицы registry/rule_conditions.json список совпадает с её dns:true (user, user_id и rule_set — вне таблицы)."
     },
     "rule_dns_mirror_unseen": {
       "values": [
         "port",
         "port_range",
         "protocol",
-        "network"
+        "network",
+        "source_port",
+        "source_port_range"
       ],
-      "note": "Ключи тела собственного правила маршрута, которых DNS-слой не видит (TEMPLATE_LANG §6.11, контракт 1.1.173; до него — гейт rule_dns_mirror_gate, снят). В матчер DNS-правил зеркала они не идут и выпуск не блокируют: DNS-опции правила действуют на его домены при любом порте, протоколе и network. Сторона с матчером-набором (headless rule_set) держит эти ключи на маршрутном правиле, а не в наборе. При ненулевом значении любого из них окно правила показывает подсказку «DNS options apply to these domains on any port and protocol»."
+      "note": "Ключи тела собственного правила маршрута, которых DNS-слой не видит (TEMPLATE_LANG §6.11, контракт 1.1.173; до него — гейт rule_dns_mirror_gate, снят). В матчер DNS-правил зеркала они не идут и выпуск не блокируют: DNS-опции правила действуют на его домены при любом порте, протоколе и network. Сторона с матчером-набором (headless rule_set) держит эти ключи на маршрутном правиле, а не в наборе. При ненулевом значении любого из них окно правила показывает подсказку «DNS options apply to these domains on any port and protocol». С контракта 1.1.179 — у любого простого узла дерева тела; source_port и source_port_range добавлены (условие Source port, в DNS — нет)."
     },
     "rule_dns_block_https_domains": {
       "values": [
@@ -235,7 +238,7 @@
         "domain_keyword",
         "domain_regex"
       ],
-      "note": "Доменные ключи тела inline-правила (TEMPLATE_LANG §6.11, контракт 1.1.173): Block HTTPS (rules[].dns.blockHttps) выпускается у inline-правила, только когда хоть один из них несёт ненулевое значение; у srs — всегда (при непустом матчере). Каждый ключ обязан быть в rule_dns_mirror_match."
+      "note": "Доменные ключи тела inline-правила (TEMPLATE_LANG §6.11, контракт 1.1.173): Block HTTPS (rules[].dns.blockHttps) выпускается у inline-правила, только когда хоть один из них несёт ненулевое значение; у srs — всегда (при непустом матчере). Каждый ключ обязан быть в rule_dns_mirror_match. С контракта 1.1.179 — по дереву тела: Block HTTPS доступен, если доменный ключ или refs есть хоть в одном простом узле; список совпадает с group: domain таблицы registry/rule_conditions.json."
     }
   }
 }

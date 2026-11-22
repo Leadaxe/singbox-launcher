@@ -1,0 +1,39 @@
+{
+  "rule_set": [
+    {
+      "tag": "X",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "X:inline (2)",
+      "type": "inline",
+      "rules": [
+        {
+          "domain": [
+            "example-6.com"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "X:inline",
+      "type": "local",
+      "format": "binary"
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "X",
+        "X:inline (2)"
+      ],
+      "outbound": "proxy-out"
+    },
+    {
+      "rule_set": "X:inline",
+      "outbound": "direct"
+    }
+  ],
+  "dns_rules": []
+}

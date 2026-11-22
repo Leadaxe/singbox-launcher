@@ -1,0 +1,33 @@
+{
+  "_": "Правило X (ссылка + домены) и правило с именем X:inline (ссылка). Базы раздаются всем записям до производных: база второго правила — X:inline, поэтому inline-набор правила X разводится суффиксом на своём теге — X:inline (2).",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "X",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "https://example.com/rules/ads.srs"
+        ],
+        "domain": [
+          "example-6.com"
+        ],
+        "outbound": "proxy-out"
+      }
+    },
+    {
+      "kind": "srs",
+      "name": "X:inline",
+      "enabled": true,
+      "num": 1010,
+      "body": {
+        "refs": [
+          "https://example.com/rules/lists.srs"
+        ],
+        "outbound": "direct"
+      }
+    }
+  ]
+}

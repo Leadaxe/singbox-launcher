@@ -1,0 +1,331 @@
+# CODEMAP 188 — карта кода под дерево условий
+
+Снято 23.11.2026 с `develop` (после cf619666). Адреса `файл:строка` — на этот
+снимок; после правок первой волны сдвигаются, имена функций — нет.
+
+## 1. Реестр: типы и функции
+
+### Состояние (`core/state`)
+
+| Адрес | Что делает |
+|---|---|
+| `rule_types.go:41` `RuleKind` | `preset` / `inline` / `srs` |
+| `rule_types.go:72` `Rule` | запись `rules[]`: `Kind, ID, Ref, Name, Enabled, Num, Refs, Vars, SrsMode, UpdateIntervalHours, DownloadDetour, Body (RawMessage), DNS` |
+| `rule_types.go:136` `RuleDNS` | объект `dns` записи (camelCase): `enabled, serverTag, forceIpv4, blockHttps, fixedIps` |
+| `rule_types.go:159` `(*RuleDNS).IsZero` | опций нет — объект не пишется |
+| `rule_types.go:209` `InlineBody`, `:226` `SrsBody` | виды записи из `DecodeBody`; `SrsBody.Refs` — с записи |
+| `rule_types.go:260` `NewInlineRule` | единственный писатель тела inline: match ∪ цель, ключи по алфавиту |
+| `rule_types.go:278` `NewSrsRule` | писатель srs: `Refs` на запись (дедуп), тело = только цель |
+| `rule_types.go:293` `(*Rule).SetOutbound` | замена цели в сыром теле с сохранением порядка ключей |
+| `rule_types.go:362` `decodeObjectOrdered` | ключи объекта в порядке файла — для правок сырого JSON |
+| `rule_types.go:420` `outboundFromBody`, `:441` `isTargetKey` | цель тела: `outbound` / `action: reject` (+`method`) |
+| `rule_types.go:466` `(*Rule).DecodeBody` | единственный читатель; srs без `Refs` → ошибка `requires refs` (`:507`) |
+| `rule_types.go:526` `(*Rule).BodyMap` | тело картой как есть (сборка, UI) |
+| `rule_identity.go:38` `StableRuleID` | identity: preset → `Ref`, inline/srs → `sanitize(Name)` (+ `-h8` имени при потере символов) |
+| `rule_identity.go:64` `LegacyRuleID` | identity до хэша (до 22.11.2026) — для миграции ссылок |
+| `rule_identity.go:94` `MigrateRuleSetTagRefs` | **образец будущей миграции**: `user:<legacy>` → `user:<stable>` в телах inline и DNS-правил `user`; неоднозначный старый id не трогает |
+| `rule_identity.go:146` `renameRuleSetRefs` | замена тегов в `rule_set` карты и в `rules[]` под-правил |
+| `rule_identity.go:187` `SrsRuleSetTag` | **нынешняя схема тегов**: `user:<id>`, `user:<id>:N` |
+| `rule_identity.go:241` `CarryRuleMetadata` | провоз `Rule.ID` по `StableRuleID` при сохранении визарда |
+| `rule_set_options.go:63` `SetRuleSetOptions` | у `kind: inline` настройки наборов очищаются |
+| `record_clone.go:14` `CloneRule` / `:43` `cloneRule` | копия записи (копирует `Refs`) |
+| `rule_order.go:254` `NormalizeRuleOrder` | ось: сортировка по `Num` + засев неотчуждаемых пресетов; порядок для тегов брать отсюда |
+| `disk_v8.go:33` `SchemaVersionV8 = 8` | мажор файла; `:42` `diskStateV8`, `:56` `parseV8` |
+| `disk_v8.go:112` | вызов `MigrateRuleSetTagRefs` при чтении — место для подъёма `refs` и новой миграции |
+| `disk_v8.go:115` | `legacyCustomRulesFromV6` — построение UI-вида |
+| `load_router.go:32` `Load`, `:132` `parseWithContext` | `meta >= 8` → `parseV8` (`:143`): файл новее разбирается как v8 молча |
+| `schema_gate.go:28` `SchemaMajor`, `:90` `CheckSchemaCompatible` | гейт копирования/PATCH состояния машин: мажор выше — отказ |
+| `save.go:41`, `:136` | `Save`/`marshalDisk` пишут `SchemaVersionV8` |
+| `state.go:43` `SchemaVersion` | алиас текущего мажора |
+| `load_v6.go:214` `legacyCustomRulesFromV6` | запись → `CustomRule` для UI; у srs `RuleSet` по URL (`:249-257`), в `Rule` — заглушка `rule_set` с тегами `SrsRuleSetTag` (`:262-275`), `Params` не восстанавливаются |
+| `legacy_types.go:43` `CustomRule.Params` | UI-состояние типа; на диск v8 не попадает (см. §4.5) |
+| `migration_v7_to_v8.go:160` `migrateV8Rule` | v7→v8: `refs` на запись (`:194-205`) |
+| `dns_options.go:70-74` | `DNSRuleKindPreset`, `DNSRuleKindUser` — свои DNS-правила |
+
+### Сборка (`core/build`)
+
+| Адрес | Что делает |
+|---|---|
+| `resolve_route.go:36` `ResolvedRouteRuleSet` | запись `rule_set`: `Tag, Body, Source, SrsID, Skipped, Enabled` |
+| `resolve_route.go:71` `ResolvedRouteRule` | правило маршрута: `Body, Source, InlineID/SrsID, Name, DNS, Num, Enabled` |
+| `resolve_route.go:159` `ResolveRouteChecked` | обход оси, `emittedTags` (first-wins, `:178`), диспетчер по `Kind` (`:186-195`) |
+| `resolve_route.go:201` `resolvePresetRouteRule` | наборы пресета (`<preset_id>:<tag>`), висячие → `cleanDanglingRuleSetInRule` (`:287`) |
+| `resolve_route.go:314` `resolveInlineRouteRule` | тело как есть; **рукописный `rule_set` без проверки висячих** |
+| `resolve_route.go:337` `resolveSrsRouteRule` | теги `SrsRuleSetTag(id,i)`; кэш по `srsCachedPaths[StableRuleID]` (`:380`), «всё или ничего» (`:386`); `routeRule["rule_set"]` **перезаписывает** рукописный (`:429`) |
+| `resolve_route.go:447` `ruleNum` | номер оси, nil → `DefaultRuleNum` |
+| `rule_set_policy.go:34` `ResolveRuleSetPolicy`, `:62` `RulePolicy` | local/remote/интервал/detour правила; `file://` → local (`:64` по `rule.Refs`) |
+| `rule_set_policy.go:83` `remoteRuleSetBody` | `type: remote` запись набора |
+| `rule_set_policy.go:106` `RuleSetFetch`, `:121` `RuleSetFetches` | что качает лаунчер; srs — по `rule.Refs` (`:155-158`); имя файла `srsTagFromURLLocal(url)` |
+| `rule_set_policy.go:193` `DropUncachedSrsPaths` | снимает правило из карты кэша, если хоть одного файла нет |
+| `preset_merge.go:45` `convertPresetRuleSetRemoteToLocal` | набор пресета → local путь |
+| `preset_merge.go:101` `cleanDanglingRuleSetInRule` | висячие теги: часть снять, все висячие → правило выпало (SPEC 153) |
+| `preset_merge.go:232` `srsTagFromURLLocal` | = `srstag.TagFromURL` |
+| `preset_merge.go:235` `PresetMergeContext` | контекст сборки: `Presets, Rules, DNS, SrsCachedPaths (map[id][]path), DataDir, Target, GlobalVars, TemplateVars, PresetNodes, FinalOutboundTags` |
+| `preset_merge.go:342` `MergePresetsIntoRoute` | эмиссия `route.rule_set` / `route.rules`; теги шаблона из `routeRaw` (`:366-373`) |
+| `preset_merge.go:436` `MergePresetsIntoDNS` | DNS; зеркала `ruleDNSMirrorsForMerge` (`:450`), вставка (`:526`) |
+| `preset_merge.go:553` / `:720` `cleanDanglingDNSRule` | висячие `rule_set` в DNS-правилах (в т.ч. `user`) |
+| `preset_merge.go:647` `CollectEmittedRouteRuleSetTags` | множество выпущенных тегов (третий вызов `ResolveRouteChecked`, `:688`) |
+| `preset_merge.go:811` `CollectSrsCachedPaths` | **карта `StableRuleID → []path` по порядку `Refs`**; имя файла от URL (`:835-842`) |
+| `preset_expand.go:37` `TagSeparator`, `:222` `ExpandPresetForNodes` | префикс `<preset_id>:` у тегов пресета |
+| `preset_expand.go:944-945` | имена списков `route_rule_conditions` / `dns_rule_conditions` |
+| `route_merge.go:173` `ResourceNameForSRS` | имя ресурса удалённой машины = `srstag.FileName(tag от URL)` |
+| `rule_dns_mirror.go:29-31` | имена списков реестра зеркала |
+| `rule_dns_mirror.go:52` `RuleDNSMirrorMatch` | матчер = ключи тела из `rule_dns_mirror_match`; пусто → зеркала нет; **плоский** |
+| `rule_dns_mirror.go:87` `RuleDNSBlockHTTPSAvailable` | srs или доменный ключ |
+| `rule_dns_mirror.go:98` `RuleDNSMirrorNarrowed` | есть ключ из `rule_dns_mirror_unseen` → подсказка |
+| `rule_dns_mirror.go:121` `collectRuleDNSMirrors` | зеркала выпущенных правил: Block HTTPS, Fixed (A/AAAA), Force IPv4, server; `invert` **не переносится** |
+| `rule_dns_mirror.go:172` `ruleDNSFixedBody` | тело локального ответа: матч + `query_type` + `answer` |
+| `rule_dns_mirror.go:198` `RuleDNSMirrors` | то же для показа (Preview окна правила) |
+| `rule_dns_mirror.go:223` `ruleDNSMirrorsForMerge` | свой `ResolveRouteChecked` (`:236`) |
+| `rule_dns_mirror.go:255` `RuleDNSMirrorIndex`, `:274` `insertRuleDNSMirrors` | место зеркал на оси DNS |
+
+### Имена файлов наборов (`internal/srstag/srstag.go`)
+
+| Адрес | Что делает |
+|---|---|
+| `:31` `TagFromURL` | `<basename>-<sha256(url)[:4] hex>[.json]` — **имя копии от ссылки, не от правила** |
+| `:75` `FileName`, `:83` `TagFromFileName` | `<тег>.srs` / тег с `.json` как есть |
+| `:92` `Format`, `:101` `FormatFromRef` | `source` для `.json`, иначе `binary` |
+| `:104` `IsFileRef`, `:135` `FileRefFromPath`, `:150` `PathFromFileRef` | `file://` (SPEC 187) |
+
+### Реестр контракта
+
+| Адрес | Что делает |
+|---|---|
+| `contract/embed.go` | `//go:embed registry/*.json registry/protocols/*.json` — новый файл реестра подхватится без правки embed |
+| `core/config/registry/registry.go:782` `Registry`, `:834` `Get`, `:850` `Load` | загрузка; `allowlists.json` читается в `:989`, таблица условий — `:995` (после волны 1) |
+| `core/config/registry/registry.go:2089` `Allowlist(name)` | список по имени |
+| `core/config/registry/rule_conditions.go` (волна 1) | `RuleCondition`, `RuleConditionKey`, `loadRuleConditions` (сверка с `route_rule_conditions` / `rule_dns_mirror_match` / `rule_dns_block_https_domains`), `RuleConditions()`, `RuleConditionOfKey()`, `RuleSetKeys()`, `RuleDNSKeys()`, `RuleDomainKeys()`, `RuleCondition.ShownIn(form)` |
+| `contract/registry/rule_conditions.json` (волна 1) | таблица условий |
+| `contract/registry/allowlists.json:199` | `rule_dns_mirror_match`, далее `rule_dns_mirror_unseen`, `rule_dns_block_https_domains`; рядом `route_rule_conditions`, `dns_rule_conditions` |
+| `contract/doc.go:11` | `//go:generate go run ./tools/gendocs` — генерирует только протоколы и предупреждения (`contract/tools/gendocs/raw.go:168`, `warnings.go`); таблица условий в generated сама не попадёт |
+
+### Бэкап (`core/backup`)
+
+| Адрес | Что делает |
+|---|---|
+| `types.go:37` `FormatVersion = 1` | 0.x |
+| `backup10.go:38` `FormatVersion10 = 2`, `:42` `Backup10` | формат 1.0; `Rules []state.Rule` как в состоянии |
+| `file.go:154` `Parse` | диспетчер по `lx_backup`: 1, 2, **иначе отказ** `backup format v%d is newer than supported v%d — update the app` (`:184-186`) |
+| `file_keys_10.go:81` `rule10Keys` | известные ключи записи — из тегов `state.Rule` (поле `Refs` должно остаться) |
+| `export10.go:41` `Export10` (пишет `LxBackup: FormatVersion10`, `:53`), `:228` `export10Rules` | экспорт копией |
+| `import10.go:33` `decode10`, `:316` `decode10Rule` | ввоз записи правила копией |
+| `import10.go:335` `checkImportedRuleTargets`, `:370` `ruleTarget10` | цель через `DecodeBody` |
+| `import10.go:431` `splitRuleBodies`, `:479` `ruleBodyPresent` | норма «одно правило — одно тело» |
+| `legacy_read_0x.go:408` `importRule` | 0.x → `NewInlineRule` / `NewSrsRule` (`:443`, `:451`) |
+| `import.go:314` `Import`; `:416-425`, `:516-518` | `rules[]` — полная замена |
+| `corpus_test.go:373` `TestBackupCorpus` | раннер `contract/corpus/backup`; файл с `lx_backup` выше читаемого — пропуск кейса |
+| `schema_test.go:32` `schemaPath10` | писатель против `backup.schema.json` |
+
+### Правка состояния: Debug API
+
+| Адрес | Что делает |
+|---|---|
+| `core/debugapi/state_endpoints.go:184` `stateRulesWith` | GET/PATCH `/state/rules`; проверка `DecodeBody` (`:210`), replace/append (`:228-241`) |
+| `core/debugapi/state_crud_endpoints.go:10-11` | POST/DELETE `/state/rules` → `stateedit` |
+| `core/debugapi/server.go:275`, `remote_endpoints.go:112` | регистрация локальной и машинной точек |
+| `core/stateedit/rules.go:64` `AddRule` | проверка тела и цели, номер оси |
+| `core/stateedit/servers.go:654` `nameRefs` | кто ссылается на тег (читает `Refs`) |
+
+### Загрузка наборов и сборщик мусора
+
+| Адрес | Что делает |
+|---|---|
+| `core/srs_refresh.go:104` | цикл обновления берёт `ctx.Preset.RuleSetFetches()` |
+| `core/config_service.go:404` `collectAllStageRuleSetTags` | keep-лист файлов для GC; srs по `r.Refs` (`:471-482`) |
+| `core/config_service_context.go:85-92` | контекст сборки сервиса: `CollectSrsCachedPaths` + `DropUncachedSrsPaths` |
+| `core/services/srs_downloader.go:341` `GetSRSEntries` | записи для кнопки `upd` из сырых `rule_set` |
+
+### UI: модель (`ui/configurator/models`)
+
+| Адрес | Что делает |
+|---|---|
+| `rule_state.go:31` `RuleState` | `Rule (TemplateSelectableRule), Enabled, SelectedOutbound, Num, DNS, SrsOptions` |
+| `core/template/loader.go:179` `TemplateSelectableRule` | `Label, Rule (map), Rules, RuleSets ([]RawMessage), DefaultOutbound, HasOutbound, Params (:208)` |
+| `wizard_state_file.go:119` `PersistedCustomRuleToRuleState`, `:152` `ToPersistedCustomRule` | legacy-вид ↔ модель |
+| `wizard_state_file.go:190` `DetermineRuleType` | тип по ключам: ip / домены / процессы / `rule_set` / иначе raw |
+| `preset_ref_sync.go:31` `EmitStateRulesWithoutOrder`, `:65` `EmitStateRulesInAxisOrder` | модель → `[]state.Rule` |
+| `preset_ref_sync.go:128` `RuleOrderFromAxis`, `:189` `buildCustomRuleQueue` | сопоставление слотов по `StableRuleID` |
+| `preset_ref_sync.go:252` `customRuleStateToV6Rule` | **модель → запись**: есть remote `RuleSets` → `NewSrsRule`, иначе `NewInlineRule`; `Params` не переносятся |
+
+### UI: окно правила (`ui/configurator/dialogs`)
+
+`add_rule_dialog.go` — 1782 строки; `ShowAddRuleDialog` `:78`–`:1552` одной функцией.
+
+| Адрес | Что там |
+|---|---|
+| `:64-71` | константы плейсхолдеров |
+| `:111-187` | виджеты: имя, IP, домены, процессы, «Match by path», Custom JSON, поле наборов + «Add file…» (`:175-182`) |
+| `:189-205` | выход, `RuleSetOptionsForm` (SPEC 185) |
+| `:213-313` | разбор правила при открытии: `DetermineRuleType` (`:225`), `Params` (`:226`), наборы из `Rule.RuleSets` (`:272-280`) |
+| `:316-364` | радио типа правила, режим доменов, «Match by path» |
+| `:366-480` | `updateDomainLabel`, `updateVisibility` |
+| `:485` `parseCustomJSON` | |
+| `:503` `buildSRSRuleSetsAndTags` | строки поля → записи `remote` с тегами `TagFromURL` |
+| `:551` `srsRuleSetsForRawBody` | тело вкладки JSON со ссылкой на теги формы → srs |
+| `:579` `buildRuleRaw` | форма → тело по типу |
+| `:671` `validateFields` | |
+| `:728-826` | вкладка DNS: серверы, `answerRadio` (`:749`), Force IPv4 (`:761`), Block HTTPS (`:764`), `fixedIPs`/`dnsAnswerError`/`currentRuleDNS` |
+| `:828` `currentRuleBody`, `:848` `currentRuleIsSRS` | |
+| `:862` `updateDNSAvailability` | **пустой матчер → опции DNS выключаются** с подсказкой «Unavailable for rules that match only IP addresses, ports or protocols» (`:917-925`) |
+| `:958` `updateButtonState`, `:969` `onRuleTypeChange` | |
+| `:1019` `saveRule` | имя (дубль — отказ, `:1031`), тело, `Params` (`:1088-1101`), запись в `RuleState` (`:1110-1150`) |
+| `:1169` | кнопка подтверждения |
+| `:1190` `syncSrsModeLock` | Mode недоступен для `file://` |
+| `:1208-1300` | выбор процессов (окно `:1235`) |
+| `:1304` `inputContainer`, `:1335` `formScroll` | раскладка формы |
+| `:1337-1367` | вкладки Form / DNS / JSON / Preview |
+| `:1368` `syncFormToRaw`, `:1380` `syncRawToForm` | JSON ↔ форма через `DetermineRuleType` (`:1407`) |
+| `:1460` `tabs.OnSelected`, `:1492` окно, `:1536` `SetContent` | |
+| `:1560` `ruleArrayPastedError`, `:1570-1603` | помощники процессов |
+| `:1606` `rulePreviewInput`, `:1628` `rulePreviewText` | Preview: правило **одно**, `TemplateData{}` пустая (`:1659`) |
+| `:1733` `normalizeRuleSetRef`, `:1760` `ruleSetFileError` | SPEC 187 |
+| `:1770` `conflictingRuleName` | |
+
+Прочие файлы: `rule_type_selection.go:10` `RuleTypeSelection` (40 строк, уходит);
+`rule_set_options.go:22` `RuleSetOptionsForm`, `:141` `SetModeLocked`;
+`rule_dialog.go:43` `ExtractStringArray`, `:60` `ParseLines`, `:79`
+`SimplePatternToRegex`; `srs_tag.go:10` `SRSTagFromURL`.
+
+### UI: вкладки
+
+| Адрес | Что делает |
+|---|---|
+| `tabs/rules_tab.go:95` `customRuleSRSEntries` | srs-правило по `DetermineRuleType` + `Rule.RuleSets` |
+| `tabs/rules_tab.go:396` `buildSingleCustomRuleRow` | **строка правила**: метка DNS `ruleDNSMirrorText` (`:422-425`) — сюда ⚠ |
+| `tabs/rules_tab.go:611` `createCustomRuleSRSButton` | кнопка `upd` |
+| `tabs/rules_unified_rows.go:40` `buildUnifiedRuleRows` | диспетчер строк; пресеты `:73`; строка своего правила — в `rules_tab.go` |
+| `tabs/dns_unified_rules.go:80` `ruleDNSMirrorRowsByPos` | строки зеркал на вкладке DNS |
+| `tabs/dns_unified_rules.go:119` `ruleDNSMirrorText` | текст метки; пустое зеркало → `""` (`:123`) |
+| `tabs/dns_unified_rules.go:145` `ruleStateIsSRS` | `DetermineRuleType` + `RuleSets` |
+| `tabs/dns_unified_rules.go:169` `buildRuleDNSMirrorRow` | строка «📎 имя · опции» — сюда ⚠ |
+| `tabs/dns_user_rules.go:525` `collectAllRuleSetTags` | теги для формы своих DNS-правил: только пресеты; `user:` не предлагаются (`:567-574`) |
+| `business/create_config.go:195` | `PresetMergeContext` визарда; `:303` `routeConfigFromModel` (legacy `RouteRule.RuleSets`) |
+| `presentation/presenter_save.go:549` `modelHasRuleSetFiles` | нужен ли ресурс-стор машине — по `Rule.RuleSets` |
+
+## 2. Кто кого зовёт
+
+### Состояние → наборы → маршрут → DNS-зеркало
+
+```
+state.Load (load_router.go:32)
+ └ parseWithContext → parseV8 (disk_v8.go:56)
+    ├ MigrateRuleSetTagRefs (rule_identity.go:94)
+    └ legacyCustomRulesFromV6 (load_v6.go:214)            → UI-вид
+
+ConfigService / визард
+ ├ PresetMergeContext (config_service_context.go:85 | create_config.go:195)
+ │   └ CollectSrsCachedPaths (preset_merge.go:811) → DropUncachedSrsPaths (rule_set_policy.go:193)
+ ├ MergePresetsIntoRoute (preset_merge.go:342)
+ │   └ ResolveRouteChecked (resolve_route.go:159)
+ │       ├ NormalizeRuleOrder (rule_order.go:254)
+ │       ├ resolvePresetRouteRule (:201) → ExpandPresetForNodes → cleanDanglingRuleSetInRule
+ │       ├ resolveInlineRouteRule (:314)   — тело как есть
+ │       └ resolveSrsRouteRule (:337)      — SrsRuleSetTag, RulePolicy, srsCachedPaths[id]
+ ├ CollectEmittedRouteRuleSetTags (preset_merge.go:647) → ResolveRouteChecked
+ └ MergePresetsIntoDNS (preset_merge.go:436)
+     ├ ruleDNSMirrorsForMerge (rule_dns_mirror.go:223) → ResolveRouteChecked → collectRuleDNSMirrors (:121)
+     │   └ RuleDNSMirrorMatch (:52) по allowlist rule_dns_mirror_match
+     ├ cleanDanglingDNSRule (preset_merge.go:720) — свои DNS-правила
+     └ insertRuleDNSMirrors (rule_dns_mirror.go:274)
+
+Цикл обновления: srs_refresh.go:104 → RuleSetFetches (rule_set_policy.go:121) → srs_downloader
+GC файлов: collectAllStageRuleSetTags (config_service.go:404)
+```
+
+Четыре вызова `ResolveRouteChecked` (`preset_merge.go:360`, `:688`,
+`rule_dns_mirror.go:236`, `add_rule_dialog.go:1659`) обязаны раздавать
+одинаковые теги — новая схема тегов зависит от всех правил оси и тегов
+шаблона, а не от одного правила.
+
+### Форма → состояние
+
+```
+ShowAddRuleDialog (add_rule_dialog.go:78)
+ ├ открытие: RuleState.Rule.Rule → DetermineRuleType → поля / Custom JSON
+ ├ saveRule (:1019): buildRuleRaw | JSON → RuleState{Rule.Rule, Rule.RuleSets, Params, DNS, SrsOptions}
+ └ Preview: rulePreviewText (:1628) → EmitStateRulesWithoutOrder → ResolveRouteWithGlobals → RuleDNSMirrors
+
+Сохранение визарда: EmitStateRulesInAxisOrder (preset_ref_sync.go:65)
+ └ customRuleStateToV6Rule (:252) → NewSrsRule | NewInlineRule → state.Rules → Save
+```
+
+### Бэкап
+
+```
+экспорт: Export10 (export10.go:41) → export10Rules (:228) — копии записей
+импорт:  Parse (file.go:154) → decode10 (import10.go:33) → decode10Rule (:316), splitRuleBodies (:431)
+         → Import (import.go:314): rules[] замена → checkImportedRuleTargets (import10.go:335)
+0.x:     importRule (legacy_read_0x.go:408) → NewInlineRule / NewSrsRule
+Debug API: stateRulesWith (state_endpoints.go:184) / stateedit.AddRule (rules.go:64)
+```
+
+## 3. Корпус и раннеры
+
+| Каталог | Раннер | Что сверяет |
+|---|---|---|
+| `contract/corpus/rule_dns/` (11 кейсов) | `core/build/contract_rule_dns_test.go:40` `TestContractCorpusRuleDNS` | запись → `ResolveRouteWithGlobals` → `RuleDNSMirrors`; **матчер снимается** (ключи `rule_dns_mirror_match`), сверяются действия. Кэш srs — `srsCached[StableRuleID]` (`:73-80`) |
+| `contract/corpus/backup/` | `core/backup/corpus_test.go:373` `TestBackupCorpus` | файл → `Parse` → `Import` → ожидания (`refs` правила — `corpusRuleExpectation.Refs`) |
+| `contract/corpus/template/` | `core/build/contract_*_test.go` | язык шаблона |
+
+Регенерация зеркала: `go test ./core/build -run TestContractCorpusRuleDNS -update-rule-dns`.
+
+## 4. Выжимки по подсистемам
+
+### 4.1 Теги наборов сегодня
+
+`user:<StableRuleID>` для первой ссылки, `user:<id>:N` для N-й
+(`rule_identity.go:187`). Ссылки на эти теги текстом живут в телах inline-правил
+(Custom JSON) и своих DNS-правил; их переписывает `MigrateRuleSetTagRefs` при
+каждом чтении (`disk_v8.go:112`). Теги пресетов — `<preset_id>:<tag>`
+(`preset_expand.go:37`); шаблон тегов `rule_set` в `route` сейчас не несёт.
+
+### 4.2 Файлы копий
+
+Имя файла — `srstag.TagFromURL(ref)` = `<basename>-<h8(url)>[.json]` + `.srs`,
+от тега правила **не зависит** (issue #77, `preset_merge.go:786-842`). Смена
+тегов правил перекачки не вызывает. Привязка «правило → файлы» сейчас
+позиционная: `srsCachedPaths[StableRuleID][i]` ↔ `Refs[i]`.
+
+### 4.3 Рукописный `rule_set`
+
+- inline: тело едет как есть, висячий тег не снимается — ядро падает на
+  `rule-set not found`, если набор не выпущен (правило-владелец выключено,
+  файл не скачан).
+- srs: сборка затирает `rule_set` тела своим списком (`resolve_route.go:429`).
+- свои DNS-правила: висячие теги снимает `cleanDanglingDNSRule`.
+
+### 4.4 DNS-зеркало
+
+Плоское: ключи тела из `rule_dns_mirror_match` (сейчас 18 ключей, среди них
+`network_type`, `source_ip_is_private`; нет `network_is_expensive`).
+`invert` в список не входит и не переносится. Тела Block HTTPS / Force IPv4 /
+Fixed = копия матчера + `query_type` / `ip_version` / `answer`. Ядро
+(`sing-box-lx/option/rule_dns.go:237` `RawLogicalDNSRule`) у `logical`
+принимает только `mode`, `rules`, `invert` и действие — `query_type` и
+`ip_version` у корня-`logical` недопустимы.
+
+### 4.5 `Params`
+
+`TemplateSelectableRule.Params` (`loader.go:208`) — UI-состояние типа
+(`domain_mode`, `match_by_path`, `path_mode`). Пишется окном (`:1088-1101`),
+но `customRuleStateToV6Rule` его не переносит, а `legacyCustomRulesFromV6` не
+восстанавливает: до диска v8 не доживает, живёт до закрытия Конфигуратора.
+
+### 4.6 Версии форматов
+
+- `state.json`: `meta.version` = 8; читатель берёт `>= 8` как v8 молча;
+  `CheckSchemaCompatible` отказывает на мажоре выше — только при переносе и
+  PATCH состояния машин.
+- бэкап: `lx_backup` (1 — 0.x, 2 — 1.0); значение выше — отказ всего файла
+  (`file.go:184`), BACKUP.md §8. Схема `backup.schema.json` держит
+  `lx_backup: const 2`.
+
+### 4.7 Контракт: нумерация
+
+`contract/VERSION` = 1.1.178; последний параграф `TASKS_LXBOX.md` — §181;
+последнее решение `SPECS/103-F-O-LX_SHARED_CONTRACT/DECISIONS.md` — D-155;
+changelog — таблица в `contract/README.md` (строка 1.1.178 — `:410`);
+TEMPLATE_LANG §6.11 — `contract/docs/TEMPLATE_LANG.md:1610`; ONE_NAMESPACE
+«Правило маршрута» — `contract/docs/ONE_NAMESPACE.md:94`; BACKUP `rules[]` —
+`contract/docs/BACKUP.md:430`, §8 — `:740`.

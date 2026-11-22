@@ -1,0 +1,119 @@
+{
+  "lx_backup": 3,
+  "exported_by": {
+    "app": "launcher",
+    "version": "corpus",
+    "platform": "test"
+  },
+  "exported_at": "2026-11-23T00:00:00Z",
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Streaming",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "https://example-5.com/rules/a.srs",
+          "https://example-5.com/rules/b.srs"
+        ],
+        "domain_suffix": [
+          "example-1.com"
+        ],
+        "port": [
+          443
+        ],
+        "outbound": "direct"
+      }
+    },
+    {
+      "kind": "srs",
+      "name": "Tree",
+      "enabled": true,
+      "num": 1010,
+      "body": {
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          {
+            "source_ip_is_private": true
+          },
+          {
+            "type": "logical",
+            "mode": "or",
+            "invert": true,
+            "rules": [
+              {
+                "refs": [
+                  "https://example-5.com/rules/c.json"
+                ]
+              },
+              {
+                "process_name": [
+                  "app.exe"
+                ]
+              }
+            ]
+          }
+        ],
+        "outbound": "direct"
+      }
+    },
+    {
+      "kind": "srs",
+      "name": "Both",
+      "enabled": true,
+      "num": 1020,
+      "refs": [
+        "https://example-5.com/rules/b.srs"
+      ],
+      "body": {
+        "refs": [
+          "https://example-5.com/rules/a.srs"
+        ],
+        "outbound": "direct"
+      }
+    },
+    {
+      "kind": "srs",
+      "name": "Old logical",
+      "enabled": true,
+      "num": 1030,
+      "refs": [
+        "https://example-5.com/rules/c.json"
+      ],
+      "body": {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "port": [
+              443
+            ]
+          },
+          {
+            "network": [
+              "udp"
+            ]
+          }
+        ],
+        "outbound": "direct"
+      }
+    },
+    {
+      "kind": "inline",
+      "name": "Hand set",
+      "enabled": true,
+      "num": 1040,
+      "body": {
+        "rule_set": [
+          "Streaming"
+        ],
+        "port": [
+          80
+        ],
+        "outbound": "direct"
+      }
+    }
+  ]
+}

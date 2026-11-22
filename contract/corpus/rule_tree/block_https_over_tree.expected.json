@@ -1,0 +1,176 @@
+{
+  "rule_set": [],
+  "route_rules": [
+    {
+      "type": "logical",
+      "mode": "or",
+      "rules": [
+        {
+          "domain_suffix": [
+            "example-7.com"
+          ]
+        },
+        {
+          "process_name": [
+            "app.exe"
+          ]
+        }
+      ],
+      "outbound": "proxy-out"
+    },
+    {
+      "type": "logical",
+      "mode": "or",
+      "rules": [
+        {
+          "domain_suffix": [
+            "example-7.com"
+          ]
+        },
+        {
+          "process_name": [
+            "app.exe"
+          ]
+        }
+      ],
+      "outbound": "direct"
+    }
+  ],
+  "dns_rules": [
+    {
+      "type": "logical",
+      "mode": "and",
+      "rules": [
+        {
+          "type": "logical",
+          "mode": "or",
+          "rules": [
+            {
+              "domain_suffix": [
+                "example-7.com"
+              ]
+            },
+            {
+              "process_name": [
+                "app.exe"
+              ]
+            }
+          ]
+        },
+        {
+          "query_type": [
+            "HTTPS",
+            "SVCB"
+          ]
+        }
+      ],
+      "action": "predefined",
+      "rcode": "NOERROR"
+    },
+    {
+      "type": "logical",
+      "mode": "and",
+      "rules": [
+        {
+          "type": "logical",
+          "mode": "or",
+          "rules": [
+            {
+              "domain_suffix": [
+                "example-7.com"
+              ]
+            },
+            {
+              "process_name": [
+                "app.exe"
+              ]
+            }
+          ]
+        },
+        {
+          "ip_version": 6
+        }
+      ],
+      "action": "predefined",
+      "rcode": "NOERROR"
+    },
+    {
+      "type": "logical",
+      "mode": "or",
+      "rules": [
+        {
+          "domain_suffix": [
+            "example-7.com"
+          ]
+        },
+        {
+          "process_name": [
+            "app.exe"
+          ]
+        }
+      ],
+      "server": "cf"
+    },
+    {
+      "type": "logical",
+      "mode": "and",
+      "rules": [
+        {
+          "type": "logical",
+          "mode": "or",
+          "rules": [
+            {
+              "domain_suffix": [
+                "example-7.com"
+              ]
+            },
+            {
+              "process_name": [
+                "app.exe"
+              ]
+            }
+          ]
+        },
+        {
+          "query_type": [
+            "A"
+          ]
+        }
+      ],
+      "action": "predefined",
+      "rcode": "NOERROR",
+      "answer": [
+        "*. 300 IN A 192.0.2.10"
+      ]
+    },
+    {
+      "type": "logical",
+      "mode": "and",
+      "rules": [
+        {
+          "type": "logical",
+          "mode": "or",
+          "rules": [
+            {
+              "domain_suffix": [
+                "example-7.com"
+              ]
+            },
+            {
+              "process_name": [
+                "app.exe"
+              ]
+            }
+          ]
+        },
+        {
+          "query_type": [
+            "AAAA"
+          ]
+        }
+      ],
+      "action": "predefined",
+      "rcode": "NOERROR"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "_": "Лист {ip_cidr, inbound} с DNS-опцией: ip_cidr в зеркало не идёт, остаётся inbound — зеркало на все запросы этого входа. Принятое поведение (SPEC 188 §5).",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "LanIn",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "ip_cidr": [
+          "192.0.2.0/24"
+        ],
+        "inbound": [
+          "lan-in"
+        ],
+        "outbound": "direct"
+      },
+      "dns": {
+        "enabled": true,
+        "serverTag": "cf"
+      }
+    }
+  ]
+}

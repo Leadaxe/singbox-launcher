@@ -1,0 +1,61 @@
+{
+  "_": "После выброса пустых детей у and/or остался один ребёнок — обёртка снимается. Во втором правиле invert обёртки переходит на оставшегося ребёнка.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "Unwrap",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "port": [
+              8080
+            ]
+          },
+          {
+            "domain": [
+              "example-5.com"
+            ]
+          }
+        ],
+        "outbound": "proxy-out"
+      },
+      "dns": {
+        "enabled": true,
+        "serverTag": "cf"
+      }
+    },
+    {
+      "kind": "inline",
+      "name": "UnwrapNot",
+      "enabled": true,
+      "num": 1010,
+      "body": {
+        "type": "logical",
+        "mode": "and",
+        "invert": true,
+        "rules": [
+          {
+            "network": [
+              "udp"
+            ]
+          },
+          {
+            "inbound": [
+              "tun-in"
+            ]
+          }
+        ],
+        "outbound": "direct"
+      },
+      "dns": {
+        "enabled": true,
+        "serverTag": "cf"
+      }
+    }
+  ]
+}

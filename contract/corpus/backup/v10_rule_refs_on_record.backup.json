@@ -1,0 +1,65 @@
+{
+  "lx_backup": 2,
+  "exported_by": {
+    "app": "launcher",
+    "version": "corpus",
+    "platform": "test"
+  },
+  "exported_at": "2026-11-23T00:00:00Z",
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Old flat",
+      "enabled": true,
+      "num": 1000,
+      "refs": [
+        "https://example-5.com/rules/a.srs",
+        "https://example-5.com/rules/b.srs"
+      ],
+      "body": {
+        "domain_suffix": [
+          "example-1.com"
+        ],
+        "outbound": "direct"
+      }
+    },
+    {
+      "kind": "srs",
+      "name": "Old logical",
+      "enabled": true,
+      "num": 1010,
+      "refs": [
+        "https://example-5.com/rules/c.json"
+      ],
+      "body": {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "port": [
+              443
+            ]
+          },
+          {
+            "network": [
+              "udp"
+            ]
+          }
+        ],
+        "outbound": "direct"
+      }
+    },
+    {
+      "kind": "inline",
+      "name": "Plain",
+      "enabled": true,
+      "num": 1020,
+      "body": {
+        "domain": [
+          "example-2.com"
+        ],
+        "outbound": "direct"
+      }
+    }
+  ]
+}

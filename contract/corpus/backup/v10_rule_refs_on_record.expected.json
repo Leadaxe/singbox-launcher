@@ -1,0 +1,33 @@
+{
+  "rules": [
+    {
+      "name": "Old flat",
+      "enabled": true,
+      "refs": [
+        "https://example-5.com/rules/a.srs",
+        "https://example-5.com/rules/b.srs"
+      ],
+      "outbound": "direct"
+    },
+    {
+      "name": "Old logical",
+      "enabled": true,
+      "refs": [
+        "https://example-5.com/rules/c.json"
+      ],
+      "outbound": "direct"
+    },
+    {
+      "name": "Plain",
+      "enabled": true,
+      "outbound": "direct",
+      "body": {
+        "domain": [
+          "example-2.com"
+        ],
+        "outbound": "direct"
+      }
+    }
+  ],
+  "warnings": []
+}
