@@ -49,6 +49,10 @@ type RuleConditionKey struct {
 	Conflicts []string `json:"conflicts"`
 	Values    []string `json:"values"`
 	Open      bool     `json:"open"`
+	// Label — подпись поля формы, Placeholder — подсказка в пустом поле
+	// (английский текст; у лаунчера — ключ перевода, контракт 1.1.181).
+	Label       string `json:"label"`
+	Placeholder string `json:"placeholder"`
 }
 
 // RuleCondition — условие простого правила (рамка формы).
@@ -117,6 +121,11 @@ func (r *Registry) loadRuleConditions() error {
 		if len(c.Forms) == 0 {
 			c.Forms = append([]string(nil), ruleConditionFormsDefault...)
 		}
+		// Форма лаунчера рисует подписи из таблицы: условие и каждый его
+		// ключ без подписи — ошибка загрузки, а не пустая строка в окне.
+		if c.ShownIn("launcher") && c.Label == "" {
+			return fail("условие %q без label", c.ID)
+		}
 		for ki, k := range c.Keys {
 			if k.Key == "" {
 				return fail("условие %q: ключ %d без имени", c.ID, ki)
@@ -125,6 +134,9 @@ func (r *Registry) loadRuleConditions() error {
 				return fail("ключ %q встречается в таблице дважды", k.Key)
 			}
 			idx[k.Key] = ruleConditionIndex{cond: ci, key: ki}
+			if c.ShownIn("launcher") && k.Label == "" {
+				return fail("ключ %q без label", k.Key)
+			}
 			if !ruleConditionFields[k.Field] {
 				return fail("ключ %q: неизвестный вид поля %q", k.Key, k.Field)
 			}

@@ -213,8 +213,7 @@ func RebuildLegacyRuleView(s *State) {
 // с RulesV6 напрямую через новый edit dialog).
 func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 	out := make([]CustomRule, 0, len(rules))
-	var ruleTags []RuleTags // теги наборов — лениво, только если есть srs-вид
-	for ri, r := range rules {
+	for _, r := range rules {
 		body, err := r.DecodeBody()
 		if err != nil {
 			continue
@@ -238,39 +237,15 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 			out = append(out, cr)
 		case RuleKindSrs:
 			sb := body.(*SrsBody)
-			// SPEC 188 (волна 2): нынешняя форма выражает только «наборы +
-			// выход». Правило, у которого кроме ссылок есть условия или
-			// дерево (`refs` в под-правилах), идёт в UI телом целиком (Custom
-			// JSON, ссылки внутри): форма «наборы» при сохранении молча
-			// выбросила бы всё, кроме ссылок.
-			if bodyMap, err := r.BodyMap(); err == nil && !ruleTreeFlatRefs(bodyMap) {
-				cr := CustomRule{
-					Label:            sb.Name,
-					Enabled:          r.Enabled,
-					SelectedOutbound: sb.Outbound,
-					HasOutbound:      true,
-					Rule:             map[string]interface{}{},
-					DNS:              CloneRuleDNS(r.DNS),
-					SrsOptions:       r.RuleSetOptions(),
-				}
-				for k, v := range bodyMap {
-					if !isTargetKey(k, bodyMap) {
-						cr.Rule[k] = v
-					}
-				}
-				cr.Rule["outbound"] = sb.Outbound
-				out = append(out, cr)
+			// SPEC 188 (волна 4): тело целиком, ссылки `refs` внутри — форма
+			// правила читает и пишет их в дереве условий. RuleSet — производное
+			// для кнопки скачивания и гейта: по записи на КАЖДЫЙ URL (репорт
+			// 1.5.5), тег — content-addressed имя файла копии, тот же, что у
+			// загрузчика (без него запись невидима для GetSRSEntries).
+			bodyMap, err := r.BodyMap()
+			if err != nil {
 				continue
 			}
-			// По записи на КАЖДЫЙ URL правила (репорт 1.5.5: из трёх наборов
-			// после переоткрытия оставался первый — тело держало один URL).
-			//
-			// Тег записи — content-addressed имя файла в bin/rule-sets/, тот же,
-			// что даёт диалог правила и downloader. Без него запись невидима
-			// для UI (GetSRSEntries отбрасывает записи без tag — кнопка
-			// «✔️ upd» и гейт скачивания пропадали после переоткрытия) и
-			// валит сборку «Итога»: MergeRouteSection отвечает «remote entry
-			// missing tag» (репорт 1.5.4).
 			urls := sb.URLs()
 			ruleSets := make([]json.RawMessage, 0, len(urls))
 			for _, u := range urls {
@@ -282,24 +257,6 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 				})
 				ruleSets = append(ruleSets, rsRaw)
 			}
-			// SPEC 063 follow-up: edit dialog re-derives rule type через
-			// DetermineRuleType(cr.Rule) и игнорирует stored cr.Type. Чтобы
-			// SRS rule после re-open не превратилось в "Custom JSON",
-			// в cr.Rule кладём rule_set placeholder с identity-based тегами
-			// (теги §6.13 по состоянию — StateRuleTags, SPEC 188).
-			// Это чисто UI-hint — build path не использует cr.Rule для SRS,
-			// он берёт state.Rules напрямую.
-			if ruleTags == nil {
-				ruleTags = StateRuleTags(rules)
-			}
-			var ruleSetHint interface{} = ruleTags[ri].Ref(urls[0])
-			if len(urls) > 1 {
-				tags := make([]interface{}, 0, len(urls))
-				for _, u := range urls {
-					tags = append(tags, ruleTags[ri].Ref(u))
-				}
-				ruleSetHint = tags
-			}
 			cr := CustomRule{
 				Label:            sb.Name,
 				Type:             RuleTypeSRS,
@@ -307,13 +264,16 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 				SelectedOutbound: sb.Outbound,
 				HasOutbound:      true,
 				RuleSet:          ruleSets,
+				Rule:             map[string]interface{}{},
 				DNS:              CloneRuleDNS(r.DNS),
 				SrsOptions:       r.RuleSetOptions(),
-				Rule: map[string]interface{}{
-					"rule_set": ruleSetHint,
-					"outbound": sb.Outbound,
-				},
 			}
+			for k, v := range bodyMap {
+				if !isTargetKey(k, bodyMap) {
+					cr.Rule[k] = v
+				}
+			}
+			cr.Rule["outbound"] = sb.Outbound
 			out = append(out, cr)
 		case RuleKindPreset:
 			// preset-ref пропускается в legacy view (UI Phase 6 покажет через новый dialog).

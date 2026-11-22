@@ -29,6 +29,7 @@ import (
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
+	"singbox-launcher/ui/configurator/dialogs"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
@@ -93,7 +94,7 @@ func ruleDNSMirrorRowsByPos(model *wizardmodels.WizardModel) map[int][]*wizardmo
 
 	var rules []*wizardmodels.RuleState
 	for _, cr := range model.CustomRules {
-		if cr != nil && cr.Enabled && ruleDNSMirrorText(cr) != "" {
+		if cr != nil && cr.Enabled && ruleDNSMirrorRowText(cr) != "" {
 			rules = append(rules, cr)
 		}
 	}
@@ -141,9 +142,29 @@ func ruleDNSMirrorText(cr *wizardmodels.RuleState) string {
 	return strings.Join(parts, " · ")
 }
 
-// ruleStateIsSRS — правило Конфигуратора уходит в запись вида srs.
+// ruleStateIsSRS — правило Конфигуратора уходит в запись вида srs: ссылки
+// `refs` в дереве тела (SPEC 188) или legacy-вид с RuleSets.
 func ruleStateIsSRS(cr *wizardmodels.RuleState) bool {
-	return wizardmodels.DetermineRuleType(cr.Rule.Rule) == wizardmodels.RuleTypeSRS && len(cr.Rule.RuleSets) > 0
+	return len(wizardmodels.RuleStateRuleSets(cr)) > 0
+}
+
+// ruleDNSMirrorIsEmpty — DNS-опция правила включена, а зеркало пустое (SPEC
+// 188 §5): ни в одном узле дерева нет условия, видимого DNS-слою.
+func ruleDNSMirrorIsEmpty(cr *wizardmodels.RuleState) bool {
+	return cr != nil && build.RuleDNSMirrorEmpty(cr.Rule.Rule, cr.DNS)
+}
+
+// ruleDNSMirrorRowText — подпись DNS-опций в строке правила: что делает
+// зеркало, а при пустом зеркале — ⚠ «DNS options have no effect…»; пусто —
+// опций нет.
+func ruleDNSMirrorRowText(cr *wizardmodels.RuleState) string {
+	if t := ruleDNSMirrorText(cr); t != "" {
+		return t
+	}
+	if ruleDNSMirrorIsEmpty(cr) {
+		return dialogs.RuleDNSNoEffectMark()
+	}
+	return ""
 }
 
 // ruleDNSServerUsers — имена включённых правил, чьё DNS-зеркало ведёт на
@@ -167,7 +188,7 @@ func ruleDNSServerUsers(model *wizardmodels.WizardModel, tag string) []string {
 // buildRuleDNSMirrorRow — строка DNS-зеркала правила: только для чтения,
 // правится в окне правила на вкладке Rules.
 func buildRuleDNSMirrorRow(dnsRulesBox *fyne.Container, cr *wizardmodels.RuleState) {
-	label := ttwidget.NewLabel("📎 " + cr.Rule.Label + "  ·  " + ruleDNSMirrorText(cr))
+	label := ttwidget.NewLabel("📎 " + cr.Rule.Label + "  ·  " + ruleDNSMirrorRowText(cr))
 	label.Truncation = fyne.TextTruncateClip
 	label.SetToolTip(locale.T("From the rule's DNS options. Edit the rule on the Rules tab."))
 	check := widget.NewCheck("", nil)

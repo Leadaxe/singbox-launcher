@@ -96,10 +96,12 @@ func customRuleSRSEntries(model *wizardmodels.WizardModel, customRule *wizardmod
 	if customRule == nil {
 		return nil, false
 	}
-	if wizardmodels.DetermineRuleType(customRule.Rule.Rule) != wizardmodels.RuleTypeSRS || len(customRule.Rule.RuleSets) == 0 {
+	// SPEC 188: наборы правила — ссылки `refs` в дереве тела (любой узел).
+	sets := wizardmodels.RuleStateRuleSets(customRule)
+	if len(sets) == 0 {
 		return nil, false
 	}
-	entries = services.GetSRSEntries(customRule.Rule.RuleSets)
+	entries = services.GetSRSEntries(sets)
 	hasFile := false
 	for i := range entries {
 		entries[i].Tag = build.SRSTagFromURL(entries[i].URL)
@@ -422,8 +424,10 @@ func buildSingleCustomRuleRow(
 	enableRuleOnSRSSuccess := new(bool)
 	checkbox := createRuleEnableCheckbox(presenter, model, guiState, customRule, customIdx, outboundSelect, &srsButton, enableRuleOnSRSSuccess)
 	labelText := customRule.Rule.Label
-	// DNS-зеркало правила (SPEC 172): метка, если сборка его выпустит.
-	if mark := ruleDNSMirrorText(customRule); mark != "" {
+	// DNS-зеркало правила (SPEC 172): метка, если сборка его выпустит; ⚠,
+	// если DNS-опция включена, а зеркало пустое (SPEC 188 §5).
+	mark := ruleDNSMirrorRowText(customRule)
+	if mark != "" {
 		labelText += "  ·  " + mark
 	}
 	label := ttwidget.NewLabel(labelText)
@@ -431,6 +435,8 @@ func buildSingleCustomRuleRow(
 	label.Truncation = fyne.TextTruncateEllipsis
 	if d := strings.TrimSpace(customRule.Rule.Description); d != "" {
 		label.SetToolTip(d)
+	} else if ruleDNSMirrorIsEmpty(customRule) {
+		label.SetToolTip(mark)
 	}
 	var srsHF *fynewidget.HoverForwardTTButton
 	if isSRSRule && len(srsEntries) > 0 {

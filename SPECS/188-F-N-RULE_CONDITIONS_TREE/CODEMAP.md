@@ -29,7 +29,7 @@
 | `rule_tree.go:113` `BodyRefs`, `:126` `BodyRefsNested`, `:141` `StripBodyRefs` | ссылки дерева (pre-order, дедуп); есть ли ссылки ниже корня; снятие `refs` со всех узлов |
 | `rule_tree.go:155` `RuleRefs` | **единственный читатель ссылок правила**: дерево, а без ссылок в дереве — `Refs` записи |
 | `rule_tree.go:185` `NormalizeRuleRecord`, `:229` `NormalizeRuleRecords` | подъём `refs` записи в тело (простой корень — первым ключом; `logical` — обёртка `and`), дерево главнее, `kind` из дерева (srs без ссылок и без условий остаётся srs) |
-| `rule_tree.go:348` `ruleTreeFlatRefs` | тело = только `refs` + цель (UI-вид «наборы») |
+| `rule_tree.go` `IsRuleTargetKey`, `IsRuleKeptKey`, `IsRuleInvertKey`, `RuleNodeInvert`, `RuleLogicalParts`, `NewRuleLogical`, `SetRuleNodeInvert` (волна 4) | служебные ключи для модели формы: цель корня, рукописный `rule_set`, `invert`, разбор и сборка узла `logical` (`ruleTreeFlatRefs` удалён) |
 | `rule_identity.go:38` `StableRuleID` | identity: preset → `Ref`, inline/srs → `sanitize(Name)` (+ `-h8` имени при потере символов) |
 | `rule_identity.go:64` `LegacyRuleID` | identity до хэша (до 22.11.2026) — для миграции ссылок |
 | `rule_identity.go` `MigrateRuleSetTagRefsV9` (волна 3) | `user:<stable|legacy>` (+`:N`, N — позиция в `RuleRefs`) → тег §6.13 той же ссылки (`StateRuleTags`) в телах inline/srs и DNS-правил `user`; неоднозначный старый id и старый тег, равный новому, не трогает |
@@ -48,7 +48,7 @@
 | `schema_gate.go:29` `SchemaMajor = 9`, `CheckSchemaCompatible` | гейт копирования/PATCH состояния машин: мажор выше — отказ |
 | `save.go:41`, `:136` | `Save`/`marshalDisk` пишут `SchemaVersionV9` (`meta.schema` прежний `sources_v8`) |
 | `state.go:45` `SchemaVersion` | алиас текущего мажора (9) |
-| `load_v6.go:214` `legacyCustomRulesFromV6` | запись → `CustomRule` для UI; srs не «наборы + выход» (`ruleTreeFlatRefs`) — телом целиком (Custom JSON со ссылками); иначе `RuleSet` по URL, в `Rule` — заглушка `rule_set` с тегами `StateRuleTags` (снимается в волне 4), `Params` не восстанавливаются |
+| `load_v6.go:214` `legacyCustomRulesFromV6` | запись → `CustomRule` для UI; srs — тело целиком (`refs` внутри, без заглушки `rule_set`, волна 4), `Type: srs`, `RuleSet` — производное по URL (кнопка `upd`); `Params` не восстанавливаются |
 | `legacy_types.go:43` `CustomRule.Params` | UI-состояние типа; на диск v8 не попадает (см. §4.5) |
 | `migration_v7_to_v8.go:160` `migrateV8Rule` | v7→v8: `refs` на запись (`:194-205`); в тело их поднимает `parseV8` |
 | `dns_options.go:70-74` | `DNSRuleKindPreset`, `DNSRuleKindUser` — свои DNS-правила |
@@ -107,7 +107,7 @@
 | `contract/embed.go` | `//go:embed registry/*.json registry/protocols/*.json` — новый файл реестра подхватится без правки embed |
 | `core/config/registry/registry.go:782` `Registry`, `:834` `Get`, `:850` `Load` | загрузка; `allowlists.json` читается в `:989`, таблица условий — `:995` (после волны 1) |
 | `core/config/registry/registry.go:2089` `Allowlist(name)` | список по имени |
-| `core/config/registry/rule_conditions.go` (волна 1) | `RuleCondition`, `RuleConditionKey`, `loadRuleConditions` (сверка с `route_rule_conditions` / `rule_dns_mirror_match` / `rule_dns_block_https_domains`), `RuleConditions()`, `RuleConditionOfKey()`, `RuleSetKeys()`, `RuleDNSKeys()`, `RuleDomainKeys()`, `RuleCondition.ShownIn(form)` |
+| `core/config/registry/rule_conditions.go` (волна 1; `Label`/`Placeholder` ключа и проверка подписей формы лаунчера — волна 4, контракт 1.1.181) | `RuleCondition`, `RuleConditionKey`, `loadRuleConditions` (сверка с `route_rule_conditions` / `rule_dns_mirror_match` / `rule_dns_block_https_domains`), `RuleConditions()`, `RuleConditionOfKey()`, `RuleSetKeys()`, `RuleDNSKeys()`, `RuleDomainKeys()`, `RuleCondition.ShownIn(form)` |
 | `contract/registry/rule_conditions.json` (волна 1) | таблица условий |
 | `contract/registry/allowlists.json:199` | `rule_dns_mirror_match`, далее `rule_dns_mirror_unseen`, `rule_dns_block_https_domains`; рядом `route_rule_conditions`, `dns_rule_conditions` |
 | `contract/doc.go:11` | `//go:generate go run ./tools/gendocs` — генерирует только протоколы и предупреждения (`contract/tools/gendocs/raw.go:168`, `warnings.go`); таблица условий в generated сама не попадёт |
@@ -157,62 +157,41 @@
 | `rule_state.go:31` `RuleState` | `Rule (TemplateSelectableRule), Enabled, SelectedOutbound, Num, DNS, SrsOptions` |
 | `core/template/loader.go:179` `TemplateSelectableRule` | `Label, Rule (map), Rules, RuleSets ([]RawMessage), DefaultOutbound, HasOutbound, Params (:208)` |
 | `wizard_state_file.go:119` `PersistedCustomRuleToRuleState`, `:152` `ToPersistedCustomRule` | legacy-вид ↔ модель |
-| `wizard_state_file.go:190` `DetermineRuleType` | тип по ключам: `refs` в дереве → raw (`:197`, волна 2) / ip / домены / процессы / `rule_set` / иначе raw |
+| `wizard_state_file.go:190` `DetermineRuleType` | только legacy-тип вида CustomRule (state v6): `refs` в дереве → srs (волна 4) / ip / домены / процессы / `rule_set` / иначе raw; форма его не зовёт |
+| `rule_conditions.go` (волна 4, без Fyne) `RuleCondTable` (`NewRuleCondTable`, `LauncherRuleCondTable`, `Cond`), `RuleCondStack`/`RuleCond`/`RuleGroup`, `StackFromBody`, `StackBody`, `ForForm`, `RuleCondBodyJSON`, `RuleCondValueEmpty`, `RuleSetsFromBody`, `RuleStateRuleSets` | модель формы: тело ⇄ стопка условий и групп (SPEC §3), снимок «не меняли»; наборы правила — производное от `refs`. Тест `TestRuleCondStackRoundTrip` — круг по `corpus/rule_tree` |
 | `preset_ref_sync.go:31` `EmitStateRulesWithoutOrder`, `:65` `EmitStateRulesInAxisOrder` | модель → `[]state.Rule` |
 | `preset_ref_sync.go:128` `RuleOrderFromAxis`, `:189` `buildCustomRuleQueue` | сопоставление слотов по `StableRuleID` |
-| `preset_ref_sync.go:252` `customRuleStateToV6Rule` | **модель → запись**: есть remote `RuleSets` → `NewSrsRule`, иначе `NewTreeRule` (`:290`, вид по дереву, настройки наборов); `Params` не переносятся |
+| `preset_ref_sync.go:252` `customRuleStateToV6Rule` | **модель → запись**: `refs` в теле → `NewTreeRule` (вид по дереву, настройки наборов); legacy-вид без `refs` с remote `RuleSets` → `NewSrsRule`; `Params` не переносятся |
 
-### UI: окно правила (`ui/configurator/dialogs`)
+### UI: окно правила (`ui/configurator/dialogs`, волна 4)
 
-`add_rule_dialog.go` — 1782 строки; `ShowAddRuleDialog` `:78`–`:1552` одной функцией.
-
-| Адрес | Что там |
+| Файл | Что там |
 |---|---|
-| `:64-71` | константы плейсхолдеров |
-| `:111-187` | виджеты: имя, IP, домены, процессы, «Match by path», Custom JSON, поле наборов + «Add file…» (`:175-182`) |
-| `:189-205` | выход, `RuleSetOptionsForm` (SPEC 185) |
-| `:213-313` | разбор правила при открытии: `DetermineRuleType` (`:225`), `Params` (`:226`), наборы из `Rule.RuleSets` (`:272-280`) |
-| `:316-364` | радио типа правила, режим доменов, «Match by path» |
-| `:366-480` | `updateDomainLabel`, `updateVisibility` |
-| `:485` `parseCustomJSON` | |
-| `:503` `buildSRSRuleSetsAndTags` | строки поля → записи `remote` с тегами `TagFromURL` |
-| `:551` `srsRuleSetsForRawBody` | тело вкладки JSON со ссылкой на теги формы → srs |
-| `:579` `buildRuleRaw` | форма → тело по типу |
-| `:671` `validateFields` | |
-| `:728-826` | вкладка DNS: серверы, `answerRadio` (`:749`), Force IPv4 (`:761`), Block HTTPS (`:764`), `fixedIPs`/`dnsAnswerError`/`currentRuleDNS` |
-| `:828` `currentRuleBody`, `:848` `currentRuleIsSRS` | |
-| `:862` `updateDNSAvailability` | **пустой матчер → опции DNS выключаются** с подсказкой «Unavailable for rules that match only IP addresses, ports or protocols» (`:917-925`) |
-| `:958` `updateButtonState`, `:969` `onRuleTypeChange` | |
-| `:1019` `saveRule` | имя (дубль — отказ, `:1031`), тело, `Params` (`:1088-1101`), запись в `RuleState` (`:1110-1150`) |
-| `:1169` | кнопка подтверждения |
-| `:1190` `syncSrsModeLock` | Mode недоступен для `file://` |
-| `:1208-1300` | выбор процессов (окно `:1235`) |
-| `:1304` `inputContainer`, `:1335` `formScroll` | раскладка формы |
-| `:1337-1367` | вкладки Form / DNS / JSON / Preview |
-| `:1368` `syncFormToRaw`, `:1380` `syncRawToForm` | JSON ↔ форма через `DetermineRuleType` (`:1407`) |
-| `:1460` `tabs.OnSelected`, `:1492` окно, `:1536` `SetContent` | |
-| `:1560` `ruleArrayPastedError`, `:1570-1603` | помощники процессов |
-| `rulePreviewInput`, `rulePreviewText`, `rulePreviewAxis`, `rulePreviewOwn` | Preview: ось модели целиком (правило окна на месте `editing`), пресеты и теги шаблона, `ResolveRouteTagged`; в показ — только правило окна (волна 3) |
-| `:1733` `normalizeRuleSetRef`, `:1760` `ruleSetFileError` | SPEC 187 |
-| `:1770` `conflictingRuleName` | |
+| `add_rule_dialog.go` | `ShowAddRuleDialog`: имя, Direction, настройки наборов (видны при `refs` в теле), вкладки Form / DNS / JSON / Preview, снимок формы (неизменённое правило — исходным телом), `saveRule`; JSON ↔ форма через `RuleCondTable`; цель только у корня (`ruleHasNestedTarget`); `ruleArrayPastedError`, `conflictingRuleName` |
+| `rule_cond_stack.go` | `condStackEditor`: рамки условий и групп, «AND», «+ Condition» (PopUpMenu: условия таблицы, которых нет в стопке; за чертой «Rule group») |
+| `rule_cond_frame.go` | `ruleFormCtx`, `condFrame`: поля по виду `field` таблицы (`lines`, `cidr_lines`, `ports`, `bool`, `enum_multi` чипами, `processes`, `refs`), «any of», `one_of` переключателем, `conflicts` (поле недоступно с подсказкой), пометка `platforms` по ОС цели модели; `ruleCondRegistryTexts` — подписи реестра для l10n_check |
+| `rule_cond_group.go` | `groupEditor`: «all of / any of», «Not», правила-стопки, «+ Rule», рекурсия |
+| `rule_cond_refs.go` | поле наборов (URL или файл, «Add file…», «?», подсказка SPEC §6), `normalizeRuleSetRef`, `ruleSetFileError`, `ruleRefsHaveFile` |
+| `rule_dialog_dns.go` | вкладка DNS: опции доступны всегда, ⚠ пустого зеркала (`RuleDNSMirrorEmpty`), `RuleDNSNoEffectMark` (строка правила на вкладках Rules и DNS) |
+| `rule_dialog_preview.go` | `rulePreviewText`, `rulePreviewAxis`, `rulePreviewOwn` — ось модели целиком, теги шаблона |
+| `rule_process_picker.go` | `processListField`, окно выбора процессов, `normalizeProcName`/`sortProcessStrings`/`dedupeProcessStrings` |
+| `rule_dialog.go` | `ParseLines` |
 
-Прочие файлы: `rule_type_selection.go:10` `RuleTypeSelection` (40 строк, уходит);
-`rule_set_options.go:22` `RuleSetOptionsForm`, `:141` `SetModeLocked`;
-`rule_dialog.go:43` `ExtractStringArray`, `:60` `ParseLines`, `:79`
-`SimplePatternToRegex`; `srs_tag.go:10` `SRSTagFromURL`.
+Удалены: `rule_type_selection.go`, `rule_dialog_test.go`, `ExtractStringArray`, `SimplePatternToRegex`, `ProcessKey`/`ProcessPathRegexKey`, подписи типов, `srsTagFromURL`, `srsRuleSetsForRawBody`, `buildRuleRaw`, `Params` окна.
+`rule_set_options.go:22` `RuleSetOptionsForm`, `:141` `SetModeLocked`; `srs_tag.go:10` `SRSTagFromURL`.
 
 ### UI: вкладки
 
 | Адрес | Что делает |
 |---|---|
-| `tabs/rules_tab.go:95` `customRuleSRSEntries` | srs-правило по `DetermineRuleType` + `Rule.RuleSets` |
-| `tabs/rules_tab.go:396` `buildSingleCustomRuleRow` | **строка правила**: метка DNS `ruleDNSMirrorText` (`:422-425`) — сюда ⚠ |
+| `tabs/rules_tab.go:95` `customRuleSRSEntries` | наборы правила — `RuleStateRuleSets` (`refs` в дереве, legacy `RuleSets`) |
+| `tabs/rules_tab.go:396` `buildSingleCustomRuleRow` | **строка правила**: метка DNS `ruleDNSMirrorRowText` — опции или ⚠ пустого зеркала (тултип — текст ⚠) |
 | `tabs/rules_tab.go:611` `createCustomRuleSRSButton` | кнопка `upd` |
 | `tabs/rules_unified_rows.go:40` `buildUnifiedRuleRows` | диспетчер строк; пресеты `:73`; строка своего правила — в `rules_tab.go` |
 | `tabs/dns_unified_rules.go:80` `ruleDNSMirrorRowsByPos` | строки зеркал на вкладке DNS |
-| `tabs/dns_unified_rules.go:119` `ruleDNSMirrorText` | текст метки; пустое зеркало → `""` (`:123`) |
-| `tabs/dns_unified_rules.go:145` `ruleStateIsSRS` | `DetermineRuleType` + `RuleSets` |
-| `tabs/dns_unified_rules.go:169` `buildRuleDNSMirrorRow` | строка «📎 имя · опции» — сюда ⚠ |
+| `tabs/dns_unified_rules.go:119` `ruleDNSMirrorText` | текст метки; пустое зеркало → `""`; `ruleDNSMirrorRowText` — то же или ⚠, `ruleDNSMirrorIsEmpty` |
+| `tabs/dns_unified_rules.go:145` `ruleStateIsSRS` | `RuleStateRuleSets` не пуст |
+| `tabs/dns_unified_rules.go:169` `buildRuleDNSMirrorRow` | строка «📎 имя · опции» или «📎 имя · ⚠ …» |
 | `tabs/dns_user_rules.go:525` `collectAllRuleSetTags` | теги для формы своих DNS-правил: только пресеты; `user:` не предлагаются (`:567-574`) |
 | `business/create_config.go:195` | `PresetMergeContext` визарда; `:303` `routeConfigFromModel` (legacy `RouteRule.RuleSets`) |
 | `presentation/presenter_save.go:550` `modelHasRuleSetFiles` | нужен ли ресурс-стор машине — по `refs` в теле (`:563`) и `Rule.RuleSets` |
@@ -257,13 +236,13 @@ GC файлов: collectAllStageRuleSetTags (config_service.go:404)
 ### Форма → состояние
 
 ```
-ShowAddRuleDialog (add_rule_dialog.go:78)
- ├ открытие: RuleState.Rule.Rule → DetermineRuleType → поля / Custom JSON
- ├ saveRule (:1019): buildRuleRaw | JSON → RuleState{Rule.Rule, Rule.RuleSets, Params, DNS, SrsOptions}
+ShowAddRuleDialog (add_rule_dialog.go)
+ ├ открытие: RuleState.Rule.Rule → RuleCondTable.StackFromBody → ForForm → condStackEditor | вкладка JSON
+ ├ saveRule: стопка (снимок не изменён — исходное тело) | JSON → RuleState{Rule.Rule (refs внутри), Rule.RuleSets (производное), DNS, SrsOptions}
  └ Preview: rulePreviewText → rulePreviewAxis (ось модели) → ResolveRouteTagged → rulePreviewOwn → RuleDNSMirrors
 
 Сохранение визарда: EmitStateRulesInAxisOrder (preset_ref_sync.go:65)
- └ customRuleStateToV6Rule (:252) → NewSrsRule | NewInlineRule → state.Rules → Save
+ └ customRuleStateToV6Rule (:252) → NewTreeRule (legacy: NewSrsRule) → state.Rules → Save
 ```
 
 ### Бэкап
@@ -328,8 +307,8 @@ Fixed = копия матчера + `query_type` / `ip_version` / `answer`. Яд
 ### 4.5 `Params`
 
 `TemplateSelectableRule.Params` (`loader.go:208`) — UI-состояние типа
-(`domain_mode`, `match_by_path`, `path_mode`). Пишется окном (`:1088-1101`),
-но `customRuleStateToV6Rule` его не переносит, а `legacyCustomRulesFromV6` не
+(`domain_mode`, `match_by_path`, `path_mode`). С волны 4 окно его не пишет
+(обнуляет при сохранении); раньше `customRuleStateToV6Rule` его не переносит, а `legacyCustomRulesFromV6` не
 восстанавливает: до диска v8 не доживает, живёт до закрытия Конфигуратора.
 
 ### 4.6 Версии форматов

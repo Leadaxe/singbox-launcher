@@ -1745,64 +1745,19 @@
   "Rule name": {
     "value": "Название правила"
   },
-  "Enter IP addresses (CIDR format)\ne.g., 192.168.1.0/24": {
-    "value": "Введите IP-адреса (формат CIDR)\nнапр., 192.168.1.0/24"
-  },
-  "Enter domains or URLs (one per line)\ne.g., example.com": {
-    "value": "Введите домены или URL (по одному на строку)\nнапр., example.com"
-  },
-  "Processes (select one or more via popup):": {
-    "value": "Процессы (выберите через всплывающее окно):"
-  },
   "Select Processes...": {
     "value": "Выбрать процессы..."
-  },
-  "Match by path": {
-    "value": "Поиск по пути"
-  },
-  "Simple": {
-    "value": "Простой"
   },
   "Regex": {
     "value": "Регулярное выражение",
     "special": {
-      "1": {
-        "value": "Регулярные выражения"
-      },
       "2": {
         "value": "Шаблон"
       }
     }
   },
-  "One per line. Use * as wildcard (e.g. */steam/* or *\\Steam\\*).": {
-    "value": "По одному на строку. Используйте * как подстановку (напр. */steam/* или *\\Steam\\*)."
-  },
-  "One per line. Full regex as-is (no /regex/i wrapping). E.g. ^C:\\\\Games\\\\.* or .*steam.*": {
-    "value": "По одному на строку. Полное регулярное выражение (без обёртки /regex/i). Напр. ^C:\\\\Games\\\\.* или .*steam.*"
-  },
-  "Path patterns (one per line):": {
-    "value": "Шаблоны путей (по одному на строку):"
-  },
-  "Custom JSON:": {
-    "value": "Произвольный JSON:"
-  },
   "URLs or files (one per line), .srs or .json\ne.g. https://raw.githubusercontent.com/.../file.srs": {
     "value": "URL или файлы (по одному на строку), .srs или .json\nнапр. https://raw.githubusercontent.com/.../file.srs"
-  },
-  "Rule sets — URL or file (one per line):": {
-    "value": "Наборы правил — URL или файл (по одному на строку):"
-  },
-  "IP Addresses (CIDR)": {
-    "value": "IP-адреса (CIDR)"
-  },
-  "Domains/URLs": {
-    "value": "Домены/URL"
-  },
-  "Processes": {
-    "value": "Процессы"
-  },
-  "Rule set": {
-    "value": "Набор правил"
   },
   "Add file…": {
     "value": "Добавить файл…"
@@ -1825,39 +1780,6 @@
   "Source file not found — the last copy is used": {
     "value": "Исходный файл не найден — используется последняя копия"
   },
-  "Custom JSON": {
-    "value": "Произвольный JSON"
-  },
-  "Domain mode:": {
-    "value": "Тип домена:"
-  },
-  "Exact domains": {
-    "value": "Точные домены"
-  },
-  "Suffix": {
-    "value": "Суффикс"
-  },
-  "Keyword": {
-    "value": "Ключевое слово"
-  },
-  "IP Addresses (one per line, CIDR format):": {
-    "value": "IP-адреса (по одному на строку, формат CIDR):"
-  },
-  "Domains (one per line):": {
-    "value": "Домены (по одному на строку):"
-  },
-  "Domain suffixes (one per line):": {
-    "value": "Суффиксы доменов (по одному на строку):"
-  },
-  "Domain keywords (one per line):": {
-    "value": "Ключевые слова доменов (по одному на строку):"
-  },
-  "Domain regex:": {
-    "value": "Регулярное выражение для доменов:"
-  },
-  "E.g. ^.*\\.google\\.com$ or .*\\.(google|youtube)\\.com$ (full regex, no /wrapping/)": {
-    "value": "Напр. ^.*\\.google\\.com$ или .*\\.(google|youtube)\\.com$ (полное regex, без обёртки /.../ )"
-  },
   "−": {
     "value": "−"
   },
@@ -1866,9 +1788,6 @@
   },
   "Rule Name:": {
     "value": "Название правила:"
-  },
-  "Rule Type:": {
-    "value": "Тип правила:"
   },
   "Form": {
     "value": "Форма"
@@ -1888,9 +1807,6 @@
   "rule must be a JSON object": {
     "value": "правило должно быть JSON-объектом"
   },
-  "rule must contain \"outbound\" or \"action\"": {
-    "value": "правило должно содержать «outbound» или «action»"
-  },
   "Rule not recognized": {
     "value": "Правило не распознано"
   },
@@ -1902,21 +1818,6 @@
   },
   "SRS rule-sets": {
     "value": "Наборы правил SRS"
-  },
-  "enter at least one path pattern": {
-    "value": "введите хотя бы один шаблон пути"
-  },
-  "enter at least one SRS URL": {
-    "value": "введите хотя бы один URL SRS"
-  },
-  "enter at least one valid SRS URL": {
-    "value": "введите хотя бы один корректный URL SRS"
-  },
-  "Custom JSON is empty": {
-    "value": "Произвольный JSON пуст"
-  },
-  "Custom JSON must be an object": {
-    "value": "Произвольный JSON должен быть объектом"
   },
   "Paste one rule at a time: the editor keeps one sing-box rule per entry": {
     "value": "Вставляйте правила по одному: в одной записи редактора — одно правило sing-box"
@@ -5936,9 +5837,6 @@
   "Works only if the rule set contains domains.": {
     "value": "Работает, только если в наборе правил есть домены."
   },
-  "Unavailable for rules that match only IP addresses, ports or protocols.": {
-    "value": "Недоступно для правил только по IP-адресам, портам или протоколам."
-  },
   "Block HTTPS/SVCB records (no ECH)": {
     "value": "Блокировать записи HTTPS/SVCB (без ECH)"
   },
@@ -6253,5 +6151,155 @@
   },
   "The name conflicts with the rule %q — choose another one.": {
     "value": "Имя конфликтует с правилом %q — выберите другое."
+  },
+  "+ Condition": {
+    "value": "+ Условие"
+  },
+  "+ Rule": {
+    "value": "+ Правило"
+  },
+  "A rule set may also contain ports and processes. For “or” with other conditions, use a Rule group.": {
+    "value": "Набор может содержать и порты, и процессы. Для «или» с другими условиями — группа правил."
+  },
+  "AND": {
+    "value": "И"
+  },
+  "OR": {
+    "value": "ИЛИ"
+  },
+  "Add at least one condition.": {
+    "value": "Добавьте хотя бы одно условие."
+  },
+  "DNS options have no effect: the rule has no condition DNS can see": {
+    "value": "DNS-опции не действуют: у правила нет условия, которое видит DNS"
+  },
+  "Has no effect on this machine": {
+    "value": "На этой машине не действует"
+  },
+  "Not a port number (0–65535): %s": {
+    "value": "Не номер порта (0–65535): %s"
+  },
+  "Not available while the condition has rule sets. For “rule sets or private addresses”, add a Rule group with “any of”.": {
+    "value": "Недоступно, пока в условии есть наборы. Для «наборы или приватные адреса» добавьте группу правил с «любое из»."
+  },
+  "Not": {
+    "value": "Не"
+  },
+  "Only the rule itself has a target (outbound or action): remove it from the rules inside groups.": {
+    "value": "Цель (outbound или action) есть только у самого правила: уберите её из правил внутри групп."
+  },
+  "Other values, comma-separated": {
+    "value": "Другие значения через запятую"
+  },
+  "Rule group": {
+    "value": "Группа правил"
+  },
+  "all of": {
+    "value": "все из"
+  },
+  "any of": {
+    "value": "любое из"
+  },
+  "Destination / Rule sets": {
+    "value": "Назначение / Наборы"
+  },
+  "Rule sets — URL or file (one per line)": {
+    "value": "Наборы — URL или файл (по одному в строке)"
+  },
+  "One per line, e.g. example.com": {
+    "value": "По одному в строке, например example.com"
+  },
+  "Domain suffixes": {
+    "value": "Суффиксы доменов"
+  },
+  "Domain keywords": {
+    "value": "Ключевые слова доменов"
+  },
+  "One per line, e.g. google": {
+    "value": "По одному в строке, например google"
+  },
+  "Domain regex": {
+    "value": "Regex доменов"
+  },
+  "One per line, e.g. ^.*\\.google\\.com$": {
+    "value": "По одному в строке, например ^.*\\.google\\.com$"
+  },
+  "IP addresses / CIDR": {
+    "value": "IP-адреса / CIDR"
+  },
+  "One per line, e.g. 192.168.1.0/24": {
+    "value": "По одному в строке, например 192.168.1.0/24"
+  },
+  "Private addresses": {
+    "value": "Приватные адреса"
+  },
+  "Ports": {
+    "value": "Порты"
+  },
+  "e.g. 443, 8443": {
+    "value": "например 443, 8443"
+  },
+  "Port ranges": {
+    "value": "Диапазоны портов"
+  },
+  "One per line, e.g. 1000:2000": {
+    "value": "По одному в строке, например 1000:2000"
+  },
+  "Source IP addresses / CIDR": {
+    "value": "IP-адреса источника / CIDR"
+  },
+  "Private source addresses": {
+    "value": "Приватные адреса источника"
+  },
+  "Source port": {
+    "value": "Порт источника"
+  },
+  "Source ports": {
+    "value": "Порты источника"
+  },
+  "Source port ranges": {
+    "value": "Диапазоны портов источника"
+  },
+  "Process": {
+    "value": "Процесс"
+  },
+  "One per line, e.g. C:\\Program Files\\App\\app.exe": {
+    "value": "По одному в строке, например C:\\Program Files\\App\\app.exe"
+  },
+  "Path regex": {
+    "value": "Regex пути"
+  },
+  "One per line, e.g. .*steam.*": {
+    "value": "По одному в строке, например .*steam.*"
+  },
+  "Protocols": {
+    "value": "Протоколы"
+  },
+  "Networks": {
+    "value": "Сети"
+  },
+  "Inbound": {
+    "value": "Входящий"
+  },
+  "Inbound tags": {
+    "value": "Теги входящих"
+  },
+  "One per line, e.g. tun-in": {
+    "value": "По одному в строке, например tun-in"
+  },
+  "Wi-Fi": {
+    "value": "Wi-Fi"
+  },
+  "SSID": {
+    "value": "SSID"
+  },
+  "One per line": {
+    "value": "По одному в строке"
+  },
+  "BSSID": {
+    "value": "BSSID"
+  },
+  "One per line, e.g. 00:11:22:33:44:55": {
+    "value": "По одному в строке, например 00:11:22:33:44:55"
   }
 }

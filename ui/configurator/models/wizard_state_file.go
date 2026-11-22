@@ -186,16 +186,17 @@ const (
 
 func isKnownRuleType(s string) bool { return corestate.IsKnownRuleType(s) }
 
-// DetermineRuleType определяет тип правила по содержимому rule.
+// DetermineRuleType — legacy-тип правила (поле `type` вида CustomRule state
+// v6) по содержимому rule. Форма правила типов больше не знает (SPEC 188: тело
+// — стопка условий); тип нужен только переносу legacy-вида: srs-правило
+// держит адреса наборов в RuleSet.
 func DetermineRuleType(rule map[string]interface{}) string {
 	if rule == nil {
 		return RuleTypeRaw
 	}
-	// SPEC 188: ссылки на наборы внутри тела (`refs`) нынешняя форма не
-	// выражает — такое тело открывается как JSON, иначе сохранение формой
-	// выбросило бы их.
+	// SPEC 188: ссылки на наборы внутри тела (`refs`) — вид srs.
 	if len(corestate.BodyRefs(rule)) > 0 {
-		return RuleTypeRaw
+		return RuleTypeSRS
 	}
 	hasIP := hasKey(rule, "ip_cidr")
 	hasDomain := hasKey(rule, "domain") || hasKey(rule, "domain_suffix") || hasKey(rule, "domain_keyword") || hasKey(rule, "domain_regex")

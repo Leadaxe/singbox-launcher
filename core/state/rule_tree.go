@@ -43,6 +43,100 @@ const (
 // чтобы снять его с тела, уходящего в config.json (ядро ключа не знает).
 const RuleKeyRefs = ruleKeyRefs
 
+// ruleKeyRuleSet — рукописные теги наборов в простом правиле (служебный ключ
+// формы: хранится и провозится как есть).
+const ruleKeyRuleSet = "rule_set"
+
+// ruleModeOr — режим «любое из» узла `logical`.
+const ruleModeOr = "or"
+
+// IsRuleTargetKey — ключ цели правила (`outbound`, `action`, `method`): цель
+// стоит только у корня тела (SPEC 188 §2).
+func IsRuleTargetKey(key string) bool {
+	switch key {
+	case "outbound", "action", "method":
+		return true
+	}
+	return false
+}
+
+// IsRuleKeptKey — служебный ключ простого правила, который форма хранит и
+// провозит без поля: рукописные теги наборов (`rule_set`).
+func IsRuleKeptKey(key string) bool { return key == ruleKeyRuleSet }
+
+// IsRuleInvertKey — ключ отрицания простого правила (`invert`).
+func IsRuleInvertKey(key string) bool { return key == ruleKeyInvert }
+
+// RuleNodeInvert — у узла стоит `invert: true`.
+func RuleNodeInvert(node map[string]interface{}) bool {
+	inv, _ := node[ruleKeyInvert].(bool)
+	return inv
+}
+
+// RuleLogicalParts разбирает узел `logical`: режим «любое из» (`mode: or`),
+// отрицание и под-правила. ok=false — узел не составной, под-правило не
+// объект, режим не and/or или у узла есть ключи сверх type/mode/rules/invert
+// (цель корня вызывающий снимает сам).
+func RuleLogicalParts(node map[string]interface{}) (anyOf, invert bool, children []map[string]interface{}, ok bool) {
+	if !IsLogicalRule(node) {
+		return false, false, nil, false
+	}
+	for k := range node {
+		switch k {
+		case ruleKeyType, ruleKeyMode, ruleKeyRules, ruleKeyInvert:
+		default:
+			return false, false, nil, false
+		}
+	}
+	switch mode, _ := node[ruleKeyMode].(string); mode {
+	case ruleModeAnd:
+	case ruleModeOr:
+		anyOf = true
+	default:
+		return false, false, nil, false
+	}
+	if v, has := node[ruleKeyInvert]; has {
+		b, isBool := v.(bool)
+		if !isBool {
+			return false, false, nil, false
+		}
+		invert = b
+	}
+	subs, isList := node[ruleKeyRules].([]interface{})
+	if !isList {
+		return false, false, nil, false
+	}
+	for _, sub := range subs {
+		m, isMap := sub.(map[string]interface{})
+		if !isMap {
+			return false, false, nil, false
+		}
+		children = append(children, m)
+	}
+	return anyOf, invert, children, true
+}
+
+// NewRuleLogical — узел `logical` из под-правил: `mode` and | or, `invert`
+// пишется только включённым.
+func NewRuleLogical(anyOf, invert bool, children []map[string]interface{}) map[string]interface{} {
+	mode := ruleModeAnd
+	if anyOf {
+		mode = ruleModeOr
+	}
+	subs := make([]interface{}, 0, len(children))
+	for _, c := range children {
+		subs = append(subs, c)
+	}
+	node := map[string]interface{}{ruleKeyType: ruleTypeLogical, ruleKeyMode: mode, ruleKeyRules: subs}
+	if invert {
+		node[ruleKeyInvert] = true
+	}
+	return node
+}
+
+// SetRuleNodeInvert ставит `invert: true` простому узлу.
+func SetRuleNodeInvert(node map[string]interface{}) { node[ruleKeyInvert] = true }
+
 // IsLogicalRule — узел тела составной (`type: logical`).
 func IsLogicalRule(node map[string]interface{}) bool {
 	t, _ := node[ruleKeyType].(string)
@@ -386,18 +480,4 @@ func (o *orderedObject) bytes() json.RawMessage {
 	}
 	buf.WriteByte('}')
 	return json.RawMessage(buf.Bytes())
-}
-
-// ruleTreeFlatRefs — тело — простое правило, у которого кроме ссылок только
-// цель: такое правило выражает нынешняя форма «наборы + выход».
-func ruleTreeFlatRefs(body map[string]interface{}) bool {
-	if IsLogicalRule(body) || len(nodeRefs(body)) == 0 {
-		return false
-	}
-	for k := range body {
-		if k != ruleKeyRefs && !isTargetKey(k, body) {
-			return false
-		}
-	}
-	return true
 }

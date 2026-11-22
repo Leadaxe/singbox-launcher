@@ -8,5 +8,3 @@ import "singbox-launcher/internal/srstag"
 // must agree on the bin/rule-sets/<tag>.srs key). Kept as a package-local
 // wrapper so existing dialogs/* and tabs/* callers don't import srstag directly.
 func SRSTagFromURL(urlStr string) string { return srstag.TagFromURL(urlStr) }
-
-func srsTagFromURL(urlStr string) string { return srstag.TagFromURL(urlStr) }

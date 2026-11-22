@@ -69,23 +69,31 @@
   - Голдены перегенерированы: `core/state/testdata/v8_roundtrip.json`, `core/build/testdata/golden/real-v088-v8/state.json` — версия 9, `meta.schema` объектом, `refs` в теле; в `real-v088-v8` ещё дрейф прошлых волн — ключ папки `strategy` → `auto` (контракт свёртки, Save пишет новый ключ). Конфиги сборки не менялись (srs-правила сценария выключены).
 
 ## Волна 4 — форма
-- [ ] `ui/configurator/models/rule_conditions.go`: модель стопки, `StackFromBody`, `Body`; сохранение исходных байт при неизменной стопке
-- [ ] `ui/configurator/dialogs/rule_cond_stack.go`: стопка, «AND», «+ Condition», «Rule group» за чертой
-- [ ] `ui/configurator/dialogs/rule_cond_frame.go`: поля по виду из таблицы, «any of», `one_of`, пометка Wi-Fi по платформе цели
-- [ ] `ui/configurator/dialogs/rule_cond_group.go`: all of / any of, Not, «+ Rule», рекурсия
-- [ ] `ui/configurator/dialogs/rule_cond_refs.go`: поле наборов (перенос SPEC 187), подсказка, `ip_is_private` недоступна при `refs`
-- [ ] `ui/configurator/dialogs/rule_dialog_dns.go`: перенос вкладки DNS, опции доступны всегда, ⚠
-- [ ] `ui/configurator/dialogs/rule_dialog_preview.go`, `rule_process_picker.go`: перенос
-- [ ] `ui/configurator/dialogs/add_rule_dialog.go`: окно, имя, выход, вкладки, save, JSON ↔ форма через модель; цель только у корня; убрать `Params`, радио типа, `srsRuleSetsForRawBody`
-- [ ] Удалить `ui/configurator/dialogs/rule_type_selection.go`
-- [ ] `ui/configurator/dialogs/rule_set_options.go`: виден при `refs` в дереве
-- [ ] `core/state/load_v6.go`: `cr.Rule` — тело с `refs`, без заглушки `rule_set`
-- [ ] `ui/configurator/models/preset_ref_sync.go`: `NewTreeRule`; `RuleSets` модели — производное от `refs`
-- [ ] `ui/configurator/models/wizard_state_file.go`: `DetermineRuleType` только для legacy `Type`
-- [ ] `ui/configurator/tabs/rules_tab.go`: srs-признак по `refs`, ⚠ в строке правила
-- [ ] `ui/configurator/tabs/dns_unified_rules.go`: строка зеркала с ⚠, `ruleStateIsSRS` по `refs`
-- [ ] `bin/locale/ru.json`: все новые ключи
-- [ ] `go build ./ui/...`; показ владельцу
+- [x] `ui/configurator/models/rule_conditions.go`: модель стопки, `StackFromBody`, `Body`; сохранение исходных байт при неизменной стопке
+- [x] `ui/configurator/dialogs/rule_cond_stack.go`: стопка, «AND», «+ Condition», «Rule group» за чертой
+- [x] `ui/configurator/dialogs/rule_cond_frame.go`: поля по виду из таблицы, «any of», `one_of`, пометка Wi-Fi по платформе цели
+- [x] `ui/configurator/dialogs/rule_cond_group.go`: all of / any of, Not, «+ Rule», рекурсия
+- [x] `ui/configurator/dialogs/rule_cond_refs.go`: поле наборов (перенос SPEC 187), подсказка, `ip_is_private` недоступна при `refs`
+- [x] `ui/configurator/dialogs/rule_dialog_dns.go`: перенос вкладки DNS, опции доступны всегда, ⚠
+- [x] `ui/configurator/dialogs/rule_dialog_preview.go`, `rule_process_picker.go`: перенос
+- [x] `ui/configurator/dialogs/add_rule_dialog.go`: окно, имя, выход, вкладки, save, JSON ↔ форма через модель; цель только у корня; убрать `Params`, радио типа, `srsRuleSetsForRawBody`
+- [x] Удалить `ui/configurator/dialogs/rule_type_selection.go`
+- [x] `ui/configurator/dialogs/rule_set_options.go`: виден при `refs` в дереве
+- [x] `core/state/load_v6.go`: `cr.Rule` — тело с `refs`, без заглушки `rule_set`
+- [x] `ui/configurator/models/preset_ref_sync.go`: `NewTreeRule`; `RuleSets` модели — производное от `refs`
+- [x] `ui/configurator/models/wizard_state_file.go`: `DetermineRuleType` только для legacy `Type`
+- [x] `ui/configurator/tabs/rules_tab.go`: srs-признак по `refs`, ⚠ в строке правила
+- [x] `ui/configurator/tabs/dns_unified_rules.go`: строка зеркала с ⚠, `ruleStateIsSRS` по `refs`
+- [x] `bin/locale/ru.json`: все новые ключи
+- [x] `go build ./...`; `go test ./ui/configurator/models -run TestRuleCondStackRoundTrip -count=1`; `l10n_check --strict`, `hardcoded_check` чистые
+- [ ] Показ владельцу (`build_darwin.sh -i`)
+- Примечания волны 4 (23.11.2026):
+  - **Подписи полей — в реестре (контракт 1.1.181).** У ключей таблицы условий не было подписей, а код формы не держит имён ключей: добавлены `label` и `placeholder` ключа (английский текст, ключ перевода), загрузка реестра требует их у условий формы лаунчера. `TASKS_LXBOX.md` §184 — справочный. Тексты реестра перечислены для `l10n_check` списком `ruleCondRegistryTexts` (`rule_cond_frame.go`, маркер `l10n-key`).
+  - **Снимок «не меняли».** Модель правила в Конфигураторе — карта (порядок ключей потерян ещё до окна), поэтому «тело не меняется» значит: окно сравнивает тело формы с её снимком при загрузке и при равенстве сохраняет исходную карту тела (вид значений — строка/список, число/список — как был).
+  - **`invert` простого правила** (рукописный) форма показывает группой «all of» с «Not» вокруг правила; без правок тело остаётся исходным, после правок пишется `logical` с `invert` (смысл тот же).
+  - **Модель:** srs-правило в UI-виде — тело целиком с `refs` (заглушка `rule_set` снята), `RuleSets` модели — производное от `refs` (`RuleSetsFromBody`): кнопка `upd` теперь есть и у правил с наборами в дереве. `DetermineRuleType` остался только для legacy-вида (`refs` → srs); `ruleTreeFlatRefs` удалён.
+  - **DNS:** опции доступны всегда; Block HTTPS по-прежнему доступна только при доменах или наборах; авто-галка Block HTTPS — только при появлении доменных ключей (наборы её не ставят, как до 188). ⚠ — глиф `nodewarn.WarnMark` («⚠», жёлтый в EmojiOneColor, широкий).
+  - Ограничения формы (открывается вкладкой JSON): ключ вне таблицы и вне служебных; два способа Process в одном простом правиле; цель в под-правиле; `logical` с ключами сверх type/mode/rules/invert; `mode` не and/or. Значения `enum_multi` вне списка реестра у закрытого enum показываются полем «Other values».
 
 ## Волна 5 — закрытие
 - [ ] `docs/release_notes/upcoming.md` (EN Highlights, RU Основное)
