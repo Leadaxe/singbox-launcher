@@ -141,7 +141,7 @@ func TestSave_AlwaysWritesV8(t *testing.T) {
 	}
 	var probe struct {
 		Meta struct {
-			Version int    `json:"version"`
+			Version int `json:"version"`
 			Schema  struct {
 				Name      string `json:"name"`
 				MinReader int    `json:"min_reader"`
@@ -176,7 +176,7 @@ func TestSave_V8_WhenHasPresetRef(t *testing.T) {
 	raw, _ := os.ReadFile(path)
 	var probe struct {
 		Meta struct {
-			Version int    `json:"version"`
+			Version int `json:"version"`
 			Schema  struct {
 				Name      string `json:"name"`
 				MinReader int    `json:"min_reader"`
