@@ -112,8 +112,10 @@ func TestGoldenV8ScenarioMatchesV7Expectation(t *testing.T) {
 	if !bytes.Equal(v7, v8) {
 		t.Error("ожидания real-v088 и real-v088-v8 разошлись — конфиг из v7- и v8-состояния обязан быть одним и тем же")
 	}
-	// И само состояние сценария обязано быть уже v8: иначе папка проверяла бы
-	// ту же миграцию, что и соседняя, а не её отсутствие.
+	// И само состояние сценария обязано быть в нынешней форме (то, что пишет
+	// Save: v9 с SPEC 188): иначе папка проверяла бы ту же миграцию, что и
+	// соседняя, а не её отсутствие. Чтение настоящего файла v8 —
+	// TestV8FileIsNotReadAsV7 (core/state).
 	raw, err := os.ReadFile(filepath.Join(goldenV8Dir, "state.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +124,7 @@ func TestGoldenV8ScenarioMatchesV7Expectation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("шапка состояния сценария: %v", err)
 	}
-	if ver != state.SchemaVersionV8 {
-		t.Errorf("state.json сценария real-v088-v8 несёт версию %d, ожидалась %d", ver, state.SchemaVersionV8)
+	if ver != state.SchemaVersion {
+		t.Errorf("state.json сценария real-v088-v8 несёт версию %d, ожидалась %d", ver, state.SchemaVersion)
 	}
 }

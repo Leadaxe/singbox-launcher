@@ -531,8 +531,17 @@ func TestMigrationScenario8PurgeAndIdempotency(t *testing.T) {
 	if bytes.Equal(original, after) {
 		t.Fatal("миграция не переписала файл — состояние осталось легаси")
 	}
-	if !bytes.Contains(after, []byte(`"schema": "sources_v8"`)) {
-		t.Fatalf("файл после миграции не в схеме v8:\n%s", after)
+	// Миграция пишет нынешнюю схему (v9 с SPEC 188: meta.schema объектом).
+	var head struct {
+		Meta struct {
+			Version int `json:"version"`
+			Schema  struct {
+				Name string `json:"name"`
+			} `json:"schema"`
+		} `json:"meta"`
+	}
+	if err := json.Unmarshal(after, &head); err != nil || head.Meta.Version != state.SchemaVersion || head.Meta.Schema.Name != state.SchemaNameV9 {
+		t.Fatalf("файл после миграции не в нынешней схеме (v%d, %q, %v):\n%s", head.Meta.Version, head.Meta.Schema.Name, err, after)
 	}
 	bak, err := os.ReadFile(statePath + ".v6.bak")
 	if err != nil {
