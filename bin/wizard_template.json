@@ -1580,7 +1580,7 @@
           "mtu": "@tun_mtu",
           "strict_route": "@strict_route",
           "stack": "@tun_stack",
-          "include_interface": "@gateway_include_interface",
+          "#if gateway": ["@gateway_mode", {"include_interface": "@gateway_include_interface"}],
           "#if": [{"@runtime.platform": {"#in": ["windows", "linux"]}}, {"interface_name": "@tun_interface_name"}],
           "#if auto_redirect": [{"#and": [{"@runtime.platform": "linux"}, "@auto_route"]}, {"auto_redirect": "@auto_redirect"}]
         }
