@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"singbox-launcher/core"
@@ -92,7 +93,7 @@ func (p *WizardPresenter) runDraftRejectLoop(first string, promotePath string, n
 		Disabler:    newDraftDisabler(p.model),
 		Decide:      ac.CoreRejectDecideFn(),
 		Progress:    composeRejectProgress(ac, progress),
-		ForCheck:    localSrsPathsForCheck(p.model.ResourceDir, p.model.Target.SrsLocalDir),
+		ForCheck:    remoteConfigForLocalCheck(p.model.Target.Normalized().IsRemote(), p.model.ResourceDir, p.model.Target.SrsLocalDir),
 	}
 	out, err := core.RunRejectLoop(in)
 	if err != nil {
@@ -110,6 +111,69 @@ func (p *WizardPresenter) runDraftRejectLoop(first string, promotePath string, n
 	res.CheckErr = out.CheckErr
 	res.StoppedByHuman = out.StoppedByHuman
 	return res, nil
+}
+
+// remoteConfigForLocalCheck — вид конфига удалённой машины для локального
+// check: пути .srs ведут к нашим копиям, а ключи, которые локальное ядро
+// отвергает по своей ОС, сняты. nil для local-цели — проверяется сам конфиг.
+//
+// Issue #161: tun.auto_redirect у Linux-цели ядро Windows/macOS отвергает
+// на check («only supported on Linux»), хотя машина его примет. Проверка
+// чужой ОС своим бинарём не может судить о свойствах хоста — такие ключи
+// на время проверки снимаются, в бой уходит исходный конфиг.
+func remoteConfigForLocalCheck(isRemote bool, resourceDir, srsLocalDir string) func([]byte) []byte {
+	if !isRemote {
+		return nil
+	}
+	srs := localSrsPathsForCheck(resourceDir, srsLocalDir)
+	stripHost := runtime.GOOS != "linux"
+	if srs == nil && !stripHost {
+		return nil
+	}
+	return func(cfg []byte) []byte {
+		if srs != nil {
+			cfg = srs(cfg)
+		}
+		if stripHost {
+			cfg = dropTunAutoRedirect(cfg)
+		}
+		return cfg
+	}
+}
+
+// dropTunAutoRedirect снимает auto_redirect с tun-инбаундов. Конфиг без
+// этого ключа (или неразбираемый) возвращается как был: отказ ядра на
+// битом JSON — честный ответ check.
+func dropTunAutoRedirect(cfg []byte) []byte {
+	if !strings.Contains(string(cfg), `"auto_redirect"`) {
+		return cfg
+	}
+	dec := json.NewDecoder(strings.NewReader(string(cfg)))
+	dec.UseNumber()
+	var root map[string]interface{}
+	if err := dec.Decode(&root); err != nil {
+		return cfg
+	}
+	inbounds, _ := root["inbounds"].([]interface{})
+	changed := false
+	for _, ib := range inbounds {
+		m, ok := ib.(map[string]interface{})
+		if !ok || m["type"] != "tun" {
+			continue
+		}
+		if _, has := m["auto_redirect"]; has {
+			delete(m, "auto_redirect")
+			changed = true
+		}
+	}
+	if !changed {
+		return cfg
+	}
+	out, err := json.MarshalIndent(root, "", "  ")
+	if err != nil {
+		return cfg
+	}
+	return out
 }
 
 // localSrsPathsForCheck — вид конфига удалённой машины для локального check.
