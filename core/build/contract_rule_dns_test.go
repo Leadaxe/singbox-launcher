@@ -70,14 +70,13 @@ func runRuleDNSCorpusCase(t *testing.T, dir, caseName string) {
 	}
 	rule := in.Rule
 
-	// Наборы srs считаются скачанными: путь на каждый URL записи.
-	srsCached := map[string][]string{}
-	if rule.Kind == corestate.RuleKindSrs {
-		paths := make([]string, len(rule.Refs))
-		for i := range paths {
-			paths[i] = "cached.srs"
-		}
-		srsCached[corestate.StableRuleID(rule)] = paths
+	// Наборы srs считаются скачанными: путь на каждую ссылку правила (карта
+	// кэша — по ссылке, SPEC 188). Запись кейса — к норме 1.1.179, как на
+	// любом входе состояния.
+	corestate.NormalizeRuleRecord(&rule)
+	srsCached := map[string]string{}
+	for _, ref := range corestate.RuleRefs(rule) {
+		srsCached[ref] = "cached.srs"
 	}
 	route := ResolveRouteWithGlobals(&corestate.State{Rules: []corestate.Rule{rule}},
 		&template.TemplateData{}, "", srsCached, template.TargetSpec{}, nil)

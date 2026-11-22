@@ -25,15 +25,11 @@ func TestCollectSrsCachedPaths_URLDerived(t *testing.T) {
 	rules := []state.Rule{srsRule("YT", url, "proxy-out")}
 	paths := CollectSrsCachedPaths(rules, "/exec", "")
 
-	id := state.StableRuleID(rules[0])
-	if id != "YT" {
-		t.Fatalf("StableRuleID baseline: got %q", id)
+	// SPEC 188: ключ карты — сама ссылка, а не identity правила.
+	got, ok := paths[url]
+	if !ok || len(paths) != 1 {
+		t.Fatalf("paths map should contain the ref %q with one path: %+v", url, paths)
 	}
-	gotPaths, ok := paths[id]
-	if !ok || len(gotPaths) != 1 {
-		t.Fatalf("paths map should contain identity %q with one path: %+v", id, paths)
-	}
-	got := gotPaths[0]
 	// Filename должно быть URL-derived (SRSTagFromURL), а НЕ просто identity.
 	expectedTag := SRSTagFromURL(url)
 	wantPath := filepath.Join("/exec", "bin", "rule-sets", expectedTag+".srs")
@@ -47,7 +43,7 @@ func TestCollectSrsCachedPaths_URLDerived(t *testing.T) {
 }
 
 // TestCollectSrsCachedPaths_TwoRulesSameURL_OneFile — 2 правила с одинаковым URL
-// (но разными именами) дедуплицируются в один файл на диске.
+// (но разными именами) делят одну запись карты и один файл на диске.
 func TestCollectSrsCachedPaths_TwoRulesSameURL_OneFile(t *testing.T) {
 	url := "https://example.com/list.srs"
 	rules := []state.Rule{
@@ -55,17 +51,8 @@ func TestCollectSrsCachedPaths_TwoRulesSameURL_OneFile(t *testing.T) {
 		srsRule("Rule B", url, "direct-out"),
 	}
 	paths := CollectSrsCachedPaths(rules, "/exec", "")
-	if len(paths) != 2 {
-		t.Fatalf("expected 2 identity entries, got %d: %+v", len(paths), paths)
-	}
-	// Оба identity → один и тот же путь.
-	if len(paths["Rule-A"]) != 1 || len(paths["Rule-B"]) != 1 {
-		t.Fatalf("missing identity in map: %+v", paths)
-	}
-	pathA := paths["Rule-A"][0]
-	pathB := paths["Rule-B"][0]
-	if pathA != pathB {
-		t.Errorf("dedup expected: same URL → same path, got A=%q B=%q", pathA, pathB)
+	if len(paths) != 1 || paths[url] == "" {
+		t.Fatalf("expected one ref entry, got %d: %+v", len(paths), paths)
 	}
 }
 
@@ -81,15 +68,15 @@ func TestCollectSrsCachedPaths_RenameDoesNotInvalidate(t *testing.T) {
 	bp := CollectSrsCachedPaths(before, "/exec", "")
 	ap := CollectSrsCachedPaths(after, "/exec", "")
 
-	if len(bp["OldName"]) != 1 || bp["OldName"][0] != wantPath {
-		t.Errorf("before: got %q want %q", bp["OldName"], wantPath)
+	if bp[url] != wantPath {
+		t.Errorf("before: got %q want %q", bp[url], wantPath)
 	}
-	if len(ap["NewName"]) != 1 || ap["NewName"][0] != wantPath {
-		t.Errorf("after rename: got %q want %q (same file should be reused)", ap["NewName"], wantPath)
+	if ap[url] != wantPath {
+		t.Errorf("after rename: got %q want %q (same file should be reused)", ap[url], wantPath)
 	}
 }
 
-// srsRule — включённая srs-запись state v8: наборы полем записи, цель в теле.
+// srsRule — включённая srs-запись (контракт 1.1.179): `refs` и цель в теле.
 func srsRule(name, url, outbound string) state.Rule {
 	r := state.NewSrsRule(name, []string{url}, outbound)
 	r.Enabled = true

@@ -237,6 +237,30 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 			out = append(out, cr)
 		case RuleKindSrs:
 			sb := body.(*SrsBody)
+			// SPEC 188 (волна 2): нынешняя форма выражает только «наборы +
+			// выход». Правило, у которого кроме ссылок есть условия или
+			// дерево (`refs` в под-правилах), идёт в UI телом целиком (Custom
+			// JSON, ссылки внутри): форма «наборы» при сохранении молча
+			// выбросила бы всё, кроме ссылок.
+			if bodyMap, err := r.BodyMap(); err == nil && !ruleTreeFlatRefs(bodyMap) {
+				cr := CustomRule{
+					Label:            sb.Name,
+					Enabled:          r.Enabled,
+					SelectedOutbound: sb.Outbound,
+					HasOutbound:      true,
+					Rule:             map[string]interface{}{},
+					DNS:              CloneRuleDNS(r.DNS),
+					SrsOptions:       r.RuleSetOptions(),
+				}
+				for k, v := range bodyMap {
+					if !isTargetKey(k, bodyMap) {
+						cr.Rule[k] = v
+					}
+				}
+				cr.Rule["outbound"] = sb.Outbound
+				out = append(out, cr)
+				continue
+			}
 			// По записи на КАЖДЫЙ URL правила (репорт 1.5.5: из трёх наборов
 			// после переоткрытия оставался первый — тело держало один URL).
 			//

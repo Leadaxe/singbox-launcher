@@ -233,10 +233,13 @@ func srsTagFromURLLocal(urlStr string) string { return srstag.TagFromURL(urlStr)
 
 // PresetMergeContext — input для MergePresetsIntoRoute/DNS.
 type PresetMergeContext struct {
-	Presets        []template.Preset
-	Rules          []state.Rule
-	DNS            state.DNSOptions
-	SrsCachedPaths map[string][]string
+	Presets []template.Preset
+	Rules   []state.Rule
+	DNS     state.DNSOptions
+	// SrsCachedPaths — ссылка набора своего правила → путь к скачанному файлу
+	// (CollectSrsCachedPaths). Ключ — сама ссылка: копия привязана к ней, а не
+	// к правилу и номеру в его списке (SPEC 188).
+	SrsCachedPaths map[string]string
 
 	// DataDir — для резолва local SRS paths (kind=srs / preset remote rule_set).
 	DataDir paths.DataDir
@@ -783,66 +786,47 @@ func dnsRuleOwner(dr ResolvedDNSRule) string {
 	return "dns_options"
 }
 
-// CollectSrsCachedPaths — собирает map[StableRuleID]→абсолютные пути к скачанным
-// .srs файлам для всех kind=srs правил в state.Rules.
+// CollectSrsCachedPaths — карта «ссылка набора → абсолютный путь к скачанному
+// .srs» для всех ссылок kind=srs правил в state.Rules.
 //
-// Key map'а = `state.StableRuleID(r)` (identity правила, вычисляется на лету
-// из body.name; см. SPEC 063). Value = пути к файлам В ПОРЯДКЕ URL правила
-// (SrsBody.URLs(); у правила их может быть несколько), имя каждого выводится
-// из URL через srsTagFromURLLocal (тот же алгоритм, что и для preset SRS
-// файлов — `<basename>-<sha256(url)[:8]>`). Единственный источник правды о
-// filename'е во всех 3 местах: downloader → этот map → orphan GC.
+// Ключ — сама ссылка (SPEC 188): копия набора привязана к ссылке, а не к паре
+// «id правила + номер». Позиционная привязка в дереве условий не определена,
+// а одинаковые имена правил (из бэкапа, из API) давали общий ключ. Ссылки
+// правила — state.RuleRefs (обход дерева тела), тот же список, что берёт
+// resolve_route.go: расхождение сделало бы правило «частично закэшированным»
+// и молча выбросило бы его из конфига (ловушка 18).
 //
-// Issue #77: ранее использовали `<r.ID>.srs` как filename, но downloader
-// сохраняет под URL-derived tag — mismatch. Теперь оба пути сходятся, и
-// дополнительно 2 правила на одинаковый URL шарят один файл (дедуп).
+// Имя файла выводится из ссылки через srsTagFromURLLocal (тот же алгоритм,
+// что для preset SRS файлов — `<basename>-<sha256(url)[:8]>`). Единственный
+// источник правды о filename'е во всех 3 местах: downloader → эта карта →
+// orphan GC. Имя файла от правила не зависит: смена тегов и правка дерева
+// не перекачивают копии (issue #77). Два правила на одну ссылку делят файл.
 //
-// Если SrsBody не декодится или SrsURL пустой — entry НЕ добавляется
-// (rules_pipeline получит "no cached file" warning и skip'нет правило).
-//
-// Для preset-ref'ов с remote rule_set'ами SRS-кэш не нужен: ExpandPreset
-// эмитит rule_set с type=remote URL, а sing-box сам качает. Но если хотим
-// emit type=local — нужен path map (TODO для phase 9).
 // resourceDir (SPEC 063) — каталог ресурсов УДАЛЁННОЙ машины
 // (`<state_dir>/resources`). Когда задан, путь ведёт туда, а не в свой
 // bin/rule-sets/: конфиг исполняет ядро НА ТОЙ СТОРОНЕ, и путь лаунчера там
 // не существует — apply проходил, а ядро падало с «open …: no such file».
 // Пусто = конфиг для этой машины, путь прежний.
-func CollectSrsCachedPaths(rules []state.Rule, dataDir paths.DataDir, resourceDir string) map[string][]string {
+func CollectSrsCachedPaths(rules []state.Rule, dataDir paths.DataDir, resourceDir string) map[string]string {
 	if dataDir == "" || len(rules) == 0 {
 		return nil
 	}
-	out := make(map[string][]string, len(rules))
+	out := make(map[string]string, len(rules))
 	for _, r := range rules {
 		if r.Kind != state.RuleKindSrs {
 			continue
 		}
-		// Список наборов в state v8 — поле записи Refs; читаем его через вид,
-		// потому что вид дедуплицирует. Расхождение с resolve_route.go, который
-		// берёт тот же вид, сделало бы правило «частично закэшированным» и
-		// молча выбросило бы его из конфига (ловушка 18).
-		body, err := r.DecodeBody()
-		if err != nil {
-			continue
-		}
-		sb, ok := body.(*state.SrsBody)
-		if !ok {
-			continue
-		}
-		urls := sb.Refs
-		if len(urls) == 0 {
-			continue
-		}
-		paths := make([]string, 0, len(urls))
-		for _, u := range urls {
+		for _, u := range state.RuleRefs(r) {
+			if _, ok := out[u]; ok {
+				continue
+			}
 			tag := srsTagFromURLLocal(u)
 			if resourceDir != "" {
-				paths = append(paths, resourceDir+"/"+ResourceNameForSRS(tag))
+				out[u] = resourceDir + "/" + ResourceNameForSRS(tag)
 			} else {
-				paths = append(paths, platform.GetRuleSetPath(dataDir, tag))
+				out[u] = platform.GetRuleSetPath(dataDir, tag)
 			}
 		}
-		out[state.StableRuleID(r)] = paths
 	}
 	return out
 }

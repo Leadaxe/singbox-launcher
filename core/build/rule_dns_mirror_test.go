@@ -139,9 +139,9 @@ func TestRuleDNSMirror(t *testing.T) {
 				},
 			},
 			Target: template.LocalTarget(),
-			SrsCachedPaths: map[string][]string{
-				state.StableRuleID(lists): {"/tmp/lists.srs"},
-				state.StableRuleID(gone):  {"/tmp/gone.srs"},
+			SrsCachedPaths: map[string]string{
+				"https://example.com/lists.srs": "/tmp/lists.srs",
+				"https://example.com/gone.srs":  "/tmp/gone.srs",
 			},
 			templateWarnings: &warns,
 		}

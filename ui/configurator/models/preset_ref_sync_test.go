@@ -77,8 +77,8 @@ func TestEmitStateRulesWithoutOrder_SrsFromCustomRule(t *testing.T) {
 	if len(out) != 1 || out[0].Kind != state.RuleKindSrs {
 		t.Errorf("kind: %+v", out)
 	}
-	// state v8 (SPEC 127 §0): наборы — поле записи `refs[]`, не тело.
-	if got := out[0].Refs; len(got) != 1 || got[0] != "https://example.com/list.srs" {
+	// Контракт 1.1.179 (SPEC 188): наборы — `refs` внутри тела, не поле записи.
+	if got := state.RuleRefs(out[0]); len(got) != 1 || got[0] != "https://example.com/list.srs" || out[0].Refs != nil {
 		t.Errorf("refs: %v", got)
 	}
 	body, err := out[0].DecodeBody()

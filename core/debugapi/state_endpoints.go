@@ -205,8 +205,12 @@ func (s *Server) stateRulesWith(w http.ResponseWriter, r *http.Request, acc stat
 			return
 		}
 		// Per-rule validation: kind discriminator + body decode round-trip.
-		// Bad shape → 422 (SPEC 050 semantic-error code).
+		// Bad shape → 422 (SPEC 050 semantic-error code). Запись старой формы
+		// (`refs` на записи) сначала приводится к норме 1.1.179 — ссылки в
+		// тело, вид из дерева (SPEC 188), иначе проверка и сохранение
+		// разошлись бы с тем, что читает загрузка.
 		for i := range req.Rules {
+			state.NormalizeRuleRecord(&req.Rules[i])
 			if _, err := (&req.Rules[i]).DecodeBody(); err != nil {
 				writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
 					"error": fmt.Sprintf("rules[%d]: %s", i, err.Error()),

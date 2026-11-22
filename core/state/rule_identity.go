@@ -107,7 +107,7 @@ func MigrateRuleSetTagRefs(rules []Rule, dnsRules []DNSRule) int {
 		if oldID == newID || claims[oldID] != 1 {
 			continue
 		}
-		for i := range r.Refs {
+		for i := range RuleRefs(r) {
 			renames[SrsRuleSetTag(oldID, i)] = SrsRuleSetTag(newID, i)
 		}
 	}

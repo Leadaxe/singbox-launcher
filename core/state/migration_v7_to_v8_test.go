@@ -147,14 +147,15 @@ func TestMigrateV7ToV8_NothingLost(t *testing.T) {
 	if s.Rules[2].Enabled {
 		t.Error("enabled=false потерян")
 	}
-	// srs: оба URL, reject в теле.
-	if len(s.Rules[3].Refs) != 2 {
-		t.Fatalf("srs_url+srs_urls → refs: %v", s.Rules[3].Refs)
+	// srs: оба URL, reject в теле; разбор поднимает `refs` в тело (SPEC 188).
+	refs := RuleRefs(s.Rules[3])
+	if len(refs) != 2 {
+		t.Fatalf("srs_url+srs_urls → refs: %v", refs)
 	}
-	if s.Rules[3].Refs[0] != "https://example.invalid/a.srs" || s.Rules[3].Refs[1] != "https://example.invalid/b.srs" {
-		t.Errorf("порядок наборов сбит: %v", s.Rules[3].Refs)
+	if refs[0] != "https://example.invalid/a.srs" || refs[1] != "https://example.invalid/b.srs" {
+		t.Errorf("порядок наборов сбит: %v", refs)
 	}
-	if string(s.Rules[3].Body) != `{"action":"reject"}` {
+	if string(s.Rules[3].Body) != `{"refs":["https://example.invalid/a.srs","https://example.invalid/b.srs"],"action":"reject"}` {
 		t.Errorf("тело srs: %s", s.Rules[3].Body)
 	}
 	// Идентичность правил — та же строка, что до миграции (теги rule_set и
@@ -380,7 +381,7 @@ func TestV8FileIsNotReadAsV7(t *testing.T) {
 	if s.Version != SchemaVersionV8 {
 		t.Errorf("Parse прочитал v8 как v%d", s.Version)
 	}
-	if len(s.Rules) == 0 || s.Rules[len(s.Rules)-1].Kind != RuleKindSrs || len(s.Rules[len(s.Rules)-1].Refs) != 2 {
+	if len(s.Rules) == 0 || s.Rules[len(s.Rules)-1].Kind != RuleKindSrs || len(RuleRefs(s.Rules[len(s.Rules)-1])) != 2 {
 		t.Errorf("v8-поля потеряны при чтении: %+v", s.Rules)
 	}
 }

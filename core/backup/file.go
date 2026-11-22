@@ -172,7 +172,9 @@ func Parse(data []byte) (*File, []Warning, error) {
 		b.rulesPresent = rootKeyPresent(data, "rules")
 		return &File{Format: FileFormatLegacy, Legacy: b},
 			append(typeWarns, scanUnknown(data)...), nil
-	case FormatVersion10:
+	case FormatVersion10, FormatVersion11:
+		// 1.0 и 1.1 различаются только местом `refs` правила: разбор один,
+		// форму записи выравнивает decode10Rule (state.NormalizeRuleRecord).
 		b, typeWarns, err := decodeTolerant10(data)
 		if err != nil {
 			return nil, nil, fmt.Errorf("backup parse: %w", err)
@@ -183,7 +185,7 @@ func Parse(data []byte) (*File, []Warning, error) {
 			append(append(typeWarns, scanUnknown10(data)...), scanSections10(data)...), nil
 	default:
 		return nil, nil, fmt.Errorf("backup format v%d is newer than supported v%d — update the app",
-			head.LxBackup, FormatVersion10)
+			head.LxBackup, FormatVersion11)
 	}
 }
 

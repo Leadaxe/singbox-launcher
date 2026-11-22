@@ -243,16 +243,18 @@ func TestRule_RoundTrip_Srs(t *testing.T) {
 func TestRule_NewSrsRule_DedupKeepsOrder(t *testing.T) {
 	r := NewSrsRule("три набора", []string{"https://b", "", "https://a", "https://b"}, "proxy-out")
 	want := []string{"https://b", "https://a"}
-	if len(r.Refs) != len(want) {
-		t.Fatalf("refs: %v, want %v", r.Refs, want)
+	got := RuleRefs(r)
+	if len(got) != len(want) {
+		t.Fatalf("refs: %v, want %v", got, want)
 	}
 	for i := range want {
-		if r.Refs[i] != want[i] {
-			t.Fatalf("refs: %v, want %v", r.Refs, want)
+		if got[i] != want[i] {
+			t.Fatalf("refs: %v, want %v", got, want)
 		}
 	}
-	if string(r.Body) != `{"outbound":"proxy-out"}` {
-		t.Errorf("srs body must carry the target only: %s", r.Body)
+	// Контракт 1.1.179: `refs` — первым ключом тела, рядом с целью.
+	if string(r.Body) != `{"refs":["https://b","https://a"],"outbound":"proxy-out"}` || r.Refs != nil {
+		t.Errorf("srs body must carry refs and the target: %s (record refs %v)", r.Body, r.Refs)
 	}
 }
 
@@ -477,13 +479,13 @@ func TestSchemaConstants(t *testing.T) {
 	if SchemaNameV7 != "sources_v7" {
 		t.Errorf("SchemaNameV7 mismatch: %q", SchemaNameV7)
 	}
-	if SchemaVersionV8 != 8 || SchemaVersion != SchemaVersionV8 {
-		t.Errorf("SchemaVersion should be v8 (SPEC 127), got %d", SchemaVersion)
+	if SchemaVersionV8 != 8 || SchemaVersionV9 != 9 || SchemaVersion != SchemaVersionV9 {
+		t.Errorf("SchemaVersion should be v9 (SPEC 188), got %d", SchemaVersion)
 	}
 	if SchemaNameV8 != "sources_v8" {
 		t.Errorf("SchemaNameV8 mismatch: %q", SchemaNameV8)
 	}
-	if SchemaMajor != SchemaVersionV8 {
+	if SchemaMajor != SchemaVersionV9 {
 		t.Errorf("SchemaMajor must follow the write format, got %d", SchemaMajor)
 	}
 }

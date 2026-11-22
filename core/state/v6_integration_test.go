@@ -148,7 +148,7 @@ func TestSave_AlwaysWritesV8(t *testing.T) {
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		t.Fatalf("unmarshal probe: %v", err)
 	}
-	if probe.Meta.Version != SchemaVersionV8 {
+	if probe.Meta.Version != SchemaVersionV9 {
 		t.Errorf("expected v8 save (single write path, SPEC 118/127), got version=%d", probe.Meta.Version)
 	}
 	if probe.Meta.Schema != SchemaNameV8 {
@@ -180,7 +180,7 @@ func TestSave_V8_WhenHasPresetRef(t *testing.T) {
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		t.Fatalf("unmarshal probe: %v", err)
 	}
-	if probe.Meta.Version != SchemaVersionV8 {
+	if probe.Meta.Version != SchemaVersionV9 {
 		t.Errorf("expected v8 save (SPEC 127), got %d", probe.Meta.Version)
 	}
 	if probe.Meta.Schema != SchemaNameV8 {
@@ -253,7 +253,7 @@ func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 			Version int `json:"version"`
 		} `json:"meta"`
 	}
-	if err := json.Unmarshal(raw, &probe); err != nil || probe.Meta.Version != SchemaVersionV8 {
+	if err := json.Unmarshal(raw, &probe); err != nil || probe.Meta.Version != SchemaVersionV9 {
 		t.Error("re-save must write v8 (SPEC 127)")
 	}
 }

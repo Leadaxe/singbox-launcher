@@ -61,7 +61,7 @@ func ResolveRuleSetPolicy(o state.RuleSetOptions, globals map[string]string) Rul
 // правило — одна единица: делить его наборы между режимами незачем.
 func RulePolicy(rule state.Rule, globals map[string]string) RuleSetPolicy {
 	p := ResolveRuleSetPolicy(rule.RuleSetOptions(), globals)
-	if p.Remote && rule.Kind == state.RuleKindSrs && HasFileRef(rule.Refs) {
+	if p.Remote && rule.Kind == state.RuleKindSrs && HasFileRef(state.RuleRefs(rule)) {
 		p.Remote = false
 	}
 	return p
@@ -153,7 +153,7 @@ func (c PresetMergeContext) RuleSetFetches() []RuleSetFetch {
 		}
 		switch rule.Kind {
 		case state.RuleKindSrs:
-			for _, u := range rule.Refs {
+			for _, u := range state.RuleRefs(rule) {
 				add(u, policy.IntervalHours)
 			}
 		case state.RuleKindPreset:
@@ -185,19 +185,16 @@ func (c PresetMergeContext) RuleSetFileDir() string {
 	return platform.GetRuleSetsDir(c.DataDir)
 }
 
-// DropUncachedSrsPaths убирает из карты CollectSrsCachedPaths правила, у
-// которых на диске нет хотя бы одного файла: правило kind=srs тогда выпадает
+// DropUncachedSrsPaths убирает из карты CollectSrsCachedPaths ссылки, чьего
+// файла на диске нет: правило kind=srs без хотя бы одной копии тогда выпадает
 // из конфига целиком (как правило пресета), а не уезжает туда с путём к
 // несуществующему файлу — ядро на таком конфиге не стартует (SPEC 185 §2.2).
 // dir — каталог .srs на стороне лаунчера; имена файлов берутся из путей.
-func DropUncachedSrsPaths(cached map[string][]string, dir string) map[string][]string {
-	for id, paths := range cached {
-		for _, p := range paths {
-			name := p[strings.LastIndexAny(p, `/\`)+1:]
-			if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
-				delete(cached, id)
-				break
-			}
+func DropUncachedSrsPaths(cached map[string]string, dir string) map[string]string {
+	for ref, p := range cached {
+		name := p[strings.LastIndexAny(p, `/\`)+1:]
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			delete(cached, ref)
 		}
 	}
 	return cached

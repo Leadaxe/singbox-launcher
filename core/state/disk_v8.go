@@ -1,4 +1,5 @@
-// File disk_v8.go — on-disk-схема state.json v8 (SPEC 127, одно пространство имён).
+// File disk_v8.go — on-disk-схема state.json v8/v9 (SPEC 127, одно пространство
+// имён; v9 — SPEC 188: `refs` внутри тела правила).
 //
 // Отличие от v7 — форма ЗАПИСЕЙ и два имени корневых ключей:
 //
@@ -6,7 +7,7 @@
 //	  "meta":       { version: 8, schema: "sources_v8", ... },
 //	  "sources":    [ {kind, tag, enabled, ...} ],  // юнион по kind
 //	  "directions": [ ... ],                                   // configtypes.Direction
-//	  "rules":      [ {kind, id?, ref?, name?, enabled, num?, refs?, vars?, body?} ],
+//	  "rules":      [ {kind, id?, ref?, name?, enabled, num?, vars?, body?} ],  // v9: refs в body
 //	  "vars":       [ ... ],
 //	  "dns":        { servers, rules, final, strategy },        // бывший dns_options
 //	  "warp":       { ... }                                     // бывший warp_accounts
@@ -29,11 +30,19 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
-// SchemaVersionV8 — формат файла state.json, который пишет Save (SPEC 127).
+// SchemaVersionV8 — формат файла state.json SPEC 127: ссылки наборов правила
+// — поле записи `refs`. Читается тем же разбором, что v9.
 const SchemaVersionV8 = 8
 
+// SchemaVersionV9 — формат файла state.json, который пишет Save (SPEC 188,
+// контракт 1.1.179): `refs` — ключ простого правила внутри `body`, `kind`
+// выводится из дерева. Остальная форма — как у v8. Мажор поднят ради гейта
+// переноса состояния машин (CheckSchemaCompatible): сборка, знающая только
+// v8, прочитала бы v9 молча и выпустила бы `refs` ядру.
+const SchemaVersionV9 = 9
+
 // SchemaNameV8 — внутренний идентификатор схемы v8 (хранится в meta.schema).
-// Он же — «мажор схемы» для remote-гейта.
+// Форма корня у v9 та же — имя не меняется; мажор держит meta.version.
 const SchemaNameV8 = "sources_v8"
 
 // diskStateV8 — корневая модель на диске v8. Используется ТОЛЬКО внутри
@@ -48,7 +57,8 @@ type diskStateV8 struct {
 	Warp       *WarpAccountsSection    `json:"warp,omitempty"`
 }
 
-// parseV8 — прямой read canonical (v8) формата.
+// parseV8 — прямой read canonical формата v8 и v9 (у v9 отличается только
+// место `refs` правила, его выравнивает NormalizeRuleRecords).
 //
 // Форма каждого источника прогоняется через normalizeSourceShape: лишние для
 // kind'а канонические поля отбрасываются с warning (в лог), неизвестный kind —
@@ -104,6 +114,13 @@ func parseV8(data []byte) (*State, error) {
 	}
 	if t, err := time.Parse(time.RFC3339, raw.Meta.UpdatedAt); err == nil {
 		s.UpdatedAt = t
+	}
+
+	// SPEC 188: `refs` записи (v8) → тело корня, `kind` из дерева — в памяти,
+	// файл v9 перепишет ближайшее сохранение. До миграции тегов ниже: та
+	// читает ссылки правила через RuleRefs, ей форма не важна.
+	if n := NormalizeRuleRecords(s.Rules); n > 0 {
+		debuglog.InfoLog("state: %d rules: rule set refs moved into the rule body", n)
 	}
 
 	// Ссылки на теги наборов srs-правил, сохранённые до появления хэша в id

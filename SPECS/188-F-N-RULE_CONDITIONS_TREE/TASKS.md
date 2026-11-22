@@ -23,21 +23,26 @@
 - Примечания волны 1 (23.11.2026): `corpus/rule_tree/` до волны 3 не читает ни один раннер (каталог новый, раннер `TestContractCorpusRuleTree` — волна 3); `backup/v11_rule_refs_in_body` (`lx_backup: 3`) действующий раннер пропускает как «формат новее читаемого», `backup/v10_rule_refs_on_record` (`lx_backup: 2`) зелёный уже сейчас — тело в нём не сверяется, перенос `refs` в тело сверяет `v11`. В волне 2 `TestBackupCorpus` обязан пройти оба. Добавлено сверх PLAN: `RuleDomainKeys()`, `RuleCondition.ShownIn(form)`; поле `field` дано и ключам LxBox (`lines` / `enum_multi` / `bool`); §6.11 нормирует, что `invert` снятой обёртки с одним ребёнком переходит на ребёнка; ключ ожиданий `mirror_empty` в `rule_tree/`.
 
 ## Волна 2 — хранение
-- [ ] `core/state/rule_tree.go`: `WalkRuleTree`, `IsLogicalRule`, `RuleRefs`, `NormalizeRuleRecord(s)` (подъём по сырому JSON, `refs` первым ключом, корень `logical` — обёртка `and`)
-- [ ] `core/state/rule_types.go`: `NewSrsRule` пишет `refs` в тело; `NewTreeRule`; `DecodeBody` через `RuleRefs`; шапка файла
-- [ ] `core/state/rule_set_options.go`: очистка настроек по выведенному `kind`
-- [ ] `core/state/disk_v8.go`, `save.go`, `state.go`, `schema_gate.go`, `load_router.go`: v9, нормализация в `parseV8` после `MigrateRuleSetTagRefs` (или перевести её на `RuleRefs`)
-- [ ] `core/state/load_v6.go`: UI-вид — `RuleSet` из `RuleRefs`
-- [ ] `core/build/resolve_route.go`: ссылки из `RuleRefs`, снятие `refs` с выпускаемого тела, вложенные `refs` → пропуск с логом
-- [ ] `core/build/preset_merge.go` `CollectSrsCachedPaths` → `map[ref]path`; `PresetMergeContext.SrsCachedPaths` новой формы
-- [ ] `core/build/rule_set_policy.go`: `RulePolicy`, `RuleSetFetches`, `DropUncachedSrsPaths`
-- [ ] `core/config_service.go` GC keep-лист; `core/config_service_context.go`; `ui/configurator/business/create_config.go`; `add_rule_dialog.go:1656`
-- [ ] `core/stateedit/rules.go` `AddRule` (нормализация), `servers.go` `nameRefs`
-- [ ] `core/debugapi/state_endpoints.go`: нормализация записей PATCH
-- [ ] `core/backup`: `FormatVersion11 = 3`, `Parse` 2|3, экспорт 3, нормализация в `decode10Rule` и `importRule`
-- [ ] `core/backup/corpus_test.go`: ожидание `refs` через `RuleRefs`; `core/build/contract_rule_dns_test.go`: кэш по ссылке
-- [ ] Тест `TestRuleRefsLiftedIntoBody` (`core/state`)
-- [ ] `go build ./...`; `go test ./core/state -run TestRuleRefsLiftedIntoBody -count=1`; `go test ./core/backup -run TestBackupCorpus -count=1`
+- [x] `core/state/rule_tree.go`: `WalkRuleTree`, `IsLogicalRule`, `RuleRefs`, `NormalizeRuleRecord(s)` (подъём по сырому JSON, `refs` первым ключом, корень `logical` — обёртка `and`); плюс `BodyRefs`, `BodyRefsNested`, `StripBodyRefs`, `RuleKeyRefs`
+- [x] `core/state/rule_types.go`: `NewSrsRule` пишет `refs` в тело; `NewTreeRule`; `DecodeBody` через `RuleRefs`; шапка файла
+- [x] `core/state/rule_set_options.go`: очистка настроек по выведенному `kind` (нет ссылок — очистка)
+- [x] `core/state/disk_v8.go`, `save.go`, `state.go`, `schema_gate.go`, `load_router.go`: v9, нормализация в `parseV8` до `MigrateRuleSetTagRefs`; та переведена на `RuleRefs`
+- [x] `core/state/load_v6.go`: UI-вид — `RuleSet` из `RuleRefs`
+- [x] `core/build/resolve_route.go`: ссылки из `RuleRefs`, снятие `refs` с выпускаемого тела, вложенные `refs` → пропуск с логом
+- [x] `core/build/preset_merge.go` `CollectSrsCachedPaths` → `map[ref]path`; `PresetMergeContext.SrsCachedPaths` новой формы
+- [x] `core/build/rule_set_policy.go`: `RulePolicy`, `RuleSetFetches`, `DropUncachedSrsPaths`
+- [x] `core/config_service.go` GC keep-лист; `core/config_service_context.go`; `ui/configurator/business/create_config.go`; `add_rule_dialog.go:1656` (последние три — без правок: тип карты выводится)
+- [x] `core/stateedit/rules.go` `AddRule` (нормализация), `servers.go` `nameRefs` (правки не нужны: читает цель корня, не ссылки)
+- [x] `core/debugapi/state_endpoints.go`: нормализация записей PATCH
+- [x] `core/backup`: `FormatVersion11 = 3`, `Parse` 2|3, экспорт 3, нормализация в `decode10Rule` (через неё же идёт `kind: json` 0.x; `importRule` 0.x пишет `NewSrsRule` — новая форма) и в `export10Rules`; Debug API `/backup/formats` `reads` + 3
+- [x] `core/backup/corpus_test.go`: ожидание `refs` через `RuleRefs`; `core/build/contract_rule_dns_test.go`: кэш по ссылке
+- [x] Тест `TestRuleRefsLiftedIntoBody` (`core/state`, внешний пакет `state_test`: загрузка v8 → сохранение v9 → повторная загрузка, дерево главнее, дерево с `refs` в под-правиле, сборка плоского правила, экспорт/импорт бэкапа)
+- [x] `go build ./...`; `go test ./core/state -run TestRuleRefsLiftedIntoBody -count=1`; `go test ./core/backup -run TestBackupCorpus -count=1` (`v10_rule_refs_on_record`, `v11_rule_refs_in_body` — PASS, не пропуск); `go test ./core/build -run TestContractCorpusRuleDNS -count=1`
+- Примечания волны 2 (23.11.2026):
+  - **Граница волны.** Сборка выпускает только ссылки корневого простого правила. `refs` в под-правилах `logical` — правило не выпускается (лог `rule sets inside a rule group are not built yet`, запись `Skipped`), остальная сборка идёт. Выпуск дерева — волна 3. Теги прежние (`user:<id>`, `user:<id>:N`, N — позиция в `RuleRefs`): плоское правило собирается в прежний `config.json`.
+  - **Сверх PLAN (UI, защита от потери данных).** srs-правило, которое не «наборы + выход» (условия рядом со ссылками или дерево), в UI-виде (`load_v6.go`, `ruleTreeFlatRefs`) идёт телом целиком как Custom JSON со ссылками внутри — иначе любое сохранение визарда переписывало его `NewSrsRule` с одними ссылками. Следом: `DetermineRuleType` — тело с `refs` → raw; `customRuleStateToV6Rule` — inline-ветка через `NewTreeRule` (+ настройки наборов); `modelHasRuleSetFiles` видит `refs` в теле.
+  - **Вывод `kind`.** Запись srs без ссылок и без единого условия (тело — только цель) остаётся srs (сборка пропускает её, как прежде): как inline она ловила бы весь трафик.
+  - Тесты, чьи ожидания зависели от старой формы, поправлены без прогона (`rule_types_test`, `migration_v7_to_v8_test`, `canonical_roundtrip_test` версия, `v6_integration_test`, `purity_test`, `schema_test`, `preset_ref_sync_test`, тесты `core/build` с картой кэша). Голдены `core/state/testdata/v8_roundtrip.json` (байт-в-байт против Save) и сценарий `real-v088-v8` не перегенерированы — разбор в CI (`GEN_V8_ROUNDTRIP_FIXTURE=1 … -run TestGenerateV8RoundtripFixture`).
 
 ## Волна 3 — сборка
 - [ ] `core/state/rule_tags.go`: `RuleTags`, `AllocateRuleTags`, `RefHash`

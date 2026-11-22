@@ -19,7 +19,7 @@ func TestSrsRuleKeepsAxisPosition(t *testing.T) {
 	srs.Enabled, srs.Num = true, &n2
 	ctx := PresetMergeContext{
 		Rules:          []state.Rule{inline, srs},
-		SrsCachedPaths: map[string][]string{state.StableRuleID(srs): {"/tmp/list.srs"}},
+		SrsCachedPaths: map[string]string{"https://x/list.srs": "/tmp/list.srs"},
 	}
 	out, err := MergePresetsIntoRoute(json.RawMessage(`{"rules":[]}`), ctx)
 	if err != nil {

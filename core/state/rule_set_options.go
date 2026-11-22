@@ -58,10 +58,10 @@ func (r Rule) RuleSetOptions() RuleSetOptions {
 	return o
 }
 
-// SetRuleSetOptions пишет настройки наборов в поля записи. У inline-правила
-// наборов нет — поля очищаются.
+// SetRuleSetOptions пишет настройки наборов в поля записи. У правила без
+// наборов (вид выводится из дерева тела: нет `refs` — inline) поля очищаются.
 func (r *Rule) SetRuleSetOptions(o RuleSetOptions) {
-	if r.Kind != RuleKindSrs && r.Kind != RuleKindPreset {
+	if r.Kind != RuleKindPreset && len(RuleRefs(*r)) == 0 {
 		o = RuleSetOptions{}
 	}
 	o = o.Clone()

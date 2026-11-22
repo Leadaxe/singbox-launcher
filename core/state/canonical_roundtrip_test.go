@@ -179,8 +179,8 @@ func TestCanonical_V6StructuralTransfer_RoundtripStable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load p1: %v", err)
 	}
-	if s2.Version != SchemaVersionV8 {
-		t.Fatalf("после Save версия обязана быть v8, got %d", s2.Version)
+	if s2.Version != SchemaVersionV9 {
+		t.Fatalf("после Save версия обязана быть v9, got %d", s2.Version)
 	}
 	if err := s2.Save(p2); err != nil {
 		t.Fatalf("Save p2: %v", err)

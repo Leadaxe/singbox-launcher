@@ -191,6 +191,12 @@ func DetermineRuleType(rule map[string]interface{}) string {
 	if rule == nil {
 		return RuleTypeRaw
 	}
+	// SPEC 188: ссылки на наборы внутри тела (`refs`) нынешняя форма не
+	// выражает — такое тело открывается как JSON, иначе сохранение формой
+	// выбросило бы их.
+	if len(corestate.BodyRefs(rule)) > 0 {
+		return RuleTypeRaw
+	}
 	hasIP := hasKey(rule, "ip_cidr")
 	hasDomain := hasKey(rule, "domain") || hasKey(rule, "domain_suffix") || hasKey(rule, "domain_keyword") || hasKey(rule, "domain_regex")
 	hasProcess := hasKey(rule, "process_name") || hasKey(rule, "process_path_regex")

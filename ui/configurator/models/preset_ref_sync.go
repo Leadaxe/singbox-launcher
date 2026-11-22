@@ -280,15 +280,18 @@ func customRuleStateToV6Rule(rs *RuleState) *state.Rule {
 		}
 	}
 
-	// kind=inline (default)
+	// kind=inline (default). Тело с `refs` внутри (SPEC 188: правило с
+	// наборами и условиями или дерево, открытое как JSON) — NewTreeRule
+	// выводит вид srs и сохраняет настройки наборов.
 	match := stripOutboundAction(rs.Rule.Rule)
 	if len(match) == 0 {
 		return nil
 	}
-	r := state.NewInlineRule(label, match, outbound)
+	r := state.NewTreeRule(label, match, outbound)
 	r.Enabled = rs.Enabled
 	r.Num = copyNum(rs.Num)
 	r.DNS = state.CloneRuleDNS(rs.DNS)
+	r.SetRuleSetOptions(rs.SrsOptions)
 	return &r
 }
 

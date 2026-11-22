@@ -72,8 +72,8 @@ func TestExport10RootKeysAreDeclared(t *testing.T) {
 		}
 	}
 	var marker int
-	if err := json.Unmarshal(doc["lx_backup"], &marker); err != nil || marker != FormatVersion10 {
-		t.Errorf("lx_backup = %s, ожидалось %d", doc["lx_backup"], FormatVersion10)
+	if err := json.Unmarshal(doc["lx_backup"], &marker); err != nil || marker != FormatVersion11 {
+		t.Errorf("lx_backup = %s, ожидалось %d", doc["lx_backup"], FormatVersion11)
 	}
 	var by ExportedBy
 	if err := json.Unmarshal(doc["exported_by"], &by); err != nil || by.App != AppLauncher {

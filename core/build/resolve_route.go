@@ -122,7 +122,8 @@ type ResolvedRoute struct {
 //   - state         — v6 state (Rules с preset/inline/srs)
 //   - td            — TemplateData (presets с rule_set + routing rule)
 //   - dataDir       — для резолва local SRS paths (preset remote rule_set)
-//   - srsCachedPaths — map[user-rule-id → paths] для kind=srs (по пути на каждый URL правила)
+//   - srsCachedPaths — map[ссылка набора → путь к скачанному файлу] для kind=srs
+//     (CollectSrsCachedPaths; копия привязана к ссылке, а не к правилу)
 //
 // Возвращает ResolvedRoute. RuleSets дедуплицированы по tag (first-wins);
 // Rules в порядке state.Rules.
@@ -130,7 +131,7 @@ func ResolveRoute(
 	state *corestate.State,
 	td *template.TemplateData,
 	dataDir paths.DataDir,
-	srsCachedPaths map[string][]string,
+	srsCachedPaths map[string]string,
 	target template.TargetSpec,
 ) ResolvedRoute {
 	return ResolveRouteWithGlobals(state, td, dataDir, srsCachedPaths, target, nil)
@@ -145,7 +146,7 @@ func ResolveRouteWithGlobals(
 	state *corestate.State,
 	td *template.TemplateData,
 	dataDir paths.DataDir,
-	srsCachedPaths map[string][]string,
+	srsCachedPaths map[string]string,
 	target template.TargetSpec,
 	globalVars map[string]string,
 ) ResolvedRoute {
@@ -160,7 +161,7 @@ func ResolveRouteChecked(
 	state *corestate.State,
 	td *template.TemplateData,
 	dataDir paths.DataDir,
-	srsCachedPaths map[string][]string,
+	srsCachedPaths map[string]string,
 	target template.TargetSpec,
 	globalVars map[string]string,
 	finalTags map[string]bool,
@@ -334,10 +335,15 @@ func resolveInlineRouteRule(out *ResolvedRoute, rule corestate.Rule) {
 }
 
 // resolveSrsRouteRule — kind=srs → local rule_set (from cache) + route rule.
+//
+// Ссылки — RuleRefs (обход дерева тела, контракт 1.1.179). Сборка этой волны
+// SPEC 188 выпускает только ссылки корневого простого правила: `refs` в
+// под-правилах `logical` — правило пропускается с записью в журнал (выпуск
+// дерева — волна 3, TEMPLATE_LANG §6.13).
 func resolveSrsRouteRule(
 	out *ResolvedRoute,
 	rule corestate.Rule,
-	srsCachedPaths map[string][]string,
+	srsCachedPaths map[string]string,
 	emittedTags map[string]bool,
 	globalVars map[string]string,
 	finalTags map[string]bool,
@@ -349,7 +355,7 @@ func resolveSrsRouteRule(
 	}
 	sb := body.(*corestate.SrsBody)
 	id := corestate.StableRuleID(rule)
-	// state v8: список наборов — поле записи Refs (вид отдаёт его же).
+	// Ссылки правила — все ссылки дерева тела по порядку (вид отдаёт RuleRefs).
 	urls := sb.Refs
 	policy := RulePolicy(rule, globalVars)
 	skipRule := func(reason string) {
@@ -362,6 +368,15 @@ func resolveSrsRouteRule(
 			SkippedReason: reason,
 		})
 		debuglog.WarnLog("route resolve: srs rule %q skipped: %s", sb.Name, reason)
+	}
+	routeRule, err := rule.BodyMap()
+	if err != nil {
+		debuglog.WarnLog("route resolve: decode srs body: %v", err)
+		return
+	}
+	if corestate.BodyRefsNested(routeRule) {
+		skipRule("rule sets inside a rule group are not built yet")
+		return
 	}
 	// SPEC 185: в режиме remote наборы качает ядро — записи строятся по URL,
 	// кэш лаунчера не нужен. Недоступный download_detour снимает правило
@@ -377,13 +392,23 @@ func resolveSrsRouteRule(
 			remoteBodies = append(remoteBodies, rs)
 		}
 	}
-	paths, hasCache := srsCachedPaths[id]
+	// Копия набора привязана к ссылке (SPEC 188): путь берётся по самой
+	// ссылке, а не по номеру в списке правила. Правило — одна единица: либо
+	// закэшированы все его наборы, либо оно пропускается целиком (частичный
+	// набор молча менял бы смысл правила).
+	paths := make([]string, 0, len(urls))
 	if policy.Remote {
-		paths, hasCache = urls, len(urls) > 0
+		paths = append(paths, urls...)
+	} else {
+		for _, u := range urls {
+			p, ok := srsCachedPaths[u]
+			if !ok || p == "" {
+				break
+			}
+			paths = append(paths, p)
+		}
 	}
-	// Правило — одна единица: либо закэшированы все его наборы, либо оно
-	// пропускается целиком (частичный набор молча менял бы смысл правила).
-	if !hasCache || len(paths) != len(urls) {
+	if len(urls) == 0 || len(paths) != len(urls) {
 		skipRule("srs file not cached")
 		return
 	}
@@ -419,13 +444,9 @@ func resolveSrsRouteRule(
 	if len(tags) > 1 {
 		ruleSetRef = tags
 	}
-	// Тело записи (цель в форме sing-box) едет как есть, `rule_set` вписывает
-	// сборка по Refs — в состоянии его нет (ONE_NAMESPACE §1).
-	routeRule, err := rule.BodyMap()
-	if err != nil {
-		debuglog.WarnLog("route resolve: decode srs body: %v", err)
-		return
-	}
+	// Тело записи едет как есть без `refs` (ключа ядро не знает), `rule_set`
+	// вписывает сборка по ссылкам — в состоянии его нет (ONE_NAMESPACE §1).
+	corestate.StripBodyRefs(routeRule)
 	routeRule["rule_set"] = ruleSetRef
 	out.Rules = append(out.Rules, ResolvedRouteRule{
 		Body:    routeRule,

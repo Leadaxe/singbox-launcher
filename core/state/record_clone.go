@@ -46,6 +46,8 @@ func cloneRule(r Rule) Rule {
 		v := *r.Num
 		out.Num = &v
 	}
+	// Ссылки записи — старая форма (до v9): после NormalizeRuleRecord пусты,
+	// но входы до нормализации (бэкап) обязаны донести их до неё.
 	if len(r.Refs) > 0 {
 		out.Refs = append([]string(nil), r.Refs...)
 	}

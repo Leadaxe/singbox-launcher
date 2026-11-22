@@ -50,7 +50,7 @@ func Export10(s *state.State, opts ExportOptions) (*Backup10, []Warning, error) 
 	}
 
 	b := &Backup10{
-		LxBackup: FormatVersion10,
+		LxBackup: FormatVersion11,
 		ExportedBy: ExportedBy{
 			App:      AppLauncher,
 			Version:  opts.AppVersion,
@@ -224,14 +224,18 @@ func export10Source(src state.Source) (Source10, bool) {
 //
 // Копии, а не срез состояния: тело — json.RawMessage, и общий массив байт
 // означал бы, что правка правила в UI после экспорта меняет уже собранный
-// файл. Сама форма записи не трогается — это и есть смысл 1.0.
+// файл. Сама форма записи не трогается — это и есть смысл 1.0; копия лишь
+// приводится к норме 1.1 (`refs` в теле, SPEC 188), если состояние пришло в
+// память в обход загрузки.
 func export10Rules(rules []state.Rule) []state.Rule {
 	if len(rules) == 0 {
 		return nil
 	}
 	out := make([]state.Rule, 0, len(rules))
 	for _, r := range rules {
-		out = append(out, state.CloneRule(r))
+		c := state.CloneRule(r)
+		state.NormalizeRuleRecord(&c)
+		out = append(out, c)
 	}
 	return out
 }

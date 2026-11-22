@@ -375,8 +375,8 @@ func TestExport10FileShape(t *testing.T) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if v, _ := doc["lx_backup"].(float64); int(v) != FormatVersion10 {
-		t.Errorf("lx_backup = %v, ожидалось %d", doc["lx_backup"], FormatVersion10)
+	if v, _ := doc["lx_backup"].(float64); int(v) != FormatVersion11 {
+		t.Errorf("lx_backup = %v, ожидалось %d", doc["lx_backup"], FormatVersion11)
 	}
 	for _, key := range []string{"sources", "rules", "dns", "vars", "route", "warp"} {
 		if _, ok := doc[key]; !ok {
@@ -658,8 +658,8 @@ func assertStateEquivalent10(t *testing.T, want, got *state.State) {
 			t.Errorf("rules[%d]: %+v → %+v", i, w, g)
 			continue
 		}
-		if len(w.Refs) != len(g.Refs) {
-			t.Errorf("rules[%d] (%s): наборов srs %d → %d", i, w.Name, len(w.Refs), len(g.Refs))
+		if wr, gr := state.RuleRefs(w), state.RuleRefs(g); len(wr) != len(gr) {
+			t.Errorf("rules[%d] (%s): наборов srs %d → %d", i, w.Name, len(wr), len(gr))
 		}
 		// Тело сравнивается СЖАТЫМ: декодер 1.0 кладёт в запись сырые байты
 		// файла как есть (ловушка §7.3 — порядок ключей тела нормативен), а

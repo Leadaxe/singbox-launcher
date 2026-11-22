@@ -68,7 +68,7 @@ func TestDNSRuleSetRefsSurviveWhenTagIsEmitted(t *testing.T) {
 		Template: td,
 		Preset: PresetMergeContext{
 			DataDir:        paths.DataDir(execDir),
-			SrsCachedPaths: map[string][]string{srsID: {srsFile}},
+			SrsCachedPaths: map[string]string{"https://example.invalid/geosite-ads.srs": srsFile},
 			Rules:          []state.Rule{srsRule},
 			DNS: state.DNSOptions{
 				Servers: []state.DNSServer{

@@ -493,7 +493,7 @@ func corpusFormatAhead(raw []byte) bool {
 	if err := json.Unmarshal(raw, &head); err != nil {
 		return false
 	}
-	return head.LxBackup > FormatVersion10
+	return head.LxBackup > FormatVersion11
 }
 
 // loadCorpusRecordVars читает фикстуру объявлений шаблона кейса
@@ -784,12 +784,13 @@ func checkDNS(t *testing.T, dst *state.State, exp corpusExpectation) {
 
 // ruleRefs — все URL наборов srs-правила по порядку; у прочих kind — nil.
 //
-// state v8: наборы — поле записи, дедуплицированное конструктором.
+// Контракт 1.1.179: ссылки — `refs` простых правил дерева тела, их список
+// отдаёт state.RuleRefs (обход pre-order, без повторов).
 func ruleRefs(r state.Rule) []string {
 	if r.Kind != state.RuleKindSrs {
 		return nil
 	}
-	return r.Refs
+	return state.RuleRefs(r)
 }
 
 // checkFolders — папки собраны по имени, с тем же составом и порядком.

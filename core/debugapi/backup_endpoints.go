@@ -147,7 +147,7 @@ func (s *Server) handleBackupFormats(w http.ResponseWriter, r *http.Request) {
 	// writes и default совпадают; ключ default оставлен, чтобы агент,
 	// читавший его в окне двух писателей, не сломался на его пропаже.
 	writeJSON(w, http.StatusOK, map[string]any{
-		"reads":   []int{backup.FormatVersion, backup.FormatVersion10},
+		"reads":   []int{backup.FormatVersion, backup.FormatVersion10, backup.FormatVersion11},
 		"writes":  []string{backupFormatName10},
 		"default": backupFormatName10,
 	})

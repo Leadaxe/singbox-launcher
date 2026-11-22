@@ -1,7 +1,9 @@
 # CODEMAP 188 — карта кода под дерево условий
 
 Снято 23.11.2026 с `develop` (после cf619666). Адреса `файл:строка` — на этот
-снимок; после правок первой волны сдвигаются, имена функций — нет.
+снимок; после правок первой волны сдвигаются, имена функций — нет. Адреса
+`core/state`, `core/build` (карта кэша, `resolveSrsRouteRule`), `core/backup`
+(версии) и Debug API обновлены после волны 2 (хранение).
 
 ## 1. Реестр: типы и функции
 
@@ -9,37 +11,45 @@
 
 | Адрес | Что делает |
 |---|---|
-| `rule_types.go:41` `RuleKind` | `preset` / `inline` / `srs` |
-| `rule_types.go:72` `Rule` | запись `rules[]`: `Kind, ID, Ref, Name, Enabled, Num, Refs, Vars, SrsMode, UpdateIntervalHours, DownloadDetour, Body (RawMessage), DNS` |
-| `rule_types.go:136` `RuleDNS` | объект `dns` записи (camelCase): `enabled, serverTag, forceIpv4, blockHttps, fixedIps` |
-| `rule_types.go:159` `(*RuleDNS).IsZero` | опций нет — объект не пишется |
-| `rule_types.go:209` `InlineBody`, `:226` `SrsBody` | виды записи из `DecodeBody`; `SrsBody.Refs` — с записи |
-| `rule_types.go:260` `NewInlineRule` | единственный писатель тела inline: match ∪ цель, ключи по алфавиту |
-| `rule_types.go:278` `NewSrsRule` | писатель srs: `Refs` на запись (дедуп), тело = только цель |
-| `rule_types.go:293` `(*Rule).SetOutbound` | замена цели в сыром теле с сохранением порядка ключей |
-| `rule_types.go:362` `decodeObjectOrdered` | ключи объекта в порядке файла — для правок сырого JSON |
-| `rule_types.go:420` `outboundFromBody`, `:441` `isTargetKey` | цель тела: `outbound` / `action: reject` (+`method`) |
-| `rule_types.go:466` `(*Rule).DecodeBody` | единственный читатель; srs без `Refs` → ошибка `requires refs` (`:507`) |
-| `rule_types.go:526` `(*Rule).BodyMap` | тело картой как есть (сборка, UI) |
+| `rule_types.go:47` `RuleKind` | `preset` / `inline` / `srs` (у inline/srs вид выводится из дерева) |
+| `rule_types.go:79` `Rule` | запись `rules[]`: `Kind, ID, Ref, Name, Enabled, Num, Refs (старая форма, только чтение), Vars, SrsMode, UpdateIntervalHours, DownloadDetour, Body (RawMessage), DNS` |
+| `rule_types.go:143` `RuleDNS` | объект `dns` записи (camelCase): `enabled, serverTag, forceIpv4, blockHttps, fixedIps` |
+| `rule_types.go:166` `(*RuleDNS).IsZero` | опций нет — объект не пишется |
+| `rule_types.go:216` `InlineBody`, `:234` `SrsBody` | виды записи из `DecodeBody`; `SrsBody.Refs` — `RuleRefs` (все ссылки дерева) |
+| `rule_types.go:268` `NewInlineRule` | писатель тела inline: match ∪ цель, ключи по алфавиту |
+| `rule_types.go:275` `NewTreeRule` (волна 2) | тело-дерево ∪ цель, вид по дереву (`refs` есть — srs) |
+| `rule_types.go:302` `NewSrsRule` | писатель srs: `{"refs":[…], цель}` — `refs` первым ключом тела (дедуп) |
+| `rule_types.go:321` `(*Rule).SetOutbound` | замена цели в сыром теле с сохранением порядка ключей |
+| `rule_types.go:390` `decodeObjectOrdered` | ключи объекта в порядке файла — для правок сырого JSON |
+| `rule_types.go:448` `outboundFromBody`, `:469` `isTargetKey` | цель тела: `outbound` / `action: reject` (+`method`) |
+| `rule_types.go:494` `(*Rule).DecodeBody` | единственный читатель; srs без ссылок (`RuleRefs`) → ошибка `requires refs` |
+| `rule_types.go:554` `(*Rule).BodyMap` | тело картой как есть, **с `refs`** (сборка снимает `StripBodyRefs`) |
+| `rule_tree.go:32` (волна 2) | константы ключей формы записи и логики: `refs`, `type`, `mode`, `rules`, `invert`; `RuleKeyRefs` |
+| `rule_tree.go:47` `IsLogicalRule`, `:58` `WalkRuleTree` | узел `logical`; обход pre-order с путём индексов `rules[]` |
+| `rule_tree.go:113` `BodyRefs`, `:126` `BodyRefsNested`, `:141` `StripBodyRefs` | ссылки дерева (pre-order, дедуп); есть ли ссылки ниже корня; снятие `refs` со всех узлов |
+| `rule_tree.go:155` `RuleRefs` | **единственный читатель ссылок правила**: дерево, а без ссылок в дереве — `Refs` записи |
+| `rule_tree.go:185` `NormalizeRuleRecord`, `:229` `NormalizeRuleRecords` | подъём `refs` записи в тело (простой корень — первым ключом; `logical` — обёртка `and`), дерево главнее, `kind` из дерева (srs без ссылок и без условий остаётся srs) |
+| `rule_tree.go:348` `ruleTreeFlatRefs` | тело = только `refs` + цель (UI-вид «наборы») |
 | `rule_identity.go:38` `StableRuleID` | identity: preset → `Ref`, inline/srs → `sanitize(Name)` (+ `-h8` имени при потере символов) |
 | `rule_identity.go:64` `LegacyRuleID` | identity до хэша (до 22.11.2026) — для миграции ссылок |
-| `rule_identity.go:94` `MigrateRuleSetTagRefs` | **образец будущей миграции**: `user:<legacy>` → `user:<stable>` в телах inline и DNS-правил `user`; неоднозначный старый id не трогает |
+| `rule_identity.go:94` `MigrateRuleSetTagRefs` | **образец будущей миграции**: `user:<legacy>` → `user:<stable>` в телах inline и DNS-правил `user`; неоднозначный старый id не трогает; число наборов — `RuleRefs` (`:110`) |
 | `rule_identity.go:146` `renameRuleSetRefs` | замена тегов в `rule_set` карты и в `rules[]` под-правил |
 | `rule_identity.go:187` `SrsRuleSetTag` | **нынешняя схема тегов**: `user:<id>`, `user:<id>:N` |
 | `rule_identity.go:241` `CarryRuleMetadata` | провоз `Rule.ID` по `StableRuleID` при сохранении визарда |
-| `rule_set_options.go:63` `SetRuleSetOptions` | у `kind: inline` настройки наборов очищаются |
-| `record_clone.go:14` `CloneRule` / `:43` `cloneRule` | копия записи (копирует `Refs`) |
+| `rule_set_options.go:63` `SetRuleSetOptions` | у правила без ссылок (`RuleRefs` пуст, не preset) настройки наборов очищаются |
+| `record_clone.go:14` `CloneRule` / `:43` `cloneRule` | копия записи (копирует `Refs` старой формы — до нормализации) |
 | `rule_order.go:254` `NormalizeRuleOrder` | ось: сортировка по `Num` + засев неотчуждаемых пресетов; порядок для тегов брать отсюда |
-| `disk_v8.go:33` `SchemaVersionV8 = 8` | мажор файла; `:42` `diskStateV8`, `:56` `parseV8` |
-| `disk_v8.go:112` | вызов `MigrateRuleSetTagRefs` при чтении — место для подъёма `refs` и новой миграции |
-| `disk_v8.go:115` | `legacyCustomRulesFromV6` — построение UI-вида |
-| `load_router.go:32` `Load`, `:132` `parseWithContext` | `meta >= 8` → `parseV8` (`:143`): файл новее разбирается как v8 молча |
-| `schema_gate.go:28` `SchemaMajor`, `:90` `CheckSchemaCompatible` | гейт копирования/PATCH состояния машин: мажор выше — отказ |
-| `save.go:41`, `:136` | `Save`/`marshalDisk` пишут `SchemaVersionV8` |
-| `state.go:43` `SchemaVersion` | алиас текущего мажора |
-| `load_v6.go:214` `legacyCustomRulesFromV6` | запись → `CustomRule` для UI; у srs `RuleSet` по URL (`:249-257`), в `Rule` — заглушка `rule_set` с тегами `SrsRuleSetTag` (`:262-275`), `Params` не восстанавливаются |
+| `disk_v8.go:35` `SchemaVersionV8 = 8`, `:42` `SchemaVersionV9 = 9` | мажоры файла (v9 — `refs` в теле); `diskStateV8`, `:66` `parseV8` (v8 и v9) |
+| `disk_v8.go:122` | `NormalizeRuleRecords` при чтении (подъём `refs`, вид) |
+| `disk_v8.go:129` | вызов `MigrateRuleSetTagRefs` (ссылки через `RuleRefs`) — место новой миграции волны 3 |
+| `disk_v8.go:132` | `legacyCustomRulesFromV6` — построение UI-вида |
+| `load_router.go:32` `Load`, `:132` `parseWithContext` | `meta >= 8` → `parseV8` (`:143`) |
+| `schema_gate.go:29` `SchemaMajor = 9`, `CheckSchemaCompatible` | гейт копирования/PATCH состояния машин: мажор выше — отказ |
+| `save.go:41`, `:136` | `Save`/`marshalDisk` пишут `SchemaVersionV9` (`meta.schema` прежний `sources_v8`) |
+| `state.go:45` `SchemaVersion` | алиас текущего мажора (9) |
+| `load_v6.go:214` `legacyCustomRulesFromV6` | запись → `CustomRule` для UI; srs не «наборы + выход» (`:245`, `ruleTreeFlatRefs`) — телом целиком (Custom JSON со ссылками); иначе `RuleSet` по URL, в `Rule` — заглушка `rule_set` с тегами `SrsRuleSetTag`, `Params` не восстанавливаются |
 | `legacy_types.go:43` `CustomRule.Params` | UI-состояние типа; на диск v8 не попадает (см. §4.5) |
-| `migration_v7_to_v8.go:160` `migrateV8Rule` | v7→v8: `refs` на запись (`:194-205`) |
+| `migration_v7_to_v8.go:160` `migrateV8Rule` | v7→v8: `refs` на запись (`:194-205`); в тело их поднимает `parseV8` |
 | `dns_options.go:70-74` | `DNSRuleKindPreset`, `DNSRuleKindUser` — свои DNS-правила |
 
 ### Сборка (`core/build`)
@@ -48,24 +58,24 @@
 |---|---|
 | `resolve_route.go:36` `ResolvedRouteRuleSet` | запись `rule_set`: `Tag, Body, Source, SrsID, Skipped, Enabled` |
 | `resolve_route.go:71` `ResolvedRouteRule` | правило маршрута: `Body, Source, InlineID/SrsID, Name, DNS, Num, Enabled` |
-| `resolve_route.go:159` `ResolveRouteChecked` | обход оси, `emittedTags` (first-wins, `:178`), диспетчер по `Kind` (`:186-195`) |
+| `resolve_route.go:160` `ResolveRouteChecked` | обход оси, `emittedTags` (first-wins), диспетчер по `Kind`; `srsCachedPaths map[ref]path` |
 | `resolve_route.go:201` `resolvePresetRouteRule` | наборы пресета (`<preset_id>:<tag>`), висячие → `cleanDanglingRuleSetInRule` (`:287`) |
-| `resolve_route.go:314` `resolveInlineRouteRule` | тело как есть; **рукописный `rule_set` без проверки висячих** |
-| `resolve_route.go:337` `resolveSrsRouteRule` | теги `SrsRuleSetTag(id,i)`; кэш по `srsCachedPaths[StableRuleID]` (`:380`), «всё или ничего» (`:386`); `routeRule["rule_set"]` **перезаписывает** рукописный (`:429`) |
+| `resolve_route.go:315` `resolveInlineRouteRule` | тело как есть; **рукописный `rule_set` без проверки висячих** |
+| `resolve_route.go:343` `resolveSrsRouteRule` | ссылки `RuleRefs`; `refs` ниже корня → пропуск с логом (`:377`, граница волны 2); теги `SrsRuleSetTag(id,i)`; кэш по ссылке `srsCachedPaths[u]` (`:404`), «всё или ничего»; `StripBodyRefs` (`:449`); `routeRule["rule_set"]` **перезаписывает** рукописный |
 | `resolve_route.go:447` `ruleNum` | номер оси, nil → `DefaultRuleNum` |
-| `rule_set_policy.go:34` `ResolveRuleSetPolicy`, `:62` `RulePolicy` | local/remote/интервал/detour правила; `file://` → local (`:64` по `rule.Refs`) |
+| `rule_set_policy.go:34` `ResolveRuleSetPolicy`, `:62` `RulePolicy` | local/remote/интервал/detour правила; `file://` → local (`:64` по `RuleRefs`) |
 | `rule_set_policy.go:83` `remoteRuleSetBody` | `type: remote` запись набора |
-| `rule_set_policy.go:106` `RuleSetFetch`, `:121` `RuleSetFetches` | что качает лаунчер; srs — по `rule.Refs` (`:155-158`); имя файла `srsTagFromURLLocal(url)` |
-| `rule_set_policy.go:193` `DropUncachedSrsPaths` | снимает правило из карты кэша, если хоть одного файла нет |
+| `rule_set_policy.go:106` `RuleSetFetch`, `:121` `RuleSetFetches` | что качает лаунчер; srs — по `RuleRefs` (`:155-158`); имя файла `srsTagFromURLLocal(url)` |
+| `rule_set_policy.go:193` `DropUncachedSrsPaths` | снимает из карты кэша ссылку без файла (правило без хоть одной копии выпадает в сборке) |
 | `preset_merge.go:45` `convertPresetRuleSetRemoteToLocal` | набор пресета → local путь |
 | `preset_merge.go:101` `cleanDanglingRuleSetInRule` | висячие теги: часть снять, все висячие → правило выпало (SPEC 153) |
 | `preset_merge.go:232` `srsTagFromURLLocal` | = `srstag.TagFromURL` |
-| `preset_merge.go:235` `PresetMergeContext` | контекст сборки: `Presets, Rules, DNS, SrsCachedPaths (map[id][]path), DataDir, Target, GlobalVars, TemplateVars, PresetNodes, FinalOutboundTags` |
+| `preset_merge.go:235` `PresetMergeContext` | контекст сборки: `Presets, Rules, DNS, SrsCachedPaths (map[ref]path, :242), DataDir, Target, GlobalVars, TemplateVars, PresetNodes, FinalOutboundTags` |
 | `preset_merge.go:342` `MergePresetsIntoRoute` | эмиссия `route.rule_set` / `route.rules`; теги шаблона из `routeRaw` (`:366-373`) |
 | `preset_merge.go:436` `MergePresetsIntoDNS` | DNS; зеркала `ruleDNSMirrorsForMerge` (`:450`), вставка (`:526`) |
 | `preset_merge.go:553` / `:720` `cleanDanglingDNSRule` | висячие `rule_set` в DNS-правилах (в т.ч. `user`) |
 | `preset_merge.go:647` `CollectEmittedRouteRuleSetTags` | множество выпущенных тегов (третий вызов `ResolveRouteChecked`, `:688`) |
-| `preset_merge.go:811` `CollectSrsCachedPaths` | **карта `StableRuleID → []path` по порядку `Refs`**; имя файла от URL (`:835-842`) |
+| `preset_merge.go:810` `CollectSrsCachedPaths` | **карта «ссылка → путь»** по `RuleRefs` всех srs-правил (волна 2); имя файла от URL |
 | `preset_expand.go:37` `TagSeparator`, `:222` `ExpandPresetForNodes` | префикс `<preset_id>:` у тегов пресета |
 | `preset_expand.go:944-945` | имена списков `route_rule_conditions` / `dns_rule_conditions` |
 | `route_merge.go:173` `ResourceNameForSRS` | имя ресурса удалённой машины = `srstag.FileName(tag от URL)` |
@@ -105,34 +115,36 @@
 | Адрес | Что делает |
 |---|---|
 | `types.go:37` `FormatVersion = 1` | 0.x |
-| `backup10.go:38` `FormatVersion10 = 2`, `:42` `Backup10` | формат 1.0; `Rules []state.Rule` как в состоянии |
-| `file.go:154` `Parse` | диспетчер по `lx_backup`: 1, 2, **иначе отказ** `backup format v%d is newer than supported v%d — update the app` (`:184-186`) |
+| `backup10.go:38` `FormatVersion10 = 2`, `:49` `FormatVersion11 = 3`, `Backup10` | формат 1.0 / 1.1 (`refs` в теле); `Rules []state.Rule` как в состоянии |
+| `file.go:154` `Parse` | диспетчер по `lx_backup`: 1, 2 и 3 (`:175`, один разбор `decodeTolerant10`), **иначе отказ** `backup format v%d is newer than supported v3 — update the app` |
 | `file_keys_10.go:81` `rule10Keys` | известные ключи записи — из тегов `state.Rule` (поле `Refs` должно остаться) |
-| `export10.go:41` `Export10` (пишет `LxBackup: FormatVersion10`, `:53`), `:228` `export10Rules` | экспорт копией |
-| `import10.go:33` `decode10`, `:316` `decode10Rule` | ввоз записи правила копией |
+| `export10.go:41` `Export10` (пишет `LxBackup: FormatVersion11`, `:53`), `:230` `export10Rules` | экспорт копией + `NormalizeRuleRecord` (`:237`) |
+| `import10.go:33` `decode10`, `:316` `decode10Rule` | ввоз записи правила копией + `NormalizeRuleRecord` (`:323`); 0.x `kind: json` идёт сюда же |
+| `import.go:343` `Import10` | отказ на `lx_backup` > 3 (`:350`) |
 | `import10.go:335` `checkImportedRuleTargets`, `:370` `ruleTarget10` | цель через `DecodeBody` |
 | `import10.go:431` `splitRuleBodies`, `:479` `ruleBodyPresent` | норма «одно правило — одно тело» |
 | `legacy_read_0x.go:408` `importRule` | 0.x → `NewInlineRule` / `NewSrsRule` (`:443`, `:451`) |
 | `import.go:314` `Import`; `:416-425`, `:516-518` | `rules[]` — полная замена |
-| `corpus_test.go:373` `TestBackupCorpus` | раннер `contract/corpus/backup`; файл с `lx_backup` выше читаемого — пропуск кейса |
+| `corpus_test.go:373` `TestBackupCorpus` | раннер `contract/corpus/backup`; файл с `lx_backup` выше 3 — пропуск кейса; `refs` правила — `state.RuleRefs` |
 | `schema_test.go:32` `schemaPath10` | писатель против `backup.schema.json` |
 
 ### Правка состояния: Debug API
 
 | Адрес | Что делает |
 |---|---|
-| `core/debugapi/state_endpoints.go:184` `stateRulesWith` | GET/PATCH `/state/rules`; проверка `DecodeBody` (`:210`), replace/append (`:228-241`) |
+| `core/debugapi/state_endpoints.go:184` `stateRulesWith` | GET/PATCH `/state/rules`; `NormalizeRuleRecord` + проверка `DecodeBody` (`:213`), replace/append |
+| `core/debugapi/backup_endpoints.go:150` | `reads`: 1, 2, 3 |
 | `core/debugapi/state_crud_endpoints.go:10-11` | POST/DELETE `/state/rules` → `stateedit` |
 | `core/debugapi/server.go:275`, `remote_endpoints.go:112` | регистрация локальной и машинной точек |
-| `core/stateedit/rules.go:64` `AddRule` | проверка тела и цели, номер оси |
-| `core/stateedit/servers.go:654` `nameRefs` | кто ссылается на тег (читает `Refs`) |
+| `core/stateedit/rules.go:64` `AddRule` | `NormalizeRuleRecord` (`:67`), проверка тела и цели, номер оси |
+| `core/stateedit/servers.go:654` `nameRefs` | кто ссылается на тег: цель корня тела (`outbound`), ссылок наборов не читает |
 
 ### Загрузка наборов и сборщик мусора
 
 | Адрес | Что делает |
 |---|---|
 | `core/srs_refresh.go:104` | цикл обновления берёт `ctx.Preset.RuleSetFetches()` |
-| `core/config_service.go:404` `collectAllStageRuleSetTags` | keep-лист файлов для GC; srs по `r.Refs` (`:471-482`) |
+| `core/config_service.go:404` `collectAllStageRuleSetTags` | keep-лист файлов для GC; srs по `RuleRefs` (`:474-485`) |
 | `core/config_service_context.go:85-92` | контекст сборки сервиса: `CollectSrsCachedPaths` + `DropUncachedSrsPaths` |
 | `core/services/srs_downloader.go:341` `GetSRSEntries` | записи для кнопки `upd` из сырых `rule_set` |
 
@@ -143,10 +155,10 @@
 | `rule_state.go:31` `RuleState` | `Rule (TemplateSelectableRule), Enabled, SelectedOutbound, Num, DNS, SrsOptions` |
 | `core/template/loader.go:179` `TemplateSelectableRule` | `Label, Rule (map), Rules, RuleSets ([]RawMessage), DefaultOutbound, HasOutbound, Params (:208)` |
 | `wizard_state_file.go:119` `PersistedCustomRuleToRuleState`, `:152` `ToPersistedCustomRule` | legacy-вид ↔ модель |
-| `wizard_state_file.go:190` `DetermineRuleType` | тип по ключам: ip / домены / процессы / `rule_set` / иначе raw |
+| `wizard_state_file.go:190` `DetermineRuleType` | тип по ключам: `refs` в дереве → raw (`:197`, волна 2) / ip / домены / процессы / `rule_set` / иначе raw |
 | `preset_ref_sync.go:31` `EmitStateRulesWithoutOrder`, `:65` `EmitStateRulesInAxisOrder` | модель → `[]state.Rule` |
 | `preset_ref_sync.go:128` `RuleOrderFromAxis`, `:189` `buildCustomRuleQueue` | сопоставление слотов по `StableRuleID` |
-| `preset_ref_sync.go:252` `customRuleStateToV6Rule` | **модель → запись**: есть remote `RuleSets` → `NewSrsRule`, иначе `NewInlineRule`; `Params` не переносятся |
+| `preset_ref_sync.go:252` `customRuleStateToV6Rule` | **модель → запись**: есть remote `RuleSets` → `NewSrsRule`, иначе `NewTreeRule` (`:290`, вид по дереву, настройки наборов); `Params` не переносятся |
 
 ### UI: окно правила (`ui/configurator/dialogs`)
 
@@ -201,7 +213,7 @@
 | `tabs/dns_unified_rules.go:169` `buildRuleDNSMirrorRow` | строка «📎 имя · опции» — сюда ⚠ |
 | `tabs/dns_user_rules.go:525` `collectAllRuleSetTags` | теги для формы своих DNS-правил: только пресеты; `user:` не предлагаются (`:567-574`) |
 | `business/create_config.go:195` | `PresetMergeContext` визарда; `:303` `routeConfigFromModel` (legacy `RouteRule.RuleSets`) |
-| `presentation/presenter_save.go:549` `modelHasRuleSetFiles` | нужен ли ресурс-стор машине — по `Rule.RuleSets` |
+| `presentation/presenter_save.go:550` `modelHasRuleSetFiles` | нужен ли ресурс-стор машине — по `refs` в теле (`:563`) и `Rule.RuleSets` |
 
 ## 2. Кто кого зовёт
 
@@ -209,7 +221,8 @@
 
 ```
 state.Load (load_router.go:32)
- └ parseWithContext → parseV8 (disk_v8.go:56)
+ └ parseWithContext → parseV8 (disk_v8.go:66)
+    ├ NormalizeRuleRecords (rule_tree.go:229)          — refs записи → тело, kind
     ├ MigrateRuleSetTagRefs (rule_identity.go:94)
     └ legacyCustomRulesFromV6 (load_v6.go:214)            → UI-вид
 
@@ -254,7 +267,7 @@ ShowAddRuleDialog (add_rule_dialog.go:78)
 
 ```
 экспорт: Export10 (export10.go:41) → export10Rules (:228) — копии записей
-импорт:  Parse (file.go:154) → decode10 (import10.go:33) → decode10Rule (:316), splitRuleBodies (:431)
+импорт:  Parse (file.go:154) → decode10 (import10.go:33) → splitRuleBodies → decode10Rule (:316, NormalizeRuleRecord)
          → Import (import.go:314): rules[] замена → checkImportedRuleTargets (import10.go:335)
 0.x:     importRule (legacy_read_0x.go:408) → NewInlineRule / NewSrsRule
 Debug API: stateRulesWith (state_endpoints.go:184) / stateedit.AddRule (rules.go:64)
@@ -264,8 +277,8 @@ Debug API: stateRulesWith (state_endpoints.go:184) / stateedit.AddRule (rules.go
 
 | Каталог | Раннер | Что сверяет |
 |---|---|---|
-| `contract/corpus/rule_dns/` (11 кейсов) | `core/build/contract_rule_dns_test.go:40` `TestContractCorpusRuleDNS` | запись → `ResolveRouteWithGlobals` → `RuleDNSMirrors`; **матчер снимается** (ключи `rule_dns_mirror_match`), сверяются действия. Кэш srs — `srsCached[StableRuleID]` (`:73-80`) |
-| `contract/corpus/backup/` | `core/backup/corpus_test.go:373` `TestBackupCorpus` | файл → `Parse` → `Import` → ожидания (`refs` правила — `corpusRuleExpectation.Refs`) |
+| `contract/corpus/rule_dns/` (11 кейсов) | `core/build/contract_rule_dns_test.go:40` `TestContractCorpusRuleDNS` | запись → `NormalizeRuleRecord` → `ResolveRouteWithGlobals` → `RuleDNSMirrors`; **матчер снимается** (ключи `rule_dns_mirror_match`), сверяются действия. Кэш srs — по ссылке `srsCached[ref]` |
+| `contract/corpus/backup/` | `core/backup/corpus_test.go:373` `TestBackupCorpus` | файл → `Parse` → `Import` → ожидания (`refs` правила — `corpusRuleExpectation.Refs` против `state.RuleRefs`) |
 | `contract/corpus/template/` | `core/build/contract_*_test.go` | язык шаблона |
 
 Регенерация зеркала: `go test ./core/build -run TestContractCorpusRuleDNS -update-rule-dns`.
@@ -275,7 +288,7 @@ Debug API: stateRulesWith (state_endpoints.go:184) / stateedit.AddRule (rules.go
 ### 4.1 Теги наборов сегодня
 
 `user:<StableRuleID>` для первой ссылки, `user:<id>:N` для N-й
-(`rule_identity.go:187`). Ссылки на эти теги текстом живут в телах inline-правил
+(`rule_identity.go:187`); N — позиция в `RuleRefs` (после волны 2). Ссылки на эти теги текстом живут в телах inline-правил
 (Custom JSON) и своих DNS-правил; их переписывает `MigrateRuleSetTagRefs` при
 каждом чтении (`disk_v8.go:112`). Теги пресетов — `<preset_id>:<tag>`
 (`preset_expand.go:37`); шаблон тегов `rule_set` в `route` сейчас не несёт.
@@ -284,8 +297,8 @@ Debug API: stateRulesWith (state_endpoints.go:184) / stateedit.AddRule (rules.go
 
 Имя файла — `srstag.TagFromURL(ref)` = `<basename>-<h8(url)>[.json]` + `.srs`,
 от тега правила **не зависит** (issue #77, `preset_merge.go:786-842`). Смена
-тегов правил перекачки не вызывает. Привязка «правило → файлы» сейчас
-позиционная: `srsCachedPaths[StableRuleID][i]` ↔ `Refs[i]`.
+тегов правил перекачки не вызывает. Привязка «правило → файлы» после волны 2
+— по ссылке: `srsCachedPaths[ref]`, позиции нет.
 
 ### 4.3 Рукописный `rule_set`
 
@@ -314,12 +327,12 @@ Fixed = копия матчера + `query_type` / `ip_version` / `answer`. Яд
 
 ### 4.6 Версии форматов
 
-- `state.json`: `meta.version` = 8; читатель берёт `>= 8` как v8 молча;
-  `CheckSchemaCompatible` отказывает на мажоре выше — только при переносе и
-  PATCH состояния машин.
-- бэкап: `lx_backup` (1 — 0.x, 2 — 1.0); значение выше — отказ всего файла
-  (`file.go:184`), BACKUP.md §8. Схема `backup.schema.json` держит
-  `lx_backup: const 2`.
+- `state.json`: `meta.version` = 9 (после волны 2; 8 — `refs` на записи);
+  читатель берёт `>= 8` одним разбором; `CheckSchemaCompatible` отказывает на
+  мажоре выше 9 — только при переносе и PATCH состояния машин.
+- бэкап: `lx_backup` (1 — 0.x, 2 — 1.0, 3 — 1.1, `refs` в теле); экспорт пишет
+  3; значение выше 3 — отказ всего файла, BACKUP.md §8. Схема
+  `backup.schema.json` — `lx_backup: enum [2, 3]` (волна 1).
 
 ### 4.7 Контракт: нумерация
 

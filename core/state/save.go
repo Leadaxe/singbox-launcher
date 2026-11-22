@@ -37,8 +37,8 @@ func (s *State) Save(path string) error {
 	// SPEC 117 (W4): обратного синка legacy → canonical больше нет. Save
 	// сериализует ТОЛЬКО canonical (s.Sources/s.Directions/...); s.ParserConfig
 	// — read-only Load-проекция, Save её не читает. Все мутации обязаны идти
-	// в canonical-поля. SPEC 127: единственный формат записи — v8.
-	s.Version = SchemaVersionV8
+	// в canonical-поля. SPEC 188: единственный формат записи — v9.
+	s.Version = SchemaVersionV9
 
 	// SPEC 058-R-N: backup перед первым перезаписыванием когда outbounds
 	// содержат referenced entries (post-migration shape). Gate idempotent
@@ -118,7 +118,7 @@ func (s *State) MarshalV8() ([]byte, error) {
 // marshalDisk — сериализация State в canonical (v8) shape (SPEC 127).
 //
 //	{
-//	  "meta":       { version: 8, schema: "sources_v8", ... },
+//	  "meta":       { version: 9, schema: "sources_v8", ... },
 //	  "sources":    [ {kind, tag, enabled, ...} ],
 //	  "directions": [ ... ],
 //	  "rules":      [ {kind, ref|name, enabled, num, refs|vars, body} ],
@@ -133,7 +133,7 @@ func (s *State) MarshalV8() ([]byte, error) {
 func (s *State) marshalDisk() ([]byte, error) {
 	out := diskStateV8{
 		Meta: MetaSection{
-			Version:   SchemaVersionV8,
+			Version:   SchemaVersionV9,
 			Schema:    SchemaNameV8,
 			Comment:   s.Comment,
 			CreatedAt: s.CreatedAt.Format(time.RFC3339),
