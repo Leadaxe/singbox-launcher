@@ -147,6 +147,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		table: table,
 		app:   app,
 		goos:  model.Target.Normalized().GOOS,
+		wheel: components.NewWheelThrough(),
 		onChange: func() {
 			if refreshState != nil {
 				refreshState()
@@ -227,7 +228,11 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		return ruleWithTarget(m, selectedOutbound())
 	}
 
-	dnsTab := newRuleDNSTab(model, initialDNS, initialBody, ctx.changed)
+	dnsWheel := components.NewWheelThrough()
+	dnsTab := newRuleDNSTab(model, initialDNS, initialBody, dnsWheel, ctx.changed)
+	// Блок наборов — выбор режима, период, detour: своей прокрутки в нём нет,
+	// колесо над ним целиком отдаётся форме; прячется обёртка вместе со слоем.
+	srsOptionsRow := ctx.wheel.Wrap(srsOptionsForm.Box)
 
 	var confirmButton *widget.Button
 	refreshState = func() {
@@ -238,10 +243,10 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		dnsTab.update(body)
 		refs := corestate.BodyRefs(body)
 		if len(refs) > 0 {
-			srsOptionsForm.Box.Show()
+			srsOptionsRow.Show()
 			srsOptionsForm.SetModeLocked(ruleRefsHaveFile(refs))
 		} else {
-			srsOptionsForm.Box.Hide()
+			srsOptionsRow.Hide()
 		}
 		if confirmButton == nil {
 			return
@@ -341,17 +346,21 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		dialogWindow.Close()
 	})
 
-	ruleNameBlock := container.NewVBox(widget.NewLabel(locale.T("Rule Name:")), labelEntry)
+	ruleNameBlock := container.NewVBox(widget.NewLabel(locale.T("Rule Name:")), wheelEntry(ctx.wheel, labelEntry))
 	formContent := container.NewVBox(
 		formHolder,
 		widget.NewSeparator(),
 		widget.NewLabel(locale.T("Direction:")),
 		outboundSelect,
-		srsOptionsForm.Box,
+		srsOptionsRow,
 	)
-	formTabItem := container.NewTabItem(locale.T("Form"), components.WrapInScrollWithGutter(formContent))
+	formScroll := components.WrapInScrollWithGutter(formContent)
+	ctx.wheel.SetScroll(formScroll)
+	dnsScroll := components.WrapInScrollWithGutter(dnsTab.box)
+	dnsWheel.SetScroll(dnsScroll)
+	formTabItem := container.NewTabItem(locale.T("Form"), formScroll)
 	rawTabItem := container.NewTabItem(locale.T("JSON"), components.WrapInScrollWithGutter(rawTabEntry.Object()))
-	dnsTabItem := container.NewTabItem(locale.T("DNS"), components.WrapInScrollWithGutter(dnsTab.box))
+	dnsTabItem := container.NewTabItem(locale.T("DNS"), dnsScroll)
 
 	// Preview — что правило даёт в конфиге, тем же кодом, что сборка.
 	previewView := fynewidget.NewJSONView("")

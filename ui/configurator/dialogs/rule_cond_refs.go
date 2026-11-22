@@ -44,7 +44,7 @@ func newRefsField(ctx *ruleFormCtx, label string, initial []string, onChange fun
 	f.entry = widget.NewMultiLineEntry()
 	f.entry.SetPlaceHolder(locale.T(ruleRefsPlaceholderText))
 	f.entry.Wrapping = fyne.TextWrapWord
-	f.entry.SetMinRowsVisible(3)
+	f.entry.SetMinRowsVisible(ruleEntryRows)
 	f.entry.SetText(strings.Join(initial, "\n"))
 	f.entry.OnChanged = func(string) {
 		if onChange != nil {
@@ -66,7 +66,7 @@ func newRefsField(ctx *ruleFormCtx, label string, initial []string, onChange fun
 	hint.Importance = widget.LowImportance
 	f.box = container.NewVBox(
 		container.NewBorder(nil, nil, nil, container.NewHBox(layout.NewSpacer(), f.add, f.help), title),
-		f.entry,
+		wheelEntry(ctx.wheel, f.entry),
 		hint,
 	)
 	return f

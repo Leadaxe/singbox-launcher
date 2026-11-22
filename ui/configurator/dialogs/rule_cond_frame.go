@@ -22,6 +22,7 @@ import (
 	"singbox-launcher/core/config/registry"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -99,9 +100,39 @@ type ruleFormCtx struct {
 	// хоста лаунчера: по ней рамка с `platforms` пишет «не действует».
 	goos     string
 	onChange func()
+	// wheel — колесо над полями отдаётся прокрутке вкладки Form (как на
+	// вкладке Settings); прокрутку задаёт окно, когда она создана.
+	wheel *components.WheelThrough
 }
 
 func (c *ruleFormCtx) window() fyne.Window { return c.win }
+
+// ruleEntryRows — видимых строк у многострочных полей окна правила.
+const ruleEntryRows = 3
+
+// wheelEntry — поле под слоем колеса формы (components.WheelThrough, как на
+// вкладке Settings): колесо над полем двигает форму, а не уходит во
+// внутреннюю прокрутку поля. Многострочное поле забирает колесо, только когда
+// строк больше, чем видно. Звать после того, как полю задан OnChanged.
+func wheelEntry(w *components.WheelThrough, e *widget.Entry) fyne.CanvasObject {
+	if w == nil {
+		return e
+	}
+	if !e.MultiLine {
+		return w.Wrap(e)
+	}
+	obj, update := w.WrapWhile(e, func() bool {
+		return strings.Count(e.Text, "\n")+1 <= ruleEntryRows
+	})
+	prev := e.OnChanged
+	e.OnChanged = func(s string) {
+		if prev != nil {
+			prev(s)
+		}
+		update()
+	}
+	return obj
+}
 
 func (c *ruleFormCtx) changed() {
 	if c.onChange != nil {
@@ -311,9 +342,9 @@ func newCondField(ctx *ruleFormCtx, k registry.RuleConditionKey, initial interfa
 		}
 		f.entry.SetText(strings.Join(condValueStrings(initial), ", "))
 		f.entry.OnChanged = func(string) { onChange() }
-		return f, labeled(f.entry)
+		return f, labeled(wheelEntry(ctx.wheel, f.entry))
 	case condFieldEnumMulti:
-		f := newEnumField(k, condValueStrings(initial), onChange)
+		f := newEnumField(ctx.wheel, k, condValueStrings(initial), onChange)
 		return f, labeled(f.box)
 	case condFieldProcesses:
 		f := &processesField{list: newProcessListField(ctx.app, condValueStrings(initial), onChange)}
@@ -321,13 +352,13 @@ func newCondField(ctx *ruleFormCtx, k registry.RuleConditionKey, initial interfa
 	default: // lines, cidr_lines
 		f := &linesField{entry: widget.NewMultiLineEntry()}
 		f.entry.Wrapping = fyne.TextWrapWord
-		f.entry.SetMinRowsVisible(3)
+		f.entry.SetMinRowsVisible(ruleEntryRows)
 		if k.Placeholder != "" {
 			f.entry.SetPlaceHolder(locale.T(k.Placeholder))
 		}
 		f.entry.SetText(strings.Join(condValueStrings(initial), "\n"))
 		f.entry.OnChanged = func(string) { onChange() }
-		return f, labeled(f.entry)
+		return f, labeled(wheelEntry(ctx.wheel, f.entry))
 	}
 }
 
@@ -436,7 +467,7 @@ type enumField struct {
 	box   *fyne.Container
 }
 
-func newEnumField(k registry.RuleConditionKey, initial []string, onChange func()) *enumField {
+func newEnumField(wheel *components.WheelThrough, k registry.RuleConditionKey, initial []string, onChange func()) *enumField {
 	f := &enumField{vals: append([]string(nil), k.Values...)}
 	known := map[string]bool{}
 	for _, v := range k.Values {
@@ -463,7 +494,7 @@ func newEnumField(k registry.RuleConditionKey, initial []string, onChange func()
 		f.other.SetPlaceHolder(locale.T("Other values, comma-separated"))
 		f.other.SetText(strings.Join(extra, ", "))
 		f.other.OnChanged = func(string) { onChange() }
-		f.box.Add(f.other)
+		f.box.Add(wheelEntry(wheel, f.other))
 	}
 	return f
 }

@@ -24,6 +24,7 @@ import (
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/nodewarn"
+	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -48,6 +49,7 @@ type ruleDNSTab struct {
 	server        *widget.Select
 	serverOptions []string
 	fixed         *widget.Entry
+	fixedRow      fyne.CanvasObject
 	fixedNote     *widget.Label
 	fixedError    *widget.Label
 	forceIPv4     *widget.Check
@@ -62,7 +64,7 @@ type ruleDNSTab struct {
 	hadDomains bool
 }
 
-func newRuleDNSTab(model *wizardmodels.WizardModel, initial *corestate.RuleDNS, initialBody map[string]interface{}, onChange func()) *ruleDNSTab {
+func newRuleDNSTab(model *wizardmodels.WizardModel, initial *corestate.RuleDNS, initialBody map[string]interface{}, wheel *components.WheelThrough, onChange func()) *ruleDNSTab {
 	d := &ruleDNSTab{
 		answerDefault: locale.T("Default — queries go to DNS Final"),
 		answerServer:  locale.T("Dedicated server"),
@@ -81,7 +83,7 @@ func newRuleDNSTab(model *wizardmodels.WizardModel, initial *corestate.RuleDNS, 
 	d.server = widget.NewSelect(d.serverOptions, nil)
 	d.fixed = widget.NewMultiLineEntry()
 	d.fixed.SetPlaceHolder("192.168.1.10")
-	d.fixed.SetMinRowsVisible(3)
+	d.fixed.SetMinRowsVisible(ruleEntryRows)
 	d.fixedNote = widget.NewLabel(locale.T("One address per line, IPv4 or IPv6."))
 	d.fixedNote.Importance = widget.LowImportance
 	d.fixedError = widget.NewLabel("")
@@ -135,12 +137,15 @@ func newRuleDNSTab(model *wizardmodels.WizardModel, initial *corestate.RuleDNS, 
 	d.server.OnChanged = func(string) { changed() }
 	d.forceIPv4.OnChanged = func(bool) { changed() }
 	d.blockHTTPS.OnChanged = func(bool) { changed() }
+	// Колесо над полем адресов двигает вкладку (WheelThrough окна); прячется
+	// и показывается строка целиком, вместе со слоем.
+	d.fixedRow = wheelEntry(wheel, d.fixed)
 
 	d.box = container.NewVBox(
 		widget.NewLabel(locale.T("Answer")),
 		d.answer,
 		d.server,
-		d.fixed,
+		d.fixedRow,
 		d.fixedNote,
 		d.fixedError,
 		d.forceIPv4,
@@ -230,12 +235,12 @@ func (d *ruleDNSTab) update(body map[string]interface{}) {
 		d.server.Hide()
 	}
 	if mode == d.answerFixed {
-		d.fixed.Show()
+		d.fixedRow.Show()
 		d.fixedNote.Show()
 		// Ответ при Fixed IP даёт само правило: глушилке AAAA нечего глушить.
 		d.forceIPv4.Disable()
 	} else {
-		d.fixed.Hide()
+		d.fixedRow.Hide()
 		d.fixedNote.Hide()
 		d.forceIPv4.Enable()
 	}
