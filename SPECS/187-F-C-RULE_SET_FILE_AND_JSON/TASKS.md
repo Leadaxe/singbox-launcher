@@ -21,5 +21,5 @@
 - [x] Раннер корпуса бэкапа по имени
 - [x] `docs/ARCHITECTURE.md`, `docs/WIZARD_STATE.md`, `upcoming.md`
 - [x] IMPLEMENTATION_REPORT.md
-- [ ] Показ владельцу (диалог, кнопка, подхват правки файла ядром)
-- [ ] CI (`gh workflow run ci.yml --ref develop -f run_mode=tests`) — после коммита и пуша
+- [x] Показ владельцу — локальная сборка, принято 22.11.2026
+- [x] CI — run 45067002427 зелёный на трёх платформах (коммит 7f87f4d8)
