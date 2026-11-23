@@ -10739,3 +10739,21 @@ UI лаунчера: галка «Block HTTPS/SVCB records (no ECH)» в DNS-в�
 **Корпус `rule_tree/`.** Ожидания всех кейсов со ссылками переписаны; `derived_tag_collision` (правило `X` со ссылкой `…/ads.srs` рядом с правилом `X:ads` → `X:ads (2)`), `disabled_derived_stable` (выключенное правило держит `Video:news:eu`, соседу — `Video:news:eu (2)`) и `h8_collision` (одинаковый stem `pair` и одинаковые h8 → 16 hex) пересобраны под норму; новые: `stem_ai_example`, `stem_shapes` (query, без расширения, `geo.tar.srs`, `list.txt`, `LIST.SRS` рядом с `list.srs`), `stem_empty`, `stem_collision`, `stem_file_percent` (`%20`, `%2F` внутри сегмента).
 
 Задачи вам: синк 1.1.182; новая раздача тегов ссылок и inline-набора корня; автоматическая перезапись рукописных ссылок при первой загрузке; прогон `rule_tree/`; ответ с sha и состоянием корпуса.
+
+## 186. Контракт 1.1.183 — ядро 1.14.4-lx.36: `lx.wg.idle`, `lx.wg.buffers`, `lx.wg.connected_socket` (24.11.2026)
+
+Ядро `v1.14.4-lx.36` (SPEC 098, 158 §9, 160 форка). Лаунчер поднимает пин до `1.14.4-lx.36`.
+
+**Что меняется.**
+
+1. **Ключи сна WireGuard переехали в подблок `lx.wg.idle`**, периода совместимости нет — старое плоское имя с lx.36 (и с `-rc.1`) даёт ошибку загрузки конфига с подсказкой нового: `idle_suspend` → `idle.suspend`, `idle_suspend_reachable` → `idle.suspend_reachable`, `idle_teardown` → `idle.teardown`, `lazy_build` → `idle.lazy_build`, `build_max` → `idle.build_max`, `build_overflow` → `idle.build_overflow`. Переменные (`wg_idle_suspend`, `wg_idle_suspend_reachable`, `wg_lazy_build`, `wg_build_max`) и их значения не меняются — меняется только место эмиссии в шаблоне. Сохранённое состояние переносить не нужно: в нём хранятся значения переменных, а не ключи ядра. Блок `idle` по-прежнему пишет только mobile (сборка с `with_lx_idle_suspend`).
+2. **Три новые переменные, `in: both`, раздел `wireguard`** (общий id обеих сторон, `TEMPLATE_LANG` §2.3). Норма эмиссии: ключ пишется только при значении, отличном от дефолта ядра; пустые `buffers` и `wg` не пишутся.
+   - `wg_read_datagram_count` — int с options `128 / 32 / 8 / 2 / 1`, дефолт `128` (ключа нет) → `lx.wg.buffers.read_datagram_count: <N>` числом. Действует на Linux и Android (на Android — выведено из кода, на устройстве не замерено). Ориентиры: `8` — слабые машины и роутеры, `1`–`2` — десятки и сотни туннелей.
+   - `wg_send_by_mtu` — bool, дефолт `true` (ключа нет) → при `false` `lx.wg.buffers.send_by_mtu: false`. Диагностический переключатель, место — расширенные настройки.
+   - `wg_connected_socket` — bool, дефолт `false` (ключа нет) → при `true` `lx.wg.connected_socket: true`. Linux и Android, туннель с одним пиром, фиксированным адресом, без `listen_port` и `detour`. Не проверено ядром: телефон при переходе Wi-Fi ↔ LTE — поэтому выключено по умолчанию.
+   - Все три работают в любой сборке ядра: отказ сборки без `with_lx_idle_suspend` относится только к `idle`.
+3. **`registry/core_config.json`**: `lx.wg.idle`, `lx.wg.buffers`, `lx.wg.connected_socket` — `min_core 1.14.4-lx.36-rc.1`. LxBox с ядром, равным пину, таблицу не исполняет.
+
+Шаблон лаунчера — образец: `bin/wizard_template.json`, раздел `wireguard` и ветка `"#if wg"` в `config.lx`; тест `core/template` `TestBundledTemplate_WGBlock`.
+
+Задачи вам: синк 1.1.183; эмиссия ключей сна в `lx.wg.idle.*` одним шагом с пином lx.36; три переменные в разделе `wireguard`; ответ с sha.

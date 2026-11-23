@@ -196,8 +196,9 @@ D-132). Единственный, кто её пишет, — `#do` обхода
 - **Состав и порядок разделов не нормируются** — наборы переменных у сторон
   разные (D-046). Раздел с одним смыслом на обеих сторонах носит один `id`:
   `general`, `network`, `tun`, `dns`, `auto-proxy`, `dpi-bypass`,
-  `sniff-guard`, `quic`. Разделы одной стороны носят свои: `vpn-mode`,
-  `wireguard`, `internal` у mobile; `proxy-in`, `clash-api` у desktop.
+  `sniff-guard`, `quic`, `wireguard` (у обеих с контракта 1.1.183). Разделы
+  одной стороны носят свои: `vpn-mode`, `internal` у mobile; `proxy-in`,
+  `clash-api` у desktop.
 - Значения переменных, бэкап и реестр `registry/vars.json` от контейнера не
   зависят: переменная адресуется именем.
 

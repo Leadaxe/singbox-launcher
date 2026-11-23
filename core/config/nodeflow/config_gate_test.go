@@ -55,6 +55,27 @@ func TestGateConfigForCore(t *testing.T) {
 			t.Errorf("decoy, core %q: got %s, want %s", version, got, want)
 		}
 	}
+	// lx.wg.buffers и lx.wg.connected_socket (контракт 1.1.183) живут с
+	// 1.14.4-lx.36-rc.1: ядру lx.35 удалённой машины они снимаются вместе с
+	// опустевшим lx.wg, rc.1 и релиз их получают.
+	const wg = `{"lx":{"mtu_align":"fill","wg":{"buffers":{"read_datagram_count":8},"connected_socket":true}}}`
+	for version, want := range map[string]string{
+		"":                  wg,
+		"1.14.4-lx.36":      wg,
+		"1.14.4-lx.36-rc.1": wg,
+		"1.14.4-lx.35":      `{"lx":{"mtu_align":"fill"}}`,
+	} {
+		var root map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(wg), &root); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := GateConfigForCore(root, version); err != nil {
+			t.Fatalf("%s: %v", version, err)
+		}
+		if got, _ := json.Marshal(root); string(got) != want {
+			t.Errorf("wg, core %q: got %s, want %s", version, got, want)
+		}
+	}
 	// Запрещённый ключ (forbidden, контракт 1.1.164) снимается при любой
 	// версии, включая неизвестную; соседний ключ остаётся.
 	const forb = `{"lx":{"awg_masquerade":"direct","mtu_align":"fill"}}`

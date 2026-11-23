@@ -393,3 +393,47 @@ func TestBundledTemplate_SniffGuardBlock(t *testing.T) {
 		}
 	}
 }
+
+// lx.wg — буферы и подключённый сокет WireGuard ядра 1.14.4-lx.36 (контракт
+// 1.1.183): ключ пишется только при значении, отличном от дефолта ядра;
+// пустые buffers и wg не пишутся. Ключи сна (lx.wg.idle и старые плоские
+// имена) десктоп не пишет никогда — сборка без with_lx_idle_suspend от них
+// отказывается.
+func TestBundledTemplate_WGBlock(t *testing.T) {
+	spec := TargetSpec{GOOS: "linux", GOARCH: "arm64", Target: TargetRemote}
+	render := func(vars map[string]string) string {
+		lx, _ := renderBundledTemplate(t, spec, vars)["lx"].(map[string]interface{})
+		wg, ok := lx["wg"]
+		if !ok {
+			return ""
+		}
+		if m, _ := wg.(map[string]interface{}); m != nil {
+			for _, k := range []string{"idle", "idle_suspend", "idle_suspend_reachable", "idle_teardown", "lazy_build", "build_max", "build_overflow"} {
+				if _, bad := m[k]; bad {
+					t.Errorf("vars %v: lx.wg.%s must never be written by the desktop", vars, k)
+				}
+			}
+		}
+		out, _ := json.Marshal(wg)
+		return string(out)
+	}
+	cases := []struct {
+		vars map[string]string
+		want string
+	}{
+		{nil, ""},
+		{map[string]string{"wg_read_datagram_count": "128", "wg_send_by_mtu": "true", "wg_connected_socket": "false"}, ""},
+		{map[string]string{"wg_read_datagram_count": "8"}, `{"buffers":{"read_datagram_count":8}}`},
+		{map[string]string{"wg_send_by_mtu": "false"}, `{"buffers":{"send_by_mtu":false}}`},
+		{map[string]string{"wg_connected_socket": "true"}, `{"connected_socket":true}`},
+		{
+			map[string]string{"wg_read_datagram_count": "1", "wg_send_by_mtu": "false", "wg_connected_socket": "true"},
+			`{"buffers":{"read_datagram_count":1,"send_by_mtu":false},"connected_socket":true}`,
+		},
+	}
+	for _, c := range cases {
+		if got := render(c.vars); got != c.want {
+			t.Errorf("vars %v: lx.wg = %s, want %s", c.vars, got, c.want)
+		}
+	}
+}

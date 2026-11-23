@@ -746,9 +746,13 @@ Key properties:
   `lx` block) is emitted as-is after `@var` / `#if` substitution. This is the only
   channel for `lx.masque.idle_timeout` (core ≥ lx.13; the template may carry `lx`
   only together with that pin, lx.12 rejects the unknown root key). There is no UI
-  for it. The launcher never emits the WireGuard idle-suspend keys in either form
-  (`route.lx_idle_*`, `lx.wg.*`): desktop core builds lack `with_lx_idle_suspend`
-  and refuse them at start (SPEC 138; pinned by `TestBuildConfigPassesRootLXBlock`).
+  for it. Since core lx.36 the same block carries `lx.wg.buffers.*` and
+  `lx.wg.connected_socket` (Settings → WireGuard, vars `wg_read_datagram_count`,
+  `wg_send_by_mtu`, `wg_connected_socket`; a key is written only when it differs
+  from the core default, contract 1.1.183; pinned by `TestBundledTemplate_WGBlock`).
+  The launcher never emits the WireGuard idle-suspend keys in any form
+  (`route.lx_idle_*`, the flat `lx.wg.idle_*` of cores before lx.36, `lx.wg.idle.*`):
+  desktop core builds lack `with_lx_idle_suspend` and refuse them at start (SPEC 138; pinned by `TestBuildConfigPassesRootLXBlock`).
   A pass-through section that substitution left as `{}` is not written, and keys
   outside node bodies newer than the executing core are dropped by the table
   `contract/registry/core_config.json` (`nodeflow.GateConfigForCore`): at build

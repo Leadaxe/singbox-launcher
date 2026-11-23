@@ -6,6 +6,18 @@
       "min_core": "1.14.1-lx.13",
       "note": "Корневой блок настроек форка (option/lx.go LXOptions) вместе с lx.wg и lx.masque."
     },
+    "lx.wg.idle": {
+      "min_core": "1.14.4-lx.36-rc.1",
+      "note": "SPEC 098 форка (контракт 1.1.183): ключи сна WireGuard переехали из плоского lx.wg в подблок idle — suspend, suspend_reachable, teardown, lazy_build, build_max, build_overflow. Старые плоские имена с lx.36 — ошибка загрузки с подсказкой нового имени, периода совместимости нет. Действующий ключ в idle в сборке без with_lx_idle_suspend (все десктопные) — ошибка старта, поэтому лаунчер блок не пишет никогда; пишет только mobile (var wg_idle_suspend и соседи). Граница — на первом пре-релизе: v1.14.4-lx.36-rc.1 уже несёт новую раскладку."
+    },
+    "lx.wg.buffers": {
+      "min_core": "1.14.4-lx.36-rc.1",
+      "note": "SPEC 158 §9 форка; var wg_read_datagram_count, wg_send_by_mtu (контракт 1.1.183). Любая сборка ядра. Ядру старше lx.36 блок снимается: оно его не знает («unknown field»). Граница — на первом пре-релизе: v1.14.4-lx.36-rc.1 ключ уже несёт."
+    },
+    "lx.wg.connected_socket": {
+      "min_core": "1.14.4-lx.36-rc.1",
+      "note": "SPEC 160 форка; var wg_connected_socket (контракт 1.1.183). Любая сборка ядра. Ядру старше lx.36 ключ снимается. Граница — на первом пре-релизе: v1.14.4-lx.36-rc.1 ключ уже несёт."
+    },
     "lx.mtu_align": {
       "min_core": "1.14.3-lx.14",
       "note": "SPEC 120 форка; var mtu_align."
