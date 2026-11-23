@@ -371,7 +371,7 @@ API нет. Манифест `GET /` несёт `capabilities` (`remote`/`daemon
 | GET | `/remote/machines/{id}/health` | `{reachable, core_status, active_sha, last_good_sha, …}` — сверка SHA = проверка «доехало». Плюс остальной паспорт — `executable`, `log_path`, `listen`, `tls`, `uptime_seconds` (`null`, если демон не ответил на `/admin/info`), — и `core_required` (версия ядра, под которую лаунчер собирает конфиги) с `core_outdated` (`true` только при доказуемо старшей `version`; неразборчивая версия → `false`) |
 | POST | `/remote/machines/{id}/core/start` \| `stop` \| `rollback` | Управление ядром машины (stop рвёт VPN её клиентов — подтверждения на стороне API нет) |
 | GET | `/remote/machines/{id}/config/active` \| `built` | Работающий конфиг с машины / локально собранный |
-| POST | `/remote/machines/{id}/deploy` | Ресурсы → конфиг (та же цепочка, что кнопка Deploy). Body `{config:{…}}` опционален. `422` = демон отклонил конфиг, инстанс не тронут |
+| POST | `/remote/machines/{id}/deploy` | Ресурсы → конфиг (та же цепочка, что кнопка Deploy). Body `{config:{…}}` опционален. Ответ `{ok, resources_uploaded, resources_kept, config_sha}`; `resources_kept` — изменившиеся наборы, которые демон отказался перезаписать, потому что на них ссылается активный или last-good конфиг машины: они остаются прежней версии, конфиг всё равно применяется. `422` = демон отклонил конфиг, инстанс не тронут |
 
 **Состояние (зеркала `/state/*`):** `GET /remote/machines/{id}/state/full`,
 `GET/PATCH …/state/rules`, `…/state/dns`, `…/state/dns/rules`,
@@ -399,7 +399,9 @@ API нет. Манифест `GET /` несёт `capabilities` (`remote`/`daemon
 
 **Ресурс-стор:** `GET …/resources` (сводка local vs machine),
 `POST …/resources/sync`, `GET/PUT/DELETE …/resources/{name}`,
-`POST …/resources/{name}/download`. `409` = имя занято живой ссылкой конфига.
+`POST …/resources/{name}/download`. `409` = на имя ссылается активный или
+last-good конфиг машины (`PUT`/`DELETE` одного файла); `sync` такие имена
+пропускает и перечисляет в `kept`.
 
 **UI-override (кнопки Connect/Disconnect вкладки Remote):** обычные
 remote-вызовы выбор в UI не трогают — эти три ручки управляют именно тем, на

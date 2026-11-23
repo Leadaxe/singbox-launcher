@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/muhammadmuzzammil1998/jsonc"
 
@@ -48,6 +49,9 @@ type ResourceEntry struct {
 	ServerSize int64
 	LocalSHA   string
 	ServerSHA  string
+	// LocalModTime — время изменения локальной копии (нулевое, если её нет).
+	// Даты файла на машине демон не отдаёт.
+	LocalModTime time.Time
 	// InUse — на имя ссылается активный конфиг машины. Удалять и
 	// перезаписывать такой ресурс демон не даёт (409).
 	InUse bool
@@ -88,7 +92,7 @@ func (r *RemoteRegistry) ResourceOverview(id string) ([]ResourceEntry, error) {
 	for name, f := range local {
 		byName[name] = &ResourceEntry{
 			Name: name, State: ResourceMissing,
-			LocalSize: f.size, LocalSHA: f.sha,
+			LocalSize: f.size, LocalSHA: f.sha, LocalModTime: f.modTime,
 		}
 	}
 	for _, res := range remote {
@@ -118,8 +122,9 @@ func (r *RemoteRegistry) ResourceOverview(id string) ([]ResourceEntry, error) {
 }
 
 type localResource struct {
-	sha  string
-	size int64
+	sha     string
+	size    int64
+	modTime time.Time
 }
 
 // localResourceFiles читает srs/ машины и считает хеши.
@@ -142,7 +147,11 @@ func localResourceFiles(dataDir paths.DataDir, id string) (map[string]localResou
 			continue // битый файл пропускаем: он не помешает показать остальные
 		}
 		sum := sha256.Sum256(body)
-		out[e.Name()] = localResource{sha: hex.EncodeToString(sum[:]), size: int64(len(body))}
+		lr := localResource{sha: hex.EncodeToString(sum[:]), size: int64(len(body))}
+		if info, infoErr := e.Info(); infoErr == nil {
+			lr.modTime = info.ModTime()
+		}
+		out[e.Name()] = lr
 	}
 	return out, nil
 }

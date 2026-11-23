@@ -79,11 +79,12 @@ func (s *Server) handleRemoteResourcesSync(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	if err := s.remote.Registry.SyncResources(id, files); err != nil {
+	kept, err := s.remote.Registry.SyncResources(id, files)
+	if err != nil {
 		writeRemoteError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "considered": len(files)})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "considered": len(files), "kept": nonNilStrings(kept)})
 }
 
 // handleRemoteResourceByName — GET (содержимое с машины) / PUT (залить

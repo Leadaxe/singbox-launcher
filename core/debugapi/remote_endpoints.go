@@ -716,6 +716,7 @@ func (s *Server) handleRemoteDeploy(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":                 true,
 		"resources_uploaded": res.ResourcesUploaded,
+		"resources_kept":     nonNilStrings(res.ResourcesKept),
 		"config_sha":         res.ConfigSHA,
 	})
 }
@@ -791,8 +792,17 @@ func (s *Server) handleRemoteConfigRebuild(w http.ResponseWriter, r *http.Reques
 	}
 	out["deployed"] = true
 	out["resources_uploaded"] = res.ResourcesUploaded
+	out["resources_kept"] = nonNilStrings(res.ResourcesKept)
 	out["deployed_sha"] = res.ConfigSHA
 	writeJSON(w, http.StatusOK, out)
+}
+
+// nonNilStrings — nil как [] : поле ответа всегда массив, не null.
+func nonNilStrings(v []string) []string {
+	if v == nil {
+		return []string{}
+	}
+	return v
 }
 
 // fileSHA256Hex — sha256 файла в hex; "" — файла нет или он не читается.

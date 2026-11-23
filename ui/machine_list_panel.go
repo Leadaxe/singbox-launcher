@@ -1110,18 +1110,32 @@ func (p *machineListPanel) runDeploy(d services.RemoteDaemon, config []byte) {
 		// Вся цепочка (ресурсы строго раньше конфига) — в
 		// services.Deploy: её же зовёт Debug API, поэтому «через API
 		// деплоится не так, как кнопкой» невозможно (SPEC 100).
-		_, deployErr := p.registry.Deploy(d.ID, config)
+		res, deployErr := p.registry.Deploy(d.ID, config)
 		fyne.Do(func() {
 			if deployErr != nil {
 				debuglog.WarnLog("machine list: deploy %q: %v", d.ID, deployErr)
 				dialog.ShowError(deployErr, p.ac.UIService.MainWindow)
 				return
 			}
-			dialog.ShowInformation(locale.TN(1, "Deploy config"),
-				locale.Tf("Config applied on %s.", d.Name), p.ac.UIService.MainWindow)
+			msg := locale.Tf("Config applied on %s.", d.Name)
+			if len(res.ResourcesKept) > 0 {
+				msg += "\n\n" + locale.Tf("%d rule-set(s) on the machine stay at the previous version because its config references them: %s.",
+					len(res.ResourcesKept), keptResourceNames(res.ResourcesKept))
+			}
+			dialog.ShowInformation(locale.TN(1, "Deploy config"), msg, p.ac.UIService.MainWindow)
 			p.Reload()
 		})
 	}()
+}
+
+// keptResourceNames — имена оставленных наборов для сообщения: не больше
+// пяти, остальное счётчиком.
+func keptResourceNames(names []string) string {
+	const shown = 5
+	if len(names) <= shown {
+		return strings.Join(names, ", ")
+	}
+	return strings.Join(names[:shown], ", ") + " " + locale.Tf("and %d more", len(names)-shown)
 }
 
 // confirmDeployOldCore — Deploy на машину со старым ядром (SPEC 161 §4.3):

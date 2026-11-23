@@ -2684,8 +2684,20 @@
   "✗ not on server": {
     "value": "✗ нет на сервере"
   },
-  "≠ differs": {
-    "value": "≠ расходится"
+  "≠ content differs": {
+    "value": "≠ содержимое расходится"
+  },
+  "local copy updated %s": {
+    "value": "локальная копия обновлена %s"
+  },
+  "in use by the machine's config — the previous version stays there": {
+    "value": "на него ссылается конфиг машины — там остаётся прежняя версия"
+  },
+  "%d rule-set(s) on the machine stay at the previous version because its config references them: %s.": {
+    "value": "Наборов правил на машине осталось прежней версии, потому что на них ссылается её конфиг: %d — %s."
+  },
+  "and %d more": {
+    "value": "и ещё %d"
   },
   "⚠ only on server": {
     "value": "⚠ только на сервере"
