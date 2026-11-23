@@ -1122,6 +1122,10 @@ func (p *machineListPanel) runDeploy(d services.RemoteDaemon, config []byte) {
 				msg += "\n\n" + locale.Tf("%d rule-set(s) on the machine stay at the previous version because its config references them: %s.",
 					len(res.ResourcesKept), keptResourceNames(res.ResourcesKept))
 			}
+			if len(res.ResourcesRejected) > 0 {
+				msg += "\n\n" + locale.Tf("%d rule-set(s) were rejected by the machine and stay at the previous version there:", len(res.ResourcesRejected)) +
+					"\n" + rejectedResourceLines(res.ResourcesRejected)
+			}
 			dialog.ShowInformation(locale.TN(1, "Deploy config"), msg, p.ac.UIService.MainWindow)
 			p.Reload()
 		})
@@ -1136,6 +1140,16 @@ func keptResourceNames(names []string) string {
 		return strings.Join(names, ", ")
 	}
 	return strings.Join(names[:shown], ", ") + " " + locale.Tf("and %d more", len(names)-shown)
+}
+
+// rejectedResourceLines — отклонённые машиной наборы с причиной, по одному
+// на строку: не больше пяти, остальное счётчиком.
+func rejectedResourceLines(items []string) string {
+	const shown = 5
+	if len(items) <= shown {
+		return strings.Join(items, "\n")
+	}
+	return strings.Join(items[:shown], "\n") + "\n" + locale.Tf("and %d more", len(items)-shown)
 }
 
 // confirmDeployOldCore — Deploy на машину со старым ядром (SPEC 161 §4.3):

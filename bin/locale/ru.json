@@ -2693,6 +2693,9 @@
   "in use by the machine's config — the previous version stays there": {
     "value": "на него ссылается конфиг машины — там остаётся прежняя версия"
   },
+  "%d rule-set(s) were rejected by the machine and stay at the previous version there:": {
+    "value": "Наборов правил, которые машина не приняла, — %d; на ней остаётся прежняя версия:"
+  },
   "%d rule-set(s) on the machine stay at the previous version because its config references them: %s.": {
     "value": "Наборов правил на машине осталось прежней версии, потому что на них ссылается её конфиг: %d — %s."
   },

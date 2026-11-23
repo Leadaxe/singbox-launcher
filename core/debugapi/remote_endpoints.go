@@ -717,6 +717,7 @@ func (s *Server) handleRemoteDeploy(w http.ResponseWriter, r *http.Request) {
 		"ok":                 true,
 		"resources_uploaded": res.ResourcesUploaded,
 		"resources_kept":     nonNilStrings(res.ResourcesKept),
+		"resources_rejected": nonNilStrings(res.ResourcesRejected),
 		"config_sha":         res.ConfigSHA,
 	})
 }
@@ -793,6 +794,7 @@ func (s *Server) handleRemoteConfigRebuild(w http.ResponseWriter, r *http.Reques
 	out["deployed"] = true
 	out["resources_uploaded"] = res.ResourcesUploaded
 	out["resources_kept"] = nonNilStrings(res.ResourcesKept)
+	out["resources_rejected"] = nonNilStrings(res.ResourcesRejected)
 	out["deployed_sha"] = res.ConfigSHA
 	writeJSON(w, http.StatusOK, out)
 }

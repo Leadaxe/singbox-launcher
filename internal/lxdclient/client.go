@@ -483,6 +483,10 @@ func (e *ResourceError) Error() string {
 // InUse — ресурс занят живой ссылкой из конфига.
 func (e *ResourceError) InUse() bool { return e.StatusCode == http.StatusConflict }
 
+// Rejected — демон не принял содержимое (422): набор не загружается ядром
+// или работающее ядро отказалось его перечитать; на машине прежний файл.
+func (e *ResourceError) Rejected() bool { return e.StatusCode == http.StatusUnprocessableEntity }
+
 // --- Сопряжение ---------------------------------------------------------
 
 // Enroll регистрирует клиентский сертификат по одноразовому коду. Вызывается

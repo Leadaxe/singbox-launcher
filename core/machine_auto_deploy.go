@@ -189,6 +189,10 @@ func (ac *AppController) autoDeployMachine(registry *services.RemoteRegistry, d 
 		note += fmt.Sprintf("; %d rule-set(s) kept at the previous version (referenced by the machine's config): %s",
 			len(dres.ResourcesKept), strings.Join(dres.ResourcesKept, ", "))
 	}
+	if len(dres.ResourcesRejected) > 0 {
+		note += fmt.Sprintf("; %d rule-set(s) rejected by the machine, the previous files stay: %s",
+			len(dres.ResourcesRejected), strings.Join(dres.ResourcesRejected, "; "))
+	}
 	return services.MachineAutoDeployOutcome{Result: services.AutoDeployApplied, SHABefore: shaBefore,
 		SHAAfter: dres.ConfigSHA, Deployed: true, Note: note}
 }
