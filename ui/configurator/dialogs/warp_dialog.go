@@ -188,7 +188,12 @@ func newWarpWGSection() *warpWGSection {
 	// набора форсятся в collect() ниже. Против DPI с WARP работают только jc/jmin/
 	// jmax (отдельные мусорные датаграммы, сервер их игнорит) + masquerade id/ip/ib.
 
+	// reserved (client_id) пишется только в plain WARP: DPI режет WARP именно по
+	// client_id, поэтому при обфускации галка выключена и скрыта.
 	reserved := widget.NewCheck(locale.T("Bind to this device (reserved)"), nil)
+	if obfuscate.Checked {
+		reserved.Hide()
+	}
 
 	applyPreset := func(name string) {
 		p := warp.PresetByName(name)
@@ -238,9 +243,11 @@ func newWarpWGSection() *warpWGSection {
 			presetRow.Show()
 			acc.Show()
 			reserved.SetChecked(false)
+			reserved.Hide() // AWG-узлу reserved не пишется (DPI режет по client_id)
 		} else {
 			presetRow.Hide()
 			acc.Close(0)
+			reserved.Show()
 			reserved.SetChecked(true)
 		}
 	}
@@ -262,7 +269,7 @@ func newWarpWGSection() *warpWGSection {
 			randomEndpoint: obfuscate.Checked && endpoint.Text == "",
 			endpoint:       endpoint.Text,
 			license:        license.Text,
-			reserved:       reserved.Checked || !obfuscate.Checked,
+			reserved:       !obfuscate.Checked, // plain — всегда с reserved, AWG — никогда
 			quic:           p,
 		}
 	}

@@ -69,8 +69,9 @@ func (a *Account) DisplayTag() string {
 // ToWireguardURI builds a wireguard:// share URI for the account. It is fed to
 // the existing subscription parser (node_parser_wireguard.go), which is the one
 // place that constructs the endpoint map — the generator never duplicates that.
-// includeReserved controls whether client_id is emitted as reserved (plain WARP
-// often works without it; obfuscated WARP needs it to reach the right anycast).
+// includeReserved controls whether client_id is emitted as reserved for plain
+// WARP. It is ignored when the account carries AWG obfuscation: DPI blocks WARP
+// by client_id, so an obfuscated node never gets reserved (diagnosed 2026-11-24).
 func (a *Account) ToWireguardURI(includeReserved bool) (string, error) {
 	if strings.TrimSpace(a.PrivateKey) == "" {
 		return "", fmt.Errorf("warp: empty private key")
@@ -99,7 +100,7 @@ func (a *Account) ToWireguardURI(includeReserved bool) (string, error) {
 	q.Set("address", strings.Join(addrs, ","))
 	q.Set("allowedips", "0.0.0.0/0,::/0")
 	q.Set("mtu", strconv.Itoa(warpMTU))
-	if includeReserved {
+	if includeReserved && len(a.AWG) == 0 {
 		if r := a.Reserved(); len(r) == 3 {
 			q.Set("reserved", fmt.Sprintf("%d,%d,%d", r[0], r[1], r[2]))
 		}
