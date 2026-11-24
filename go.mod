@@ -15,7 +15,7 @@ require (
 	github.com/pion/stun v0.6.1
 	github.com/txthinking/socks5 v0.0.0-20251011041537-5c31f201a10e
 	golang.org/x/sys v0.49.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 )
 
@@ -51,9 +51,9 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/image v0.46.0 // indirect
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260817212433-ac3dfec99bb1 // indirect
 )
 
 replace github.com/ideaconnect/go-fyne-pretty-view/v2 => github.com/Leadaxe/go-fyne-pretty-view/v2 v2.7.1-0.20261011220330-fa60c3028ff8
