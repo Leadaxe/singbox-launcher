@@ -25,6 +25,7 @@ import (
 	"singbox-launcher/internal/lxdclient"
 	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
+	tprof "singbox-launcher/internal/traffic"
 )
 
 // DaemonBackend — движок daemon-режима: ядро живёт внутри долгоживущего
@@ -63,7 +64,7 @@ type DaemonBackend struct {
 
 	// connTracker — накопительный снимок соединений из SubscribeConnections
 	// (traffic-график по gRPC вместо Clash /connections).
-	connTracker *connTracker
+	connTracker *tprof.ConnTracker
 
 	// tailscale — кеш последнего снимка SubscribeTailscaleStatus (SPEC 130);
 	// стрим держит superviseTailscale.
@@ -178,7 +179,7 @@ func newDaemonBackend(ac *AppController) (CoreBackend, error) {
 		cancel: cancel,
 	}
 	b.transport = &daemonProxyTransport{b: b}
-	b.connTracker = newConnTracker()
+	b.connTracker = tprof.NewConnTracker()
 	if ac.APIService != nil {
 		ac.APIService.SetTransport(b.transport)
 	}

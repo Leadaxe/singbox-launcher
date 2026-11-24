@@ -3,111 +3,145 @@
 package core
 
 import (
+	"context"
+	"io"
 	"testing"
 
+	"google.golang.org/grpc"
+
 	daemonpb "singbox-launcher/internal/daemonpb"
+	tprof "singbox-launcher/internal/traffic"
 )
 
-func TestProtoConnToClash(t *testing.T) {
-	c := &daemonpb.Connection{
-		Id:            "conn-1",
-		Network:       "tcp",
-		Destination:   "1.2.3.4:443",
-		Domain:        "example.com",
-		UplinkTotal:   1000,
-		DownlinkTotal: 2000,
-		CreatedAt:     1_700_000_000_000, // ms
-		ChainList:     []string{"proxy-out", "direct"},
-		Rule:          "domain-suffix",
-		ProcessInfo:   &daemonpb.ProcessInfo{ProcessPath: "/Applications/Foo.app/Contents/MacOS/foo"},
+// connStreamStep — один кадр стрима и проверка снимка после того, как
+// consumeConnStream его применил.
+type connStreamStep struct {
+	batch *daemonpb.ConnectionEvents
+	check func(snap map[string]tprof.ClashConn, ok bool)
+}
+
+// fakeConnStream отдаёт кадры по одному. Проверка шага выполняется на входе
+// в следующий Recv: к этому моменту предыдущий кадр уже применён, а стрим ещё
+// не оборван (после обрыва трекер сбрасывается).
+type fakeConnStream struct {
+	grpc.ClientStream
+	steps    []connStreamStep
+	next     int
+	snapshot tprof.SnapshotFunc
+}
+
+func (f *fakeConnStream) Recv() (*daemonpb.ConnectionEvents, error) {
+	if f.next > 0 {
+		if check := f.steps[f.next-1].check; check != nil {
+			check(f.snapshot(context.Background()))
+		}
 	}
-	got := protoConnToClash(c)
-	if got.ID != "conn-1" {
-		t.Errorf("ID = %q", got.ID)
+	if f.next == len(f.steps) {
+		return nil, io.EOF
 	}
-	if got.Upload != 1000 || got.Download != 2000 {
-		t.Errorf("bytes = %d/%d", got.Upload, got.Download)
-	}
-	if got.Metadata.Host != "example.com" {
-		t.Errorf("host = %q", got.Metadata.Host)
-	}
-	if got.Metadata.DestinationIP != "1.2.3.4" {
-		t.Errorf("destIP = %q", got.Metadata.DestinationIP)
-	}
-	if got.Metadata.DestinationPort != "443" {
-		t.Errorf("port = %q", got.Metadata.DestinationPort)
-	}
-	if got.Metadata.Process != "foo" {
-		t.Errorf("process basename = %q, want foo", got.Metadata.Process)
-	}
-	if got.Start.IsZero() {
-		t.Error("start time not parsed")
-	}
-	if len(got.Chains) != 2 {
-		t.Errorf("chains = %v", got.Chains)
+	f.next++
+	return f.steps[f.next-1].batch, nil
+}
+
+func connNew(id string, up, down int64) *daemonpb.ConnectionEvent {
+	return &daemonpb.ConnectionEvent{
+		Type: daemonpb.ConnectionEventType_CONNECTION_EVENT_NEW,
+		Id:   id,
+		Connection: &daemonpb.Connection{
+			Id: id, Destination: "1.1.1.1:443", UplinkTotal: up, DownlinkTotal: down,
+		},
 	}
 }
 
-func TestConnTrackerLifecycle(t *testing.T) {
-	tr := newConnTracker()
+// connUpdate — UPDATE как его шлёт ядро: id и приращения, без Connection.
+func connUpdate(id string, up, down int64) *daemonpb.ConnectionEvent {
+	return &daemonpb.ConnectionEvent{
+		Type:          daemonpb.ConnectionEventType_CONNECTION_EVENT_UPDATE,
+		Id:            id,
+		UplinkDelta:   up,
+		DownlinkDelta: down,
+	}
+}
 
-	// До первого события — ok=false (пустой снимок не значит «всё закрылось»).
-	if _, ok := tr.snapshot(nil); ok {
-		t.Fatal("snapshot ok=true before any event")
+func connBatch(reset bool, evs ...*daemonpb.ConnectionEvent) *daemonpb.ConnectionEvents {
+	return &daemonpb.ConnectionEvents{Reset_: reset, Events: evs}
+}
+
+// TestDaemonConnStreamTotals гоняет через consumeConnStream кадры в том виде,
+// в каком их шлёт ядро (daemon/started_service.go): NEW с полной записью,
+// UPDATE только с приращениями, повторный NEW по тому же id с текущими суммами
+// и приращением тика (SPEC 138 ядра), CLOSED по id.
+func TestDaemonConnStreamTotals(t *testing.T) {
+	ac := &AppController{}
+	b := &DaemonBackend{ac: ac, connTracker: tprof.NewConnTracker()}
+	ac.backend = b
+
+	snapshot := b.ConnSnapshotFunc()
+	if _, ok := snapshot(context.Background()); ok {
+		t.Fatal("snapshot ok=true before the stream delivered anything")
 	}
 
-	// NEW добавляет.
-	tr.mu.Lock()
-	tr.live = true
-	tr.mu.Unlock()
-	tr.applyEvent(&daemonpb.ConnectionEvent{
-		Type:       daemonpb.ConnectionEventType_CONNECTION_EVENT_NEW,
-		Connection: &daemonpb.Connection{Id: "a", Destination: "1.1.1.1:80"},
-	})
-	snap, ok := tr.snapshot(nil)
-	if !ok || len(snap) != 1 {
-		t.Fatalf("after NEW: ok=%v len=%d", ok, len(snap))
+	wantTotals := func(stage string, up, down int64) func(map[string]tprof.ClashConn, bool) {
+		return func(snap map[string]tprof.ClashConn, ok bool) {
+			c, found := snap["a"]
+			if !ok || !found {
+				t.Errorf("%s: ok=%v found=%v", stage, ok, found)
+				return
+			}
+			if c.Upload != up || c.Download != down {
+				t.Errorf("%s: totals = %d/%d, want %d/%d", stage, c.Upload, c.Download, up, down)
+			}
+		}
 	}
 
-	// UPDATE обновляет байты.
-	tr.applyEvent(&daemonpb.ConnectionEvent{
-		Type:       daemonpb.ConnectionEventType_CONNECTION_EVENT_UPDATE,
-		Connection: &daemonpb.Connection{Id: "a", Destination: "1.1.1.1:80", UplinkTotal: 500},
-	})
-	snap, _ = tr.snapshot(nil)
-	if snap["a"].Upload != 500 {
-		t.Errorf("after UPDATE upload = %d, want 500", snap["a"].Upload)
-	}
+	// Повторный NEW: суммы записи равны накопленным (100+50+30 / 200+500+70),
+	// приращение тика (30/70) лежит и в событии, и уже внутри сумм.
+	reNew := connNew("a", 180, 770)
+	reNew.UplinkDelta, reNew.DownlinkDelta = 30, 70
+	reNew.Connection.Uplink, reNew.Connection.Downlink = 30, 70
+	reNew.Connection.ChainList = []string{"node-2", "pool"}
 
-	// CLOSED удаляет.
-	tr.applyEvent(&daemonpb.ConnectionEvent{
-		Type: daemonpb.ConnectionEventType_CONNECTION_EVENT_CLOSED,
-		Id:   "a",
-	})
-	snap, _ = tr.snapshot(nil)
-	if len(snap) != 0 {
-		t.Errorf("after CLOSED len = %d, want 0", len(snap))
-	}
+	stream := &fakeConnStream{snapshot: snapshot, steps: []connStreamStep{
+		{connBatch(true), func(snap map[string]tprof.ClashConn, ok bool) {
+			if !ok || len(snap) != 0 {
+				t.Errorf("empty reset frame: ok=%v len=%d, want live and empty", ok, len(snap))
+			}
+		}},
+		{connBatch(false, connNew("a", 100, 200)), wantTotals("NEW", 100, 200)},
+		{connBatch(false, connUpdate("a", 50, 500)), wantTotals("UPDATE", 150, 700)},
+		{connBatch(false, reNew), func(snap map[string]tprof.ClashConn, ok bool) {
+			wantTotals("repeated NEW", 180, 770)(snap, ok)
+			if got := snap["a"].Chains; len(got) != 2 || got[0] != "node-2" {
+				t.Errorf("repeated NEW: chains = %v, want the entry replaced", got)
+			}
+		}},
+		{connBatch(false, connUpdate("a", 20, 30)), wantTotals("UPDATE after repeated NEW", 200, 800)},
+		{connBatch(false, connUpdate("a", 0, 0), connUpdate("ghost", 5, 5)), func(snap map[string]tprof.ClashConn, ok bool) {
+			wantTotals("zero UPDATE", 200, 800)(snap, ok)
+			if _, found := snap["ghost"]; found {
+				t.Error("UPDATE for an unknown id created an entry")
+			}
+		}},
+		{connBatch(false, &daemonpb.ConnectionEvent{
+			Type: daemonpb.ConnectionEventType_CONNECTION_EVENT_CLOSED, Id: "a",
+		}), func(snap map[string]tprof.ClashConn, ok bool) {
+			if !ok || len(snap) != 0 {
+				t.Errorf("CLOSED: ok=%v len=%d, want live and empty", ok, len(snap))
+			}
+		}},
+		{connBatch(false, connNew("b", 1, 2)), nil},
+		{connBatch(true, connNew("c", 3, 4)), func(snap map[string]tprof.ClashConn, ok bool) {
+			if _, found := snap["b"]; found || len(snap) != 1 {
+				t.Errorf("reset frame: snapshot = %v, want only c", snap)
+			}
+		}},
+	}}
 
-	// reset очищает.
-	tr.applyEvent(&daemonpb.ConnectionEvent{
-		Type:       daemonpb.ConnectionEventType_CONNECTION_EVENT_NEW,
-		Connection: &daemonpb.Connection{Id: "b", Destination: "2.2.2.2:80"},
-	})
-	tr.reset()
-	snap, _ = tr.snapshot(nil)
-	if len(snap) != 0 {
-		t.Errorf("after reset len = %d, want 0", len(snap))
+	if !b.consumeConnStream(stream) {
+		t.Error("consumeConnStream = false, want true after received frames")
 	}
-
-	// markDead (обрыв стрима): снимок снова ok=false — источника нет,
-	// застывшие данные не должны отдаваться как живые.
-	tr.applyEvent(&daemonpb.ConnectionEvent{
-		Type:       daemonpb.ConnectionEventType_CONNECTION_EVENT_NEW,
-		Connection: &daemonpb.Connection{Id: "c", Destination: "3.3.3.3:80"},
-	})
-	tr.markDead()
-	if _, ok := tr.snapshot(nil); ok {
-		t.Error("snapshot ok=true after markDead")
+	// Обрыв стрима: источника нет, застывший снимок не отдаётся как живой.
+	if _, ok := snapshot(context.Background()); ok {
+		t.Error("snapshot ok=true after the stream dropped")
 	}
 }

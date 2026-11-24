@@ -69,10 +69,22 @@ func (t *ConnTracker) ApplyEvent(ev *daemonpb.ConnectionEvent) {
 		t.conns[ev.GetId()] = cur
 
 	default: // NEW
+		// Запись заменяется целиком, суммы берутся из неё. Ядро может прислать
+		// NEW повторно по тому же id (у соединения стал известен фактический
+		// узел) и положить в это же событие приращение тика — оно уже учтено
+		// в uplinkTotal/downlinkTotal записи, прибавлять его второй раз нельзя.
 		if c := ev.GetConnection(); c != nil {
 			t.conns[c.GetId()] = ProtoConnToClash(c)
 		}
 	}
+}
+
+// MarkLive отмечает, что стрим доставил кадр, пусть и без событий: с этого
+// момента пустой Snapshot означает «соединений нет», а не «данных нет».
+func (t *ConnTracker) MarkLive() {
+	t.mu.Lock()
+	t.live = true
+	t.mu.Unlock()
 }
 
 // Reset очищает состояние: ядро перезапустилось, прежние соединения мертвы.
