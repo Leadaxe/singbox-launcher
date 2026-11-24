@@ -235,6 +235,9 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	srsOptionsRow := ctx.wheel.Wrap(srsOptionsForm.Box)
 
 	var confirmButton *widget.Button
+	confirmHint := widget.NewLabel("")
+	confirmHint.Importance = widget.WarningImportance
+	confirmHint.Truncation = fyne.TextTruncateEllipsis
 	refreshState = func() {
 		if editor == nil {
 			return
@@ -251,7 +254,24 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		if confirmButton == nil {
 			return
 		}
-		if strings.TrimSpace(labelEntry.Text) != "" && body != nil && dnsTab.answerError() == "" {
+		// Почему кнопка неактивна — строкой слева от кнопок: имя, условия и
+		// ответ DNS лежат на разных вкладках, по серой кнопке причину не угадать.
+		reason := ""
+		switch {
+		case strings.TrimSpace(labelEntry.Text) == "":
+			reason = locale.T("Rule name is required")
+		case body == nil:
+			reason = locale.T(addRuleNoConditionText)
+			if _, err := currentMatch(false); err != nil {
+				reason = err.Error()
+			}
+		default:
+			if e := dnsTab.answerError(); e != "" {
+				reason = locale.T("DNS") + ": " + e
+			}
+		}
+		confirmHint.SetText(reason)
+		if reason == "" {
 			confirmButton.Enable()
 		} else {
 			confirmButton.Disable()
@@ -448,7 +468,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 
 	mainContent := container.NewBorder(
 		ruleNameBlock,
-		container.NewHBox(layout.NewSpacer(), cancelButton, confirmButton),
+		container.NewBorder(nil, nil, nil, container.NewHBox(cancelButton, confirmButton), confirmHint),
 		nil, nil,
 		tabs,
 	)
