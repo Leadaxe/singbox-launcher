@@ -211,7 +211,23 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		if ruleHasNestedTarget(obj) {
 			return nil, errors.New(locale.T(addRuleNestedTargetText))
 		}
+		if ob, _ := obj["outbound"].(string); ob != "" && !outboundMap[ob] {
+			return nil, errors.New(locale.Tf("Unknown direction %q.", ob))
+		}
 		return ruleMatchOf(obj), nil
+	}
+	// targetOutbound — цель корня: с вкладки JSON — из её тела (если выход
+	// известен), иначе — выбор Direction.
+	targetOutbound := func() string {
+		if activeTabIsRaw {
+			var obj map[string]interface{}
+			if json.Unmarshal([]byte(strings.TrimSpace(rawTabEntry.Text())), &obj) == nil {
+				if ob := ruleTargetName(obj); ob != "" && outboundMap[ob] {
+					return ob
+				}
+			}
+		}
+		return selectedOutbound()
 	}
 	currentMatch := func(strict bool) (map[string]interface{}, error) {
 		if activeTabIsRaw {
@@ -225,7 +241,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		if err != nil || len(m) == 0 {
 			return nil
 		}
-		return ruleWithTarget(m, selectedOutbound())
+		return ruleWithTarget(m, targetOutbound())
 	}
 
 	dnsWheel := components.NewWheelThrough()
@@ -306,7 +322,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			dialog.ShowError(errors.New(locale.T(addRuleNoConditionText)), dialogWindow)
 			return
 		}
-		outbound := selectedOutbound()
+		outbound := targetOutbound()
 		ruleRaw := ruleWithTarget(match, outbound)
 		ruleSets := wizardmodels.RuleSetsFromBody(ruleRaw)
 		var srsOptions corestate.RuleSetOptions
@@ -393,7 +409,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	refreshPreview := func() {
 		previewView.SetText(rulePreviewText(model, rulePreviewInput{
 			label:    strings.TrimSpace(labelEntry.Text),
-			outbound: selectedOutbound(),
+			outbound: targetOutbound(),
 			body:     currentBody(),
 			dns:      dnsTab.value(),
 			srs:      srsOptionsForm.Value(),
@@ -413,8 +429,6 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			setRawText(m)
 		}
 	}
-	// syncRawToForm — тело JSON в форму; false — форма его не выражает или
-	// JSON не разбирается: окно остаётся на вкладке JSON.
 	// askDiscardRaw — с вкладки JSON не уйти (ошибка или форма не выражает):
 	// выбор «отбросить правки JSON» (тело — снова из формы, переход на
 	// вкладку target) или «остаться в редакторе JSON».
@@ -432,29 +446,32 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		d.Resize(fyne.NewSize(440, 220))
 		d.Show()
 	}
-	syncRawToForm := func() bool {
+	// leaveRaw — уход с вкладки JSON на target: тело JSON раскладывается в
+	// форму, цель корня — в Direction. false — уйти нельзя (ошибка JSON,
+	// неизвестный выход или форма не выражает тело при переходе на Form),
+	// задан вопрос, окно остаётся на JSON. Тело, которое форма не выражает,
+	// на DNS и Preview остаётся источником (activeTabIsRaw не сбрасывается).
+	leaveRaw := func(target *container.TabItem) bool {
 		match, e := rawMatch()
 		if e != nil {
-			askDiscardRaw(locale.T("JSON error"), e.Error(), formTabItem)
+			askDiscardRaw(locale.T("JSON error"), e.Error(), target)
 			return false
 		}
 		st, ok := table.StackFromBody(match)
-		if !ok {
-			askDiscardRaw(locale.T("Rule not recognized"), locale.T("The form cannot show this rule."), formTabItem)
+		if !ok && target == formTabItem {
+			askDiscardRaw(locale.T("Rule not recognized"), locale.T("The form cannot show this rule."), target)
 			return false
 		}
-		loadForm(st.ForForm(), match)
-		var obj map[string]interface{}
-		if json.Unmarshal([]byte(strings.TrimSpace(rawTabEntry.Text())), &obj) == nil {
-			if ob := ruleTargetName(obj); ob != "" && outboundMap[ob] {
-				outboundSelect.SetSelected(ob)
-			}
+		outboundSelect.SetSelected(targetOutbound())
+		if ok {
+			loadForm(st.ForForm(), match)
+			activeTabIsRaw = false
 		}
 		return true
 	}
-	// activeTabIsRaw — последняя из вкладок Form/JSON: вкладка DNS и Preview
-	// её не меняют, тело правила берётся оттуда. Синхронизация — только при
-	// переходе между Form и JSON.
+	// activeTabIsRaw — тело правила берётся с вкладки JSON. Уход с JSON на
+	// любую вкладку раскладывает JSON в форму (leaveRaw); JSON остаётся
+	// источником, только если форма тело не выражает.
 	tabs.OnSelected = func(t *container.TabItem) {
 		switch t {
 		case rawTabItem:
@@ -462,28 +479,14 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				activeTabIsRaw = true
 				syncFormToRaw()
 			}
-		case formTabItem:
-			if activeTabIsRaw {
-				if syncRawToForm() {
-					activeTabIsRaw = false
-				} else {
-					tabs.Select(rawTabItem)
-					return
-				}
+		default:
+			if activeTabIsRaw && !leaveRaw(t) {
+				tabs.Select(rawTabItem)
+				return
 			}
-		case dnsTabItem, previewTabItem:
-			// Тело для DNS и Preview берётся из JSON — с ошибкой туда не пускаем.
-			if activeTabIsRaw {
-				if _, e := rawMatch(); e != nil {
-					askDiscardRaw(locale.T("JSON error"), e.Error(), t)
-					tabs.Select(rawTabItem)
-					return
-				}
+			if t == previewTabItem {
+				refreshPreview()
 			}
-			if t != previewTabItem {
-				break
-			}
-			refreshPreview()
 		}
 		refreshState()
 	}
