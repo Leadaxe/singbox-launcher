@@ -415,15 +415,31 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	}
 	// syncRawToForm — тело JSON в форму; false — форма его не выражает или
 	// JSON не разбирается: окно остаётся на вкладке JSON.
+	// askDiscardRaw — JSON не уходит в форму: выбор «отбросить правки JSON и
+	// вернуться к форме» или «остаться в редакторе JSON».
+	askDiscardRaw := func(title, msg string) {
+		text := widget.NewLabel(msg + "\n\n" + locale.T("Discard the JSON changes and go back to the form?"))
+		text.Wrapping = fyne.TextWrapWord
+		d := dialog.NewCustomConfirm(title, locale.T("Discard"), locale.T("Keep editing"), text, func(discard bool) {
+			if !discard {
+				return
+			}
+			activeTabIsRaw = false
+			syncFormToRaw()
+			tabs.Select(formTabItem)
+		}, dialogWindow)
+		d.Resize(fyne.NewSize(440, 220))
+		d.Show()
+	}
 	syncRawToForm := func() bool {
 		match, e := rawMatch()
 		if e != nil {
-			dialog.ShowError(e, dialogWindow)
+			askDiscardRaw(locale.T("JSON error"), e.Error())
 			return false
 		}
 		st, ok := table.StackFromBody(match)
 		if !ok {
-			dialog.ShowInformation(locale.T("Rule not recognized"), locale.T("Could not recognize rule, form cannot be loaded; staying on Raw."), dialogWindow)
+			askDiscardRaw(locale.T("Rule not recognized"), locale.T("The form cannot show this rule."))
 			return false
 		}
 		loadForm(st.ForForm(), match)

@@ -6325,5 +6325,17 @@
   },
   "Remove this rule?": {
     "value": "Удалить это правило?"
+  },
+  "JSON error": {
+    "value": "Ошибка в JSON"
+  },
+  "The form cannot show this rule.": {
+    "value": "Форма не может показать это правило."
+  },
+  "Discard the JSON changes and go back to the form?": {
+    "value": "Отбросить правки JSON и вернуться к форме?"
+  },
+  "Keep editing": {
+    "value": "Продолжить правку"
   }
 }
