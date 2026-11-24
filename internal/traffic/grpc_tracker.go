@@ -38,7 +38,8 @@ func NewConnTracker() *ConnTracker {
 // Это ДЕЛЬТА-протокол, а не повторяющийся снимок. Каждый тип события несёт
 // своё, и путать их нельзя:
 //
-//   - NEW — полный объект соединения;
+//   - NEW — полный объект соединения; при подписке так же приходят недавно
+//     закрытые соединения, с заполненным closedAt;
 //   - UPDATE — ТОЛЬКО id и приращения трафика, connection всегда nil;
 //   - CLOSED — id и closedAt; сам объект может отсутствовать.
 //
@@ -73,9 +74,19 @@ func (t *ConnTracker) ApplyEvent(ev *daemonpb.ConnectionEvent) {
 		// NEW повторно по тому же id (у соединения стал известен фактический
 		// узел) и положить в это же событие приращение тика — оно уже учтено
 		// в uplinkTotal/downlinkTotal записи, прибавлять его второй раз нельзя.
-		if c := ev.GetConnection(); c != nil {
-			t.conns[c.GetId()] = ProtoConnToClash(c)
+		c := ev.GetConnection()
+		if c == nil {
+			return
 		}
+		// При подписке ядро присылает и недавно закрытые соединения — тоже как
+		// NEW, но с closedAt. В снимок они не идут: он, как Clash /connections,
+		// перечисляет только открытые, а CLOSED по ним уже не придёт — запись
+		// висела бы «живой» до ближайшего reset.
+		if c.GetClosedAt() != 0 {
+			delete(t.conns, c.GetId())
+			return
+		}
+		t.conns[c.GetId()] = ProtoConnToClash(c)
 	}
 }
 

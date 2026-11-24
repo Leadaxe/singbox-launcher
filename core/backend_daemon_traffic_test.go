@@ -53,6 +53,13 @@ func connNew(id string, up, down int64) *daemonpb.ConnectionEvent {
 	}
 }
 
+// closedNew — NEW недавно закрытого соединения, как его шлёт ядро при подписке.
+func closedNew(id string, up, down int64) *daemonpb.ConnectionEvent {
+	ev := connNew(id, up, down)
+	ev.Connection.ClosedAt = 1_700_000_000_000
+	return ev
+}
+
 // connUpdate — UPDATE как его шлёт ядро: id и приращения, без Connection.
 func connUpdate(id string, up, down int64) *daemonpb.ConnectionEvent {
 	return &daemonpb.ConnectionEvent{
@@ -70,7 +77,8 @@ func connBatch(reset bool, evs ...*daemonpb.ConnectionEvent) *daemonpb.Connectio
 // TestDaemonConnStreamTotals гоняет через consumeConnStream кадры в том виде,
 // в каком их шлёт ядро (daemon/started_service.go): NEW с полной записью,
 // UPDATE только с приращениями, повторный NEW по тому же id с текущими суммами
-// и приращением тика (SPEC 138 ядра), CLOSED по id.
+// и приращением тика (SPEC 138 ядра), CLOSED по id, недавно закрытое
+// соединение в кадре reset (NEW с closedAt).
 func TestDaemonConnStreamTotals(t *testing.T) {
 	ac := &AppController{}
 	b := &DaemonBackend{ac: ac, connTracker: tprof.NewConnTracker()}
@@ -130,7 +138,7 @@ func TestDaemonConnStreamTotals(t *testing.T) {
 			}
 		}},
 		{connBatch(false, connNew("b", 1, 2)), nil},
-		{connBatch(true, connNew("c", 3, 4)), func(snap map[string]tprof.ClashConn, ok bool) {
+		{connBatch(true, connNew("c", 3, 4), closedNew("old", 7, 8)), func(snap map[string]tprof.ClashConn, ok bool) {
 			if _, found := snap["b"]; found || len(snap) != 1 {
 				t.Errorf("reset frame: snapshot = %v, want only c", snap)
 			}
