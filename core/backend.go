@@ -163,18 +163,12 @@ func (ac *AppController) SwitchBackendMode(mode BackendMode) error {
 
 // --- Опциональные способности бэкенда (реализует только DaemonBackend) ---
 
-// PoolSlotInfo — слот пула балансировщика (lx-наблюдаемость urltest-группы).
-type PoolSlotInfo struct {
-	Slot  uint32
-	Tag   string
-	Delay uint32
-}
-
 // poolSource — бэкенд, умеющий отдавать пул балансировщика (gRPC GetPool).
 // Запрашивается всегда для конкретной группы (node info urltest-группы) —
-// отдельного перечисления групп не требуется.
+// отдельного перечисления групп не требуется. Тип состояния общий с
+// удалённой машиной (services.PoolState): RPC один и тот же.
 type poolSource interface {
-	PoolSlots(group string) ([]PoolSlotInfo, error)
+	PoolState(group string) (services.PoolState, error)
 }
 
 // ChainPositionInfo — одна позиция цепочки в рантайме (SPEC 110).
@@ -390,32 +384,24 @@ func (ac *AppController) DaemonPoolAvailable(t CoreTarget) bool {
 // remotePoolSource — транспорт, умеющий отдать пул (services.LxdRemoteTransport).
 // Интерфейс объявлен здесь, чтобы core не зависел от конкретного типа.
 type remotePoolSource interface {
-	PoolSlots(group string) ([]services.PoolSlot, error)
+	PoolState(group string) (services.PoolState, error)
 }
 
-// DaemonPoolSlots возвращает слоты пула выбранной группы у источника цели.
-func (ac *AppController) DaemonPoolSlots(t CoreTarget, group string) ([]PoolSlotInfo, error) {
+// DaemonPoolState возвращает пул выбранной группы у источника цели.
+func (ac *AppController) DaemonPoolState(t CoreTarget, group string) (services.PoolState, error) {
 	if t.Scope == services.ScopeRemote {
 		tr, _ := ac.machineTransport(t)
 		src, ok := tr.(remotePoolSource)
 		if !ok {
-			return nil, fmt.Errorf("pool source is not available for this machine")
+			return services.PoolState{}, fmt.Errorf("pool source is not available for this machine")
 		}
-		slots, err := src.PoolSlots(group)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]PoolSlotInfo, 0, len(slots))
-		for _, s := range slots {
-			out = append(out, PoolSlotInfo{Slot: s.Slot, Tag: s.Tag, Delay: s.Delay})
-		}
-		return out, nil
+		return src.PoolState(group)
 	}
 	src, ok := ac.Backend().(poolSource)
 	if !ok {
-		return nil, fmt.Errorf("pool source is not available in this mode")
+		return services.PoolState{}, fmt.Errorf("pool source is not available in this mode")
 	}
-	return src.PoolSlots(group)
+	return src.PoolState(group)
 }
 
 // remoteChainSource — транспорт удалённой машины, умеющий то же самое.

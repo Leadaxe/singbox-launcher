@@ -766,23 +766,19 @@ func (b *DaemonBackend) ClashEndpoint() (baseURL, token string, ok bool) {
 	return "", "", false
 }
 
-// PoolSlots implements poolSource через lx-RPC GetPool.
-func (b *DaemonBackend) PoolSlots(group string) ([]PoolSlotInfo, error) {
+// PoolState implements poolSource через lx-RPC GetPool.
+func (b *DaemonBackend) PoolState(group string) (services.PoolState, error) {
 	client, err := b.grpcClient()
 	if err != nil {
-		return nil, err
+		return services.PoolState{}, err
 	}
 	ctx, cancel := context.WithTimeout(b.ctx, daemonRPCTimeout)
 	defer cancel()
 	pool, err := client.GetPool(ctx, &daemonpb.GetPoolRequest{GroupTag: group})
 	if err != nil {
-		return nil, fmt.Errorf("daemon GetPool: %w", err)
+		return services.PoolState{}, fmt.Errorf("daemon GetPool: %w", err)
 	}
-	slots := make([]PoolSlotInfo, 0, len(pool.GetSlots()))
-	for _, slot := range pool.GetSlots() {
-		slots = append(slots, PoolSlotInfo{Slot: slot.GetSlot(), Tag: slot.GetTag(), Delay: slot.GetDelay()})
-	}
-	return slots, nil
+	return services.PoolStateFromPB(pool), nil
 }
 
 // Chains implements chainSource через lx-RPC GetChains.

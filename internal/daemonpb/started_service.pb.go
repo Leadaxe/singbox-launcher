@@ -9230,12 +9230,20 @@ func (x *GetPoolRequest) GetGroupTag() string {
 }
 
 type PoolSlot struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Slot          uint32                 `protobuf:"varint,1,opt,name=slot,proto3" json:"slot,omitempty"`
-	Tag           string                 `protobuf:"bytes,2,opt,name=tag,proto3" json:"tag,omitempty"`
-	Delay         uint32                 `protobuf:"varint,3,opt,name=delay,proto3" json:"delay,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Slot  uint32                 `protobuf:"varint,1,opt,name=slot,proto3" json:"slot,omitempty"`
+	Tag   string                 `protobuf:"bytes,2,opt,name=tag,proto3" json:"tag,omitempty"`
+	Delay uint32                 `protobuf:"varint,3,opt,name=delay,proto3" json:"delay,omitempty"`
+	// SPEC 138 — the self-heal state of the node in the slot. quarantined: taken out of
+	// rotation for failing more than its neighbours, until the next scheduled run, manual
+	// run or network change. connections / confirmedFailures: the slot counters since the
+	// node took the slot, both halved when connections reaches 256. All zero outside
+	// round_robin.
+	Quarantined       bool   `protobuf:"varint,4,opt,name=quarantined,proto3" json:"quarantined,omitempty"`
+	Connections       uint32 `protobuf:"varint,5,opt,name=connections,proto3" json:"connections,omitempty"`
+	ConfirmedFailures uint32 `protobuf:"varint,6,opt,name=confirmedFailures,proto3" json:"confirmedFailures,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *PoolSlot) Reset() {
@@ -9289,9 +9297,39 @@ func (x *PoolSlot) GetDelay() uint32 {
 	return 0
 }
 
+func (x *PoolSlot) GetQuarantined() bool {
+	if x != nil {
+		return x.Quarantined
+	}
+	return false
+}
+
+func (x *PoolSlot) GetConnections() uint32 {
+	if x != nil {
+		return x.Connections
+	}
+	return 0
+}
+
+func (x *PoolSlot) GetConfirmedFailures() uint32 {
+	if x != nil {
+		return x.ConfirmedFailures
+	}
+	return 0
+}
+
 type PoolList struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Slots         []*PoolSlot            `protobuf:"bytes,1,rep,name=slots,proto3" json:"slots,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Slots []*PoolSlot            `protobuf:"bytes,1,rep,name=slots,proto3" json:"slots,omitempty"`
+	// SPEC 138 — the group-wide self-heal state. shiftedKeys: keys moved off their own slot;
+	// markedKeys: keys marked as an address problem (reset by the scheduled run, a manual
+	// run or a network change). frozen: the self-heal does nothing for now (wake, network
+	// change, own network down); frozenSeconds is what is left of it, rounded up, and 0
+	// while the freeze lasts only for the full run after a network change.
+	ShiftedKeys   uint32 `protobuf:"varint,2,opt,name=shiftedKeys,proto3" json:"shiftedKeys,omitempty"`
+	MarkedKeys    uint32 `protobuf:"varint,3,opt,name=markedKeys,proto3" json:"markedKeys,omitempty"`
+	Frozen        bool   `protobuf:"varint,4,opt,name=frozen,proto3" json:"frozen,omitempty"`
+	FrozenSeconds uint32 `protobuf:"varint,5,opt,name=frozenSeconds,proto3" json:"frozenSeconds,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9331,6 +9369,34 @@ func (x *PoolList) GetSlots() []*PoolSlot {
 		return x.Slots
 	}
 	return nil
+}
+
+func (x *PoolList) GetShiftedKeys() uint32 {
+	if x != nil {
+		return x.ShiftedKeys
+	}
+	return 0
+}
+
+func (x *PoolList) GetMarkedKeys() uint32 {
+	if x != nil {
+		return x.MarkedKeys
+	}
+	return 0
+}
+
+func (x *PoolList) GetFrozen() bool {
+	if x != nil {
+		return x.Frozen
+	}
+	return false
+}
+
+func (x *PoolList) GetFrozenSeconds() uint32 {
+	if x != nil {
+		return x.FrozenSeconds
+	}
+	return 0
 }
 
 // SPEC 035 v3 — point-in-time record snapshot of every DNS group in the
@@ -11302,13 +11368,22 @@ const file_daemon_started_service_proto_rawDesc = "" +
 	"\x05rdata\x18\x03 \x01(\tR\x05rdata\x12\x10\n" +
 	"\x03ttl\x18\x04 \x01(\rR\x03ttl\",\n" +
 	"\x0eGetPoolRequest\x12\x1a\n" +
-	"\bgroupTag\x18\x01 \x01(\tR\bgroupTag\"F\n" +
+	"\bgroupTag\x18\x01 \x01(\tR\bgroupTag\"\xb8\x01\n" +
 	"\bPoolSlot\x12\x12\n" +
 	"\x04slot\x18\x01 \x01(\rR\x04slot\x12\x10\n" +
 	"\x03tag\x18\x02 \x01(\tR\x03tag\x12\x14\n" +
-	"\x05delay\x18\x03 \x01(\rR\x05delay\"2\n" +
+	"\x05delay\x18\x03 \x01(\rR\x05delay\x12 \n" +
+	"\vquarantined\x18\x04 \x01(\bR\vquarantined\x12 \n" +
+	"\vconnections\x18\x05 \x01(\rR\vconnections\x12,\n" +
+	"\x11confirmedFailures\x18\x06 \x01(\rR\x11confirmedFailures\"\xb2\x01\n" +
 	"\bPoolList\x12&\n" +
-	"\x05slots\x18\x01 \x03(\v2\x10.daemon.PoolSlotR\x05slots\"\xf4\x01\n" +
+	"\x05slots\x18\x01 \x03(\v2\x10.daemon.PoolSlotR\x05slots\x12 \n" +
+	"\vshiftedKeys\x18\x02 \x01(\rR\vshiftedKeys\x12\x1e\n" +
+	"\n" +
+	"markedKeys\x18\x03 \x01(\rR\n" +
+	"markedKeys\x12\x16\n" +
+	"\x06frozen\x18\x04 \x01(\bR\x06frozen\x12$\n" +
+	"\rfrozenSeconds\x18\x05 \x01(\rR\rfrozenSeconds\"\xf4\x01\n" +
 	"\x0eDnsGroupMember\x12\x10\n" +
 	"\x03tag\x18\x01 \x01(\tR\x03tag\x12\x1e\n" +
 	"\n" +

@@ -2443,6 +2443,27 @@
   "Live balancer pool (gRPC)": {
     "value": "Живой пул балансировщика (gRPC)"
   },
+  "The core reports no pool for this group": {
+    "value": "Ядро не отдаёт пул этой группы"
+  },
+  "shifted keys: %d": {
+    "value": "сдвинуто ключей: %d"
+  },
+  "address problems: %d": {
+    "value": "проблем с адресом: %d"
+  },
+  "frozen for %d s": {
+    "value": "заморожен ещё %d с"
+  },
+  "frozen until the network check ends": {
+    "value": "заморожен до конца проверки сети"
+  },
+  "quarantine": {
+    "value": "карантин"
+  },
+  "connections %d · failures %d": {
+    "value": "соединений %d · отказов %d"
+  },
   "Chain positions (%d)": {
     "value": "Позиции цепочки (%d)"
   },

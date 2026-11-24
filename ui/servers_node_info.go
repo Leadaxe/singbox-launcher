@@ -250,43 +250,11 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 		// with_lx_command) не рисует ничего — про пул не говорим там, где
 		// балансировки нет.
 		if node.Type == "urltest" && bound && ac.DaemonPoolAvailable(target) {
-			poolBox := container.NewVBox()
-			body.Add(poolBox)
-			go func(group string) {
-				slots, err := ac.DaemonPoolSlots(target, group)
-				fyne.Do(func() {
-					switch {
-					case err != nil || len(slots) == 0:
-						// Ошибка или пустой пул — группа не балансируемая
-						// (или RPC недоступен). Секцию не создаём вовсе.
-						return
-					default:
-						poolBox.Add(widget.NewSeparator())
-						poolBox.Add(sectionHeader(locale.T("Live balancer pool (gRPC)")))
-						active := strings.TrimSpace(proxy.Now)
-						if active == "" {
-							active, _ = node.Raw["now"].(string)
-						}
-						for _, slot := range slots {
-							delay := "—"
-							if slot.Delay > 0 {
-								delay = fmt.Sprintf("%d ms", slot.Delay)
-							}
-							marker := " "
-							if active != "" && slot.Tag == active {
-								marker = "●"
-							}
-							row := widget.NewLabel(fmt.Sprintf("  %s #%d  %s  ·  %s", marker, slot.Slot, slot.Tag, delay))
-							row.Truncation = fyne.TextTruncateEllipsis
-							if marker == "●" {
-								row.TextStyle = fyne.TextStyle{Bold: true}
-							}
-							poolBox.Add(row)
-						}
-					}
-					poolBox.Refresh()
-				})
-			}(proxy.Name)
+			active := strings.TrimSpace(proxy.Now)
+			if active == "" {
+				active, _ = node.Raw["now"].(string)
+			}
+			body.Add(nodeInfoPoolSection(ac, target, proxy.Name, active))
 		}
 	}
 
@@ -469,6 +437,112 @@ func jsonNumberString(v interface{}) (string, bool) {
 }
 
 // sectionHeader — заголовок секции.
+// nodeInfoPoolSection — секция живого пула балансировщика. Пустая, пока не
+// пришёл непустой пул: у группы без балансировки (и при недоступном RPC)
+// про пул не говорим вовсе. Кнопка ↻ перечитывает пул — состояние
+// самовосстановления (карантин, заморозка) меняется, пока окно открыто.
+func nodeInfoPoolSection(ac *core.AppController, target core.CoreTarget, group, active string) fyne.CanvasObject {
+	box := container.NewVBox()
+	var load func(first bool)
+	render := func(pool services.PoolState, err error, first bool) {
+		if first && (err != nil || len(pool.Slots) == 0) {
+			return
+		}
+		box.RemoveAll()
+		refresh := widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() { load(false) })
+		refresh.Importance = widget.LowImportance
+		box.Add(widget.NewSeparator())
+		box.Add(container.NewBorder(nil, nil, nil, refresh, sectionHeader(locale.T("Live balancer pool (gRPC)"))))
+		if err != nil || len(pool.Slots) == 0 {
+			if err != nil {
+				debuglog.WarnLog("node info: pool %s: %v", group, err)
+			}
+			empty := widget.NewLabel("  " + locale.T("The core reports no pool for this group"))
+			empty.Importance = widget.LowImportance
+			box.Add(empty)
+			box.Refresh()
+			return
+		}
+		if line := poolStateLine(pool); line != "" {
+			l := widget.NewLabel(line)
+			l.Importance = widget.WarningImportance
+			l.Wrapping = fyne.TextWrapWord
+			box.Add(l)
+		}
+		for _, slot := range pool.Slots {
+			delay := "—"
+			if slot.Delay > 0 {
+				delay = fmt.Sprintf("%d ms", slot.Delay)
+			}
+			marker := " "
+			if active != "" && slot.Tag == active {
+				marker = "●"
+			}
+			row := widget.NewLabel(fmt.Sprintf("  %s #%d  %s  ·  %s", marker, slot.Slot, slot.Tag, delay))
+			row.Truncation = fyne.TextTruncateEllipsis
+			if marker == "●" {
+				row.TextStyle = fyne.TextStyle{Bold: true}
+			}
+			if slot.Quarantined {
+				// Задержка карантинного узла — история пробы, а не признак
+				// того, что узел в работе: строку гасим.
+				row.Importance = widget.LowImportance
+			}
+			box.Add(row)
+			if sub := poolSlotSubline(slot); sub != nil {
+				box.Add(sub)
+			}
+		}
+		box.Refresh()
+	}
+	load = func(first bool) {
+		go func() {
+			pool, err := ac.DaemonPoolState(target, group)
+			fyne.Do(func() { render(pool, err, first) })
+		}()
+	}
+	load(true)
+	return box
+}
+
+// poolStateLine — строка состояния самовосстановления группы из ненулевых
+// частей; пустая, когда всё нулевое (здоровый пул, не round_robin, старое ядро).
+func poolStateLine(pool services.PoolState) string {
+	var parts []string
+	if pool.ShiftedKeys > 0 {
+		parts = append(parts, locale.Tf("shifted keys: %d", pool.ShiftedKeys))
+	}
+	if pool.MarkedKeys > 0 {
+		parts = append(parts, locale.Tf("address problems: %d", pool.MarkedKeys))
+	}
+	if pool.Frozen {
+		if pool.FrozenSeconds > 0 {
+			parts = append(parts, locale.Tf("frozen for %d s", pool.FrozenSeconds))
+		} else {
+			parts = append(parts, locale.T("frozen until the network check ends"))
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+// poolSlotSubline — вторая строка слота: отметка карантина (цветом ошибки) и
+// счётчики. nil, когда узел не в карантине и оба счётчика нулевые.
+func poolSlotSubline(slot services.PoolSlot) fyne.CanvasObject {
+	if !slot.Quarantined && slot.Connections == 0 && slot.ConfirmedFailures == 0 {
+		return nil
+	}
+	line := container.NewHBox(widget.NewLabel("     "))
+	if slot.Quarantined {
+		q := widget.NewLabel(locale.T("quarantine"))
+		q.Importance = widget.DangerImportance
+		line.Add(q)
+	}
+	counters := widget.NewLabel(locale.Tf("connections %d · failures %d", slot.Connections, slot.ConfirmedFailures))
+	counters.Importance = widget.LowImportance
+	line.Add(counters)
+	return line
+}
+
 func sectionHeader(text string) *widget.Label {
 	l := widget.NewLabel(text)
 	l.TextStyle.Bold = true

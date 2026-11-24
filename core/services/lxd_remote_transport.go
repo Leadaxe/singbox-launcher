@@ -470,35 +470,72 @@ func (t *LxdRemoteTransport) SetPositionEnabled(chainTag string, pos int, enable
 	return resp.GetWarmupError(), nil
 }
 
-// PoolSlot — слот пула балансировщика удалённого ядра (SPEC 097).
+// PoolSlot — слот пула балансировщика (SPEC 097). Общий для своего демона и
+// удалённой машины: RPC один и тот же.
 //
-// Дублирует core.PoolSlotInfo намеренно: core импортирует services, обратная
-// зависимость замкнула бы граф. Вызывающий (core/backend.go) конвертирует.
+// Quarantined, Connections, ConfirmedFailures — самовосстановление round_robin
+// (SPEC 138 ядра): узел выведен из ротации за то, что рвёт соединения чаще
+// соседей; счётчики слота с момента, как узел его занял (ядро делит их пополам
+// на 256 соединениях — это не итог за всё время). Ядро без SPEC 138 отдаёт нули.
 type PoolSlot struct {
-	Slot  uint32
-	Tag   string
-	Delay uint32
+	Slot              uint32
+	Tag               string
+	Delay             uint32
+	Quarantined       bool
+	Connections       uint32
+	ConfirmedFailures uint32
 }
 
-// PoolSlots — живой пул urltest-группы удалённого ядра (lx-RPC GetPool).
+// PoolState — пул группы целиком: слоты и состояние самовосстановления
+// группы (SPEC 138 ядра). ShiftedKeys — ключи закрепления, сдвинутые со своего
+// слота; MarkedKeys — ключи, помеченные как проблема адреса; Frozen —
+// самовосстановление сейчас ничего не делает, FrozenSeconds — сколько осталось
+// (0 — заморозка до конца полной проверки после смены сети).
+type PoolState struct {
+	Slots         []PoolSlot
+	ShiftedKeys   uint32
+	MarkedKeys    uint32
+	Frozen        bool
+	FrozenSeconds uint32
+}
+
+// PoolStateFromPB переводит ответ GetPool в PoolState.
+func PoolStateFromPB(pool *daemonpb.PoolList) PoolState {
+	out := PoolState{
+		Slots:         make([]PoolSlot, 0, len(pool.GetSlots())),
+		ShiftedKeys:   pool.GetShiftedKeys(),
+		MarkedKeys:    pool.GetMarkedKeys(),
+		Frozen:        pool.GetFrozen(),
+		FrozenSeconds: pool.GetFrozenSeconds(),
+	}
+	for _, s := range pool.GetSlots() {
+		out.Slots = append(out.Slots, PoolSlot{
+			Slot:              s.GetSlot(),
+			Tag:               s.GetTag(),
+			Delay:             s.GetDelay(),
+			Quarantined:       s.GetQuarantined(),
+			Connections:       s.GetConnections(),
+			ConfirmedFailures: s.GetConfirmedFailures(),
+		})
+	}
+	return out
+}
+
+// PoolState — живой пул urltest-группы удалённого ядра (lx-RPC GetPool).
 //
 // Тот же RPC, что у локального демона: активный узел группы виден только
 // работающему ядру, из конфига его не вычислить.
-func (t *LxdRemoteTransport) PoolSlots(group string) ([]PoolSlot, error) {
+func (t *LxdRemoteTransport) PoolState(group string) (PoolState, error) {
 	client, ctx, cancel, err := t.rpc()
 	if err != nil {
-		return nil, err
+		return PoolState{}, err
 	}
 	defer cancel()
 	pool, err := client.GetPool(ctx, &daemonpb.GetPoolRequest{GroupTag: group})
 	if err != nil {
-		return nil, fmt.Errorf("lxd remote GetPool: %w", err)
+		return PoolState{}, fmt.Errorf("lxd remote GetPool: %w", err)
 	}
-	slots := make([]PoolSlot, 0, len(pool.GetSlots()))
-	for _, s := range pool.GetSlots() {
-		slots = append(slots, PoolSlot{Slot: s.GetSlot(), Tag: s.GetTag(), Delay: s.GetDelay()})
-	}
-	return slots, nil
+	return PoolStateFromPB(pool), nil
 }
 
 // Groups возвращает список тегов selector-групп удалённого ядра. Нужен
