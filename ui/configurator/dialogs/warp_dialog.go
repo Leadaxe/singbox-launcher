@@ -188,13 +188,6 @@ func newWarpWGSection() *warpWGSection {
 	// набора форсятся в collect() ниже. Против DPI с WARP работают только jc/jmin/
 	// jmax (отдельные мусорные датаграммы, сервер их игнорит) + masquerade id/ip/ib.
 
-	// reserved (client_id) пишется только в plain WARP: DPI режет WARP именно по
-	// client_id, поэтому при обфускации галка выключена и скрыта.
-	reserved := widget.NewCheck(locale.T("Bind to this device (reserved)"), nil)
-	if obfuscate.Checked {
-		reserved.Hide()
-	}
-
 	applyPreset := func(name string) {
 		p := warp.PresetByName(name)
 		ipSel.SetSelected(p.IP)
@@ -224,7 +217,6 @@ func newWarpWGSection() *warpWGSection {
 	advanced := container.NewVBox(
 		labeledRow(locale.T("WARP+ license"), license),
 		labeledRow(locale.T("Endpoint"), container.NewBorder(nil, nil, nil, randEndpointBtn, endpoint)),
-		reserved,
 		widget.NewSeparator(),
 		widget.NewLabelWithStyle(locale.T("Masquerade"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		labeledRow(locale.T("Protocol (ip)"), ipSel),
@@ -242,13 +234,9 @@ func newWarpWGSection() *warpWGSection {
 		if on {
 			presetRow.Show()
 			acc.Show()
-			reserved.SetChecked(false)
-			reserved.Hide() // AWG-узлу reserved не пишется (DPI режет по client_id)
 		} else {
 			presetRow.Hide()
 			acc.Close(0)
-			reserved.Show()
-			reserved.SetChecked(true)
 		}
 	}
 
@@ -269,7 +257,6 @@ func newWarpWGSection() *warpWGSection {
 			randomEndpoint: obfuscate.Checked && endpoint.Text == "",
 			endpoint:       endpoint.Text,
 			license:        license.Text,
-			reserved:       !obfuscate.Checked, // plain — всегда с reserved, AWG — никогда
 			quic:           p,
 		}
 	}
@@ -333,7 +320,6 @@ type warpRegParams struct {
 	randomEndpoint bool
 	endpoint       string
 	license        string
-	reserved       bool
 	quic           warp.QuicParams
 }
 
@@ -372,7 +358,7 @@ func runWarpRegistration(win fyne.Window, presenter *wizardpresentation.WizardPr
 
 		var uri string
 		if err == nil {
-			uri, err = acc.ToWireguardURI(p.reserved)
+			uri, err = acc.ToWireguardURI()
 		}
 		fyne.Do(func() { finishWarp(win, loading, onURI, uri, err) })
 	}()
