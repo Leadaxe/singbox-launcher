@@ -421,11 +421,11 @@ func TestBundledTemplate_WGBlock(t *testing.T) {
 		vars map[string]string
 		want string
 	}{
-		{nil, ""},
+		{nil, `{"buffers":{"read_datagram_count":8}}`},
 		{map[string]string{"wg_read_datagram_count": "128", "wg_send_by_mtu": "true", "wg_connected_socket": "false"}, ""},
 		{map[string]string{"wg_read_datagram_count": "8"}, `{"buffers":{"read_datagram_count":8}}`},
-		{map[string]string{"wg_send_by_mtu": "false"}, `{"buffers":{"send_by_mtu":false}}`},
-		{map[string]string{"wg_connected_socket": "true"}, `{"connected_socket":true}`},
+		{map[string]string{"wg_send_by_mtu": "false"}, `{"buffers":{"read_datagram_count":8,"send_by_mtu":false}}`},
+		{map[string]string{"wg_read_datagram_count": "128", "wg_connected_socket": "true"}, `{"connected_socket":true}`},
 		{
 			map[string]string{"wg_read_datagram_count": "1", "wg_send_by_mtu": "false", "wg_connected_socket": "true"},
 			`{"buffers":{"read_datagram_count":1,"send_by_mtu":false},"connected_socket":true}`,
@@ -434,6 +434,27 @@ func TestBundledTemplate_WGBlock(t *testing.T) {
 	for _, c := range cases {
 		if got := render(c.vars); got != c.want {
 			t.Errorf("vars %v: lx.wg = %s, want %s", c.vars, got, c.want)
+		}
+	}
+	// Дефолт по цели: удалённой Linux-машине (роутеру) — 8, локальной и
+	// прочим ОС — 128, т.е. ключа нет.
+	for _, tc := range []struct {
+		spec TargetSpec
+		want string
+	}{
+		{TargetSpec{GOOS: "linux", GOARCH: "arm64", Target: TargetRemote}, `{"buffers":{"read_datagram_count":8}}`},
+		{TargetSpec{GOOS: "linux", GOARCH: "amd64", Target: TargetLocal}, ""},
+		{TargetSpec{GOOS: "darwin", GOARCH: "arm64", Target: TargetLocal}, ""},
+		{TargetSpec{GOOS: "darwin", GOARCH: "arm64", Target: TargetRemote}, ""},
+	} {
+		lx, _ := renderBundledTemplate(t, tc.spec, nil)["lx"].(map[string]interface{})
+		got := ""
+		if wg, ok := lx["wg"]; ok {
+			b, _ := json.Marshal(wg)
+			got = string(b)
+		}
+		if got != tc.want {
+			t.Errorf("%+v defaults: lx.wg = %s, want %s", tc.spec, got, tc.want)
 		}
 	}
 }

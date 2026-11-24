@@ -749,7 +749,8 @@ Key properties:
   for it. Since core lx.36 the same block carries `lx.wg.buffers.*` and
   `lx.wg.connected_socket` (Settings → WireGuard, vars `wg_read_datagram_count`,
   `wg_send_by_mtu`, `wg_connected_socket`; a key is written only when it differs
-  from the core default, contract 1.1.183; pinned by `TestBundledTemplate_WGBlock`).
+  from the core default; `wg_read_datagram_count` defaults to 8 for a remote Linux
+  machine, contract 1.1.183; pinned by `TestBundledTemplate_WGBlock`).
   The launcher never emits the WireGuard idle-suspend keys in any form
   (`route.lx_idle_*`, the flat `lx.wg.idle_*` of cores before lx.36, `lx.wg.idle.*`):
   desktop core builds lack `with_lx_idle_suspend` and refuse them at start (SPEC 138; pinned by `TestBuildConfigPassesRootLXBlock`).
