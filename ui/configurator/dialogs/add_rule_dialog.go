@@ -415,9 +415,10 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	}
 	// syncRawToForm — тело JSON в форму; false — форма его не выражает или
 	// JSON не разбирается: окно остаётся на вкладке JSON.
-	// askDiscardRaw — JSON не уходит в форму: выбор «отбросить правки JSON и
-	// вернуться к форме» или «остаться в редакторе JSON».
-	askDiscardRaw := func(title, msg string) {
+	// askDiscardRaw — с вкладки JSON не уйти (ошибка или форма не выражает):
+	// выбор «отбросить правки JSON» (тело — снова из формы, переход на
+	// вкладку target) или «остаться в редакторе JSON».
+	askDiscardRaw := func(title, msg string, target *container.TabItem) {
 		text := widget.NewLabel(msg + "\n\n" + locale.T("Discard the JSON changes and go back to the form?"))
 		text.Wrapping = fyne.TextWrapWord
 		d := dialog.NewCustomConfirm(title, locale.T("Discard"), locale.T("Keep editing"), text, func(discard bool) {
@@ -426,7 +427,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			}
 			activeTabIsRaw = false
 			syncFormToRaw()
-			tabs.Select(formTabItem)
+			tabs.Select(target)
 		}, dialogWindow)
 		d.Resize(fyne.NewSize(440, 220))
 		d.Show()
@@ -434,12 +435,12 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	syncRawToForm := func() bool {
 		match, e := rawMatch()
 		if e != nil {
-			askDiscardRaw(locale.T("JSON error"), e.Error())
+			askDiscardRaw(locale.T("JSON error"), e.Error(), formTabItem)
 			return false
 		}
 		st, ok := table.StackFromBody(match)
 		if !ok {
-			askDiscardRaw(locale.T("Rule not recognized"), locale.T("The form cannot show this rule."))
+			askDiscardRaw(locale.T("Rule not recognized"), locale.T("The form cannot show this rule."), formTabItem)
 			return false
 		}
 		loadForm(st.ForForm(), match)
@@ -470,7 +471,18 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 					return
 				}
 			}
-		case previewTabItem:
+		case dnsTabItem, previewTabItem:
+			// Тело для DNS и Preview берётся из JSON — с ошибкой туда не пускаем.
+			if activeTabIsRaw {
+				if _, e := rawMatch(); e != nil {
+					askDiscardRaw(locale.T("JSON error"), e.Error(), t)
+					tabs.Select(rawTabItem)
+					return
+				}
+			}
+			if t != previewTabItem {
+				break
+			}
 			refreshPreview()
 		}
 		refreshState()
