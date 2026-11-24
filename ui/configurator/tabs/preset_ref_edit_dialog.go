@@ -143,8 +143,12 @@ func showEditPresetRefDialog(
 	// справа сверху от scroll (см. ниже).
 	jsonView := fynewidget.NewJSONView("")
 
+	var refreshServedHook func()
 	refreshJSON := func() {
 		jsonView.SetText(buildPresetJSONPreview(model, tplPreset, working))
+		if refreshServedHook != nil {
+			refreshServedHook()
+		}
 	}
 
 	refreshVisibility := func() {
@@ -297,6 +301,28 @@ func showEditPresetRefDialog(
 		itemRefs[v.Name] = block
 	}
 
+	// Узлы, на которые сработает пресет с обходом узлов: первым блоком формы.
+	// Отбор зависит от переменных — список пересчитывается вместе с превью.
+	var servedLabel *widget.Label
+	presetSource := ""
+	if tplPreset.IsNodeLoop() {
+		presetSource = presetSourceJSON(model.TemplateData, tplPreset)
+		servedTitle := widget.NewLabel(locale.T("Applies to nodes") + ":")
+		servedLabel = widget.NewLabel("")
+		servedLabel.Wrapping = fyne.TextWrapWord
+		formItems = append([]fyne.CanvasObject{container.NewVBox(servedTitle, servedLabel), widget.NewSeparator()}, formItems...)
+	}
+	refreshServed := func() {
+		if servedLabel == nil {
+			return
+		}
+		vars := make(map[string]string, len(tplPreset.Vars))
+		for i := range tplPreset.Vars {
+			vars[tplPreset.Vars[i].Name] = getVarOrDefault(working, tplPreset.Vars[i].Name, tplPreset)
+		}
+		servedLabel.SetText(presetServedNodesText(wizardbusiness.PresetServedNodes(model, tplPreset, vars), presetSource))
+	}
+
 	formInner := container.NewVBox(formItems...)
 	formContent := container.NewVBox(formInner)
 	// SPEC 185: настройки наборов — только у пресета с remote rule_set.
@@ -308,6 +334,7 @@ func showEditPresetRefDialog(
 	}
 
 	// ===== JSON tab: preview эмитнутого fragment'а =====
+	refreshServedHook = refreshServed
 	refreshJSON()
 
 	// Lock icon справа сверху от content area — visual indicator что preview
@@ -564,6 +591,55 @@ func buildPresetJSONPreview(model *wizardmodels.WizardModel, tpl *wizardtemplate
 		text = "// warnings:\n// " + warningsAsText(warns) + "\n\n" + text
 	}
 	return text
+}
+
+// presetServedNodesText — список узлов пресета с обходом узлов для формы: по
+// узлу на строку; за тегом — включённые у узла переключатели записи, которые
+// пресет читает (`@node.<поле>` в его исходной записи). Узлов нет — подпись.
+func presetServedNodesText(nodes []wizardtemplate.PresetNode, presetSource string) string {
+	if len(nodes) == 0 {
+		return locale.T("No matching nodes.")
+	}
+	fields := make([]string, 0, len(wizardtemplate.PresetNodeRecordFields))
+	for name := range wizardtemplate.PresetNodeRecordFields {
+		if strings.Contains(presetSource, "@node."+name) {
+			fields = append(fields, name)
+		}
+	}
+	sort.Strings(fields)
+	lines := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		var on []string
+		for _, name := range fields {
+			if wizardtemplate.PresetNodeRecordFields[name](n.Record) {
+				on = append(on, nodeRecordFieldLabel(name))
+			}
+		}
+		line := n.Tag
+		if len(on) > 0 {
+			line += " — " + strings.Join(on, ", ")
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// nodeRecordFieldLabel — подпись переключателя поля записи узла, та же, что в
+// форме узла; поля без переключателя в форме — имя как есть.
+func nodeRecordFieldLabel(name string) string {
+	switch name {
+	case "allow_local":
+		return locale.T(allowLocalText)
+	case "allow_lan":
+		return locale.T(allowLanText)
+	case "allow_gateway":
+		return locale.T(allowGatewayText)
+	case "own_routes":
+		return locale.T(ownRoutesText)
+	case "skip_tailscale_presets":
+		return locale.T(skipPresetsText)
+	}
+	return name
 }
 
 // uniqueTextListVars — дедуп значения text_list с `unique` в рабочей копии:

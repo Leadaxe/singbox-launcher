@@ -6326,6 +6326,9 @@
   "Remove this rule?": {
     "value": "Удалить это правило?"
   },
+  "Applies to nodes": {
+    "value": "Сработает на узлах"
+  },
   "JSON error": {
     "value": "Ошибка в JSON"
   },
