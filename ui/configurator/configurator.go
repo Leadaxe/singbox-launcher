@@ -336,17 +336,11 @@ func buildWizardWindow(
 	model.ResourceDir = resourceDir
 	model.MachineID = target.MachineIDOrEmpty()
 
-	// Create new window for wizard.
-	//
-	// Высота подбирается под доступную высоту экрана: на ноутбуках с logical
-	// 1280×800 (типичный минимум для macOS 11 Big Sur) фиксированные 660px не
-	// помещались — нижний край с навигационными кнопками уходил под Dock.
-	// clampWizardSize ограничивает размер рабочей областью экрана.
+	// Create new window for wizard. Размер и центрирование — в
+	// initializeWizardContent, после SetContent (см. там).
 	// Цель в заголовке (SPEC 178): окна Local и машин открыты рядом, и
 	// одинаковый «Config Wizard» не отличить.
 	wizardWindow := ac.UIService.Application.NewWindow(locale.Tf("Config Wizard — %s", subject))
-	wizardWindow.Resize(clampWizardSize(ac.UIService.Application, 620, 660))
-	fynewidget.CenterOnScreen(wizardWindow)
 	guiState.Window = wizardWindow
 
 	// Create presenter
@@ -520,6 +514,19 @@ func initializeWizardContent(presenter *wizardpresentation.WizardPresenter, guiS
 
 	// Set initial window content
 	setWindowContent(guiState, wizardWindow, tabs)
+
+	// Размер задаётся только после SetContent: Resize берёт максимум из
+	// заказанного и минимума содержимого. До содержимого окно открывалось
+	// 620 в ширину, а полоса вкладок требует больше (~673 на семи вкладках) —
+	// Fyne дотягивал окно на первом кадре, и оно дёргалось и съезжало
+	// с центра. Центрирование тоже после — по итоговому размеру.
+	//
+	// Высота подбирается под доступную высоту экрана: на ноутбуках с logical
+	// 1280×800 (типичный минимум для macOS 11 Big Sur) фиксированные 660px не
+	// помещались — нижний край с навигационными кнопками уходил под Dock.
+	// clampWizardSize ограничивает размер рабочей областью экрана.
+	wizardWindow.Resize(clampWizardSize(fyne.CurrentApp(), 620, 660))
+	fynewidget.CenterOnScreen(wizardWindow)
 
 	// Close window via X
 	wizardWindow.SetCloseIntercept(func() {
