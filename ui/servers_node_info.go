@@ -519,7 +519,7 @@ func poolStateLine(pool services.PoolState) string {
 		if pool.FrozenSeconds > 0 {
 			parts = append(parts, locale.Tf("frozen for %d s", pool.FrozenSeconds))
 		} else {
-			parts = append(parts, locale.T("frozen until the network check ends"))
+			parts = append(parts, locale.T("frozen"))
 		}
 	}
 	return strings.Join(parts, " · ")

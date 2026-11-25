@@ -74,6 +74,9 @@ const (
 	StartedService_GetTailscaleStatus_FullMethodName             = "/daemon.StartedService/GetTailscaleStatus"
 	StartedService_TailscaleLogin_FullMethodName                 = "/daemon.StartedService/TailscaleLogin"
 	StartedService_StartConnectionTest_FullMethodName            = "/daemon.StartedService/StartConnectionTest"
+	StartedService_SetImpair_FullMethodName                      = "/daemon.StartedService/SetImpair"
+	StartedService_ScheduleImpair_FullMethodName                 = "/daemon.StartedService/ScheduleImpair"
+	StartedService_GetImpairStatus_FullMethodName                = "/daemon.StartedService/GetImpairStatus"
 )
 
 // StartedServiceClient is the client API for StartedService service.
@@ -143,6 +146,11 @@ type StartedServiceClient interface {
 	// (SPEC 149); on/off of the endpoint is SetEndpointEnabled.
 	TailscaleLogin(ctx context.Context, in *TailscaleLoginRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	StartConnectionTest(ctx context.Context, in *ConnectionTestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ConnectionTestProgress], error)
+	// Runtime control of an `impair` test outbound (SPEC 164): change the link
+	// now, replace the schedule, read the state. Each answers with the status.
+	SetImpair(ctx context.Context, in *SetImpairRequest, opts ...grpc.CallOption) (*ImpairStatus, error)
+	ScheduleImpair(ctx context.Context, in *ScheduleImpairRequest, opts ...grpc.CallOption) (*ImpairStatus, error)
+	GetImpairStatus(ctx context.Context, in *ImpairStatusRequest, opts ...grpc.CallOption) (*ImpairStatus, error)
 }
 
 type startedServiceClient struct {
@@ -923,6 +931,36 @@ func (c *startedServiceClient) StartConnectionTest(ctx context.Context, in *Conn
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StartedService_StartConnectionTestClient = grpc.ServerStreamingClient[ConnectionTestProgress]
 
+func (c *startedServiceClient) SetImpair(ctx context.Context, in *SetImpairRequest, opts ...grpc.CallOption) (*ImpairStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImpairStatus)
+	err := c.cc.Invoke(ctx, StartedService_SetImpair_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) ScheduleImpair(ctx context.Context, in *ScheduleImpairRequest, opts ...grpc.CallOption) (*ImpairStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImpairStatus)
+	err := c.cc.Invoke(ctx, StartedService_ScheduleImpair_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) GetImpairStatus(ctx context.Context, in *ImpairStatusRequest, opts ...grpc.CallOption) (*ImpairStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImpairStatus)
+	err := c.cc.Invoke(ctx, StartedService_GetImpairStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StartedServiceServer is the server API for StartedService service.
 // All implementations must embed UnimplementedStartedServiceServer
 // for forward compatibility.
@@ -990,6 +1028,11 @@ type StartedServiceServer interface {
 	// (SPEC 149); on/off of the endpoint is SetEndpointEnabled.
 	TailscaleLogin(context.Context, *TailscaleLoginRequest) (*emptypb.Empty, error)
 	StartConnectionTest(*ConnectionTestRequest, grpc.ServerStreamingServer[ConnectionTestProgress]) error
+	// Runtime control of an `impair` test outbound (SPEC 164): change the link
+	// now, replace the schedule, read the state. Each answers with the status.
+	SetImpair(context.Context, *SetImpairRequest) (*ImpairStatus, error)
+	ScheduleImpair(context.Context, *ScheduleImpairRequest) (*ImpairStatus, error)
+	GetImpairStatus(context.Context, *ImpairStatusRequest) (*ImpairStatus, error)
 	mustEmbedUnimplementedStartedServiceServer()
 }
 
@@ -1234,6 +1277,18 @@ func (UnimplementedStartedServiceServer) TailscaleLogin(context.Context, *Tailsc
 
 func (UnimplementedStartedServiceServer) StartConnectionTest(*ConnectionTestRequest, grpc.ServerStreamingServer[ConnectionTestProgress]) error {
 	return status.Errorf(codes.Unimplemented, "method StartConnectionTest not implemented")
+}
+
+func (UnimplementedStartedServiceServer) SetImpair(context.Context, *SetImpairRequest) (*ImpairStatus, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetImpair not implemented")
+}
+
+func (UnimplementedStartedServiceServer) ScheduleImpair(context.Context, *ScheduleImpairRequest) (*ImpairStatus, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ScheduleImpair not implemented")
+}
+
+func (UnimplementedStartedServiceServer) GetImpairStatus(context.Context, *ImpairStatusRequest) (*ImpairStatus, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetImpairStatus not implemented")
 }
 func (UnimplementedStartedServiceServer) mustEmbedUnimplementedStartedServiceServer() {}
 func (UnimplementedStartedServiceServer) testEmbeddedByValue()                        {}
@@ -2152,6 +2207,60 @@ func _StartedService_StartConnectionTest_Handler(srv interface{}, stream grpc.Se
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StartedService_StartConnectionTestServer = grpc.ServerStreamingServer[ConnectionTestProgress]
 
+func _StartedService_SetImpair_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetImpairRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).SetImpair(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_SetImpair_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).SetImpair(ctx, req.(*SetImpairRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_ScheduleImpair_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ScheduleImpairRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).ScheduleImpair(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_ScheduleImpair_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).ScheduleImpair(ctx, req.(*ScheduleImpairRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_GetImpairStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImpairStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).GetImpairStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_GetImpairStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).GetImpairStatus(ctx, req.(*ImpairStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StartedService_ServiceDesc is the grpc.ServiceDesc for StartedService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2306,6 +2415,18 @@ var StartedService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TailscaleLogin",
 			Handler:    _StartedService_TailscaleLogin_Handler,
+		},
+		{
+			MethodName: "SetImpair",
+			Handler:    _StartedService_SetImpair_Handler,
+		},
+		{
+			MethodName: "ScheduleImpair",
+			Handler:    _StartedService_ScheduleImpair_Handler,
+		},
+		{
+			MethodName: "GetImpairStatus",
+			Handler:    _StartedService_GetImpairStatus_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -2455,8 +2455,8 @@
   "frozen for %d s": {
     "value": "заморожен ещё %d с"
   },
-  "frozen until the network check ends": {
-    "value": "заморожен до конца проверки сети"
+  "frozen": {
+    "value": "заморожен"
   },
   "quarantine": {
     "value": "карантин"
