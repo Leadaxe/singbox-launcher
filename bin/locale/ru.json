@@ -1810,9 +1810,6 @@
   "Rule not recognized": {
     "value": "Правило не распознано"
   },
-  "Could not recognize rule, form cannot be loaded; staying on Raw.": {
-    "value": "Не удалось распознать правило, форма не может быть загружена; остаёмся на Raw."
-  },
   "We recommend looking for suitable rule-set files in the project:": {
     "value": "Рекомендуем искать подходящие файлы наборов правил в проекте:"
   },
@@ -2262,9 +2259,6 @@
   },
   "Endpoint": {
     "value": "Endpoint"
-  },
-  "Bind to this device (reserved)": {
-    "value": "Привязать к устройству (reserved)"
   },
   "Masquerade": {
     "value": "Маскировка"
