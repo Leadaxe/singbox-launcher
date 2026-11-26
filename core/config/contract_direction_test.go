@@ -42,7 +42,9 @@ type corpusDirection struct {
 	Auto                      *corpusAutoGroup `json:"auto,omitempty"`
 }
 
-// corpusChain — каноническая форма источника-цепочки (SPEC 110).
+// corpusChain — каноническая форма источника-цепочки (SPEC 110). Ключи
+// idle_timeout, strip_evasion, strip — тело, сохранённое до контракта 1.1.184:
+// кейс проверяет, что из тела они не доезжают (SPEC 189).
 type corpusChain struct {
 	Tag                       string                 `json:"tag"`
 	Hops                      []string               `json:"hops"`
@@ -51,6 +53,32 @@ type corpusChain struct {
 	StripEvasion              *bool                  `json:"strip_evasion,omitempty"`
 	Strip                     map[string]bool        `json:"strip,omitempty"`
 	Rewrite                   map[string]interface{} `json:"rewrite,omitempty"`
+}
+
+// corpusChainBody — тело цепочки кейса в форме состояния (SPEC 118 W5).
+func corpusChainBody(t *testing.T, cc corpusChain) json.RawMessage {
+	t.Helper()
+	body := map[string]interface{}{"type": configtypes.ChainOutboundType}
+	if cc.IdleTimeout != "" {
+		body["idle_timeout"] = cc.IdleTimeout
+	}
+	if cc.InterruptExistConnections {
+		body["interrupt_exist_connections"] = true
+	}
+	if cc.StripEvasion != nil {
+		body["strip_evasion"] = *cc.StripEvasion
+	}
+	if len(cc.Strip) > 0 {
+		body["strip"] = cc.Strip
+	}
+	if len(cc.Rewrite) > 0 {
+		body["rewrite"] = cc.Rewrite
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("chain body: %v", err)
+	}
+	return raw
 }
 
 type corpusAutoGroup struct {
@@ -221,14 +249,9 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 			Canonical: &configtypes.CanonicalSource{
 				Nodes: []configtypes.CanonicalNode{{Kind: "chain", Tag: cc.Tag, Enabled: true}},
 			},
-			Chains: []configtypes.BuiltChain{{Tag: cc.Tag, Chain: &configtypes.SourceChain{
-				Hops:                      cc.Hops,
-				IdleTimeout:               cc.IdleTimeout,
-				InterruptExistConnections: cc.InterruptExistConnections,
-				StripEvasion:              cc.StripEvasion,
-				Strip:                     cc.Strip,
-				Rewrite:                   cc.Rewrite,
-			}}},
+			// Цепочка идёт через тело, как из состояния: что тело не несёт в
+			// конфиг, решает ChainFromBody.
+			Chains: []configtypes.BuiltChain{{Tag: cc.Tag, Chain: configtypes.ChainFromBody(corpusChainBody(t, cc), cc.Hops)}},
 		})
 	}
 	for _, cd := range in.Directions {

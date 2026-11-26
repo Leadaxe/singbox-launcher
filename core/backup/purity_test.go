@@ -26,7 +26,6 @@ import (
 // поле, которое обходится по map'у или дописывается «на провоз».
 func richState() *state.State {
 	auto := true
-	stripOff := false
 	s := &state.State{}
 	s.Directions = []configtypes.Direction{
 		{Tag: "vpn-de", Type: "selector", AddOutbounds: []string{"direct-out"}},
@@ -59,9 +58,6 @@ func richState() *state.State {
 			Node: state.Node{
 				Kind: state.SourceKindChain, Enabled: true, Tag: "relay",
 				Body: configtypes.ChainBody(&configtypes.SourceChain{
-					IdleTimeout:  "0s",
-					StripEvasion: &stripOff,
-					Strip:        map[string]bool{"tls.utls": false},
 					Rewrite:      map[string]interface{}{"vless": map[string]interface{}{"flow": nil}},
 				}),
 				Hops: []state.NodeLink{{Tag: "vpn-de"}, {Tag: "🔥 WARP"}},

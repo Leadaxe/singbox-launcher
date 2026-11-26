@@ -10757,3 +10757,19 @@ UI лаунчера: галка «Block HTTPS/SVCB records (no ECH)» в DNS-в�
 Шаблон лаунчера — образец: `bin/wizard_template.json`, раздел `wireguard` и ветка `"#if wg"` в `config.lx`; тест `core/template` `TestBundledTemplate_WGBlock`.
 
 Задачи вам: синк 1.1.183; эмиссия ключей сна в `lx.wg.idle.*` одним шагом с пином lx.36; три переменные в разделе `wireguard`; ответ с sha.
+
+## 187. Контракт 1.1.184 — ядро с SPEC 165: цепочка как перезапись `detour`, `lx.detour`, `max_core` (26.11.2026)
+
+Ядро `v1.14.4-lx.37-rc.2` (SPEC 165 форка, ещё не вышло; ветка `lx-spec165-chain-detour`). Узлу на позиции ≥ 1 цепочки ядро при загрузке ставит `detour` на внутренний хоп `<цепочка>#<i>` (тип `chain-hop`); копий-звеньев больше нет. Лаунчер — SPEC 189, ветка `spec189-chain-detour-rewrite`, вливается с пином rc2.
+
+**Что меняется.**
+
+1. **Тело цепочки без `idle_timeout`, `strip_evasion`, `strip`.** Ядро rc2 отвергает их загрузкой всего конфига. Импорт бэкапа снимает их (бэкапы 0.12 и 1.0 с этими ключами читаются), экспорт не пишет. Ожидания корпуса `backup/chains_roundtrip`, `backup/v10_*` (`.expected.lxbox.json` тоже) — без ключей; `direction/chain_strip_and_timeout` — ключи во входе, в конфиге их нет. Из `registry/protocols/chain.json` сняты поля `idle_timeout`, `strip_evasion`, `strip` и `__dialer`. Код `chain_strip_utls_on_reality` снят вместе с каталогом `strip`.
+2. **`registry/core_config.json`: атрибут `max_core`.** Первая версия ядра, в которой ключа уже нет: исполнитель снимает ключ у ядра этой версии и новее и при неизвестной версии. `lx.mtu_align` получил `max_core 1.14.4-lx.37-rc.2`, новая запись `lx.detour` — `min_core 1.14.4-lx.37-rc.2`. LxBox с ядром, равным пину, таблицу не исполняет: при пине rc2 писать только `lx.detour.mtu_align` (var `mtu_align`, при значении, отличном от `clamp`); `lx.detour.strip` и `except_outbounds` не писать — без ключа ядро включает весь каталог фильтров.
+3. **Конфликты перехвата — ошибка загрузки всего конфига** (ALGORITHM К1, К2, К6 ядра): узел на позициях ≥ 1 двух цепочек (или двух позиций одной); узел на позиции ≥ 1 одной цепочки и на позиции 0 любой; собственный `detour` узла позиции 0 ведёт в узел, перехваченный той же цепочкой. Норма: сторона снимает цепочку (из пары — ту, что позже по порядку) с кодом `chain_detour_conflict` (params `chain`, `node`, `other`).
+4. **Поля сокета у узлов позиций ≥ 1** (ALGORITHM К5): WireGuard `listen_port`, Tailscale `listen_port` / `relay_server_port`, OpenConnect `dtls_local_port`, `bind_interface`, `inet4_bind_address`, `inet6_bind_address`, `bind_address_no_port`, `protect_path`, `routing_mark`, `reuse_addr`, `netns`, `tcp_fast_open`, `tcp_multi_path`, `network_strategy`, `network_type`, `fallback_network_type` — ядро отвергает. Норма: сторона снимает поля с узла, одна запись на цепочку с кодом `chain_hop_socket_fields_dropped` (params `chain`, `count`, `tags`, `fields`).
+5. **RPC:** `GetChains`, `GetChainCloneConfig` удалены; `GetChainStatus(tag)`, `GetOutboundConfig(tag)` (JSON `tag` / `original` / `effective` / `changes`), `GetEffectiveConfig`; `SetChainPositionEnabled` без `warmupError`; в статусе позиции нет полей звеньев. Исходящие типа `chain-hop` в списках не показывать.
+
+Образец у лаунчера: санитайзер графа `core/build/outbound_graph_chain_detour.go` (тест `TestSanitizeChainDetourRewrite`), гейт `core/config/nodeflow/config_gate.go`, нормализация тела `core/state/sources_v7.go` (`chainBodyRemovedKeys`).
+
+Задачи вам: синк 1.1.184 одним шагом с пином rc2; снятие трёх ключей из формы цепочки, состояния и импорта; `lx.detour.mtu_align` вместо `lx.mtu_align`; правила п. 3–4 на сборке; ответ с sha.

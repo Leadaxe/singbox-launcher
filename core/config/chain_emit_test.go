@@ -80,8 +80,8 @@ func TestChainNode_MinimalShape(t *testing.T) {
 	if !ok || len(hops) != 2 || hops[0] != "hop-a" || hops[1] != "hop-b" {
 		t.Fatalf("outbounds = %v, ожидали [hop-a hop-b] в порядке пакета", ob["outbounds"])
 	}
-	// Незаданные поля не должны появляться: пустой idle_timeout ядро
-	// читает как «0», а это другое поведение, чем умолчание 5m.
+	// Незаданные поля не должны появляться; idle_timeout, strip_evasion и
+	// strip ядро с SPEC 165 отвергает загрузкой и не пишутся никогда.
 	for _, key := range []string{"idle_timeout", "strip_evasion", "strip", "rewrite"} {
 		if _, present := ob[key]; present {
 			t.Errorf("незаданное поле %q попало в конфиг", key)
@@ -90,14 +90,8 @@ func TestChainNode_MinimalShape(t *testing.T) {
 }
 
 func TestChainNode_OptionsRoundtrip(t *testing.T) {
-	no := false
 	c := chainOf("hop-a", "hop-b")
-	c.IdleTimeout = "10m"
-	c.StripEvasion = &no
-	c.Strip = map[string]bool{
-		configtypes.ChainStripTLSUTLS: true,
-		"tls.fragment":                false,
-	}
+	c.InterruptExistConnections = true
 	c.Rewrite = map[string]interface{}{"vless": map[string]interface{}{"flow": ""}}
 
 	node, reason := resolveOne(t, chainSource("tuned", c), []string{"hop-a", "hop-b"})
@@ -105,15 +99,8 @@ func TestChainNode_OptionsRoundtrip(t *testing.T) {
 		t.Fatalf("цепочка не стала узлом: %s", reason)
 	}
 	ob := node.Outbound
-	if ob["idle_timeout"] != "10m" {
-		t.Errorf("idle_timeout = %v", ob["idle_timeout"])
-	}
-	if ob["strip_evasion"] != false {
-		t.Errorf("strip_evasion = %v, ожидали false", ob["strip_evasion"])
-	}
-	strip, ok := ob["strip"].(map[string]interface{})
-	if !ok || strip[configtypes.ChainStripTLSUTLS] != true || strip["tls.fragment"] != false {
-		t.Errorf("strip = %v", ob["strip"])
+	if ob["interrupt_exist_connections"] != true {
+		t.Errorf("interrupt_exist_connections = %v", ob["interrupt_exist_connections"])
 	}
 	if _, ok := ob["rewrite"].(map[string]interface{}); !ok {
 		t.Errorf("rewrite = %v", ob["rewrite"])
@@ -143,20 +130,6 @@ func TestChainNode_CoreInvariants(t *testing.T) {
 				t.Errorf("причина %q не содержит %q", reason, tc.want)
 			}
 		})
-	}
-}
-
-// Неизвестный ключ strip ядро считает ошибкой старта — конфиг не соберётся
-// целиком, поэтому такую цепочку не выпускаем.
-func TestChainNode_UnknownStripKey(t *testing.T) {
-	c := chainOf("hop-a", "hop-b")
-	c.Strip = map[string]bool{"tls.fragmnet": true}
-	node, reason := resolveOne(t, chainSource("c", c), []string{"hop-a", "hop-b"})
-	if node != nil {
-		t.Fatal("выпущена цепочка с неизвестным ключом strip")
-	}
-	if !strings.Contains(reason, "unknown key") {
-		t.Errorf("причина = %q", reason)
 	}
 }
 

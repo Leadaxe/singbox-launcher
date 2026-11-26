@@ -270,8 +270,9 @@ type Node struct {
 	// Outbound["detour"]).
 	//
 	//   - server: тело узла целиком (минус tag/detour);
-	//   - chain:  настройки маршрута БЕЗ позиций — `type`, `idle_timeout`,
-	//     `strip_evasion`, `strip`, `rewrite`. Позиции живут отдельным полем
+	//   - chain:  настройки маршрута БЕЗ позиций — `type`,
+	//     `interrupt_exist_connections`, `rewrite` (idle_timeout, strip_evasion,
+	//     strip сняты SPEC 189). Позиции живут отдельным полем
 	//     Hops: они ссылки (NodeLink), а не значения, и в теле им делать
 	//     нечего — сборка подставляет их резолвом, как и всякую ссылку.
 	//
@@ -726,6 +727,25 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 	return warns, nil
 }
 
+// chainBodyRemovedKeys — ключи тела цепочки, снятые из ядра (SPEC 165
+// форка), которые лежат в body.
+func chainBodyRemovedKeys(body json.RawMessage) []string {
+	if len(body) == 0 {
+		return nil
+	}
+	var keys map[string]json.RawMessage
+	if json.Unmarshal(body, &keys) != nil {
+		return nil
+	}
+	var out []string
+	for _, k := range []string{"idle_timeout", "strip_evasion", "strip"} {
+		if _, has := keys[k]; has {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 // normalizeNodeShape — та же проверка формы на уровне Node (узловые kind'ы).
 // Server без body здесь НЕ деградируется: подписка, которую ещё ни разу не
 // обновляли, легально приезжает с пустыми nodes[] (warning отчёта сборки —
@@ -753,7 +773,17 @@ func normalizeNodeShape(n *Node, name string) []string {
 		}
 	case SourceKindChain:
 		// Body у цепочки легален: там живут её настройки без позиций
-		// (idle_timeout / strip / rewrite) — см. комментарий у Node.Body.
+		// (interrupt_exist_connections / rewrite) — см. комментарий у Node.Body.
+		//
+		// SPEC 189: idle_timeout, strip_evasion, strip сняты из ядра (SPEC 165
+		// форка, контракт 1.1.184) — тело, сохранённое раньше или пришедшее
+		// из бэкапа, переписывается без них, чтобы их не вернул экспорт.
+		if removed := chainBodyRemovedKeys(n.Body); len(removed) > 0 {
+			for _, k := range removed {
+				warns = append(warns, fmt.Sprintf("node %s (kind=chain): body key %q is removed from the core — dropped", name, k))
+			}
+			n.Body = configtypes.ChainBody(configtypes.ChainFromBody(n.Body, nil))
+		}
 		if n.Detour != nil { // detour у Chain не существует (типом — SPEC Т2)
 			drop("detour")
 			n.Detour = nil

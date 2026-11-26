@@ -846,12 +846,12 @@ func showSourceEditWindowAt(
 	if isChainSource {
 		selfTag := m.Sources[sourceIndex].NodeTagOrLabel()
 		cands := collectChainHopCandidates(presenter.Model(), selfTag)
-		reality, detoured, nodeTypes := chainNodeFlags(presenter.Model())
+		detoured, nodeTypes := chainNodeFlags(presenter.Model())
 		unsupported := ""
 		if supported, reason := config.ChainSupportedByCore(); !supported {
 			unsupported = reason
 		}
-		chainTabBody = newChainForm(nil, cands, reality, detoured, nodeTypes, unsupported, func() {
+		chainTabBody = newChainForm(nil, cands, detoured, nodeTypes, unsupported, func() {
 			if p := srcRef(); p != nil {
 				applyChainFormToSource(p, chainTabBody.Collect(), chainTabBody.CollectLinks())
 				// Форма правит ТЕГ узла цепочки — он живёт в Node.Tag копии.
@@ -890,9 +890,9 @@ func showSourceEditWindowAt(
 					return
 				}
 				cands := collectChainHopCandidates(mm, selfTag)
-				reality, detoured, types := chainNodeFlags(mm)
+				detoured, types := chainNodeFlags(mm)
 				fyne.Do(func() {
-					chainTabBody.SetCandidates(cands, reality, detoured, types, chainNodesKnown(mm))
+					chainTabBody.SetCandidates(cands, detoured, types, chainNodesKnown(mm))
 				})
 			}()
 		}
@@ -2093,22 +2093,26 @@ func showSourceEditWindowAt(
 		if isChainSource {
 			var parsed struct {
 				Outbounds                 []string               `json:"outbounds"`
-				IdleTimeout               string                 `json:"idle_timeout"`
 				InterruptExistConnections bool                   `json:"interrupt_exist_connections"`
-				StripEvasion              *bool                  `json:"strip_evasion"`
-				Strip                     map[string]bool        `json:"strip"`
 				Rewrite                   map[string]interface{} `json:"rewrite"`
 			}
 			if err := json.Unmarshal([]byte(text), &parsed); err != nil {
 				dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
 				return
 			}
+			// SPEC 189: ключи звеньев сняты из ядра (SPEC 165) — их запись
+			// здесь не настройка, а отказ загрузки всего конфига.
+			var keys map[string]json.RawMessage
+			_ = json.Unmarshal([]byte(text), &keys)
+			for _, key := range []string{"idle_timeout", "strip_evasion", "strip"} {
+				if _, has := keys[key]; has {
+					dialog.ShowError(errors.New(locale.Tf(chainRemovedKeyText, key)), win)
+					return
+				}
+			}
 			c := &configtypes.SourceChain{
 				Hops:                      parsed.Outbounds,
-				IdleTimeout:               parsed.IdleTimeout,
 				InterruptExistConnections: parsed.InterruptExistConnections,
-				StripEvasion:              parsed.StripEvasion,
-				Strip:                     parsed.Strip,
 				Rewrite:                   parsed.Rewrite,
 			}
 			// Отвергаем правку, на которой ядро не стартует: показать

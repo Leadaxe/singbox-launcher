@@ -1134,9 +1134,9 @@ type SourceChain struct {
 	// не даёт стартовать всему конфигу, а не одной цепочке.
 	Hops []string `json:"hops,omitempty"`
 
-	// IdleTimeout — простой, после которого звено без соединений удаляется.
-	// Пусто = умолчание ядра (5m), "0s" = жить до остановки.
-	IdleTimeout string `json:"idle_timeout,omitempty"`
+	// SPEC 165 ядра (SPEC 189): `idle_timeout`, `strip_evasion` и `strip`
+	// цепочки сняты — звеньев больше нет, фильтры живут в lx.detour.strip.
+	// Из сохранённых тел они не читаются.
 
 	// InterruptExistConnections — рвать ли ВНЕШНИЕ (пользовательские)
 	// соединения цепочки при переключении позиции тумблером (SPEC 075
@@ -1146,19 +1146,6 @@ type SourceChain struct {
 	// задано» от «выключено» здесь неотличимо. В конфиг и тело уезжает
 	// только true.
 	InterruptExistConnections bool `json:"interrupt_exist_connections,omitempty"`
-
-	// StripEvasion — снимать ли у звеньев односторонние DPI-приёмы.
-	// Указатель ради трёхзначности: nil = «умолчание ядра» (true),
-	// false = «пользователь выключил явно». Обычный bool не отличил бы
-	// одно от другого — та же причина, что у DirectionAuto.
-	// InterruptExistConnections (там дефолт шаблона может быть true).
-	StripEvasion *bool `json:"strip_evasion,omitempty"`
-
-	// Strip — патч к каталогу ядра поверх StripEvasion.
-	//
-	// Ключи только из ChainStripKeys: неизвестный ключ ядро считает ошибкой
-	// старта, а не опечаткой, которую можно пропустить.
-	Strip map[string]bool `json:"strip,omitempty"`
 
 	// Rewrite — JSON merge-patch поверх опций узла, по типу outbound'а.
 	// Правится на вкладке JSON: форму для произвольного патча по всем типам
@@ -1189,67 +1176,6 @@ const ChainOutboundType = "chain"
 // конфиге пользователя такой тип — ошибка, в списках ядра UI его не показывает.
 const ChainHopOutboundType = "chain-hop"
 
-// ChainStripTLSUTLS — ключ каталога `strip`, снятие которого ломает
-// reality-хопы (проверка конфликта — chain_validate.go, волна C4 SPEC 142).
-const ChainStripTLSUTLS = "tls.utls"
-
-// chainScheme — схема цепочки в реестре контракта.
-const chainScheme = "chain"
-
-// ChainStripKeys — каталог `strip` ядра в порядке показа в форме. Источник —
-// реестр (`chain.json` body.strip.order/fields): каталог закрыт, ядро
-// отвергает конфиг на неизвестном ключе, поэтому своего списка в Go нет.
-func ChainStripKeys() []string {
-	f := chainStripField()
-	if f == nil {
-		return nil
-	}
-	out := make([]string, len(f.Order))
-	copy(out, f.Order)
-	return out
-}
-
-// ChainStripDefault — снимается ли ключ при включённом strip_evasion
-// (`default` поля каталога в реестре); known=false — ключа в каталоге нет.
-func ChainStripDefault(key string) (def, known bool) {
-	f := chainStripField()
-	if f == nil {
-		return false, false
-	}
-	kf, ok := f.Fields[key]
-	if !ok || kf == nil {
-		return false, false
-	}
-	b, _ := kf.Default.(bool)
-	return b, true
-}
-
-// ChainStripOnHopRequired — `on_hop_required` ключа каталога `strip`
-// (контракт 1.1.61): что делать, когда звено цепочки этот путь требует.
-// nil — правила у ключа нет.
-func ChainStripOnHopRequired(key string) *registry.OnHopRequired {
-	f := chainStripField()
-	if f == nil {
-		return nil
-	}
-	if kf, ok := f.Fields[key]; ok && kf != nil {
-		return kf.OnHopRequired
-	}
-	return nil
-}
-
-func chainStripField() *registry.Field {
-	reg, err := registry.Get()
-	if err != nil {
-		return nil
-	}
-	f, ok := reg.Field(chainScheme, "strip")
-	if !ok {
-		return nil
-	}
-	return f
-}
-
 // HopsOrNil — позиции цепочки, безопасно для nil-приёмника.
 //
 // Нужен там, где Direction уже опознан цепочкой по типу, но Chain может
@@ -1263,7 +1189,3 @@ func (c *SourceChain) HopsOrNil() []string {
 	return c.Hops
 }
 
-// StripEvasionEnabled — умолчание ядра: nil == true.
-func (c *SourceChain) StripEvasionEnabled() bool {
-	return c == nil || c.StripEvasion == nil || *c.StripEvasion
-}

@@ -1,12 +1,13 @@
 {
-  "_": "Настройки звеньев доезжают до конфига: простой, общий переключатель и точечный патч каталога strip.",
+  "_": "Ключи звеньев idle_timeout, strip_evasion и strip, сохранённые до контракта 1.1.184, в конфиг не доезжают: ядро с перезаписью цепочки в detour (SPEC 165 форка) отвергает их загрузкой, фильтры strip переехали в lx.detour.strip. Остальные настройки маршрута (interrupt_exist_connections, rewrite) доезжают.",
   "chains": [
     {
       "tag": "tuned-chain",
       "hops": ["🇩🇪 Frankfurt", "🇳🇱 Amsterdam"],
       "idle_timeout": "10m",
       "strip_evasion": false,
-      "strip": { "tls.utls": true, "tls.fragment": false }
+      "strip": { "tls.utls": true, "tls.fragment": false },
+      "interrupt_exist_connections": true
     }
   ],
   "directions": [],

@@ -636,7 +636,6 @@ func hasWarn(list []Warning, code string) bool {
 // экспорт→импорт; блоба extensions.launcher нет (BACKUP.md §2). Чтение
 // секции chains[] файлов 0.12 держит корпус (chains_roundtrip).
 func TestRoundTripChainSources(t *testing.T) {
-	stripOff := false
 	s := &state.State{}
 	s.Sources = []state.Source{
 		{Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true}, URL: "https://example.com/sub"},
@@ -646,9 +645,6 @@ func TestRoundTripChainSources(t *testing.T) {
 			Node: state.Node{
 				Kind: state.SourceKindChain, Enabled: true, Tag: "chain-1",
 				Body: configtypes.ChainBody(&configtypes.SourceChain{
-					IdleTimeout:  "0s",
-					StripEvasion: &stripOff,
-					Strip:        map[string]bool{"tls.utls": false},
 					// null-значение — RFC 7396 (удаление ключа), обязано
 					// пережить перенос как есть.
 					Rewrite: map[string]interface{}{

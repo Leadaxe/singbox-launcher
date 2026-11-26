@@ -28,7 +28,6 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
-	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/fynewidget"
@@ -40,8 +39,8 @@ import (
 const (
 	chainConflictDetourEntryText = "The first position (%s) dials through its own detour — the real path is longer than shown: one more hop precedes it that is not in this list."
 	chainConflictForwardRefText  = "Chains %s are declared below this one in the sources list — a chain may only reference chains above it. Drag them higher, or this chain will not build."
-	chainConflictRealityText     = "ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the chain will keep tls.utls on every position. Clear tls.utls to match."
 	chainConflictTagTakenText    = "The name “%s” is already taken by another node, Direction or chain — two outbounds with one tag cannot coexist, this chain will be dropped at build."
+	chainRemovedKeyText          = "The chain key %s is removed from the core: a chain no longer creates link copies, and strip filters moved to lx.detour.strip. Remove the key."
 	chainNoteDetourIgnoredText   = "Positions %s have their own detour — it does not apply inside a chain: a link always dials through the previous position. The path is exactly as shown."
 )
 
@@ -67,13 +66,9 @@ type chainForm struct {
 	// originalTag — имя на момент открытия окна, и referencedBy — кто на
 	// него ссылается. Нужны, чтобы предупредить о разрыве ссылок при
 	// переименовании: цепочки указывают друг на друга по имени.
-	originalTag   string
-	referencedBy  map[string][]string
-	idleEntry     *widget.Entry
-	interrupt     *widget.Check // interrupt_exist_connections (SPEC 124)
-	stripEvasion  *widget.Check
-	stripChecks   map[string]*widget.Check
-	stripExplicit map[string]bool // ключ тронут пользователем → уедет в Strip
+	originalTag  string
+	referencedBy map[string][]string
+	interrupt    *widget.Check // interrupt_exist_connections (SPEC 124)
 
 	// rewrite — таблица переопределений опций звена. Раньше эти настройки
 	// правились только на вкладке JSON, и форма их лишь проносила мимо
@@ -96,11 +91,6 @@ type chainForm struct {
 	// видно среди кандидатов, — «ещё не знаем», а не «потеряна».
 	nodesKnown bool
 
-	// realityTags — позиции, чьи узлы поднимают reality: у них нельзя
-	// снимать tls.utls, otherwise the core will not start (T4). Считается по узлам,
-	// которых сама цепочка не видит, — потому и приезжает снаружи.
-	realityTags map[string]bool
-
 	// unsupported — причина, по которой ядро не примет цепочку. Пусто, если
 	// примет. Показывается предупреждением сверху: настроить маршрут,
 	// который не попадёт в конфиг, пользователь вправе (ядро обновляется
@@ -109,19 +99,16 @@ type chainForm struct {
 }
 
 // newChainForm собирает форму. candidates — что можно поставить позицией.
-func newChainForm(parent fyne.Window, cands []chainHopCandidate, realityTags, detourTags map[string]bool, nodeTypes map[string]string, unsupported string, onChange func()) *chainForm {
+func newChainForm(parent fyne.Window, cands []chainHopCandidate, detourTags map[string]bool, nodeTypes map[string]string, unsupported string, onChange func()) *chainForm {
 	f := &chainForm{
-		realityTags:   realityTags,
-		nodeTypes:     nodeTypes,
-		detourTags:    detourTags,
-		cands:         cands,
-		lookup:        chainHopLookup(cands),
-		parent:        parent,
-		onChange:      onChange,
-		hopsBox:       container.NewVBox(),
-		stripChecks:   make(map[string]*widget.Check, len(configtypes.ChainStripKeys())),
-		stripExplicit: make(map[string]bool, len(configtypes.ChainStripKeys())),
-		unsupported:   unsupported,
+		nodeTypes:   nodeTypes,
+		detourTags:  detourTags,
+		cands:       cands,
+		lookup:      chainHopLookup(cands),
+		parent:      parent,
+		onChange:    onChange,
+		hopsBox:     container.NewVBox(),
+		unsupported: unsupported,
 	}
 	f.rewrite = newRewriteEditor(func() { f.changed() })
 	return f
@@ -146,15 +133,13 @@ func (f *chainForm) SetTag(tag string) {
 // SetCandidates заменяет список кандидатов — например, когда кэш узлов
 // дозагрузился уже после открытия окна.
 //
-// realityTags/detourTags обновляются ВМЕСТЕ с кандидатами: они считаются из
-// тех же NodePool, и прежняя сигнатура их выбрасывала — окно, открытое
-// до разбора подписок, навсегда оставалось с пустыми множествами, и
-// предупреждения T4 (reality + strip utls) и T7 (detour на позиции) молчали
-// именно в том сценарии, где они нужнее всего.
-func (f *chainForm) SetCandidates(cands []chainHopCandidate, realityTags, detourTags map[string]bool, nodeTypes map[string]string, nodesKnown bool) {
+// detourTags обновляются ВМЕСТЕ с кандидатами: они считаются из тех же
+// NodePool, и прежняя сигнатура их выбрасывала — окно, открытое до разбора
+// подписок, навсегда оставалось с пустым множеством, и предупреждение T7
+// (detour на позиции) молчало именно там, где оно нужнее всего.
+func (f *chainForm) SetCandidates(cands []chainHopCandidate, detourTags map[string]bool, nodeTypes map[string]string, nodesKnown bool) {
 	f.cands = cands
 	f.lookup = chainHopLookup(cands)
-	f.realityTags = realityTags
 	f.detourTags = detourTags
 	f.nodeTypes = nodeTypes
 	f.nodesKnown = nodesKnown
@@ -187,66 +172,13 @@ func (f *chainForm) Load(c *configtypes.SourceChain, hops []corestate.NodeLink) 
 		f.syncRewriteTypes()
 	}
 
-	if f.idleEntry != nil {
-		prev := f.idleEntry.OnChanged
-		f.idleEntry.OnChanged = nil
-		if c != nil {
-			f.idleEntry.SetText(c.IdleTimeout)
-		} else {
-			f.idleEntry.SetText("")
-		}
-		f.idleEntry.OnChanged = prev
-	}
 	if f.interrupt != nil {
 		prev := f.interrupt.OnChanged
 		f.interrupt.OnChanged = nil
 		f.interrupt.SetChecked(c != nil && c.InterruptExistConnections)
 		f.interrupt.OnChanged = prev
 	}
-	if f.stripEvasion != nil {
-		on := c.StripEvasionEnabled()
-		// Обработчик снимаем на время установки: SetChecked зовёт OnChanged,
-		// и он перерисовал бы галки каталога до того, как они загружены.
-		prev := f.stripEvasion.OnChanged
-		f.stripEvasion.OnChanged = nil
-		f.stripEvasion.SetChecked(on)
-		f.stripEvasion.OnChanged = prev
-	}
-	f.stripExplicit = make(map[string]bool, len(configtypes.ChainStripKeys()))
-	if c != nil {
-		// Ключ, лежащий в патче, пользователь задал явно: при движении
-		// общего переключателя его галку не трогаем.
-		for k := range c.Strip {
-			if _, known := configtypes.ChainStripDefault(k); known {
-				f.stripExplicit[k] = true
-			}
-		}
-	}
-	f.syncStripChecks(c)
 	f.rebuildHops()
-}
-
-// syncStripChecks расставляет галки каталога: явно заданные — по патчу,
-// остальные — по умолчанию ядра с учётом общего переключателя.
-func (f *chainForm) syncStripChecks(c *configtypes.SourceChain) {
-	evasion := c.StripEvasionEnabled()
-	for _, key := range configtypes.ChainStripKeys() {
-		chk := f.stripChecks[key]
-		if chk == nil {
-			continue
-		}
-		def, _ := configtypes.ChainStripDefault(key)
-		want := evasion && def
-		if c != nil {
-			if v, ok := c.Strip[key]; ok {
-				want = v
-			}
-		}
-		prev := chk.OnChanged
-		chk.OnChanged = nil
-		chk.SetChecked(want)
-		chk.OnChanged = prev
-	}
 }
 
 // CollectLinks — позиции формы в том виде, в каком их хранит модель.
@@ -286,36 +218,8 @@ func (f *chainForm) Collect() *configtypes.SourceChain {
 	if f.rewrite != nil {
 		c.Rewrite = f.rewrite.Collect()
 	}
-	if f.idleEntry != nil {
-		c.IdleTimeout = strings.TrimSpace(f.idleEntry.Text)
-	}
 	if f.interrupt != nil {
 		c.InterruptExistConnections = f.interrupt.Checked
-	}
-	if f.stripEvasion != nil && !f.stripEvasion.Checked {
-		// Пишем только выключение: nil = «умолчание ядра», и явное
-		// `strip_evasion: true` было бы правкой, которой пользователь не
-		// делал (та же трёхзначность, что у interrupt_exist_connections).
-		off := false
-		c.StripEvasion = &off
-	}
-	strip := make(map[string]bool, len(configtypes.ChainStripKeys()))
-	for _, key := range configtypes.ChainStripKeys() {
-		chk := f.stripChecks[key]
-		if chk == nil {
-			continue
-		}
-		def, _ := configtypes.ChainStripDefault(key)
-		def = def && c.StripEvasionEnabled()
-		if chk.Checked != def {
-			// В патч уезжает только расхождение с умолчанием: писать весь
-			// каталог значило бы зафиксировать сегодняшние умолчания ядра
-			// навсегда, и смена умолчания в новой версии прошла бы мимо.
-			strip[key] = chk.Checked
-		}
-	}
-	if len(strip) > 0 {
-		c.Strip = strip
 	}
 	return c
 }
@@ -400,69 +304,20 @@ func (f *chainForm) Content() fyne.CanvasObject {
 	})
 	addBtn.Importance = widget.LowImportance
 
-	f.idleEntry = widget.NewEntry()
-	f.idleEntry.SetPlaceHolder(locale.T("5m — core default, 0s — never drop"))
-	// Без обработчика правка ТОЛЬКО этого поля молча терялась: Collect
-	// вызывается из changed(), а его дёргали все поля, кроме idle_timeout.
-	f.idleEntry.OnChanged = func(string) { f.changed() }
-
 	// Разрыв внешних соединений при тумблере позиции (SPEC 124). Снята по
-	// умолчанию, как у ядра; обработчик по той же причине, что у idle_timeout.
+	// умолчанию, как у ядра; как у ядра.
 	f.interrupt = widget.NewCheck(locale.T("Interrupt existing connections on position toggle"), nil)
 	f.interrupt.OnChanged = func(bool) { f.changed() }
 	interruptHint := widget.NewLabel(locale.T("Otherwise live connections finish on the old route; only new ones take the new path."))
 	interruptHint.Importance = widget.LowImportance
 	interruptHint.Wrapping = fyne.TextWrapWord
 
-	f.stripEvasion = widget.NewCheck(locale.T("Strip DPI evasion from links"), nil)
-	f.stripEvasion.SetChecked(true)
-	stripRows := container.NewVBox()
-	for _, key := range configtypes.ChainStripKeys() {
-		k := key
-		chk := widget.NewCheck(k, func(bool) {
-			f.stripExplicit[k] = true
-			// Снятие tls.utls меняет вердикт по reality-узлам — список
-			// позиций перерисовывается вместе с предупреждениями.
-			f.rebuildHops()
-			f.changed()
-		})
-		f.stripChecks[k] = chk
-		hint := widget.NewLabel(chainStripHint(k))
-		hint.Importance = widget.LowImportance
-		stripRows.Add(container.NewBorder(nil, nil, chk, nil, hint))
-	}
-	// Обработчик — ПОСЛЕ SetChecked выше, иначе он сработал бы на нём.
-	f.stripEvasion.OnChanged = func(bool) {
-		// Общий переключатель двигает галки каталога к новым умолчаниям,
-		// не трогая явно заданные пользователем: `strip` — патч поверх.
-		for _, key := range configtypes.ChainStripKeys() {
-			if f.stripExplicit[key] {
-				continue
-			}
-			chk := f.stripChecks[key]
-			if chk == nil {
-				continue
-			}
-			prev := chk.OnChanged
-			chk.OnChanged = nil
-			def, _ := configtypes.ChainStripDefault(key)
-			chk.SetChecked(f.stripEvasion.Checked && def)
-			chk.OnChanged = prev
-		}
-		f.rebuildHops()
-		f.changed()
-	}
-
 	// Не Accordion: раскрываясь внутри VBox, он не получает высоту от
 	// родителя — содержимое есть, но его не видно (пустой блок под
 	// заголовком). Своя раскрывашка на кнопке ведёт себя предсказуемо.
 	advancedBody := container.NewVBox(
-		chainFormRow(locale.T("Link idle timeout"), f.idleEntry),
 		f.interrupt,
 		interruptHint,
-		widget.NewSeparator(),
-		f.stripEvasion,
-		stripRows,
 		widget.NewSeparator(),
 		f.rewrite.Content(),
 	)
@@ -571,21 +426,6 @@ func (f *chainForm) conflicts() []string {
 		tags[i] = f.displayTag(link)
 	}
 
-	// T4: снятый отпечаток ClientHello на reality-узле. Проверяются позиции
-	// с индексом ≥ 1 — strip применяется к звеньям, а первая позиция идёт в
-	// сеть как есть.
-	if f.stripsUTLS() {
-		var bad []string
-		for i := 1; i < len(tags); i++ {
-			if f.realityTags[tags[i]] {
-				bad = append(bad, tags[i])
-			}
-		}
-		if len(bad) > 0 {
-			out = append(out, locale.Tf(chainConflictRealityText, strings.Join(bad, ", ")))
-		}
-	}
-
 	// T5: вложенная цепочка допустима только первой позицией — звено это
 	// «узел через предыдущую позицию», а цепочка не узел.
 	var nested []string
@@ -680,15 +520,6 @@ func (f *chainForm) conflicts() []string {
 	return out
 }
 
-// stripsUTLS — снимается ли отпечаток ClientHello при текущих галках.
-func (f *chainForm) stripsUTLS() bool {
-	if chk := f.stripChecks[configtypes.ChainStripTLSUTLS]; chk != nil {
-		return chk.Checked
-	}
-	def, _ := configtypes.ChainStripDefault(configtypes.ChainStripTLSUTLS)
-	return def
-}
-
 // moveHop переставляет позицию (перетаскивание).
 func (f *chainForm) moveHop(from, to int) {
 	if from == to || from < 0 || to < 0 || from >= len(f.hops) || to >= len(f.hops) {
@@ -779,24 +610,6 @@ func (f *chainForm) changed() {
 	}
 }
 
-// chainStripHint — расшифровка ключа каталога: сами ключи ядра непрозрачны,
-// а выбор без понимания последствий — не выбор. Каталог (набор ключей,
-// порядок, дефолты) — из реестра; здесь только подписи известных ключей,
-// ключ без подписи показывается как есть.
-func chainStripHint(key string) string {
-	switch key {
-	case "tls.fragment":
-		return locale.T("ClientHello fragmentation")
-	case "multiplex.padding":
-		return locale.T("multiplex padding")
-	case "xhttp.padding":
-		return locale.T("XHTTP padding")
-	case configtypes.ChainStripTLSUTLS:
-		return locale.T("ClientHello fingerprint (must not be stripped on reality nodes)")
-	}
-	return ""
-}
-
 func chainFormRow(label string, field fyne.CanvasObject) fyne.CanvasObject {
 	const labelWidth = 150
 	l := widget.NewLabel(label)
@@ -805,23 +618,17 @@ func chainFormRow(label string, field fyne.CanvasObject) fyne.CanvasObject {
 }
 
 // chainNodeFlags — то, что форма знает об узлах, но сама увидеть не может:
-// кто поднимает reality (у них нельзя снимать tls.utls), кто уже ходит
-// через свой detour, и какого типа каждый узел (для таблицы переопределений).
-func chainNodeFlags(m *wizardmodels.WizardModel) (reality, detoured map[string]bool, types map[string]string) {
-	reality = make(map[string]bool)
+// кто уже ходит через свой detour, и какого типа каждый узел (для таблицы
+// переопределений).
+func chainNodeFlags(m *wizardmodels.WizardModel) (detoured map[string]bool, types map[string]string) {
 	detoured = make(map[string]bool)
 	types = make(map[string]string)
 	if m == nil {
-		return reality, detoured, types
+		return detoured, types
 	}
 	for _, n := range m.NodePool {
 		if n == nil {
 			continue
-		}
-		// Требует ли тело узла uTLS, судит реестр (связь requires с set у
-		// tls.reality.enabled), а не проверка reality в форме.
-		if config.NodeRequiresPath(n, configtypes.ChainStripTLSUTLS) {
-			reality[n.Tag] = true
 		}
 		if d, ok := n.Outbound["detour"].(string); ok && strings.TrimSpace(d) != "" {
 			detoured[n.Tag] = true
@@ -832,7 +639,7 @@ func chainNodeFlags(m *wizardmodels.WizardModel) (reality, detoured map[string]b
 			types[n.Tag] = t
 		}
 	}
-	return reality, detoured, types
+	return detoured, types
 }
 
 // chainLinksFromTags — финальные теги вкладки JSON обратно в ссылки модели.

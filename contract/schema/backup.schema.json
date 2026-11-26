@@ -238,7 +238,7 @@
         "body": {
           "type": "object",
           "additionalProperties": true,
-          "description": "Тело записи в форме sing-box, как оно есть. server — outbound целиком, БЕЗ ключей tag и detour (они поля записи). chain — настройки маршрута без позиций (type, idle_timeout, strip_evasion, strip, rewrite — состав source_chain.schema.json минус hops). У auto и unsupported тела нет. Контракт тело не типизирует намеренно: набор ключей задаёт ядро, и типизация здесь устаревала бы каждым релизом ядра."
+          "description": "Тело записи в форме sing-box, как оно есть. server — outbound целиком, БЕЗ ключей tag и detour (они поля записи). chain — настройки маршрута без позиций (type, interrupt_exist_connections, rewrite; idle_timeout, strip_evasion, strip сняты контрактом 1.1.184 — импорт их снимает, стороны не пишут). У auto и unsupported тела нет. Контракт тело не типизирует намеренно: набор ключей задаёт ядро, и типизация здесь устаревала бы каждым релизом ядра."
         },
         "detour": {
           "$ref": "#/$defs/nodeLink",
@@ -678,7 +678,7 @@
         "body": {
           "type": "object",
           "additionalProperties": true,
-          "description": "Тело записи в форме sing-box, как оно есть. server — outbound целиком, БЕЗ ключей tag и detour (они поля записи). chain — настройки маршрута без позиций (type, idle_timeout, strip_evasion, strip, rewrite — состав source_chain.schema.json минус hops). У auto и unsupported тела нет. Контракт тело не типизирует намеренно: набор ключей задаёт ядро, и типизация здесь устаревала бы каждым релизом ядра."
+          "description": "Тело записи в форме sing-box, как оно есть. server — outbound целиком, БЕЗ ключей tag и detour (они поля записи). chain — настройки маршрута без позиций (type, interrupt_exist_connections, rewrite; idle_timeout, strip_evasion, strip сняты контрактом 1.1.184 — импорт их снимает, стороны не пишут). У auto и unsupported тела нет. Контракт тело не типизирует намеренно: набор ключей задаёт ядро, и типизация здесь устаревала бы каждым релизом ядра."
         },
         "detour": {
           "$ref": "#/$defs/nodeLink",

@@ -25,12 +25,6 @@
           "vpn-de",
           "exit-node"
         ],
-        "idle_timeout": "0s",
-        "strip_evasion": false,
-        "strip": {
-          "tls.utls": false,
-          "xhttp.padding": true
-        },
         "rewrite": {
           "vless": {
             "flow": null

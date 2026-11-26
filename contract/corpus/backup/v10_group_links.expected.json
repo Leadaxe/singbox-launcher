@@ -31,8 +31,7 @@
         "hops": [
           "relay-root",
           "Best"
-        ],
-        "idle_timeout": "0s"
+        ]
       },
       "hops": [
         { "tag": "relay-root" },

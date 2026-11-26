@@ -31,8 +31,7 @@
     {
       "tag": "via-relay",
       "chain": {
-        "hops": ["relay-root", "de-1"],
-        "idle_timeout": "0s"
+        "hops": ["relay-root", "de-1"]
       },
       "hops": [
         { "tag": "relay-root" },

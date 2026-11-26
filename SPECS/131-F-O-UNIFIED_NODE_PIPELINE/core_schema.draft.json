@@ -1537,20 +1537,6 @@
           "required": true,
           "note": "[0] — первый хоп; reference:outbound"
         },
-        "idle_timeout": {
-          "type": "duration",
-          "default": "5m",
-          "note": "0 = жить до остановки"
-        },
-        "strip_evasion": {
-          "type": "bool",
-          "default": true,
-          "note": "*bool; nil = true"
-        },
-        "strip": {
-          "type": "object",
-          "note": "map[string]bool; неизвестный ключ = ошибка старта"
-        },
         "rewrite": {
           "type": "object",
           "note": "JSON merge-patch RFC 7396 поверх опций узла; применяется к позициям >= 1"

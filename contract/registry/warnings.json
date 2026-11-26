@@ -1847,29 +1847,6 @@
       "dart": "services/builder/chain_nodes.dart:107,117",
       "go": "ChainDegradation.Code/Params → отчёт chain_failed: core/config/chain_nodes.go:buildChainNode (причина — core/config/chain_generator.go:ChainEmitError или коллизия тега)"
     },
-    "chain_strip_utls_on_reality": {
-      "severity": "warning",
-      "params": [
-        "target"
-      ],
-      "title_en": "Chain: uTLS kept because of REALITY",
-      "title_ru": "Цепочка: uTLS оставлен из-за REALITY",
-      "text_en": "The chain is set to strip uTLS, but hop {target} runs REALITY, which cannot work without it. Stripping uTLS was turned off for this chain, so every hop keeps its fingerprint; the chain works.",
-      "text_ru": "Цепочка настроена снимать uTLS, но звено {target} поднимает REALITY, которому он необходим. Снятие uTLS для этой цепочки отключено, отпечаток остаётся у всех звеньев; цепочка работает.",
-      "cause_en": "The chain was set up to strip uTLS from its inner hops, and a node in one of those positions runs REALITY. In REALITY the TLS fingerprint (the ClientHello) is a load-bearing part of the protocol, not camouflage, and the core applies the strip list to all hops at once, so it cannot spare just one.",
-      "cause_ru": "В цепочке настроено снятие uTLS у внутренних звеньев, а узел на одной из этих позиций поднимает REALITY. В REALITY отпечаток TLS (ClientHello) — несущая часть протокола, а не маскировка, а список снятия ядро применяет ко всем звеньям сразу и пощадить одно не умеет.",
-      "fix_en": [
-        "Nothing to do if the chain works.",
-        "To strip uTLS on the other hops, put a node without REALITY into that position."
-      ],
-      "fix_ru": [
-        "Если цепочка работает, делать ничего не нужно.",
-        "Чтобы снимать uTLS у остальных звеньев, поставьте на эту позицию узел без REALITY."
-      ],
-      "desc": "Контракт 1.1.61, SPEC 142 B4: chain.json strip.tls.utls.on_hop_required {action: unstrip}. Ключ каталога снимается с патча цепочки, когда тело хопа на позиции >= 1 этот путь требует — санитайзер вернул бы его связью requires с set (tls.reality.enabled → tls.utls.enabled; nodeflow.StripBlocked). Цепочка собирается, uTLS остаётся у всех звеньев. Факт ядра: sing-box-lx protocol/chain/transform.go «strip tls.utls: node uses reality, which requires utls» — отказ старта (sing-box check не ловит, память chain-check-misses-start-errors); каталог ядро применяет ко всей цепочке разом (buildStripSet). Прежде цепочка выпадала целиком (severity error) по рукописной копии правила (прежний ChainRealityConflict). МЕХАНИЗМ DART: строковый код рядом с цепочкой и/или находка формы ChainIssueCode.",
-      "dart": "screens/chain_edit/chain_form_validation.dart (ChainIssueCode.stripUtlsOnReality)",
-      "go": "contract/registry/protocols/chain.json body.fields.strip.fields.tls.utls.on_hop_required; исполнение — core/config/chain_validate.go:ChainUnstripRequired; EmissionWarning.Code в отчёт сборки — core/config/chain_nodes.go:ResolveChainSources"
-    },
     "chain_nested_position": {
       "severity": "error",
       "params": [

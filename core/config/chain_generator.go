@@ -89,12 +89,6 @@ func ChainEmitError(tag string, c *configtypes.SourceChain) string {
 			return "rewrite: empty outbound type name"
 		}
 	}
-	for key := range c.Strip {
-		if _, known := configtypes.ChainStripDefault(key); !known {
-			return fmt.Sprintf("strip: unknown key %q (allowed: %s)",
-				key, strings.Join(configtypes.ChainStripKeys(), ", "))
-		}
-	}
 	return ""
 }
 
@@ -105,8 +99,8 @@ func ChainEmitError(tag string, c *configtypes.SourceChain) string {
 // Своя сериализация здесь означала бы вторую реализацию того же — с риском
 // разойтись в мелочах вроде экранирования тега.
 //
-// Порядок ключей `strip` не важен для map, но важен для читаемости конфига,
-// поэтому каталог обходится по своему порядку, а не по map range.
+// `idle_timeout`, `strip_evasion`, `strip` не пишутся: ядро с SPEC 165 их
+// отвергает загрузкой (SPEC 189), фильтры перенесены в lx.detour.strip.
 func ChainOutboundObject(tag string, c *configtypes.SourceChain) map[string]interface{} {
 	if c == nil {
 		return nil
@@ -121,27 +115,10 @@ func ChainOutboundObject(tag string, c *configtypes.SourceChain) map[string]inte
 		"type":      configtypes.ChainOutboundType,
 		"outbounds": hops,
 	}
-	if v := strings.TrimSpace(c.IdleTimeout); v != "" {
-		ob["idle_timeout"] = v
-	}
 	// Только true: false — дефолт ядра, и писать его значило бы
 	// зафиксировать сегодняшнее умолчание навсегда.
 	if c.InterruptExistConnections {
 		ob["interrupt_exist_connections"] = true
-	}
-	if c.StripEvasion != nil {
-		ob["strip_evasion"] = *c.StripEvasion
-	}
-	if len(c.Strip) > 0 {
-		strip := make(map[string]interface{}, len(c.Strip))
-		for _, key := range configtypes.ChainStripKeys() {
-			if val, ok := c.Strip[key]; ok {
-				strip[key] = val
-			}
-		}
-		if len(strip) > 0 {
-			ob["strip"] = strip
-		}
 	}
 	if len(c.Rewrite) > 0 {
 		ob["rewrite"] = c.Rewrite

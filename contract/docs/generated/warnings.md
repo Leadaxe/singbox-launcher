@@ -23,10 +23,11 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`awg_mtu_clamped`](#awg_mtu_clamped) · `warning` — AmneziaWG: MTU lowered to 1280
 - [`awg_mtu_high`](#awg_mtu_high) · `info` — AmneziaWG: MTU above 1280
 - [`chain_cycle_through_direction`](#chain_cycle_through_direction) · `warning` — Chain {chain} excluded from {direction}
+- [`chain_detour_conflict`](#chain_detour_conflict) · `error` — Chain {chain}: node {node} is taken by another route
 - [`chain_hop_missing`](#chain_hop_missing) · `error` — Chain: hop {position} not found
+- [`chain_hop_socket_fields_dropped`](#chain_hop_socket_fields_dropped) · `warning` — Chain {chain}: socket settings removed from {count} node(s)
 - [`chain_invalid`](#chain_invalid) · `error` — Chain is malformed
 - [`chain_nested_position`](#chain_nested_position) · `error` — Chain: nested chain at position {position}
-- [`chain_strip_utls_on_reality`](#chain_strip_utls_on_reality) · `warning` — Chain: uTLS kept because of REALITY
 - [`chain_unsupported_by_core`](#chain_unsupported_by_core) · `error` — Chains are unavailable in core {version}
 - [`core_rejected`](#core_rejected) · `error` — The core rejected this server
 - [`detour_chain_too_deep`](#detour_chain_too_deep) · `warning` — Chain shortened to {limit} hops
@@ -384,6 +385,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
+<a id="chain_detour_conflict"></a>
+### chain_detour_conflict
+
+**severity:** `error` · **params:** `chain`, `node`, `other`
+
+**Chain {chain}: node {node} is taken by another route**
+
+- **What happened:** The core routes every node at position 2 or later of a chain through that chain, as the node itself: one node gets one route. Node {node} would get two (chains {chain} and {other}), or it would be both the first position of one chain and a later position of another. The chain {chain} was excluded, because the core rejects such a config and would refuse to start it.
+- **Why it happens:** Two chains share a node (or a group containing it) at positions after the first, or a node is the entry of one chain and an inner position of another, or the node's own hop leads back into its chain.
+- **What you can do:**
+  - Use a different node or group at one of the positions.
+  - Or keep one of the two chains.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
 <a id="chain_hop_missing"></a>
 ### chain_hop_missing
 
@@ -396,6 +414,23 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Open the chain and put an existing node or direction into that position.
   - If the chain references something declared below it, move that entry above the chain.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="chain_hop_socket_fields_dropped"></a>
+### chain_hop_socket_fields_dropped
+
+**severity:** `warning` · **params:** `chain`, `count`, `tags`, `fields`
+
+**Chain {chain}: socket settings removed from {count} node(s)**
+
+- **What happened:** Nodes at position 2 or later of chain {chain} ({tags}) connect through the hop below, and the hop opens their socket. Their settings {fields} do not apply there, and the core rejects them, so they were removed. The nodes stay in the config.
+- **Why it happens:** A node placed inside a chain carries a fixed local port or a socket binding (interface, routing mark, TCP Fast Open and similar).
+- **What you can do:**
+  - Nothing to do if the chain works.
+  - If the node needs these settings, use it outside chains.
 
 **Where it comes from:**
 
@@ -434,24 +469,6 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 **Where it comes from:**
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
-
-<a id="chain_strip_utls_on_reality"></a>
-### chain_strip_utls_on_reality
-
-**severity:** `warning` · **params:** `target`
-
-**Chain: uTLS kept because of REALITY**
-
-- **What happened:** The chain is set to strip uTLS, but hop {target} runs REALITY, which cannot work without it. Stripping uTLS was turned off for this chain, so every hop keeps its fingerprint; the chain works.
-- **Why it happens:** The chain was set up to strip uTLS from its inner hops, and a node in one of those positions runs REALITY. In REALITY the TLS fingerprint (the ClientHello) is a load-bearing part of the protocol, not camouflage, and the core applies the strip list to all hops at once, so it cannot spare just one.
-- **What you can do:**
-  - Nothing to do if the chain works.
-  - To strip uTLS on the other hops, put a node without REALITY into that position.
-
-**Where it comes from:**
-
-- [`chain`](protocols/chain.md)
-  - [`strip.tls.utls`](protocols/chain.md#body-strip-tls-utls) — a hop at position 2 or later requires this path → not stripped
 
 <a id="chain_unsupported_by_core"></a>
 ### chain_unsupported_by_core
