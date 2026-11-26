@@ -130,6 +130,11 @@
       "tls": {
         "method": "record_fragment"
       }
+    },
+    "wg": {
+      "buffers": {
+        "read_datagram_count": 8
+      }
     }
   },
   "outbounds": [
