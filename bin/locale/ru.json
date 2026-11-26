@@ -6364,5 +6364,8 @@
   },
   "Unknown direction %q.": {
     "value": "Неизвестное направление %q."
+  },
+  "dial errors: %d": {
+    "value": "отказов дозвона: %d"
   }
 }

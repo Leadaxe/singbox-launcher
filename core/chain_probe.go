@@ -13,7 +13,6 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core/config"
-	daemonpb "singbox-launcher/internal/daemonpb"
 )
 
 // chainProbeTag — что мерить: префикс до позиции pos или всю цепочку.
@@ -35,34 +34,4 @@ func chainProbeTag(chainTag string, pos int) string {
 // цены, то есть ровно тот случай, ради которого пробу и смотрят.
 func chainProbeCallTimeout() time.Duration {
 	return time.Duration(api.GetPingTestTimeoutMs())*time.Millisecond + 5*time.Second
-}
-
-// chainInfosFromPB — перевод ответа ядра во внутренний тип.
-func chainInfosFromPB(chains []*daemonpb.ChainState) []ChainInfo {
-	out := make([]ChainInfo, 0, len(chains))
-	for _, c := range chains {
-		if c == nil {
-			continue
-		}
-		positions := make([]ChainPositionInfo, 0, len(c.GetPositions()))
-		for _, p := range c.GetPositions() {
-			if p == nil {
-				continue
-			}
-			info := ChainPositionInfo{
-				Tag:         p.GetTag(),
-				Now:         p.GetNow(),
-				IsGroup:     p.GetIsGroup(),
-				Transparent: p.GetTransparent(),
-				Disabled:    p.GetDisabled(),
-			}
-			if cl := p.GetClone(); cl != nil {
-				info.CloneState = cl.GetState()
-				info.LastError = cl.GetLastError()
-			}
-			positions = append(positions, info)
-		}
-		out = append(out, ChainInfo{Tag: c.GetTag(), Positions: positions})
-	}
-	return out
 }

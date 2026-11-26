@@ -3,10 +3,11 @@
 // Обе ручки живут в группе демона и регистрируются вместе с ней: данные
 // приходят из РАБОТАЮЩЕГО ядра по gRPC, а не из состояния на диске. Цепочка
 // в конфиге и цепочка в рантайме — разные вещи: `now` у группы меняется без
-// перезаписи конфига, звенья поднимаются и вытесняются по idle_timeout.
+// перезаписи конфига.
 //
-// Зачем поверх /daemon/raw/grpc, который и так умеет звать GetChains: raw
-// отдаёт голый ответ RPC, а диагностика «кто виноват» — это не один вызов, а
+// Зачем поверх /daemon/raw/grpc: raw отдаёт голый ответ одного RPC, а у ядра с
+// SPEC 165 состояние цепочки — по тегу (GetChainStatus), и список собирается из
+// работающего конфига; диагностика «кто виноват» — это не один вызов, а
 // N+1 проб с вычислением дельт. Собирать её на стороне клиента значит писать
 // один и тот же цикл в каждом потребителе (UI, curl, агент) и одинаково
 // ошибаться в знаке дельты.
@@ -14,6 +15,7 @@ package debugapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -21,12 +23,44 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/configtypes"
 	daemonpb "singbox-launcher/internal/daemonpb"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
+
+// runningChains — состояние всех цепочек работающего ядра. Перечисления у ядра
+// с SPEC 165 нет (GetChains удалён): теги цепочек берутся из работающего
+// конфига (GetRunningConfig, исходящие типа chain), состояние — GetChainStatus.
+func runningChains(ctx context.Context, client daemonpb.StartedServiceClient) ([]*daemonpb.ChainState, error) {
+	rc, err := client.GetRunningConfig(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, err
+	}
+	var cfg struct {
+		Outbounds []struct {
+			Type string `json:"type"`
+			Tag  string `json:"tag"`
+		} `json:"outbounds"`
+	}
+	if err := json.Unmarshal([]byte(rc.GetContent()), &cfg); err != nil {
+		return nil, err
+	}
+	var out []*daemonpb.ChainState
+	for _, ob := range cfg.Outbounds {
+		if ob.Type != configtypes.ChainOutboundType || ob.Tag == "" {
+			continue
+		}
+		st, err := client.GetChainStatus(ctx, &daemonpb.GetChainStatusRequest{Tag: ob.Tag})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, st)
+	}
+	return out, nil
+}
 
 // Пределы пробы.
 //
@@ -76,28 +110,25 @@ func (s *Server) handleChains(w http.ResponseWriter, r *http.Request) {
 	}
 	defer closeConn()
 
-	list, err := client.GetChains(r.Context(), &emptypb.Empty{})
+	chains, err := runningChains(r.Context(), client)
 	if err != nil {
 		writeJSON(w, chainRPCStatus(err), map[string]any{"error": chainRPCMessage(err)})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"chains": chainViews(list.GetChains())})
+	writeJSON(w, http.StatusOK, map[string]any{"chains": chainViews(chains)})
 }
 
 // chainView / chainPositionView — JSON-форма ответа.
 //
 // Своя, не protojson: у сгенерированных структур `omitempty` съедает нули, а
-// здесь ноль значащий — `errors: 0` и `activeConns: 0` это утверждение
-// «ошибок нет», «соединений нет», а не «поле не пришло». Для диагностики
+// здесь ноль значащий — `errors: 0` это утверждение «ошибок нет», а не
+// «поле не пришло». Для диагностики
 // разница между «ноль» и «неизвестно» принципиальна.
 type chainView struct {
-	Tag           string              `json:"tag"`
-	Positions     []chainPositionView `json:"positions"`
-	Dials         int64               `json:"dials"`
-	Errors        int64               `json:"errors"`
-	ClonesCreated int64               `json:"clones_created"`
-	ClonesEvicted int64               `json:"clones_evicted"`
-	LiveClones    int64               `json:"live_clones"`
+	Tag       string              `json:"tag"`
+	Positions []chainPositionView `json:"positions"`
+	Dials     int64               `json:"dials"`
+	Errors    int64               `json:"errors"`
 }
 
 type chainPositionView struct {
@@ -107,25 +138,12 @@ type chainPositionView struct {
 	// включительно. Отдаётся явно, чтобы клиент не собирал `T#i` сам:
 	// теги цепочек содержат эмодзи и решётки, и склейка на стороне
 	// потребителя — лишнее место для ошибки.
-	ProbeTag    string          `json:"probe_tag"`
-	IsGroup     bool            `json:"is_group"`
-	Now         string          `json:"now,omitempty"`
-	Transparent bool            `json:"transparent"`
-	Errors      int64           `json:"errors"`
-	Clone       *chainCloneView `json:"clone,omitempty"`
-}
-
-type chainCloneView struct {
-	State           string   `json:"state,omitempty"`
-	ActiveConns     int64    `json:"active_conns"`
-	LastPickedAgeMs int64    `json:"last_picked_age_ms"`
-	CreatedAgeMs    int64    `json:"created_age_ms"`
-	MTUConfigured   uint32   `json:"mtu_configured,omitempty"`
-	MTUEffective    uint32   `json:"mtu_effective,omitempty"`
-	MTUReason       string   `json:"mtu_reason,omitempty"`
-	Stripped        []string `json:"stripped,omitempty"`
-	Rewritten       bool     `json:"rewritten"`
-	LastError       string   `json:"last_error,omitempty"`
+	ProbeTag    string `json:"probe_tag"`
+	IsGroup     bool   `json:"is_group"`
+	Now         string `json:"now,omitempty"`
+	Transparent bool   `json:"transparent"`
+	Disabled    bool   `json:"disabled"`
+	Errors      int64  `json:"errors"`
 }
 
 func chainViews(chains []*daemonpb.ChainState) []chainView {
@@ -146,32 +164,16 @@ func chainViews(chains []*daemonpb.ChainState) []chainView {
 				IsGroup:     p.GetIsGroup(),
 				Now:         p.GetNow(),
 				Transparent: p.GetTransparent(),
+				Disabled:    p.GetDisabled(),
 				Errors:      p.GetErrors(),
-			}
-			if cl := p.GetClone(); cl != nil {
-				pv.Clone = &chainCloneView{
-					State:           cl.GetState(),
-					ActiveConns:     cl.GetActiveConns(),
-					LastPickedAgeMs: cl.GetLastPickedAgeMs(),
-					CreatedAgeMs:    cl.GetCreatedAgeMs(),
-					MTUConfigured:   cl.GetMtuConfigured(),
-					MTUEffective:    cl.GetMtuEffective(),
-					MTUReason:       cl.GetMtuReason(),
-					Stripped:        cl.GetStripped(),
-					Rewritten:       cl.GetRewritten(),
-					LastError:       cl.GetLastError(),
-				}
 			}
 			positions = append(positions, pv)
 		}
 		out = append(out, chainView{
-			Tag:           c.GetTag(),
-			Positions:     positions,
-			Dials:         c.GetDials(),
-			Errors:        c.GetErrors(),
-			ClonesCreated: c.GetClonesCreated(),
-			ClonesEvicted: c.GetClonesEvicted(),
-			LiveClones:    c.GetLiveClones(),
+			Tag:       c.GetTag(),
+			Positions: positions,
+			Dials:     c.GetDials(),
+			Errors:    c.GetErrors(),
 		})
 	}
 	return out
@@ -248,23 +250,17 @@ func (s *Server) handleChainProbe(w http.ResponseWriter, r *http.Request) {
 	// смысл ровно ту цепочку, которая сейчас в рантайме. Конфиг мог уйти
 	// вперёд после правки без перезапуска, и проба по нему мерила бы
 	// позиции, которых в работающем ядре нет.
-	list, err := client.GetChains(r.Context(), &emptypb.Empty{})
-	if err != nil {
-		writeJSON(w, chainRPCStatus(err), map[string]any{"error": chainRPCMessage(err)})
-		return
-	}
-	var target *daemonpb.ChainState
-	for _, c := range list.GetChains() {
-		if c.GetTag() == tag {
-			target = c
-			break
-		}
-	}
-	if target == nil {
+	target, err := client.GetChainStatus(r.Context(), &daemonpb.GetChainStatusRequest{Tag: tag})
+	if status.Code(err) == codes.NotFound {
+		chains, _ := runningChains(r.Context(), client)
 		writeJSON(w, http.StatusNotFound, map[string]any{
 			"error":  "no chain with tag " + tag + " in the running core",
-			"chains": chainTags(list.GetChains()),
+			"chains": chainTags(chains),
 		})
+		return
+	}
+	if err != nil {
+		writeJSON(w, chainRPCStatus(err), map[string]any{"error": chainRPCMessage(err)})
 		return
 	}
 	positions := target.GetPositions()

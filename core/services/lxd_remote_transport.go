@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -352,8 +353,8 @@ func (t *LxdRemoteTransport) SubscribeGroupSelection(group string, onSelected fu
 // ChainPositionInfo / ChainInfo — состояние цепочки удалённого ядра
 // (SPEC 110).
 //
-// Дублируют core.Chain*Info по той же причине, что PoolSlot ниже: core
-// импортирует services, и обратная зависимость замкнула бы граф.
+// Общие для своего демона и удалённой машины: core держит на них алиасы
+// (core.ChainInfo), RPC один и тот же.
 type ChainPositionInfo struct {
 	Tag         string
 	Now         string
@@ -361,53 +362,56 @@ type ChainPositionInfo struct {
 	Transparent bool
 	// Disabled — позиция выключена пользователем в рантайме (SPEC 075 ядра),
 	// состояние живёт в cache-file удалённого ядра.
-	Disabled   bool
-	CloneState string
-	LastError  string
+	Disabled bool
+	// Errors — отказы дозвона через хоп этой позиции у ядра.
+	Errors int64
 }
 
 type ChainInfo struct {
 	Tag       string
 	Positions []ChainPositionInfo
+	// Dials, Errors — счётчики дозвонов цепочки и их отказов у ядра.
+	Dials  int64
+	Errors int64
 }
 
-// Chains — состояние цепочек удалённого ядра (lx-RPC GetChains).
-func (t *LxdRemoteTransport) Chains() ([]ChainInfo, error) {
-	client, ctx, cancel, err := t.rpc()
-	if err != nil {
-		return nil, err
+// ChainInfoFromPB переводит ответ GetChainStatus во внутренний тип.
+func ChainInfoFromPB(c *daemonpb.ChainState) ChainInfo {
+	out := ChainInfo{
+		Tag:       c.GetTag(),
+		Positions: make([]ChainPositionInfo, 0, len(c.GetPositions())),
+		Dials:     c.GetDials(),
+		Errors:    c.GetErrors(),
 	}
-	defer cancel()
-	list, err := client.GetChains(ctx, &emptypb.Empty{})
-	if err != nil {
-		return nil, fmt.Errorf("lxd remote GetChains: %w", err)
-	}
-	out := make([]ChainInfo, 0, len(list.GetChains()))
-	for _, c := range list.GetChains() {
-		if c == nil {
+	for _, p := range c.GetPositions() {
+		if p == nil {
 			continue
 		}
-		positions := make([]ChainPositionInfo, 0, len(c.GetPositions()))
-		for _, p := range c.GetPositions() {
-			if p == nil {
-				continue
-			}
-			info := ChainPositionInfo{
-				Tag:         p.GetTag(),
-				Now:         p.GetNow(),
-				IsGroup:     p.GetIsGroup(),
-				Transparent: p.GetTransparent(),
-				Disabled:    p.GetDisabled(),
-			}
-			if cl := p.GetClone(); cl != nil {
-				info.CloneState = cl.GetState()
-				info.LastError = cl.GetLastError()
-			}
-			positions = append(positions, info)
-		}
-		out = append(out, ChainInfo{Tag: c.GetTag(), Positions: positions})
+		out.Positions = append(out.Positions, ChainPositionInfo{
+			Tag:         p.GetTag(),
+			Now:         p.GetNow(),
+			IsGroup:     p.GetIsGroup(),
+			Transparent: p.GetTransparent(),
+			Disabled:    p.GetDisabled(),
+			Errors:      p.GetErrors(),
+		})
 	}
-	return out, nil
+	return out
+}
+
+// ChainStatus — состояние цепочки удалённого ядра по тегу (lx-RPC
+// GetChainStatus, SPEC 165 ядра).
+func (t *LxdRemoteTransport) ChainStatus(tag string) (ChainInfo, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return ChainInfo{}, err
+	}
+	defer cancel()
+	st, err := client.GetChainStatus(ctx, &daemonpb.GetChainStatusRequest{Tag: tag})
+	if err != nil {
+		return ChainInfo{}, fmt.Errorf("lxd remote GetChainStatus: %w", err)
+	}
+	return ChainInfoFromPB(st), nil
 }
 
 // ProbeLayer — задержка префикса цепочки НА СТОРОНЕ роутера: меряется его
@@ -446,28 +450,84 @@ var ErrChainToggleUnsupported = errors.New("core does not support chain position
 
 // SetPositionEnabled — тумблер позиции цепочки на УДАЛЁННОМ ядре
 // (SPEC 075 ядра). Состояние хранит его cache-file, не наш state.
-//
-// Бюджет как у URL-теста: включение позиции поднимает звено, а не только
-// пишет флаг.
-func (t *LxdRemoteTransport) SetPositionEnabled(chainTag string, pos int, enabled bool) (string, error) {
-	client, ctx, cancel, err := t.rpcForURLTest()
+func (t *LxdRemoteTransport) SetPositionEnabled(chainTag string, pos int, enabled bool) error {
+	client, ctx, cancel, err := t.rpc()
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer cancel()
-	resp, err := client.SetChainPositionEnabled(ctx, &daemonpb.SetChainPositionEnabledRequest{
+	_, err = client.SetChainPositionEnabled(ctx, &daemonpb.SetChainPositionEnabledRequest{
 		ChainTag: chainTag,
 		Position: int32(pos),
 		Enabled:  enabled,
 	})
 	if err != nil {
 		if status.Code(err) == codes.Unimplemented {
-			return "", ErrChainToggleUnsupported
+			return ErrChainToggleUnsupported
 		}
-		return "", fmt.Errorf("lxd remote SetChainPositionEnabled: %w", err)
+		return fmt.Errorf("lxd remote SetChainPositionEnabled: %w", err)
 	}
-	// Провал прогрева — диагноз узла, а не сбой вызова: едет данными.
-	return resp.GetWarmupError(), nil
+	return nil
+}
+
+// OutboundConfig — узел, как его видит работающее ядро (GetOutboundConfig,
+// SPEC 165 ядра). Original — как написано в конфиге, Effective — как работает
+// после lx-предобработки (перехват цепочкой, rewrite, выравнивание MTU),
+// Changes — что, откуда и чем изменено, в порядке применения. У хопа цепочки
+// (`chain-hop`) Original и Changes пусты.
+type OutboundConfig struct {
+	Tag       string                 `json:"tag"`
+	Original  json.RawMessage        `json:"original,omitempty"`
+	Effective json.RawMessage        `json:"effective"`
+	Changes   []OutboundConfigChange `json:"changes,omitempty"`
+}
+
+// OutboundConfigChange — одна правка ядра. From/To — JSON-значения поля; нет
+// From — поле появилось, нет To — снято. By — кто правил: `type` из закрытого
+// списка ядра (`chain`, `chain_rewrite`, `mtu_align`) и его подробности.
+type OutboundConfigChange struct {
+	Field string          `json:"field"`
+	From  json.RawMessage `json:"from,omitempty"`
+	To    json.RawMessage `json:"to,omitempty"`
+	By    map[string]any  `json:"by,omitempty"`
+}
+
+// ParseOutboundConfig разбирает ответ GetOutboundConfig.
+func ParseOutboundConfig(content string) (OutboundConfig, error) {
+	var out OutboundConfig
+	if err := json.Unmarshal([]byte(content), &out); err != nil {
+		return OutboundConfig{}, fmt.Errorf("outbound config: %w", err)
+	}
+	return out, nil
+}
+
+// OutboundConfig — узел удалённого ядра по тегу (lx-RPC GetOutboundConfig).
+func (t *LxdRemoteTransport) OutboundConfig(tag string) (OutboundConfig, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return OutboundConfig{}, err
+	}
+	defer cancel()
+	resp, err := client.GetOutboundConfig(ctx, &daemonpb.GetOutboundConfigRequest{Tag: tag})
+	if err != nil {
+		return OutboundConfig{}, fmt.Errorf("lxd remote GetOutboundConfig: %w", err)
+	}
+	return ParseOutboundConfig(resp.GetContent())
+}
+
+// EffectiveConfig — весь конфиг удалённого ядра после lx-предобработки
+// (lx-RPC GetEffectiveConfig).
+func (t *LxdRemoteTransport) EffectiveConfig() (string, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return "", err
+	}
+	defer cancel()
+	resp, err := client.GetEffectiveConfig(ctx, &emptypb.Empty{})
+	if err != nil {
+		return "", fmt.Errorf("lxd remote GetEffectiveConfig: %w", err)
+	}
+	return resp.GetContent(), nil
 }
 
 // PoolSlot — слот пула балансировщика (SPEC 097). Общий для своего демона и
