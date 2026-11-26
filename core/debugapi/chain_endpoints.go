@@ -26,6 +26,7 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	daemonpb "singbox-launcher/internal/daemonpb"
 
+	"github.com/muhammadmuzzammil1998/jsonc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -45,7 +46,9 @@ func runningChains(ctx context.Context, client daemonpb.StartedServiceClient) ([
 			Tag  string `json:"tag"`
 		} `json:"outbounds"`
 	}
-	if err := json.Unmarshal([]byte(rc.GetContent()), &cfg); err != nil {
+	// Ядро отдаёт конфиг ровно как его прислали — у лаунчера это JSONC с
+	// комментариями-маркерами.
+	if err := json.Unmarshal(jsonc.ToJSON([]byte(rc.GetContent())), &cfg); err != nil {
 		return nil, err
 	}
 	var out []*daemonpb.ChainState

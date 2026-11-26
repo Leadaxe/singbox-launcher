@@ -259,7 +259,9 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool, chainD
 		if breakDependencyCycle(entries, byTag, drop, dropDetourCarrier) {
 			changed = true
 		}
-		if chainDetour && applyChainDetourRules(entries, byTag, dropChain, socketStrips, &socketStripOrder) {
+		// Правило 7 — только на устоявшемся графе: иначе поля К5 снялись бы
+		// с узлов цепочки, которую следующая итерация выбросит правилами 1–5.
+		if !changed && chainDetour && applyChainDetourRules(entries, byTag, dropChain, socketStrips, &socketStripOrder) {
 			changed = true
 		}
 		if !changed {
