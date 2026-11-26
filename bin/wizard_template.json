@@ -423,9 +423,7 @@
           "title": "Datagrams per read",
           "tooltip": "sing-box-lx lx.wg.buffers.read_datagram_count — how many datagrams a tunnel without a detour reads at once. Every one keeps a 64 KiB buffer for as long as the tunnel is up, twice (IPv4 and IPv6): 128 (default) is 16.4 MiB per tunnel, 8 is about 1 MiB, 1 is 0.13 MiB. Below 128 the kernel's receive coalescing (UDP GRO) is off for the tunnel. 8 suits weak machines and routers and is the default for a remote Linux machine; 1–2 suit tens and hundreds of tunnels. Linux only: macOS and Windows accept the key and ignore it. Needs core 1.14.4-lx.36 or newer.",
           "default_value": {
-            "default": {
-              "#if": [{"#and": [{"@runtime.target": "remote"}, {"@runtime.platform": "linux"}]}, "8", "128"]
-            }
+            "default": {"#if": [{"#and": [{"@runtime.target": "remote"}, {"@runtime.platform": "linux"}]}, "8", "128"]}
           },
           "options": [
             {"title": "128 (core default)", "value": "128"},
@@ -727,7 +725,9 @@
       ],
       "#if masque_idle_timeout": [{"#not": {"@masque_idle_timeout": "off"}}, {"masque": {"idle_timeout": "@masque_idle_timeout"}}],
       "#if wg": [
-        {"#or": [{"#not": {"@wg_read_datagram_count": "128"}}, {"#not": "@wg_send_by_mtu"}, "@wg_connected_socket"]},
+        {
+          "#or": [{"#not": {"@wg_read_datagram_count": "128"}}, {"#not": "@wg_send_by_mtu"}, "@wg_connected_socket"]
+        },
         {
           "wg": {
             "#if buffers": [
