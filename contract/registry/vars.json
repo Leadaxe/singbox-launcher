@@ -378,7 +378,7 @@
       "type": "enum",
       "portable": false,
       "in": "both",
-      "note": "lx.mtu_align ядра (SPEC 120 форка, >= 1.14.3-lx.14); options clamp / fill / off, дефолт clamp = дефолт ядра. Эмитится строкой режима в корневой lx шаблона, кроме clamp (контракт 1.1.151, LxBox §709). except в шаблон не выносится."
+      "note": "lx.detour.mtu_align ядра с 1.14.4-lx.37-rc.2 (SPEC 165 форка, контракт 1.1.184; прежде — lx.mtu_align, SPEC 120, >= 1.14.3-lx.14, на rc.2 и новее старое место — ошибка загрузки); options clamp / fill / off, дефолт clamp = дефолт ядра. Эмитится строкой режима, кроме clamp: в lx.detour.mtu_align; лаунчер пишет и прежнее lx.mtu_align для удалённой машины на старом ядре — гейт core_config.json (max_core / min_core) оставляет одно. LxBox с ядром = пину пишет только lx.detour.mtu_align. except → lx.detour.except_outbounds, в шаблон не выносится."
     },
     "sniff_guard_tls": {
       "type": "enum",
