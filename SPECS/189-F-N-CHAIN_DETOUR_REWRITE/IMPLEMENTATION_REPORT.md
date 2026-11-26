@@ -1,7 +1,7 @@
 # IMPLEMENTATION_REPORT 189
 
-Ветка `spec189-chain-detour-rewrite` (26.11.2026), в `develop` не влита: ждёт тега ядра
-`v1.14.4-lx.37-rc.2`.
+Ветка `spec189-chain-detour-rewrite` (26.11.2026), влита в `develop` с пином
+`1.14.4-lx.37-rc.2` (`daemonpb` по тегу `4c57babe`).
 
 ## Сделано
 
@@ -47,7 +47,6 @@
 
 ## Не сделано / не проверено
 
-- Пин `RequiredCoreVersion` и `daemonpb` по тегу rc2 — после выхода тега.
 - Конфиг не прогонялся `sing-box check` ядром ветки SPEC 165; живой прогон цепочки
   и вид окна Info / Core runtime на ядре rc2 — владелец.
 - Редактор цепочки конфликт перехвата не показывает (см. SPEC §2.1).
