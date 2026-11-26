@@ -18,6 +18,7 @@
 package ui
 
 import (
+	"errors"
 	"sort"
 	"strings"
 
@@ -129,10 +130,23 @@ func showCoreRuntimeWindow(ac *core.AppController, scope services.ProxyScope, tr
 	dirBox := container.NewVBox(widget.NewLabel(locale.T("Loading…")))
 	epBox := container.NewVBox(widget.NewLabel(locale.T("Loading…")))
 
+	// SPEC 189: весь конфиг, как его исполняет ядро (GetEffectiveConfig,
+	// SPEC 165 ядра) — после перехвата цепочками, rewrite и выравнивания MTU.
+	// Ядро не отдаёт (classic, ядро старше rc2) — вкладка говорит об этом.
+	effText := ""
+	effView := fynewidget.NewJSONView("")
+	effNote := widget.NewLabel(locale.T("Loading…"))
+	effNote.Importance = widget.LowImportance
+	effNote.Wrapping = fyne.TextWrapWord
+	effCopy := widget.NewButton(locale.T("Copy JSON"), func() { setClipboard(effText) })
+	effTab := container.NewBorder(nil, container.NewVBox(effNote, effCopy), nil, nil, effView.Object())
+
 	tabs := container.NewAppTabs(
 		container.NewTabItem(locale.T("Directions"), components.WrapInScrollWithGutter(dirBox)),
 		container.NewTabItem(locale.T("Endpoints"), components.WrapInScrollWithGutter(epBox)),
+		container.NewTabItem(locale.T("Effective config"), effTab),
 	)
+	target, bound := nodeWindowTarget(scope)
 
 	var reload func()
 	reloadBtn := widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() { reload() })
@@ -144,9 +158,24 @@ func showCoreRuntimeWindow(ac *core.AppController, scope services.ProxyScope, tr
 		reloadBtn.Disable()
 		go func() {
 			snap := collectCoreRuntimeSnapshot(ac, scope, transport, groups)
+			eff, effErr := "", error(nil)
+			if bound {
+				eff, effErr = ac.EffectiveCoreConfig(target)
+			} else {
+				effErr = errors.New("no machine")
+			}
 			fyne.Do(func() {
 				renderCoreRuntimeDirections(dirBox, ac, snap.Directions, cfgPath, scope)
 				renderCoreRuntimeEndpoints(epBox, ac, snap.Endpoints, cfgPath, scope)
+				if effErr != nil {
+					effText = ""
+					effView.SetText("")
+					effNote.SetText(locale.T("The core does not report its effective config (classic mode or a core older than 1.14.4-lx.37-rc.2)."))
+				} else {
+					effText = nodeJSONText([]byte(eff))
+					effView.SetText(effText)
+					effNote.SetText(locale.T("The config as the core runs it: chains rewritten into detours, MTU aligned."))
+				}
 				reloadBtn.Enable()
 			})
 		}()

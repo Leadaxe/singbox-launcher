@@ -6337,5 +6337,41 @@
   },
   "The chain key %s is removed from the core: a chain no longer creates link copies, and strip filters moved to lx.detour.strip. Remove the key.": {
     "value": "Ключ цепочки %s убран из ядра: цепочка больше не создаёт копии звеньев, а фильтры strip переехали в lx.detour.strip. Уберите ключ."
+  },
+  "From the launcher config": {
+    "value": "Из конфига лаунчера"
+  },
+  "From the launcher config: the core does not report this node": {
+    "value": "Из конфига лаунчера: ядро этот узел не отдаёт"
+  },
+  "Effective": {
+    "value": "Как работает"
+  },
+  "Original": {
+    "value": "Как написан"
+  },
+  "From the running core": {
+    "value": "Из работающего ядра"
+  },
+  "Changes by the core (%d)": {
+    "value": "Изменения ядра (%d)"
+  },
+  "chain %s, position %s": {
+    "value": "цепочка %s, позиция %s"
+  },
+  "rewrite of chain %s": {
+    "value": "rewrite цепочки %s"
+  },
+  "MTU alignment": {
+    "value": "выравнивание MTU"
+  },
+  "Effective config": {
+    "value": "Итоговый конфиг"
+  },
+  "The core does not report its effective config (classic mode or a core older than 1.14.4-lx.37-rc.2).": {
+    "value": "Ядро не отдаёт итоговый конфиг (режим classic или ядро старше 1.14.4-lx.37-rc.2)."
+  },
+  "The config as the core runs it: chains rewritten into detours, MTU aligned.": {
+    "value": "Конфиг, как его исполняет ядро: цепочки переписаны в detour, MTU выровнен."
   }
 }

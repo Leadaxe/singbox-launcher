@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"image/color"
@@ -299,17 +300,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	// fynewidget.NewJSONView: подсветка, номера строк, свёртка и выделение
 	// мышью в свежих сборках; на Win7 — прежний Entry. Кнопка «Copy JSON»
 	// забирает тело целиком без выделения.
-	jsonText := prettyNodeJSON(node.Raw)
-	jsonView := fynewidget.NewJSONView(jsonText)
-
-	jsonTab := container.NewBorder(
-		nil,
-		widget.NewButton(locale.T("Copy JSON"), func() {
-			setClipboard(jsonText)
-		}),
-		nil, nil,
-		jsonView.Object(),
-	)
+	jsonTab := nodeInfoJSONTab(ac, target, bound, proxy.Name, prettyNodeJSON(node.Raw))
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem(locale.T("Details"), withScrollGutter(body)),
@@ -333,6 +324,119 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	win.Resize(fyne.NewSize(620, 680))
 	fynewidget.CenterOnScreen(win)
 	win.Show()
+}
+
+// nodeInfoJSONTab — вкладка JSON узла (SPEC 189). По умолчанию — узел, как он
+// работает в ядре (`effective` из GetOutboundConfig, SPEC 165 ядра: после
+// перехвата цепочкой, rewrite и выравнивания MTU); переключатель — на
+// `original`, как узел написан в конфиге; ниже — что ядро поменяло. Ядро не
+// отвечает (classic, ядро старше rc2, узла нет в работающем конфиге) — JSON
+// из конфига лаунчера с подписью об этом.
+func nodeInfoJSONTab(ac *core.AppController, target core.CoreTarget, bound bool, tag, launcherJSON string) fyne.CanvasObject {
+	current := launcherJSON
+	view := fynewidget.NewJSONView(current)
+	source := widget.NewLabel(locale.T("From the launcher config"))
+	source.Importance = widget.LowImportance
+	source.Wrapping = fyne.TextWrapWord
+	changes := container.NewVBox()
+	mode := widget.NewRadioGroup([]string{locale.T("Effective"), locale.T("Original")}, nil)
+	mode.Horizontal = true
+	mode.Hide()
+	copyBtn := widget.NewButton(locale.T("Copy JSON"), func() { setClipboard(current) })
+
+	top := container.NewBorder(nil, nil, mode, nil)
+	bottom := container.NewVBox(changes, source, copyBtn)
+	tab := container.NewBorder(top, bottom, nil, nil, view.Object())
+
+	if !bound {
+		return tab
+	}
+	go func() {
+		cfg, err := ac.NodeOutboundConfig(target, tag)
+		fyne.Do(func() {
+			if err != nil {
+				debuglog.DebugLog("node info: outbound config %s: %v", tag, err)
+				source.SetText(locale.T("From the launcher config: the core does not report this node"))
+				return
+			}
+			effective, original := nodeJSONText(cfg.Effective), nodeJSONText(cfg.Original)
+			show := func(text string) {
+				current = text
+				view.SetText(text)
+			}
+			show(effective)
+			source.SetText(locale.T("From the running core"))
+			if len(cfg.Original) > 0 {
+				mode.OnChanged = func(sel string) {
+					if sel == locale.T("Original") {
+						show(original)
+					} else {
+						show(effective)
+					}
+				}
+				mode.SetSelected(locale.T("Effective"))
+				mode.Show()
+			}
+			if len(cfg.Changes) > 0 {
+				changes.Add(sectionHeader(locale.Tf("Changes by the core (%d)", len(cfg.Changes))))
+				for _, ch := range cfg.Changes {
+					row := widget.NewLabel("  " + nodeConfigChangeText(ch))
+					row.Wrapping = fyne.TextWrapWord
+					changes.Add(row)
+				}
+			}
+			changes.Refresh()
+		})
+	}()
+	return tab
+}
+
+// nodeJSONText — JSON ядра с отступами; пустое значение — «{}».
+func nodeJSONText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return "{}"
+	}
+	var b bytes.Buffer
+	if err := json.Indent(&b, raw, "", "  "); err != nil {
+		return string(raw)
+	}
+	return b.String()
+}
+
+// nodeConfigChangeText — строка правки ядра: поле, откуда → куда, кто правил.
+// Значения — компактным JSON; нет from — поле появилось, нет to — снято.
+func nodeConfigChangeText(ch services.OutboundConfigChange) string {
+	value := func(raw json.RawMessage) string {
+		if len(raw) == 0 {
+			return "—"
+		}
+		var b bytes.Buffer
+		if json.Compact(&b, raw) != nil {
+			return string(raw)
+		}
+		return b.String()
+	}
+	text := ch.Field + "   " + value(ch.From) + " → " + value(ch.To)
+	byType, _ := ch.By["type"].(string)
+	chain, _ := ch.By["chain"].(string)
+	pos := ""
+	if p, ok := ch.By["position"].(float64); ok {
+		// Ядро считает позиции с нуля, окно Info — с единицы, как в списке
+		// позиций цепочки.
+		pos = strconv.Itoa(int(p) + 1)
+	}
+	switch byType {
+	case "chain":
+		text += "   " + locale.Tf("chain %s, position %s", chain, pos)
+	case "chain_rewrite":
+		text += "   " + locale.Tf("rewrite of chain %s", chain)
+	case "mtu_align":
+		text += "   " + locale.T("MTU alignment")
+	case "":
+	default:
+		text += "   " + byType
+	}
+	return text
 }
 
 // withScrollGutter оборачивает содержимое в скролл с отступом под полосу
