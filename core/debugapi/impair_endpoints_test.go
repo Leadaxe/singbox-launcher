@@ -58,6 +58,21 @@ func (c *impairFakeCore) ScheduleImpair(_ context.Context, r *daemonpb.ScheduleI
 	return &daemonpb.ImpairStatus{Json: `{"tag":"imp"}`}, nil
 }
 
+func (c *impairFakeCore) URLTestOutbound(_ context.Context, r *daemonpb.URLTestOutboundRequest) (*daemonpb.URLTestOutboundResponse, error) {
+	if r.GetOutboundTag() == "v" {
+		return &daemonpb.URLTestOutboundResponse{Delay: 321}, nil
+	}
+	return nil, status.Error(codes.NotFound, "outbound not found: "+r.GetOutboundTag())
+}
+
+func (c *impairFakeCore) GetPool(_ context.Context, r *daemonpb.GetPoolRequest) (*daemonpb.PoolList, error) {
+	return &daemonpb.PoolList{Slots: []*daemonpb.PoolSlot{{Slot: 0, Tag: "v", Delay: 99, Quarantined: true, Connections: 7, ConfirmedFailures: 3}}, Frozen: true, FrozenSeconds: 12}, nil
+}
+
+func (c *impairFakeCore) GetOutboundConfig(_ context.Context, r *daemonpb.GetOutboundConfigRequest) (*daemonpb.OutboundConfig, error) {
+	return &daemonpb.OutboundConfig{Content: `{"tag":"v","original":{"type":"vless","detour":"imp"},"effective":{"type":"vless","detour":"imp"},"changes":[]}`}, nil
+}
+
 // impairDaemonFacade — фасад демона, чей gRPC ведёт в фейковое ядро.
 type impairDaemonFacade struct {
 	fakeDaemonFacade
@@ -140,5 +155,38 @@ func TestImpairEndpointsPassThrough(t *testing.T) {
 	}
 	if resp, _ := authDo(t, http.MethodPost, base+"/impair/imp/set", []any{1}); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("non-object entry = %d, want 400", resp.StatusCode)
+	}
+
+	// Замеры своего ядра для сценария теста: URL-тест узла, пул, узел в ядре.
+	resp, body = authDo(t, http.MethodPost, base+"/proxies/delay", map[string]any{"name": "v"})
+	var delay struct {
+		OK      bool  `json:"ok"`
+		DelayMs int64 `json:"delay_ms"`
+	}
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &delay) != nil || !delay.OK || delay.DelayMs != 321 {
+		t.Errorf("delay: %d %s", resp.StatusCode, body)
+	}
+	if resp, _ := authDo(t, http.MethodPost, base+"/proxies/delay", map[string]any{"name": "gone"}); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("delay of a missing node = %d, want 404", resp.StatusCode)
+	}
+	resp, body = authDo(t, http.MethodGet, base+"/pool?group=auto", nil)
+	var pool struct {
+		Frozen        bool `json:"frozen"`
+		FrozenSeconds int  `json:"frozen_seconds"`
+		Slots         []struct {
+			Quarantined       bool `json:"quarantined"`
+			ConfirmedFailures int  `json:"confirmed_failures"`
+		} `json:"slots"`
+	}
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &pool) != nil || !pool.Frozen || pool.FrozenSeconds != 12 ||
+		len(pool.Slots) != 1 || !pool.Slots[0].Quarantined || pool.Slots[0].ConfirmedFailures != 3 {
+		t.Errorf("pool: %d %s", resp.StatusCode, body)
+	}
+	resp, body = authDo(t, http.MethodGet, base+"/outbounds/v/config", nil)
+	var oc struct {
+		Effective map[string]any `json:"effective"`
+	}
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &oc) != nil || oc.Effective["detour"] != "imp" {
+		t.Errorf("outbound config: %d %s", resp.StatusCode, body)
 	}
 }

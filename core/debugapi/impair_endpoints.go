@@ -162,8 +162,8 @@ func writeImpairResult(w http.ResponseWriter, st *daemonpb.ImpairStatus, err err
 }
 
 // impairRPCStatus — HTTP-код для ошибки gRPC ядра: нет тега — 404, не impair
-// или неверный JSON — 400, сервис не запущен — 409, ядро без impair или без
-// with_lx_command — 501.
+// или неверный аргумент — 400, сервис не запущен — 409, ядро без нужного RPC —
+// 501. Тот же маппинг у замеров своего ядра (daemon_observe_endpoints.go).
 func impairRPCStatus(err error) int {
 	switch status.Code(err) {
 	case codes.NotFound:

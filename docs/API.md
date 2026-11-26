@@ -531,6 +531,17 @@ and the status are JSON in the core's config schema (sing-box-lx
 Core errors map to HTTP: no such outbound — 404, not an impair outbound or
 invalid JSON — 400, core not running — 409, core without impair control — 501.
 
+### Measurements of the local core and the test scenario
+
+Daemon mode, same gating: `POST /proxies/delay` `{"name", "url"?, "timeout_ms"?}` —
+URL-test one outbound (`delay_ms`, `error`); `GET /pool?group=` — balancer pool of a
+urltest group (`slots[]` with `quarantined`, `connections`, `confirmed_failures`;
+`shifted_keys`, `marked_keys`, `frozen`, `frozen_seconds`); `GET /outbounds/{node}/config`
+— the node as the core runs it (`original`, `effective`, `changes`). To route a node
+through an impair outbound: `PATCH /state/servers?tag=&folder=` with
+`{"detour":{"tag":"imp"}}`, `{"detour":null}` clears it. A full scenario script —
+`SPECS/190-F-C-IMPAIR_DEBUG_API/SPEC.md` §3.
+
 ## Raw passthrough
 
 A tunnel to a **paired** daemon — a remote machine or the local one. Channel,

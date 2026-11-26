@@ -113,7 +113,7 @@ func (s *Server) remoteEndpoints() []apiEndpoint {
 		{"GET/PATCH", "/remote/machines/{id}/state/dns", true, "Get / replace machine's dns_options", s.handleRemoteStateDNS},
 		{"POST/DELETE", "/remote/machines/{id}/state/dns/servers", true, "Add / delete (?tag=) a user DNS server of the machine", s.handleRemoteStateDNSServers},
 		{"GET/PATCH/POST/DELETE", "/remote/machines/{id}/state/dns/rules", true, "Get / replace machine's USER dns rules (text); add one / delete one (?index=)", s.handleRemoteStateDNSRules},
-		{"GET/POST/DELETE", "/remote/machines/{id}/state/servers", true, "List / add / delete (?tag=&folder=) servers of the machine", s.handleRemoteStateServers},
+		{"GET/POST/PATCH/DELETE", "/remote/machines/{id}/state/servers", true, "List / add / set or clear detour (PATCH ?tag=&folder=) / delete (?tag=&folder=) servers of the machine", s.handleRemoteStateServers},
 		{"GET/POST/DELETE", "/remote/machines/{id}/state/folders", true, "List / create / delete (?folder=&with_nodes=1) folders of the machine", s.handleRemoteStateFolders},
 		{"GET", "/remote/machines/{id}/state/outbounds/resolved", true, "Machine's resolved outbounds", s.handleRemoteStateOutboundsResolved},
 		{"GET", "/remote/machines/{id}/backup/export", true, "Export the machine's settings as an LX Backup file", s.handleRemoteBackupExport},

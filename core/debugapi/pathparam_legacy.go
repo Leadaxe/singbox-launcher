@@ -22,6 +22,7 @@ func pathParam(r *http.Request, name string) string {
 		"key":      "clients",
 		"tag":      "chains",
 		"outbound": "impair",
+		"node":     "outbounds",
 	}[name]
 	if !ok {
 		return ""

@@ -508,6 +508,16 @@ DeadlineExceeded, `422` FailedPrecondition / InvalidArgument.
 Ошибки ядра → HTTP: нет такого outbound — 404, не impair или неверный JSON —
 400, ядро не запущено — 409, ядро без управления impair — 501.
 
+### Замеры своего ядра и сценарий теста
+
+Режим демона, то же условие: `POST /proxies/delay` `{"name", "url"?, "timeout_ms"?}` —
+URL-тест одного узла (`delay_ms`, `error`); `GET /pool?group=` — пул urltest-группы
+(`slots[]` с `quarantined`, `connections`, `confirmed_failures`; `shifted_keys`,
+`marked_keys`, `frozen`, `frozen_seconds`); `GET /outbounds/{node}/config` — узел, как
+его исполняет ядро (`original`, `effective`, `changes`). Повесить узел на impair:
+`PATCH /state/servers?tag=&folder=` с `{"detour":{"tag":"imp"}}`, `{"detour":null}` —
+снять. Сценарий целиком — `SPECS/190-F-C-IMPAIR_DEBUG_API/SPEC.md` §3.
+
 ## Произвольные вызовы (raw passthrough)
 
 Туннель к **сопряжённому** демону — удалённой машине или локальному. Канал,

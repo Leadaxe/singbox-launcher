@@ -26,6 +26,7 @@
 package debugapi
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -170,6 +171,58 @@ func (s *Server) stateServersWith(w http.ResponseWriter, r *http.Request, acc st
 			writeJSON(w, http.StatusOK, out)
 		}
 
+	case http.MethodPatch:
+		// Смена detour существующего узла: {"detour":{"tag","folder"}} ставит,
+		// {"detour":null} снимает. Нужна тестам с impair (SPEC 164 ядра):
+		// повесить узлы на тестовый узел и снять.
+		if !guardStateSchema(w, acc) {
+			return
+		}
+		q := r.URL.Query()
+		tag := strings.TrimSpace(q.Get("tag"))
+		if tag == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "query parameter tag is required (folder optional)"})
+			return
+		}
+		var req struct {
+			Detour json.RawMessage `json:"detour"`
+		}
+		if err := decodeJSONBody(r, &req); err != nil || len(req.Detour) == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "body must be {\"detour\":{\"tag\":…,\"folder\":…}} to set or {\"detour\":null} to clear"})
+			return
+		}
+		var ref *stateedit.DetourRef
+		if string(req.Detour) != "null" {
+			var d struct {
+				Tag    string `json:"tag"`
+				Folder string `json:"folder"`
+			}
+			if err := json.Unmarshal(req.Detour, &d); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "detour must be {\"tag\":…,\"folder\":…} or null"})
+				return
+			}
+			ref = &stateedit.DetourRef{Tag: d.Tag, Folder: d.Folder}
+		}
+		acc.mu.Lock()
+		defer acc.mu.Unlock()
+		st, ok := loadForEdit(w, acc)
+		if !ok {
+			return
+		}
+		res, err := stateedit.SetServerDetour(st, s.editTemplate(), tag, q.Get("folder"), ref)
+		if err != nil {
+			writeStateEditError(w, err)
+			return
+		}
+		summary := fmt.Sprintf("servers: %q detour cleared", res.Tag)
+		if res.Detour != nil {
+			summary = fmt.Sprintf("servers: %q detour → %q", res.Tag, res.Detour.Tag)
+		}
+		out := map[string]any{"diff_summary": []string{summary}, "server": res}
+		if s.commitStateEdit(w, acc, st, out) {
+			writeJSON(w, http.StatusOK, out)
+		}
+
 	case http.MethodDelete:
 		if !guardStateSchema(w, acc) {
 			return
@@ -212,7 +265,7 @@ func (s *Server) stateServersWith(w http.ResponseWriter, r *http.Request, acc st
 		writeJSON(w, http.StatusOK, out)
 
 	default:
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET, POST or DELETE required"})
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET, POST, PATCH or DELETE required"})
 	}
 }
 

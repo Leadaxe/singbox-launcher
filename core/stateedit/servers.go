@@ -711,3 +711,73 @@ func sortedKeys(m map[string]string) []string {
 	sort.Strings(keys)
 	return keys
 }
+
+// SetServerDetourResult — узел после смены detour.
+type SetServerDetourResult struct {
+	Tag      string          `json:"tag"`
+	FolderID string          `json:"folder_id,omitempty"`
+	Detour   *state.NodeLink `json:"detour,omitempty"`
+	Previous *state.NodeLink `json:"previous,omitempty"`
+}
+
+// SetServerDetour ставит (detour != nil) или снимает (nil) detour у корневого
+// сервера (folder пуст) или члена папки. Цель обязана существовать
+// (resolveDetour) и не может быть самим узлом. Нужен тестам через debug API:
+// повесить узлы на тестовый impair-узел и снять (SPEC 164 ядра).
+func SetServerDetour(st *state.State, td *template.TemplateData, tag, folder string, detour *DetourRef) (*SetServerDetourResult, error) {
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return nil, fieldErr("tag", "tag is required")
+	}
+	var node *state.Node
+	res := &SetServerDetourResult{Tag: tag}
+	if strings.TrimSpace(folder) == "" {
+		for i := range st.Sources {
+			if st.Sources[i].Kind == state.SourceKindServer && st.Sources[i].Tag == tag {
+				node = &st.Sources[i].Node
+				break
+			}
+		}
+		if node == nil {
+			return nil, fmt.Errorf("server %q in root: %w", tag, ErrNotFound)
+		}
+	} else {
+		fi, err := findFolder(st, folder)
+		if err != nil {
+			return nil, err
+		}
+		f := &st.Sources[fi]
+		for i := range f.Nodes {
+			if f.Nodes[i].Tag == tag {
+				node = &f.Nodes[i]
+				break
+			}
+		}
+		if node == nil {
+			return nil, fmt.Errorf("node %q in folder %q: %w", tag, folder, ErrNotFound)
+		}
+		res.FolderID = strings.TrimSpace(f.ID)
+	}
+	if node.Kind != state.SourceKindServer && node.Kind != "" {
+		return nil, fieldErr("tag", "%q is a %s, not a server: detour applies to servers", tag, node.Kind)
+	}
+	res.Previous = node.Detour
+	if detour == nil {
+		node.Detour = nil
+		return res, nil
+	}
+	blockTag := template.DefaultDirectionBlockTag
+	if td != nil {
+		blockTag = td.DirectionBlockTag()
+	}
+	link, err := resolveDetour(st, KnownRuleTargets(st, td), blockTag, *detour)
+	if err != nil {
+		return nil, err
+	}
+	if link.Tag == tag && link.FolderID == res.FolderID {
+		return nil, fieldErr("detour.tag", "a node cannot dial through itself")
+	}
+	node.Detour = link
+	res.Detour = link
+	return res, nil
+}
