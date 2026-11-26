@@ -16,11 +16,12 @@ import (
 // поведение осталось осмысленным, если запрос всё же дойдёт до обработчика.
 func pathParam(r *http.Request, name string) string {
 	anchor, ok := map[string]string{
-		"id":      "machines",
-		"name":    "resources",
-		"conn_id": "connections",
-		"key":     "clients",
-		"tag":     "chains",
+		"id":       "machines",
+		"name":     "resources",
+		"conn_id":  "connections",
+		"key":      "clients",
+		"tag":      "chains",
+		"outbound": "impair",
 	}[name]
 	if !ok {
 		return ""

@@ -480,7 +480,7 @@ daemon's gRPC plane.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/chains` | Chain runtime state: positions, the node each one currently resolves to, clone status |
+| GET | `/chains` | Chain runtime state: positions, the node each one currently resolves to, toggles and dial errors (core SPEC 165: chain tags from the running config, state by `GetChainStatus`) |
 | POST | `/chains/{tag}/probe` | Layer-by-layer latency probe of one chain |
 
 **Probe body** — `{repeat?, timeout_ms?, link?}`. Defaults and clamps:
@@ -513,6 +513,23 @@ Layered probing also works for a **remote** machine
 this host, so the numbers describe the router's channel to each hop.
 
 ---
+
+## Impair `/impair/*` (core SPEC 164)
+
+For tests only — the launcher UI has no impair (owner decision 26.11.2026). Gated
+like `/daemon/*`; the calls go to the local daemon's gRPC (`SetImpair`,
+`ScheduleImpair`, `GetImpairStatus`, core 1.14.4-lx.37-rc.1 or newer). Requests
+and the status are JSON in the core's config schema (sing-box-lx
+`docs-lx/lx-impair.md`) and are passed through as is.
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/impair/{outbound}` | Status: `tag`, `link_params`, `counters`, `sublinks`, `schedule` |
+| POST | `/impair/{outbound}/set` | Body — one schedule entry without `at`: `{"link_params":{…}}` or `{"sublinks":[…]\|false}`; applied now |
+| POST | `/impair/{outbound}/schedule` | Body `{"entries":[…], "start":""\|"now"\|"first_use", "repeat":""\|"60s"}`; `entries: []` stops the schedule and restores the config's link |
+
+Core errors map to HTTP: no such outbound — 404, not an impair outbound or
+invalid JSON — 400, core not running — 409, core without impair control — 501.
 
 ## Raw passthrough
 

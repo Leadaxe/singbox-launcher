@@ -310,6 +310,9 @@ func (s *Server) endpoints() []apiEndpoint {
 		// группа висит на том же условии, что и /daemon/* — без демона
 		// спрашивать нечего.
 		eps = append(eps, s.chainEndpoints()...)
+		// SPEC 164 ядра: impair на лету — тот же gRPC демона; только для
+		// тестов, в UI его нет.
+		eps = append(eps, s.impairEndpoints()...)
 	}
 	// Инспектор окон Fyne — подключается из wiring (core), без него группы нет.
 	if s.ui != nil {
