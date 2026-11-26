@@ -16,6 +16,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/configtypes"
 	daemonpb "singbox-launcher/internal/daemonpb"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/lxdclient"
@@ -755,7 +756,8 @@ func (t *LxdRemoteTransport) Rules() ([]RemoteRule, error) {
 	return out, nil
 }
 
-// Outbounds возвращает теги outbound'ов машины — для резолва цепочек.
+// Outbounds возвращает теги outbound'ов машины — для резолва цепочек. Хопы
+// цепочек (`chain-hop`, SPEC 165 ядра) не узлы и в список не входят.
 func (t *LxdRemoteTransport) Outbounds() ([]string, error) {
 	client, ctx, cancel, err := t.rpc()
 	if err != nil {
@@ -768,6 +770,9 @@ func (t *LxdRemoteTransport) Outbounds() ([]string, error) {
 	}
 	out := make([]string, 0, len(list.GetOutbounds()))
 	for _, o := range list.GetOutbounds() {
+		if o.GetType() == configtypes.ChainHopOutboundType {
+			continue
+		}
 		out = append(out, o.GetTag())
 	}
 	return out, nil

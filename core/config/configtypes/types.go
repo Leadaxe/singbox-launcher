@@ -1184,6 +1184,11 @@ type BuiltChain struct {
 // ChainOutboundType — значение поля `type` в конфиге ядра.
 const ChainOutboundType = "chain"
 
+// ChainHopOutboundType — тип внутреннего хопа цепочки `<цепочка>#<i>`
+// (SPEC 165 ядра). Его создаёт только перезапись цепочки при загрузке: в
+// конфиге пользователя такой тип — ошибка, в списках ядра UI его не показывает.
+const ChainHopOutboundType = "chain-hop"
+
 // ChainStripTLSUTLS — ключ каталога `strip`, снятие которого ломает
 // reality-хопы (проверка конфликта — chain_validate.go, волна C4 SPEC 142).
 const ChainStripTLSUTLS = "tls.utls"
