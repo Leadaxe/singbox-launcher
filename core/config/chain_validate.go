@@ -105,12 +105,15 @@ var chainHopLocalPortFields = map[string][]string{
 // (показывает причину до сохранения), чтобы они не разошлись.
 //
 //   - одно место на тег: узел или группа, достижимые с позиций цепочек (все
-//     члены групп любой вложенности, кроме direct и block), стоят в одном
-//     месте — не в двух цепочках (позиция 0 тоже считается) и не на двух
-//     позициях ≥ 1 одной цепочки; снимается поздняя из двух цепочек;
+//     члены групп любой вложенности, кроме direct и block), не нужны двум
+//     местам, из которых хотя бы одно — позиция ≥ 1: другой цепочке или
+//     второй позиции ≥ 1 той же; общий вход двух цепочек (позиция 0 обеих) —
+//     не конфликт (решение владельца 26.11); снимается поздняя из двух;
 //   - кольцо: узел позиции ≥ 1 ходит через позицию ниже, и если оттуда (по
 //     членам групп, detour и позициям цепочек) путь возвращается к нему —
-//     кольцо (`[A, Группа{A, X}]`, свой detour узла позиции 0 в узел выше);
+//     кольцо: `[A, Группа{A, X}]` (chain_detour_ring, подсказка — копия группы
+//     без A) или свой detour узла нижней позиции в узел выше
+//     (chain_detour_ring_detour);
 //   - фиксированный локальный порт у узла позиции ≥ 1;
 //   - тег хопа `<цепочка>#<i>` занят;
 //   - rewrite цепочки меняет detour.
@@ -264,10 +267,14 @@ func ChainDetourProblems(entries []map[string]interface{}) []ChainDetourProblem 
 		for i := range ps {
 			for j := i + 1; j < len(ps); j++ {
 				a, b := ps[i], ps[j]
-				if a.chain == b.chain && (a.pos == 0 || b.pos == 0) {
-					continue // позиция 0 и позиция выше одной цепочки — кольцо, ниже
+				// Решение владельца 26.11: общий вход двух цепочек (узел или
+				// группа на позиции 0 обеих) — не конфликт; конфликт — когда
+				// место нужно хотя бы одной цепочке на позиции ≥ 1. Позиция 0
+				// и позиция выше одной цепочки — кольцо, ниже.
+				if a.pos == 0 && b.pos == 0 {
+					continue
 				}
-				if a.chain == b.chain && a.pos == b.pos {
+				if a.chain == b.chain && (a.pos == 0 || b.pos == 0 || a.pos == b.pos) {
 					continue
 				}
 				victim, other := b, a
@@ -275,7 +282,7 @@ func ChainDetourProblems(entries []map[string]interface{}) []ChainDetourProblem 
 					victim, other = a, b
 				}
 				add(victim.chain, "chain_detour_conflict",
-					"“"+t+"” is needed on chain “"+other.chain+"” position "+strconv.Itoa(other.pos+1)+" and on chain “"+victim.chain+"” position "+strconv.Itoa(victim.pos+1)+" — one node or group has one path",
+					"“"+t+"” is needed on chain “"+other.chain+"” position "+strconv.Itoa(other.pos+1)+" and on chain “"+victim.chain+"” position "+strconv.Itoa(victim.pos+1)+" — make a copy of it for one of them",
 					map[string]string{"node": t, "other": other.chain})
 				break pairs
 			}
@@ -286,18 +293,29 @@ func ChainDetourProblems(entries []map[string]interface{}) []ChainDetourProblem 
 	// есть позиция ниже его цепочки) и позиции цепочек.
 	intercept := map[string]string{} // узел → тег позиции ниже
 	interceptChain := map[string]string{}
+	interceptAt := map[string]string{}      // узел → тег позиции, через которую он перехвачен
+	interceptPos := map[string]int{}        // узел → номер этой позиции (с нуля)
+	entryOf := map[string]map[string]bool{} // цепочка → достижимое с позиции 0
 	for _, c := range chains {
 		ctag, _ := c["tag"].(string)
 		if dropped[ctag] {
 			continue
 		}
 		hops := strs(c["outbounds"])
+		if len(hops) > 0 {
+			entryOf[ctag] = map[string]bool{}
+			for _, t := range reach(hops[0]) {
+				entryOf[ctag][t] = true
+			}
+		}
 		for pos := 1; pos < len(hops); pos++ {
 			for _, t := range reach(hops[pos]) {
 				if counted(t) && !isGroup(t) && typeOf(t) != configtypes.ChainOutboundType {
 					if _, ok := intercept[t]; !ok {
 						intercept[t] = hops[pos-1]
 						interceptChain[t] = ctag
+						interceptAt[t] = hops[pos]
+						interceptPos[t] = pos
 					}
 				}
 			}
@@ -342,11 +360,21 @@ func ChainDetourProblems(entries []map[string]interface{}) []ChainDetourProblem 
 	}
 	sort.Strings(ringNodes)
 	for _, t := range ringNodes {
-		if reaches(intercept[t], t) {
-			add(interceptChain[t], "chain_detour_ring",
-				"node “"+t+"” goes through the position below it, and that path leads back to “"+t+"” — a ring",
-				map[string]string{"node": t})
+		if !reaches(intercept[t], t) {
+			continue
 		}
+		c := interceptChain[t]
+		pos := strconv.Itoa(interceptPos[t] + 1)
+		if entryOf[c][t] {
+			// Узел стоит на входе и внутри группы позиции выше.
+			add(c, "chain_detour_ring",
+				"node “"+t+"” is on the entry and inside “"+interceptAt[t]+"” on position "+pos+" — make a copy of the group without “"+t+"” for this position",
+				map[string]string{"node": t, "group": interceptAt[t], "position": pos})
+			continue
+		}
+		add(c, "chain_detour_ring_detour",
+			"the detour of a lower position leads into “"+t+"” on position "+pos+" — a ring; clear that detour",
+			map[string]string{"node": t, "position": pos})
 	}
 	return out
 }

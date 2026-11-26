@@ -416,6 +416,21 @@ func (f *chainForm) rebuildHops() {
 	f.syncRewriteTypes()
 }
 
+// blockingProblems — кольца и конфликты цепочки (SPEC 189): с ними форма не
+// сохраняется — решение владельца 26.11, ядро отвергло бы весь конфиг, а
+// понятного сообщения не даёт. Тексты реестра подсказывают, что скопировать.
+func (f *chainForm) blockingProblems() []string {
+	if f.graph == nil {
+		return nil
+	}
+	c := f.Collect()
+	if c == nil {
+		return nil
+	}
+	obs, eps := f.graph()
+	return config.ChainEditProblems(obs, eps, f.originalTag, config.ChainOutboundObject(f.Tag(), c))
+}
+
 // conflicts — что в текущем составе ядро не примет.
 //
 // Форма обязана предотвращать такие конфигурации, а не давать поймать их в
@@ -438,12 +453,7 @@ func (f *chainForm) conflicts() []string {
 	// той же проверкой, что снимет цепочку на сборке.
 	// Ядро цели здесь не различается: пин лаунчера — ядро с перезаписью, а
 	// машина на старом ядре получит те же цепочки после обновления.
-	if f.graph != nil {
-		if c := f.Collect(); c != nil {
-			obs, eps := f.graph()
-			out = append(out, config.ChainEditProblems(obs, eps, f.originalTag, config.ChainOutboundObject(f.Tag(), c))...)
-		}
-	}
+	out = append(out, f.blockingProblems()...)
 
 	// T5: вложенная цепочка допустима только первой позицией — звено это
 	// «узел через предыдущую позицию», а цепочка не узел.

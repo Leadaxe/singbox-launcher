@@ -217,7 +217,8 @@ func TestSanitizeGroupsStrippedHopsPerSourceAndTarget(t *testing.T) {
 
 // TestSanitizeChainDetourRewrite — правило 7 (SPEC 165 ядра, SPEC 189; сверено с
 // ядром d9fc75468): на ядре, которое переписывает цепочку в detour, группа,
-// достижимая из двух цепочек, снимает позднюю цепочку (chain_detour_conflict);
+// нужная двум цепочкам на позиции ≥ 1, снимает позднюю цепочку
+// (chain_detour_conflict), общий вход двух цепочек — не конфликт;
 // кольцо `[A, Группа{A, X}]` снимает цепочку (chain_detour_ring); локальный
 // порт узла позиции ≥ 1 снимает цепочку (chain_hop_local_port); поля сокета
 // узла не трогаются. Для старого ядра конфиг законен и остаётся как есть.
@@ -236,6 +237,11 @@ func TestSanitizeChainDetourRewrite(t *testing.T) {
 		`{"tag":"e3","type":"vless","server":"a"}`,
 		`{"tag":"wg","type":"wireguard","listen_port":51820}`,
 		`{"tag":"port","type":"chain","outbounds":["e3","wg"]}`,
+		`{"tag":"se","type":"vless","server":"a"}`,
+		`{"tag":"n1","type":"vless","server":"a"}`,
+		`{"tag":"n2","type":"vless","server":"a"}`,
+		`{"tag":"s1","type":"chain","outbounds":["se","n1"]}`,
+		`{"tag":"s2","type":"chain","outbounds":["se","n2"]}`,
 	}
 	run := func(rewrite bool) (map[string]map[string]interface{}, graphLosses) {
 		cache := &ParsedCache{}
@@ -269,6 +275,12 @@ func TestSanitizeChainDetourRewrite(t *testing.T) {
 	if _, ok := got["c1"]; !ok {
 		t.Fatal("the earlier chain must stay")
 	}
+	// Общий вход двух цепочек — не конфликт (решение владельца 26.11).
+	for _, kept := range []string{"s1", "s2"} {
+		if _, ok := got[kept]; !ok {
+			t.Errorf("chain %s shares only the entry and must stay", kept)
+		}
+	}
 	if got["x"]["tcp_fast_open"] != true {
 		t.Error("socket fields of a node inside a chain are not an error and must stay")
 	}
@@ -282,7 +294,7 @@ func TestSanitizeChainDetourRewrite(t *testing.T) {
 	if p := codes["chain_detour_conflict"]; p["chain"] != "c2" || p["node"] != "pool" || p["other"] != "c1" {
 		t.Errorf("chain_detour_conflict params = %v", p)
 	}
-	if p := codes["chain_detour_ring"]; p["chain"] != "ring" || p["node"] != "r" {
+	if p := codes["chain_detour_ring"]; p["chain"] != "ring" || p["node"] != "r" || p["group"] != "rg" || p["position"] != "2" {
 		t.Errorf("chain_detour_ring params = %v", p)
 	}
 	if p := codes["chain_hop_local_port"]; p["chain"] != "port" || p["node"] != "wg" || p["fields"] != "listen_port" {

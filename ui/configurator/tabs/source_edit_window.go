@@ -2534,6 +2534,12 @@ func showSourceEditWindowAt(
 		// хватает (прежний контракт applyProxyEditToSource).
 		if isChainSource {
 			if chainTabBody != nil {
+				// SPEC 189: кольцо или конфликт цепочки — сохранить нельзя
+				// (решение владельца 26.11); текст подсказывает, что скопировать.
+				if problems := chainTabBody.blockingProblems(); len(problems) > 0 {
+					dialog.ShowError(errors.New(strings.Join(problems, "\n\n")), win)
+					return
+				}
 				scratch.Tag = strings.TrimSpace(chainTabBody.Tag())
 				applyChainFormToSource(&scratch, chainTabBody.Collect(), chainTabBody.CollectLinks())
 			}

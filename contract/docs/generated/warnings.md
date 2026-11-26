@@ -23,8 +23,9 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`awg_mtu_clamped`](#awg_mtu_clamped) · `warning` — AmneziaWG: MTU lowered to 1280
 - [`awg_mtu_high`](#awg_mtu_high) · `info` — AmneziaWG: MTU above 1280
 - [`chain_cycle_through_direction`](#chain_cycle_through_direction) · `warning` — Chain {chain} excluded from {direction}
-- [`chain_detour_conflict`](#chain_detour_conflict) · `error` — Chain {chain}: {node} is already used by another route
-- [`chain_detour_ring`](#chain_detour_ring) · `error` — Chain {chain}: {node} would go around in a circle
+- [`chain_detour_conflict`](#chain_detour_conflict) · `error` — Chain {chain}: {node} is already used by chain {other}
+- [`chain_detour_ring`](#chain_detour_ring) · `error` — Chain {chain}: {node} is on the entry and inside {group}
+- [`chain_detour_ring_detour`](#chain_detour_ring_detour) · `error` — Chain {chain}: a detour leads back into {node}
 - [`chain_hop_local_port`](#chain_hop_local_port) · `error` — Chain {chain}: {node} has a fixed local port
 - [`chain_hop_missing`](#chain_hop_missing) · `error` — Chain: hop {position} not found
 - [`chain_hop_tag_taken`](#chain_hop_tag_taken) · `error` — Chain {chain}: the name {tag} is taken
@@ -393,13 +394,13 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **severity:** `error` · **params:** `chain`, `node`, `other`
 
-**Chain {chain}: {node} is already used by another route**
+**Chain {chain}: {node} is already used by chain {other}**
 
-- **What happened:** The core routes every node and group inside a chain through that chain, so each of them can stand in one place only. {node} is reached from chain {chain} and from chain {other} (directly or as a member of a group). The chain {chain} was excluded, because the core rejects such a config and would refuse to start it.
-- **Why it happens:** Two chains share a node or a group — also as their first position — or one chain has the same node or group on two positions after the first.
+- **What happened:** The core routes every node and group after the first position of a chain through that chain, so such a node or group can stand in one place only. {node} is needed by chain {chain} and by chain {other} (directly or as a member of a group), and at least one of them needs it after the first position. Make a copy of {node} for one of the chains — a group together with its nodes; a WireGuard node with other keys. Until then the chain {chain} is not built: the core would refuse the whole config.
+- **Why it happens:** Two chains share a node or a group and at least one of them uses it after the first position, or one chain has it on two positions after the first. A shared first position of two chains is allowed.
 - **What you can do:**
-  - Use a different node or group in one of the chains.
-  - Or keep one of the two chains.
+  - Make a copy of {node} for one of the chains: a group with copies of its nodes, a WireGuard node with other keys.
+  - Or use a different node or group in one of the chains.
 
 **Where it comes from:**
 
@@ -408,15 +409,32 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 <a id="chain_detour_ring"></a>
 ### chain_detour_ring
 
-**severity:** `error` · **params:** `chain`, `node`
+**severity:** `error` · **params:** `chain`, `node`, `group`, `position`
 
-**Chain {chain}: {node} would go around in a circle**
+**Chain {chain}: {node} is on the entry and inside {group}**
 
-- **What happened:** In a chain every node after the first position goes through the position below it. For {node} that path leads back to {node} itself — through a group that also contains it, or through the own hop of the first position. The chain {chain} was excluded, because the core rejects such a config.
-- **Why it happens:** A node of a later position is also reachable from a lower one — for example, the first position is node A and the second is a group that contains A, or the first position's own detour leads into a node of a later position.
+- **What happened:** In a chain every node after the first position goes through the position below it. {node} is the entry of chain {chain} and also a member of {group} on position {position}, so its path would go around in a circle. Make a copy of {group} without {node} for this position. Until then the chain {chain} is not built: the core would refuse the whole config.
+- **Why it happens:** The first position is a node (or a group with it), and a group on a later position also contains that node.
 - **What you can do:**
-  - Remove the node from the group at the later position, or choose another first position.
-  - Or clear the detour of the first position.
+  - Make a copy of {group} without {node} and put it on position {position}.
+  - Or choose another first position.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="chain_detour_ring_detour"></a>
+### chain_detour_ring_detour
+
+**severity:** `error` · **params:** `chain`, `node`, `position`
+
+**Chain {chain}: a detour leads back into {node}**
+
+- **What happened:** In a chain every node after the first position goes through the position below it. The own detour of a node on a lower position leads into {node} on position {position}, so the path would go around in a circle. Clear that detour, or take {node} out of the chain. Until then the chain {chain} is not built: the core would refuse the whole config.
+- **Why it happens:** A node on a lower position of the chain has its own detour that leads into a node on a later position.
+- **What you can do:**
+  - Clear the detour of the lower node.
+  - Or take {node} out of the chain.
 
 **Where it comes from:**
 
