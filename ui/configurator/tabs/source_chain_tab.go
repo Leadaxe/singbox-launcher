@@ -585,7 +585,9 @@ func (f *chainForm) pickHop() {
 		}
 		label := c.Display() + "   —   " + c.KindText()
 		if c.Loop {
-			label += "   ⚠ " + locale.T("leads back here")
+			// «Здесь» — с тегом цепочки (правка владельца 26.11): окно может
+			// быть не одно, и «здесь» без имени неоднозначно.
+			label += "   ⚠ " + locale.Tf("leads back here (%q)", f.Tag())
 		}
 		// Две папки вправе нести узел под одним финальным тегом (уникализация
 		// живёт на сборке, не в модели) — подпись тогда одна, а ссылки разные.
@@ -624,7 +626,7 @@ func (f *chainForm) pickHop() {
 			}
 			if looped[sel.Selected] {
 				dialog.ShowInformation(locale.T("Add hop"),
-					locale.T("This group cannot be used here: its own nodes connect through this entry, so the path would loop back."), f.parent)
+					locale.Tf("This group cannot be used here (%q): its own nodes connect through this entry, so the path would loop back.", f.Tag()), f.parent)
 				return
 			}
 			f.hops = append(f.hops, link)

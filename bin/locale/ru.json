@@ -988,12 +988,6 @@
   "Replace groups": {
     "value": "Группы свёртки"
   },
-  "leads back here": {
-    "value": "ведёт обратно сюда"
-  },
-  "This group cannot be used here: its own nodes connect through this entry, so the path would loop back.": {
-    "value": "Эту группу здесь выбрать нельзя: её узлы сами подключаются через эту запись, путь замкнулся бы в кольцо."
-  },
   "DNS": {
     "value": "DNS"
   },
@@ -6376,5 +6370,14 @@
   },
   "rewrite cannot change detour: inside a chain the node's path is set by the chain.": {
     "value": "rewrite не может менять detour: внутри цепочки путь узла задаёт сама цепочка."
+  },
+  "leads back here (%q)": {
+    "value": "ведёт обратно сюда (%q)"
+  },
+  "This group cannot be used here (%q): its own nodes connect through this entry, so the path would loop back.": {
+    "value": "Эту группу здесь (%q) выбрать нельзя: её узлы сами подключаются через эту запись, путь замкнулся бы в кольцо."
+  },
+  "leads back here": {
+    "value": "ведёт обратно сюда"
   }
 }
