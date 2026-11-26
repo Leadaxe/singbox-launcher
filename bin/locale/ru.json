@@ -6379,5 +6379,20 @@
   },
   "leads back here": {
     "value": "ведёт обратно сюда"
+  },
+  "Hop chain %q is not built": {
+    "value": "Цепочка %q не собрана"
+  },
+  "…and %d more hop chains are not built": {
+    "value": "…и ещё цепочек не собрано: %d"
+  },
+  "The chain is not in the config: open it to see what to fix.": {
+    "value": "Цепочки нет в конфиге: откройте её, чтобы увидеть, что исправить."
+  },
+  "Open chain": {
+    "value": "Открыть цепочку"
+  },
+  "Hide until the config changes": {
+    "value": "Скрыть до изменения конфига"
   }
 }

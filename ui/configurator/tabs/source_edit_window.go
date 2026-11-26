@@ -538,6 +538,26 @@ func showSourceEditWindow(
 	showSourceEditWindowAt(presenter, guiState, parent, sourceIndex, wizardmodels.NodeLink{}, shortLabel)
 }
 
+// OpenSourceEditorByTag открывает окно правки корневого источника с тегом
+// tag (цепочка, сервер). false — источника с таким тегом нет. Вход для
+// баннера «цепочка не собрана» главного окна (SPEC 189).
+func OpenSourceEditorByTag(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, tag string) bool {
+	if presenter == nil || guiState == nil {
+		return false
+	}
+	m := presenter.Model()
+	if m == nil {
+		return false
+	}
+	for i := range m.Sources {
+		if m.Sources[i].NodeTagOrLabel() == tag {
+			showSourceEditWindow(presenter, guiState, guiState.Window, i, m.Sources[i].Label)
+			return true
+		}
+	}
+	return false
+}
+
 // showSourceEditWindowForNode открывает окно на УЗЕЛ ВНУТРИ контейнера.
 //
 // Окно одно на обе роли (обкатка: «не должно быть двух окон на одну задачу»):

@@ -48,6 +48,9 @@ const (
 type CoreDashboardTab struct {
 	controller *core.AppController
 
+	// chainBanner — «цепочка не собрана» (SPEC 189), над статусом ядра.
+	chainBanner *chainBanner
+
 	// UI elements
 	statusLabel         *widget.Label  // Full status: "Core Status" + icon + text
 	singboxStatusLabel  *widget.Label  // sing-box status (version or "not found")
@@ -120,7 +123,10 @@ func CreateCoreDashboardTab(ac *core.AppController) fyne.CanvasObject {
 	coreRows = append(coreRows, configBlock)
 	coreInfo := container.NewVBox(coreRows...)
 
+	tab.chainBanner = newChainBanner(ac)
+	tab.chainBanner.refresh()
 	contentItems := []fyne.CanvasObject{
+		tab.chainBanner.box,
 		statusRow,
 		widget.NewSeparator(),
 		coreInfo,

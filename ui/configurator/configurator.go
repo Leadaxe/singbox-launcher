@@ -76,6 +76,21 @@ func ShowConfigWizard(parent fyne.Window) {
 	showConfigWizardFor(parent, wizardtemplate.LocalTarget(), "", locale.T("This computer"))
 }
 
+// ShowConfigWizardOpenSource открывает Конфигуратор этого компьютера (или
+// поднимает открытый) и сразу окно правки источника с тегом tag — кнопка
+// «Open chain» баннера главного окна (SPEC 189). Источника нет — открыт
+// только Конфигуратор.
+func ShowConfigWizardOpenSource(parent fyne.Window, tag string) {
+	ShowConfigWizard(parent)
+	ac := core.GetController()
+	if ac == nil || ac.UIService == nil {
+		return
+	}
+	if e, ok := ac.UIService.WizardWindowFor(wizardtemplate.LocalTarget().WizardWindowKey()); ok && e.OpenSource != nil {
+		e.OpenSource(tag)
+	}
+}
+
 // ShowConfigWizardForMachine открывает визард, корневой на профиле КОНКРЕТНОЙ
 // удалённой машины (SPEC 098 §2.4) — точка входа кнопки [Configure].
 //
@@ -371,6 +386,9 @@ func buildWizardWindow(
 		ac.UIService.SetWizardWindow(windowKey, uiservice.WizardWindowEntry{
 			Window:            wizardWindow,
 			FocusChildWindows: focusChildWindows,
+			OpenSource: func(tag string) bool {
+				return wizardtabs.OpenSourceEditorByTag(presenter, guiState, tag)
+			},
 		})
 		// Notify UIService consumers that wizard state changed
 		if ac.UIService.OnStateChange != nil {

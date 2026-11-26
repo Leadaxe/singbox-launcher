@@ -221,6 +221,9 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 	// должны появляться в dropdown'е без перезапуска.
 	tab.refreshStateSelector()
 
+	// Конфиг пересобран — цепочка могла выпасть или вернуться (SPEC 189).
+	tab.chainBanner.refresh()
+
 	if tab.configStatusLabel == nil {
 		return
 	}
