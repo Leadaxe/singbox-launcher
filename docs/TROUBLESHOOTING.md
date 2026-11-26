@@ -219,7 +219,7 @@ Details: [Protocols.md — input forms that are not links](Protocols.md#input-fo
 `config.json` is rebuilt from the Configurator's settings on every Save, subscription
 update and rebuild, so edits made in the file are lost — and the **Final** tab shows the
 result read-only for the same reason. Make the change where it lives: nodes in
-**Sources**, groups in **Directions**, routing in **Rules** (a **Custom JSON** rule
+**Sources**, groups in **Directions**, routing in **Rules** (the rule's **JSON** tab
 takes any sing-box rule), DNS in **DNS**, the TUN, the local proxy inbound
 (**Enable proxy-in**) and the ports in **Settings**. What the Configurator cannot
 express is the template's job — see [WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md).

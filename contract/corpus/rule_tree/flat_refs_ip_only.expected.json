@@ -1,0 +1,35 @@
+{
+  "rule_set": [
+    {
+      "tag": "Office:office",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Office",
+      "type": "inline",
+      "rules": [
+        {
+          "ip_cidr": [
+            "198.51.100.0/24"
+          ]
+        }
+      ]
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "Office:office",
+        "Office"
+      ],
+      "outbound": "direct"
+    }
+  ],
+  "dns_rules": [
+    {
+      "rule_set": "Office:office",
+      "server": "cf"
+    }
+  ]
+}

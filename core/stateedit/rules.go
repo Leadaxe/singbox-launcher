@@ -62,6 +62,9 @@ func KnownRuleTargets(st *state.State, td *template.TemplateData) map[string]boo
 // DNS-записи и Направления пресетов синхронизируются, как при сохранении в
 // Конфигураторе.
 func AddRule(st *state.State, td *template.TemplateData, r state.Rule) (int, error) {
+	// SPEC 188: запись старой формы (`refs` на записи) — к норме 1.1.179 до
+	// проверок: ссылки в тело корня, вид из дерева.
+	state.NormalizeRuleRecord(&r)
 	if _, err := r.DecodeBody(); err != nil {
 		return 0, fieldErr("rule", "%s", err.Error())
 	}

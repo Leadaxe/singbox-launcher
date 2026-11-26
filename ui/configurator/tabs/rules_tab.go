@@ -19,7 +19,9 @@ import (
 	"context"
 	"errors"
 	"image/color"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,12 +36,14 @@ import (
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/services"
+	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
+	"singbox-launcher/internal/srstag"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -71,9 +75,9 @@ func srsGroupDeadline(n int) time.Duration {
 	return d
 }
 
-func srsBtnDownload() string { return locale.T("⬇ srs") }
-func srsBtnLoading() string  { return locale.T("🔄 srs") }
-func srsBtnDone() string     { return locale.T("✔️ srs") }
+func srsBtnDownload() string { return locale.T("⬇ upd") }
+func srsBtnLoading() string  { return locale.T("🔄 upd") }
+func srsBtnDone() string     { return locale.T("✔️ upd") }
 
 // srsEntriesTooltip возвращает строку URL для tooltip кнопки SRS.
 // customRuleSRSEntries возвращает записи SRS для строки правила, если это пресет с rule_sets; иначе ok=false.
@@ -85,18 +89,80 @@ func srsBtnDone() string     { return locale.T("✔️ srs") }
 // CollectSrsCachedPaths → orphan GC (collectAllStageRuleSetTags). Без
 // override был bug: файл сохранялся под одним именем, sing-box искал под
 // другим (r.ID-based), orphan GC удалял реально-скачанный файл.
-func customRuleSRSEntries(customRule *wizardmodels.RuleState) (entries []services.SRSEntry, ok bool) {
+//
+// SPEC 185: у правила в режиме remote наборы качает ядро — файлов у лаунчера
+// нет, кнопка и гейт скачивания не нужны (ok=false).
+func customRuleSRSEntries(model *wizardmodels.WizardModel, customRule *wizardmodels.RuleState) (entries []services.SRSEntry, ok bool) {
 	if customRule == nil {
 		return nil, false
 	}
-	if wizardmodels.DetermineRuleType(customRule.Rule.Rule) != wizardmodels.RuleTypeSRS || len(customRule.Rule.RuleSets) == 0 {
+	// SPEC 188: наборы правила — ссылки `refs` в дереве тела (любой узел).
+	sets := wizardmodels.RuleStateRuleSets(customRule)
+	if len(sets) == 0 {
 		return nil, false
 	}
-	entries = services.GetSRSEntries(customRule.Rule.RuleSets)
+	entries = services.GetSRSEntries(sets)
+	hasFile := false
 	for i := range entries {
 		entries[i].Tag = build.SRSTagFromURL(entries[i].URL)
+		hasFile = hasFile || srstag.IsFileRef(entries[i].URL)
+	}
+	// SPEC 187: правило с набором-файлом (file://) целиком идёт в режиме
+	// local (build.RulePolicy) — копии держит лаунчер, кнопка нужна.
+	if !hasFile && ruleSetsRemote(model, customRule.SrsOptions) {
+		return nil, false
 	}
 	return entries, true
+}
+
+// ruleSetsRemote — наборы правила качает ядро (режим remote, SPEC 185): своё
+// значение правила, иначе общее из Settings.
+func ruleSetsRemote(model *wizardmodels.WizardModel, opts corestate.RuleSetOptions) bool {
+	if model == nil {
+		return false
+	}
+	return build.ResolveRuleSetPolicy(opts, model.SettingsVars).Remote
+}
+
+// srsMissingSourceHint — строка подсказки для набора-файла (file://, SPEC 187),
+// чей исходник пропал: правило работает на последней копии.
+func srsMissingSourceHint(entries []services.SRSEntry) string {
+	for _, e := range entries {
+		if !srstag.IsFileRef(e.URL) {
+			continue
+		}
+		p, err := srstag.PathFromFileRef(e.URL)
+		if err != nil {
+			continue
+		}
+		if _, statErr := os.Stat(filepath.FromSlash(p)); statErr != nil {
+			return "\n" + locale.T("Source file not found — the last copy is used")
+		}
+	}
+	return ""
+}
+
+// srsLastUpdatedHint — строка подсказки с датой загрузки наборов (самый
+// старый файл группы); пусто, если не скачан ни один.
+func srsLastUpdatedHint(model *wizardmodels.WizardModel, entries []services.SRSEntry) string {
+	var oldest time.Time
+	for _, e := range entries {
+		path := services.RuleSRSPath(model.DataDir, e.Tag)
+		if dir := model.SrsDir(); dir != "" {
+			path = filepath.Join(dir, srstag.FileName(e.Tag))
+		}
+		mod, ok := services.SRSFileModTime(path)
+		if !ok {
+			continue
+		}
+		if oldest.IsZero() || mod.Before(oldest) {
+			oldest = mod
+		}
+	}
+	if oldest.IsZero() {
+		return ""
+	}
+	return "\n\n" + locale.Tf("Last updated: %s", oldest.Format("2006-01-02 15:04"))
 }
 
 func srsEntriesTooltip(entries []services.SRSEntry) string {
@@ -116,7 +182,7 @@ func srsEntriesTooltip(entries []services.SRSEntry) string {
 // auto-download-on-open сценария (open configurator → preset enabled но SRS
 // потёрты): мы тихо пробуем скачать, на failure только лог. Иначе при
 // каждом открытии configurator'а без сети юзера бы засыпало popup'ами.
-// Button text всё равно вернётся к "⬇ srs" — юзер увидит что не скачано и
+// Button text всё равно вернётся к "⬇ upd" — юзер увидит что не скачано и
 // может попробовать вручную.
 func runSRSDownloadAsync(
 	presenter *wizardpresentation.WizardPresenter,
@@ -341,7 +407,7 @@ func buildSingleCustomRuleRow(
 	dragGroup *fynewidget.DragReorderGroup,
 ) {
 	customRule := model.CustomRules[customIdx]
-	srsEntries, isSRSRule := customRuleSRSEntries(customRule)
+	srsEntries, isSRSRule := customRuleSRSEntries(model, customRule)
 
 	var row *fynewidget.HoverRow
 	rowGetter := func() *fynewidget.HoverRow { return row }
@@ -358,8 +424,10 @@ func buildSingleCustomRuleRow(
 	enableRuleOnSRSSuccess := new(bool)
 	checkbox := createRuleEnableCheckbox(presenter, model, guiState, customRule, customIdx, outboundSelect, &srsButton, enableRuleOnSRSSuccess)
 	labelText := customRule.Rule.Label
-	// DNS-зеркало правила (SPEC 172): метка, если сборка его выпустит.
-	if mark := ruleDNSMirrorText(customRule); mark != "" {
+	// DNS-зеркало правила (SPEC 172): метка, если сборка его выпустит; ⚠,
+	// если DNS-опция включена, а зеркало пустое (SPEC 188 §5).
+	mark := ruleDNSMirrorRowText(customRule)
+	if mark != "" {
 		labelText += "  ·  " + mark
 	}
 	label := ttwidget.NewLabel(labelText)
@@ -367,6 +435,8 @@ func buildSingleCustomRuleRow(
 	label.Truncation = fyne.TextTruncateEllipsis
 	if d := strings.TrimSpace(customRule.Rule.Description); d != "" {
 		label.SetToolTip(d)
+	} else if ruleDNSMirrorIsEmpty(customRule) {
+		label.SetToolTip(mark)
 	}
 	var srsHF *fynewidget.HoverForwardTTButton
 	if isSRSRule && len(srsEntries) > 0 {
@@ -419,7 +489,7 @@ func createRuleEnableCheckbox(
 	var ch *widget.Check
 	ch = widget.NewCheck("", func(val bool) {
 		if val {
-			entries, isSRS := customRuleSRSEntries(customRule)
+			entries, isSRS := customRuleSRSEntries(model, customRule)
 			if isSRS && len(entries) > 0 && !services.AllSRSDownloadedIn(model.DataDir, model.SrsDir(), entries) {
 				if !guiState.UpdatingOutboundOptions && *srsButtonRef != nil {
 					*enableRuleOnSRSSuccess = true
@@ -563,7 +633,7 @@ func createCustomRuleSRSButton(
 	btn := fynewidget.NewHoverForwardTTButton(initialText, nil, rowGetter)
 	btn.Importance = widget.LowImportance
 	if t := srsEntriesTooltip(srsEntries); t != "" {
-		btn.SetToolTip(t)
+		btn.SetToolTip(t + srsLastUpdatedHint(model, srsEntries) + srsMissingSourceHint(srsEntries))
 	}
 	btn.OnTapped = func() {
 		runSRSDownloadAsync(presenter, model, guiState, srsEntries, btn.TTWidget(), outboundSelect, func() {

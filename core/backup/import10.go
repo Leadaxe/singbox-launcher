@@ -307,15 +307,20 @@ func disabledTags10(in map[string]int64) []string {
 	return out
 }
 
-// decode10Rule — запись правила 1.0: копия плюс проверка пресета.
+// decode10Rule — запись правила 1.0/1.1: копия плюс проверка пресета.
 //
-// Форма записи не трогается вовсе (в этом и смысл 1.0), но семантика импорта
-// та же, что у 0.x: preset вне шаблона приезжает ВЫКЛЮЧЕННЫМ. Цель правила
-// проверяется позже, после слияния (checkImportedRuleTargets): известные цели
-// зависят от того, что слияние положило в состояние.
+// Форма записи не трогается (в этом и смысл 1.0), кроме одного: запись
+// старой формы (`refs` на записи, lx_backup 2) приводится к норме 1.1.179 —
+// ссылки в тело корня, `kind` из дерева; `refs` и на записи, и в дереве —
+// главнее дерево (state.NormalizeRuleRecord, та же функция, что у загрузки
+// состояния). Семантика импорта та же, что у 0.x: preset вне шаблона
+// приезжает ВЫКЛЮЧЕННЫМ. Цель правила проверяется позже, после слияния
+// (checkImportedRuleTargets): известные цели зависят от того, что слияние
+// положило в состояние.
 func decode10Rule(r state.Rule, presets tagSet) (state.Rule, []Warning) {
 	var warns []Warning
 	out := state.CloneRule(r)
+	state.NormalizeRuleRecord(&out)
 
 	if r.Kind == state.RuleKindPreset && !presets.empty() && !presets.has(r.Ref) {
 		out.Enabled = false

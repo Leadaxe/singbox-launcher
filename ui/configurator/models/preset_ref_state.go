@@ -8,6 +8,8 @@
 // Match-поля живут в template, расширяются при build через preset_expand.go.
 package models
 
+import "singbox-launcher/core/state"
+
 // PresetRefState — UI state одного preset-ref правила.
 type PresetRefState struct {
 	// Ref — id template-preset'а (template.presets[i].id).
@@ -36,6 +38,10 @@ type PresetRefState struct {
 	// перетаскиванием (PlaceRuleAfter) и уезжает обратно при Save.
 	// nil — правило ещё не размечено; ось доразметит при следующей загрузке.
 	Num *int
+
+	// SrsOptions — настройки наборов пресета (state.Rule, SPEC 185): режим,
+	// период обновления, выход для загрузки. Нулевое — общие значения.
+	SrsOptions state.RuleSetOptions
 }
 
 // Clone — глубокая копия (для diff/undo сценариев).
@@ -65,6 +71,7 @@ func (p *PresetRefState) Clone() *PresetRefState {
 		n := *p.Num
 		cp.Num = &n
 	}
+	cp.SrsOptions = p.SrsOptions.Clone()
 	return cp
 }
 

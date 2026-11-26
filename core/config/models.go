@@ -10,6 +10,9 @@ type ProxySource = configtypes.ProxySource
 type Direction = configtypes.Direction
 type OutboundUpdate = configtypes.OutboundUpdate
 type ParsedNode = configtypes.ParsedNode
+
+// BuildTarget — машина-цель сборки узлов (SPEC 186).
+type BuildTarget = configtypes.BuildTarget
 type ParsedJump = configtypes.ParsedJump
 
 const ParserConfigVersion = configtypes.ParserConfigVersion

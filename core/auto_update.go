@@ -71,6 +71,7 @@ func (ac *AppController) startAutoUpdateLoop() {
 	if ac.EventBus != nil {
 		ac.EventBus.Subscribe(events.VpnStateChanged, func(_ events.Event) {
 			ac.triggerRetryForFailedSources("vpn-state-changed")
+			ac.retryFailedRuleSets("vpn-state-changed")
 		})
 	}
 
@@ -84,6 +85,8 @@ func (ac *AppController) startAutoUpdateLoop() {
 	// subscription once per launch.
 	if ac.StateService.IsAutoUpdateEnabled() {
 		ac.runScheduledRefresh("startup")
+		// SPEC 185: наборы правил (.srs) — тот же цикл, тот же гейт.
+		ac.runScheduledSRSRefresh("startup", false)
 		// SPEC 164: машины с флагом авто-деплоя — после локального обхода,
 		// в той же горутине и с теми же гейтами.
 		ac.runMachineSweep("startup")
@@ -99,6 +102,7 @@ func (ac *AppController) startAutoUpdateLoop() {
 		case <-ac.ctx.Done():
 			debuglog.InfoLog("Auto-update: Context cancelled, stopping loop")
 			ac.cancelAllRetryTimers()
+			cancelSRSRetry()
 			return
 		case <-ticker.C:
 			if !ac.StateService.IsAutoUpdateEnabled() {
@@ -110,6 +114,7 @@ func (ac *AppController) startAutoUpdateLoop() {
 				continue
 			}
 			ac.runScheduledRefresh("heartbeat")
+			ac.runScheduledSRSRefresh("heartbeat", false)
 			ac.runMachineSweep("heartbeat")
 		}
 	}

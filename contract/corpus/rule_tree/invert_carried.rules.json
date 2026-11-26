@@ -1,0 +1,23 @@
+{
+  "_": "invert с доменами переносится в зеркало (до 1.1.179 терялся, и зеркало действовало на обратное множество).",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "NotAds",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "domain_suffix": [
+          "example-4.com"
+        ],
+        "invert": true,
+        "outbound": "proxy-out"
+      },
+      "dns": {
+        "enabled": true,
+        "serverTag": "cf"
+      }
+    }
+  ]
+}

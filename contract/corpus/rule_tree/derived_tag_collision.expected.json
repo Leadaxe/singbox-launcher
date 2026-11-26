@@ -1,0 +1,39 @@
+{
+  "rule_set": [
+    {
+      "tag": "X:ads (2)",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "X",
+      "type": "inline",
+      "rules": [
+        {
+          "domain": [
+            "example-6.com"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "X:ads:lists",
+      "type": "local",
+      "format": "binary"
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "X:ads (2)",
+        "X"
+      ],
+      "outbound": "proxy-out"
+    },
+    {
+      "rule_set": "X:ads:lists",
+      "outbound": "direct"
+    }
+  ],
+  "dns_rules": []
+}

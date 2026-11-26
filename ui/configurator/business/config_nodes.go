@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -72,7 +73,7 @@ func (n *ConfigNode) SubtitleParts() []string {
 	}
 	parts := make([]string, 0, 3)
 	if n.Type != "" {
-		parts = append(parts, n.Type)
+		parts = append(parts, configtypes.ProtocolDisplay(n.Type))
 	}
 	if n.Transport != "" {
 		parts = append(parts, n.Transport)

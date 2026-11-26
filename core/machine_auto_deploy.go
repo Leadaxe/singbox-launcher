@@ -184,9 +184,17 @@ func (ac *AppController) autoDeployMachine(registry *services.RemoteRegistry, d 
 		return services.MachineAutoDeployOutcome{Result: services.AutoDeployFailed, SHABefore: shaBefore,
 			SHAAfter: shaAfter, Note: "deploy: " + err.Error()}
 	}
+	note := fmt.Sprintf("%d subscription(s) changed: %s", len(res.Changed), strings.Join(res.Titles, ", "))
+	if len(dres.ResourcesKept) > 0 {
+		note += fmt.Sprintf("; %d rule-set(s) kept at the previous version (referenced by the machine's config): %s",
+			len(dres.ResourcesKept), strings.Join(dres.ResourcesKept, ", "))
+	}
+	if len(dres.ResourcesRejected) > 0 {
+		note += fmt.Sprintf("; %d rule-set(s) rejected by the machine, the previous files stay: %s",
+			len(dres.ResourcesRejected), strings.Join(dres.ResourcesRejected, "; "))
+	}
 	return services.MachineAutoDeployOutcome{Result: services.AutoDeployApplied, SHABefore: shaBefore,
-		SHAAfter: dres.ConfigSHA, Deployed: true,
-		Note: fmt.Sprintf("%d subscription(s) changed: %s", len(res.Changed), strings.Join(res.Titles, ", "))}
+		SHAAfter: dres.ConfigSHA, Deployed: true, Note: note}
 }
 
 // autoDeployDecision — чистое решение §3.3–3.4 SPEC 164: деплоить ли

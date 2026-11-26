@@ -1,0 +1,37 @@
+{
+  "rule_set": [
+    {
+      "tag": "Ai:geosite-category-ai-!cn",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Ai:geosite-google",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Ai",
+      "type": "inline",
+      "rules": [
+        {
+          "domain_suffix": [
+            "openai.com",
+            "anthropic.com"
+          ]
+        }
+      ]
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "Ai:geosite-category-ai-!cn",
+        "Ai:geosite-google",
+        "Ai"
+      ],
+      "outbound": "proxy-out"
+    }
+  ],
+  "dns_rules": []
+}

@@ -21,7 +21,7 @@ func sanitizeHelper(t *testing.T, outbounds []string, templateTags ...string) (m
 		}
 		finalTags[m["tag"].(string)] = true
 	}
-	out, _ := sanitizeOutboundGraph(cache, finalTags)
+	out, _ := sanitizeOutboundGraph(cache, finalTags, false)
 	got := make(map[string]map[string]interface{})
 	for _, raw := range out.Outbounds {
 		var m map[string]interface{}
@@ -176,7 +176,7 @@ func TestSanitizeKeepsHealthyGraph(t *testing.T) {
 		_ = json.Unmarshal([]byte(o), &m)
 		finalTags[m["tag"].(string)] = true
 	}
-	out, _ := sanitizeOutboundGraph(cache, finalTags)
+	out, _ := sanitizeOutboundGraph(cache, finalTags, false)
 	if len(out.Outbounds) != len(in) {
 		t.Fatalf("healthy graph lost entries: %d != %d", len(out.Outbounds), len(in))
 	}
@@ -212,5 +212,102 @@ func TestSanitizeGroupsStrippedHopsPerSourceAndTarget(t *testing.T) {
 	}
 	if count["01BIG/gone"] != 2 || count["01BIG/other-gone"] != 1 || count["01SML/gone"] != 1 {
 		t.Errorf("группировка по паре источник × цель неверна: %v", count)
+	}
+}
+
+// TestSanitizeChainDetourRewrite — правило 7 (SPEC 165 ядра, SPEC 189; сверено с
+// ядром d9fc75468): на ядре, которое переписывает цепочку в detour, группа,
+// нужная двум цепочкам на позиции ≥ 1, снимает позднюю цепочку
+// (chain_detour_conflict), общий вход двух цепочек — не конфликт;
+// кольцо `[A, Группа{A, X}]` снимает цепочку (chain_detour_ring); локальный
+// порт узла позиции ≥ 1 снимает цепочку (chain_hop_local_port); поля сокета
+// узла не трогаются. Для старого ядра конфиг законен и остаётся как есть.
+func TestSanitizeChainDetourRewrite(t *testing.T) {
+	outbounds := []string{
+		`{"tag":"entry","type":"vless","server":"a"}`,
+		`{"tag":"entry2","type":"vless","server":"a"}`,
+		`{"tag":"x","type":"vless","server":"a","tcp_fast_open":true}`,
+		`{"tag":"pool","type":"urltest","outbounds":["x"]}`,
+		`{"tag":"c1","type":"chain","outbounds":["entry","pool"]}`,
+		`{"tag":"c2","type":"chain","outbounds":["entry2","pool"]}`,
+		`{"tag":"r","type":"vless","server":"a"}`,
+		`{"tag":"y","type":"vless","server":"a"}`,
+		`{"tag":"rg","type":"selector","outbounds":["r","y"]}`,
+		`{"tag":"ring","type":"chain","outbounds":["r","rg"]}`,
+		`{"tag":"e3","type":"vless","server":"a"}`,
+		`{"tag":"wg","type":"wireguard","listen_port":51820}`,
+		`{"tag":"port","type":"chain","outbounds":["e3","wg"]}`,
+		`{"tag":"se","type":"vless","server":"a"}`,
+		`{"tag":"n1","type":"vless","server":"a"}`,
+		`{"tag":"n2","type":"vless","server":"a"}`,
+		`{"tag":"s1","type":"chain","outbounds":["se","n1"]}`,
+		`{"tag":"s2","type":"chain","outbounds":["se","n2"]}`,
+	}
+	run := func(rewrite bool) (map[string]map[string]interface{}, graphLosses) {
+		cache := &ParsedCache{}
+		finalTags := map[string]bool{}
+		for _, o := range outbounds {
+			cache.Outbounds = append(cache.Outbounds, json.RawMessage(o))
+			var m map[string]interface{}
+			if err := json.Unmarshal([]byte(o), &m); err != nil {
+				t.Fatalf("bad fixture: %v", err)
+			}
+			finalTags[m["tag"].(string)] = true
+		}
+		out, losses := sanitizeOutboundGraph(cache, finalTags, rewrite)
+		got := map[string]map[string]interface{}{}
+		for _, raw := range out.Outbounds {
+			var m map[string]interface{}
+			if err := json.Unmarshal(raw, &m); err != nil {
+				t.Fatalf("emitted entry is not JSON: %s", raw)
+			}
+			got[m["tag"].(string)] = m
+		}
+		return got, losses
+	}
+
+	got, losses := run(true)
+	for _, dropped := range []string{"c2", "ring", "port"} {
+		if _, ok := got[dropped]; ok {
+			t.Errorf("chain %s must be dropped", dropped)
+		}
+	}
+	if _, ok := got["c1"]; !ok {
+		t.Fatal("the earlier chain must stay")
+	}
+	// Общий вход двух цепочек — не конфликт (решение владельца 26.11).
+	for _, kept := range []string{"s1", "s2"} {
+		if _, ok := got[kept]; !ok {
+			t.Errorf("chain %s shares only the entry and must stay", kept)
+		}
+	}
+	if got["x"]["tcp_fast_open"] != true {
+		t.Error("socket fields of a node inside a chain are not an error and must stay")
+	}
+	if _, ok := got["wg"]["listen_port"]; !ok {
+		t.Error("listen_port is not removed: the chain is dropped instead")
+	}
+	codes := map[string]map[string]string{}
+	for _, w := range losses.warnings {
+		codes[w.Code] = w.Params
+	}
+	if p := codes["chain_detour_conflict"]; p["chain"] != "c2" || p["node"] != "pool" || p["other"] != "c1" {
+		t.Errorf("chain_detour_conflict params = %v", p)
+	}
+	if p := codes["chain_detour_ring"]; p["chain"] != "ring" || p["node"] != "r" || p["group"] != "rg" || p["position"] != "2" {
+		t.Errorf("chain_detour_ring params = %v", p)
+	}
+	if p := codes["chain_hop_local_port"]; p["chain"] != "port" || p["node"] != "wg" || p["fields"] != "listen_port" {
+		t.Errorf("chain_hop_local_port params = %v", p)
+	}
+
+	got, losses = run(false)
+	for _, kept := range []string{"c1", "c2", "ring", "port"} {
+		if _, ok := got[kept]; !ok {
+			t.Errorf("an older core clones position nodes: chain %s is valid", kept)
+		}
+	}
+	if len(losses.warnings) != 0 {
+		t.Errorf("no rule-7 warnings for an older core: %v", losses.warnings)
 	}
 }

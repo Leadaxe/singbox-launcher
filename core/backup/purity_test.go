@@ -26,7 +26,6 @@ import (
 // поле, которое обходится по map'у или дописывается «на провоз».
 func richState() *state.State {
 	auto := true
-	stripOff := false
 	s := &state.State{}
 	s.Directions = []configtypes.Direction{
 		{Tag: "vpn-de", Type: "selector", AddOutbounds: []string{"direct-out"}},
@@ -59,9 +58,6 @@ func richState() *state.State {
 			Node: state.Node{
 				Kind: state.SourceKindChain, Enabled: true, Tag: "relay",
 				Body: configtypes.ChainBody(&configtypes.SourceChain{
-					IdleTimeout:  "0s",
-					StripEvasion: &stripOff,
-					Strip:        map[string]bool{"tls.utls": false},
 					Rewrite:      map[string]interface{}{"vless": map[string]interface{}{"flow": nil}},
 				}),
 				Hops: []state.NodeLink{{Tag: "vpn-de"}, {Tag: "🔥 WARP"}},
@@ -375,8 +371,8 @@ func TestExport10FileShape(t *testing.T) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if v, _ := doc["lx_backup"].(float64); int(v) != FormatVersion10 {
-		t.Errorf("lx_backup = %v, ожидалось %d", doc["lx_backup"], FormatVersion10)
+	if v, _ := doc["lx_backup"].(float64); int(v) != FormatVersion11 {
+		t.Errorf("lx_backup = %v, ожидалось %d", doc["lx_backup"], FormatVersion11)
 	}
 	for _, key := range []string{"sources", "rules", "dns", "vars", "route", "warp"} {
 		if _, ok := doc[key]; !ok {
@@ -658,8 +654,8 @@ func assertStateEquivalent10(t *testing.T, want, got *state.State) {
 			t.Errorf("rules[%d]: %+v → %+v", i, w, g)
 			continue
 		}
-		if len(w.Refs) != len(g.Refs) {
-			t.Errorf("rules[%d] (%s): наборов srs %d → %d", i, w.Name, len(w.Refs), len(g.Refs))
+		if wr, gr := state.RuleRefs(w), state.RuleRefs(g); len(wr) != len(gr) {
+			t.Errorf("rules[%d] (%s): наборов srs %d → %d", i, w.Name, len(wr), len(gr))
 		}
 		// Тело сравнивается СЖАТЫМ: декодер 1.0 кладёт в запись сырые байты
 		// файла как есть (ловушка §7.3 — порядок ключей тела нормативен), а

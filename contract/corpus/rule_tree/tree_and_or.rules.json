@@ -1,0 +1,50 @@
+{
+  "_": "Дерево: and[{port, source_ip_cidr}, or[{refs, domain}, {process_name}]]. Ссылка в листе 1.0 — B:<stem> (`Mixed:ads`); inline-набор листа — B:inline:1.0. Зеркало повторяет дерево: port выпал, source_ip_cidr и process_name остались.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Mixed",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          {
+            "port": [
+              443
+            ],
+            "source_ip_cidr": [
+              "10.0.0.0/8"
+            ]
+          },
+          {
+            "type": "logical",
+            "mode": "or",
+            "rules": [
+              {
+                "refs": [
+                  "https://example.com/rules/ads.srs"
+                ],
+                "domain": [
+                  "example-3.com"
+                ]
+              },
+              {
+                "process_name": [
+                  "app.exe"
+                ]
+              }
+            ]
+          }
+        ],
+        "outbound": "proxy-out"
+      },
+      "dns": {
+        "enabled": true,
+        "serverTag": "cf"
+      }
+    }
+  ]
+}

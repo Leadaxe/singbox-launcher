@@ -343,6 +343,7 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 	// в файл не пишутся (они свойство записи реестра), и без переноса первый
 	// же Load увёл бы Save в singleton-папку вместо профиля машины.
 	p.model.Target = targetSpecFromStateMeta(stateFile, p.model.Target)
+	p.model.SyncTemplateToTarget()
 
 	// Восстановление parser_config (шаг 2)
 	if err := p.restoreParserConfig(stateFile); err != nil {

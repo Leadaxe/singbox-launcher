@@ -144,6 +144,7 @@ func PersistedCustomRuleToRuleState(pcr *PersistedCustomRule) *RuleState {
 		Enabled:          pcr.Enabled,
 		SelectedOutbound: pcr.SelectedOutbound,
 		DNS:              corestate.CloneRuleDNS(pcr.DNS),
+		SrsOptions:       pcr.SrsOptions.Clone(),
 	}
 }
 
@@ -160,6 +161,7 @@ func ToPersistedCustomRule(ruleState *RuleState) PersistedCustomRule {
 		DefaultOutbound:  ruleState.Rule.DefaultOutbound,
 		HasOutbound:      ruleState.Rule.HasOutbound,
 		DNS:              corestate.CloneRuleDNS(ruleState.DNS),
+		SrsOptions:       ruleState.SrsOptions.Clone(),
 	}
 	if len(ruleState.Rule.Params) > 0 {
 		p.Params = make(map[string]interface{}, len(ruleState.Rule.Params))
@@ -184,10 +186,17 @@ const (
 
 func isKnownRuleType(s string) bool { return corestate.IsKnownRuleType(s) }
 
-// DetermineRuleType определяет тип правила по содержимому rule.
+// DetermineRuleType — legacy-тип правила (поле `type` вида CustomRule state
+// v6) по содержимому rule. Форма правила типов больше не знает (SPEC 188: тело
+// — стопка условий); тип нужен только переносу legacy-вида: srs-правило
+// держит адреса наборов в RuleSet.
 func DetermineRuleType(rule map[string]interface{}) string {
 	if rule == nil {
 		return RuleTypeRaw
+	}
+	// SPEC 188: ссылки на наборы внутри тела (`refs`) — вид srs.
+	if len(corestate.BodyRefs(rule)) > 0 {
+		return RuleTypeSRS
 	}
 	hasIP := hasKey(rule, "ip_cidr")
 	hasDomain := hasKey(rule, "domain") || hasKey(rule, "domain_suffix") || hasKey(rule, "domain_keyword") || hasKey(rule, "domain_regex")

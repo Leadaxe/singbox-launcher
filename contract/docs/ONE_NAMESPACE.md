@@ -101,13 +101,15 @@ sing-box), тогда всё будет проще и отлаживать, и �
 | номер | `order_num` | `num` | `num` | `num` |
 | включён | `enabled` | `enabled` | `enabled` | `enabled` |
 | тело | `body{name, match{…}, outbound}` — разобрано | плоско camelCase (`domainSuffixes`, `ipCidrs`, …) + `outbound` | `match{…}` + `outbound` — разобрано | **`body` = правило sing-box целиком**: `{ "domain_suffix": […], "port": […], "outbound": "…" }` или `{ …, "action": "reject" }` |
-| srs-наборы | `body.srs_url` | `srsUrl` | `ref` / `refs[]` | `refs[]` — снаружи `body`: это источники наборов, не sing-box. Сборка регистрирует `rule_set` на каждый `ref` и сама вписывает список тегов в `body.rule_set` при эмиссии (## 12, вариант А, D-100) |
+| srs-наборы | `body.srs_url` | `srsUrl` | `ref` / `refs[]` | с контракта 1.1.179 (D-156): `refs[]` — ключ **простого правила внутри `body`**, на любом уровне дерева `logical`; у узла `logical` его нет. Это источники наборов, не ключ sing-box: сборка регистрирует `rule_set` на каждую ссылку, снимает `refs` и вписывает теги в `rule_set` узла (`TEMPLATE_LANG.md` §6.13). `kind` выводится: есть `refs` в дереве — `srs`, нет — `inline`. Прежняя форма (`refs[]` на записи, снаружи `body`; ## 12, вариант А, D-100) читается обеими сторонами и при сохранении переносится в корень тела; `refs` и на записи, и в дереве — главнее дерево |
 | preset | `body.vars` | — | `ref` + `vars` | `ref` + `vars` (тела нет — оно у пресета) |
 | ключи sing-box, которые вторая сторона не применяет | — | `packages`, `wifi`, `inbounds`, `ipIsPrivate` | не едут | в `body` под именами sing-box (`package_name`, `wifi_ssid`, `wifi_bssid`, `inbound`, `ip_is_private`, `source_ip_cidr`, …), типы sing-box (`port` — int[], `port_range` — строки); вторая сторона игнорирует по allowlist |
 | расширения приложения (не sing-box) | — | `dns{}`, `resolve{}` | `dns`, `resolve` (LxBox) | поля ЗАПИСИ вне `body`: `dns{}` — обе стороны с контракта 1.1.130 (DNS-зеркало правила, `TEMPLATE_LANG.md` §6.11, форма LxBox); `resolve{}` — LxBox, вторая сторона игнорирует молча |
 
 Целевая запись правила: `{ "kind": "inline", "name": "…", "enabled": true, "num": 1000, "body": { "domain_suffix": ["example.com"], "outbound": "proxy" } }`;
-srs: `{ "kind": "srs", "name": "…", "enabled": true, "num": 1010, "refs": ["https://…/a.srs", "https://…/b.srs"], "body": { "outbound": "proxy" } }` — `rule_set` в `body` пишет сборка.
+srs (контракт 1.1.179): `{ "kind": "srs", "name": "…", "enabled": true, "num": 1010, "body": { "refs": ["https://…/a.srs", "https://…/b.srs"], "domain_suffix": ["example.org"], "port": [443], "outbound": "proxy" } }` — теги в `rule_set` пишет сборка;
+дерево: `{ "kind": "srs", "name": "…", "body": { "type": "logical", "mode": "and", "rules": [ { "port": [443] }, { "type": "logical", "mode": "or", "rules": [ { "refs": ["https://…/a.srs"] }, { "source_ip_is_private": true } ] } ], "outbound": "proxy" } }` — цель (`outbound` | `action`) только у корня.
+Ключи простого правила и их условия формы — `registry/rule_conditions.json`.
 `body` — ровно один объект правила sing-box; массив на входе раскладывается на записи `name`, `name #2`… (норма «одно правило — одно тело», `BACKUP.md` §2, D-111).
 
 ### DNS-сервер и DNS-правило

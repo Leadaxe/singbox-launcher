@@ -1,0 +1,33 @@
+{
+  "_": "Одна ссылка в двух листах — один тег (`Twice:video` — B:<stem>) и одна запись rule_set. Ключей «в набор» у листов нет — inline-наборов нет. DNS-опций нет — зеркала нет, mirror_empty пуст.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Twice",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "type": "logical",
+        "mode": "or",
+        "rules": [
+          {
+            "refs": [
+              "https://example.com/rules/video.srs"
+            ],
+            "port": [
+              443
+            ]
+          },
+          {
+            "refs": [
+              "https://example.com/rules/video.srs"
+            ],
+            "source_ip_is_private": true
+          }
+        ],
+        "outbound": "proxy-out"
+      }
+    }
+  ]
+}

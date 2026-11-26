@@ -76,6 +76,21 @@ func ShowConfigWizard(parent fyne.Window) {
 	showConfigWizardFor(parent, wizardtemplate.LocalTarget(), "", locale.T("This computer"))
 }
 
+// ShowConfigWizardOpenSource открывает Конфигуратор этого компьютера (или
+// поднимает открытый) и сразу окно правки источника с тегом tag — кнопка
+// «Open chain» баннера главного окна (SPEC 189). Источника нет — открыт
+// только Конфигуратор.
+func ShowConfigWizardOpenSource(parent fyne.Window, tag string) {
+	ShowConfigWizard(parent)
+	ac := core.GetController()
+	if ac == nil || ac.UIService == nil {
+		return
+	}
+	if e, ok := ac.UIService.WizardWindowFor(wizardtemplate.LocalTarget().WizardWindowKey()); ok && e.OpenSource != nil {
+		e.OpenSource(tag)
+	}
+}
+
 // ShowConfigWizardForMachine открывает визард, корневой на профиле КОНКРЕТНОЙ
 // удалённой машины (SPEC 098 §2.4) — точка входа кнопки [Configure].
 //
@@ -164,6 +179,7 @@ func RebuildMachineConfig(machineID string) (string, error) {
 	model.TemplateData = templateData
 	model.DataDir = ac.FileService.Layout.Data
 	model.Target = target.Normalized()
+	model.SyncTemplateToTarget()
 	model.ResourceDir = machine.ResourceDir()
 	model.MachineID = target.MachineIDOrEmpty()
 	// Окна нет: UpdateUI презентера без окна ничего не делает, диалоги
@@ -181,6 +197,7 @@ func RebuildMachineConfig(machineID string) (string, error) {
 		return "", err
 	}
 	model.Target = restoreMachineTargetFromState(target, stateFile)
+	model.SyncTemplateToTarget()
 	presenter.InitializeTemplateState()
 	if len(model.DNSServers) == 0 {
 		wizardbusiness.ApplyWizardDNSTemplate(model)
@@ -330,20 +347,15 @@ func buildWizardWindow(
 	// директории читать. Поставить его после загрузки значило бы прочитать
 	// local-состояние и записать его в папку машины.
 	model.Target = target.Normalized()
+	model.SyncTemplateToTarget()
 	model.ResourceDir = resourceDir
 	model.MachineID = target.MachineIDOrEmpty()
 
-	// Create new window for wizard.
-	//
-	// Высота подбирается под доступную высоту экрана: на ноутбуках с logical
-	// 1280×800 (типичный минимум для macOS 11 Big Sur) фиксированные 660px не
-	// помещались — нижний край с навигационными кнопками уходил под Dock.
-	// clampWizardSize ограничивает размер рабочей областью экрана.
+	// Create new window for wizard. Размер и центрирование — в
+	// initializeWizardContent, после SetContent (см. там).
 	// Цель в заголовке (SPEC 178): окна Local и машин открыты рядом, и
 	// одинаковый «Config Wizard» не отличить.
 	wizardWindow := ac.UIService.Application.NewWindow(locale.Tf("Config Wizard — %s", subject))
-	wizardWindow.Resize(clampWizardSize(ac.UIService.Application, 620, 660))
-	fynewidget.CenterOnScreen(wizardWindow)
 	guiState.Window = wizardWindow
 
 	// Create presenter
@@ -374,6 +386,9 @@ func buildWizardWindow(
 		ac.UIService.SetWizardWindow(windowKey, uiservice.WizardWindowEntry{
 			Window:            wizardWindow,
 			FocusChildWindows: focusChildWindows,
+			OpenSource: func(tag string) bool {
+				return wizardtabs.OpenSourceEditorByTag(presenter, guiState, tag)
+			},
 		})
 		// Notify UIService consumers that wizard state changed
 		if ac.UIService.OnStateChange != nil {
@@ -429,6 +444,7 @@ func buildWizardWindow(
 			// Legacy-файлы без meta.target падают обратно на реестр целиком.
 			if target.IsRemote() {
 				model.Target = restoreMachineTargetFromState(target, stateFile)
+				model.SyncTemplateToTarget()
 			}
 		}
 	} else {
@@ -516,6 +532,19 @@ func initializeWizardContent(presenter *wizardpresentation.WizardPresenter, guiS
 
 	// Set initial window content
 	setWindowContent(guiState, wizardWindow, tabs)
+
+	// Размер задаётся только после SetContent: Resize берёт максимум из
+	// заказанного и минимума содержимого. До содержимого окно открывалось
+	// 620 в ширину, а полоса вкладок требует больше (~673 на семи вкладках) —
+	// Fyne дотягивал окно на первом кадре, и оно дёргалось и съезжало
+	// с центра. Центрирование тоже после — по итоговому размеру.
+	//
+	// Высота подбирается под доступную высоту экрана: на ноутбуках с logical
+	// 1280×800 (типичный минимум для macOS 11 Big Sur) фиксированные 660px не
+	// помещались — нижний край с навигационными кнопками уходил под Dock.
+	// clampWizardSize ограничивает размер рабочей областью экрана.
+	wizardWindow.Resize(clampWizardSize(fyne.CurrentApp(), 620, 660))
+	fynewidget.CenterOnScreen(wizardWindow)
 
 	// Close window via X
 	wizardWindow.SetCloseIntercept(func() {
@@ -1006,6 +1035,7 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 					return
 				}
 				model.TemplateData = templateData
+				model.SyncTemplateToTarget()
 			}
 
 			// Загружаем конфигурацию из config.json или шаблона

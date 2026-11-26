@@ -363,6 +363,7 @@ stdlib и `internal/constants`), лежит **ниже** `internal/platform` (т
 | `wizard_state_file.go` | Схема сохраняемого состояния v6 и миграции (`MigrateCustomRules`, `MigrateSelectableRuleStates`), `ValidateStateID` и `NewWizardStateFile`. |
 | `rule_slot.go` / `dns_rule_slot.go` | Контейнеры порядка правил и DNS-правил (чередование строк пресетов и пользователя по порядку). |
 | `rule_state.go` / `rule_state_utils.go` | Состояние правил маршрутизации и хелперы эффективного outbound'а. |
+| `rule_conditions.go` | Модель стопки условий формы правила (SPEC 188): `StackFromBody` / `Body`, при неизменной стопке сохраняет исходное тело. |
 | `preset_ref_state.go` / `preset_ref_sync.go` | Жизненный цикл preset-ссылок (`SyncDNSByOrderToState`, `ReconcileDNSRuleOrder`, kind=preset против user). |
 | `dns_state.go` / `dns_user_rule.go` / `dns_vars.go` | Состояние модели DNS, типизированная структура пользовательского правила (текст↔JSON) и DNS-переменные. |
 | `wizard_settings_migrate.go` | Миграция переменных настроек из легаси `ConfigParams`. |
@@ -477,8 +478,10 @@ stdlib и `internal/constants`), лежит **ниже** `internal/platform` (т
 
 | Файл | Назначение |
 |------|---------|
-| `add_rule_dialog.go` | Модальное окно добавления и правки правила маршрутизации (форма и вкладка сырого JSON, пикер процессов, список SRS-URL). (Всё ещё ~1154 строки; декомпозиция отложена.) |
-| `rule_dialog.go` / `rule_type_selection.go` | Пикер типа правила и хелперы. |
+| `add_rule_dialog.go` | Окно добавления и правки правила маршрутизации (SPEC 188): имя, выход, вкладки Form / JSON / DNS / Preview, сохранение; JSON ↔ форма через модель стопки условий. |
+| `rule_cond_stack.go` / `rule_cond_frame.go` / `rule_cond_group.go` / `rule_cond_refs.go` | Форма правила — стопка условий по таблице реестра (`contract/registry/rule_conditions.json`): стопка с «AND» и «+ Condition», рамка условия (поля по виду, «any of»), группа правил (all of / any of, Not, вложенные правила), поле наборов (URL или файл). |
+| `rule_dialog_dns.go` / `rule_dialog_preview.go` / `rule_process_picker.go` / `rule_set_options.go` | Вкладка DNS правила (опции, ⚠ при пустом зеркале), Preview, пикер процессов, настройки наборов (режим / период / маршрут загрузки). |
+| `rule_dialog.go` | Хелперы полей (`ParseLines`). |
 | `load_state_dialog.go` / `save_state_dialog.go` | Диалоги загрузки и сохранения состояния визарда. |
 | `get_free_dialog.go` | Диалог импорта бесплатного VPN-конфига. |
 | `srs_tag.go` | Хелпер SRS-тегов для диалогов правил. |

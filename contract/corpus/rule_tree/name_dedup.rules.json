@@ -1,0 +1,67 @@
+{
+  "_": "Развод имён: тег шаблона «Ads» занят заранее, тег пресета blk:lists — тоже (пресет стоит в rules[] выключенным). Базу берёт каждая запись inline|srs по оси, включая выключенную: Ads (2), Ads (3) (выключено, не выпускается), Ads (4); правило «blk:lists» — blk:lists (2). Теги ссылок строятся от разведённой базы: `Ads (2):ads`, `Ads (4):extra`, `blk:lists (2):blk`. Ожидания — только наборы и правила записей inline|srs.",
+  "template_rule_set_tags": [
+    "Ads"
+  ],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Ads",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "https://example.com/rules/ads.srs"
+        ],
+        "outbound": "block-out"
+      }
+    },
+    {
+      "kind": "inline",
+      "name": "Ads",
+      "enabled": false,
+      "num": 1010,
+      "body": {
+        "domain_suffix": [
+          "example-8.com"
+        ],
+        "outbound": "block-out"
+      }
+    },
+    {
+      "kind": "preset",
+      "ref": "blk",
+      "enabled": false,
+      "num": 1020
+    },
+    {
+      "kind": "srs",
+      "name": "Ads",
+      "enabled": true,
+      "num": 1030,
+      "body": {
+        "refs": [
+          "https://example.com/rules/extra.srs"
+        ],
+        "outbound": "block-out"
+      }
+    },
+    {
+      "kind": "srs",
+      "name": "blk:lists",
+      "enabled": true,
+      "num": 1040,
+      "body": {
+        "refs": [
+          "https://example.com/rules/blk.srs"
+        ],
+        "outbound": "direct"
+      }
+    }
+  ],
+  "preset_rule_set_tags": {
+    "blk": [
+      "blk:lists"
+    ]
+  }
+}

@@ -1,25 +1,31 @@
-// File rule_types.go — Rule, RuleKind, виды тела и конструкторы (SPEC 127, state v8).
+// File rule_types.go — Rule, RuleKind, виды тела и конструкторы (SPEC 127,
+// SPEC 188, state v9).
 //
 // # Одно пространство имён (SPEC 127 §2, contract/docs/ONE_NAMESPACE.md §1)
 //
-// Запись правила = метаданные приложения + `body` = правило sing-box КАК ЕСТЬ:
+// Запись правила = метаданные приложения + `body` = правило sing-box КАК ЕСТЬ
+// (простое или дерево `logical`); ссылки на наборы — ключ `refs` простого
+// правила внутри тела (контракт 1.1.179, rule_tree.go):
 //
 //	{ "kind": "inline", "name": "4pda", "enabled": true, "num": 1000,
 //	  "body": { "domain_suffix": ["4pda.to"], "outbound": "proxy-out" } }
 //	{ "kind": "srs", "name": "…", "enabled": true, "num": 1010,
-//	  "refs": ["https://…/a.srs"], "body": { "outbound": "proxy-out" } }
+//	  "body": { "refs": ["https://…/a.srs"], "port": [443], "outbound": "proxy-out" } }
 //	{ "kind": "preset", "ref": "block-ads", "enabled": true, "num": 960,
 //	  "vars": { "out": "reject" } }
 //
 // До v8 тело было разобрано на части (`body{name,match,outbound}`,
 // `body{name,srs_url,srs_urls,outbound}`, `body{vars}`), а номер звался
-// `order_num`. Миграция по сырому документу — `migration_v7_to_v8.go`.
+// `order_num`. Миграция по сырому документу — `migration_v7_to_v8.go`. До v9
+// `refs` было полем записи; его переносит в тело NormalizeRuleRecord на
+// каждом входе (чтение состояния, бэкап, Debug API).
 //
-// # Читатель один, писателей — четыре
+// # Читатель один, писателей — пять
 //
 // Тело читает ТОЛЬКО DecodeBody (возвращает ВИД — PresetBody/InlineBody/
-// SrsBody, собранный из полей записи и body). Пишут тело ТОЛЬКО
-// NewPresetRule / NewInlineRule / NewSrsRule / (*Rule).SetOutbound. Ручной
+// SrsBody, собранный из полей записи и body); ссылки наборов — RuleRefs.
+// Пишут тело ТОЛЬКО NewPresetRule / NewInlineRule / NewSrsRule / NewTreeRule /
+// (*Rule).SetOutbound. Ручной
 // `json.Marshal(state.XBody{…})` вне этого файла — ошибка: асимметрия
 // «один читатель, дюжина писателей» уже дала два бага (srs-правило узла
 // эмитило один набор из трёх; бэкап канонизировал URL в обход DecodeBody).
@@ -47,8 +53,9 @@ const (
 	// Body: правило sing-box целиком (матчеры + outbound|action).
 	RuleKindInline RuleKind = "inline"
 
-	// RuleKindSrs — user-defined srs rule.
-	// Refs: URL наборов; Body: только цель (`rule_set` вписывает сборка).
+	// RuleKindSrs — user-defined rule with rule sets: `refs` в дереве тела
+	// (вид выводится из дерева, NormalizeRuleRecord); `rule_set` по ссылкам
+	// вписывает сборка.
 	RuleKindSrs RuleKind = "srs"
 )
 
@@ -63,8 +70,9 @@ const (
 //	  "name":    "…",              // inline|srs; источник StableRuleID
 //	  "enabled": true,
 //	  "num":     1000,             // позиция на оси; nil = не размечено
-//	  "refs":    ["https://…"],    // только srs
+//	  "refs":    ["https://…"],    // старая форма (до v9): читается, не пишется
 //	  "vars":    {"out":"direct"}, // только preset
+//	  "srs_mode": "remote", "update_interval_hours": 24, "download_detour": "…", // srs|preset, SPEC 185
 //	  "body":    { … },            // inline|srs: правило sing-box как есть
 //	  "dns":     { … }             // inline|srs: DNS-зеркало, RuleDNS
 //	}
@@ -98,16 +106,25 @@ type Rule struct {
 	// загрузке (MarkRuleOrder), отдельного шага миграции нет.
 	Num *int `json:"num,omitempty"`
 
-	// Refs — URL наборов srs-правила в порядке ввода (до v8 — body.srs_url +
-	// body.srs_urls). Дедуп с сохранением порядка делает NewSrsRule.
-	//
-	// `rule_set` в Body НЕ хранится: теги наборов вписывает сборка по этому
-	// списку (resolve_route.go).
+	// Refs — СТАРАЯ форма (state v8, lx_backup 2): URL наборов полем записи.
+	// Читается всеми входами и переносится в тело (`body.refs` простого
+	// правила) NormalizeRuleRecord; после нормализации пуст и не пишется.
+	// Поле остаётся в структуре ради чтения (и ключа записи бэкапа,
+	// file_keys_10.go). Ссылки правила спрашивать только у RuleRefs.
 	Refs []string `json:"refs,omitempty"`
 
 	// Vars — значения переменных пресета (до v8 — body.vars). Только diff от
 	// template-дефолтов: пустая карта = всё дефолтное.
 	Vars map[string]string `json:"vars,omitempty"`
+
+	// SrsMode, UpdateIntervalHours, DownloadDetour — настройки наборов правила
+	// (srs|preset; SPEC 185, BACKUP.md таблица rules[]). Пустое значение = взять
+	// общее (переменные шаблона srs_mode / srs_update_interval_hours /
+	// srs_download_detour). Читать и писать — через RuleSetOptions /
+	// SetRuleSetOptions.
+	SrsMode             string `json:"srs_mode,omitempty"`
+	UpdateIntervalHours *int   `json:"update_interval_hours,omitempty"`
+	DownloadDetour      string `json:"download_detour,omitempty"`
 
 	// Body — правило sing-box КАК ЕСТЬ (inline|srs); у preset тела нет.
 	//
@@ -211,8 +228,9 @@ type InlineBody struct {
 // SrsBody — ВИД записи kind=srs.
 //
 // Одно правило может ссылаться на НЕСКОЛЬКО наборов (диалог правила принимает
-// список URL, sing-box принимает `rule_set: [..]`). Список живёт полем записи
-// `Refs`; URLs() оставлен алиасом ради читателей, написанных до v8.
+// список URL, sing-box принимает `rule_set: [..]`). Refs — все ссылки дерева
+// тела (RuleRefs: обход pre-order, без повторов); URLs() оставлен алиасом ради
+// читателей, написанных до v8.
 type SrsBody struct {
 	Name     string   `json:"name"`
 	Refs     []string `json:"refs"`
@@ -248,6 +266,22 @@ func NewPresetRule(ref string, vars map[string]string) Rule {
 // норма для НОВЫХ записей; порядок ключей существующих правил сохраняет
 // миграция, которая берёт байты match как есть.
 func NewInlineRule(name string, match map[string]interface{}, outbound string) Rule {
+	return Rule{Kind: RuleKindInline, Name: name, Body: marshalRuleBody(match, outbound)}
+}
+
+// NewTreeRule — правило из тела-дерева (простого или `logical`) и цели: вид
+// выводится из дерева (есть `refs` — srs, нет — inline). Ключи — по алфавиту,
+// как у NewInlineRule.
+func NewTreeRule(name string, body map[string]interface{}, outbound string) Rule {
+	r := Rule{Kind: RuleKindInline, Name: name, Body: marshalRuleBody(body, outbound)}
+	if len(BodyRefs(body)) > 0 {
+		r.Kind = RuleKindSrs
+	}
+	return r
+}
+
+// marshalRuleBody — тело = match без целевых ключей ∪ цель.
+func marshalRuleBody(match map[string]interface{}, outbound string) json.RawMessage {
 	body := make(map[string]interface{}, len(match)+2)
 	for k, v := range match {
 		if isTargetKey(k, match) {
@@ -260,19 +294,23 @@ func NewInlineRule(name string, match map[string]interface{}, outbound string) R
 	if err != nil {
 		raw = json.RawMessage(`{}`)
 	}
-	return Rule{Kind: RuleKindInline, Name: name, Body: raw}
+	return raw
 }
 
-// NewSrsRule — srs-правило: наборы полем записи (дедуп с сохранением порядка,
-// пустые выброшены), body = только цель.
+// NewSrsRule — srs-правило: body = `refs` (дедуп с сохранением порядка,
+// пустые выброшены) первым ключом и цель (форма 1.1.179).
 func NewSrsRule(name string, refs []string, outbound string) Rule {
-	body := map[string]interface{}{}
-	outboundutil.ApplyOutboundToRule(body, outbound)
-	raw, err := json.Marshal(body)
-	if err != nil {
-		raw = json.RawMessage(`{}`)
+	r := Rule{Kind: RuleKindSrs, Name: name, Body: json.RawMessage(`{}`)}
+	if list := dedupNonEmpty(refs); len(list) > 0 {
+		refsJSON, err := json.Marshal(list)
+		if err == nil {
+			r.Body = json.RawMessage(`{"` + ruleKeyRefs + `":` + string(refsJSON) + `}`)
+		}
 	}
-	return Rule{Kind: RuleKindSrs, Name: name, Refs: dedupNonEmpty(refs), Body: raw}
+	if err := r.SetOutbound(outbound); err != nil {
+		r.Body = json.RawMessage(`{}`)
+	}
+	return r
 }
 
 // SetOutbound переписывает цель в теле правила, не трогая остальные ключи и
@@ -446,7 +484,7 @@ func isTargetKey(key string, body map[string]interface{}) bool {
 //
 //	preset → r.Ref required
 //	inline → r.Ref empty, r.Name required
-//	srs    → r.Ref empty, r.Name required, хотя бы один Refs
+//	srs    → r.Ref empty, r.Name required, хотя бы одна ссылка (RuleRefs)
 //
 // Ошибки:
 //   - kind=preset без ref → semantic error
@@ -492,7 +530,7 @@ func (r *Rule) DecodeBody() (interface{}, error) {
 		if r.Name == "" {
 			return nil, fmt.Errorf("rule kind=srs requires name")
 		}
-		refs := dedupNonEmpty(r.Refs)
+		refs := RuleRefs(*r)
 		if len(refs) == 0 {
 			return nil, fmt.Errorf("rule kind=srs requires refs")
 		}

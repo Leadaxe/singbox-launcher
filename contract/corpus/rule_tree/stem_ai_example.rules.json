@@ -1,0 +1,23 @@
+{
+  "_": "Пример нормы (§6.13): правило «Ai» с двумя скачанными наборами и суффиксами доменов — `Ai:geosite-category-ai-!cn`, `Ai:geosite-google`, свой inline-набор — чистый `Ai` последним.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Ai",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ai-!cn.srs",
+          "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-google.srs"
+        ],
+        "domain_suffix": [
+          "openai.com",
+          "anthropic.com"
+        ],
+        "outbound": "proxy-out"
+      }
+    }
+  ]
+}

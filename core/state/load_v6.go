@@ -237,41 +237,25 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 			out = append(out, cr)
 		case RuleKindSrs:
 			sb := body.(*SrsBody)
-			// По записи на КАЖДЫЙ URL правила (репорт 1.5.5: из трёх наборов
-			// после переоткрытия оставался первый — тело держало один URL).
-			//
-			// Тег записи — content-addressed имя файла в bin/rule-sets/, тот же,
-			// что даёт диалог правила и downloader. Без него запись невидима
-			// для UI (GetSRSEntries отбрасывает записи без tag — кнопка
-			// «✔️ srs» и гейт скачивания пропадали после переоткрытия) и
-			// валит сборку «Итога»: MergeRouteSection отвечает «remote entry
-			// missing tag» (репорт 1.5.4).
+			// SPEC 188 (волна 4): тело целиком, ссылки `refs` внутри — форма
+			// правила читает и пишет их в дереве условий. RuleSet — производное
+			// для кнопки скачивания и гейта: по записи на КАЖДЫЙ URL (репорт
+			// 1.5.5), тег — content-addressed имя файла копии, тот же, что у
+			// загрузчика (без него запись невидима для GetSRSEntries).
+			bodyMap, err := r.BodyMap()
+			if err != nil {
+				continue
+			}
 			urls := sb.URLs()
 			ruleSets := make([]json.RawMessage, 0, len(urls))
 			for _, u := range urls {
 				rsRaw, _ := json.Marshal(map[string]interface{}{
 					"tag":    srstag.TagFromURL(u),
 					"type":   "remote",
-					"format": "binary",
+					"format": srstag.FormatFromRef(u),
 					"url":    u,
 				})
 				ruleSets = append(ruleSets, rsRaw)
-			}
-			// SPEC 063 follow-up: edit dialog re-derives rule type через
-			// DetermineRuleType(cr.Rule) и игнорирует stored cr.Type. Чтобы
-			// SRS rule после re-open не превратилось в "Custom JSON",
-			// в cr.Rule кладём rule_set placeholder с identity-based тегами
-			// (те же, что эмитит build/resolve_route.go: SrsRuleSetTag).
-			// Это чисто UI-hint — build path не использует cr.Rule для SRS,
-			// он берёт state.Rules напрямую.
-			id := StableRuleID(r)
-			var ruleSetHint interface{} = SrsRuleSetTag(id, 0)
-			if len(urls) > 1 {
-				tags := make([]interface{}, 0, len(urls))
-				for i := range urls {
-					tags = append(tags, SrsRuleSetTag(id, i))
-				}
-				ruleSetHint = tags
 			}
 			cr := CustomRule{
 				Label:            sb.Name,
@@ -280,12 +264,16 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 				SelectedOutbound: sb.Outbound,
 				HasOutbound:      true,
 				RuleSet:          ruleSets,
+				Rule:             map[string]interface{}{},
 				DNS:              CloneRuleDNS(r.DNS),
-				Rule: map[string]interface{}{
-					"rule_set": ruleSetHint,
-					"outbound": sb.Outbound,
-				},
+				SrsOptions:       r.RuleSetOptions(),
 			}
+			for k, v := range bodyMap {
+				if !isTargetKey(k, bodyMap) {
+					cr.Rule[k] = v
+				}
+			}
+			cr.Rule["outbound"] = sb.Outbound
 			out = append(out, cr)
 		case RuleKindPreset:
 			// preset-ref пропускается в legacy view (UI Phase 6 покажет через новый dialog).

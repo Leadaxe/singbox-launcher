@@ -1,0 +1,21 @@
+{
+  "_": "Пустой stem — ссылка кончается на `/`, путь пуст, файл назван `.srs`: тег `B:<h8>` (без stem). Ссылка с именем рядом — `B:<stem>`.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Empty",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "https://example.com/lists/",
+          "https://example.com",
+          "https://example.com/rules/.srs",
+          "https://example.com/rules/named.srs"
+        ],
+        "outbound": "proxy-out"
+      }
+    }
+  ]
+}

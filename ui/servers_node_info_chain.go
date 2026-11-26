@@ -6,10 +6,10 @@
 // списком позиций — правдоподобные и не про то, что на экране. Здесь же
 // строка соответствует работающему ядру по построению.
 //
-// SPEC 124: у каждой позиции своя строка ошибки и хвост состояния звена
-// словами ядра (`starting | active | idle`); общая строка под списком
-// остаётся за тем, что к позиции не привязано (старое ядро, отвалившийся
-// RPC).
+// SPEC 124: у каждой позиции своя строка ошибки (ошибка пробы) и счётчик
+// отказов дозвона через её хоп (SPEC 165 ядра: звеньев больше нет, состояние
+// звена ушло); общая строка под списком остаётся за тем, что к позиции не
+// привязано (старое ядро, отвалившийся RPC).
 package ui
 
 import (
@@ -250,7 +250,7 @@ func newChainPositionToggle(
 		rows.clearDelays()
 
 		go func() {
-			warmupErr, err := ac.SetChainPositionEnabled(target, chainTag, pos, enabled)
+			err := ac.SetChainPositionEnabled(target, chainTag, pos, enabled)
 			// Состояние перечитываем здесь же, в фоне: ChainFor — это RPC к
 			// ядру, и его дедлайн в UI-потоке подвесил бы окно целиком.
 			fresh, ok := ac.ChainFor(target, chainTag)
@@ -262,7 +262,7 @@ func newChainPositionToggle(
 					// идёт общей строкой.
 					debuglog.WarnLog("chain toggle: %s#%d enabled=%v: %v", chainTag, pos, enabled, err)
 					rows.setGeneral(chainToggleErrorText(err))
-					if chainToggleNeedsRevert(err, warmupErr, ok) {
+					if chainToggleNeedsRevert(err, ok) {
 						// Двойной сбой: ядро переключение отвергло И состав
 						// перечитать не удалось — приводить галочку не по чему,
 						// а оставить её нажатой значит соврать про состояние
@@ -275,15 +275,6 @@ func newChainPositionToggle(
 						check.SetChecked(!enabled)
 						*applying = false
 					}
-				case strings.TrimSpace(warmupErr) != "":
-					// Флаг ядро применило, а звено не поднялось. Это диагноз
-					// узла, а не отказ переключения: галочка остаётся там,
-					// куда её поставил пользователь, текст под ЕЁ строкой
-					// объясняет, почему трафик через позицию пока не пойдёт.
-					// Пишется ДО refresh: last_error звена из состава старее
-					// и пустую строку не перекроет, а занятую не трогает.
-					debuglog.WarnLog("chain toggle warmup: %s#%d: %s", chainTag, pos, warmupErr)
-					rows.setPosErr(pos, warmupErr)
 				}
 				if ok {
 					refresh(fresh)
@@ -304,11 +295,7 @@ func newChainPositionToggle(
 //     состоянию ядра applyChainRows, и второй источник правды тут вреден;
 //   - ядро отвергло И состав перечитать не удалось — приводить не по чему,
 //     а оставленная нажатой галочка врёт про состояние ядра.
-//
-// warmupErr к откату отношения не имеет: флаг ядро применило, не поднялось
-// само звено — это диагноз узла, и галочка остаётся там, куда её поставили.
-func chainToggleNeedsRevert(err error, warmupErr string, refreshed bool) bool {
-	_ = warmupErr
+func chainToggleNeedsRevert(err error, refreshed bool) bool {
 	return err != nil && !refreshed
 }
 
@@ -318,10 +305,6 @@ func chainToggleNeedsRevert(err error, warmupErr string, refreshed bool) bool {
 //
 // Под флагом applying: SetChecked зовёт OnChanged, и без него приведение к
 // состоянию ядра само отправило бы ядру новый тумблер — рекурсией.
-//
-// last_error звена заполняет только ПУСТЫЕ строки: то, что уже стоит
-// (прогрев после клика, ошибка пробы), свежее состава, который ядро могло
-// ещё не обновить.
 func applyChainRows(fresh core.ChainInfo, rows *chainRows, applying *bool) {
 	*applying = true
 	defer func() { *applying = false }()
@@ -332,9 +315,6 @@ func applyChainRows(fresh core.ChainInfo, rows *chainRows, applying *bool) {
 		pos := fresh.Positions[i]
 		rows.text[i].SetText(chainPositionText(i, pos))
 		rows.toggle[i].SetChecked(!pos.Disabled)
-		if rows.posErr[i].Text == "" {
-			rows.setPosErr(i, pos.LastError)
-		}
 	}
 }
 
@@ -350,19 +330,12 @@ func chainToggleErrorText(err error) string {
 }
 
 // chainPositionText — состав позиции: номер, тег, во что он резолвится и
-// состояние звена.
+// отказы дозвона через её хоп.
 //
 // `now` показывается только когда отличается от тега: у обычного узла они
 // совпадают, и вторая половина строки повторяла бы первую. У группы же это
 // единственный способ увидеть, через кого реально идёт трафик, не открывая
 // вложенные селекторы.
-//
-// Состояние звена — словами ядра (`starting | active | idle`), своих не
-// выдумываем. У выключенной позиции оно остаётся рядом с «off»: ядро не
-// рвёт звено принудительно, его забирает idle-эвикшн, и «off · active»
-// честно говорит, что звено ещё держит соединения. Пустое состояние — вход
-// (не клонируется) или звено ещё не создано (urltest-позиция рождает его
-// лениво); хвоста тогда нет.
 func chainPositionText(i int, pos core.ChainPositionInfo) string {
 	text := fmt.Sprintf("  %d. %s", i+1, pos.Tag)
 	if now := strings.TrimSpace(pos.Now); now != "" && now != pos.Tag {
@@ -376,28 +349,10 @@ func chainPositionText(i int, pos core.ChainPositionInfo) string {
 	if pos.Disabled {
 		text += "  · " + locale.T("off")
 	}
-	if state := chainCloneStateText(pos.CloneState); state != "" {
-		text += "  · " + state
+	if pos.Errors > 0 {
+		text += "  · " + locale.Tf("dial errors: %d", pos.Errors)
 	}
 	return text
-}
-
-// chainCloneStateText — перевод состояния звена. Неизвестное слово ядра
-// показывается как есть: новая версия ядра может добавить состояние, и
-// прятать его хуже, чем показать без перевода.
-func chainCloneStateText(state string) string {
-	switch strings.TrimSpace(state) {
-	case "":
-		return ""
-	case "starting":
-		return locale.T("starting")
-	case "active":
-		return locale.T("active")
-	case "idle":
-		return locale.T("idle")
-	default:
-		return strings.TrimSpace(state)
-	}
 }
 
 // probeChainLayers меряет префиксы цепочки последовательно.

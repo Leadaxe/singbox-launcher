@@ -42,4 +42,7 @@ type RuleState struct {
 	Num *int
 	// DNS — DNS-зеркало правила (state.Rule.DNS, SPEC 172). nil — опций нет.
 	DNS *corestate.RuleDNS
+	// SrsOptions — настройки наборов правила SRS (state.Rule, SPEC 185):
+	// режим, период обновления, выход для загрузки. Нулевое — общие значения.
+	SrsOptions corestate.RuleSetOptions
 }

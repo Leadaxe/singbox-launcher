@@ -362,6 +362,7 @@ semantics: `contract/docs/BACKUP.md`.
 | `wizard_state_file.go` | Persisted v6 state schema + migrations (`MigrateCustomRules`, `MigrateSelectableRuleStates`) + `ValidateStateID` + `NewWizardStateFile` factory. |
 | `rule_slot.go` / `dns_rule_slot.go` | Rule / DNS-rule ordering containers (interleave preset + user rows per order). |
 | `rule_state.go` / `rule_state_utils.go` | Routing-rule state + effective-outbound helpers. |
+| `rule_conditions.go` | Condition-stack model of the rule form (SPEC 188): `StackFromBody` / `Body`, keeps the original body bytes when the stack is unchanged. |
 | `preset_ref_state.go` / `preset_ref_sync.go` | Preset-ref lifecycle (`SyncDNSByOrderToState`, `ReconcileDNSRuleOrder`, kind=preset vs user). |
 | `dns_state.go` / `dns_user_rule.go` / `dns_vars.go` | DNS model state + user-rule typed struct (text↔JSON) + DNS vars. |
 | `wizard_settings_migrate.go` | Migrate settings vars from legacy `ConfigParams`. |
@@ -476,8 +477,10 @@ semantics: `contract/docs/BACKUP.md`.
 
 | File | Purpose |
 |------|---------|
-| `add_rule_dialog.go` | Add/edit routing-rule modal (form + raw JSON tabs, process picker, SRS URL list). (Still ~1146 LOC; decomposition deferred.) |
-| `rule_dialog.go` / `rule_type_selection.go` | Rule-type picker + helpers. |
+| `add_rule_dialog.go` | Add/edit routing-rule window (SPEC 188): name, outbound, tabs Form / JSON / DNS / Preview, save; JSON ↔ form through the condition-stack model. |
+| `rule_cond_stack.go` / `rule_cond_frame.go` / `rule_cond_group.go` / `rule_cond_refs.go` | The rule form as a stack of conditions from the registry table (`contract/registry/rule_conditions.json`): stack with "AND" and "+ Condition", condition frame (fields by kind, "any of"), rule group (all of / any of, Not, nested rules), rule-set field (URL or file). |
+| `rule_dialog_dns.go` / `rule_dialog_preview.go` / `rule_process_picker.go` / `rule_set_options.go` | DNS tab of the rule (options, ⚠ when the mirror is empty), Preview tab, process picker, rule-set settings (mode / interval / detour). |
+| `rule_dialog.go` | Field helpers (`ParseLines`). |
 | `load_state_dialog.go` / `save_state_dialog.go` | Wizard state load/save dialogs. |
 | `get_free_dialog.go` | Get-free-VPN config import dialog. |
 | `srs_tag.go` | SRS tag helper for rule dialogs. |

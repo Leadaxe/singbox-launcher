@@ -1,0 +1,29 @@
+{
+  "_": "Плоское правило без ссылок: наборов нет, тело уходит на правило как есть (критерий 5: config.json прежний). Сторона, уводящая домены и адрес в inline-набор (выбор стороны), даёт ему тег B (= Plain) — раннер такой стороны сворачивает набор обратно в правило (README).",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "Plain",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "domain_suffix": [
+          "example-2.com"
+        ],
+        "ip_cidr": [
+          "203.0.113.0/24"
+        ],
+        "port": [
+          80,
+          443
+        ],
+        "outbound": "proxy-out"
+      },
+      "dns": {
+        "enabled": true,
+        "serverTag": "cf"
+      }
+    }
+  ]
+}

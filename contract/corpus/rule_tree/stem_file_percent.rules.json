@@ -1,0 +1,19 @@
+{
+  "_": "Ссылка `file://` с percent-encoding в пути: stem снят с последнего сегмента после декодирования (`My%20Set.json` → `My Set`; `%2F` внутри сегмента — часть имени: `a%2Fb.srs` → `a/b`). Формат по расширению: `.json` — source.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Files",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "file:///Users/a/my%20rules/My%20Set.json",
+          "file:///C:/Rules/a%2Fb.srs"
+        ],
+        "outbound": "proxy-out"
+      }
+    }
+  ]
+}

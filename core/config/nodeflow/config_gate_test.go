@@ -6,7 +6,8 @@ import (
 )
 
 // Ключ корневого lx новее ядра снимается, известный остаётся; опустевший
-// блок уходит целиком; неизвестная версия конфиг не трогает.
+// блок уходит целиком; неизвестная версия по min_core конфиг не трогает, а
+// ключ с max_core (lx.mtu_align, контракт 1.1.184) снимает.
 func TestGateConfigForCore(t *testing.T) {
 	const src = `{"log":{"level":"warn"},"lx":{"mtu_align":"fill","sniff_guard":{"tls":{"method":"record_fragment","persist":true}}}}`
 	cases := []struct {
@@ -14,7 +15,7 @@ func TestGateConfigForCore(t *testing.T) {
 		want    string
 		dropped int
 	}{
-		{"", src, 0},
+		{"", `{"log":{"level":"warn"},"lx":{"sniff_guard":{"tls":{"method":"record_fragment","persist":true}}}}`, 1},
 		{"1.14.4-lx.34", src, 0},
 		{"1.14.4-lx.33", `{"log":{"level":"warn"},"lx":{"mtu_align":"fill"}}`, 1},
 		{"1.14.3-lx.21", `{"log":{"level":"warn"},"lx":{"mtu_align":"fill"}}`, 1},
@@ -55,10 +56,31 @@ func TestGateConfigForCore(t *testing.T) {
 			t.Errorf("decoy, core %q: got %s, want %s", version, got, want)
 		}
 	}
+	// lx.wg.buffers и lx.wg.connected_socket (контракт 1.1.183) живут с
+	// 1.14.4-lx.36-rc.1: ядру lx.35 удалённой машины они снимаются вместе с
+	// опустевшим lx.wg, rc.1 и релиз их получают.
+	const wg = `{"lx":{"mtu_align":"fill","wg":{"buffers":{"read_datagram_count":8},"connected_socket":true}}}`
+	for version, want := range map[string]string{
+		"":                  `{"lx":{"wg":{"buffers":{"read_datagram_count":8},"connected_socket":true}}}`,
+		"1.14.4-lx.36":      wg,
+		"1.14.4-lx.36-rc.1": wg,
+		"1.14.4-lx.35":      `{"lx":{"mtu_align":"fill"}}`,
+	} {
+		var root map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(wg), &root); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := GateConfigForCore(root, version); err != nil {
+			t.Fatalf("%s: %v", version, err)
+		}
+		if got, _ := json.Marshal(root); string(got) != want {
+			t.Errorf("wg, core %q: got %s, want %s", version, got, want)
+		}
+	}
 	// Запрещённый ключ (forbidden, контракт 1.1.164) снимается при любой
 	// версии, включая неизвестную; соседний ключ остаётся.
 	const forb = `{"lx":{"awg_masquerade":"direct","mtu_align":"fill"}}`
-	for _, version := range []string{"", "1.14.4-lx.31", "1.14.4-lx.34"} {
+	for _, version := range []string{"1.14.4-lx.31", "1.14.4-lx.34"} {
 		var root map[string]json.RawMessage
 		if err := json.Unmarshal([]byte(forb), &root); err != nil {
 			t.Fatal(err)
@@ -70,6 +92,28 @@ func TestGateConfigForCore(t *testing.T) {
 		got, _ := json.Marshal(root)
 		if want := `{"lx":{"mtu_align":"fill"}}`; string(got) != want || len(dropped) != 1 {
 			t.Errorf("forbidden, core %q: got %s (dropped %v), want %s", version, got, dropped, want)
+		}
+	}
+	// max_core (контракт 1.1.184): lx.mtu_align переехал в lx.detour.mtu_align
+	// с 1.14.4-lx.37-rc.2. Шаблон пишет обе формы, гейт оставляет ту, что
+	// знает ядро-исполнитель; неизвестная версия считается новой.
+	const moved = `{"lx":{"detour":{"mtu_align":"fill"},"mtu_align":"fill"}}`
+	for version, want := range map[string]string{
+		"":                  `{"lx":{"detour":{"mtu_align":"fill"}}}`,
+		"1.14.4-lx.37-rc.2": `{"lx":{"detour":{"mtu_align":"fill"}}}`,
+		"1.14.4-lx.37":      `{"lx":{"detour":{"mtu_align":"fill"}}}`,
+		"1.14.4-lx.37-rc.1": `{"lx":{"mtu_align":"fill"}}`,
+		"1.14.4-lx.36":      `{"lx":{"mtu_align":"fill"}}`,
+	} {
+		var root map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(moved), &root); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := GateConfigForCore(root, version); err != nil {
+			t.Fatalf("%s: %v", version, err)
+		}
+		if got, _ := json.Marshal(root); string(got) != want {
+			t.Errorf("max_core, core %q: got %s, want %s", version, got, want)
 		}
 	}
 }

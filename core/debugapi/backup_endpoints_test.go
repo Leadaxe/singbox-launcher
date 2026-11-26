@@ -155,7 +155,8 @@ func TestBackupExportImportRoundTripOverAPI(t *testing.T) {
 	if err := json.Unmarshal(first, &head); err != nil {
 		t.Fatalf("тело ответа — не файл бэкапа: %v\n%s", err, first)
 	}
-	if head.LxBackup != 2 {
+	// Формат 1.0 пишется мажором 3 (контракт 1.1.179, BACKUP.md §8).
+	if head.LxBackup != backup.FormatVersion11 {
 		t.Fatalf("?format=1.0 отдал файл с lx_backup=%d", head.LxBackup)
 	}
 
@@ -268,9 +269,10 @@ func TestBackupFormatsWriteOnly10(t *testing.T) {
 	if status, raw := doJSON(t, authedReq(t, "GET", base+"/backup/formats", nil), &formats); status != 200 {
 		t.Fatalf("formats status %d: %s", status, raw)
 	}
-	// Читаются оба маркера (файлы 0.x у пользователей на руках), пишется один.
-	if len(formats.Reads) != 2 || formats.Reads[0] != 1 || formats.Reads[1] != 2 {
-		t.Errorf("reads = %v, ожидалось [1 2]", formats.Reads)
+	// Читаются все маркеры (файлы 0.x и 1.0 до контракта 1.1.179 у
+	// пользователей на руках), пишется один (BACKUP.md §8).
+	if !reflect.DeepEqual(formats.Reads, []int{backup.FormatVersion, backup.FormatVersion10, backup.FormatVersion11}) {
+		t.Errorf("reads = %v, ожидалось [1 2 3]", formats.Reads)
 	}
 	if len(formats.Writes) != 1 || formats.Writes[0] != "1.0" || formats.Default != "1.0" {
 		t.Errorf("writes/default = %v/%q, ожидалось [1.0]/1.0", formats.Writes, formats.Default)
@@ -283,7 +285,7 @@ func TestBackupFormatsWriteOnly10(t *testing.T) {
 	var head struct {
 		LxBackup int `json:"lx_backup"`
 	}
-	if err := json.Unmarshal(implicit, &head); err != nil || head.LxBackup != 2 {
+	if err := json.Unmarshal(implicit, &head); err != nil || head.LxBackup != backup.FormatVersion11 {
 		t.Fatalf("экспорт без ?format отдал не файл 1.0: %v lx_backup=%d", err, head.LxBackup)
 	}
 	explicit, _ := fetchBackup(t, base, "?format=1.0")

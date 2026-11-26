@@ -123,7 +123,7 @@ func TestToWireguardURI(t *testing.T) {
 		ClientID:   "Haxc",
 		Endpoint:   "162.159.192.10:2408",
 	}
-	uri, err := acc.ToWireguardURI(true)
+	uri, err := acc.ToWireguardURI()
 	if err != nil {
 		t.Fatalf("uri: %v", err)
 	}
@@ -135,19 +135,15 @@ func TestToWireguardURI(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 	q := u.Query()
-	if q.Get("reserved") != "29,172,92" {
-		t.Errorf("reserved = %q", q.Get("reserved"))
+	// reserved (client_id) не пишется никогда: DPI режет WARP по нему.
+	if strings.Contains(uri, "reserved=") {
+		t.Errorf("reserved must be omitted: %s", uri)
 	}
 	if q.Get("mtu") != "1280" {
 		t.Errorf("mtu = %q, want 1280", q.Get("mtu"))
 	}
 	if q.Get("allowedips") != "0.0.0.0/0,::/0" {
 		t.Errorf("allowedips = %q", q.Get("allowedips"))
-	}
-	// without reserved
-	uri2, _ := acc.ToWireguardURI(false)
-	if strings.Contains(uri2, "reserved=") {
-		t.Errorf("reserved should be omitted: %s", uri2)
 	}
 }
 
@@ -173,7 +169,7 @@ func TestObfuscateAddsAWG(t *testing.T) {
 	if acc.Endpoint == DefaultEndpoint {
 		t.Errorf("random endpoint not applied: %s", acc.Endpoint)
 	}
-	uri, err := acc.ToWireguardURI(true)
+	uri, err := acc.ToWireguardURI()
 	if err != nil {
 		t.Fatalf("uri: %v", err)
 	}

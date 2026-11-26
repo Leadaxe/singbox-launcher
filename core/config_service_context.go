@@ -16,6 +16,7 @@ import (
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/paths"
+	"singbox-launcher/internal/platform"
 )
 
 // buildContextFromState собирает BuildContext из state + cache + template.
@@ -26,6 +27,9 @@ import (
 // SPEC 045, когда поле BuildContext.ParserConfigJSON удалили вместе с блоком
 // `@ParserConfig` в config.json — аргумент игнорировался).
 func (ac *AppController) buildContextFromState(s *state.State, cache *build.ParsedCache, td *template.TemplateData) build.BuildContext {
+	// SPEC 186: пресеты — под ОС цели состояния (у local отбор тот же, что
+	// сделал загрузчик).
+	td = td.ForTarget(build.TargetSpecFromState(s))
 	ctx := build.BuildContext{
 		Template:   td,
 		Cache:      cache,
@@ -79,11 +83,13 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 	// Если state.Rules не пуст, MergePresetsIntoRoute берёт на себя весь emit
 	// (preset/inline/srs). Noop когда RulesV6 пуст (legacy v5-only flow).
 	ctx.Preset = build.PresetMergeContext{
-		Target:              ctx.Target,
-		Presets:             td.Presets,
-		Rules:               lateSeededRules(s, td),
-		DNS:                 s.DNS,
-		SrsCachedPaths:      build.CollectSrsCachedPaths(s.Rules, dataDir, ""),
+		Target:  ctx.Target,
+		Presets: td.Presets,
+		Rules:   lateSeededRules(s, td),
+		DNS:     s.DNS,
+		// SPEC 185 §2.2: правило kind=srs без файла на диске выпадает из
+		// конфига, а не уезжает туда с путём к несуществующему файлу.
+		SrsCachedPaths:      build.DropUncachedSrsPaths(build.CollectSrsCachedPaths(s.Rules, dataDir, ""), platform.GetRuleSetsDir(dataDir)),
 		TemplateDNSDefaults: parseTemplateDNSDefaultsFromTD(td),
 		DataDir:             dataDir,
 		// SPEC 106 (G3): тело пресета видит глобальные переменные шаблона для

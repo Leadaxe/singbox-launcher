@@ -276,16 +276,15 @@ func TestBundledTemplate_GatewayIncludeInterface(t *testing.T) {
 		t.Errorf("mtu must be numeric, got %#v", tun["mtu"])
 	}
 
-	// Без gateway ключ присутствует, но пустой: ядро трактует [] как
-	// отсутствие поля (везде len(...)>0), поэтому фильтр не применяется.
-	// Ключ постоянный намеренно — так роль и платформа остаются
-	// независимыми осями (иначе include_interface пришлось бы вложить в
-	// платформенную ветку и потерять на macOS).
+	// Без gateway ключа нет вовсе (issue #160): значение, оставшееся в
+	// неактивном поле, не должно ограничивать TUN одним интерфейсом. Гейт —
+	// по роли (@gateway_mode), а не по платформе, поэтому оси по-прежнему
+	// независимы и на macOS-шлюзе ключ остаётся (ниже).
 	plain := renderBundledTemplate(t, TargetSpec{GOOS: "linux", GOARCH: "amd64", Target: TargetRemote},
-		map[string]string{"tun": "true"})
+		map[string]string{"tun": "true", "gateway_include_interface": "br-lan"})
 	plainTun := tunInbound(t, plain)
-	if inc, ok := plainTun["include_interface"].([]interface{}); !ok || len(inc) != 0 {
-		t.Errorf("non-gateway include_interface must be empty, got %#v", plainTun["include_interface"])
+	if v, has := plainTun["include_interface"]; has {
+		t.Errorf("non-gateway config must not carry include_interface, got %#v", v)
 	}
 
 	// macOS-gateway: имени нет (ядро его не примет), а фильтр интерфейсов
@@ -391,6 +390,71 @@ func TestBundledTemplate_SniffGuardBlock(t *testing.T) {
 	for _, c := range cases {
 		if got := render(c.vars); got != c.want {
 			t.Errorf("vars %v: lx.sniff_guard = %s, want %s", c.vars, got, c.want)
+		}
+	}
+}
+
+// lx.wg — буферы и подключённый сокет WireGuard ядра 1.14.4-lx.36 (контракт
+// 1.1.183): ключ пишется только при значении, отличном от дефолта ядра;
+// пустые buffers и wg не пишутся. Ключи сна (lx.wg.idle и старые плоские
+// имена) десктоп не пишет никогда — сборка без with_lx_idle_suspend от них
+// отказывается.
+func TestBundledTemplate_WGBlock(t *testing.T) {
+	spec := TargetSpec{GOOS: "linux", GOARCH: "arm64", Target: TargetRemote}
+	render := func(vars map[string]string) string {
+		lx, _ := renderBundledTemplate(t, spec, vars)["lx"].(map[string]interface{})
+		wg, ok := lx["wg"]
+		if !ok {
+			return ""
+		}
+		if m, _ := wg.(map[string]interface{}); m != nil {
+			for _, k := range []string{"idle", "idle_suspend", "idle_suspend_reachable", "idle_teardown", "lazy_build", "build_max", "build_overflow"} {
+				if _, bad := m[k]; bad {
+					t.Errorf("vars %v: lx.wg.%s must never be written by the desktop", vars, k)
+				}
+			}
+		}
+		out, _ := json.Marshal(wg)
+		return string(out)
+	}
+	cases := []struct {
+		vars map[string]string
+		want string
+	}{
+		{nil, `{"buffers":{"read_datagram_count":8}}`},
+		{map[string]string{"wg_read_datagram_count": "128", "wg_send_by_mtu": "true", "wg_connected_socket": "false"}, ""},
+		{map[string]string{"wg_read_datagram_count": "8"}, `{"buffers":{"read_datagram_count":8}}`},
+		{map[string]string{"wg_send_by_mtu": "false"}, `{"buffers":{"read_datagram_count":8,"send_by_mtu":false}}`},
+		{map[string]string{"wg_read_datagram_count": "128", "wg_connected_socket": "true"}, `{"connected_socket":true}`},
+		{
+			map[string]string{"wg_read_datagram_count": "1", "wg_send_by_mtu": "false", "wg_connected_socket": "true"},
+			`{"buffers":{"read_datagram_count":1,"send_by_mtu":false},"connected_socket":true}`,
+		},
+	}
+	for _, c := range cases {
+		if got := render(c.vars); got != c.want {
+			t.Errorf("vars %v: lx.wg = %s, want %s", c.vars, got, c.want)
+		}
+	}
+	// Дефолт по цели: удалённой Linux-машине (роутеру) — 8, локальной и
+	// прочим ОС — 128, т.е. ключа нет.
+	for _, tc := range []struct {
+		spec TargetSpec
+		want string
+	}{
+		{TargetSpec{GOOS: "linux", GOARCH: "arm64", Target: TargetRemote}, `{"buffers":{"read_datagram_count":8}}`},
+		{TargetSpec{GOOS: "linux", GOARCH: "amd64", Target: TargetLocal}, ""},
+		{TargetSpec{GOOS: "darwin", GOARCH: "arm64", Target: TargetLocal}, ""},
+		{TargetSpec{GOOS: "darwin", GOARCH: "arm64", Target: TargetRemote}, ""},
+	} {
+		lx, _ := renderBundledTemplate(t, tc.spec, nil)["lx"].(map[string]interface{})
+		got := ""
+		if wg, ok := lx["wg"]; ok {
+			b, _ := json.Marshal(wg)
+			got = string(b)
+		}
+		if got != tc.want {
+			t.Errorf("%+v defaults: lx.wg = %s, want %s", tc.spec, got, tc.want)
 		}
 	}
 }

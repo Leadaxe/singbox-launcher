@@ -386,8 +386,8 @@ auto-deploy sweep; `result` ∈ `applied | skipped | failed | build_failed | unr
 | GET | `/remote/machines/{id}/health` | `{reachable, core_status, active_sha, last_good_sha, …}` — comparing SHAs is the honest "did it land" check. Also the rest of the passport — `executable`, `log_path`, `listen`, `tls`, `uptime_seconds` (`null` when the daemon did not answer `/admin/info`) — and `core_required` (the core version this launcher builds configs for) with `core_outdated` (`true` only when `version` is provably older; an unparsable version → `false`) |
 | POST | `/remote/machines/{id}/core/start` \| `stop` \| `rollback` | Core control (stop drops the VPN of the machine's clients — the API does not ask for confirmation) |
 | GET | `/remote/machines/{id}/config/active` \| `built` | Running config fetched from the machine / locally built one |
-| POST | `/remote/machines/{id}/config/rebuild` | Builds the machine's `config.json` from its current profile — the same step as Save in the machine's wizard, so profile edits made through the API reach the config without the UI. Answers `{ok, path, config_sha, changed, deployed}`; `config_sha` is the sha256 of the built file, `changed` — whether the build changed it. `check_error` — the file is written but the launcher's bundled core rejected it (the machine's core may be newer). `?deploy=1` then deploys it through the same chain as `…/deploy` (also when `check_error` is set — the machine's daemon decides) and adds `resources_uploaded`, `deployed_sha`; a failed deploy answers its own status (`422`, `502`, …) with `ok:false`, `error` and the build fields. `404` — the machine has no profile yet; `422` — the build failed; `503` — headless launcher (the builder lives in the wizard) |
-| POST | `/remote/machines/{id}/deploy` | Resources → config (the same chain as the Deploy button). Optional body `{config:{…}}`. `422` = daemon rejected the config, running instance untouched |
+| POST | `/remote/machines/{id}/config/rebuild` | Builds the machine's `config.json` from its current profile — the same step as Save in the machine's wizard, so profile edits made through the API reach the config without the UI. Answers `{ok, path, config_sha, changed, deployed}`; `config_sha` is the sha256 of the built file, `changed` — whether the build changed it. `check_error` — the file is written but the launcher's bundled core rejected it (the machine's core may be newer). `?deploy=1` then deploys it through the same chain as `…/deploy` (also when `check_error` is set — the machine's daemon decides) and adds `resources_uploaded`, `resources_kept`, `deployed_sha`; a failed deploy answers its own status (`422`, `502`, …) with `ok:false`, `error` and the build fields. `404` — the machine has no profile yet; `422` — the build failed; `503` — headless launcher (the builder lives in the wizard) |
+| POST | `/remote/machines/{id}/deploy` | Resources → config (the same chain as the Deploy button). Optional body `{config:{…}}`. Answers `{ok, resources_uploaded, resources_kept, resources_rejected, config_sha}`; `resources_kept` — changed rule-sets the daemon refused to overwrite because the machine's active or last-good config references them: they stay at the previous version and the config is applied anyway; `resources_rejected` — rule-sets whose content the daemon did not accept (entries `name: reason`), the previous files stay. `422` = daemon rejected the config, running instance untouched |
 | POST | `/remote/machines/{id}/auto-deploy/run` | SPEC 164: consider the machine by the auto-deploy sweep right now, regardless of its flag — refresh the stale subscriptions of its profile (`?force_refresh=1` refreshes all of them), rebuild its config and, when the built sha256 matched the active one before the refresh and changed after it, deploy through the same chain as the button. Answers `{result, sha_before?, sha_after?, deployed, note?}`; a deploy that happened is already applied (the machine's core restarted). `503` when the launcher runs headless |
 
 **State (mirrors of `/state/*`):** `GET /remote/machines/{id}/state/full`,
@@ -417,8 +417,9 @@ import answers `config_rebuilt:false`; follow it with `…/config/rebuild`.
 
 **Resource store:** `GET …/resources` (local vs machine overview),
 `POST …/resources/sync`, `GET/PUT/DELETE …/resources/{name}`,
-`POST …/resources/{name}/download`. `409` = the name is referenced by a live
-config.
+`POST …/resources/{name}/download`. `409` = the name is referenced by the
+machine's active or last-good config (single-file `PUT`/`DELETE`); `sync`
+skips such names instead and lists them in `kept`.
 
 **UI-override (the Remote tab's Connect/Disconnect buttons):** regular remote
 calls never touch the UI selection — these three endpoints control which
@@ -479,7 +480,7 @@ daemon's gRPC plane.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/chains` | Chain runtime state: positions, the node each one currently resolves to, clone status |
+| GET | `/chains` | Chain runtime state: positions, the node each one currently resolves to, toggles and dial errors (core SPEC 165: chain tags from the running config, state by `GetChainStatus`) |
 | POST | `/chains/{tag}/probe` | Layer-by-layer latency probe of one chain |
 
 **Probe body** — `{repeat?, timeout_ms?, link?}`. Defaults and clamps:
@@ -512,6 +513,34 @@ Layered probing also works for a **remote** machine
 this host, so the numbers describe the router's channel to each hop.
 
 ---
+
+## Impair `/impair/*` (core SPEC 164)
+
+For tests only — the launcher UI has no impair (owner decision 26.11.2026). Gated
+like `/daemon/*`; the calls go to the local daemon's gRPC (`SetImpair`,
+`ScheduleImpair`, `GetImpairStatus`, core 1.14.4-lx.37-rc.1 or newer). Requests
+and the status are JSON in the core's config schema (sing-box-lx
+`docs-lx/lx-impair.md`) and are passed through as is.
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/impair/{outbound}` | Status: `tag`, `link_params`, `counters`, `sublinks`, `schedule` |
+| POST | `/impair/{outbound}/set` | Body — one schedule entry without `at`: `{"link_params":{…}}` or `{"sublinks":[…]\|false}`; applied now |
+| POST | `/impair/{outbound}/schedule` | Body `{"entries":[…], "start":""\|"now"\|"first_use", "repeat":""\|"60s"}`; `entries: []` stops the schedule and restores the config's link |
+
+Core errors map to HTTP: no such outbound — 404, not an impair outbound or
+invalid JSON — 400, core not running — 409, core without impair control — 501.
+
+### Measurements of the local core and the test scenario
+
+Daemon mode, same gating: `POST /proxies/delay` `{"name", "url"?, "timeout_ms"?}` —
+URL-test one outbound (`delay_ms`, `error`); `GET /pool?group=` — balancer pool of a
+urltest group (`slots[]` with `quarantined`, `connections`, `confirmed_failures`;
+`shifted_keys`, `marked_keys`, `frozen`, `frozen_seconds`); `GET /outbounds/{node}/config`
+— the node as the core runs it (`original`, `effective`, `changes`). To route a node
+through an impair outbound: `PATCH /state/servers?tag=&folder=` with
+`{"detour":{"tag":"imp"}}`, `{"detour":null}` clears it. A full scenario script —
+`SPECS/190-F-C-IMPAIR_DEBUG_API/SPEC.md` §3.
 
 ## Raw passthrough
 

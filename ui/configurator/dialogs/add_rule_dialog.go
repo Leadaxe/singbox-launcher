@@ -1,52 +1,38 @@
 // Package dialogs содержит диалоговые окна визарда конфигурации.
 //
-// Файл add_rule_dialog.go содержит функцию ShowAddRuleDialog, которая создает диалоговое окно
-// для добавления или редактирования пользовательского правила маршрутизации:
-//   - Ввод домена, IP, порта и других критериев правила
-//   - Выбор outbound для правила (включая reject/drop)
-//   - Валидация введенных данных
-//   - Сохранение правила в модель через presenter
+// Файл add_rule_dialog.go — окно добавления и правки пользовательского
+// правила маршрутизации (SPEC 188 §6): имя, стопка условий (форма) или тело
+// JSON, выход (Direction), настройки наборов, вкладки DNS и Preview.
 //
-// Диалог поддерживает два режима:
-//   - Добавление нового правила (editRule == nil)
-//   - Редактирование существующего правила (editRule != nil, ruleIndex указывает индекс)
+// Раскладка окна по файлам:
+//   - rule_cond_stack.go, rule_cond_frame.go, rule_cond_group.go,
+//     rule_cond_refs.go — форма: стопка условий-рамок по таблице реестра,
+//     группы правил, поле наборов;
+//   - rule_dialog_dns.go — вкладка DNS; rule_dialog_preview.go — Preview;
+//   - rule_process_picker.go — выбор процессов;
+//   - ui/configurator/models/rule_conditions.go — тело ⇄ стопка (без Fyne).
 //
-// Диалоговые окна имеют отдельную ответственность от основных табов.
-// Содержит сложную логику валидации и обработки ввода пользователя.
-//
-// Используется в:
-//   - tabs/rules_tab.go - вызывается при нажатии кнопок "Add Rule" и "Edit" для правил
-//
-// Взаимодействует с:
-//   - presenter - все действия пользователя обрабатываются через методы presenter
-//   - models.RuleState - работает с данными правил из модели
-//   - business - использует валидацию и утилиты из business пакета
+// Окно правит запись модели (RuleState): тело правила с целью и `refs`
+// внутри, объект dns, настройки наборов. Используется в tabs/rules_tab.go.
 package dialogs
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
-	"regexp"
-	"sort"
 	"strings"
 
-	"image/color"
-
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
-	"singbox-launcher/internal/process"
+	"singbox-launcher/internal/outboundutil"
 
-	"singbox-launcher/core/build"
 	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/ui/components"
@@ -57,10 +43,9 @@ import (
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
-	addRulePlaceholderIpText      = "Enter IP addresses (CIDR format)\ne.g., 192.168.1.0/24"
-	addRulePlaceholderSrsUrlsText = "SRS URLs (one per line)\ne.g. https://raw.githubusercontent.com/.../file.srs"
-	addRulePlaceholderUrlText     = "Enter domains or URLs (one per line)\ne.g., example.com"
-	addRuleArrayPastedText        = "Paste one rule at a time: the editor keeps one sing-box rule per entry"
+	addRuleArrayPastedText  = "Paste one rule at a time: the editor keeps one sing-box rule per entry"
+	addRuleNestedTargetText = "Only the rule itself has a target (outbound or action): remove it from the rules inside groups."
+	addRuleNoConditionText  = "Add at least one condition."
 )
 
 // CreateRulesTabFunc is a function type for creating the rules tab.
@@ -73,10 +58,14 @@ type CreateRulesTabFunc func(p *wizardpresentation.WizardPresenter) fyne.CanvasO
 func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *wizardmodels.RuleState, ruleIndex int, createRulesTab CreateRulesTabFunc) {
 	guiState := presenter.GUIState()
 	model := presenter.Model()
-
 	if guiState.Window == nil {
 		return
 	}
+	controller := presenter.Controller()
+	if controller == nil || controller.UIService == nil {
+		return
+	}
+	app := controller.UIService.Application
 
 	isEdit := editRule != nil
 	dialogTitle := locale.T("Add Rule")
@@ -90,1031 +79,289 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		existingDialog.Close()
 		delete(openDialogs, key)
 	}
-	presenter.UpdateChildOverlay() // Hide overlay immediately when all rule dialogs are closed
-	// Use presenter's unified overlay update (rule dialogs, View, Outbound Edit)
+	presenter.UpdateChildOverlay()
 	updateChildOverlay := func() { presenter.UpdateChildOverlay() }
 	dialogKey := ruleIndex
 	if !isEdit {
 		dialogKey = -1
 	}
 	updateChildOverlay()
-	var activeTabIsRaw bool
 
-	// Input field height
-	inputFieldHeight := float32(90)
+	table, err := wizardmodels.LauncherRuleCondTable()
+	if err != nil {
+		debuglog.WarnLog("rule dialog: rule conditions table: %v", err)
+	}
 
-	// Input fields
 	labelEntry := widget.NewEntry()
 	labelEntry.SetPlaceHolder(locale.T("Rule name"))
 
-	ipEntry := widget.NewMultiLineEntry()
-	ipEntry.SetPlaceHolder(locale.T(addRulePlaceholderIpText))
-	ipEntry.Wrapping = fyne.TextWrapWord
-
-	urlEntry := widget.NewMultiLineEntry()
-	urlEntry.SetPlaceHolder(locale.T(addRulePlaceholderUrlText))
-	urlEntry.Wrapping = fyne.TextWrapWord
-
-	// Limit input field height
-	ipScroll := container.NewScroll(ipEntry)
-	ipSizeRect := canvas.NewRectangle(color.Transparent)
-	ipSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
-	ipContainer := container.NewStack(ipSizeRect, ipScroll)
-
-	urlScroll := container.NewScroll(urlEntry)
-	urlSizeRect := canvas.NewRectangle(color.Transparent)
-	urlSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
-	urlContainer := container.NewStack(urlSizeRect, urlScroll)
-
-	// Processes selector (selected items and popup)
-	processesSelected := make([]string, 0)
-	processesContainer := container.NewVBox()
-	processesScroll := container.NewVScroll(processesContainer)
-	// Make processes field display ~4 lines high
-	processesSizeRect := canvas.NewRectangle(color.Transparent)
-	processesSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
-	processesContainerWrap := container.NewStack(processesSizeRect, processesScroll)
-	processesLabel := widget.NewLabel(locale.T("Processes (select one or more via popup):"))
-	selectProcessesButton := widget.NewButton(locale.T("Select Processes..."), func() {})
-
-	// Match by path: checkbox, Simple/Regex radio, path patterns multiline
-	matchByPathCheck := widget.NewCheck(locale.T("Match by path"), func(bool) {})
-	pathModeRadio := widget.NewRadioGroup([]string{locale.T("Simple"), locale.TN(1, "Regex")}, func(string) {})
-	pathPatternsEntry := widget.NewMultiLineEntry()
-	pathPatternsEntry.SetPlaceHolder(locale.T("One per line. Use * as wildcard (e.g. */steam/* or *\\Steam\\*)."))
-	pathPatternsEntry.Wrapping = fyne.TextWrapWord
-	pathPatternsScroll := container.NewScroll(pathPatternsEntry)
-	pathPatternsSizeRect := canvas.NewRectangle(color.Transparent)
-	pathPatternsSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
-	pathPatternsContainer := container.NewStack(pathPatternsSizeRect, pathPatternsScroll)
-	pathPatternsLabel := widget.NewLabel(locale.T("Path patterns (one per line):"))
-
-	// Custom JSON field (initialised early so it can be loaded when editing)
-	customEntry := fynewidget.NewJSONEditor("{}")
-	customScroll := container.NewScroll(customEntry.Object())
-	customSizeRect := canvas.NewRectangle(color.Transparent)
-	customSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
-	customContainer := container.NewStack(customSizeRect, customScroll)
-	customLabel := widget.NewLabel(locale.T("Custom JSON:"))
-
-	// SRS: manual URLs (one per line)
-	srsURLsEntry := widget.NewMultiLineEntry()
-	srsURLsEntry.SetPlaceHolder(locale.T(addRulePlaceholderSrsUrlsText))
-	srsURLsEntry.Wrapping = fyne.TextWrapWord
-	srsURLsScroll := container.NewScroll(srsURLsEntry)
-	srsURLsSizeRect := canvas.NewRectangle(color.Transparent)
-	srsURLsSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
-	srsURLsContainer := container.NewStack(srsURLsSizeRect, srsURLsScroll)
-	srsURLsLabel := widget.NewLabel(locale.T("SRS URLs (one per line):"))
-	const runetfreedomSRSURL = "https://github.com/runetfreedom/russia-v2ray-rules-dat/tree/release/sing-box"
-	srsHintButton := widget.NewButton("?", nil)
-	srsLabelRow := container.NewHBox(srsURLsLabel, layout.NewSpacer(), srsHintButton)
-
-	// Raw tab: JSON правила (синхронизация с формой при переключении вкладок)
-	rawTabEntry := fynewidget.NewJSONEditor("")
-
-	// Process-name helpers are now top-level pure funcs (see bottom of file):
-	// normalizeProcName / sortProcessStrings / dedupeProcessStrings.
-	// Call sites below reference them directly by name.
-
-	// Outbound selector
+	// Выход (Direction) — цель корня тела.
 	availableOutbounds := wizardbusiness.EnsureDefaultAvailableOutbounds(wizardbusiness.GetAvailableOutbounds(model))
 	if len(availableOutbounds) == 0 {
 		availableOutbounds = []string{wizardmodels.DefaultOutboundTag, wizardmodels.RejectActionName}
 	}
-	outboundSelect := widget.NewSelect(availableOutbounds, func(string) {})
-	if len(availableOutbounds) > 0 {
-		outboundSelect.SetSelected(availableOutbounds[0])
-	}
-
-	// Create map for fast outbound lookup (O(1) instead of O(n))
 	outboundMap := make(map[string]bool, len(availableOutbounds))
 	for _, opt := range availableOutbounds {
 		outboundMap[opt] = true
 	}
+	outboundSelect := widget.NewSelect(availableOutbounds, nil)
+	outboundSelect.SetSelected(availableOutbounds[0])
+	selectedOutbound := func() string {
+		if outboundSelect.Selected != "" {
+			return outboundSelect.Selected
+		}
+		return availableOutbounds[0]
+	}
 
-	// Determine initial rule type and load data (для нового правила — первая позиция: IP)
-	pathPatternsInitial := ""
-	matchByPathInitial := false
-	pathModeInitial := locale.TN(1, "Regex") // по умолчанию Regex, если не в params
-	srsURLsInitial := []string{}
-	domainModeInitial := ""  // "Exact domains"|"Suffix"|"Keyword"|"Regex"
-	domainListInitial := ""  // многострочный список для exact/suffix/keyword
-	domainRegexInitial := "" // строка для Regex
-	ruleType := wizardmodels.RuleTypeIPS
+	// SPEC 185: настройки наборов правила (режим, период, выход загрузки) —
+	// видны, пока в дереве есть ссылки `refs`.
+	var srsOptionsInitial corestate.RuleSetOptions
+	var initialDNS *corestate.RuleDNS
+	var initialBody map[string]interface{}
 	if isEdit {
+		srsOptionsInitial = editRule.SrsOptions
+		initialDNS = editRule.DNS
+		initialBody = editRule.Rule.Rule
 		labelEntry.SetText(editRule.Rule.Label)
 		if editRule.SelectedOutbound != "" && outboundMap[editRule.SelectedOutbound] {
 			outboundSelect.SetSelected(editRule.SelectedOutbound)
 		}
-		ruleData := editRule.Rule.Rule
-		ruleType = wizardmodels.DetermineRuleType(ruleData)
-		params := editRule.Rule.Params
+	}
+	srsOptionsForm := NewRuleSetOptionsForm(srsOptionsInitial, availableOutbounds, nil)
 
-		if ruleData != nil {
-			switch ruleType {
-			case wizardmodels.RuleTypeIPS:
-				if ips := ExtractStringArray(ruleData["ip_cidr"]); len(ips) > 0 {
-					ipEntry.SetText(strings.Join(ips, "\n"))
-				}
-			case wizardmodels.RuleTypeURLs:
-				if arr := ExtractStringArray(ruleData["domain_suffix"]); len(arr) > 0 {
-					domainModeInitial = locale.T("Suffix")
-					domainListInitial = strings.Join(arr, "\n")
-				} else if arr := ExtractStringArray(ruleData["domain_keyword"]); len(arr) > 0 {
-					domainModeInitial = locale.T("Keyword")
-					domainListInitial = strings.Join(arr, "\n")
-				} else if re, ok := ruleData["domain_regex"].(string); ok && re != "" {
-					domainModeInitial = locale.T("Regex")
-					domainRegexInitial = re
-				} else if domains := ExtractStringArray(ruleData["domain"]); len(domains) > 0 {
-					domainModeInitial = locale.T("Exact domains")
-					domainListInitial = strings.Join(domains, "\n")
-				}
-				if params != nil {
-					if mode, ok := params["domain_mode"].(string); ok {
-						domainModeInitial = mode
-					}
-				}
-			case wizardmodels.RuleTypeProcesses:
-				if procs := ExtractStringArray(ruleData[ProcessKey]); len(procs) > 0 {
-					processesSelected = dedupeProcessStrings(procs)
-					sortProcessStrings(processesSelected)
-				}
-				if pathVal, ok := ruleData[ProcessPathRegexKey]; ok {
-					matchByPathInitial = true
-					if arr := ExtractStringArray(pathVal); len(arr) > 0 {
-						pathPatternsInitial = strings.Join(arr, "\n")
-					}
-				}
-				if params != nil {
-					if v, ok := params["match_by_path"].(bool); ok {
-						matchByPathInitial = v
-					}
-					if s, ok := params["path_mode"].(string); ok && (s == locale.T("Simple") || s == locale.TN(1, "Regex")) {
-						pathModeInitial = s
-					}
-				}
-			case wizardmodels.RuleTypeSRS:
-				for _, rs := range editRule.Rule.RuleSets {
-					var m map[string]interface{}
-					if err := json.Unmarshal(rs, &m); err == nil {
-						if u, ok := m["url"].(string); ok && u != "" {
-							srsURLsInitial = append(srsURLsInitial, u)
-						}
-					}
-				}
-			case wizardmodels.RuleTypeRaw:
-				fallthrough
-			default:
-				if ruleData != nil {
-					temp := make(map[string]interface{})
-					for k, v := range ruleData {
-						if k == "outbound" {
-							continue
-						}
-						temp[k] = v
-					}
-					if b, err := json.MarshalIndent(temp, "", "  "); err == nil {
-						customEntry.SetText(string(b))
-					}
-				}
-			}
-		}
-		if ruleType == wizardmodels.RuleTypeSRS && len(srsURLsInitial) > 0 {
-			srsURLsEntry.SetText(strings.Join(srsURLsInitial, "\n"))
+	// Открытие: тело из ключей таблицы — формой; иначе — вкладкой JSON.
+	startStack := wizardmodels.RuleCondStack{}
+	formOK := true
+	if isEdit {
+		if st, ok := table.StackFromBody(initialBody); ok {
+			startStack = st.ForForm()
+		} else {
+			formOK = false
 		}
 	}
-	if isEdit && ruleType != "" {
-		if rd := editRule.Rule.Rule; rd != nil {
-			if b, err := json.MarshalIndent(rd, "", "  "); err == nil {
-				rawTabEntry.SetText(string(b))
-			}
-		}
-	} else {
-		// l10n-exempt: JSON placeholder
-		rawTabEntry.SetText(`{
-  "ip_cidr": [],
-  "outbound": "proxy-out"
-}`)
-	}
+	activeTabIsRaw := !formOK
 
-	// Rule type selection: микро-модель + 5 типов (подписи человекочитаемые, значения — константы)
-	ruleSel := NewRuleTypeSelection(ruleType)
-	var syncingRuleType bool
-	// Single RadioGroup для всех 5 типов — настоящий radio с круглыми маркерами
-	// (раньше были 5 NewCheck с mutex-логикой через OnChanged → визуально галки).
-	typeLabelIP := locale.T("IP Addresses (CIDR)")
-	typeLabelDomain := locale.T("Domains/URLs")
-	typeLabelProcess := locale.T("Processes")
-	typeLabelSRS := locale.T("SRS")
-	typeLabelCustom := locale.T("Custom JSON")
-
-	ruleTypeRadio := widget.NewRadioGroup(
-		[]string{typeLabelIP, typeLabelDomain, typeLabelProcess, typeLabelSRS, typeLabelCustom},
-		func(sel string) {
-			if syncingRuleType {
-				return
-			}
-			switch sel {
-			case typeLabelIP:
-				ruleSel.SetType(wizardmodels.RuleTypeIPS)
-			case typeLabelDomain:
-				ruleSel.SetType(wizardmodels.RuleTypeURLs)
-			case typeLabelProcess:
-				ruleSel.SetType(wizardmodels.RuleTypeProcesses)
-			case typeLabelSRS:
-				ruleSel.SetType(wizardmodels.RuleTypeSRS)
-			case typeLabelCustom:
-				ruleSel.SetType(wizardmodels.RuleTypeRaw)
+	var dialogWindow fyne.Window
+	var refreshState func()
+	ctx := &ruleFormCtx{
+		table: table,
+		app:   app,
+		goos:  model.Target.Normalized().GOOS,
+		wheel: components.NewWheelThrough(),
+		onChange: func() {
+			if refreshState != nil {
+				refreshState()
 			}
 		},
-	)
-
-	// Domains/URLs: domainModeSelect (exact / suffix / keyword / regex).
-	// Раньше был справа от Domain checkbox; теперь — отдельная строка под radio,
-	// показывается только когда выбран Domain тип (видимость управляется в
-	// updateFieldsVisibility — см. ниже legacy syncFormToRaw path).
-	domainModeOptions := []string{locale.T("Exact domains"), locale.T("Suffix"), locale.T("Keyword"), locale.T("Regex")}
-	domainModeSelect := widget.NewSelect(domainModeOptions, nil)
-	domainModeRow := container.NewHBox(widget.NewLabel(locale.T("Domain mode:")), domainModeSelect)
-
-	// matchByPathCheck (для Process) — аналогично, под radio, не inline.
-	processOptionsRow := container.NewHBox(matchByPathCheck)
-
-	ruleTypeContainer := container.NewVBox(ruleTypeRadio, domainModeRow, processOptionsRow)
-
-	// Manage field visibility
-	ipLabel := widget.NewLabel(locale.T("IP Addresses (one per line, CIDR format):"))
-	urlLabel := widget.NewLabel(locale.T("Domains (one per line):"))
-	domainRegexEntry := widget.NewEntry()
-	domainRegexEntry.SetPlaceHolder(locale.T("E.g. ^.*\\.google\\.com$ or .*\\.(google|youtube)\\.com$ (full regex, no /wrapping/)"))
-	updateDomainLabel := func() {
-		switch domainModeSelect.Selected {
-		case locale.T("Suffix"):
-			urlLabel.SetText(locale.T("Domain suffixes (one per line):"))
-		case locale.T("Keyword"):
-			urlLabel.SetText(locale.T("Domain keywords (one per line):"))
-		case locale.T("Regex"):
-			urlLabel.SetText(locale.T("Domain regex:"))
-		default:
-			urlLabel.SetText(locale.T("Domains (one per line):"))
-		}
-	}
-	domainModeSelect.SetSelected(locale.T("Exact domains"))
-	if domainModeInitial != "" {
-		domainModeSelect.SetSelected(domainModeInitial)
-		if domainModeInitial == locale.T("Regex") {
-			domainRegexEntry.SetText(domainRegexInitial)
-		} else {
-			urlEntry.SetText(domainListInitial)
-		}
 	}
 
-	updateVisibility := func(selectedType string) {
-		hideAllFormTypeSpecific := func() {
-			ipLabel.Hide()
-			ipContainer.Hide()
-			urlLabel.Hide()
-			urlContainer.Hide()
-			domainRegexEntry.Hide()
-			domainModeRow.Hide() // показываем только при выборе Domains/URLs (подпись вместе со списком)
-			processesLabel.Hide()
-			processesContainerWrap.Hide()
-			selectProcessesButton.Hide()
-			matchByPathCheck.Hide()
-			pathPatternsLabel.Hide()
-			pathPatternsContainer.Hide()
-			pathModeRadio.Hide()
-			srsLabelRow.Hide()
-			srsURLsContainer.Hide()
-			customContainer.Hide()
-			customLabel.Hide()
-		}
-		showIP := func() {
-			hideAllFormTypeSpecific()
-			ipLabel.Show()
-			ipContainer.Show()
-		}
-		updateProcessModeVisibility := func() {
-			if ruleSel.Type() != wizardmodels.RuleTypeProcesses {
-				return
-			}
-			if matchByPathCheck.Checked {
-				processesLabel.Hide()
-				processesContainerWrap.Hide()
-				selectProcessesButton.Hide()
-				pathPatternsLabel.Show()
-				pathPatternsContainer.Show()
-				pathModeRadio.Show()
-			} else {
-				processesLabel.Show()
-				processesContainerWrap.Show()
-				selectProcessesButton.Show()
-				pathPatternsLabel.Hide()
-				pathPatternsContainer.Hide()
-				pathModeRadio.Hide()
-			}
-		}
-		showProcess := func() {
-			hideAllFormTypeSpecific()
-			matchByPathCheck.Show()
-			updateProcessModeVisibility()
-		}
-		showDomain := func() {
-			hideAllFormTypeSpecific()
-			domainModeRow.Show()
-			domainModeSelect.Show()
-			urlLabel.Show()
-			updateDomainLabel()
-			if domainModeSelect.Selected == locale.T("Regex") {
-				domainRegexEntry.Show()
-				urlContainer.Hide()
-			} else {
-				urlContainer.Show()
-				domainRegexEntry.Hide()
-			}
-		}
-		showSRS := func() {
-			hideAllFormTypeSpecific()
-			srsLabelRow.Show()
-			srsURLsContainer.Show()
-		}
-		showCustom := func() {
-			hideAllFormTypeSpecific()
-			customContainer.Show()
-			customLabel.Show()
-		}
-
-		switch selectedType {
-		case wizardmodels.RuleTypeIPS:
-			showIP()
-		case wizardmodels.RuleTypeProcesses:
-			showProcess()
-		case wizardmodels.RuleTypeSRS:
-			showSRS()
-		case wizardmodels.RuleTypeRaw:
-			showCustom()
-		default:
-			showDomain()
+	// Снимок формы: правило, которое открыли и не меняли, сохраняется
+	// исходным телом (порядок ключей и вид значений не переписываются).
+	// snapshotJSON — тело формы на момент загрузки, snapshotMatch — тело,
+	// из которого форма загружена.
+	var editor *condStackEditor
+	var snapshotJSON string
+	var snapshotMatch map[string]interface{}
+	formHolder := container.NewVBox()
+	loadForm := func(s wizardmodels.RuleCondStack, match map[string]interface{}) {
+		editor = newCondStackEditor(ctx, s)
+		formHolder.Objects = []fyne.CanvasObject{editor.object()}
+		formHolder.Refresh()
+		snapshotMatch = cloneRuleMap(match)
+		if read, rerr := editor.read(false); rerr == nil {
+			snapshotJSON = table.RuleCondBodyJSON(read)
 		}
 	}
+	if formOK {
+		loadForm(startStack, ruleMatchOf(initialBody))
+	} else {
+		loadForm(wizardmodels.RuleCondStack{}, nil)
+	}
 
-	// Save button and validation functions
-	var confirmButton *widget.Button
-	var saveRule func()
-	var updateButtonState func()
-	var dialogWindow fyne.Window
+	// formMatch — тело формы без цели; nil — условий нет.
+	formMatch := func(strict bool) (map[string]interface{}, error) {
+		lenient, rerr := editor.read(false)
+		if rerr == nil && snapshotMatch != nil && table.RuleCondBodyJSON(lenient) == snapshotJSON {
+			return cloneRuleMap(snapshotMatch), nil
+		}
+		s, rerr := editor.read(strict)
+		if rerr != nil {
+			return nil, rerr
+		}
+		return table.StackBody(s), nil
+	}
 
-	parseCustomJSON := func() (map[string]interface{}, error) {
-		trimmed := strings.TrimSpace(customEntry.Text())
+	rawTabEntry := fynewidget.NewJSONEditor("")
+	// rawMatch — тело с вкладки JSON без цели корня.
+	rawMatch := func() (map[string]interface{}, error) {
+		trimmed := strings.TrimSpace(rawTabEntry.Text())
 		if trimmed == "" {
-			return nil, errors.New(locale.T("Custom JSON is empty"))
+			return nil, errors.New(locale.T("Raw JSON is empty"))
 		}
 		if err := ruleArrayPastedError(trimmed); err != nil {
 			return nil, err
 		}
 		var obj map[string]interface{}
 		if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("invalid JSON: %w", err)
 		}
 		if obj == nil {
-			return nil, errors.New(locale.T("Custom JSON must be an object"))
+			return nil, errors.New(locale.T("rule must be a JSON object"))
 		}
-		return obj, nil
+		if ruleHasNestedTarget(obj) {
+			return nil, errors.New(locale.T(addRuleNestedTargetText))
+		}
+		if ob, _ := obj["outbound"].(string); ob != "" && !outboundMap[ob] {
+			return nil, errors.New(locale.Tf("Unknown direction %q.", ob))
+		}
+		return ruleMatchOf(obj), nil
 	}
-
-	buildSRSRuleSetsAndTags := func() (ruleSets []json.RawMessage, tags []string, err error) {
-		lines := ParseLines(strings.TrimSpace(srsURLsEntry.Text), false)
-		if len(lines) == 0 {
-			return nil, nil, errors.New(locale.T("enter at least one SRS URL"))
-		}
-		seen := make(map[string]bool)
-		for _, rawURL := range lines {
-			u := strings.TrimSpace(rawURL)
-			if u == "" {
-				continue
-			}
-			tag := srsTagFromURL(u)
-			if tag == "" {
-				continue
-			}
-			// Дедуп: один и тот же URL дважды → один rule_set entry.
-			// Content-addressed tag это гарантирует автоматически (same URL
-			// → same tag), просто скипаем второй раз.
-			if seen[tag] {
-				continue
-			}
-			seen[tag] = true
-			entry := map[string]interface{}{
-				"tag":    tag,
-				"type":   "remote",
-				"format": "binary",
-				"url":    u,
-			}
-			raw, _ := json.Marshal(entry)
-			ruleSets = append(ruleSets, raw)
-			tags = append(tags, tag)
-		}
-		if len(ruleSets) == 0 {
-			return nil, nil, errors.New(locale.T("enter at least one valid SRS URL"))
-		}
-		return ruleSets, tags, nil
-	}
-
-	// srsRuleSetsForRawBody — наборы формы, на которые ссылается тело с вкладки
-	// JSON. Тег SRS-набора — производное от URL, адреса в теле нет: без этого
-	// правило, сохранённое (или показанное в Preview) с вкладки JSON, теряло
-	// наборы и ссылалось на несуществующие теги. nil — тело ссылается не
-	// только на наборы формы (или без rule_set): тогда это Custom JSON.
-	srsRuleSetsForRawBody := func(body map[string]interface{}) []json.RawMessage {
-		refs := ExtractStringArray(body["rule_set"])
-		if s, ok := body["rule_set"].(string); ok && s != "" {
-			refs = []string{s}
-		}
-		if len(refs) == 0 {
-			return nil
-		}
-		ruleSets, tags, err := buildSRSRuleSetsAndTags()
-		if err != nil {
-			return nil
-		}
-		byTag := make(map[string]json.RawMessage, len(tags))
-		for i, tag := range tags {
-			byTag[tag] = ruleSets[i]
-		}
-		out := make([]json.RawMessage, 0, len(refs))
-		for _, ref := range refs {
-			rs, ok := byTag[ref]
-			if !ok {
-				return nil
-			}
-			out = append(out, rs)
-		}
-		return out
-	}
-
-	// buildRuleRaw возвращает (rule, ruleSets для SRS или nil, error).
-	buildRuleRaw := func(selectedType string, selectedOutbound string) (rule map[string]interface{}, ruleSets []json.RawMessage, err error) {
-		switch selectedType {
-		case wizardmodels.RuleTypeIPS:
-			ipText := strings.TrimSpace(ipEntry.Text)
-			items := ParseLines(ipText, false)
-			return map[string]interface{}{
-				"ip_cidr":  items,
-				"outbound": selectedOutbound,
-			}, nil, nil
-		case wizardmodels.RuleTypeProcesses:
-			if matchByPathCheck.Checked {
-				lines := ParseLines(pathPatternsEntry.Text, false)
-				if len(lines) == 0 {
-					return nil, nil, errors.New(locale.T("enter at least one path pattern"))
-				}
-				regexList := make([]string, 0, len(lines))
-				isSimple := pathModeRadio.Selected != locale.TN(1, "Regex")
-				for _, line := range lines {
-					var re string
-					if isSimple {
-						var e error
-						re, e = SimplePatternToRegex(line)
-						if e != nil {
-							return nil, nil, e
-						}
-					} else {
-						if _, e := regexp.Compile(line); e != nil {
-							return nil, nil, e
-						}
-						re = line
-					}
-					regexList = append(regexList, re)
-				}
-				return map[string]interface{}{
-					ProcessPathRegexKey: regexList,
-					"outbound":          selectedOutbound,
-				}, nil, nil
-			}
-			items := make([]string, len(processesSelected))
-			copy(items, processesSelected)
-			return map[string]interface{}{
-				ProcessKey: items,
-				"outbound": selectedOutbound,
-			}, nil, nil
-		case wizardmodels.RuleTypeSRS:
-			sets, tags, e := buildSRSRuleSetsAndTags()
-			if e != nil {
-				return nil, nil, e
-			}
-			var ruleSetVal interface{} = tags
-			if len(tags) == 1 {
-				ruleSetVal = tags[0]
-			}
-			return map[string]interface{}{
-				"rule_set": ruleSetVal,
-				"outbound": selectedOutbound,
-			}, sets, nil
-		case wizardmodels.RuleTypeRaw:
-			obj, e := parseCustomJSON()
-			if e != nil {
-				return nil, nil, e
-			}
-			obj["outbound"] = selectedOutbound
-			return obj, nil, nil
-		default:
-			items := ParseLines(strings.TrimSpace(urlEntry.Text), false)
-			switch domainModeSelect.Selected {
-			case locale.T("Regex"):
-				re := strings.TrimSpace(domainRegexEntry.Text)
-				return map[string]interface{}{
-					"domain_regex": re,
-					"outbound":     selectedOutbound,
-				}, nil, nil
-			case locale.T("Suffix"):
-				return map[string]interface{}{
-					"domain_suffix": items,
-					"outbound":      selectedOutbound,
-				}, nil, nil
-			case locale.T("Keyword"):
-				return map[string]interface{}{
-					"domain_keyword": items,
-					"outbound":       selectedOutbound,
-				}, nil, nil
-			default:
-				return map[string]interface{}{
-					"domain":   items,
-					"outbound": selectedOutbound,
-				}, nil, nil
-			}
-		}
-	}
-
-	validateFields := func() bool {
-		if strings.TrimSpace(labelEntry.Text) == "" {
-			return false
-		}
-		switch ruleSel.Type() {
-		case wizardmodels.RuleTypeIPS:
-			return strings.TrimSpace(ipEntry.Text) != ""
-		case wizardmodels.RuleTypeProcesses:
-			if matchByPathCheck.Checked {
-				lines := ParseLines(pathPatternsEntry.Text, false)
-				if len(lines) == 0 {
-					return false
-				}
-				isSimple := pathModeRadio.Selected != locale.TN(1, "Regex")
-				for _, line := range lines {
-					if isSimple {
-						if _, err := SimplePatternToRegex(line); err != nil {
-							return false
-						}
-					} else {
-						if _, err := regexp.Compile(line); err != nil {
-							return false
-						}
-					}
-				}
-				return true
-			}
-			return len(processesSelected) > 0
-		case wizardmodels.RuleTypeSRS:
-			return len(ParseLines(strings.TrimSpace(srsURLsEntry.Text), false)) > 0
-		case wizardmodels.RuleTypeRaw:
-			return strings.TrimSpace(customEntry.Text()) != ""
-		default:
-			if domainModeSelect.Selected == locale.T("Regex") {
-				re := strings.TrimSpace(domainRegexEntry.Text)
-				if re == "" {
-					return false
-				}
-				if _, err := regexp.Compile(re); err != nil {
-					return false
-				}
-				return true
-			}
-			return strings.TrimSpace(urlEntry.Text) != ""
-		}
-	}
-
-	// DNS-зеркало правила (SPEC 172, TEMPLATE_LANG §6.11): сервер для
-	// DNS-запросов под правило и глушилка AAAA. Своя вкладка DNS: это поле
-	// записи, а не тела sing-box, и к Form/JSON оно не относится. Доступность
-	// считает тот же матчер, что у сборки, по телу последней из вкладок
-	// Form/JSON: опция недоступна ровно там, где зеркала не будет.
-	// Сохранённые значения при недоступности не сбрасываются.
-	var initialDNS *corestate.RuleDNS
-	if isEdit {
-		initialDNS = editRule.DNS
-	}
-	dnsServerOptions := wizardbusiness.DNSEnabledTagOptions(model)
-	if initialDNS != nil && initialDNS.ServerTag != "" {
-		known := false
-		for _, o := range dnsServerOptions {
-			if o == initialDNS.ServerTag {
-				known = true
-				break
-			}
-		}
-		if !known {
-			dnsServerOptions = append(dnsServerOptions, initialDNS.ServerTag)
-		}
-	}
-	// Ответ на DNS-запросы под правило — один из трёх (контракт 1.1.139,
-	// как у LxBox): DNS Final, свой сервер (зеркало на serverTag) или
-	// локальный ответ адресами fixedIps. Тег сервера хранится при любом
-	// выборе; адреса пишутся только в режиме Fixed IP — непустой fixedIps и
-	// есть этот режим.
-	answerDefault := locale.T("Default — queries go to DNS Final")
-	answerServer := locale.T("Dedicated server")
-	answerFixed := locale.T("Fixed IP")
-	answerRadio := widget.NewRadioGroup([]string{answerDefault, answerServer, answerFixed}, nil)
-	answerRadio.Required = true
-	dnsServerSelect := widget.NewSelect(dnsServerOptions, nil)
-	fixedIPEntry := widget.NewMultiLineEntry()
-	fixedIPEntry.SetPlaceHolder("192.168.1.10")
-	fixedIPEntry.SetMinRowsVisible(3)
-	fixedIPNote := widget.NewLabel(locale.T("One address per line, IPv4 or IPv6."))
-	fixedIPNote.Importance = widget.LowImportance
-	fixedIPError := widget.NewLabel("")
-	fixedIPError.Wrapping = fyne.TextWrapWord
-	fixedIPError.Importance = widget.DangerImportance
-	fixedIPError.Hide()
-	forceIPv4Check := widget.NewCheck(locale.T("Force IPv4 (drop AAAA)"), nil)
-	// Block HTTPS (контракт 1.1.173): HTTPS/SVCB под правило — пустым ответом,
-	// чтобы браузер не взял ECH и SNI остался открытым для правил по доменам.
-	blockHTTPSCheck := widget.NewCheck(locale.T("Block HTTPS/SVCB records (no ECH)"), nil)
-	dnsNarrowNote := widget.NewLabel(locale.T("DNS options apply to these domains on any port and protocol."))
-	dnsNarrowNote.Wrapping = fyne.TextWrapWord
-	dnsNarrowNote.Importance = widget.LowImportance
-	dnsNarrowNote.Hide()
-	dnsHint := widget.NewLabel("")
-	dnsHint.Wrapping = fyne.TextWrapWord
-	dnsHint.Importance = widget.LowImportance
-	answerRadio.SetSelected(answerDefault)
-	if initialDNS != nil {
-		dnsServerSelect.SetSelected(initialDNS.ServerTag)
-		forceIPv4Check.SetChecked(initialDNS.ForceIPv4)
-		blockHTTPSCheck.SetChecked(initialDNS.BlockHTTPS)
-		fixedIPEntry.SetText(strings.Join(initialDNS.FixedIPs, "\n"))
-		switch {
-		case len(initialDNS.FixedIPs) > 0:
-			answerRadio.SetSelected(answerFixed)
-		case initialDNS.Enabled:
-			answerRadio.SetSelected(answerServer)
-		}
-	}
-	// fixedIPs — адреса поля по строкам без пустых; bad — номер первой
-	// строки поля (с 1), не разбираемой как IP, 0 — все годные.
-	fixedIPs := func() (ips []string, bad int) {
-		for i, line := range strings.Split(fixedIPEntry.Text, "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			if net.ParseIP(line) == nil && bad == 0 {
-				bad = i + 1
-			}
-			ips = append(ips, line)
-		}
-		return ips, bad
-	}
-	// dnsAnswerError — почему Save недоступен из-за DNS; пусто — годно.
-	dnsAnswerError := func() string {
-		if answerRadio.Selected != answerFixed {
-			return ""
-		}
-		ips, bad := fixedIPs()
-		switch {
-		case bad > 0:
-			return fmt.Sprintf(locale.T("Line %d is not an IPv4 or IPv6 address."), bad)
-		case len(ips) == 0:
-			return locale.T("Enter an IP address.")
-		}
-		return ""
-	}
-	currentRuleDNS := func() *corestate.RuleDNS {
-		d := &corestate.RuleDNS{
-			Enabled:    answerRadio.Selected == answerServer,
-			ServerTag:  dnsServerSelect.Selected,
-			ForceIPv4:  forceIPv4Check.Checked,
-			BlockHTTPS: blockHTTPSCheck.Checked,
-		}
-		if answerRadio.Selected == answerFixed {
-			d.FixedIPs, _ = fixedIPs()
-		}
-		return corestate.CloneRuleDNS(d)
-	}
-	// currentRuleBody — тело правила, каким его увидит сборка: с JSON-вкладки
-	// или собранное формой; nil — правило ещё не заполнено.
-	currentRuleBody := func() map[string]interface{} {
-		ob := outboundSelect.Selected
-		if ob == "" {
-			ob = availableOutbounds[0]
-		}
+	// targetOutbound — цель корня: с вкладки JSON — из её тела (если выход
+	// известен), иначе — выбор Direction.
+	targetOutbound := func() string {
 		if activeTabIsRaw {
 			var obj map[string]interface{}
-			if json.Unmarshal([]byte(strings.TrimSpace(rawTabEntry.Text())), &obj) != nil {
-				return nil
+			if json.Unmarshal([]byte(strings.TrimSpace(rawTabEntry.Text())), &obj) == nil {
+				if ob := ruleTargetName(obj); ob != "" && outboundMap[ob] {
+					return ob
+				}
 			}
-			return obj
 		}
-		body, _, err := buildRuleRaw(ruleSel.Type(), ob)
-		if err != nil {
+		return selectedOutbound()
+	}
+	currentMatch := func(strict bool) (map[string]interface{}, error) {
+		if activeTabIsRaw {
+			return rawMatch()
+		}
+		return formMatch(strict)
+	}
+	// currentBody — тело с целью, каким его увидит сборка; nil — не заполнено.
+	currentBody := func() map[string]interface{} {
+		m, err := currentMatch(false)
+		if err != nil || len(m) == 0 {
 			return nil
 		}
-		return body
+		return ruleWithTarget(m, targetOutbound())
 	}
-	// currentRuleIsSRS — правило уйдёт в запись вида srs: тип формы или тело
-	// JSON-вкладки со ссылкой на наборы формы.
-	currentRuleIsSRS := func(body map[string]interface{}) bool {
-		if activeTabIsRaw {
-			return body != nil && srsRuleSetsForRawBody(body) != nil
+
+	dnsWheel := components.NewWheelThrough()
+	dnsTab := newRuleDNSTab(model, initialDNS, initialBody, dnsWheel, ctx.changed)
+	// Блок наборов — выбор режима, период, detour: своей прокрутки в нём нет,
+	// колесо над ним целиком отдаётся форме; прячется обёртка вместе со слоем.
+	srsOptionsRow := ctx.wheel.Wrap(srsOptionsForm.Box)
+
+	var confirmButton *widget.Button
+	confirmHint := widget.NewLabel("")
+	confirmHint.Importance = widget.WarningImportance
+	confirmHint.Truncation = fyne.TextTruncateEllipsis
+	refreshState = func() {
+		if editor == nil {
+			return
 		}
-		return ruleSel.Type() == wizardmodels.RuleTypeSRS
-	}
-	// hadDomains — у inline-правила было доменное условие при прошлой
-	// проверке. Галка Block HTTPS ставится сама, когда домены появились из
-	// пустого (решение 1.1.173); при открытии — состояние сохранённого
-	// правила, его галку не трогаем.
-	hadDomains := false
-	if isEdit && editRule.Rule.Rule != nil {
-		hadDomains = build.RuleDNSBlockHTTPSAvailable(editRule.Rule.Rule, false)
-	}
-	updateDNSAvailability := func() {
-		body := currentRuleBody()
-		_, ok := build.RuleDNSMirrorMatch(body)
-		isSRS := currentRuleIsSRS(body)
-		hasDomains := !isSRS && build.RuleDNSBlockHTTPSAvailable(body, false)
-		if hasDomains && !hadDomains {
-			blockHTTPSCheck.SetChecked(true)
-		}
-		hadDomains = hasDomains
-		if ok && build.RuleDNSBlockHTTPSAvailable(body, isSRS) {
-			blockHTTPSCheck.Enable()
+		body := currentBody()
+		dnsTab.update(body)
+		refs := corestate.BodyRefs(body)
+		if len(refs) > 0 {
+			srsOptionsRow.Show()
+			srsOptionsForm.SetModeLocked(ruleRefsHaveFile(refs))
 		} else {
-			blockHTTPSCheck.Disable()
+			srsOptionsRow.Hide()
 		}
-		if ok && build.RuleDNSMirrorNarrowed(body) {
-			dnsNarrowNote.Show()
-		} else {
-			dnsNarrowNote.Hide()
+		if confirmButton == nil {
+			return
 		}
-		hint := ""
-		mode := answerRadio.Selected
-		if mode == answerServer {
-			dnsServerSelect.Show()
-		} else {
-			dnsServerSelect.Hide()
-		}
-		if mode == answerFixed {
-			fixedIPEntry.Show()
-			fixedIPNote.Show()
-		} else {
-			fixedIPEntry.Hide()
-			fixedIPNote.Hide()
-		}
-		if msg := dnsAnswerError(); msg != "" {
-			fixedIPError.SetText(msg)
-			fixedIPError.Show()
-		} else {
-			fixedIPError.Hide()
-		}
+		// Почему кнопка неактивна — строкой слева от кнопок: имя, условия и
+		// ответ DNS лежат на разных вкладках, по серой кнопке причину не угадать.
+		reason := ""
 		switch {
-		case ok:
-			answerRadio.Enable()
-			dnsServerSelect.Enable()
-			fixedIPEntry.Enable()
-			// Ответ при Fixed IP даёт само правило: глушилке AAAA нечего глушить.
-			if mode == answerFixed {
-				forceIPv4Check.Disable()
-			} else {
-				forceIPv4Check.Enable()
-			}
-			if !activeTabIsRaw && ruleSel.Type() == wizardmodels.RuleTypeSRS && mode != answerDefault {
-				hint = locale.T("Works only if the rule set contains domains.")
+		case strings.TrimSpace(labelEntry.Text) == "":
+			reason = locale.T("Rule name is required")
+		case body == nil:
+			reason = locale.T(addRuleNoConditionText)
+			if _, err := currentMatch(false); err != nil {
+				reason = err.Error()
 			}
 		default:
-			answerRadio.Disable()
-			forceIPv4Check.Disable()
-			dnsServerSelect.Disable()
-			fixedIPEntry.Disable()
-			if body != nil {
-				hint = locale.T("Unavailable for rules that match only IP addresses, ports or protocols.")
+			if e := dnsTab.answerError(); e != "" {
+				reason = locale.T("DNS") + ": " + e
 			}
 		}
-		dnsHint.SetText(hint)
-		if hint == "" {
-			dnsHint.Hide()
+		confirmHint.SetText(reason)
+		if reason == "" {
+			confirmButton.Enable()
 		} else {
-			dnsHint.Show()
+			confirmButton.Disable()
 		}
 	}
-	rawTabEntry.SetOnChanged(func(string) { updateDNSAvailability() })
-	answerRadio.OnChanged = func(mode string) {
-		if mode == answerServer && dnsServerSelect.Selected == "" && len(dnsServerOptions) > 0 {
-			dnsServerSelect.SetSelected(dnsServerOptions[0])
-		}
-		if updateButtonState != nil {
-			updateButtonState()
-		}
-	}
-	fixedIPEntry.OnChanged = func(string) {
-		if updateButtonState != nil {
-			updateButtonState()
-		}
-	}
-	dnsBlock := container.NewVBox(
-		widget.NewLabel(locale.T("Answer")),
-		answerRadio,
-		dnsServerSelect,
-		fixedIPEntry,
-		fixedIPNote,
-		fixedIPError,
-		forceIPv4Check,
-		blockHTTPSCheck,
-		dnsNarrowNote,
-		dnsHint,
-	)
+	labelEntry.OnChanged = func(string) { refreshState() }
+	outboundSelect.OnChanged = func(string) { refreshState() }
+	rawTabEntry.SetOnChanged(func(string) { refreshState() })
 
-	updateButtonState = func() {
-		if confirmButton != nil {
-			if validateFields() && dnsAnswerError() == "" {
-				confirmButton.Enable()
-			} else {
-				confirmButton.Disable()
-			}
-		}
-		updateDNSAvailability()
-	}
-
-	onRuleTypeChange := func(s string) {
-		syncingRuleType = true
-		defer func() { syncingRuleType = false }()
-		// Map model rule-type → radio label.
-		switch s {
-		case wizardmodels.RuleTypeIPS:
-			ruleTypeRadio.SetSelected(typeLabelIP)
-		case wizardmodels.RuleTypeURLs:
-			ruleTypeRadio.SetSelected(typeLabelDomain)
-		case wizardmodels.RuleTypeProcesses:
-			ruleTypeRadio.SetSelected(typeLabelProcess)
-		case wizardmodels.RuleTypeSRS:
-			ruleTypeRadio.SetSelected(typeLabelSRS)
-		case wizardmodels.RuleTypeRaw:
-			ruleTypeRadio.SetSelected(typeLabelCustom)
-		}
-		updateVisibility(s)
-		if updateButtonState != nil {
-			updateButtonState()
-		}
-	}
-	ruleSel.SetOnChange(onRuleTypeChange)
-	onRuleTypeChange(ruleSel.Type()) // начальная синхронизация при открытии (SetType не дергает OnChange, т.к. тип уже тот же)
-
-	// When Match by path is toggled, refresh Process UI (name vs path) and validation
-	matchByPathCheck.OnChanged = func(bool) {
-		updateVisibility(ruleSel.Type())
-		if updateButtonState != nil {
-			updateButtonState()
-		}
-	}
-	pathModeRadio.OnChanged = func(selected string) {
-		if selected == locale.TN(1, "Regex") {
-			pathPatternsEntry.SetPlaceHolder(locale.T("One per line. Full regex as-is (no /regex/i wrapping). E.g. ^C:\\\\Games\\\\.* or .*steam.*"))
-		} else {
-			pathPatternsEntry.SetPlaceHolder(locale.T("One per line. Use * as wildcard (e.g. */steam/* or *\\Steam\\*)."))
-		}
-		if updateButtonState != nil {
-			updateButtonState()
-		}
-	}
-
-	pathModeRadio.SetSelected(locale.T("Simple"))
-	if matchByPathInitial {
-		matchByPathCheck.SetChecked(true)
-		pathPatternsEntry.SetText(pathPatternsInitial)
-		pathModeRadio.SetSelected(pathModeInitial)
-		updateVisibility(ruleSel.Type())
-	}
-
-	saveRule = func() {
+	saveRule := func() {
 		label := strings.TrimSpace(labelEntry.Text)
 		if label == "" {
 			dialog.ShowError(errors.New(locale.T("Rule name is required")), dialogWindow)
 			return
 		}
-		var ruleRaw map[string]interface{}
-		var srsRuleSets []json.RawMessage
-		selectedType := ruleSel.Type()
-		selectedOutbound := outboundSelect.Selected
-		if selectedOutbound == "" {
-			selectedOutbound = availableOutbounds[0]
-		}
-
-		if activeTabIsRaw {
-			trimmed := strings.TrimSpace(rawTabEntry.Text())
-			if trimmed == "" {
-				dialog.ShowError(errors.New(locale.T("Raw JSON is empty")), dialogWindow)
-				return
-			}
-			if err := ruleArrayPastedError(trimmed); err != nil {
-				dialog.ShowError(err, dialogWindow)
-				return
-			}
-			if err := json.Unmarshal([]byte(trimmed), &ruleRaw); err != nil {
-				dialog.ShowError(fmt.Errorf("invalid JSON: %w", err), dialogWindow)
-				return
-			}
-			if ruleRaw == nil {
-				dialog.ShowError(errors.New(locale.T("rule must be a JSON object")), dialogWindow)
-				return
-			}
-			if _, hasOut := ruleRaw["outbound"]; !hasOut {
-				if _, hasAction := ruleRaw["action"]; !hasAction {
-					dialog.ShowError(errors.New(locale.T("rule must contain \"outbound\" or \"action\"")), dialogWindow)
-					return
-				}
-			}
-			if selectedOutbound == wizardmodels.RejectActionName || selectedOutbound == "drop" {
-				ruleRaw["action"] = selectedOutbound
-				delete(ruleRaw, "outbound")
-			} else {
-				ruleRaw["outbound"] = selectedOutbound
-			}
-			selectedType = wizardmodels.RuleTypeRaw
-			if rs := srsRuleSetsForRawBody(ruleRaw); rs != nil {
-				srsRuleSets = rs
-				selectedType = wizardmodels.RuleTypeSRS
-			}
-		} else {
-			var err error
-			ruleRaw, srsRuleSets, err = buildRuleRaw(selectedType, selectedOutbound)
-			if err != nil {
-				dialog.ShowError(err, dialogWindow)
+		// Имя — источник идентификатора правила (state.StableRuleID): на нём
+		// держатся порядок и сопоставление слотов. Два правила с одним
+		// идентификатором — отказ. Имя, которое не меняли, не проверяется:
+		// старое состояние с дублем остаётся редактируемым.
+		if editRule == nil || label != strings.TrimSpace(editRule.Rule.Label) {
+			if other := conflictingRuleName(model.CustomRules, editRule, label); other != "" {
+				dialog.ShowError(errors.New(locale.Tf("The name conflicts with the rule %q — choose another one.", other)), dialogWindow)
 				return
 			}
 		}
-
-		params := make(map[string]interface{})
-		if selectedType == wizardmodels.RuleTypeProcesses {
-			params["match_by_path"] = matchByPathCheck.Checked
-			if matchByPathCheck.Checked {
-				if pathModeRadio.Selected == locale.T("Simple") {
-					params["path_mode"] = locale.T("Simple")
-				} else {
-					params["path_mode"] = locale.TN(1, "Regex")
-				}
-			}
+		match, err := currentMatch(true)
+		if err != nil {
+			dialog.ShowError(err, dialogWindow)
+			return
 		}
-		if selectedType == wizardmodels.RuleTypeURLs {
-			params["domain_mode"] = domainModeSelect.Selected
+		if len(match) == 0 {
+			dialog.ShowError(errors.New(locale.T(addRuleNoConditionText)), dialogWindow)
+			return
 		}
-
-		ruleDNS := currentRuleDNS()
+		outbound := targetOutbound()
+		ruleRaw := ruleWithTarget(match, outbound)
+		ruleSets := wizardmodels.RuleSetsFromBody(ruleRaw)
+		var srsOptions corestate.RuleSetOptions
+		if len(ruleSets) > 0 {
+			srsOptions = srsOptionsForm.Value()
+		}
+		ruleDNS := dnsTab.value()
 
 		if isEdit {
 			editRule.DNS = ruleDNS
+			editRule.SrsOptions = srsOptions
 			editRule.Rule.Label = label
 			editRule.Rule.Rule = ruleRaw
 			editRule.Rule.HasOutbound = true
-			editRule.Rule.DefaultOutbound = selectedOutbound
-			editRule.Rule.Params = params
-			if len(srsRuleSets) > 0 {
-				editRule.Rule.RuleSets = srsRuleSets
-			} else if selectedType != wizardmodels.RuleTypeSRS {
-				editRule.Rule.RuleSets = nil
-			}
-			editRule.SelectedOutbound = selectedOutbound
+			editRule.Rule.DefaultOutbound = outbound
+			editRule.Rule.Params = nil
+			editRule.Rule.RuleSets = ruleSets
+			editRule.SelectedOutbound = outbound
 		} else {
-			tsr := wizardtemplate.TemplateSelectableRule{
-				Label:           label,
-				Rule:            ruleRaw,
-				HasOutbound:     true,
-				DefaultOutbound: selectedOutbound,
-				IsDefault:       true,
-				Params:          params,
-			}
-			if len(srsRuleSets) > 0 {
-				tsr.RuleSets = srsRuleSets
-			}
 			newRule := &wizardmodels.RuleState{
-				Rule:             tsr,
+				Rule: wizardtemplate.TemplateSelectableRule{
+					Label:           label,
+					Rule:            ruleRaw,
+					RuleSets:        ruleSets,
+					HasOutbound:     true,
+					DefaultOutbound: outbound,
+					IsDefault:       true,
+				},
 				Enabled:          true,
-				SelectedOutbound: selectedOutbound,
-				// SPEC 106: номер оси — конец занятой пользовательской зоны,
-				// не хардкод: новое правило встаёт последним среди
-				// пользовательских и не вытесняет шаблонные якоря.
-				Num: wizardmodels.NextRuleNum(model),
-				DNS: ruleDNS,
-			}
-			if model.CustomRules == nil {
-				model.CustomRules = make([]*wizardmodels.RuleState, 0)
+				SelectedOutbound: outbound,
+				// SPEC 106: номер оси — конец занятой пользовательской зоны.
+				Num:        wizardmodels.NextRuleNum(model),
+				DNS:        ruleDNS,
+				SrsOptions: srsOptions,
 			}
 			model.CustomRules = append(model.CustomRules, newRule)
 		}
 
-		// Set flag for preview recalculation
-		// Mark as changed
 		presenter.MarkAsChanged()
-		// Refresh rules tab
 		if createRulesTab != nil {
 			presenter.RefreshRulesTab(createRulesTab)
 		}
@@ -1129,163 +376,29 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	}
 	confirmButton = widget.NewButton(confirmBtnText, saveRule)
 	confirmButton.Importance = widget.HighImportance
-
 	cancelButton := widget.NewButton(locale.T("Cancel"), func() {
 		delete(openDialogs, dialogKey)
 		updateChildOverlay()
 		dialogWindow.Close()
 	})
 
-	// Field change handlers for validation
-	labelEntry.OnChanged = func(string) { updateButtonState() }
-	ipEntry.OnChanged = func(string) { updateButtonState() }
-	urlEntry.OnChanged = func(string) { updateButtonState() }
-	domainRegexEntry.OnChanged = func(string) { updateButtonState() }
-	domainModeSelect.OnChanged = func(string) {
-		updateDomainLabel()
-		updateVisibility(ruleSel.Type())
-		updateButtonState()
-	}
-	pathPatternsEntry.OnChanged = func(string) { updateButtonState() }
-	srsURLsEntry.OnChanged = func(string) { updateButtonState() }
-
-	// Helper to refresh selected processes UI (sorted by name)
-	var refreshSelectedProcessesUI func()
-	refreshSelectedProcessesUI = func() {
-		processesSelected = dedupeProcessStrings(processesSelected)
-		// sort selected items by process name
-		sortProcessStrings(processesSelected)
-		processesContainer.Objects = nil
-		for i := range processesSelected {
-			idx := i
-			p := processesSelected[i]
-			lbl := widget.NewLabel(p)
-			removeBtn := widget.NewButton(locale.T("−"), func() {
-				// remove item at idx
-				processesSelected = append(processesSelected[:idx], processesSelected[idx+1:]...)
-				refreshSelectedProcessesUI()
-				updateButtonState()
-			})
-			processesContainer.Add(container.NewHBox(lbl, layout.NewSpacer(), removeBtn))
-		}
-		processesContainer.Refresh()
-	}
-
-	// Open process selector popup
-	openProcessSelector := func() {
-		controller := presenter.Controller()
-		if controller == nil || controller.UIService == nil {
-			return
-		}
-		w := controller.UIService.Application.NewWindow(locale.T("Select Processes"))
-		w.Resize(fyne.NewSize(500, 400))
-
-		// Load process list using process package (names only, deduped)
-		getProcesses := func() []string {
-			procs, err := process.GetProcesses()
-			if err != nil {
-				return []string{}
-			}
-			items := make([]string, 0, len(procs))
-			for _, p := range procs {
-				items = append(items, p.Name)
-			}
-			items = dedupeProcessStrings(items)
-			sortProcessStrings(items)
-			return items
-		}
-
-		listData := getProcesses()
-		selectedIdx := -1
-		procList := widget.NewList(
-			func() int { return len(listData) },
-			func() fyne.CanvasObject { return container.NewHBox(widget.NewLabel(""), layout.NewSpacer()) },
-			func(i widget.ListItemID, o fyne.CanvasObject) {
-				lbl := o.(*fyne.Container).Objects[0].(*widget.Label)
-				lbl.SetText(listData[i])
-			},
-		)
-		procList.OnSelected = func(id widget.ListItemID) {
-			selectedIdx = id
-		}
-
-		addBtn := widget.NewButton(locale.T("+ Add"), func() {
-			if selectedIdx >= 0 && selectedIdx < len(listData) {
-				item := normalizeProcName(listData[selectedIdx])
-				// avoid duplicates (case-insensitive)
-				found := false
-				for _, s := range processesSelected {
-					if strings.EqualFold(s, item) {
-						found = true
-						break
-					}
-				}
-				if !found {
-					processesSelected = append(processesSelected, item)
-					refreshSelectedProcessesUI()
-					updateButtonState()
-				}
-			}
-		})
-
-		refreshBtn := widget.NewButton(locale.T("Refresh"), func() {
-			listData = getProcesses()
-			procList.Refresh()
-		})
-
-		closeBtn := widget.NewButton(locale.T("Close"), func() { w.Close() })
-
-		content := container.NewBorder(nil, container.NewHBox(layout.NewSpacer(), refreshBtn, addBtn, closeBtn), nil, nil, container.NewScroll(procList))
-		w.SetContent(content)
-		w.Show()
-	}
-
-	// wire selector button
-	selectProcessesButton.OnTapped = func() { openProcessSelector() }
-
-	// Rule name над вкладками Form/Raw
-	ruleNameBlock := container.NewVBox(widget.NewLabel(locale.T("Rule Name:")), labelEntry)
-	// Контент формы: тип правила и поля по типу
-	inputContainer := container.NewVBox(
-		widget.NewLabel(locale.T("Rule Type:")),
-		ruleTypeContainer,
-		widget.NewSeparator(),
-		ipLabel,
-		ipContainer,
-		urlLabel,
-		urlContainer,
-		domainRegexEntry,
-		processesLabel,
-		processesContainerWrap,
-		selectProcessesButton,
-		pathPatternsLabel,
-		pathPatternsContainer,
-		pathModeRadio,
-		srsLabelRow,
-		srsURLsContainer,
-		customLabel,
-		customContainer,
+	ruleNameBlock := container.NewVBox(widget.NewLabel(locale.T("Rule Name:")), wheelEntry(ctx.wheel, labelEntry))
+	formContent := container.NewVBox(
+		formHolder,
 		widget.NewSeparator(),
 		widget.NewLabel(locale.T("Direction:")),
 		outboundSelect,
+		srsOptionsRow,
 	)
-
-	buttonsContainer := container.NewHBox(
-		layout.NewSpacer(),
-		cancelButton,
-		confirmButton,
-	)
-
-	formScroll := components.WrapInScrollWithGutter(inputContainer)
-	rawScroll := components.WrapInScrollWithGutter(rawTabEntry.Object())
+	formScroll := components.WrapInScrollWithGutter(formContent)
+	ctx.wheel.SetScroll(formScroll)
+	dnsScroll := components.WrapInScrollWithGutter(dnsTab.box)
+	dnsWheel.SetScroll(dnsScroll)
 	formTabItem := container.NewTabItem(locale.T("Form"), formScroll)
-	rawTabItem := container.NewTabItem(locale.T("JSON"), rawScroll)
-	dnsTabItem := container.NewTabItem(locale.T("DNS"), components.WrapInScrollWithGutter(dnsBlock))
+	rawTabItem := container.NewTabItem(locale.T("JSON"), components.WrapInScrollWithGutter(rawTabEntry.Object()))
+	dnsTabItem := container.NewTabItem(locale.T("DNS"), dnsScroll)
 
-	// Preview — что правило даёт в конфиге, по секциям (route.rule_set,
-	// route.rules, dns.rules), только для чтения. Строится тем же кодом, что
-	// сборка: запись правила из текущего состояния окна → ResolveRouteWithGlobals
-	// → build.RuleDNSMirrors. Тело для правки — по-прежнему вкладка JSON.
+	// Preview — что правило даёт в конфиге, тем же кодом, что сборка.
 	previewView := fynewidget.NewJSONView("")
 	previewContent := container.NewBorder(
 		container.NewHBox(layout.NewSpacer(), widget.NewLabel("🔒")),
@@ -1296,110 +409,69 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	refreshPreview := func() {
 		previewView.SetText(rulePreviewText(model, rulePreviewInput{
 			label:    strings.TrimSpace(labelEntry.Text),
-			outbound: outboundSelect.Selected,
-			raw:      activeTabIsRaw,
-			rawText:  rawTabEntry.Text(),
-			rawSRS:   srsRuleSetsForRawBody,
-			form: func() (map[string]interface{}, []json.RawMessage, error) {
-				return buildRuleRaw(ruleSel.Type(), outboundSelect.Selected)
-			},
-			dns: currentRuleDNS(),
+			outbound: targetOutbound(),
+			body:     currentBody(),
+			dns:      dnsTab.value(),
+			srs:      srsOptionsForm.Value(),
+			editing:  editRule,
 		}))
 	}
 
 	tabs := container.NewAppTabs(formTabItem, dnsTabItem, rawTabItem, previewTabItem)
+	// JSON-вкладка показывает тело записи (с `refs`); теги наборов — в Preview.
+	setRawText := func(match map[string]interface{}) {
+		if b, e := json.MarshalIndent(ruleWithTarget(match, selectedOutbound()), "", "  "); e == nil {
+			rawTabEntry.SetText(string(b))
+		}
+	}
 	syncFormToRaw := func() {
-		ob := outboundSelect.Selected
-		if ob == "" {
-			ob = availableOutbounds[0]
-		}
-		ruleRaw, _, err := buildRuleRaw(ruleSel.Type(), ob)
-		if err == nil && ruleRaw != nil {
-			if b, e := json.MarshalIndent(ruleRaw, "", "  "); e == nil {
-				rawTabEntry.SetText(string(b))
-			}
+		if m, e := formMatch(false); e == nil {
+			setRawText(m)
 		}
 	}
-	syncRawToForm := func() {
-		trimmed := strings.TrimSpace(rawTabEntry.Text())
-		if trimmed == "" {
-			dialog.ShowError(errors.New(locale.T("Raw JSON is empty")), dialogWindow)
-			tabs.Select(rawTabItem)
-			ruleSel.SetType(wizardmodels.RuleTypeRaw)
-			return
-		}
-		if err := ruleArrayPastedError(trimmed); err != nil {
-			dialog.ShowError(err, dialogWindow)
-			tabs.Select(rawTabItem)
-			ruleSel.SetType(wizardmodels.RuleTypeRaw)
-			return
-		}
-		var obj map[string]interface{}
-		if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
-			dialog.ShowError(fmt.Errorf("invalid JSON: %w", err), dialogWindow)
-			tabs.Select(rawTabItem)
-			ruleSel.SetType(wizardmodels.RuleTypeRaw)
-			return
-		}
-		if obj == nil {
-			dialog.ShowError(errors.New(locale.T("rule must be a JSON object")), dialogWindow)
-			tabs.Select(rawTabItem)
-			ruleSel.SetType(wizardmodels.RuleTypeRaw)
-			return
-		}
-		detected := wizardmodels.DetermineRuleType(obj)
-		if detected == wizardmodels.RuleTypeRaw {
-			dialog.ShowInformation(locale.T("Rule not recognized"), locale.T("Could not recognize rule, form cannot be loaded; staying on Raw."), dialogWindow)
-			tabs.Select(rawTabItem)
-			ruleSel.SetType(wizardmodels.RuleTypeRaw)
-			activeTabIsRaw = true
-			return
-		}
-		ruleSel.SetType(detected)
-		switch detected {
-		case wizardmodels.RuleTypeIPS:
-			if ips := ExtractStringArray(obj["ip_cidr"]); len(ips) > 0 {
-				ipEntry.SetText(strings.Join(ips, "\n"))
+	// askDiscardRaw — с вкладки JSON не уйти (ошибка или форма не выражает):
+	// выбор «отбросить правки JSON» (тело — снова из формы, переход на
+	// вкладку target) или «остаться в редакторе JSON».
+	askDiscardRaw := func(title, msg string, target *container.TabItem) {
+		text := widget.NewLabel(msg + "\n\n" + locale.T("Discard the JSON changes and go back to the form?"))
+		text.Wrapping = fyne.TextWrapWord
+		d := dialog.NewCustomConfirm(title, locale.T("Discard"), locale.T("Keep editing"), text, func(discard bool) {
+			if !discard {
+				return
 			}
-		case wizardmodels.RuleTypeURLs:
-			if arr := ExtractStringArray(obj["domain_suffix"]); len(arr) > 0 {
-				domainModeSelect.SetSelected(locale.T("Suffix"))
-				urlEntry.SetText(strings.Join(arr, "\n"))
-			} else if arr := ExtractStringArray(obj["domain_keyword"]); len(arr) > 0 {
-				domainModeSelect.SetSelected(locale.T("Keyword"))
-				urlEntry.SetText(strings.Join(arr, "\n"))
-			} else if re, ok := obj["domain_regex"].(string); ok && re != "" {
-				domainModeSelect.SetSelected(locale.T("Regex"))
-				domainRegexEntry.SetText(re)
-			} else if domains := ExtractStringArray(obj["domain"]); len(domains) > 0 {
-				domainModeSelect.SetSelected(locale.T("Exact domains"))
-				urlEntry.SetText(strings.Join(domains, "\n"))
-			}
-			updateDomainLabel()
-			updateVisibility(ruleSel.Type())
-		case wizardmodels.RuleTypeProcesses:
-			if procs := ExtractStringArray(obj[ProcessKey]); len(procs) > 0 {
-				processesSelected = dedupeProcessStrings(procs)
-				sortProcessStrings(processesSelected)
-				refreshSelectedProcessesUI()
-			} else if arr := ExtractStringArray(obj[ProcessPathRegexKey]); len(arr) > 0 {
-				matchByPathCheck.SetChecked(true)
-				pathPatternsEntry.SetText(strings.Join(arr, "\n"))
-			}
-		}
-		// Восстанавливаем outbound в форме из rule
-		if ob, ok := obj["outbound"].(string); ok && ob != "" && outboundMap[ob] {
-			outboundSelect.SetSelected(ob)
-		} else if action, ok := obj["action"].(string); ok && action != "" {
-			if outboundMap[action] {
-				outboundSelect.SetSelected(action)
-			}
-		}
+			activeTabIsRaw = false
+			syncFormToRaw()
+			tabs.Select(target)
+		}, dialogWindow)
+		d.Resize(fyne.NewSize(440, 220))
+		d.Show()
 	}
-	// activeTabIsRaw — последняя из вкладок Form/JSON: вкладка DNS её не
-	// меняет, тело правила (для Save и доступности DNS) берётся оттуда.
-	// Синхронизация — только при переходе между Form и JSON, в том числе
-	// через DNS: Form → DNS → Form не перечитывает форму из устаревшего JSON.
+	// leaveRaw — уход с вкладки JSON на target: тело JSON раскладывается в
+	// форму, цель корня — в Direction. false — уйти нельзя (ошибка JSON,
+	// неизвестный выход или форма не выражает тело при переходе на Form),
+	// задан вопрос, окно остаётся на JSON. Тело, которое форма не выражает,
+	// на DNS и Preview остаётся источником (activeTabIsRaw не сбрасывается).
+	leaveRaw := func(target *container.TabItem) bool {
+		match, e := rawMatch()
+		if e != nil {
+			askDiscardRaw(locale.T("JSON error"), e.Error(), target)
+			return false
+		}
+		st, ok := table.StackFromBody(match)
+		if !ok && target == formTabItem {
+			askDiscardRaw(locale.T("Rule not recognized"), locale.T("The form cannot show this rule."), target)
+			return false
+		}
+		outboundSelect.SetSelected(targetOutbound())
+		if ok {
+			loadForm(st.ForForm(), match)
+			activeTabIsRaw = false
+		}
+		return true
+	}
+	// activeTabIsRaw — тело правила берётся с вкладки JSON. Уход с JSON на
+	// любую вкладку раскладывает JSON в форму (leaveRaw); JSON остаётся
+	// источником, только если форма тело не выражает.
 	tabs.OnSelected = func(t *container.TabItem) {
 		switch t {
 		case rawTabItem:
@@ -1407,58 +479,122 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				activeTabIsRaw = true
 				syncFormToRaw()
 			}
-		case formTabItem:
-			if activeTabIsRaw {
-				activeTabIsRaw = false
-				syncRawToForm()
+		default:
+			if activeTabIsRaw && !leaveRaw(t) {
+				tabs.Select(rawTabItem)
+				return
 			}
-		case previewTabItem:
-			refreshPreview()
+			if t == previewTabItem {
+				refreshPreview()
+			}
 		}
-		updateDNSAvailability()
+		refreshState()
 	}
 
-	// Border: сверху Rule name, снизу кнопки, центр — вкладки на всю оставшуюся высоту
+	if formOK {
+		syncFormToRaw()
+	} else if b, e := json.MarshalIndent(initialBody, "", "  "); e == nil {
+		rawTabEntry.SetText(string(b))
+	}
+
 	mainContent := container.NewBorder(
 		ruleNameBlock,
-		buttonsContainer,
-		nil,
-		nil,
+		container.NewBorder(nil, nil, nil, container.NewHBox(cancelButton, confirmButton), confirmHint),
+		nil, nil,
 		tabs,
 	)
 
-	// Create window - get Application from presenter's controller
-	controller := presenter.Controller()
-	if controller == nil || controller.UIService == nil {
-		return
-	}
-	dialogWindow = controller.UIService.Application.NewWindow(dialogTitle)
-	srsHintButton.OnTapped = func() {
-		msg := widget.NewLabel(locale.T("We recommend looking for suitable rule-set files in the project:"))
-		openBtn := widget.NewButton(locale.T("Open"), func() {
-			_ = platform.OpenURL(runetfreedomSRSURL)
-		})
-		content := container.NewVBox(msg, openBtn)
-		dialog.ShowCustom(locale.T("SRS rule-sets"), locale.T("Close"), content, dialogWindow)
-	}
-	dialogWindow.Resize(fyne.NewSize(500, 640))
+	dialogWindow = app.NewWindow(dialogTitle)
+	ctx.win = dialogWindow
+	dialogWindow.Resize(fyne.NewSize(560, 700))
 	fynewidget.CenterOnScreen(dialogWindow)
 	dialogWindow.SetContent(mainContent)
+	if activeTabIsRaw {
+		tabs.Select(rawTabItem)
+	}
 
-	// Register dialog
 	openDialogs[dialogKey] = dialogWindow
 	updateChildOverlay()
-
 	dialogWindow.SetCloseIntercept(func() {
 		delete(openDialogs, dialogKey)
 		updateChildOverlay()
 		dialogWindow.Close()
 	})
 
-	// Refresh selected processes UI in case we loaded existing values
-	refreshSelectedProcessesUI()
-	updateButtonState()
+	refreshState()
 	dialogWindow.Show()
+}
+
+// ruleMatchOf — тело без цели корня (`outbound`, `action`, `method`), копией
+// верхнего уровня.
+func ruleMatchOf(body map[string]interface{}) map[string]interface{} {
+	if body == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, len(body))
+	for k, v := range body {
+		if !corestate.IsRuleTargetKey(k) {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// ruleWithTarget — копия тела с целью корня по выбору Direction.
+func ruleWithTarget(match map[string]interface{}, outbound string) map[string]interface{} {
+	out := make(map[string]interface{}, len(match)+1)
+	for k, v := range match {
+		out[k] = v
+	}
+	return outboundutil.ApplyOutboundToRule(out, outbound)
+}
+
+// ruleTargetName — выбор Direction по цели тела: outbound, иначе действие
+// (reject; reject + method drop — drop).
+func ruleTargetName(body map[string]interface{}) string {
+	if ob, _ := body["outbound"].(string); ob != "" {
+		return ob
+	}
+	if m, _ := body["method"].(string); m != "" {
+		return m
+	}
+	a, _ := body["action"].(string)
+	return a
+}
+
+// ruleHasNestedTarget — цель (outbound / action / method) стоит в
+// под-правиле группы: цель — только у корня (SPEC 188 §2).
+func ruleHasNestedTarget(body map[string]interface{}) bool {
+	found := false
+	corestate.WalkRuleTree(body, func(path []int, node map[string]interface{}, _ bool) bool {
+		if len(path) == 0 {
+			return true
+		}
+		for k := range node {
+			if corestate.IsRuleTargetKey(k) {
+				found = true
+				return false
+			}
+		}
+		return true
+	})
+	return found
+}
+
+// cloneRuleMap — глубокая копия тела (значения JSON).
+func cloneRuleMap(m map[string]interface{}) map[string]interface{} {
+	if m == nil {
+		return nil
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil
+	}
+	var out map[string]interface{}
+	if json.Unmarshal(b, &out) != nil {
+		return nil
+	}
+	return out
 }
 
 // ruleArrayPastedError — вставлен МАССИВ правил, а запись правила держит
@@ -1474,160 +610,19 @@ func ruleArrayPastedError(trimmed string) error {
 	return errors.New(locale.T(addRuleArrayPastedText))
 }
 
-// normalizeProcName strips the legacy "PID: name" prefix from a process string,
-// returning just the trimmed process name. Inputs without that prefix are
-// returned trimmed as-is.
-func normalizeProcName(s string) string {
-	parts := strings.SplitN(strings.TrimSpace(s), ": ", 2)
-	if len(parts) == 2 {
-		return strings.TrimSpace(parts[1])
-	}
-	return strings.TrimSpace(s)
-}
-
-// sortProcessStrings sorts process strings in place, case-insensitively by name.
-func sortProcessStrings(items []string) {
-	sort.Slice(items, func(i, j int) bool {
-		return strings.ToLower(items[i]) < strings.ToLower(items[j])
-	})
-}
-
-// dedupeProcessStrings normalizes each item (via normalizeProcName), drops empty
-// results, and removes case-insensitive duplicates, preserving first-seen order.
-func dedupeProcessStrings(items []string) []string {
-	seen := make(map[string]struct{}, len(items))
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		n := normalizeProcName(item)
-		key := strings.ToLower(n)
-		if n == "" {
+// conflictingRuleName — имя другого пользовательского правила с тем же
+// идентификатором (state.StableRuleID), что дало бы имя label; пусто — конфликта
+// нет. self — редактируемое правило, оно не сравнивается с собой.
+func conflictingRuleName(rules []*wizardmodels.RuleState, self *wizardmodels.RuleState, label string) string {
+	id := corestate.StableRuleID(corestate.Rule{Kind: corestate.RuleKindInline, Name: label})
+	for _, rs := range rules {
+		if rs == nil || rs == self {
 			continue
 		}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, n)
-	}
-	return out
-}
-
-// rulePreviewInput — состояние окна правила для вкладки Preview.
-type rulePreviewInput struct {
-	label    string
-	outbound string
-	raw      bool   // тело — с вкладки JSON (последняя из Form/JSON)
-	rawText  string // текст вкладки JSON
-	rawSRS   func(map[string]interface{}) []json.RawMessage
-	form     func() (map[string]interface{}, []json.RawMessage, error)
-	dns      *corestate.RuleDNS
-}
-
-// rulePreviewSection — секция конфига в превью; ключи в порядке конфига.
-type rulePreviewSection struct {
-	RuleSet []interface{} `json:"rule_set,omitempty"`
-	Rules   []interface{} `json:"rules,omitempty"`
-}
-
-// rulePreviewText — что правило даёт в конфиге: route.rule_set, route.rules и
-// DNS-зеркала (SPEC 172), с пояснениями строками `//` над JSON — набор не
-// скачан, сервер зеркала выключен или не найден, опция DNS не применима.
-// Запись правила собирается так же, как при Save (EmitStateRulesWithoutOrder),
-// маршрут и зеркала — кодом сборки.
-func rulePreviewText(model *wizardmodels.WizardModel, in rulePreviewInput) string {
-	var body map[string]interface{}
-	var ruleSets []json.RawMessage
-	if in.raw {
-		if json.Unmarshal([]byte(strings.TrimSpace(in.rawText)), &body) != nil {
-			body = nil
-		} else if in.rawSRS != nil {
-			ruleSets = in.rawSRS(body)
-		}
-	} else if b, rs, err := in.form(); err == nil {
-		body, ruleSets = b, rs
-	}
-	outbound := in.outbound
-	if outbound == "" {
-		outbound = wizardmodels.DefaultOutboundTag
-	}
-	rs := &wizardmodels.RuleState{
-		Rule:             wizardtemplate.TemplateSelectableRule{Label: in.label, Rule: body, RuleSets: ruleSets, HasOutbound: true},
-		Enabled:          true,
-		SelectedOutbound: outbound,
-		DNS:              in.dns,
-	}
-	rules := wizardmodels.EmitStateRulesWithoutOrder(nil, []*wizardmodels.RuleState{rs})
-	if body == nil || len(rules) == 0 {
-		return "// " + locale.T("Fill in the rule to see what it adds to the config.")
-	}
-
-	srsCached := build.CollectSrsCachedPaths(rules, model.DataDir, model.ResourceDir)
-	route := build.ResolveRouteWithGlobals(&corestate.State{Rules: rules}, &wizardtemplate.TemplateData{}, model.DataDir, srsCached, model.Target, nil)
-
-	var notes []string
-	routeSec := &rulePreviewSection{}
-	for _, r := range route.RuleSets {
-		if r.Skipped {
-			notes = append(notes, locale.T("Rule set not downloaded yet: the rule stays out of the config until it is."))
-			continue
-		}
-		routeSec.RuleSet = append(routeSec.RuleSet, r.Body)
-	}
-	for _, r := range route.Rules {
-		routeSec.Rules = append(routeSec.Rules, r.Body)
-	}
-
-	dnsSec := &rulePreviewSection{}
-	mirrors := build.RuleDNSMirrors(route)
-	if !in.dns.IsZero() && len(route.Rules) > 0 && len(mirrors) == 0 {
-		notes = append(notes, locale.T("DNS options do not apply to this rule: it has no condition DNS queries can match, such as domains, apps or a rule set."))
-	}
-	enabled := make(map[string]bool)
-	for _, t := range wizardbusiness.DNSEnabledTagOptions(model) {
-		enabled[t] = true
-	}
-	present := func(tag string) bool {
-		for _, raw := range model.DNSServers {
-			var m map[string]interface{}
-			if json.Unmarshal(raw, &m) == nil && m["tag"] == tag {
-				return true
-			}
-		}
-		return false
-	}
-	for _, m := range mirrors {
-		for _, r := range m.Rules {
-			if r["server"] != nil && !enabled[m.ServerTag] {
-				if !present(m.ServerTag) {
-					notes = append(notes, fmt.Sprintf(locale.T("DNS server %s not found: its DNS rule stays out of the config."), m.ServerTag))
-					continue
-				}
-				notes = append(notes, fmt.Sprintf(locale.T("DNS server %s is turned off: it is kept in the config because this rule uses it."), m.ServerTag))
-			}
-			dnsSec.Rules = append(dnsSec.Rules, r)
+		other := strings.TrimSpace(rs.Rule.Label)
+		if other != "" && corestate.StableRuleID(corestate.Rule{Kind: corestate.RuleKindInline, Name: other}) == id {
+			return other
 		}
 	}
-
-	out := struct {
-		Route *rulePreviewSection `json:"route,omitempty"`
-		DNS   *rulePreviewSection `json:"dns,omitempty"`
-	}{}
-	if len(routeSec.RuleSet) > 0 || len(routeSec.Rules) > 0 {
-		out.Route = routeSec
-	}
-	if len(dnsSec.Rules) > 0 {
-		out.DNS = dnsSec
-	}
-	if out.Route == nil && out.DNS == nil && len(notes) > 0 {
-		return "// " + strings.Join(notes, "\n// ")
-	}
-	b, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return "// " + err.Error()
-	}
-	text := string(b)
-	if len(notes) > 0 {
-		text = "// " + strings.Join(notes, "\n// ") + "\n\n" + text
-	}
-	return text
+	return ""
 }

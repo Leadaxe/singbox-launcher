@@ -347,9 +347,9 @@ func Import10(s *state.State, b *Backup10, opts ImportOptions) (*ImportResult, e
 	if b == nil {
 		return nil, fmt.Errorf("nil backup")
 	}
-	if b.LxBackup > FormatVersion10 {
+	if b.LxBackup > FormatVersion11 {
 		return nil, fmt.Errorf("backup format v%d is newer than supported v%d — update the app",
-			b.LxBackup, FormatVersion10)
+			b.LxBackup, FormatVersion11)
 	}
 	dec, err := decode10(b, opts)
 	if err != nil {

@@ -1,0 +1,85 @@
+{
+  "rule_set": [
+    {
+      "tag": "Mixed:ads",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Mixed:inline:1.0",
+      "type": "inline",
+      "rules": [
+        {
+          "domain": [
+            "example-3.com"
+          ]
+        }
+      ]
+    }
+  ],
+  "route_rules": [
+    {
+      "type": "logical",
+      "mode": "and",
+      "rules": [
+        {
+          "port": [
+            443
+          ],
+          "source_ip_cidr": [
+            "10.0.0.0/8"
+          ]
+        },
+        {
+          "type": "logical",
+          "mode": "or",
+          "rules": [
+            {
+              "rule_set": [
+                "Mixed:ads",
+                "Mixed:inline:1.0"
+              ]
+            },
+            {
+              "process_name": [
+                "app.exe"
+              ]
+            }
+          ]
+        }
+      ],
+      "outbound": "proxy-out"
+    }
+  ],
+  "dns_rules": [
+    {
+      "type": "logical",
+      "mode": "and",
+      "rules": [
+        {
+          "source_ip_cidr": [
+            "10.0.0.0/8"
+          ]
+        },
+        {
+          "type": "logical",
+          "mode": "or",
+          "rules": [
+            {
+              "rule_set": [
+                "Mixed:ads",
+                "Mixed:inline:1.0"
+              ]
+            },
+            {
+              "process_name": [
+                "app.exe"
+              ]
+            }
+          ]
+        }
+      ],
+      "server": "cf"
+    }
+  ]
+}

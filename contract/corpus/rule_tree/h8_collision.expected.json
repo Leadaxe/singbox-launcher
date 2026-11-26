@@ -1,0 +1,30 @@
+{
+  "rule_set": [
+    {
+      "tag": "Pair:pair-first",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Pair:pair-e31a3654be43599e",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Pair:pair-e31a3654aec37891",
+      "type": "local",
+      "format": "binary"
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "Pair:pair-first",
+        "Pair:pair-e31a3654be43599e",
+        "Pair:pair-e31a3654aec37891"
+      ],
+      "outbound": "proxy-out"
+    }
+  ],
+  "dns_rules": []
+}

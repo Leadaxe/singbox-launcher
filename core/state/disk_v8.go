@@ -1,4 +1,5 @@
-// File disk_v8.go — on-disk-схема state.json v8 (SPEC 127, одно пространство имён).
+// File disk_v8.go — on-disk-схема state.json v8/v9 (SPEC 127, одно пространство
+// имён; v9 — SPEC 188: `refs` внутри тела правила).
 //
 // Отличие от v7 — форма ЗАПИСЕЙ и два имени корневых ключей:
 //
@@ -6,7 +7,7 @@
 //	  "meta":       { version: 8, schema: "sources_v8", ... },
 //	  "sources":    [ {kind, tag, enabled, ...} ],  // юнион по kind
 //	  "directions": [ ... ],                                   // configtypes.Direction
-//	  "rules":      [ {kind, id?, ref?, name?, enabled, num?, refs?, vars?, body?} ],
+//	  "rules":      [ {kind, id?, ref?, name?, enabled, num?, vars?, body?} ],  // v9: refs в body
 //	  "vars":       [ ... ],
 //	  "dns":        { servers, rules, final, strategy },        // бывший dns_options
 //	  "warp":       { ... }                                     // бывший warp_accounts
@@ -23,18 +24,40 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/debuglog"
 )
 
-// SchemaVersionV8 — формат файла state.json, который пишет Save (SPEC 127).
+// SchemaVersionV8 — формат файла state.json SPEC 127: ссылки наборов правила
+// — поле записи `refs`. Читается тем же разбором, что v9.
 const SchemaVersionV8 = 8
 
-// SchemaNameV8 — внутренний идентификатор схемы v8 (хранится в meta.schema).
-// Он же — «мажор схемы» для remote-гейта.
+// SchemaVersionV9 — формат файла state.json, который пишет Save (SPEC 188,
+// контракт 1.1.179): `refs` — ключ простого правила внутри `body`, `kind`
+// выводится из дерева. Остальная форма — как у v8. Мажор поднят ради гейта
+// переноса состояния машин (CheckSchemaCompatible): сборка, знающая только
+// v8, прочитала бы v9 молча и выпустила бы `refs` ядру.
+const SchemaVersionV9 = 9
+
+// SchemaNameV8 — внутренний идентификатор схемы v8 (хранится в meta.schema
+// строкой).
 const SchemaNameV8 = "sources_v8"
+
+// SchemaNameV9 — имя схемы v9 (поле name объекта meta.schema).
+const SchemaNameV9 = "sources_v9"
+
+// SchemaMetaV9 — значение meta.schema файла v9: ОБЪЕКТ, а не строка. Сборки до
+// v9 (2.4.x и develop до SPEC 188) читают любой meta.version >= 8 разбором v8
+// и ссылки srs-правил ищут на записи: v9 они прочли бы молча, с потерей всех
+// srs-правил при первом сохранении Конфигуратора. На объекте в строковом поле
+// их разбор падает с ошибкой — файл отвергается целиком. min_reader — мажор,
+// который файл читать умеет.
+func SchemaMetaV9() json.RawMessage {
+	return json.RawMessage(`{"name":"` + SchemaNameV9 + `","min_reader":` + strconv.Itoa(SchemaVersionV9) + `}`)
+}
 
 // diskStateV8 — корневая модель на диске v8. Используется ТОЛЬКО внутри
 // marshalDisk / parseV8 (порядок полей = порядок ключей файла).
@@ -48,7 +71,8 @@ type diskStateV8 struct {
 	Warp       *WarpAccountsSection    `json:"warp,omitempty"`
 }
 
-// parseV8 — прямой read canonical (v8) формата.
+// parseV8 — прямой read canonical формата v8 и v9 (у v9 отличается только
+// место `refs` правила, его выравнивает NormalizeRuleRecords).
 //
 // Форма каждого источника прогоняется через normalizeSourceShape: лишние для
 // kind'а канонические поля отбрасываются с warning (в лог), неизвестный kind —
@@ -104,6 +128,20 @@ func parseV8(data []byte) (*State, error) {
 	}
 	if t, err := time.Parse(time.RFC3339, raw.Meta.UpdatedAt); err == nil {
 		s.UpdatedAt = t
+	}
+
+	// SPEC 188: `refs` записи (v8) → тело корня, `kind` из дерева — в памяти,
+	// файл v9 перепишет ближайшее сохранение. До миграции тегов ниже: та
+	// читает ссылки правила через RuleRefs, ей форма не важна.
+	if n := NormalizeRuleRecords(s.Rules); n > 0 {
+		debuglog.InfoLog("state: %d rules: rule set refs moved into the rule body", n)
+	}
+
+	// Ссылки на старые теги наборов (`user:<id>`, `user:<id>:N`) переводятся
+	// на теги §6.13 (имя правила, SPEC 188) — в памяти, файл перепишет
+	// ближайшее сохранение. После нормализации: ссылки правила — из дерева.
+	if n := MigrateRuleSetTagRefsV9(s.Rules, s.DNS.Rules); n > 0 {
+		debuglog.InfoLog("state: %d rule_set references moved to the rule-name tags", n)
 	}
 
 	// Legacy CustomRules view — как в v6/v7-парсе: UI-код до Phase 6 читает его.

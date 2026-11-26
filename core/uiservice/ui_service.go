@@ -269,6 +269,10 @@ func (ui *UIService) NudgeWindowsAfterWake() {
 type WizardWindowEntry struct {
 	Window            fyne.Window
 	FocusChildWindows func()
+	// OpenSource открывает окно правки источника с этим тегом (цепочка,
+	// сервер); false — такого источника в окне нет. Нужен баннеру «цепочка
+	// не собрана» главного окна (SPEC 189).
+	OpenSource func(tag string) bool
 }
 
 // WizardWindowFor — окно Конфигуратора цели по ключу. Только UI-поток.

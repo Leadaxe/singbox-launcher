@@ -1,0 +1,21 @@
+{
+  "_": "stem `ads` у двух разных ссылок правила — `-<h8>` у обеих (тег зависит от набора ссылок правила, а не от порядка); третья ссылка — `B:other`. Одна и та же ссылка дважды в `refs` — один тег, одна запись.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Dup",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "https://a.example.com/ads.srs",
+          "https://b.example.com/lists/ads.srs",
+          "https://example.com/other.srs",
+          "https://a.example.com/ads.srs"
+        ],
+        "outbound": "proxy-out"
+      }
+    }
+  ]
+}

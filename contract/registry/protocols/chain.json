@@ -3,10 +3,14 @@
   "scheme": "chain",
   "kind": "outbound",
   "singbox_type": "chain",
-  "note": "Цепочка узлов форка (option/chain_lx.go, SPEC 075). Не имеет ни ServerOptions, ни TLS: адрес и шифрование берутся у хопов. Цепочка — МАРШРУТ, а не Направление (память chain-is-a-source). Файл заведён в W1 SPEC 131 только ради секции body; секции uri/policy у схемы нет — тело рождается в форме, а не из ссылки.",
+  "note": "Цепочка узлов форка (option/chain_lx.go, SPEC 075). Не имеет ни ServerOptions, ни TLS: адрес и шифрование берутся у хопов. Цепочка — МАРШРУТ, а не Направление (память chain-is-a-source). Файл заведён в W1 SPEC 131 только ради секции body; секции uri/policy у схемы нет — тело рождается в форме, а не из ссылки. Контракт 1.1.184 (SPEC 165 форка): ядро ставит узлам позиций >= 1 detour на внутренний хоп «<цепочка>#<i>» (тип chain-hop) вместо копий-звеньев; idle_timeout, strip_evasion, strip сняты из тела (ядро отвергает их загрузкой, фильтры — в lx.detour.strip конфига), __dialer снят: полей дозвона у ChainOutboundOptions ядра нет.",
   "body": {
     "core": "1.14.3-lx.17",
-    "order": ["outbounds", "idle_timeout", "strip_evasion", "strip", "rewrite", "interrupt_exist_connections", "__dialer"],
+    "order": [
+      "outbounds",
+      "rewrite",
+      "interrupt_exist_connections"
+    ],
     "fields": {
       "outbounds": {
         "type": "string_array",
@@ -15,72 +19,11 @@
         "desc_ru": "Теги узлов цепочки по порядку, первый — от клиента.",
         "impl": "json-тег без omitempty; reference:outbound. Элемент [0] — первый хоп от клиента; его способность проксировать вложенный TCP и решает, работает ли цепочка (память chain-first-hop-server-capability). Коды chain_hop_missing, chain_invalid, chain_nested_position."
       },
-      "idle_timeout": {
-        "type": "duration",
-        "default": "5m",
-        "desc_en": "Tear down the chain after this idle period.",
-        "desc_ru": "Разбирать цепочку после простоя такой длительности.",
-        "impl": "0 = жить до остановки ядра."
-      },
-      "strip_evasion": {
-        "type": "bool",
-        "default": true,
-        "tristate": true,
-        "desc_en": "Strip evasion options from inner hops.",
-        "desc_ru": "Снимать средства обхода у внутренних хопов.",
-        "impl": "*bool — три состояния: ключа нет = true (дефолт ядра), явные true и false. Эмиттер обязан различать отсутствие ключа и явное false."
-      },
-      "strip": {
-        "type": "object",
-        "order": [
-          "tls.fragment",
-          "multiplex.padding",
-          "xhttp.padding",
-          "tls.utls"
-        ],
-        "fields": {
-          "tls.fragment": {
-            "type": "bool",
-            "default": true,
-            "desc_en": "Strip TLS ClientHello fragmentation from inner hops.",
-            "desc_ru": "Снимать фрагментацию ClientHello у внутренних хопов.",
-            "impl": "Каталог ядра (sing-box-lx protocol/chain/transform.go stripCatalog): снимается по умолчанию при strip_evasion."
-          },
-          "multiplex.padding": {
-            "type": "bool",
-            "default": true,
-            "desc_en": "Strip multiplex padding from inner hops.",
-            "desc_ru": "Снимать padding мультиплексора у внутренних хопов.",
-            "impl": "Каталог ядра (sing-box-lx protocol/chain/transform.go stripCatalog): снимается по умолчанию при strip_evasion."
-          },
-          "xhttp.padding": {
-            "type": "bool",
-            "default": true,
-            "desc_en": "Strip XHTTP padding from inner hops.",
-            "desc_ru": "Снимать padding XHTTP у внутренних хопов.",
-            "impl": "Каталог ядра (sing-box-lx protocol/chain/transform.go stripCatalog): снимается по умолчанию при strip_evasion."
-          },
-          "tls.utls": {
-            "type": "bool",
-            "default": false,
-            "on_hop_required": {
-              "action": "unstrip",
-              "code": "chain_strip_utls_on_reality"
-            },
-            "desc_en": "Strip the uTLS fingerprint from inner hops.",
-            "desc_ru": "Снимать uTLS-отпечаток у внутренних хопов.",
-            "impl": "Каталог ядра stripCatalog: по умолчанию НЕ снимается. На REALITY-хопе ядро отвергает снятие отказом старта (sing-box-lx protocol/chain/transform.go «strip tls.utls: node uses reality, which requires utls»). on_hop_required (контракт 1.1.61, SPEC 142 B4): когда тело хопа на позиции >= 1 этот путь ТРЕБУЕТ — санитайзер дописал бы его обратно связью requires с set (tls.reality.enabled → tls.utls.enabled), — ключ снимается с патча цепочки (`unstrip`) с кодом chain_strip_utls_on_reality, цепочка собирается. Каталог ядро применяет ко всем позициям разом, поэтому uTLS остаётся у всех звеньев. Прежде — рукописная копия правила в Go (прежний ChainRealityConflict), и цепочка выпадала целиком."
-          }
-        },
-        "desc_en": "Per-option patch to the strip catalogue.",
-        "desc_ru": "Точечная правка каталога снимаемых опций.",
-        "impl": "map[string]bool поверх каталога ядра (sing-box-lx protocol/chain/transform.go stripCatalog); `fields` — ЗАКРЫТЫЙ каталог ядра (контракт 1.1.58, SPEC 142 B3), `order` — порядок показа в форме. `default` ключа = снимается ли он при включённом strip_evasion (при strip_evasion=false каталог пуст, действует только патч). Санитайзер это значение не материализует. НЕИЗВЕСТНЫЙ ключ = ошибка старта на весь конфиг — теперь снимается общим unknown_key. Код chain_strip_utls_on_reality: `sing-box check` такую ошибку не ловит, падает только run (память chain-check-misses-start-errors)."
-      },
       "rewrite": {
         "type": "object",
         "desc_en": "JSON merge patch applied to inner hop options.",
         "desc_ru": "JSON merge-patch поверх опций внутренних хопов.",
-        "impl": "RFC 7396; применяется только к позициям >= 1."
+        "impl": "RFC 7396; применяется к перехваченным узлам (позиции >= 1) до выравнивания MTU (SPEC 165 форка)."
       },
       "interrupt_exist_connections": {
         "type": "bool",
@@ -88,14 +31,6 @@
         "desc_en": "Drop existing connections when the chain changes.",
         "desc_ru": "Рвать существующие соединения при смене цепочки.",
         "impl": "SPEC 075 форка, sing-box-lx option/chain_lx.go."
-      },
-      "__dialer": {
-        "type": "ref",
-        "ref": "dialer",
-        "inline": true,
-        "desc_en": "Common dialer fields, inlined flat into the body.",
-        "desc_ru": "Общие поля dialer, вливаются в тело плоско.",
-        "impl": "DialerOptions встроены в структуру ядра плоско — поля пишутся в корень тела, без обёртки. Список — registry/dialer.json, секция body."
       }
     },
     "lx_only": true,

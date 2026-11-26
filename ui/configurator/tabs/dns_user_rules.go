@@ -24,7 +24,6 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
-	"singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	internaldialogs "singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
@@ -213,9 +212,14 @@ func newDNSRuleEditor(model *wizardmodels.WizardModel, working map[string]interf
 	// на несколько наборов.
 	availableRuleSetTags := collectAllRuleSetTags(model)
 	ruleSetCheck := widget.NewCheckGroup(availableRuleSetTags, nil)
+	// Наборы своих SRS-правил здесь не предлагаются — подсказка, где они.
+	ownSRSHint := widget.NewLabel(locale.T("For your own SRS rules, set DNS in the rule itself: Rules → edit the rule → DNS tab."))
+	ownSRSHint.Wrapping = fyne.TextWrapWord
+	ownSRSHint.Importance = widget.LowImportance
 	srsSection := container.NewVBox(
 		widget.NewLabel(locale.T("Rule set tag:")),
 		ruleSetCheck,
+		ownSRSHint,
 	)
 
 	// === Inline section ===
@@ -516,7 +520,6 @@ func cloneRuleMap(r map[string]interface{}) map[string]interface{} {
 
 // collectAllRuleSetTags — список всех доступных rule_set tag'ов для DNS-rule:
 //   - bundled rule_set tag'и от active preset-ref'ов (ru-direct:ru-domains, ...)
-//   - наборы пользовательских srs-правил (user:<id>, user:<id>:N)
 //
 // Возвращает sorted unique list.
 func collectAllRuleSetTags(m *wizardmodels.WizardModel) []string {
@@ -560,20 +563,13 @@ func collectAllRuleSetTags(m *wizardmodels.WizardModel) []string {
 		}
 	}
 
-	// Наборы пользовательских srs-правил — те же теги, что эмитит сборка
-	// (resolve_route.go): `user:<id>`, `user:<id>:2`, … по одному на URL.
-	// Inline-правила rule_set не порождают. Ссылку на набор, который не попал
-	// в route.rule_set (правило выключено, .srs не скачан), сборка вычищает
-	// из DNS-правила сама (SPEC 153). Issue #140.
-	for _, r := range wizardmodels.EmitStateRulesWithoutOrder(nil, m.CustomRules) {
-		if r.Kind != state.RuleKindSrs {
-			continue
-		}
-		id := state.StableRuleID(r)
-		for i := range r.Refs {
-			add(state.SrsRuleSetTag(id, i))
-		}
-	}
+	// Наборы пользовательских srs-правил (`user:<id>`) в список НЕ входят
+	// (решение владельца 22.11.2026, отмена issue #140): DNS такому правилу
+	// задаётся в самом правиле — вкладка DNS окна правила (SPEC 172), запись
+	// rules[].dns привязана к правилу и переживает его переименование. Здесь
+	// же тег хранился бы текстом и рвался при смене имени. Уже сохранённые
+	// ссылки `user:…` не теряются: форма держит отмеченные теги, которых нет
+	// в списке (withMissingOptions), а вкладка JSON принимает любой тег.
 
 	sort.Strings(out)
 	return out

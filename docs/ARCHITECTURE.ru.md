@@ -467,8 +467,13 @@ build.BuildConfig  (чистая)
   уходит в конфиг как есть, после подстановки `@var` / `#if`. Это единственный канал
   для `lx.masque.idle_timeout` (ядро ≥ lx.13; блок `lx` в шаблоне допустим только
   вместе с таким пином, lx.12 отвергает неизвестный ключ корня). UI для него нет.
-  Ключи сна WireGuard лаунчер не пишет ни в какой форме (`route.lx_idle_*`,
-  `lx.wg.*`): десктопные сборки ядра собраны без `with_lx_idle_suspend` и отвергают их
+  С ядра lx.36 тот же блок несёт `lx.wg.buffers.*` и `lx.wg.connected_socket`
+  (Settings → WireGuard, переменные `wg_read_datagram_count`, `wg_send_by_mtu`,
+  `wg_connected_socket`; ключ пишется только при значении, отличном от дефолта ядра;
+  `wg_read_datagram_count` у удалённой Linux-машины по умолчанию 8,
+  контракт 1.1.183; закреплено `TestBundledTemplate_WGBlock`).
+  Ключи сна WireGuard лаунчер не пишет ни в какой форме (`route.lx_idle_*`, плоские
+  `lx.wg.idle_*` ядер до lx.36, `lx.wg.idle.*`): десктопные сборки ядра собраны без `with_lx_idle_suspend` и отвергают их
   на старте (SPEC 138; закреплено `TestBuildConfigPassesRootLXBlock`).
 
 ---

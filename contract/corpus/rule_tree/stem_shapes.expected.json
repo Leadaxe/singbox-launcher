@@ -1,0 +1,48 @@
+{
+  "rule_set": [
+    {
+      "tag": "Shapes:ads",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Shapes:noext",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Shapes:geo.tar",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Shapes:list.txt",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Shapes:LIST",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Shapes:list",
+      "type": "local",
+      "format": "binary"
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "Shapes:ads",
+        "Shapes:noext",
+        "Shapes:geo.tar",
+        "Shapes:list.txt",
+        "Shapes:LIST",
+        "Shapes:list"
+      ],
+      "outbound": "proxy-out"
+    }
+  ],
+  "dns_rules": []
+}

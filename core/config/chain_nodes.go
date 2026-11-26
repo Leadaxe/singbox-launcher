@@ -123,7 +123,7 @@ func ResolveChainSources(
 		return allNodes, nil, nil
 	}
 
-	supported, unsupportedReason := chainSupported()
+	supported, unsupportedReason := chainSupportedFor(parserConfig.BuildTarget)
 	if unsupportedReason == "" {
 		unsupportedReason = "the core does not support chains"
 	}
@@ -176,8 +176,9 @@ func ResolveChainSources(
 	chainTags := make(map[string]bool, 4)
 
 	var broken []ChainDegradation
-	// notes — цепочки, которые собрались, но не так, как настроены
-	// (strip ключа, нужного звену): код в отчёт сборки.
+	// notes — цепочки, которые собрались, но не так, как настроены: код в
+	// отчёт сборки. С SPEC 189 таких случаев нет (каталог strip у цепочки снят
+	// вместе с правилом unstrip), канал оставлен для следующих.
 	var notes []EmissionWarning
 	for i, src := range parserConfig.ParserConfig.Proxies {
 		if src.Disabled {
@@ -189,18 +190,8 @@ func ResolveChainSources(
 			if bc.Chain == nil {
 				continue
 			}
-			node, reason, unstripped := buildChainNode(src, i, ci, bc, supported, unsupportedReason, known, nodesByTag, chainTags)
+			node, reason := buildChainNode(src, i, ci, bc, supported, unsupportedReason, known, nodesByTag, chainTags)
 			if node != nil {
-				for _, n := range unstripped {
-					params := map[string]string{"target": strings.Join(n.Hops, ", ")}
-					notes = append(notes, EmissionWarning{
-						Text:        node.Tag + ": " + registryWarningText(n.Code, params, n.Code),
-						SourceID:    strings.TrimSpace(src.ID),
-						SourceLabel: sourceDisplayName(src, i),
-						Code:        n.Code,
-						Params:      params,
-					})
-				}
 				allNodes = append(allNodes, node)
 				nodesBySource[i] = append(nodesBySource[i], node)
 				known[node.Tag] = true
@@ -230,7 +221,7 @@ func buildChainNode(
 	known map[string]bool,
 	nodesByTag map[string]*ParsedNode,
 	chainTags map[string]bool,
-) (*ParsedNode, ChainDegradation, []ChainUnstripNote) {
+) (*ParsedNode, ChainDegradation) {
 	tag := chainNodeTag(bc, sourceIndex, chainIndex)
 	name := tag
 	// Подпись источника называет цепочку только у корневой записи: у папки
@@ -240,8 +231,8 @@ func buildChainNode(
 			name = s
 		}
 	}
-	degrade := func(reason, code string, params map[string]string) (*ParsedNode, ChainDegradation, []ChainUnstripNote) {
-		return nil, ChainDegradation{Tag: tag, Name: name, Reason: reason, Code: code, Params: params}, nil
+	degrade := func(reason, code string, params map[string]string) (*ParsedNode, ChainDegradation) {
+		return nil, ChainDegradation{Tag: tag, Name: name, Reason: reason, Code: code, Params: params}
 	}
 
 	if !supported {
@@ -280,14 +271,6 @@ func buildChainNode(
 				})
 		}
 	}
-	// Ключ каталога strip, который снял бы с звена то, что его тело требует
-	// (tls.utls у REALITY), по правилу реестра не снимается: цепочка
-	// собирается, а о снятом ключе сообщает код (chain.json on_hop_required).
-	chain, unstripped := ChainUnstripRequired(bc.Chain, nodesByTag)
-	for _, n := range unstripped {
-		debuglog.WarnLog("chain: source %q: %s — strip %q turned off, positions %s require it",
-			tag, n.Code, n.Key, strings.Join(n.Hops, ", "))
-	}
 	if nested := ChainNestedConflict(bc.Chain, chainTags); len(nested) > 0 {
 		return degrade("chains "+strings.Join(nested, ", ")+
 			" are not in the first position — the core allows a nested chain only at position 0",
@@ -307,14 +290,14 @@ func buildChainNode(
 		// падала на запасное правило.
 		IdentityTag: tag,
 		Scheme:      configtypes.ChainOutboundType,
-		Outbound:    ChainOutboundObject(tag, chain),
+		Outbound:    ChainOutboundObject(tag, bc.Chain),
 		SourceIndex: sourceIndex,
 		EmitRaw:     true,
 		// SPEC 132: обратный путь «финальный тег → узел состояния». У
 		// сборочной формы, положенной вызывающим напрямую, ссылки нет —
 		// такому узлу тег не сопоставится, и страховка на него не действует.
 		CanonicalLink: bc.Link,
-	}, ChainDegradation{}, unstripped
+	}, ChainDegradation{}
 }
 
 // chainNestedPositions — номера позиций (с единицы), на которых стоят

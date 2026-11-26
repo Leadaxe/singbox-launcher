@@ -37,8 +37,7 @@
           "relay-root",
           "de-1",
           "US-1"
-        ],
-        "idle_timeout": "0s"
+        ]
       },
       "hops": [
         { "tag": "relay-root" },
@@ -52,8 +51,7 @@
         "hops": [
           "proxy-eu",
           "tokyo"
-        ],
-        "idle_timeout": "0s"
+        ]
       },
       "hops": [
         { "tag": "proxy-eu" },

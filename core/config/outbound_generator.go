@@ -739,7 +739,7 @@ func generateEndpointJSONBare(node *ParsedNode, forConfig bool, remoteRoot strin
 	// отступы восстанавливаются: иначе на ядре постарше endpoints уезжал бы
 	// в конфиг одной строкой — рабочей, но нечитаемой человеку, который в
 	// этот конфиг и заглядывает, когда что-то не так.
-	gated, changed := gateBodyForCore(node.Scheme, node.Tag, jsonBytes)
+	gated, changed := gateBodyForCore(node.Scheme, node.Tag, jsonBytes, node.BuildTarget)
 	if !changed {
 		return string(jsonBytes), nil
 	}
@@ -917,7 +917,7 @@ func GenerateOutboundsFromParserConfig(
 	// ядру не по силам, снимается с кодом реестра вместо конфига, который
 	// `sing-box check` отверг бы целиком. Возможности ядра — одна проба на
 	// прогон.
-	buildCore := coreCapabilitiesForBuild()
+	buildCore := coreCapabilitiesFor(parserConfig.BuildTarget)
 	var coreSkips coreSkipTally
 
 	// SPEC 118 W4: эмиссионные деградации канонического пути (битое тело,
@@ -1215,6 +1215,13 @@ func GenerateOutboundsFromParserConfig(
 		}
 	}
 	for _, node := range allNodes {
+		// SPEC 186: полевой гейт ядра — по машине-цели сборки, включая звенья.
+		if node != nil && parserConfig.BuildTarget != nil {
+			node.BuildTarget = parserConfig.BuildTarget
+			for _, hop := range chainOfNode(node) {
+				hop.BuildTarget = parserConfig.BuildTarget
+			}
+		}
 		outJSONs, epJSON, err := EmitNodeJSONsFor(node, parserConfig.TailscaleRemoteStateDirRoot)
 		if err != nil {
 			debuglog.WarnLog("GenerateOutboundsFromParserConfig: Failed to generate JSON for node %s: %v", node.Tag, err)
@@ -1411,7 +1418,7 @@ func generateCanonicalBodyJSON(node *ParsedNode) (string, error) {
 	// Здесь единственное место, где сохранённое тело становится outbound'ом
 	// config.json, — значит и гейту место здесь, одной табличной проверкой
 	// по реестру вместо частной пробы на каждое поле.
-	gated, _ := gateBodyForCore(node.Scheme, node.Tag, repairBodyForBuild(node.Scheme, node.Tag, node.Authored, node.EmitBody))
+	gated, _ := gateBodyForCore(node.Scheme, node.Tag, repairBodyForBuild(node.Scheme, node.Tag, node.Authored, node.EmitBody), node.BuildTarget)
 	return stampTagAndDetour(gated, node)
 }
 

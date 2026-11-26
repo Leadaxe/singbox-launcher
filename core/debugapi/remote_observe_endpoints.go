@@ -163,16 +163,24 @@ func (s *Server) handleRemotePool(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	slots, err := t.PoolSlots(group)
+	pool, err := t.PoolState(group)
 	if err != nil {
 		writeRemoteError(w, err)
 		return
 	}
-	out := make([]map[string]any, 0, len(slots))
-	for _, sl := range slots {
-		out = append(out, map[string]any{"slot": sl.Slot, "tag": sl.Tag, "delay_ms": sl.Delay})
+	out := make([]map[string]any, 0, len(pool.Slots))
+	for _, sl := range pool.Slots {
+		out = append(out, map[string]any{
+			"slot": sl.Slot, "tag": sl.Tag, "delay_ms": sl.Delay,
+			"quarantined": sl.Quarantined, "connections": sl.Connections,
+			"confirmed_failures": sl.ConfirmedFailures,
+		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"group": group, "slots": out})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"group": group, "slots": out,
+		"shifted_keys": pool.ShiftedKeys, "marked_keys": pool.MarkedKeys,
+		"frozen": pool.Frozen, "frozen_seconds": pool.FrozenSeconds,
+	})
 }
 
 func (s *Server) handleRemoteRulesList(w http.ResponseWriter, r *http.Request) {

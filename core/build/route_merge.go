@@ -9,6 +9,7 @@ import (
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/outboundutil"
 	"singbox-launcher/internal/paths"
+	"singbox-launcher/internal/srstag"
 )
 
 // RouteRule — одно custom-rule из state, в форме, готовой для merge'а.
@@ -169,7 +170,7 @@ func MergeRouteSection(raw json.RawMessage, cfg RouteConfig) (json.RawMessage, e
 //
 // Тег уже content-addressed (SRSTagFromURL), поэтому имя стабильно и
 // безопасно как базовое: без разделителей пути и без «..».
-func ResourceNameForSRS(tag string) string { return tag + ".srs" }
+func ResourceNameForSRS(tag string) string { return srstag.FileName(tag) }
 
 // convertRuleSetToLocalRequired эмитит rule-set строго как type:local (или
 // inline). Логика по типу:

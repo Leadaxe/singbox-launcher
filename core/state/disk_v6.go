@@ -29,6 +29,8 @@
 // См. SPECS/053-F-N-PRESET_BUNDLES/SPEC.md, SPECS/056-R-N-DNS_SCHEMA_REDESIGN/SPEC.md.
 package state
 
+import "encoding/json"
+
 // SchemaVersionV6 — формат файла state.json эпохи v6 (SPEC 053/056).
 // SPEC 118: только чтение (parseV6Legacy); Save пишет SchemaVersionV7.
 const SchemaVersionV6 = 6
@@ -92,11 +94,16 @@ type WarpMasqueAccount struct {
 // MetaSection — мета v6 (заменяет v5.MetaSection). Добавлено поле Schema для
 // будущего versioning'а.
 type MetaSection struct {
-	Version   int    `json:"version"`
-	Schema    string `json:"schema,omitempty"`
-	Comment   string `json:"comment,omitempty"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	Version int `json:"version"`
+	// Schema — имя схемы. До v9 строка ("sources_v8"); v9 пишет объект
+	// {"name": "sources_v9", "min_reader": 9} (SchemaMetaV9): разбор сборки,
+	// знающей только строку, падает на нём с ошибкой — файл новее приложения
+	// отвергается, а не читается с потерями (SPEC 188). Читается сырым: имя
+	// схемы никто не разбирает, мажор держит Version.
+	Schema    json.RawMessage `json:"schema,omitempty"`
+	Comment   string          `json:"comment,omitempty"`
+	CreatedAt string          `json:"created_at"`
+	UpdatedAt string          `json:"updated_at"`
 
 	// Target (SPEC 097) — для какой машины state готовит конфиг:
 	// "local" (эта машина) или "remote" (сервер/роутер/другой mac).

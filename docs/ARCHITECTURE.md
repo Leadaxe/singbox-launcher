@@ -253,6 +253,16 @@ set it, so a machine path cannot leak into the local `config.json`. Window previ
 (source JSON tab, folder copy, Add server) use the same root via
 `wizardbusiness.TailscaleRemoteRootOf(model)`.
 
+The same rule covers the other machine-owned build inputs (SPEC 186), carried in the
+build-only field `ParserConfig.BuildTarget` (`wizardbusiness.BuildTargetOf(model)`,
+nil for Local): the node gate uses the machine's OS and the core version from its
+daemon passport instead of the launcher's probes (the machine's build tags are unknown,
+so the tag gate and the chain probe are not applied to it), and `@vars` in direction
+options resolve from the machine's Settings (`config.BuildVarSubstituterFor`). Template
+presets are filtered by the target OS: `TemplateData.Presets` holds the launcher-OS
+selection, `TemplateData.ForTarget(target)` re-selects from `AllPresets`, and the model
+calls it after every `Target` change (`WizardModel.SyncTemplateToTarget`).
+
 The traffic profiler windows (local singleton + one per machine) put the target into
 the title the same way (`WindowDeps.Subject` → `FormatRecordingTitle(subject, session)`),
 including while recording.
@@ -609,7 +619,8 @@ build.BuildConfig  (pure)
             │      state entry yet gets its slot by the rule axis (state.PresetDNSSlotIndex,
             │      SPEC 171) — the same rule the Configurator and Debug API apply;
             │      DNS mirrors of own rules (rules[].dns, SPEC 172) are derived from the
-            │      resolved route (RuleDNSMirrorMatch: registry allowlists) and inserted
+            │      resolved route by the rule's condition tree (SPEC 188, §11.12;
+            │      RuleDNSMirrorMatch: registry allowlists) and inserted
             │      before the first preset slot with a higher axis number
             │      (RuleDNSMirrorIndex) — never stored in state.DNS.Rules; per rule the
             │      order is Block HTTPS (dns.blockHttps, SPEC 181) → Force IPv4 →
@@ -618,10 +629,12 @@ build.BuildConfig  (pure)
             │      server is emitted only when state.DNS.Servers has its kind=template
             │      entry (required — always)
             │
-            └─► MergeRouteSection → MergePresetsIntoRoute → ResolveRoute (pure)
+            └─► MergeRouteSection → MergePresetsIntoRoute → ResolveRouteTagged (pure)
                    walk state.Rules kind switch (preset / inline / srs),
                    ExpandPreset per preset-ref (canonical @var walker, eval if/if_or,
-                   prefix tags, clean dangling rule_set refs)
+                   prefix tags, clean dangling rule_set refs); own rules walk the
+                   body condition tree (rule sets from refs, tags from the rule
+                   name — §11.12)
             │
             ▼
 concat final JSON → atomicWriteConfig(config.json)
@@ -733,9 +746,14 @@ Key properties:
   `lx` block) is emitted as-is after `@var` / `#if` substitution. This is the only
   channel for `lx.masque.idle_timeout` (core ≥ lx.13; the template may carry `lx`
   only together with that pin, lx.12 rejects the unknown root key). There is no UI
-  for it. The launcher never emits the WireGuard idle-suspend keys in either form
-  (`route.lx_idle_*`, `lx.wg.*`): desktop core builds lack `with_lx_idle_suspend`
-  and refuse them at start (SPEC 138; pinned by `TestBuildConfigPassesRootLXBlock`).
+  for it. Since core lx.36 the same block carries `lx.wg.buffers.*` and
+  `lx.wg.connected_socket` (Settings → WireGuard, vars `wg_read_datagram_count`,
+  `wg_send_by_mtu`, `wg_connected_socket`; a key is written only when it differs
+  from the core default; `wg_read_datagram_count` defaults to 8 for a remote Linux
+  machine, contract 1.1.183; pinned by `TestBundledTemplate_WGBlock`).
+  The launcher never emits the WireGuard idle-suspend keys in any form
+  (`route.lx_idle_*`, the flat `lx.wg.idle_*` of cores before lx.36, `lx.wg.idle.*`):
+  desktop core builds lack `with_lx_idle_suspend` and refuse them at start (SPEC 138; pinned by `TestBuildConfigPassesRootLXBlock`).
   A pass-through section that substitution left as `{}` is not written, and keys
   outside node bodies newer than the executing core are dropped by the table
   `contract/registry/core_config.json` (`nodeflow.GateConfigForCore`): at build
@@ -1157,7 +1175,7 @@ above did not.
 | **Full callback → event retirement** — wire `ConfigBuilt`/`StateChanged` subscriptions in the Core dashboard; retire `UpdateCoreStatusFunc`/`UpdateConfigStatusFunc`; make `VpnStateChanged` single-mechanism. | ADR-070-3 | **Needs GUI runtime verification.** UI status refresh is timing-sensitive (`fyne.Do` dispatch, dirty-marker styling); swapping the delivery mechanism must be observed live. Publishers are already in place so this is low-code-risk but high-verification-cost. |
 | **`JSONBuilder` full adoption** — migrate every protocol field generator in `GenerateNodeJSON` / selector generation onto `JSONBuilder` (insertion-order-safe), behind golden tests. | ADR-070-5 | **Partially done.** The builder exists and is used; finishing the migration is incremental and golden-test-guarded, but not blocking. |
 | ~~**Transport/TLS unification** — merge `uriTransportFromQuery` + `xrayTransportFromStreamSettings` into one `TransportSpec` builder, and the three TLS builders into one `TLSSpec` builder.~~ | ADR-070-6 | **No longer deferred — removed by SPEC 133.** Both hand-written paths are gone: the URI input and the Xray input are led by the same registry table through `core/config/linkmap`, so there is nothing left to merge. The round-trip risk the row describes is now covered by two runners — a byte-for-byte snapshot of the link and `parse(emit(body)) == body` over the whole corpus. |
-| **UI view decomposition** — `proxy_list_panel.go` (1701 LOC, still the largest despite the `_helpers`/`_render`/`_autorefresh` peels) → state+handlers; `add_rule_dialog.go` (1154 LOC) → editor-state/tabs/process-picker; `outbounds_configurator/edit_dialog.go` (1095 LOC) → edit-state/form-builder/template-resolver. | (supports ADR-070-1) | **Needs GUI runtime verification + ordered after dual-state.** These closures capture large mutable UI state; extracting it safely is best done once dual-state is gone, with live click-through verification. |
+| **UI view decomposition** — `proxy_list_panel.go` (1701 LOC, still the largest despite the `_helpers`/`_render`/`_autorefresh` peels) → state+handlers; `add_rule_dialog.go` — done in SPEC 188 (568 LOC; condition stack, DNS, Preview and process picker in their own files, §11.12); `outbounds_configurator/edit_dialog.go` (1095 LOC) → edit-state/form-builder/template-resolver. | (supports ADR-070-1) | **Needs GUI runtime verification + ordered after dual-state.** These closures capture large mutable UI state; extracting it safely is best done once dual-state is gone, with live click-through verification. |
 | **`config_service.go` decomposition** — the file split is **done** (1066 → 538 LOC, with `config_service_context.go` + `config_service_subscriptions.go` peeled off); what remains is promoting those to real `SubscriptionFetcher` / `ConfigContextBuilder` seams and splitting `UpdateConfigFromSubscriptions` itself. | (supports ADR-070-5) | **High concurrency risk.** Must preserve `SubscriptionMu` boundaries across new service seams; needs the existing `refresh_meta`/`update` tests plus runtime verification of auto-update + manual-update races. |
 | **CI import-graph check** enforcing L*n* → L*≤n*. | ADR-070-1 | **Planned tooling**, not yet built; would lock in the layer model and catch V1/V2-style regressions. |
 
@@ -1568,3 +1586,116 @@ OpenConnectSubmitForm / OpenConnectSubmitBrowser / OpenConnectCancel
   listener are on this computer and the machine's core receives only the URL
   string. Cookie/header SSO (AnyConnect) is not supported: the dialog says so
   and sends nothing.
+### 11.11 Rule-set (.srs) refresh (SPEC 185)
+
+A rule-set in **local** mode is a refreshable resource, like a subscription:
+the launcher keeps the file, the core reads it as `type: local`.
+
+- **Who needs what** — `build.PresetMergeContext.RuleSetFetches()`
+  (`core/build/rule_set_policy.go`): the local-mode sets of the enabled rules
+  (`kind: srs` refs, preset `rule_set` entries after the same
+  `ExpandPresetForNodes` the build uses), each with its interval. Settings
+  resolve rule → template var (`srs_mode`, `srs_update_interval_hours`,
+  `srs_download_detour`) → built-in default (`ResolveRuleSetPolicy`).
+- **Loop** — `runScheduledSRSRefresh` (`core/srs_refresh.go`) rides the hourly
+  auto-update loop next to the subscription sweep: a file older than its
+  interval (mtime is the only freshness record) is fetched with a conditional
+  GET, validated (`SRS` magic or JSON) and renamed into place. At most two
+  downloads at once; a failure keeps the old file, is retried once after 15 s
+  and on the next VPN-state event, then not before an hour. The running core
+  reloads a replaced local set itself (fswatch), so the config is not rebuilt —
+  it is only marked stale when a file that was **missing** appeared.
+- **Build and start** — `RebuildConfigIfDirty` downloads only missing files
+  (20 s budget) before building; a `kind: srs` rule whose file is still absent
+  drops out (`DropUncachedSrsPaths`), like a preset rule. `rebuildConfigBeforeStart`
+  forces a build when `config.json` references a local set that is not on disk.
+- **Remote machines** — no background push. `services.PreDeployFunc`
+  (`RefreshMachineRuleSets`) refreshes the machine's `srs/` directory right
+  before `Deploy`, which then uploads the files whose SHA-256 changed.
+- **Remote mode** — the build emits `type: remote` with `url`,
+  `update_interval` and `download_detour` instead of a local path
+  (`remoteRuleSetBody`); the launcher keeps no file. `download_detour` is a
+  graph edge: a target missing from the final outbound tags drops the set and
+  its rule (`ResolveRouteChecked`), and a Direction rename rewrites it
+  (`editRootNameRefs`, kind 8).
+- **File sets and JSON (SPEC 187)** — a `kind: srs` ref is `http(s)://` or
+  `file://`; the source is a property of the ref, not a rule kind. `fetchSRS`
+  has a `file://` transport (`copyFileRef`): the source file is copied into the
+  rule-set directory through the same tmp → validate → rename tail, the copy
+  takes the source mtime, and "unchanged" means equal size and mtime. Such a
+  set is compared on every sweep (the interval does not apply; `0` still turns
+  auto-update off) and its rule is always local (`build.RulePolicy`). The
+  format follows the extension of the ref path: `.json` → `source`, otherwise
+  `binary`. `internal/srstag` is the single place for it: a `.json` ref gets
+  the tag `<name>-<hash8>.json`, so `FileName(tag)` / `Format(tag)` /
+  `TagFromFileName(name)` derive the copy name and format from the tag alone
+  in the downloader, the loop, the build, Deploy resources and orphan GC.
+
+### 11.12 Rule condition tree (SPEC 188)
+
+A user rule's `body` is a sing-box route rule as a condition tree: a simple
+rule (conditions), or `type: logical` with `mode: and | or`, `rules[]`,
+`invert`, nested without limit; the target sits at the root only. Rule-set
+links `refs` live inside any simple rule of the tree (state v9, `lx_backup: 3`,
+contract 1.1.179–1.1.181). The table "key → condition, field kind, goes to DNS,
+goes to a set" is `contract/registry/rule_conditions.json`
+(`core/config/registry/rule_conditions.go`); neither the form nor the build
+names condition keys.
+
+**Flow: body tree → tags → sets → route rule → DNS mirror.**
+
+1. **Load** — `parseV8` runs `NormalizeRuleRecords` (`core/state/rule_tree.go`):
+   a record `refs` (old form) is lifted into the root of the body (a `logical`
+   root is wrapped in `and`), `kind` is derived (`refs` in the tree → `srs`).
+   `MigrateRuleSetTagRefsV9` (`rule_identity.go`) rewrites handwritten
+   `rule_set` references to the old `user:<id>` tags and to the interim
+   1.1.179–1.1.181 tags inside rule bodies and `user` DNS rules. `RuleRefs` is the only reader of a rule's links.
+2. **Tags** — `ResolveRouteTagged` (`core/build/resolve_route.go`) reserves the
+   template's `route.rule_set` tags and every preset's tags
+   (`ReservedRuleSetTags`), then `AllocateRuleTags` (`core/state/rule_tags.go`)
+   hands out one base per inline/srs record along the axis — enabled or not,
+   emitted or not — so the tag depends only on names and order and matches
+   LxBox: `B`, `B (2)`, …; links `B:<stem>` (`RefStem`: file name of the link
+   path without `.srs` / `.json`; same stem twice — `B:<stem>-<h8>` both,
+   no file name — `B:<h8>`), inline sets `B` (root) / `B:inline:<path>`
+   (contract 1.1.182).
+3. **Sets and route rule** — `emitUserRule` (`core/build/rule_tree_emit.go`)
+   walks the tree: each link becomes a `rule_set` entry (local or remote by
+   `RulePolicy`, file name from the link — `internal/srstag`), the set keys of
+   a simple rule with links (`domain*`, `ip_cidr`) go into its inline set,
+   `invert` and everything else stay on the rule, and the rule gets
+   `rule_set: [handwritten…, links…, inline]`. All or nothing: a set of the
+   tree that is not available drops the whole rule (`Skipped` + log).
+   `dropDanglingHandwrittenRuleSets` drops a rule whose handwritten `rule_set`
+   names a set that is not emitted, instead of letting the core fail.
+4. **DNS mirror** — `ruleTreeMirror` repeats the tree with only the keys of
+   `rule_dns_mirror_match`: an inline set without domain keys is dropped from
+   `rule_set`, empty children of `and`/`or` are dropped, a single child loses
+   its wrapper (its `invert` moves onto the child), `invert` is always carried.
+   An empty root means no mirror; `RuleDNSMirrorEmpty` is the ⚠ "DNS options
+   have no effect" of the DNS tab and the rule row. `collectRuleDNSMirrors`
+   (`rule_dns_mirror.go`) wraps Block HTTPS / Force IPv4 / Fixed IP actions over
+   a `logical` mirror (or a simple one with `invert`) in `and`, since the core
+   takes no `query_type` / `ip_version` on a `logical` root.
+
+**Form layout** (`ui/configurator`):
+
+| File | Role |
+|---|---|
+| `models/rule_conditions.go` | Stack model: `StackFromBody` / `Body`; an unchanged stack keeps the original body map |
+| `dialogs/add_rule_dialog.go` | Window: name, outbound, tabs Form / JSON / DNS / Preview, save; JSON ↔ form through the model |
+| `dialogs/rule_cond_stack.go` | Stack of condition frames, "AND" between them, "+ Condition" menu, "Rule group" below a separator |
+| `dialogs/rule_cond_frame.go` | One condition: fields by kind from the registry, "any of", one-of Process, Wi-Fi note by the target platform |
+| `dialogs/rule_cond_group.go` | Rule group: all of / any of, Not, nested rules, "+ Rule" (recursive) |
+| `dialogs/rule_cond_refs.go` | Rule-set field (URL or file, "Add file…"), private-IP box locked while links are set |
+| `dialogs/rule_dialog_dns.go`, `rule_dialog_preview.go`, `rule_process_picker.go`, `rule_set_options.go` | DNS tab with ⚠, Preview over the whole axis, process picker, rule-set settings |
+| `tabs/rules_tab.go`, `tabs/dns_unified_rules.go` | ⚠ in the rule row and in the DNS mirror row |
+
+A body with a key outside the table (or two Process ways in one simple rule, a
+target below the root, `logical` with extra keys) opens on the JSON tab.
+
+**Pre-v9 copy.** Builds before v9 refuse the v9 file (`meta.schema` is an
+object). The first `Save` that turns an older file into v9 keeps the original
+beside it as `<state>.v8.bak` (`.v7.bak` / `.v6.bak` for older files) —
+`keepPreV9File` in `core/state/save.go`, once, atomically, for the local and
+every remote machine state.

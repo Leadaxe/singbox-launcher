@@ -1,0 +1,33 @@
+{
+  "_": "Правило X (ссылка …/ads.srs + домены) и правило с именем `X:ads` (ссылка). Базы раздаются всем записям до производных: база второго правила — `X:ads`, поэтому тег ссылки правила X, совпавший с ней, разводится суффиксом на своём теге — `X:ads (2)`; inline-набор X — чистый `X`; ссылка второго правила — `X:ads:lists`.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "X",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "https://example.com/rules/ads.srs"
+        ],
+        "domain": [
+          "example-6.com"
+        ],
+        "outbound": "proxy-out"
+      }
+    },
+    {
+      "kind": "srs",
+      "name": "X:ads",
+      "enabled": true,
+      "num": 1010,
+      "body": {
+        "refs": [
+          "https://example.com/rules/lists.srs"
+        ],
+        "outbound": "direct"
+      }
+    }
+  ]
+}

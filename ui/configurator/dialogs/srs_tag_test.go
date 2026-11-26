@@ -9,8 +9,8 @@ import (
 // Хеш-часть стабильна через runs (SHA-256 от полной URL).
 func TestSrsTagFromURL_FormatStability(t *testing.T) {
 	url := "https://example.com/path/blocklist.srs"
-	tag1 := srsTagFromURL(url)
-	tag2 := srsTagFromURL(url)
+	tag1 := SRSTagFromURL(url)
+	tag2 := SRSTagFromURL(url)
 	if tag1 != tag2 {
 		t.Errorf("same URL must produce same tag: %q vs %q", tag1, tag2)
 	}
@@ -28,9 +28,9 @@ func TestSrsTagFromURL_FormatStability(t *testing.T) {
 // filename'ом, но разным path / host → разные tags. Гарантия что
 // файлы не сталкиваются в bin/rule-sets/.
 func TestSrsTagFromURL_DifferentURLsDifferentTags(t *testing.T) {
-	tagA := srsTagFromURL("https://example.com/path1/blocklist.srs")
-	tagB := srsTagFromURL("https://example.com/path2/blocklist.srs")
-	tagC := srsTagFromURL("https://other.com/path1/blocklist.srs")
+	tagA := SRSTagFromURL("https://example.com/path1/blocklist.srs")
+	tagB := SRSTagFromURL("https://example.com/path2/blocklist.srs")
+	tagC := SRSTagFromURL("https://other.com/path1/blocklist.srs")
 
 	if tagA == tagB {
 		t.Errorf("different paths must produce different tags: %q vs %q", tagA, tagB)
@@ -46,7 +46,7 @@ func TestSrsTagFromURL_DifferentURLsDifferentTags(t *testing.T) {
 // TestSrsTagFromURL_FilenameStripsSrsSuffix — `.srs` отрезается из filename
 // перед hash-attachment'ом.
 func TestSrsTagFromURL_FilenameStripsSrsSuffix(t *testing.T) {
-	tag := srsTagFromURL("https://example.com/x/myblock.srs")
+	tag := SRSTagFromURL("https://example.com/x/myblock.srs")
 	if !strings.HasPrefix(tag, "myblock-") {
 		t.Errorf("expected myblock- prefix without .srs: %q", tag)
 	}
@@ -59,7 +59,7 @@ func TestSrsTagFromURL_FilenameStripsSrsSuffix(t *testing.T) {
 // (только schema://host/) → tag = "srs-<hash>". Иначе получился бы tag
 // с ведущим тире.
 func TestSrsTagFromURL_EmptyFilenameFallsBackToSrs(t *testing.T) {
-	tag := srsTagFromURL("https://example.com/")
+	tag := SRSTagFromURL("https://example.com/")
 	if !strings.HasPrefix(tag, "srs-") {
 		t.Errorf("empty filename → fallback prefix 'srs-', got %q", tag)
 	}
@@ -71,7 +71,7 @@ func TestSrsTagFromURL_EmptyFilenameFallsBackToSrs(t *testing.T) {
 // TestSrsTagFromURL_LongPathTakesLastSegment — для multi-segment path берётся
 // только последний сегмент (имя файла).
 func TestSrsTagFromURL_LongPathTakesLastSegment(t *testing.T) {
-	tag := srsTagFromURL("https://example.com/a/b/c/d/finalname.srs")
+	tag := SRSTagFromURL("https://example.com/a/b/c/d/finalname.srs")
 	if !strings.HasPrefix(tag, "finalname-") {
 		t.Errorf("expected last segment as filename: %q", tag)
 	}
@@ -79,7 +79,7 @@ func TestSrsTagFromURL_LongPathTakesLastSegment(t *testing.T) {
 
 // TestSrsTagFromURL_HashIsHex — hash8 это валидный hex (a-f0-9).
 func TestSrsTagFromURL_HashIsHex(t *testing.T) {
-	tag := srsTagFromURL("https://x/y.srs")
+	tag := SRSTagFromURL("https://x/y.srs")
 	parts := strings.Split(tag, "-")
 	if len(parts) < 2 {
 		t.Fatalf("tag must have hash suffix: %q", tag)

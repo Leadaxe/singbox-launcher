@@ -277,7 +277,7 @@
           "type": "enum",
           "wizard_ui": "edit",
           "title": "Tunnel MTU alignment",
-          "tooltip": "sing-box-lx lx.mtu_align — how a node riding inside another tunnel (chain, detour, WARP) fits its packets into the outer path MTU. Clamp (default) fills in an MTU the node does not set and lowers one that does not fit; fill only fills in a missing MTU and keeps an explicit one, warning if it does not fit; off changes nothing. MTU is never raised.",
+          "tooltip": "sing-box-lx lx.detour.mtu_align (lx.mtu_align before core 1.14.4-lx.37-rc.2) — how a node riding inside another tunnel (chain, detour, WARP) fits its packets into the outer path MTU. Clamp (default) fills in an MTU the node does not set and lowers one that does not fit; fill only fills in a missing MTU and keeps an explicit one, warning if it does not fit; off changes nothing. MTU is never raised.",
           "default_value": "clamp",
           "options": [
             {"title": "Clamp (default)", "value": "clamp"},
@@ -411,6 +411,48 @@
       ]
     },
     {
+      "id": "wireguard",
+      "name": "WireGuard",
+      "description": "Buffers and sockets of WireGuard and AmneziaWG tunnels without a detour. Applies to all such tunnels of the config. Takes effect on Linux (routers and remote Linux machines); on macOS and Windows the core needs none of it.",
+      "vars": [
+        {
+          "name": "wg_read_datagram_count",
+          "type": "int",
+          "wizard_ui": "edit",
+          "#enable": ["{\"@runtime.platform\": \"linux\"}"],
+          "title": "Datagrams per read",
+          "tooltip": "sing-box-lx lx.wg.buffers.read_datagram_count — how many datagrams a tunnel without a detour reads at once. Every one keeps a 64 KiB buffer for as long as the tunnel is up, twice (IPv4 and IPv6): 128 (default) is 16.4 MiB per tunnel, 8 is about 1 MiB, 1 is 0.13 MiB. Below 128 the kernel's receive coalescing (UDP GRO) is off for the tunnel. 8 suits weak machines and routers and is the default for a remote Linux machine; 1–2 suit tens and hundreds of tunnels. Linux only: macOS and Windows accept the key and ignore it. Needs core 1.14.4-lx.36 or newer.",
+          "default_value": {
+            "default": {"#if": [{"#and": [{"@runtime.target": "remote"}, {"@runtime.platform": "linux"}]}, "8", "128"]}
+          },
+          "options": [
+            {"title": "128 (core default)", "value": "128"},
+            {"title": "32", "value": "32"},
+            {"title": "8 (weak machines, routers)", "value": "8"},
+            {"title": "2 (many tunnels)", "value": "2"},
+            {"title": "1 (hundreds of tunnels)", "value": "1"}
+          ]
+        },
+        {
+          "name": "wg_connected_socket",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "#enable": ["{\"@runtime.platform\": \"linux\"}"],
+          "title": "Connected socket",
+          "tooltip": "sing-box-lx lx.wg.connected_socket — a tunnel with one peer, a fixed server address, no listen port and no detour connects its socket to the server, so the system keeps the route instead of looking it up for every datagram: more upload, no change on download. The price: a server that answers from a new address is heard after the next handshake retry, not at once. Off by default. Linux only; macOS connects such a socket anyway. Needs core 1.14.4-lx.36 or newer.",
+          "default_value": "false"
+        },
+        {
+          "name": "wg_send_by_mtu",
+          "type": "bool",
+          "wizard_ui": "edit",
+          "title": "Send buffers by MTU (diagnostics)",
+          "tooltip": "sing-box-lx lx.wg.buffers.send_by_mtu — on (default): a packet read from the tunnel stack takes a buffer by the tunnel MTU, about 2 KiB. Off puts it back at 64 KiB, as in cores before 1.14.4-lx.36. A diagnostic switch: turn it off only to rule this change out when chasing a WireGuard problem.",
+          "default_value": "true"
+        }
+      ]
+    },
+    {
       "id": "auto-proxy",
       "name": "Auto Proxy",
       "description": "URLTest tuning for the auto groups",
@@ -487,6 +529,48 @@
             {"title": "Mozilla CA bundle (built-in)", "value": "mozilla"},
             {"title": "Chrome Root Store (built-in)", "value": "chrome"}
           ]
+        }
+      ]
+    },
+    {
+      "id": "rule-sets",
+      "name": "Rule-sets",
+      "description": "Updates of rule-set (.srs) files; a rule can override these",
+      "vars": [
+        {
+          "name": "srs_mode",
+          "type": "text",
+          "wizard_ui": "edit",
+          "title": "Rule-set mode",
+          "tooltip": "Who downloads rule-sets. Local: the launcher downloads the file and refreshes it on the interval below; the core only reads it. Remote: the core downloads the rule-set itself — if the first download fails and there is no cached copy, the core will not start.",
+          "default_value": "local",
+          "options": [
+            {"title": "Local (default — the launcher downloads)", "value": "local"},
+            {"title": "Remote (the core downloads)", "value": "remote"}
+          ]
+        },
+        {
+          "name": "srs_update_interval_hours",
+          "type": "int",
+          "wizard_ui": "edit",
+          "title": "Rule-set update interval, hours",
+          "tooltip": "How often rule-sets are refreshed. 0 — never (only the srs button in Rules).",
+          "default_value": "168",
+          "options_open": true,
+          "options": [
+            {"title": "24 (daily)", "value": "24"},
+            {"title": "168 (weekly, default)", "value": "168"},
+            {"title": "720 (monthly)", "value": "720"},
+            {"title": "0 (never)", "value": "0"}
+          ]
+        },
+        {
+          "name": "srs_download_detour",
+          "type": "outbound",
+          "wizard_ui": "edit",
+          "title": "Rule-set download via",
+          "tooltip": "Remote mode only: the outbound the core downloads rule-sets through. Empty — the default outbound of the core.",
+          "default_value": ""
         }
       ]
     },
@@ -617,6 +701,7 @@
     },
     "lx": {
       "#if mtu_align": [{"#not": {"@mtu_align": "clamp"}}, {"mtu_align": "@mtu_align"}],
+      "#if detour": [{"#not": {"@mtu_align": "clamp"}}, {"detour": {"mtu_align": "@mtu_align"}}],
       "#if sniff_guard": [
         {"#or": [{"#not": {"@sniff_guard_tls": "off"}}, {"#not": {"@sniff_guard_quic": "off"}}]},
         {
@@ -639,7 +724,26 @@
           }
         }
       ],
-      "#if masque_idle_timeout": [{"#not": {"@masque_idle_timeout": "off"}}, {"masque": {"idle_timeout": "@masque_idle_timeout"}}]
+      "#if masque_idle_timeout": [{"#not": {"@masque_idle_timeout": "off"}}, {"masque": {"idle_timeout": "@masque_idle_timeout"}}],
+      "#if wg": [
+        {
+          "#or": [{"#not": {"@wg_read_datagram_count": "128"}}, {"#not": "@wg_send_by_mtu"}, "@wg_connected_socket"]
+        },
+        {
+          "wg": {
+            "#if buffers": [
+              {"#or": [{"#not": {"@wg_read_datagram_count": "128"}}, {"#not": "@wg_send_by_mtu"}]},
+              {
+                "buffers": {
+                  "#if read_datagram_count": [{"#not": {"@wg_read_datagram_count": "128"}}, {"read_datagram_count": "@wg_read_datagram_count"}],
+                  "#if send_by_mtu": [{"#not": "@wg_send_by_mtu"}, {"send_by_mtu": false}]
+                }
+              }
+            ],
+            "#if connected_socket": ["@wg_connected_socket", {"connected_socket": true}]
+          }
+        }
+      ]
     }
   },
   "dns_options": {
@@ -1580,7 +1684,7 @@
           "mtu": "@tun_mtu",
           "strict_route": "@strict_route",
           "stack": "@tun_stack",
-          "include_interface": "@gateway_include_interface",
+          "#if gateway": ["@gateway_mode", {"include_interface": "@gateway_include_interface"}],
           "#if": [{"@runtime.platform": {"#in": ["windows", "linux"]}}, {"interface_name": "@tun_interface_name"}],
           "#if auto_redirect": [{"#and": [{"@runtime.platform": "linux"}, "@auto_route"]}, {"auto_redirect": "@auto_redirect"}]
         }

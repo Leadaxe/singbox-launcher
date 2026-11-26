@@ -538,6 +538,26 @@ func showSourceEditWindow(
 	showSourceEditWindowAt(presenter, guiState, parent, sourceIndex, wizardmodels.NodeLink{}, shortLabel)
 }
 
+// OpenSourceEditorByTag открывает окно правки корневого источника с тегом
+// tag (цепочка, сервер). false — источника с таким тегом нет. Вход для
+// баннера «цепочка не собрана» главного окна (SPEC 189).
+func OpenSourceEditorByTag(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, tag string) bool {
+	if presenter == nil || guiState == nil {
+		return false
+	}
+	m := presenter.Model()
+	if m == nil {
+		return false
+	}
+	for i := range m.Sources {
+		if m.Sources[i].NodeTagOrLabel() == tag {
+			showSourceEditWindow(presenter, guiState, guiState.Window, i, m.Sources[i].Label)
+			return true
+		}
+	}
+	return false
+}
+
 // showSourceEditWindowForNode открывает окно на УЗЕЛ ВНУТРИ контейнера.
 //
 // Окно одно на обе роли (обкатка: «не должно быть двух окон на одну задачу»):
@@ -846,12 +866,12 @@ func showSourceEditWindowAt(
 	if isChainSource {
 		selfTag := m.Sources[sourceIndex].NodeTagOrLabel()
 		cands := collectChainHopCandidates(presenter.Model(), selfTag)
-		reality, detoured, nodeTypes := chainNodeFlags(presenter.Model())
+		detoured, nodeTypes := chainNodeFlags(presenter.Model())
 		unsupported := ""
 		if supported, reason := config.ChainSupportedByCore(); !supported {
 			unsupported = reason
 		}
-		chainTabBody = newChainForm(nil, cands, reality, detoured, nodeTypes, unsupported, func() {
+		chainTabBody = newChainForm(nil, cands, detoured, nodeTypes, unsupported, func() {
 			if p := srcRef(); p != nil {
 				applyChainFormToSource(p, chainTabBody.Collect(), chainTabBody.CollectLinks())
 				// Форма правит ТЕГ узла цепочки — он живёт в Node.Tag копии.
@@ -869,6 +889,13 @@ func showSourceEditWindowAt(
 		// Content() создаёт виджеты, Load() их наполняет — порядок
 		// обязателен: загрузка в несозданную форму молча потеряла бы
 		// настройки.
+		chainTabBody.graph = func() ([]string, []string) {
+			mm := presenter.Model()
+			if mm == nil {
+				return nil, nil
+			}
+			return mm.GeneratedOutbounds, mm.GeneratedEndpoints
+		}
 		chainTabBody.built = chainTabBody.Content()
 		chainTabBody.nodesKnown = chainNodesKnown(presenter.Model())
 		chainTabBody.SetReferencedBy(chainReferencedBy(presenter.Model()))
@@ -890,9 +917,9 @@ func showSourceEditWindowAt(
 					return
 				}
 				cands := collectChainHopCandidates(mm, selfTag)
-				reality, detoured, types := chainNodeFlags(mm)
+				detoured, types := chainNodeFlags(mm)
 				fyne.Do(func() {
-					chainTabBody.SetCandidates(cands, reality, detoured, types, chainNodesKnown(mm))
+					chainTabBody.SetCandidates(cands, detoured, types, chainNodesKnown(mm))
 				})
 			}()
 		}
@@ -2093,22 +2120,26 @@ func showSourceEditWindowAt(
 		if isChainSource {
 			var parsed struct {
 				Outbounds                 []string               `json:"outbounds"`
-				IdleTimeout               string                 `json:"idle_timeout"`
 				InterruptExistConnections bool                   `json:"interrupt_exist_connections"`
-				StripEvasion              *bool                  `json:"strip_evasion"`
-				Strip                     map[string]bool        `json:"strip"`
 				Rewrite                   map[string]interface{} `json:"rewrite"`
 			}
 			if err := json.Unmarshal([]byte(text), &parsed); err != nil {
 				dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
 				return
 			}
+			// SPEC 189: ключи звеньев сняты из ядра (SPEC 165) — их запись
+			// здесь не настройка, а отказ загрузки всего конфига.
+			var keys map[string]json.RawMessage
+			_ = json.Unmarshal([]byte(text), &keys)
+			for _, key := range []string{"idle_timeout", "strip_evasion", "strip"} {
+				if _, has := keys[key]; has {
+					dialog.ShowError(errors.New(locale.Tf("The chain key %s is removed from the core: a chain no longer creates link copies, and strip filters moved to lx.detour.strip. Remove the key.", key)), win)
+					return
+				}
+			}
 			c := &configtypes.SourceChain{
 				Hops:                      parsed.Outbounds,
-				IdleTimeout:               parsed.IdleTimeout,
 				InterruptExistConnections: parsed.InterruptExistConnections,
-				StripEvasion:              parsed.StripEvasion,
-				Strip:                     parsed.Strip,
 				Rewrite:                   parsed.Rewrite,
 			}
 			// Отвергаем правку, на которой ядро не стартует: показать
@@ -2523,6 +2554,12 @@ func showSourceEditWindowAt(
 		// хватает (прежний контракт applyProxyEditToSource).
 		if isChainSource {
 			if chainTabBody != nil {
+				// SPEC 189: кольцо или конфликт цепочки — сохранить нельзя
+				// (решение владельца 26.11); текст подсказывает, что скопировать.
+				if problems := chainTabBody.blockingProblems(); len(problems) > 0 {
+					dialog.ShowError(errors.New(strings.Join(problems, "\n\n")), win)
+					return
+				}
 				scratch.Tag = strings.TrimSpace(chainTabBody.Tag())
 				applyChainFormToSource(&scratch, chainTabBody.Collect(), chainTabBody.CollectLinks())
 			}

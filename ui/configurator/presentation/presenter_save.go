@@ -43,6 +43,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/events"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
@@ -556,6 +557,11 @@ func (p *WizardPresenter) modelHasRuleSetFiles() bool {
 	for _, rs := range p.model.CustomRules {
 		if rs == nil || !rs.Enabled {
 			continue
+		}
+		// SPEC 188: правило, открытое телом (ссылки `refs` внутри, Custom
+		// JSON), держит наборы в теле, а не в RuleSets.
+		if len(corestate.BodyRefs(rs.Rule.Rule)) > 0 {
+			return true
 		}
 		for _, raw := range rs.Rule.RuleSets {
 			var m map[string]interface{}

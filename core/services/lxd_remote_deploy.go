@@ -32,6 +32,15 @@ type DeployResult struct {
 	// ConfigSHA — sha256 отправленного конфига (lowercase hex). Сверяется с
 	// Health().ActiveSHA — единственная честная проверка «доехало».
 	ConfigSHA string
+	// ResourcesKept — наборы, которые у нас изменились, но на машине остались
+	// прежней версии: демон отказал 409, потому что на имя ссылается её
+	// активный или last-good конфиг. Прежняя копия согласована с этими
+	// конфигами, поэтому Deploy не обрывается, а называет их здесь.
+	ResourcesKept []string
+	// ResourcesRejected — наборы, содержимое которых демон не принял (422):
+	// файл не загружается ядром или работающее ядро отказалось его
+	// перечитать. На машине остаётся прежний файл; запись — «имя: причина».
+	ResourcesRejected []string
 }
 
 // Deploy отправляет машине конфиг вместе с ресурсами, на которые он
@@ -40,7 +49,11 @@ type DeployResult struct {
 //
 // Порядок обязателен: сначала ресурсы, потом конфиг — конфиг ссылается на
 // `<state_dir>/resources/<name>`, и без файлов ядро на той стороне не
-// поднимется. Демон и сам требует этого порядка (409 на PUT занятого имени).
+// поднимется. Перезаписать файл, на имя которого ссылается активный ИЛИ
+// сохранённый last-good конфиг машины, демон не даёт (409 на PUT) — и при
+// остановленном ядре тоже: last-good лежит на диске. Такой набор остаётся на
+// машине прежней версии (ResourcesKept), остальное заливается и конфиг
+// применяется.
 //
 // Блокирующие сетевые вызовы — звать из горутины.
 func (r *RemoteRegistry) Deploy(id string, config []byte) (DeployResult, error) {
@@ -56,40 +69,53 @@ func (r *RemoteRegistry) Deploy(id string, config []byte) (DeployResult, error) 
 		config = raw
 	}
 
+	// SPEC 185 §2.3: перед заливкой наборы машины обновляются (отсутствующие
+	// и с истёкшим периодом) — изменившиеся уедут ниже по сравнению SHA-256.
+	if PreDeployFunc != nil {
+		PreDeployFunc(id)
+	}
+
 	resources, err := CollectDeployResources(r.dataDir, id, config)
 	if err != nil {
 		return DeployResult{}, err
 	}
-	uploaded, err := r.syncResourcesCounted(id, resources)
+	uploaded, kept, rejected, err := r.syncResourcesCounted(id, resources)
 	if err != nil {
 		return DeployResult{}, err
 	}
 	if err := r.ApplyConfig(id, config); err != nil {
-		return DeployResult{ResourcesUploaded: uploaded}, err
+		return DeployResult{ResourcesUploaded: uploaded, ResourcesKept: kept, ResourcesRejected: rejected}, err
 	}
 	sum := sha256.Sum256(config)
 	res := DeployResult{
 		ResourcesUploaded: uploaded,
 		ConfigSHA:         hex.EncodeToString(sum[:]),
+		ResourcesKept:     kept,
+		ResourcesRejected: rejected,
 	}
-	debuglog.InfoLog("remote deploy: %q done (%d resource(s), config %s…)", id, res.ResourcesUploaded, res.ConfigSHA[:12])
+	debuglog.InfoLog("remote deploy: %q done (%d resource(s), %d kept, config %s…)", id, res.ResourcesUploaded, len(kept), res.ConfigSHA[:12])
 	return res, nil
 }
 
 // syncResourcesCounted — тело SyncResources, возвращающее число залитых
-// файлов (нужно Deploy для ответа API). SyncResources остаётся публичной
-// обёрткой с прежней сигнатурой.
-func (r *RemoteRegistry) syncResourcesCounted(id string, files map[string][]byte) (int, error) {
+// файлов и имена оставленных (нужно Deploy для ответа API).
+//
+// 409 «имя занято активным или last-good конфигом» — не ошибка: файл
+// остаётся на машине прежней версии (согласованной с её конфигами) и
+// попадает в kept. 422 «содержимое не годится» — тоже не обрыв: на машине
+// прежний файл, запись «имя: причина» попадает в rejected. Любая другая
+// ошибка заливки обрывает цикл.
+func (r *RemoteRegistry) syncResourcesCounted(id string, files map[string][]byte) (int, []string, []string, error) {
 	if len(files) == 0 {
-		return 0, nil
+		return 0, nil, nil, nil
 	}
 	client, err := r.adminClient(id)
 	if err != nil {
-		return 0, err
+		return 0, nil, nil, err
 	}
 	remote, err := client.Resources()
 	if err != nil {
-		return 0, fmt.Errorf("remote resources: list: %w", err)
+		return 0, nil, nil, fmt.Errorf("remote resources: list: %w", err)
 	}
 	have := make(map[string]string, len(remote))
 	for _, res := range remote {
@@ -103,6 +129,7 @@ func (r *RemoteRegistry) syncResourcesCounted(id string, files map[string][]byte
 	sort.Strings(names) // детерминированный порядок — читаемые логи
 
 	uploaded := 0
+	var kept, rejected []string
 	for _, name := range names {
 		body := files[name]
 		sum := sha256.Sum256(body)
@@ -112,17 +139,23 @@ func (r *RemoteRegistry) syncResourcesCounted(id string, files map[string][]byte
 		if _, putErr := client.PutResource(name, body); putErr != nil {
 			var resErr *lxdclient.ResourceError
 			if errors.As(putErr, &resErr) && resErr.InUse() {
-				return uploaded, fmt.Errorf("rule-set %q changed, but the machine's running config still references it. "+
-					"Stop the core on that machine (or deploy a config without this rule) and try again", name)
+				debuglog.WarnLog("remote resources: %q on %q kept at the previous version — the machine's active or last-good config references it", name, id)
+				kept = append(kept, name)
+				continue
 			}
-			return uploaded, fmt.Errorf("remote resources: upload %q: %w", name, putErr)
+			if errors.As(putErr, &resErr) && resErr.Rejected() {
+				debuglog.WarnLog("remote resources: %q on %q rejected by the machine, the previous file stays: %s", name, id, resErr.Message)
+				rejected = append(rejected, name+": "+resErr.Message)
+				continue
+			}
+			return uploaded, kept, rejected, fmt.Errorf("remote resources: upload %q: %w", name, putErr)
 		}
 		uploaded++
 	}
 	if uploaded > 0 {
 		debuglog.InfoLog("remote resources: uploaded %d file(s) to %q", uploaded, id)
 	}
-	return uploaded, nil
+	return uploaded, kept, rejected, nil
 }
 
 // RollbackCore откатывает ядро машины на last-good конфиг (POST /admin/rollback).
@@ -158,3 +191,7 @@ func (r *RemoteRegistry) AdminDo(id, method, path string, body []byte, contentTy
 	}
 	return client.Do(method, path, body, contentType)
 }
+
+// PreDeployFunc — шаг перед Deploy, внедряется контроллером (как
+// CreateHTTPClientFunc): обновление файлов наборов машины. nil — шага нет.
+var PreDeployFunc func(machineID string)

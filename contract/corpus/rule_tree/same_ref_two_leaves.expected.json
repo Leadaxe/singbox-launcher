@@ -1,0 +1,29 @@
+{
+  "rule_set": [
+    {
+      "tag": "Twice:video",
+      "type": "local",
+      "format": "binary"
+    }
+  ],
+  "route_rules": [
+    {
+      "type": "logical",
+      "mode": "or",
+      "rules": [
+        {
+          "rule_set": "Twice:video",
+          "port": [
+            443
+          ]
+        },
+        {
+          "rule_set": "Twice:video",
+          "source_ip_is_private": true
+        }
+      ],
+      "outbound": "proxy-out"
+    }
+  ],
+  "dns_rules": []
+}

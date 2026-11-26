@@ -1,0 +1,16 @@
+{
+  "rule_set": [],
+  "route_rules": [
+    {
+      "port": [
+        443
+      ],
+      "invert": true,
+      "outbound": "direct"
+    }
+  ],
+  "dns_rules": [],
+  "mirror_empty": [
+    "NotTLS"
+  ]
+}

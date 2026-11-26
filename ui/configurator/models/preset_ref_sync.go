@@ -103,6 +103,7 @@ func presetStateRule(pr *PresetRefState) state.Rule {
 	r := state.NewPresetRule(pr.Ref, pr.Vars)
 	r.Enabled = pr.Enabled
 	r.Num = copyNum(pr.Num)
+	r.SetRuleSetOptions(pr.SrsOptions)
 	return r
 }
 
@@ -255,10 +256,14 @@ func customRuleStateToV6Rule(rs *RuleState) *state.Rule {
 	label := rs.Rule.Label
 	outbound := rs.SelectedOutbound
 
-	// kind=srs если есть rule_set'ы remote. Берутся ВСЕ remote-URL правила,
-	// а не первый: диалог принимает список, и выход из цикла на первом
-	// совпадении молча терял остальные наборы (репорт 1.5.5).
-	if len(rs.Rule.RuleSets) > 0 {
+	// SPEC 188: тело держит наборы ссылками `refs` в дереве (форма правила
+	// пишет их туда) — запись строится из тела, вид выводится по дереву, а
+	// RuleSets модели — лишь производное для кнопки скачивания.
+	//
+	// Legacy-вид (state v6: тело с тегами `rule_set`, адреса — в RuleSets):
+	// kind=srs по remote-записям. Берутся ВСЕ remote-URL правила, а не
+	// первый (репорт 1.5.5).
+	if len(rs.Rule.RuleSets) > 0 && len(state.BodyRefs(rs.Rule.Rule)) == 0 {
 		urls := make([]string, 0, len(rs.Rule.RuleSets))
 		for _, rsRaw := range rs.Rule.RuleSets {
 			var probe struct {
@@ -274,19 +279,22 @@ func customRuleStateToV6Rule(rs *RuleState) *state.Rule {
 			r.Enabled = rs.Enabled
 			r.Num = copyNum(rs.Num)
 			r.DNS = state.CloneRuleDNS(rs.DNS)
+			r.SetRuleSetOptions(rs.SrsOptions)
 			return &r
 		}
 	}
 
-	// kind=inline (default)
+	// Тело-дерево (SPEC 188): NewTreeRule выводит вид по `refs` и сохраняет
+	// настройки наборов (без ссылок они очищаются).
 	match := stripOutboundAction(rs.Rule.Rule)
 	if len(match) == 0 {
 		return nil
 	}
-	r := state.NewInlineRule(label, match, outbound)
+	r := state.NewTreeRule(label, match, outbound)
 	r.Enabled = rs.Enabled
 	r.Num = copyNum(rs.Num)
 	r.DNS = state.CloneRuleDNS(rs.DNS)
+	r.SetRuleSetOptions(rs.SrsOptions)
 	return &r
 }
 
@@ -671,10 +679,11 @@ func SyncStateRulesToPresetRefs(rules []state.Rule) []*PresetRefState {
 			continue
 		}
 		out = append(out, &PresetRefState{
-			Ref:     r.Ref,
-			Enabled: r.Enabled,
-			Vars:    pb.Vars,
-			Num:     copyNum(r.Num),
+			Ref:        r.Ref,
+			Enabled:    r.Enabled,
+			Vars:       pb.Vars,
+			Num:        copyNum(r.Num),
+			SrsOptions: r.RuleSetOptions(),
 		})
 	}
 	return out

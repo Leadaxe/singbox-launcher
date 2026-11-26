@@ -1,0 +1,21 @@
+{
+  "rule_set": [],
+  "route_rules": [
+    {
+      "domain_suffix": [
+        "example-4.com"
+      ],
+      "invert": true,
+      "outbound": "proxy-out"
+    }
+  ],
+  "dns_rules": [
+    {
+      "domain_suffix": [
+        "example-4.com"
+      ],
+      "invert": true,
+      "server": "cf"
+    }
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "rules": [
+    {
+      "name": "Streaming",
+      "enabled": true,
+      "refs": [
+        "https://example-5.com/rules/a.srs",
+        "https://example-5.com/rules/b.srs"
+      ],
+      "outbound": "direct",
+      "body": {
+        "refs": [
+          "https://example-5.com/rules/a.srs",
+          "https://example-5.com/rules/b.srs"
+        ],
+        "domain_suffix": [
+          "example-1.com"
+        ],
+        "port": [
+          443
+        ],
+        "outbound": "direct"
+      }
+    },
+    {
+      "name": "Tree",
+      "enabled": true,
+      "refs": [
+        "https://example-5.com/rules/c.json"
+      ],
+      "outbound": "direct",
+      "body": {
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          {
+            "source_ip_is_private": true
+          },
+          {
+            "type": "logical",
+            "mode": "or",
+            "invert": true,
+            "rules": [
+              {
+                "refs": [
+                  "https://example-5.com/rules/c.json"
+                ]
+              },
+              {
+                "process_name": [
+                  "app.exe"
+                ]
+              }
+            ]
+          }
+        ],
+        "outbound": "direct"
+      }
+    },
+    {
+      "name": "Both",
+      "enabled": true,
+      "refs": [
+        "https://example-5.com/rules/a.srs"
+      ],
+      "outbound": "direct",
+      "body": {
+        "refs": [
+          "https://example-5.com/rules/a.srs"
+        ],
+        "outbound": "direct"
+      }
+    },
+    {
+      "name": "Old logical",
+      "enabled": true,
+      "refs": [
+        "https://example-5.com/rules/c.json"
+      ],
+      "outbound": "direct",
+      "body": {
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          {
+            "refs": [
+              "https://example-5.com/rules/c.json"
+            ]
+          },
+          {
+            "type": "logical",
+            "mode": "or",
+            "rules": [
+              {
+                "port": [
+                  443
+                ]
+              },
+              {
+                "network": [
+                  "udp"
+                ]
+              }
+            ]
+          }
+        ],
+        "outbound": "direct"
+      }
+    },
+    {
+      "name": "Hand set",
+      "enabled": true,
+      "outbound": "direct",
+      "body": {
+        "rule_set": [
+          "Streaming"
+        ],
+        "port": [
+          80
+        ],
+        "outbound": "direct"
+      }
+    }
+  ],
+  "warnings": []
+}

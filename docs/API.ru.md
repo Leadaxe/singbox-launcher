@@ -371,7 +371,7 @@ API нет. Манифест `GET /` несёт `capabilities` (`remote`/`daemon
 | GET | `/remote/machines/{id}/health` | `{reachable, core_status, active_sha, last_good_sha, …}` — сверка SHA = проверка «доехало». Плюс остальной паспорт — `executable`, `log_path`, `listen`, `tls`, `uptime_seconds` (`null`, если демон не ответил на `/admin/info`), — и `core_required` (версия ядра, под которую лаунчер собирает конфиги) с `core_outdated` (`true` только при доказуемо старшей `version`; неразборчивая версия → `false`) |
 | POST | `/remote/machines/{id}/core/start` \| `stop` \| `rollback` | Управление ядром машины (stop рвёт VPN её клиентов — подтверждения на стороне API нет) |
 | GET | `/remote/machines/{id}/config/active` \| `built` | Работающий конфиг с машины / локально собранный |
-| POST | `/remote/machines/{id}/deploy` | Ресурсы → конфиг (та же цепочка, что кнопка Deploy). Body `{config:{…}}` опционален. `422` = демон отклонил конфиг, инстанс не тронут |
+| POST | `/remote/machines/{id}/deploy` | Ресурсы → конфиг (та же цепочка, что кнопка Deploy). Body `{config:{…}}` опционален. Ответ `{ok, resources_uploaded, resources_kept, resources_rejected, config_sha}`; `resources_kept` — изменившиеся наборы, которые демон отказался перезаписать, потому что на них ссылается активный или last-good конфиг машины: они остаются прежней версии, конфиг всё равно применяется; `resources_rejected` — наборы, содержимое которых демон не принял (записи «имя: причина»), на машине прежние файлы. `422` = демон отклонил конфиг, инстанс не тронут |
 
 **Состояние (зеркала `/state/*`):** `GET /remote/machines/{id}/state/full`,
 `GET/PATCH …/state/rules`, `…/state/dns`, `…/state/dns/rules`,
@@ -399,7 +399,9 @@ API нет. Манифест `GET /` несёт `capabilities` (`remote`/`daemon
 
 **Ресурс-стор:** `GET …/resources` (сводка local vs machine),
 `POST …/resources/sync`, `GET/PUT/DELETE …/resources/{name}`,
-`POST …/resources/{name}/download`. `409` = имя занято живой ссылкой конфига.
+`POST …/resources/{name}/download`. `409` = на имя ссылается активный или
+last-good конфиг машины (`PUT`/`DELETE` одного файла); `sync` такие имена
+пропускает и перечисляет в `kept`.
 
 **UI-override (кнопки Connect/Disconnect вкладки Remote):** обычные
 remote-вызовы выбор в UI не трогают — эти три ручки управляют именно тем, на
@@ -454,7 +456,7 @@ gRPC-плоскости.
 
 | Метод | Путь | Что делает |
 |---|---|---|
-| GET | `/chains` | Рантайм-состояние цепочек: позиции, в какой узел каждая резолвится сейчас, статус клонов |
+| GET | `/chains` | Рантайм-состояние цепочек: позиции, в какой узел каждая резолвится сейчас, выключатели и отказы дозвона (SPEC 165 ядра: теги цепочек — из работающего конфига, состояние — `GetChainStatus`) |
 | POST | `/chains/{tag}/probe` | Послойный замер задержки одной цепочки |
 
 **Тело пробы** — `{repeat?, timeout_ms?, link?}`. Умолчания и границы:
@@ -488,6 +490,33 @@ DeadlineExceeded, `422` FailedPrecondition / InvalidArgument.
 хост: цифры описывают канал роутера до каждого хопа.
 
 ---
+
+## Impair `/impair/*` (SPEC 164 ядра)
+
+Только для тестов — в UI лаунчера impair нет (решение владельца 26.11.2026).
+Группа включается как `/daemon/*`; вызовы идут в gRPC локального демона
+(`SetImpair`, `ScheduleImpair`, `GetImpairStatus`, ядро 1.14.4-lx.37-rc.1 и
+новее). Запросы и статус — JSON в схеме конфига ядра (sing-box-lx
+`docs-lx/lx-impair.md`), передаются как есть.
+
+| Метод | Путь | Что делает |
+|---|---|---|
+| GET | `/impair/{outbound}` | Статус: `tag`, `link_params`, `counters`, `sublinks`, `schedule` |
+| POST | `/impair/{outbound}/set` | Тело — одна запись расписания без `at`: `{"link_params":{…}}` или `{"sublinks":[…]\|false}`; применяется сразу |
+| POST | `/impair/{outbound}/schedule` | Тело `{"entries":[…], "start":""\|"now"\|"first_use", "repeat":""\|"60s"}`; `entries: []` останавливает расписание и возвращает линию из конфига |
+
+Ошибки ядра → HTTP: нет такого outbound — 404, не impair или неверный JSON —
+400, ядро не запущено — 409, ядро без управления impair — 501.
+
+### Замеры своего ядра и сценарий теста
+
+Режим демона, то же условие: `POST /proxies/delay` `{"name", "url"?, "timeout_ms"?}` —
+URL-тест одного узла (`delay_ms`, `error`); `GET /pool?group=` — пул urltest-группы
+(`slots[]` с `quarantined`, `connections`, `confirmed_failures`; `shifted_keys`,
+`marked_keys`, `frozen`, `frozen_seconds`); `GET /outbounds/{node}/config` — узел, как
+его исполняет ядро (`original`, `effective`, `changes`). Повесить узел на impair:
+`PATCH /state/servers?tag=&folder=` с `{"detour":{"tag":"imp"}}`, `{"detour":null}` —
+снять. Сценарий целиком — `SPECS/190-F-C-IMPAIR_DEBUG_API/SPEC.md` §3.
 
 ## Произвольные вызовы (raw passthrough)
 

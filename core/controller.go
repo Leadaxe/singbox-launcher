@@ -131,6 +131,7 @@ type AppController struct {
 
 	// --- Installed core version cache (one successful check per run) ---
 	installedCoreVersionCache   string // после первой успешной проверки — без повторных запусков sing-box version
+	installedCoreVersionStamp   string // время изменения и размер бинаря, по которым кэш верен
 	installedCoreVersionCacheMu sync.Mutex
 
 	// --- Кэш тегов сборки ядра для узлового гейта (SPEC 142 волна 5) ---

@@ -26,7 +26,7 @@ import (
 // на одном конфиге с ТРЕМЯ DNS-правилами разом:
 //
 //	ru-domains  — тег объявлен прямо в route.rule_set ШАБЛОНА → живой;
-//	user:Ads    — тег эмитит правило состояния kind=srs (файл в кэше) → живой;
+//	Ads         — тег эмитит правило состояния kind=srs (файл в кэше) → живой;
 //	ghost-set   — тега нет нигде → висячий, обязан быть снят.
 //
 // Три в одном прогоне намеренно: разделив их, легко получить зелёный тест на
@@ -44,7 +44,7 @@ func TestDNSRuleSetRefsSurviveWhenTagIsEmitted(t *testing.T) {
 	srsRule := state.NewSrsRule("Ads", []string{"https://example.invalid/geosite-ads.srs"}, "direct-out")
 	srsRule.Enabled = true
 	srsID := state.StableRuleID(srsRule)
-	srsTag := "user:" + srsID
+	srsTag := "Ads:geosite-ads" // тег набора — имя правила и stem ссылки (§6.13)
 	srsFile := filepath.Join(srsPath, srsID+".srs")
 	if err := os.WriteFile(srsFile, []byte("stub"), 0o644); err != nil {
 		t.Fatalf("write srs: %v", err)
@@ -68,7 +68,7 @@ func TestDNSRuleSetRefsSurviveWhenTagIsEmitted(t *testing.T) {
 		Template: td,
 		Preset: PresetMergeContext{
 			DataDir:        paths.DataDir(execDir),
-			SrsCachedPaths: map[string][]string{srsID: {srsFile}},
+			SrsCachedPaths: map[string]string{"https://example.invalid/geosite-ads.srs": srsFile},
 			Rules:          []state.Rule{srsRule},
 			DNS: state.DNSOptions{
 				Servers: []state.DNSServer{

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/internal/debuglog"
 )
 
 // Save атомарно записывает s в path.
@@ -37,8 +38,8 @@ func (s *State) Save(path string) error {
 	// SPEC 117 (W4): обратного синка legacy → canonical больше нет. Save
 	// сериализует ТОЛЬКО canonical (s.Sources/s.Directions/...); s.ParserConfig
 	// — read-only Load-проекция, Save её не читает. Все мутации обязаны идти
-	// в canonical-поля. SPEC 127: единственный формат записи — v8.
-	s.Version = SchemaVersionV8
+	// в canonical-поля. SPEC 188: единственный формат записи — v9.
+	s.Version = SchemaVersionV9
 
 	// SPEC 058-R-N: backup перед первым перезаписыванием когда outbounds
 	// содержат referenced entries (post-migration shape). Gate idempotent
@@ -53,6 +54,16 @@ func (s *State) Save(path string) error {
 	data, err := s.marshalDisk()
 	if err != nil {
 		return err
+	}
+
+	// SPEC 188: прежняя версия приложения файл v9 не читает, а её
+	// конфигуратор после отказа открывается с шаблоном — Save там перезапишет
+	// состояние без следа. Поэтому первая запись, превращающая файл старой
+	// схемы в v9, оставляет рядом копию исходника. Не блокирует сохранение.
+	if bak, bakErr := keepPreV9File(path); bakErr != nil {
+		debuglog.WarnLog("state: copy of the pre-v9 state file not kept: %v", bakErr)
+	} else if bak != "" {
+		debuglog.InfoLog("state: pre-v9 state file kept as %s before the first v9 save", bak)
 	}
 
 	dir := filepath.Dir(path)
@@ -118,7 +129,7 @@ func (s *State) MarshalV8() ([]byte, error) {
 // marshalDisk — сериализация State в canonical (v8) shape (SPEC 127).
 //
 //	{
-//	  "meta":       { version: 8, schema: "sources_v8", ... },
+//	  "meta":       { version: 9, schema: "sources_v8", ... },
 //	  "sources":    [ {kind, tag, enabled, ...} ],
 //	  "directions": [ ... ],
 //	  "rules":      [ {kind, ref|name, enabled, num, refs|vars, body} ],
@@ -133,8 +144,8 @@ func (s *State) MarshalV8() ([]byte, error) {
 func (s *State) marshalDisk() ([]byte, error) {
 	out := diskStateV8{
 		Meta: MetaSection{
-			Version:   SchemaVersionV8,
-			Schema:    SchemaNameV8,
+			Version:   SchemaVersionV9,
+			Schema:    SchemaMetaV9(),
 			Comment:   s.Comment,
 			CreatedAt: s.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: s.UpdatedAt.Format(time.RFC3339),
@@ -177,6 +188,76 @@ func (s *State) marshalDisk() ([]byte, error) {
 	// Encode дописывает перевод строки — MarshalIndent его не давал, и
 	// golden-тесты сравнивают точный байт-в-байт результат.
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+}
+
+// keepPreV9File — копия файла состояния схемы ниже v9 перед его первой
+// перезаписью в v9 (SPEC 188). Имя — по шагам миграции Load: `<path>.v8.bak`,
+// `<path>.v7.bak`, для v2–v6 — `<path>.v6.bak`. Существующая копия не
+// перетирается (первая и есть исходник). Запись атомарна: байты уходят во
+// временный файл, на место копии он встаёт жёсткой ссылкой — она, в отличие от
+// rename, не заменяет существующий файл. Возвращает путь копии, если она
+// создана этим вызовом; "" — копия не нужна или уже есть.
+func keepPreV9File(path string) (string, error) {
+	old, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil // свежая установка
+		}
+		return "", err
+	}
+	top, meta, err := sniffSchemaVersion(old)
+	if err != nil {
+		return "", nil // битый файл — Load его не принял бы, копировать нечего
+	}
+	var suffix string
+	switch {
+	case meta >= SchemaVersionV9:
+		return "", nil
+	case meta == SchemaVersionV8 || meta == SchemaVersionV7:
+		suffix = fmt.Sprintf(".v%d.bak", meta)
+	case meta >= 2 && meta <= 6 || (meta == 0 && top >= 2 && top <= 4):
+		suffix = legacyBackupSuffix
+	default:
+		return "", nil
+	}
+	bak := path + suffix
+	if _, err := os.Stat(bak); err == nil {
+		return "", nil
+	}
+	tmp := bak + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return "", err
+	}
+	if _, err := f.Write(old); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	defer func() { _ = os.Remove(tmp) }()
+	if err := os.Link(tmp, bak); err != nil {
+		if os.IsExist(err) {
+			return "", nil
+		}
+		// Файловая система без жёстких ссылок: rename, проверив ещё раз, что
+		// копии нет.
+		if _, statErr := os.Stat(bak); statErr == nil {
+			return "", nil
+		}
+		if err := os.Rename(tmp, bak); err != nil {
+			return "", err
+		}
+	}
+	return bak, nil
 }
 
 // hasReferencedOutbounds — true если хотя бы одно Направление в s.Directions

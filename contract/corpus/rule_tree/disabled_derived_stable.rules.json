@@ -1,0 +1,52 @@
+{
+  "_": "Производные теги раздаются всем записям inline|srs, включённым и выключенным (контракт 1.1.180): выключенное «Video» выше по оси берёт базу Video, тег ссылки `Video:news:eu` (stem ссылки …/news%3Aeu.srs — `news:eu`) и тег inline-набора `Video`, но в конфиг ничего не выпускает. Второе «Video» — база `Video (2)`: `Video (2):music`, `Video (2):news`, inline `Video (2)`. Правило «Video:news» со ссылкой …/eu.srs получает `Video:news:eu (2)`: тег `Video:news:eu` уже выдан выключенному правилу, и от его включения не зависит.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Video",
+      "enabled": false,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "https://example.com/rules/news%3Aeu.srs"
+        ],
+        "domain": [
+          "example-9.com"
+        ],
+        "outbound": "proxy-out"
+      }
+    },
+    {
+      "kind": "srs",
+      "name": "Video",
+      "enabled": true,
+      "num": 1010,
+      "body": {
+        "refs": [
+          "https://example.com/rules/music.srs",
+          "https://example.com/rules/news.srs"
+        ],
+        "domain_suffix": [
+          "example-10.com"
+        ],
+        "outbound": "proxy-out"
+      }
+    },
+    {
+      "kind": "srs",
+      "name": "Video:news",
+      "enabled": true,
+      "num": 1020,
+      "body": {
+        "refs": [
+          "https://example.com/rules/eu.srs"
+        ],
+        "domain": [
+          "example-11.com"
+        ],
+        "outbound": "direct"
+      }
+    }
+  ]
+}

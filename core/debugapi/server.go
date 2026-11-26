@@ -276,7 +276,7 @@ func (s *Server) endpoints() []apiEndpoint {
 		{"GET/PATCH", "/state/dns", true, "Get / replace whole dns_options (both servers and rules required)", s.handleStateDNS},
 		{"POST/DELETE", "/state/dns/servers", true, "Add a user DNS server / delete one (?tag=)", s.handleStateDNSServers},
 		{"GET/PATCH/POST/DELETE", "/state/dns/rules", true, "Get / replace USER dns rules (text); add one (POST) / delete one (?index=)", s.handleStateDNSRules},
-		{"GET/POST/DELETE", "/state/servers", true, "List servers / add from links, .conf, vpn://, JSON (detour optional) / delete one (?tag=&folder=)", s.handleStateServers},
+		{"GET/POST/PATCH/DELETE", "/state/servers", true, "List servers / add from links, .conf, vpn://, JSON (detour optional) / set or clear detour of one (PATCH ?tag=&folder=, {\"detour\":{…}|null}) / delete one (?tag=&folder=)", s.handleStateServers},
 		{"GET/POST/DELETE", "/state/folders", true, "List folders / create an empty one / delete one (?folder=&with_nodes=1)", s.handleStateFolders},
 		{"GET", "/state/outbounds/resolved", true, "Resolved outbound tags", s.handleStateOutboundsResolved},
 		{"GET/PATCH", "/state/log-level", true, "Get / set sing-box log.level (restarts core)", s.handleStateLogLevel},
@@ -310,6 +310,12 @@ func (s *Server) endpoints() []apiEndpoint {
 		// группа висит на том же условии, что и /daemon/* — без демона
 		// спрашивать нечего.
 		eps = append(eps, s.chainEndpoints()...)
+		// SPEC 164 ядра: impair на лету — тот же gRPC демона; только для
+		// тестов, в UI его нет.
+		eps = append(eps, s.impairEndpoints()...)
+		// Замеры у своего ядра (URL-тест узла, пул, узел в ядре) — пара к
+		// /remote/machines/{id}/… удалённой машины.
+		eps = append(eps, s.daemonObserveEndpoints()...)
 	}
 	// Инспектор окон Fyne — подключается из wiring (core), без него группы нет.
 	if s.ui != nil {

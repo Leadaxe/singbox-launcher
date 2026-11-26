@@ -18,12 +18,19 @@ import (
 )
 
 // GetInstalledCoreVersion получает установленную версию sing-box.
-// После первой успешной проверки в этой сессии возвращает закешированное
-// значение без повторного запуска `sing-box version`.
+//
+// Кэш держится, пока бинарь тот же (время изменения и размер файла): ядро
+// подменяют на работающем лаунчере (обновление руками, служба lxd), и кэш до
+// перезапуска показывал бы прежнюю версию. Тот же признак, что у кэша тегов
+// сборки (CoreBuildTags).
 func (ac *AppController) GetInstalledCoreVersion() (string, error) {
 	ac.installedCoreVersionCacheMu.Lock()
 	defer ac.installedCoreVersionCacheMu.Unlock()
-	if ac.installedCoreVersionCache != "" {
+	stamp := ""
+	if st, err := os.Stat(ac.FileService.SingboxPath); err == nil {
+		stamp = st.ModTime().UTC().String() + "/" + fmt.Sprint(st.Size())
+	}
+	if ac.installedCoreVersionCache != "" && stamp != "" && stamp == ac.installedCoreVersionStamp {
 		return ac.installedCoreVersionCache, nil
 	}
 
@@ -32,6 +39,7 @@ func (ac *AppController) GetInstalledCoreVersion() (string, error) {
 		return "", err
 	}
 	ac.installedCoreVersionCache = v
+	ac.installedCoreVersionStamp = stamp
 	return v, nil
 }
 

@@ -95,6 +95,8 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	// SPEC 178: корень состояния tailnet — свойство цели этого окна, а не
 	// глобал: у Local пусто (локальный корень), у машины — путь на ней.
 	parserConfigForGen.TailscaleRemoteStateDirRoot = TailscaleRemoteRootOf(model)
+	// SPEC 186: гейт узлов и `@vars` — по машине цели, а не по этому компьютеру.
+	parserConfigForGen.BuildTarget = BuildTargetOf(model)
 	if model.TemplateData != nil {
 		wizardmodels.ReconcileRuleOrder(model)
 		rulesV6 := wizardmodels.EmitStateRulesInAxisOrder(
@@ -389,4 +391,26 @@ func TailscaleRemoteRootOf(model *wizardmodels.WizardModel) string {
 		return ""
 	}
 	return model.Target.TailscaleStateDir
+}
+
+// BuildTargetOf — машина-цель сборки узлов (SPEC 186): её ОС, версия её ядра
+// из кэша паспорта демона и переменные её Settings. У Local — nil: работают
+// локальные пробы ядра и локальное состояние, как раньше. Единая точка для
+// сборки (ParseAndPreview) и пула узлов окна.
+func BuildTargetOf(model *wizardmodels.WizardModel) *config.BuildTarget {
+	if model == nil || !model.Target.IsRemote() {
+		return nil
+	}
+	target := model.Target.Normalized()
+	bt := &config.BuildTarget{GOOS: target.GOOS}
+	if build.CoreVersionForTarget != nil {
+		bt.CoreVersion = build.CoreVersionForTarget(target)
+	}
+	if len(model.SettingsVars) > 0 {
+		bt.SettingsVars = make(map[string]string, len(model.SettingsVars))
+		for name, value := range model.SettingsVars {
+			bt.SettingsVars[name] = value
+		}
+	}
+	return bt
 }

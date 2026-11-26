@@ -1,7 +1,10 @@
 {
   "meta": {
-    "version": 8,
-    "schema": "sources_v8",
+    "version": 9,
+    "schema": {
+      "name": "sources_v9",
+      "min_reader": 9
+    },
     "created_at": "2026-04-26T19:36:59Z",
     "updated_at": "2026-08-29T17:58:48Z"
   },
@@ -27,7 +30,7 @@
       "replace": {
         "mode": "both",
         "tag": "WL:select",
-        "strategy": {
+        "auto": {
           "url": "https://cp.cloudflare.com/generate_204",
           "interval": "5m",
           "tolerance": 100,
@@ -47,7 +50,7 @@
       "replace": {
         "mode": "both",
         "tag": "XX:select",
-        "strategy": {
+        "auto": {
           "url": "https://cp.cloudflare.com/generate_204",
           "interval": "5m",
           "tolerance": 100,
@@ -67,7 +70,7 @@
       "replace": {
         "mode": "both",
         "tag": "AL:select",
-        "strategy": {
+        "auto": {
           "url": "https://cp.cloudflare.com/generate_204",
           "interval": "5m",
           "tolerance": 100,
@@ -87,7 +90,7 @@
       "replace": {
         "mode": "both",
         "tag": "LW:select",
-        "strategy": {
+        "auto": {
           "url": "https://cp.cloudflare.com/generate_204",
           "interval": "5m",
           "tolerance": 100,
@@ -224,10 +227,10 @@
       "kind": "srs",
       "name": "Block Ads (ads-all, soft)",
       "enabled": false,
-      "refs": [
-        "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-ads-all.srs"
-      ],
       "body": {
+        "refs": [
+          "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-ads-all.srs"
+        ],
         "action": "reject"
       }
     },
@@ -291,10 +294,10 @@
       "kind": "srs",
       "name": "Games direct",
       "enabled": false,
-      "refs": [
-        "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-games.srs"
-      ],
       "body": {
+        "refs": [
+          "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-games.srs"
+        ],
         "outbound": "direct-out"
       }
     },
@@ -302,10 +305,10 @@
       "kind": "srs",
       "name": "Russia-only services",
       "enabled": false,
-      "refs": [
-        "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs"
-      ],
       "body": {
+        "refs": [
+          "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs"
+        ],
         "outbound": "direct-out"
       }
     },

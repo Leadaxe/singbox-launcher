@@ -141,18 +141,21 @@ func TestSave_AlwaysWritesV8(t *testing.T) {
 	}
 	var probe struct {
 		Meta struct {
-			Version int    `json:"version"`
-			Schema  string `json:"schema"`
+			Version int `json:"version"`
+			Schema  struct {
+				Name      string `json:"name"`
+				MinReader int    `json:"min_reader"`
+			} `json:"schema"`
 		} `json:"meta"`
 	}
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		t.Fatalf("unmarshal probe: %v", err)
 	}
-	if probe.Meta.Version != SchemaVersionV8 {
+	if probe.Meta.Version != SchemaVersionV9 {
 		t.Errorf("expected v8 save (single write path, SPEC 118/127), got version=%d", probe.Meta.Version)
 	}
-	if probe.Meta.Schema != SchemaNameV8 {
-		t.Errorf("expected schema %s, got %q", SchemaNameV8, probe.Meta.Schema)
+	if probe.Meta.Schema.Name != SchemaNameV9 || probe.Meta.Schema.MinReader != SchemaVersionV9 {
+		t.Errorf("expected schema {%s, %d}, got %+v", SchemaNameV9, SchemaVersionV9, probe.Meta.Schema)
 	}
 }
 
@@ -173,18 +176,21 @@ func TestSave_V8_WhenHasPresetRef(t *testing.T) {
 	raw, _ := os.ReadFile(path)
 	var probe struct {
 		Meta struct {
-			Version int    `json:"version"`
-			Schema  string `json:"schema"`
+			Version int `json:"version"`
+			Schema  struct {
+				Name      string `json:"name"`
+				MinReader int    `json:"min_reader"`
+			} `json:"schema"`
 		} `json:"meta"`
 	}
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		t.Fatalf("unmarshal probe: %v", err)
 	}
-	if probe.Meta.Version != SchemaVersionV8 {
+	if probe.Meta.Version != SchemaVersionV9 {
 		t.Errorf("expected v8 save (SPEC 127), got %d", probe.Meta.Version)
 	}
-	if probe.Meta.Schema != SchemaNameV8 {
-		t.Errorf("expected schema %s, got %q", SchemaNameV8, probe.Meta.Schema)
+	if probe.Meta.Schema.Name != SchemaNameV9 || probe.Meta.Schema.MinReader != SchemaVersionV9 {
+		t.Errorf("expected schema {%s, %d}, got %+v", SchemaNameV9, SchemaVersionV9, probe.Meta.Schema)
 	}
 }
 
@@ -253,7 +259,7 @@ func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 			Version int `json:"version"`
 		} `json:"meta"`
 	}
-	if err := json.Unmarshal(raw, &probe); err != nil || probe.Meta.Version != SchemaVersionV8 {
+	if err := json.Unmarshal(raw, &probe); err != nil || probe.Meta.Version != SchemaVersionV9 {
 		t.Error("re-save must write v8 (SPEC 127)")
 	}
 }
@@ -308,11 +314,19 @@ func TestParseV6_LegacySRSConversion(t *testing.T) {
 	if cr.Type != RuleTypeSRS {
 		t.Errorf("Type: %q want srs", cr.Type)
 	}
-	// rule_set ключ обязан быть в Rule — иначе DetermineRuleType вернёт raw.
-	if _, has := cr.Rule["rule_set"]; !has {
-		t.Errorf("Rule must contain rule_set hint for SRS detection: %+v", cr.Rule)
+	// Признак наборов обязан быть в Rule — иначе форма откроет правило как
+	// raw: хинт `rule_set` (форма «наборы + выход») или ссылки `refs` в теле
+	// (форма дерева условий, SPEC 188).
+	_, hasHint := cr.Rule["rule_set"]
+	_, hasRefs := cr.Rule[RuleKeyRefs]
+	if !hasHint && !hasRefs {
+		t.Errorf("Rule must carry rule_set hint or refs for SRS detection: %+v", cr.Rule)
 	}
 	if len(cr.RuleSet) != 1 {
 		t.Errorf("RuleSet count: %d", len(cr.RuleSet))
+	}
+	// Ссылка srs_url поднята в тело записи (SPEC 188): её видят сборка и UI.
+	if refs := RuleRefs(s.Rules[0]); len(refs) != 1 || refs[0] != "https://example.com/list.srs" || s.Rules[0].Refs != nil {
+		t.Errorf("srs_url не поднят в тело: body %s, refs записи %v", s.Rules[0].Body, s.Rules[0].Refs)
 	}
 }

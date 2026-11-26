@@ -76,13 +76,7 @@ Stream lifecycle-событий с per-process attribution.
 
 Каждый var имеет `options` (whitelist) или `select: "local"|"global"` (scope shortcut). `default` обязателен.
 
-**Уровень 2 — user rules** (SPEC 018). 5 типизированных констант:
-
-- `ips` — IP/CIDR
-- `urls` — domain / domain_suffix / domain_keyword / domain_regex
-- `processes` — process_name или process_path_regex (с режимом Simple/Regex, сохраняемым в `params`)
-- `srs` — SRS rule-set по URL (свой или из runetfreedom-каталога)
-- `raw` — сырой JSON правила
+**Уровень 2 — user rules** (SPEC 188; пять типов правила SPEC 018 ушли). Правило — стопка условий, связанных «И», поля внутри условия — «любое из»: Destination / Rule sets (домены, CIDR, приватные адреса и ссылки наборов — `.srs` / `.json` по URL или файлом — в одном условии), Port, Source, Source port, Process, Protocol, Network, Inbound, Wi-Fi, плюс группы правил (all of / any of, Not) без предела вложенности. Таблица условий — в реестре контракта; тело с ключами вне неё открывается на вкладке JSON.
 
 ### Поддержанные matchers
 

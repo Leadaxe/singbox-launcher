@@ -28,7 +28,7 @@ var ErrNotFound = errors.New("state: file not found")
 //   - неизвестная версия → ошибка «regenerate via wizard»;
 //   - битый JSON → ошибка с понятным контекстом.
 //
-// Save после Load всегда пишет v8.
+// Save после Load всегда пишет v9.
 func Load(path string) (*State, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -141,8 +141,9 @@ func parseWithContext(data []byte, lc LoadContext) (*State, error) {
 
 	switch {
 	case meta >= SchemaVersionV8:
-		// v8 и минорные добавки поверх (PLAN §1.3: незнакомые ключи
-		// игнорируются, пока мажор 8; неизвестный kind внутри — отказ).
+		// v8, v9 и минорные добавки поверх (PLAN §1.3: незнакомые ключи
+		// игнорируются; неизвестный kind внутри — отказ). v8 от v9 отличает
+		// только место `refs` правила — его выравнивает parseV8.
 		return parseV8(data)
 	case meta == SchemaVersionV7:
 		// Форму записей сменил SPEC 127: v7-файл читается миграцией по

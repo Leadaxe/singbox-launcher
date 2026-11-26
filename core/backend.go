@@ -163,68 +163,32 @@ func (ac *AppController) SwitchBackendMode(mode BackendMode) error {
 
 // --- Опциональные способности бэкенда (реализует только DaemonBackend) ---
 
-// PoolSlotInfo — слот пула балансировщика (lx-наблюдаемость urltest-группы).
-type PoolSlotInfo struct {
-	Slot  uint32
-	Tag   string
-	Delay uint32
-}
-
 // poolSource — бэкенд, умеющий отдавать пул балансировщика (gRPC GetPool).
 // Запрашивается всегда для конкретной группы (node info urltest-группы) —
-// отдельного перечисления групп не требуется.
+// отдельного перечисления групп не требуется. Тип состояния общий с
+// удалённой машиной (services.PoolState): RPC один и тот же.
 type poolSource interface {
-	PoolSlots(group string) ([]PoolSlotInfo, error)
+	PoolState(group string) (services.PoolState, error)
 }
 
-// ChainPositionInfo — одна позиция цепочки в рантайме (SPEC 110).
-//
-// Отличается от позиции в конфиге тем, что знает РАЗРЕШЁННЫЙ узел: за тегом
-// группы стоит её текущий выбор, и увидеть его иначе как у работающего ядра
-// нельзя.
-type ChainPositionInfo struct {
-	Tag string
-	// Now — во что позиция резолвится сейчас (для группы — её выбор,
-	// раскрытый до листа). Пусто, если ядро не смогло разрешить.
-	Now string
-	// IsGroup — за позицией группа, и Now может смениться без нашего ведома.
-	IsGroup bool
-	// Transparent — в позиции выбран direct: хоп схлопнут, в рантайме его
-	// нет. Мерить такую позицию нечем, и виновником она быть не может.
-	Transparent bool
-	// Disabled — позицию выключил пользователь тумблером (SPEC 075 ядра).
-	// Отличается от Transparent источником решения: Transparent — так
-	// написан конфиг (в позиции direct), Disabled — воля пользователя в
-	// рантайме, ядро помнит её в cache-file и восстанавливает при старте.
-	// Now у выключенной позиции остаётся заполненным: видно, ЧТО выключено.
-	Disabled bool
-	// CloneState — состояние звена: starting | active | idle. Пусто у
-	// позиции 0 (вход не клонируется) и пока звено не создано.
-	CloneState string
-	LastError  string
-}
+// ChainPositionInfo, ChainInfo — состояние цепочки у работающего ядра; тип
+// общий с удалённой машиной (services), RPC один и тот же (GetChainStatus).
+type (
+	ChainPositionInfo = services.ChainPositionInfo
+	ChainInfo         = services.ChainInfo
+)
 
-// ChainInfo — состояние одной цепочки у работающего ядра.
-type ChainInfo struct {
-	Tag       string
-	Positions []ChainPositionInfo
-}
-
-// chainSource — бэкенд, умеющий отдать состояние цепочек (gRPC GetChains).
-//
-// Перечисление, а не запрос по тегу: RPC ядра аргументов не принимает, и
-// выбирать нужную цепочку приходится на нашей стороне.
+// chainSource — бэкенд, умеющий отдать состояние цепочки (gRPC GetChainStatus,
+// SPEC 165 ядра: по тегу; перечисления всех цепочек у ядра больше нет).
 type chainSource interface {
-	Chains() ([]ChainInfo, error)
+	ChainStatus(tag string) (ChainInfo, error)
 	// ProbeLayer меряет путь от клиента до позиции pos включительно.
 	// Возвращает задержку и текст ошибки ЯДРА (не транспорта): «не
 	// поднялось» — это диагноз, а не сбой вызова.
 	ProbeLayer(chainTag string, pos int) (int64, string, error)
-	// SetPositionEnabled включает/выключает позицию в рантайме.
-	// Второй результат — warmupError ЯДРА: флаг применён, но прогрев
-	// звена не удался. Это диагноз узла, а не сбой вызова, поэтому
-	// приезжает данными рядом с nil-ошибкой (контракт SPEC 075 ядра).
-	SetPositionEnabled(chainTag string, pos int, enabled bool) (string, error)
+	// SetPositionEnabled включает/выключает позицию в рантайме (SPEC 075
+	// ядра). Звеньев с SPEC 165 нет, прогревать нечего — только ошибка вызова.
+	SetPositionEnabled(chainTag string, pos int, enabled bool) error
 }
 
 // coreLogSource — бэкенд с собственным источником логов ядра (gRPC
@@ -387,42 +351,78 @@ func (ac *AppController) DaemonPoolAvailable(t CoreTarget) bool {
 	return ok
 }
 
+// outboundConfigSource — источник итогового конфига у работающего ядра
+// (SPEC 165 ядра): свой демон и транспорт удалённой машины.
+type outboundConfigSource interface {
+	OutboundConfig(tag string) (services.OutboundConfig, error)
+	EffectiveConfig() (string, error)
+}
+
+// outboundConfigSourceFor — источник цели; ok=false в classic-режиме и у
+// машины без подключения.
+func (ac *AppController) outboundConfigSourceFor(t CoreTarget) (outboundConfigSource, bool) {
+	if t.Scope == services.ScopeRemote {
+		tr, ok := ac.machineTransport(t)
+		if !ok {
+			return nil, false
+		}
+		src, ok := tr.(outboundConfigSource)
+		return src, ok
+	}
+	src, ok := ac.Backend().(outboundConfigSource)
+	return src, ok
+}
+
+// NodeOutboundConfig — узел по тегу у работающего ядра цели: как написан, как
+// работает и что ядро в нём поменяло. Ошибка — источника нет, ядро старше
+// SPEC 165 (Unimplemented) или узла нет в работающем конфиге (NotFound);
+// окно тогда показывает узел из конфига лаунчера.
+func (ac *AppController) NodeOutboundConfig(t CoreTarget, tag string) (services.OutboundConfig, error) {
+	src, ok := ac.outboundConfigSourceFor(t)
+	if !ok {
+		return services.OutboundConfig{}, fmt.Errorf("the running core config is not available for this target")
+	}
+	return src.OutboundConfig(tag)
+}
+
+// EffectiveCoreConfig — весь конфиг работающего ядра цели после
+// lx-предобработки (SPEC 165 ядра).
+func (ac *AppController) EffectiveCoreConfig(t CoreTarget) (string, error) {
+	src, ok := ac.outboundConfigSourceFor(t)
+	if !ok {
+		return "", fmt.Errorf("the running core config is not available for this target")
+	}
+	return src.EffectiveConfig()
+}
+
 // remotePoolSource — транспорт, умеющий отдать пул (services.LxdRemoteTransport).
 // Интерфейс объявлен здесь, чтобы core не зависел от конкретного типа.
 type remotePoolSource interface {
-	PoolSlots(group string) ([]services.PoolSlot, error)
+	PoolState(group string) (services.PoolState, error)
 }
 
-// DaemonPoolSlots возвращает слоты пула выбранной группы у источника цели.
-func (ac *AppController) DaemonPoolSlots(t CoreTarget, group string) ([]PoolSlotInfo, error) {
+// DaemonPoolState возвращает пул выбранной группы у источника цели.
+func (ac *AppController) DaemonPoolState(t CoreTarget, group string) (services.PoolState, error) {
 	if t.Scope == services.ScopeRemote {
 		tr, _ := ac.machineTransport(t)
 		src, ok := tr.(remotePoolSource)
 		if !ok {
-			return nil, fmt.Errorf("pool source is not available for this machine")
+			return services.PoolState{}, fmt.Errorf("pool source is not available for this machine")
 		}
-		slots, err := src.PoolSlots(group)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]PoolSlotInfo, 0, len(slots))
-		for _, s := range slots {
-			out = append(out, PoolSlotInfo{Slot: s.Slot, Tag: s.Tag, Delay: s.Delay})
-		}
-		return out, nil
+		return src.PoolState(group)
 	}
 	src, ok := ac.Backend().(poolSource)
 	if !ok {
-		return nil, fmt.Errorf("pool source is not available in this mode")
+		return services.PoolState{}, fmt.Errorf("pool source is not available in this mode")
 	}
-	return src.PoolSlots(group)
+	return src.PoolState(group)
 }
 
 // remoteChainSource — транспорт удалённой машины, умеющий то же самое.
 type remoteChainSource interface {
-	Chains() ([]services.ChainInfo, error)
+	ChainStatus(tag string) (services.ChainInfo, error)
 	ProbeLayer(chainTag string, pos int) (int64, string, error)
-	SetPositionEnabled(chainTag string, pos int, enabled bool) (string, error)
+	SetPositionEnabled(chainTag string, pos int, enabled bool) error
 }
 
 // remoteChainSourceFor — источник цепочек машины цели; ok=false у Local и у
@@ -454,55 +454,32 @@ func (ac *AppController) ChainsAvailable(t CoreTarget) bool {
 	return ok
 }
 
-// Chains возвращает состояние цепочек источника цели.
-func (ac *AppController) Chains(t CoreTarget) ([]ChainInfo, error) {
+// ChainFor возвращает цепочку по тегу у источника цели. ok=false — такой
+// цепочки в работающем ядре нет (её могли переименовать или ещё не пересобрать
+// конфиг), источник недоступен или ядро старше SPEC 165 (GetChainStatus нет).
+func (ac *AppController) ChainFor(t CoreTarget, tag string) (ChainInfo, bool) {
+	var (
+		info ChainInfo
+		err  error
+	)
 	if t.Scope == services.ScopeRemote {
 		src, ok := ac.remoteChainSourceFor(t)
 		if !ok {
-			return nil, errNoMachineChains
+			return ChainInfo{}, false
 		}
-		chains, err := src.Chains()
-		if err != nil {
-			return nil, err
+		info, err = src.ChainStatus(tag)
+	} else {
+		src, ok := ac.Backend().(chainSource)
+		if !ok {
+			return ChainInfo{}, false
 		}
-		out := make([]ChainInfo, 0, len(chains))
-		for _, c := range chains {
-			positions := make([]ChainPositionInfo, 0, len(c.Positions))
-			for _, p := range c.Positions {
-				positions = append(positions, ChainPositionInfo{
-					Tag:         p.Tag,
-					Now:         p.Now,
-					IsGroup:     p.IsGroup,
-					Transparent: p.Transparent,
-					Disabled:    p.Disabled,
-					CloneState:  p.CloneState,
-					LastError:   p.LastError,
-				})
-			}
-			out = append(out, ChainInfo{Tag: c.Tag, Positions: positions})
-		}
-		return out, nil
+		info, err = src.ChainStatus(tag)
 	}
-	src, ok := ac.Backend().(chainSource)
-	if !ok {
-		return nil, fmt.Errorf("chain state is not available in this mode")
-	}
-	return src.Chains()
-}
-
-// ChainFor возвращает цепочку по тегу. ok=false — такой цепочки в работающем
-// ядре нет (её могли переименовать или ещё не пересобрать конфиг).
-func (ac *AppController) ChainFor(t CoreTarget, tag string) (ChainInfo, bool) {
-	chains, err := ac.Chains(t)
 	if err != nil {
+		debuglog.DebugLog("chain status %s: %v", tag, err)
 		return ChainInfo{}, false
 	}
-	for _, c := range chains {
-		if c.Tag == tag {
-			return c, true
-		}
-	}
-	return ChainInfo{}, false
+	return info, true
 }
 
 // ProbeChainLayer меряет префикс цепочки до позиции pos включительно.
@@ -533,29 +510,24 @@ var ErrChainToggleUnsupported = errors.New("core does not support chain position
 
 // SetChainPositionEnabled включает/выключает позицию цепочки в работающем
 // ядре (SPEC 075 ядра). pos — порядок пакета, 0 = вход.
-//
-// Первый результат — warmupError ядра: тумблер УЖЕ применён, но поднять
-// звено на включённой позиции не удалось. Ядро отдаёт это данными, а не
-// статус-ошибкой, потому что тумблер выражает волю пользователя, а
-// здоровье узла — отдельный факт; UI обязан показать оба.
-func (ac *AppController) SetChainPositionEnabled(t CoreTarget, chainTag string, pos int, enabled bool) (string, error) {
+func (ac *AppController) SetChainPositionEnabled(t CoreTarget, chainTag string, pos int, enabled bool) error {
 	if t.Scope == services.ScopeRemote {
 		src, ok := ac.remoteChainSourceFor(t)
 		if !ok {
-			return "", errNoMachineChains
+			return errNoMachineChains
 		}
-		warmup, err := src.SetPositionEnabled(chainTag, pos, enabled)
+		err := src.SetPositionEnabled(chainTag, pos, enabled)
 		// services не может импортировать core (граф замкнулся бы), и
 		// «старое ядро» приезжает оттуда своим значением ошибки.
 		// Сводим к одному, чтобы UI проверял один errors.Is.
 		if errors.Is(err, services.ErrChainToggleUnsupported) {
-			return warmup, ErrChainToggleUnsupported
+			return ErrChainToggleUnsupported
 		}
-		return warmup, err
+		return err
 	}
 	src, ok := ac.Backend().(chainSource)
 	if !ok {
-		return "", fmt.Errorf("chain position toggle is not available in this mode")
+		return fmt.Errorf("chain position toggle is not available in this mode")
 	}
 	return src.SetPositionEnabled(chainTag, pos, enabled)
 }

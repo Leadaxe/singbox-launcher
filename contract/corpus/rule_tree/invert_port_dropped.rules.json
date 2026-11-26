@@ -1,0 +1,23 @@
+{
+  "_": "«Не порт 443» с DNS-опцией: маршрут выпускается как есть; в зеркале узел опустел и выброшен и под invert — DNS-правил нет, правило в mirror_empty (⚠ «DNS options have no effect…»).",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "NotTLS",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "port": [
+          443
+        ],
+        "invert": true,
+        "outbound": "direct"
+      },
+      "dns": {
+        "enabled": true,
+        "serverTag": "cf"
+      }
+    }
+  ]
+}

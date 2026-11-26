@@ -243,7 +243,7 @@ An array of objects describing proxy-server sources.
 | `source`      | string   | Yes           | The subscription URL. All 14 protocols from the [the generated scheme index](../contract/docs/generated/index.md) table: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS, HTTP(S) CONNECT proxy. Base64 and plain text are both accepted, as is a **JSON array** of full Xray configs (`[ {...}, ... ]`), see above. |
 | `connections` | array    | No          | An array of direct links. All 14 schemes from the [the generated scheme index](../contract/docs/generated/index.md) table: `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `tuic://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`/`awg://`, `vpn://` (Amnezia), `masque://`, `anytls://`, `tt://` (TrustTunnel). Can be combined with subscriptions. WireGuard nodes land in the config's `endpoints` section (sing-box ≥ 1.11). NaïveProxy requires sing-box ≥ 1.13.0 + the `with_naive_outbound` build tag (fork core `1.14.0-lx.4+`). More in [URI formats for direct links](#uri-formats-for-direct-links). |
 | `skip`        | array    | No          | A list of filters. If at least one matches, the node is skipped. |
-| `chain`       | object   | No          | **SPEC 110.** Makes this source a hop chain instead of a subscription or a server: `hops` (positions in packet order), `idle_timeout`, `interrupt_exist_connections` (cut live user connections on a runtime position toggle, SPEC 124), `strip_evasion`, `strip`, `rewrite`. Such a source has no `source` and no `connections` — it materializes into a single `chain` outbound whose tag comes from `tag_mask`. Requires a core built with `with_lx_chain`. See [Hop chains](#hop-chains). |
+| `chain`       | object   | No          | **SPEC 110.** Makes this source a hop chain instead of a subscription or a server: `hops` (positions in packet order), `interrupt_exist_connections` (cut live user connections on a runtime position toggle, SPEC 124), `rewrite`. `idle_timeout`, `strip_evasion` and `strip` are removed (SPEC 189: the core with SPEC 165 rejects them); saved values are dropped on load. Such a source has no `source` and no `connections` — it materializes into a single `chain` outbound whose tag comes from `tag_mask`. Requires a core built with `with_lx_chain`. See [Hop chains](#hop-chains). |
 | `tag_prefix`  | string   | No          | A prefix added to every node tag from this source (version 4). Applied before the original tag. Supports the variables `{$tag}`, `{$scheme}`, `{$protocol}`, `{$server}`, `{$port}`, `{$label}`, `{$comment}`, `{$num}`. Ignored when `tag_mask` is set. |
 | `tag_postfix` | string   | No          | A postfix added to every node tag from this source (version 4). Applied after the original tag. Supports the same variables as `tag_prefix`. Ignored when `tag_mask` is set. |
 | `tag_mask`    | string   | No          | A mask that replaces the node tag entirely (version 4). When set, it replaces the tag completely, ignoring `tag_prefix` and `tag_postfix`. Supports the same variables as `tag_prefix`/`tag_postfix`. |
@@ -417,13 +417,25 @@ It lives in `proxies[]` next to subscriptions and servers:
 {
   "tag_mask": "double-hop",
   "chain": {
-    "hops": ["vpn-1", "🇳🇱 Amsterdam"],
-    "idle_timeout": "10m",
-    "strip_evasion": true,
-    "strip": { "tls.utls": false }
+    "hops": ["vpn-1", "🇳🇱 Amsterdam"]
   }
 }
 ```
+
+With core SPEC 165 (1.14.4-lx.37-rc.2) the core rewrites a chain on load:
+every node a position ≥ 2 reaches (members of groups too) gets `detour` on
+the internal hop `<chain>#<i>` of the position below, and dials only that
+way. A node or a group (with every member of any depth) needed after the
+first position may therefore stand in one place only: another chain using it,
+or the same chain holding it on two later positions, drops the later chain at
+build (`chain_detour_conflict`); a shared first position of two chains is
+allowed. So do a ring (`[A, Group{A, X}]`, `chain_detour_ring`; an own detour
+of a lower position into a later one, `chain_detour_ring_detour`), a fixed local port of a node inside the chain
+(`chain_hop_local_port`), a node named `<chain>#<i>`
+(`chain_hop_tag_taken`) and a `rewrite` that changes `detour`
+(`chain_rewrite_detour`). The chain editor shows the same problems and does not
+save the chain; the message says what to copy (the launcher does not make
+copies itself).
 
 For the rest of the launcher a chain is a **node**: it joins the pool, is
 picked up by Direction filters like any subscription server, and shows up in

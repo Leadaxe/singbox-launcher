@@ -42,94 +42,26 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-outbounds"></a>**`outbounds`** — Ordered tags of the hops, client first.
   - Type: string_array
   - Required: the node is dropped without it
-- <a id="body-idle-timeout"></a>**`idle_timeout`** — Tear down the chain after this idle period.
-  - Type: duration
-  - Default: `5m`
-- <a id="body-strip-evasion"></a>**`strip_evasion`** — Strip evasion options from inner hops.
-  - Type: bool, tristate
-  - Default: `true`
-- <a id="body-strip"></a>**`strip`** — Per-option patch to the strip catalogue.
-  - Type: object
-- <a id="body-strip-tls-fragment"></a>**`strip.tls.fragment`** — Strip TLS ClientHello fragmentation from inner hops.
-  - Type: bool
-  - Default: `true`
-- <a id="body-strip-multiplex-padding"></a>**`strip.multiplex.padding`** — Strip multiplex padding from inner hops.
-  - Type: bool
-  - Default: `true`
-- <a id="body-strip-xhttp-padding"></a>**`strip.xhttp.padding`** — Strip XHTTP padding from inner hops.
-  - Type: bool
-  - Default: `true`
-- <a id="body-strip-tls-utls"></a>**`strip.tls.utls`** — Strip the uTLS fingerprint from inner hops.
-  - Type: bool
-  - Default: `false`
-  - Not stripped when a hop at position 2 or later requires this path (`chain_strip_utls_on_reality`)
 - <a id="body-rewrite"></a>**`rewrite`** — JSON merge patch applied to inner hop options.
   - Type: object
 - <a id="body-interrupt-exist-connections"></a>**`interrupt_exist_connections`** — Drop existing connections when the chain changes.
   - Type: bool
   - Default: `false`
-- <a id="body-detour"></a>**`detour`** — Tag of the outbound this connection is routed through.
-  - Type: string, set by config build
-- <a id="body-bind-interface"></a>**`bind_interface`** — Network interface the connection is bound to.
-  - Type: string
-- <a id="body-inet4-bind-address"></a>**`inet4_bind_address`** — Local IPv4 address to bind to.
-  - Type: string, format `ipv4`
-  - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid)
-- <a id="body-inet6-bind-address"></a>**`inet6_bind_address`** — Local IPv6 address to bind to.
-  - Type: string
-- <a id="body-connect-timeout"></a>**`connect_timeout`** — Timeout for establishing the connection.
-  - Type: duration
-- <a id="body-tcp-fast-open"></a>**`tcp_fast_open`** — Use TCP Fast Open.
-  - Type: bool
-  - Default: `false`
-- <a id="body-tcp-multi-path"></a>**`tcp_multi_path`** — Use Multipath TCP (MPTCP). The core and the OS judge whether it works.
-  - Type: bool
-  - Default: `false`
-- <a id="body-disable-tcp-keep-alive"></a>**`disable_tcp_keep_alive`** — Disable TCP keepalive on this connection.
-  - Type: bool
-  - Default: `false`
-- <a id="body-tcp-keep-alive"></a>**`tcp_keep_alive`** — Idle time before the first TCP keepalive probe.
-  - Type: duration, normalized: `duration_bare_seconds`
-- <a id="body-tcp-keep-alive-interval"></a>**`tcp_keep_alive_interval`** — Interval between TCP keepalive probes.
-  - Type: duration, normalized: `duration_bare_seconds`
-- <a id="body-udp-fragment"></a>**`udp_fragment`** — Allow fragmenting UDP packets.
-  - Type: bool, tristate
-- <a id="body-domain-resolver"></a>**`domain_resolver`** — DNS server tag used to resolve the server domain.
-  - Type: string
-- <a id="body-network-strategy"></a>**`network_strategy`** — Strategy for picking the outbound network interface. The core judges the value: the launcher passes it through unchecked.
-  - Type: string
-- <a id="body-network-type"></a>**`network_type`** — Interface types allowed for this connection. The core judges the values.
-  - Type: listable_string
-- <a id="body-fallback-network-type"></a>**`fallback_network_type`** — Interface types used when the primary ones are unavailable. The core judges the values.
-  - Type: listable_string
-- <a id="body-fallback-delay"></a>**`fallback_delay`** — Delay before falling back to the secondary network type.
-  - Type: duration
 
 ## Diagnosed problems
 
 Every code that can be raised on a node of this scheme, including the ones coming from the shared TLS, transport, multiplex and dialer sub-schemas. Follow a code for what it means and what to do about it.
 
-- [`chain_strip_utls_on_reality`](../warnings.md#chain_strip_utls_on_reality)
-  - [`strip.tls.utls`](#body-strip-tls-utls) — a hop at position 2 or later requires this path → not stripped
 - [`field_missing`](../warnings.md#field_missing)
   - [`outbounds`](#body-outbounds) — required and missing → node dropped
-- [`type_invalid`](../warnings.md#type_invalid)
-  - [`inet4_bind_address`](#body-inet4-bind-address) — the value does not fit the field → removed
 
 ## Replacements
 
-**Values.** What the sanitizer does to a value before it reaches the node body.
-
-- `tcp_keep_alive` — normalized: `duration_bare_seconds`
-- `tcp_keep_alive_interval` — normalized: `duration_bare_seconds`
+Nothing is silently replaced for this scheme.
 
 ## Degradation
 
 **The node is dropped**
 
 - `outbounds` — required and missing
-
-**The field is removed, the node lives on**
-
-- `inet4_bind_address` — invalid value
 

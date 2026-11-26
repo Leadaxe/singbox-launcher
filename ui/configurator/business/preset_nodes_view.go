@@ -54,12 +54,22 @@ func PresetServedTags(model *wizardmodels.WizardModel, tpl *wizardtemplate.Prese
 	if model == nil || !tpl.IsNodeLoop() {
 		return nil
 	}
-	nodes := build.PresetForEachNodes(tpl, vars, PresetGlobalVars(model), model.Target, PresetNodesForView(model))
+	nodes := PresetServedNodes(model, tpl, vars)
 	tags := make([]string, 0, len(nodes))
 	for _, n := range nodes {
 		tags = append(tags, n.Tag)
 	}
 	return tags
+}
+
+// PresetServedNodes — узлы, которые обслуживает пресет с обходом узлов, с
+// полями записи (для окна правила: какие переключатели узла пресет увидит).
+// Пресет без обхода — nil.
+func PresetServedNodes(model *wizardmodels.WizardModel, tpl *wizardtemplate.Preset, vars map[string]string) []wizardtemplate.PresetNode {
+	if model == nil || tpl == nil || !tpl.IsNodeLoop() {
+		return nil
+	}
+	return build.PresetForEachNodes(tpl, vars, PresetGlobalVars(model), model.Target, PresetNodesForView(model))
 }
 
 // PresetServedNodesLabel — подпись строки пресета с обходом узлов: теги через

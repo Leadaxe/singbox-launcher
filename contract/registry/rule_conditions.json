@@ -1,0 +1,112 @@
+{
+  "v": 1,
+  "note": "Условия простого правила маршрута (rules[] inline|srs, body; контракт 1.1.179, SPEC 188 лаунчера, D-156). Таблица «ключ тела → условие формы, вид поля, идёт ли в DNS-зеркало, идёт ли в inline-набор правила» — единственный источник для формы правила и для сборки обеих сторон: имён ключей в коде формы и сборки нет. Ключи одного условия соединены «любое из», условия между собой — «и» (так их связывает ядро, route/rule.md). Каждый ключ — в одном условии; каждый, кроме refs (поле записи-источника наборов, не ключ ядра), есть в allowlist route_rule_conditions. Поля ключа: field — вид поля формы (refs | lines | cidr_lines | ports | bool | enum_multi | processes); dns — ключ переносится в DNS-зеркало правила (TEMPLATE_LANG §6.11; для ключей таблицы dns:true ⇔ ключ в rule_dns_mirror_match, у refs в зеркало идут теги наборов как rule_set); set — у простого правила с refs ключ уходит в inline-набор правила (TEMPLATE_LANG §6.13; только ключи групп domain и address); group — признак ключа для правил сборки: domain (доменный ключ: Block HTTPS, «inline-набор с доменами»; ⇔ rule_dns_block_https_domains), address (адрес назначения); conflicts — ключи, с которыми форма не даёт сочетать этот ключ в одном простом правиле; values — значения enum_multi, open — допустимы и значения вне списка; label — подпись поля (английский текст; у лаунчера — ключ перевода; у LxBox свои подписи, поле справочное); placeholder — подсказка в пустом поле (то же). Поля условия: label — подпись (английский текст; ключ перевода у лаунчера — сам текст, у LxBox свои подписи); order — место в меню «+ Condition»; one_of — в условии выбирается один ключ (ядро связывает ключи «и»); platforms — ОС машины правила, где ядро читает условие (на прочих форма пишет «на этой машине не действует»); нет поля — везде; forms — чьи формы показывают условие (нет поля — launcher и lxbox); ключи условия, которое форма стороны не показывает, она хранит и провозит без изменений. Ключ тела вне таблицы и вне служебных (type, mode, rules, invert, rule_set, outbound, action, method) — форма открывает тело как JSON. Проверки при загрузке реестра лаунчера: ключ один раз, ключ в route_rule_conditions, dns ⇔ rule_dns_mirror_match, group domain ⇔ rule_dns_block_https_domains, set ⇔ group domain|address.",
+  "conditions": [
+    {
+      "id": "destination",
+      "label": "Destination / Rule sets",
+      "order": 10,
+      "keys": [
+        { "key": "refs", "field": "refs", "dns": true, "label": "Rule sets — URL or file (one per line)" },
+        { "key": "domain", "field": "lines", "dns": true, "set": true, "group": "domain", "label": "Domains", "placeholder": "One per line, e.g. example.com" },
+        { "key": "domain_suffix", "field": "lines", "dns": true, "set": true, "group": "domain", "label": "Domain suffixes", "placeholder": "One per line, e.g. example.com" },
+        { "key": "domain_keyword", "field": "lines", "dns": true, "set": true, "group": "domain", "label": "Domain keywords", "placeholder": "One per line, e.g. google" },
+        { "key": "domain_regex", "field": "lines", "dns": true, "set": true, "group": "domain", "label": "Domain regex", "placeholder": "One per line, e.g. ^.*\\.google\\.com$" },
+        { "key": "ip_cidr", "field": "cidr_lines", "set": true, "group": "address", "label": "IP addresses / CIDR", "placeholder": "One per line, e.g. 192.168.1.0/24" },
+        { "key": "ip_is_private", "field": "bool", "conflicts": ["refs"], "label": "Private addresses" }
+      ]
+    },
+    {
+      "id": "port",
+      "label": "Port",
+      "order": 20,
+      "keys": [
+        { "key": "port", "field": "ports", "label": "Ports", "placeholder": "e.g. 443, 8443" },
+        { "key": "port_range", "field": "lines", "label": "Port ranges", "placeholder": "One per line, e.g. 1000:2000" }
+      ]
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "order": 30,
+      "keys": [
+        { "key": "source_ip_cidr", "field": "cidr_lines", "dns": true, "label": "Source IP addresses / CIDR", "placeholder": "One per line, e.g. 192.168.1.0/24" },
+        { "key": "source_ip_is_private", "field": "bool", "dns": true, "label": "Private source addresses" }
+      ]
+    },
+    {
+      "id": "source_port",
+      "label": "Source port",
+      "order": 40,
+      "keys": [
+        { "key": "source_port", "field": "ports", "label": "Source ports", "placeholder": "e.g. 443, 8443" },
+        { "key": "source_port_range", "field": "lines", "label": "Source port ranges", "placeholder": "One per line, e.g. 1000:2000" }
+      ]
+    },
+    {
+      "id": "process",
+      "label": "Process",
+      "order": 50,
+      "one_of": true,
+      "keys": [
+        { "key": "process_name", "field": "processes", "dns": true, "label": "Name" },
+        { "key": "process_path", "field": "lines", "dns": true, "label": "Path", "placeholder": "One per line, e.g. C:\\Program Files\\App\\app.exe" },
+        { "key": "process_path_regex", "field": "lines", "dns": true, "label": "Path regex", "placeholder": "One per line, e.g. .*steam.*" }
+      ]
+    },
+    {
+      "id": "protocol",
+      "label": "Protocol",
+      "order": 60,
+      "keys": [
+        { "key": "protocol", "field": "enum_multi", "values": ["http", "tls", "quic", "stun", "dns", "bittorrent", "dtls", "ssh", "rdp", "ntp"], "open": true, "label": "Protocols" }
+      ]
+    },
+    {
+      "id": "network",
+      "label": "Network",
+      "order": 70,
+      "keys": [
+        { "key": "network", "field": "enum_multi", "values": ["tcp", "udp", "icmp"], "label": "Networks" }
+      ]
+    },
+    {
+      "id": "inbound",
+      "label": "Inbound",
+      "order": 80,
+      "keys": [
+        { "key": "inbound", "field": "lines", "dns": true, "label": "Inbound tags", "placeholder": "One per line, e.g. tun-in" }
+      ]
+    },
+    {
+      "id": "wifi",
+      "label": "Wi-Fi",
+      "order": 90,
+      "platforms": ["windows", "linux", "android"],
+      "keys": [
+        { "key": "wifi_ssid", "field": "lines", "dns": true, "label": "SSID", "placeholder": "One per line" },
+        { "key": "wifi_bssid", "field": "lines", "dns": true, "label": "BSSID", "placeholder": "One per line, e.g. 00:11:22:33:44:55" }
+      ]
+    },
+    {
+      "id": "apps",
+      "label": "Apps",
+      "order": 100,
+      "forms": ["lxbox"],
+      "keys": [
+        { "key": "package_name", "field": "lines", "dns": true, "label": "Packages" },
+        { "key": "package_name_regex", "field": "lines", "dns": true, "label": "Package regex" }
+      ]
+    },
+    {
+      "id": "network_type",
+      "label": "Network type",
+      "order": 110,
+      "forms": ["lxbox"],
+      "keys": [
+        { "key": "network_type", "field": "enum_multi", "values": ["wifi", "cellular", "ethernet", "other"], "dns": true, "label": "Network types" },
+        { "key": "network_is_expensive", "field": "bool", "dns": true, "label": "Metered network" }
+      ]
+    }
+  ]
+}

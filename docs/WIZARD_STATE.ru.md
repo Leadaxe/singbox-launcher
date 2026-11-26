@@ -6,7 +6,25 @@
 куда уходит при build. Файл переписан под schema v6 (SPEC 053 + SPEC 056-R-N
 + SPEC 057-R-N + SPEC 058-R-N), v5 описан только в разделе «Миграции».
 
-> **Схема v8 (SPEC 127) — то, что лаунчер пишет сегодня.** Любая запись — это
+> **Схема v9 (SPEC 188) — то, что лаунчер пишет сегодня.** От v8 она отличается
+> в двух местах:
+>
+> - `meta.version` равен `9`, а `meta.schema` — **объект**
+>   `{"name": "sources_v9", "min_reader": 9}` вместо строки. Сборки до v9 на
+>   нём падают и отвергают файл целиком — а не читают его, молча теряя
+>   srs-правила;
+> - ссылки наборов правила `refs[]` лежат **внутри `body`**, рядом с прочими
+>   условиями, в любом простом правиле дерева условий (у узла `type: logical`
+>   `refs` нет). `refs` на записи — старая форма: читается и при загрузке
+>   поднимается в тело; есть и там и там — главнее тело.
+>
+> Первое сохранение, превращающее файл старой схемы в v9, оставляет исходник
+> рядом — `state.json.v8.bak` для файла v8 (`.v7.bak` / `.v6.bak` для более
+> старых, имена копий миграций ниже). Прежний лаунчер файл v9 отвергает; чтобы
+> вернуться, положите `.bak` на место `state.json`. То же — у состояния каждой
+> удалённой машины (`wizard_states/remote/<id>/state.json`).
+>
+> **Схема v8 (SPEC 127).** Любая запись — это
 > *метаданные приложения + `body` = объект sing-box как есть*: одно пространство
 > имён у состояния лаунчера, состояния LxBox и файла бэкапа
 > (`contract/docs/ONE_NAMESPACE.md`). Относительно v7:
@@ -64,7 +82,7 @@
   положении.
 - **`bin/subscriptions/<source_id>.raw`** — per-source raw body cache подписки
   (atomic .tmp + rename). Read-path парсит .raw напрямую без сети.
-- **`bin/rule-sets/<tag>.srs`** — скачанные rule-set'ы.
+- **`bin/rule-sets/<tag>.srs`** (наборы исходного формата: `<имя>-<хеш>.json`) — копии наборов правил: скачанные по URL или скопированные по ссылке `file://` (SPEC 187).
 
 **Удалённая машина** (SPEC 098): всё её имущество — под одной директорией,
 где `<id>` = ID записи реестра `bin/remote-daemons.json`:
@@ -173,7 +191,7 @@ Top-level keys, отсутствующие в v6 (vs предыдущих рев
 | `outbounds` | `[]OutboundConfig` | subscription | Прежние per-source группы. **С SPEC 108 не пишутся:** группы свёрнутой подписки разворачиваются на сборке из `fold`, а записи со старыми маркерами `WIZARD:*` удаляются при загрузке. |
 | `expose_group_tags_to_global` | bool | subscription | Прежний флаг SPEC 026. **Только чтение (SPEC 108):** при загрузке разворачивается в `fold`, обратно не пишется. |
 | `fold` | `{mode, auto}` | subscription | **SPEC 108** — свёртка подписки в группу. Отсутствует — не свёрнута, узлы идут в Направления по отдельности. `mode`: `select` \| `auto` \| `select_auto`. `auto` — параметры автогруппы, форма общая с `outbounds[].auto` Направления. Сами группы (`<prefix>auto`, `<prefix>select`) в состоянии НЕ хранятся: они разворачиваются на каждой сборке, поэтому смена префикса подписки переименовывает их автоматически. |
-| `chain` | `{hops, …}` | chain | **SPEC 110** — цепочка хопов: `hops` (позиции в порядке ПАКЕТА), `idle_timeout`, `interrupt_exist_connections` (SPEC 124, только `true`), `strip_evasion`, `strip`, `rewrite`. Только у `type: chain`; у такого источника нет ни `url`, ни `uri`. Материализуется в ОДИН узел типа `chain`, тег которого берётся из `label`. Цепочка описывает МАРШРУТ, а Направление — выбор между маршрутами, поэтому она источник, а не Направление; в Направления она попадает узлом, наравне с серверами подписки. |
+| `chain` | `{hops, …}` | chain | **SPEC 110** — цепочка хопов: `hops` (позиции в порядке ПАКЕТА), `interrupt_exist_connections` (SPEC 124, только `true`), `rewrite`; `idle_timeout`, `strip_evasion`, `strip` сняты SPEC 189 (ядро с SPEC 165 их отвергает) и при загрузке отбрасываются. Только у `type: chain`; у такого источника нет ни `url`, ни `uri`. Материализуется в ОДИН узел типа `chain`, тег которого берётся из `label`. Цепочка описывает МАРШРУТ, а Направление — выбор между маршрутами, поэтому она источник, а не Направление; в Направления она попадает узлом, наравне с серверами подписки. |
 | `update` | `{interval_hours, auto_refresh}` | subscription | Per-source override default reload interval. |
 | `max_nodes` | int | subscription | Per-source override `defaults.max_nodes`. |
 | `meta` | `SubscriptionMeta` | subscription | Runtime данные (см. ниже), заполняется Update'ом. |
@@ -416,13 +434,31 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 | `name` | string | `kind=inline` \| `srs` | Отображаемое имя. Источник `StableRuleID` — та же строка, что до v8 лежала в `body.name`. |
 | `enabled` | bool | всегда | Общий toggle. |
 | `num` | int | необязательно | Позиция на разреженной оси порядка (SPEC 106; до v8 — `order_num`). Нет ключа = правило не размечено, номер раздаёт `MarkRuleOrder` при ближайшей загрузке. |
-| `refs` | string[] | `kind=srs` | URL наборов .srs в порядке ввода (до v8 — `body.srs_url` + `body.srs_urls`). Дедуп с сохранением порядка. |
+| `refs` | string[] | старая форма, только чтение | До v9 — ссылки наборов правила (`http(s)://` или `file://`). С v9 живут в `body.refs` простого правила (ниже); `refs` записи при загрузке поднимается в корень тела и не пишется. |
 | `vars` | object | `kind=preset` | Значения переменных пресета (до v8 — `body.vars`) — **только diff** от template-дефолтов. Пустая карта = всё дефолтное. Bump'нули template → юзер автоматически получает новые дефолты для var'ов, которые не трогал. |
-| `body` | raw JSON | `kind=inline` \| `srs` | **Правило sing-box как есть**: матчеры плюс цель — `"outbound": "<tag>"` либо `"action": "reject"` (+ `"method": "drop"`). У записи пресета тела нет — правило живёт в шаблоне. |
+| `srs_mode`, `update_interval_hours`, `download_detour` | string, int, string | `kind=srs` \| `preset`, необязательно | Настройки наборов правила (SPEC 185): кто качает наборы (`local` — лаунчер, `remote` — ядро), период обновления в часах (`0` — не обновлять) и выход, через который ядро качает в режиме remote. Нет поля — общее значение (переменные шаблона `srs_mode`, `srs_update_interval_hours`, `srs_download_detour`). |
+| `body` | raw JSON | `kind=inline` \| `srs` | **Правило sing-box как есть**, деревом условий: простое правило (условия) или `type: logical` с `mode: and \| or`, `rules[]`, `invert`, вложенность не ограничена. Цель — `"outbound": "<tag>"` либо `"action": "reject"` (+ `"method": "drop"`) — только у корня. Простое правило может нести `refs` (свои ссылки наборов). У записи пресета тела нет — правило живёт в шаблоне. |
 
-**`rule_set` в `body` не хранится.** Сборка регистрирует по локальному набору на
-каждый элемент `refs[]` (`user:<id>`, `user:<id>:2`, …) и сама вписывает список
-тегов в эмитируемое правило (`resolveSrsRouteRule`).
+**`kind` выводится** (с v9): `srs`, если хоть в одном простом правиле дерева
+есть `refs`, иначе `inline`. Правило с группами условий хранится как
+`logical and`: первым — обычные условия, следом каждая группа; одна группа без
+других условий — сама группа.
+
+**Теги наборов — от имени правила** (контракт §6.13, SPEC 188). Сборка обходит
+дерево: каждая ссылка `refs` — запись `rule_set`, а доменные и адресные ключи
+простого правила со ссылками (`domain*`, `ip_cidr`) уходят в его собственный
+inline-набор. Теги: `B` — имя правила с обрезанными краями (пустое — `unnamed`),
+одинаковые имена по оси разводятся `B (2)`, `B (3)`, …; каждая ссылка —
+`B:<stem>`, stem — имя файла из пути ссылки без `.srs` / `.json` (контракт
+1.1.182: `Ai:geosite-google`); две ссылки правила с одним stem — `B:<stem>-<h8>`
+у обеих (h8 — первые 8 hex sha256 ссылки), ссылка без имени файла — `B:<h8>`;
+inline-набор корня — сам `B`, листа дерева — `B:inline:<путь>`. Выпущенное
+правило получает `rule_set: [рукописные…, ссылки…, inline]`. Прежние теги
+(`user:<id>` / `user:<id>:N` и промежуточные `B`, `B:<h8>`, `B:inline`)
+рукописный `rule_set` внутри тел правил и своих DNS-правил переписывается при
+первой загрузке; в шаблоне — править вручную. Рукописный `rule_set` на невыпущенный набор
+снимает правило, а не роняет ядро. Имя файла копии — от ссылки, не от тега:
+ничего не перекачивается.
 
 **Кто читает и кто пишет тело.** Читатель один — `DecodeBody()`: он отдаёт *вид*
 (`PresetBody` / `InlineBody` / `SrsBody`), собранный из полей записи и тела, где
@@ -454,17 +490,37 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
   }
 }
 
-// 3. SRS rule-set user rule — наборы снаружи тела, цель внутри
+// 3. Правило с наборами — ссылки внутри тела, рядом с другими условиями
 {
-  "kind": "srs",
-  "name": "Block ads (oisd)",
+  "kind": "srs",                       // выводится: в дереве есть refs
+  "name": "Streaming",
   "enabled": true,
   "num": 1010,
-  "refs": [
-    "https://example.com/oisd.srs",
-    "https://example.com/extra.srs"    // по элементу на набор; `rule_set` вписывает сборка
-  ],
-  "body": { "action": "reject" }
+  "body": {
+    "refs": ["https://example.com/netflix.srs"],   // тег "Streaming:netflix", `rule_set` вписывает сборка
+    "domain_suffix": ["nflxvideo.net"],            // уходит в inline-набор "Streaming"
+    "port": [443],
+    "outbound": "direct-out"
+  },
+  "dns": { "enabled": true, "serverTag": "cf" }
+}
+
+// 4. Дерево: «порт 443 И (любое из: набор рекламы, приватный источник)»
+{
+  "kind": "srs",
+  "name": "Ads on 443",
+  "enabled": true,
+  "num": 1020,
+  "body": {
+    "type": "logical", "mode": "and",
+    "rules": [
+      { "port": [443] },
+      { "type": "logical", "mode": "or", "rules": [
+          { "refs": ["https://example.com/oisd.srs"] },
+          { "source_ip_is_private": true } ] }
+    ],
+    "action": "reject"
+  }
 }
 ```
 
@@ -830,7 +886,7 @@ dropped через `_ = raw.IndependentCache` в `legacyDevDNSToOptions`),
 |--------|--------|------|
 | `preset` | `{ref, enabled}` (ref = `<preset_id>`) | `{vars: {<name>: <value>, ...}}` — только diff от template defaults; пустой map = всё дефолтное |
 | `inline` | `{id (ULID), enabled}` | `{name, match (sing-box match-объект), outbound (tag|"reject"|"drop")}` |
-| `srs` | `{kind, name, enabled, num, refs[]}` | `{outbound}` \| `{action}` |
+| `srs` | `{kind, name, enabled, num}` | дерево условий с `refs` внутри + `{outbound}` \| `{action}` у корня |
 
 Order = order рендера в UI Rules tab (включая drag-reordering) = order эмита
 в `config.json::route.rules[]`. Сохраняется через
@@ -956,10 +1012,11 @@ patch поверх template body, что даёт template auto-upgrade авто
 | sing-box 1.14 | `dns_options.independent_cache` silently dropped (legacy state читается, новый не пишется) | нет |
 | v6 → v7 | источники на верхний уровень, контейнеры с `nodes[]`, ссылки как `{folder_id, tag}`, `enabled` на самом узле (SPEC 118) | **`state.json.v6.bak`** перед первой записью v7 |
 | v7 → v8 | Одно пространство имён (SPEC 127): правила — `order_num` → `num`, `name` / `refs[]` / `vars` из тела на уровень записи, `body` = само правило sing-box (цель как `outbound` \| `action`); DNS — плоское тело в `body`, `tag` остаётся снаружи; корень `dns_options` → `dns`, `warp_accounts` → `warp`; `sections` узлов — по тем же правилам. Проход идёт по сырому документу, поэтому ключи матчеров и их порядок доживают байт-в-байт. | **`state.json.v7.bak`** перед первой записью v8 |
+| v8 → v9 | SPEC 188: `refs` записи → `body.refs` корневого простого правила (корень `logical` оборачивается в `and`); `meta.schema` — объект `{name: "sources_v9", min_reader: 9}`; рукописные ссылки `rule_set` на старые теги `user:<id>` в телах правил → теги от имени правила. | **`state.json.v8.bak`** при первом сохранении v9 |
 
-Save всегда пишет текущую форму — сегодня v8 (SPEC 060 давно убрал dual write
+Save всегда пишет текущую форму — сегодня v9 (SPEC 060 давно убрал dual write
 path). Любой более старый файл читается своим парсером, мигрирует по цепочке
-v5 → v6 → v7 → v8 и переписывается ближайшим Save; лежавший на диске файл
+v5 → v6 → v7 → v8 → v9 и переписывается ближайшим Save; лежавший на диске файл
 остаётся рядом как `.bak` своей версии.
 
 ---

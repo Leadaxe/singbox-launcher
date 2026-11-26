@@ -22,6 +22,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
+	"singbox-launcher/internal/srstag"
 )
 
 // RuleSRSPath возвращает путь к локальному SRS файлу: {DataDir}/bin/rule-sets/{tag}.srs
@@ -44,7 +45,7 @@ func RuleSRSPath(dataDir paths.DataDir, tag string) string {
 // у remote следует оставлять type:remote; здесь функция отвечает только за
 // то, ГДЕ лаунчер держит скачанный файл.
 func RuleSRSPathFor(dataDir paths.DataDir, target, machineID, tag string) string {
-	return filepath.Join(platform.GetRuleSetsDirFor(dataDir, target, machineID), tag+".srs")
+	return filepath.Join(platform.GetRuleSetsDirFor(dataDir, target, machineID), srstag.FileName(tag))
 }
 
 // SRSFileExists проверяет наличие локального SRS файла
@@ -81,51 +82,124 @@ func createSRSHTTPClient(timeout time.Duration) *http.Client {
 }
 
 // DownloadSRS скачивает SRS файл по URL и сохраняет в destPath.
-// При ctx.Done() прерывает загрузку; частичный файл удаляется.
+// При ctx.Done() прерывает загрузку; частичный файл удаляется. Скачанное
+// проверяется до замены (validateSRSFile): прежний файл битым ответом не
+// затирается.
 func DownloadSRS(ctx context.Context, url string, destPath string) error {
-	if url == "" || destPath == "" {
-		return fmt.Errorf("DownloadSRS: url and destPath are required")
+	_, err := fetchSRS(ctx, url, destPath, false)
+	return err
+}
+
+// RefreshSRS — обновление уже скачанного набора (SPEC 185): условный запрос
+// по времени изменения файла. Возвращает changed=true, если файл заменён.
+// Ответ 304 файл не трогает, но продлевает его свежесть (mtime = сейчас).
+// Файла нет — обычная загрузка.
+func RefreshSRS(ctx context.Context, url string, destPath string) (bool, error) {
+	return fetchSRS(ctx, url, destPath, true)
+}
+
+// SRSFileModTime — время последней загрузки набора (mtime файла); ok=false,
+// если файла нет. Свежесть набора нигде больше не хранится (SPEC 185 §2.1).
+func SRSFileModTime(path string) (time.Time, bool) {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return time.Time{}, false
 	}
+	return info.ModTime(), true
+}
 
-	// Создаём контекст с таймаутом
-	ctx, cancel := context.WithTimeout(ctx, SRSDownloadTimeout)
-	defer cancel()
+// ErrSRSInvalidContent — сервер ответил 200, но тело не набор правил
+// (страница блокировщика или портала, пустой ответ).
+var ErrSRSInvalidContent = errors.New("response is not a rule-set")
 
-	client := createSRSHTTPClient(SRSDownloadTimeout)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+// ValidateRuleSetFile проверяет файл набора до замены рабочей копии: бинарный
+// набор начинается с сигнатуры "SRS", исходный (JSON) — с '{'. Битый файл на
+// месте рабочего роняет ядро на старте, поэтому проверка обязательна.
+// format — srstag.FormatSource: файл обязан быть JSON (SPEC 187: копия .json
+// уезжает в конфиг как format:source); иначе принимается любой из двух видов,
+// как до SPEC 187.
+func ValidateRuleSetFile(path, format string) error {
+	f, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("DownloadSRS: failed to create request: %w", err)
+		return err
 	}
-	req.Header.Set("User-Agent", "LxBox/1.0")
+	defer func() { _ = f.Close() }()
+	head := make([]byte, 64)
+	n, _ := io.ReadFull(f, head)
+	head = head[:n]
+	if n == 0 {
+		return fmt.Errorf("%w: empty body", ErrSRSInvalidContent)
+	}
+	isJSON := strings.HasPrefix(strings.TrimLeft(string(head), " \t\r\n\ufeff"), "{")
+	if isJSON {
+		return nil
+	}
+	if format != srstag.FormatSource && strings.HasPrefix(string(head), "SRS") {
+		return nil
+	}
+	return ErrSRSInvalidContent
+}
 
-	resp, err := client.Do(req)
+// ErrSRSSourceMissing — исходный файл file://-набора не найден или не
+// читается (SPEC 187). Прежняя копия остаётся на месте.
+var ErrSRSSourceMissing = errors.New("rule-set source file is not available")
+
+// fileRefMtimeSlack — допуск сравнения времени изменения исходника и копии:
+// файловые системы хранят его с разной точностью.
+const fileRefMtimeSlack = 2 * time.Second
+
+// copyFileRef — «загрузка» file://-набора (SPEC 187): копия исходника в
+// каталог наборов. Копия получает время изменения исходника; исходник не
+// изменился = совпали размер и время. conditional=false копирует всегда.
+func copyFileRef(ctx context.Context, ref, destPath string, conditional bool) (bool, error) {
+	p, err := srstag.PathFromFileRef(ref)
 	if err != nil {
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			return fmt.Errorf("connection timeout")
+		return false, fmt.Errorf("DownloadSRS: %w", err)
+	}
+	srcPath := filepath.FromSlash(p)
+	src, err := os.Stat(srcPath)
+	if err != nil || src.IsDir() {
+		return false, fmt.Errorf("DownloadSRS: %s: %w", srcPath, ErrSRSSourceMissing)
+	}
+	if conditional {
+		if dst, statErr := os.Stat(destPath); statErr == nil && dst.Size() == src.Size() {
+			diff := dst.ModTime().Sub(src.ModTime())
+			if diff < 0 {
+				diff = -diff
+			}
+			if diff < fileRefMtimeSlack {
+				return false, nil
+			}
 		}
-		return fmt.Errorf("DownloadSRS: %w", err)
 	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
+	in, err := os.Open(srcPath)
+	if err != nil {
+		return false, fmt.Errorf("DownloadSRS: %s: %w", srcPath, ErrSRSSourceMissing)
+	}
+	defer func() { _ = in.Close() }()
+	if _, err := installRuleSetFile(ctx, in, destPath); err != nil {
+		return false, err
+	}
+	if err := os.Chtimes(destPath, time.Now(), src.ModTime()); err != nil {
+		debuglog.WarnLog("DownloadSRS: set mtime %s: %v", destPath, err)
+	}
+	debuglog.DebugLog("DownloadSRS: copied %s to %s", srcPath, destPath)
+	return true, nil
+}
 
-	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("DownloadSRS: HTTP 404: %w", ErrSRSNotFound)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("DownloadSRS: HTTP %d", resp.StatusCode)
-	}
-
-	// Пишем во временный файл, затем переименовываем атомарно
+// installRuleSetFile пишет тело набора во временный файл, проверяет содержимое
+// и атомарно ставит на место destPath. Общий хвост HTTP-загрузки и копии
+// file://-набора.
+func installRuleSetFile(ctx context.Context, body io.Reader, destPath string) (int64, error) {
 	dir := filepath.Dir(destPath)
 	if err := os.MkdirAll(dir, platform.DefaultDirMode); err != nil {
-		return fmt.Errorf("DownloadSRS: failed to create directory: %w", err)
+		return 0, fmt.Errorf("DownloadSRS: failed to create directory: %w", err)
 	}
 
 	tmpPath := destPath + ".tmp"
 	destFile, err := os.Create(tmpPath)
 	if err != nil {
-		return fmt.Errorf("DownloadSRS: failed to create file: %w", err)
+		return 0, fmt.Errorf("DownloadSRS: failed to create file: %w", err)
 	}
 
 	// defer гарантирует закрытие файла и удаление tmp при любом выходе (включая панику)
@@ -139,26 +213,87 @@ func DownloadSRS(ctx context.Context, url string, destPath string) error {
 		}
 	}()
 
-	written, err := io.Copy(destFile, resp.Body)
+	written, err := io.Copy(destFile, body)
 	if err != nil {
-		return fmt.Errorf("DownloadSRS: write error: %w", err)
+		return 0, fmt.Errorf("DownloadSRS: write error: %w", err)
 	}
 
 	if err := destFile.Close(); err != nil {
-		return fmt.Errorf("DownloadSRS: failed to close file: %w", err)
+		return 0, fmt.Errorf("DownloadSRS: failed to close file: %w", err)
 	}
 	closed = true
 
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return 0, ctx.Err()
+	}
+
+	if err := ValidateRuleSetFile(tmpPath, srstag.Format(filepath.Base(destPath))); err != nil {
+		return 0, fmt.Errorf("DownloadSRS: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, destPath); err != nil {
-		return fmt.Errorf("DownloadSRS: failed to save file: %w", err)
+		return 0, fmt.Errorf("DownloadSRS: failed to save file: %w", err)
+	}
+	return written, nil
+}
+
+func fetchSRS(ctx context.Context, url string, destPath string, conditional bool) (bool, error) {
+	if url == "" || destPath == "" {
+		return false, fmt.Errorf("DownloadSRS: url and destPath are required")
+	}
+	if srstag.IsFileRef(url) {
+		return copyFileRef(ctx, url, destPath, conditional)
+	}
+
+	// Создаём контекст с таймаутом
+	ctx, cancel := context.WithTimeout(ctx, SRSDownloadTimeout)
+	defer cancel()
+
+	client := createSRSHTTPClient(SRSDownloadTimeout)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false, fmt.Errorf("DownloadSRS: failed to create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "LxBox/1.0")
+	if conditional {
+		if mod, ok := SRSFileModTime(destPath); ok {
+			req.Header.Set("If-Modified-Since", mod.UTC().Format(http.TimeFormat))
+		}
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			return false, fmt.Errorf("connection timeout")
+		}
+		return false, fmt.Errorf("DownloadSRS: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if conditional && resp.StatusCode == http.StatusNotModified {
+		now := time.Now()
+		if err := os.Chtimes(destPath, now, now); err != nil {
+			debuglog.WarnLog("RefreshSRS: touch %s: %v", destPath, err)
+		}
+		debuglog.DebugLog("RefreshSRS: not modified: %s", destPath)
+		return false, nil
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return false, fmt.Errorf("DownloadSRS: HTTP 404: %w", ErrSRSNotFound)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("DownloadSRS: HTTP %d", resp.StatusCode)
+	}
+
+	written, err := installRuleSetFile(ctx, resp.Body, destPath)
+	if err != nil {
+		return false, err
 	}
 
 	debuglog.DebugLog("DownloadSRS: downloaded %d bytes to %s", written, destPath)
-	return nil
+	return true, nil
 }
 
 // SRSEntry — один rule_set, требующий загрузки (tag + url)
@@ -186,7 +321,7 @@ func AllSRSDownloadedIn(dataDir paths.DataDir, srsDir string, entries []SRSEntry
 	for _, e := range entries {
 		path := RuleSRSPath(dataDir, e.Tag)
 		if srsDir != "" {
-			path = filepath.Join(srsDir, e.Tag+".srs")
+			path = filepath.Join(srsDir, srstag.FileName(e.Tag))
 		}
 		if info, err := os.Stat(path); err != nil || info.IsDir() {
 			return false
@@ -199,7 +334,7 @@ func AllSRSDownloadedIn(dataDir paths.DataDir, srsDir string, entries []SRSEntry
 // их в виде списка (tag, URL) для дальнейшей работы (проверка наличия локальных файлов,
 // скачивание и т.п.).
 //
-// Перед добавлением в результат URL проходят через normalizeSRSURL — там чинятся только
+// Перед добавлением в результат URL проходят через NormalizeSRSURL — там чинятся только
 // GitHub blob-ссылки вида https://github.com/owner/repo/blob/branch/path/file.srs.
 // Все остальные URL (включая локальные пути, нестандартные схемы и уже "сырые" ссылки)
 // не трогаются и не отфильтровываются.
@@ -216,13 +351,13 @@ func GetSRSEntries(ruleSets []json.RawMessage) []SRSEntry {
 		if typ != "remote" || tag == "" || rawURL == "" {
 			continue
 		}
-		normalizedURL := normalizeSRSURL(rawURL)
+		normalizedURL := NormalizeSRSURL(rawURL)
 		result = append(result, SRSEntry{Tag: tag, URL: normalizedURL})
 	}
 	return result
 }
 
-// normalizeSRSURL приводит URL SRS к удобному для скачивания виду.
+// NormalizeSRSURL приводит URL SRS к удобному для скачивания виду.
 //
 // Единственная "умная" логика, заложенная сюда:
 //   - если URL указывает на GitHub blob-страницу
@@ -238,7 +373,7 @@ func GetSRSEntries(ruleSets []json.RawMessage) []SRSEntry {
 //
 // возвращаются без изменений. Это позволяет поддерживать как удалённые, так и локальные
 // SRS-источники, не навязывая жёстких ограничений по схеме/хосту.
-func normalizeSRSURL(rawURL string) string {
+func NormalizeSRSURL(rawURL string) string {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return rawURL
@@ -308,7 +443,7 @@ func DownloadSRSGroupTo(ctx context.Context, dataDir paths.DataDir, destDir stri
 		}
 		destPath := RuleSRSPath(dataDir, e.Tag)
 		if destDir != "" {
-			destPath = filepath.Join(destDir, e.Tag+".srs")
+			destPath = filepath.Join(destDir, srstag.FileName(e.Tag))
 		}
 		if err := DownloadSRS(ctx, e.URL, destPath); err != nil {
 			debuglog.WarnLog("DownloadSRSGroup: tag=%q url=%s: %v", e.Tag, e.URL, err)
@@ -371,10 +506,10 @@ func DeleteOrphanRuleSetsFor(dataDir paths.DataDir, target, machineID string, kn
 			continue
 		}
 		name := e.Name()
-		// Каноничный паттерн bin/rule-sets/<tag>.srs. Tag = name без .srs.
-		// Файлы без .srs (мусор / .tmp от прерванной DownloadSRS) тоже
-		// чистим — папка целиком launcher-managed.
-		tag := strings.TrimSuffix(name, ".srs")
+		// Каноничное имя — srstag.FileName(tag): <tag>.srs либо сам тег с
+		// хвостом .json (SPEC 187). Прочие файлы (мусор / .tmp от прерванной
+		// DownloadSRS) тоже чистим — папка целиком launcher-managed.
+		tag := srstag.TagFromFileName(name)
 		if _, ok := knownSet[tag]; ok {
 			continue
 		}

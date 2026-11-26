@@ -988,12 +988,6 @@
   "Replace groups": {
     "value": "Группы свёртки"
   },
-  "leads back here": {
-    "value": "ведёт обратно сюда"
-  },
-  "This group cannot be used here: its own nodes connect through this entry, so the path would loop back.": {
-    "value": "Эту группу здесь выбрать нельзя: её узлы сами подключаются через эту запись, путь замкнулся бы в кольцо."
-  },
   "DNS": {
     "value": "DNS"
   },
@@ -1640,14 +1634,14 @@
   "No DNS rules.": {
     "value": "Нет DNS-правил."
   },
-  "⬇ srs": {
-    "value": "⬇ srs"
+  "⬇ upd": {
+    "value": "⬇ upd"
   },
-  "🔄 srs": {
-    "value": "🔄 srs"
+  "🔄 upd": {
+    "value": "🔄 upd"
   },
-  "✔️ srs": {
-    "value": "✔️ srs"
+  "✔️ upd": {
+    "value": "✔️ upd"
   },
   "Template file bin/%s not found.": {
     "value": "Файл шаблона bin/%s не найден."
@@ -1694,8 +1688,8 @@
   "Drag to reorder": {
     "value": "Перетащите, чтобы изменить порядок"
   },
-  "Rule-set file not downloaded — this rule won't work until the SRS is fetched. The launcher is downloading it in the background; you can also click ⬇ srs to retry.": {
-    "value": "Файл rule-set не скачан — это правило не будет работать пока SRS не загружен. Launcher скачивает в фоне; можно нажать ⬇ srs для ручного retry."
+  "Rule-set file not downloaded — this rule won't work until the SRS is fetched. The launcher is downloading it in the background; you can also click ⬇ upd to retry.": {
+    "value": "Файл rule-set не скачан — это правило не будет работать пока SRS не загружен. Launcher скачивает в фоне; можно нажать ⬇ upd для ручного retry."
   },
   "Default direction:": {
     "value": "Направление по умолчанию:"
@@ -1745,97 +1739,40 @@
   "Rule name": {
     "value": "Название правила"
   },
-  "Enter IP addresses (CIDR format)\ne.g., 192.168.1.0/24": {
-    "value": "Введите IP-адреса (формат CIDR)\nнапр., 192.168.1.0/24"
-  },
-  "Enter domains or URLs (one per line)\ne.g., example.com": {
-    "value": "Введите домены или URL (по одному на строку)\nнапр., example.com"
-  },
-  "Processes (select one or more via popup):": {
-    "value": "Процессы (выберите через всплывающее окно):"
-  },
   "Select Processes...": {
     "value": "Выбрать процессы..."
-  },
-  "Match by path": {
-    "value": "Поиск по пути"
-  },
-  "Simple": {
-    "value": "Простой"
   },
   "Regex": {
     "value": "Регулярное выражение",
     "special": {
-      "1": {
-        "value": "Регулярные выражения"
-      },
       "2": {
         "value": "Шаблон"
       }
     }
   },
-  "One per line. Use * as wildcard (e.g. */steam/* or *\\Steam\\*).": {
-    "value": "По одному на строку. Используйте * как подстановку (напр. */steam/* или *\\Steam\\*)."
+  "URLs or files (one per line), .srs or .json\ne.g. https://raw.githubusercontent.com/.../file.srs": {
+    "value": "URL или файлы (по одному на строку), .srs или .json\nнапр. https://raw.githubusercontent.com/.../file.srs"
   },
-  "One per line. Full regex as-is (no /regex/i wrapping). E.g. ^C:\\\\Games\\\\.* or .*steam.*": {
-    "value": "По одному на строку. Полное регулярное выражение (без обёртки /regex/i). Напр. ^C:\\\\Games\\\\.* или .*steam.*"
+  "Add file…": {
+    "value": "Добавить файл…"
   },
-  "Path patterns (one per line):": {
-    "value": "Шаблоны путей (по одному на строку):"
+  "Choose a rule-set file": {
+    "value": "Выберите файл набора правил"
   },
-  "Custom JSON:": {
-    "value": "Произвольный JSON:"
+  "Rule-set file not found": {
+    "value": "Файл набора правил не найден"
   },
-  "SRS URLs (one per line)\ne.g. https://raw.githubusercontent.com/.../file.srs": {
-    "value": "URL SRS-файлов (по одному на строку)\nнапр. https://raw.githubusercontent.com/.../file.srs"
+  "Not a rule-set file (.srs or .json expected)": {
+    "value": "Это не файл набора правил (нужен .srs или .json)"
   },
-  "SRS URLs (one per line):": {
-    "value": "URL SRS-файлов (по одному на строку):"
+  "Network paths are not supported for rule sets": {
+    "value": "Сетевые пути для наборов правил не поддерживаются"
   },
-  "IP Addresses (CIDR)": {
-    "value": "IP-адреса (CIDR)"
+  "Rule-set file path is not valid": {
+    "value": "Некорректный путь к файлу набора правил"
   },
-  "Domains/URLs": {
-    "value": "Домены/URL"
-  },
-  "Processes": {
-    "value": "Процессы"
-  },
-  "SRS": {
-    "value": "SRS"
-  },
-  "Custom JSON": {
-    "value": "Произвольный JSON"
-  },
-  "Domain mode:": {
-    "value": "Тип домена:"
-  },
-  "Exact domains": {
-    "value": "Точные домены"
-  },
-  "Suffix": {
-    "value": "Суффикс"
-  },
-  "Keyword": {
-    "value": "Ключевое слово"
-  },
-  "IP Addresses (one per line, CIDR format):": {
-    "value": "IP-адреса (по одному на строку, формат CIDR):"
-  },
-  "Domains (one per line):": {
-    "value": "Домены (по одному на строку):"
-  },
-  "Domain suffixes (one per line):": {
-    "value": "Суффиксы доменов (по одному на строку):"
-  },
-  "Domain keywords (one per line):": {
-    "value": "Ключевые слова доменов (по одному на строку):"
-  },
-  "Domain regex:": {
-    "value": "Регулярное выражение для доменов:"
-  },
-  "E.g. ^.*\\.google\\.com$ or .*\\.(google|youtube)\\.com$ (full regex, no /wrapping/)": {
-    "value": "Напр. ^.*\\.google\\.com$ или .*\\.(google|youtube)\\.com$ (полное regex, без обёртки /.../ )"
+  "Source file not found — the last copy is used": {
+    "value": "Исходный файл не найден — используется последняя копия"
   },
   "−": {
     "value": "−"
@@ -1845,9 +1782,6 @@
   },
   "Rule Name:": {
     "value": "Название правила:"
-  },
-  "Rule Type:": {
-    "value": "Тип правила:"
   },
   "Form": {
     "value": "Форма"
@@ -1867,35 +1801,14 @@
   "rule must be a JSON object": {
     "value": "правило должно быть JSON-объектом"
   },
-  "rule must contain \"outbound\" or \"action\"": {
-    "value": "правило должно содержать «outbound» или «action»"
-  },
   "Rule not recognized": {
     "value": "Правило не распознано"
-  },
-  "Could not recognize rule, form cannot be loaded; staying on Raw.": {
-    "value": "Не удалось распознать правило, форма не может быть загружена; остаёмся на Raw."
   },
   "We recommend looking for suitable rule-set files in the project:": {
     "value": "Рекомендуем искать подходящие файлы наборов правил в проекте:"
   },
   "SRS rule-sets": {
     "value": "Наборы правил SRS"
-  },
-  "enter at least one path pattern": {
-    "value": "введите хотя бы один шаблон пути"
-  },
-  "enter at least one SRS URL": {
-    "value": "введите хотя бы один URL SRS"
-  },
-  "enter at least one valid SRS URL": {
-    "value": "введите хотя бы один корректный URL SRS"
-  },
-  "Custom JSON is empty": {
-    "value": "Произвольный JSON пуст"
-  },
-  "Custom JSON must be an object": {
-    "value": "Произвольный JSON должен быть объектом"
   },
   "Paste one rule at a time: the editor keeps one sing-box rule per entry": {
     "value": "Вставляйте правила по одному: в одной записи редактора — одно правило sing-box"
@@ -2095,9 +2008,6 @@
   "Nothing left to add: every available target is already in the chain.": {
     "value": "Больше нечего добавить: все доступные цели уже в цепочке."
   },
-  "ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the chain will keep tls.utls on every position. Clear tls.utls to match.": {
-    "value": "Отпечаток ClientHello снят, но на позициях %s стоят reality-узлы — им он нужен, и цепочка оставит tls.utls у всех позиций. Снимите галку tls.utls, чтобы форма совпадала."
-  },
   "A nested chain (%s) is only allowed at the first position — move it to the top or remove it.": {
     "value": "Вложенная цепочка (%s) допустима только первой позицией — переставьте её наверх или уберите."
   },
@@ -2169,27 +2079,6 @@
   },
   "Option %s · %s is set twice — only the last one reaches the config.": {
     "value": "Параметр %s · %s задан дважды — в конфиг попадёт только последний."
-  },
-  "Link idle timeout": {
-    "value": "Простой звена"
-  },
-  "5m — core default, 0s — never drop": {
-    "value": "5m — умолчание ядра, 0s — не удалять"
-  },
-  "Strip DPI evasion from links": {
-    "value": "Снимать DPI-обвес у звеньев"
-  },
-  "ClientHello fragmentation": {
-    "value": "фрагментация ClientHello"
-  },
-  "multiplex padding": {
-    "value": "паддинг мультиплексора"
-  },
-  "XHTTP padding": {
-    "value": "паддинг XHTTP"
-  },
-  "ClientHello fingerprint (must not be stripped on reality nodes)": {
-    "value": "отпечаток ClientHello (на reality-узлах снимать нельзя)"
   },
   "Free community servers": {
     "value": "Бесплатные серверы сообщества"
@@ -2340,9 +2229,6 @@
   },
   "Endpoint": {
     "value": "Endpoint"
-  },
-  "Bind to this device (reserved)": {
-    "value": "Привязать к устройству (reserved)"
   },
   "Masquerade": {
     "value": "Маскировка"
@@ -2520,6 +2406,27 @@
   },
   "Live balancer pool (gRPC)": {
     "value": "Живой пул балансировщика (gRPC)"
+  },
+  "The core reports no pool for this group": {
+    "value": "Ядро не отдаёт пул этой группы"
+  },
+  "shifted keys: %d": {
+    "value": "сдвинуто ключей: %d"
+  },
+  "address problems: %d": {
+    "value": "проблем с адресом: %d"
+  },
+  "frozen for %d s": {
+    "value": "заморожен ещё %d с"
+  },
+  "frozen": {
+    "value": "заморожен"
+  },
+  "quarantine": {
+    "value": "карантин"
+  },
+  "connections %d · failures %d": {
+    "value": "соединений %d · отказов %d"
   },
   "Chain positions (%d)": {
     "value": "Позиции цепочки (%d)"
@@ -2762,8 +2669,23 @@
   "✗ not on server": {
     "value": "✗ нет на сервере"
   },
-  "≠ differs": {
-    "value": "≠ расходится"
+  "≠ content differs": {
+    "value": "≠ содержимое расходится"
+  },
+  "local copy updated %s": {
+    "value": "локальная копия обновлена %s"
+  },
+  "in use by the machine's config — the previous version stays there": {
+    "value": "на него ссылается конфиг машины — там остаётся прежняя версия"
+  },
+  "%d rule-set(s) were rejected by the machine and stay at the previous version there:": {
+    "value": "Наборов правил, которые машина не приняла, — %d; на ней остаётся прежняя версия:"
+  },
+  "%d rule-set(s) on the machine stay at the previous version because its config references them: %s.": {
+    "value": "Наборов правил на машине осталось прежней версии, потому что на них ссылается её конфиг: %d — %s."
+  },
+  "and %d more": {
+    "value": "и ещё %d"
   },
   "⚠ only on server": {
     "value": "⚠ только на сервере"
@@ -4018,9 +3940,6 @@
   },
   "starting": {
     "value": "поднимается"
-  },
-  "active": {
-    "value": "активно"
   },
   "idle": {
     "value": "простаивает"
@@ -5915,9 +5834,6 @@
   "Works only if the rule set contains domains.": {
     "value": "Работает, только если в наборе правил есть домены."
   },
-  "Unavailable for rules that match only IP addresses, ports or protocols.": {
-    "value": "Недоступно для правил только по IP-адресам, портам или протоколам."
-  },
   "Block HTTPS/SVCB records (no ECH)": {
     "value": "Блокировать записи HTTPS/SVCB (без ECH)"
   },
@@ -6199,5 +6115,284 @@
   },
   "This tunnel announces the default route, so it takes all traffic.": {
     "value": "Этот туннель объявляет маршрут по умолчанию и заберёт весь трафик."
+  },
+  "Remote: the core downloads the rule-set itself. If the first download fails and there is no cached copy, the core will not start.": {
+    "value": "Remote: набор скачивает само ядро. Если первая загрузка не удалась, а сохранённой копии нет, ядро не запустится."
+  },
+  "Default (from Settings)": {
+    "value": "По умолчанию (из Settings)"
+  },
+  "Local — the launcher downloads": {
+    "value": "Local — скачивает лаунчер"
+  },
+  "Remote — the core downloads": {
+    "value": "Remote — скачивает ядро"
+  },
+  "Download via (remote only):": {
+    "value": "Скачивать через (только remote):"
+  },
+  "Rule-set updates": {
+    "value": "Обновление наборов правил"
+  },
+  "Mode:": {
+    "value": "Режим:"
+  },
+  "Update interval, hours (empty — default, 0 — never):": {
+    "value": "Период обновления, часы (пусто — по умолчанию, 0 — никогда):"
+  },
+  "Last updated: %s": {
+    "value": "Обновлено: %s"
+  },
+  "For your own SRS rules, set DNS in the rule itself: Rules → edit the rule → DNS tab.": {
+    "value": "Для своих SRS-правил DNS задаётся в самом правиле: Rules → изменить правило → вкладка DNS."
+  },
+  "The name conflicts with the rule %q — choose another one.": {
+    "value": "Имя конфликтует с правилом %q — выберите другое."
+  },
+  "+ Condition": {
+    "value": "+ Условие"
+  },
+  "+ Rule": {
+    "value": "+ Правило"
+  },
+  "A rule set may also contain ports and processes. For “or” with other conditions, use a Rule group.": {
+    "value": "Набор может содержать и порты, и процессы. Для «или» с другими условиями — группа правил."
+  },
+  "AND": {
+    "value": "И"
+  },
+  "OR": {
+    "value": "ИЛИ"
+  },
+  "Add at least one condition.": {
+    "value": "Добавьте хотя бы одно условие."
+  },
+  "DNS options have no effect: the rule has no condition DNS can see": {
+    "value": "DNS-опции не действуют: у правила нет условия, которое видит DNS"
+  },
+  "Has no effect on this machine": {
+    "value": "На этой машине не действует"
+  },
+  "Not a port number (0–65535): %s": {
+    "value": "Не номер порта (0–65535): %s"
+  },
+  "Not available while the condition has rule sets. For “rule sets or private addresses”, add a Rule group with “any of”.": {
+    "value": "Недоступно, пока в условии есть наборы. Для «наборы или приватные адреса» добавьте группу правил с «любое из»."
+  },
+  "Not": {
+    "value": "Не"
+  },
+  "Only the rule itself has a target (outbound or action): remove it from the rules inside groups.": {
+    "value": "Цель (outbound или action) есть только у самого правила: уберите её из правил внутри групп."
+  },
+  "Other values, comma-separated": {
+    "value": "Другие значения через запятую"
+  },
+  "Rule group": {
+    "value": "Группа правил"
+  },
+  "all of": {
+    "value": "все из"
+  },
+  "any of": {
+    "value": "любое из"
+  },
+  "Destination / Rule sets": {
+    "value": "Назначение / Наборы"
+  },
+  "Rule sets — URL or file (one per line)": {
+    "value": "Наборы — URL или файл (по одному в строке)"
+  },
+  "One per line, e.g. example.com": {
+    "value": "По одному в строке, например example.com"
+  },
+  "Domain suffixes": {
+    "value": "Суффиксы доменов"
+  },
+  "Domain keywords": {
+    "value": "Ключевые слова доменов"
+  },
+  "One per line, e.g. google": {
+    "value": "По одному в строке, например google"
+  },
+  "Domain regex": {
+    "value": "Regex доменов"
+  },
+  "One per line, e.g. ^.*\\.google\\.com$": {
+    "value": "По одному в строке, например ^.*\\.google\\.com$"
+  },
+  "IP addresses / CIDR": {
+    "value": "IP-адреса / CIDR"
+  },
+  "One per line, e.g. 192.168.1.0/24": {
+    "value": "По одному в строке, например 192.168.1.0/24"
+  },
+  "Private addresses": {
+    "value": "Приватные адреса"
+  },
+  "Ports": {
+    "value": "Порты"
+  },
+  "e.g. 443, 8443": {
+    "value": "например 443, 8443"
+  },
+  "Port ranges": {
+    "value": "Диапазоны портов"
+  },
+  "One per line, e.g. 1000:2000": {
+    "value": "По одному в строке, например 1000:2000"
+  },
+  "Source IP addresses / CIDR": {
+    "value": "IP-адреса источника / CIDR"
+  },
+  "Private source addresses": {
+    "value": "Приватные адреса источника"
+  },
+  "Source port": {
+    "value": "Порт источника"
+  },
+  "Source ports": {
+    "value": "Порты источника"
+  },
+  "Source port ranges": {
+    "value": "Диапазоны портов источника"
+  },
+  "Process": {
+    "value": "Процесс"
+  },
+  "One per line, e.g. C:\\Program Files\\App\\app.exe": {
+    "value": "По одному в строке, например C:\\Program Files\\App\\app.exe"
+  },
+  "Path regex": {
+    "value": "Regex пути"
+  },
+  "One per line, e.g. .*steam.*": {
+    "value": "По одному в строке, например .*steam.*"
+  },
+  "Protocols": {
+    "value": "Протоколы"
+  },
+  "Networks": {
+    "value": "Сети"
+  },
+  "Inbound": {
+    "value": "Входящий"
+  },
+  "Inbound tags": {
+    "value": "Теги входящих"
+  },
+  "One per line, e.g. tun-in": {
+    "value": "По одному в строке, например tun-in"
+  },
+  "Wi-Fi": {
+    "value": "Wi-Fi"
+  },
+  "SSID": {
+    "value": "SSID"
+  },
+  "One per line": {
+    "value": "По одному в строке"
+  },
+  "BSSID": {
+    "value": "BSSID"
+  },
+  "One per line, e.g. 00:11:22:33:44:55": {
+    "value": "По одному в строке, например 00:11:22:33:44:55"
+  },
+  "Remove this condition?": {
+    "value": "Удалить это условие?"
+  },
+  "Remove this rule group and everything in it?": {
+    "value": "Удалить эту группу правил со всем содержимым?"
+  },
+  "Remove this rule?": {
+    "value": "Удалить это правило?"
+  },
+  "Applies to nodes": {
+    "value": "Сработает на узлах"
+  },
+  "JSON error": {
+    "value": "Ошибка в JSON"
+  },
+  "The form cannot show this rule.": {
+    "value": "Форма не может показать это правило."
+  },
+  "Discard the JSON changes and go back to the form?": {
+    "value": "Отбросить правки JSON и вернуться к форме?"
+  },
+  "Keep editing": {
+    "value": "Продолжить правку"
+  },
+  "Unknown direction %q.": {
+    "value": "Неизвестное направление %q."
+  },
+  "dial errors: %d": {
+    "value": "отказов дозвона: %d"
+  },
+  "The chain key %s is removed from the core: a chain no longer creates link copies, and strip filters moved to lx.detour.strip. Remove the key.": {
+    "value": "Ключ цепочки %s убран из ядра: цепочка больше не создаёт копии звеньев, а фильтры strip переехали в lx.detour.strip. Уберите ключ."
+  },
+  "From the launcher config": {
+    "value": "Из конфига лаунчера"
+  },
+  "From the launcher config: the core does not report this node": {
+    "value": "Из конфига лаунчера: ядро этот узел не отдаёт"
+  },
+  "Effective": {
+    "value": "Как работает"
+  },
+  "Original": {
+    "value": "Как написан"
+  },
+  "From the running core": {
+    "value": "Из работающего ядра"
+  },
+  "Changes by the core (%d)": {
+    "value": "Изменения ядра (%d)"
+  },
+  "chain %s, position %s": {
+    "value": "цепочка %s, позиция %s"
+  },
+  "rewrite of chain %s": {
+    "value": "rewrite цепочки %s"
+  },
+  "MTU alignment": {
+    "value": "выравнивание MTU"
+  },
+  "Effective config": {
+    "value": "Итоговый конфиг"
+  },
+  "The core does not report its effective config (classic mode or a core older than 1.14.4-lx.37-rc.2).": {
+    "value": "Ядро не отдаёт итоговый конфиг (режим classic или ядро старше 1.14.4-lx.37-rc.2)."
+  },
+  "The config as the core runs it: chains rewritten into detours, MTU aligned.": {
+    "value": "Конфиг, как его исполняет ядро: цепочки переписаны в detour, MTU выровнен."
+  },
+  "rewrite cannot change detour: inside a chain the node's path is set by the chain.": {
+    "value": "rewrite не может менять detour: внутри цепочки путь узла задаёт сама цепочка."
+  },
+  "leads back here (%q)": {
+    "value": "ведёт обратно сюда (%q)"
+  },
+  "This group cannot be used here (%q): its own nodes connect through this entry, so the path would loop back.": {
+    "value": "Эту группу здесь (%q) выбрать нельзя: её узлы сами подключаются через эту запись, путь замкнулся бы в кольцо."
+  },
+  "leads back here": {
+    "value": "ведёт обратно сюда"
+  },
+  "Hop chain %q is not built": {
+    "value": "Цепочка %q не собрана"
+  },
+  "…and %d more hop chains are not built": {
+    "value": "…и ещё цепочек не собрано: %d"
+  },
+  "The chain is not in the config: open it to see what to fix.": {
+    "value": "Цепочки нет в конфиге: откройте её, чтобы увидеть, что исправить."
+  },
+  "Open chain": {
+    "value": "Открыть цепочку"
+  },
+  "Hide until the config changes": {
+    "value": "Скрыть до изменения конфига"
   }
 }

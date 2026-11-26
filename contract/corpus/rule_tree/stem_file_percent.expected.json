@@ -1,0 +1,24 @@
+{
+  "rule_set": [
+    {
+      "tag": "Files:My Set",
+      "type": "local",
+      "format": "source"
+    },
+    {
+      "tag": "Files:a/b",
+      "type": "local",
+      "format": "binary"
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "Files:My Set",
+        "Files:a/b"
+      ],
+      "outbound": "proxy-out"
+    }
+  ],
+  "dns_rules": []
+}

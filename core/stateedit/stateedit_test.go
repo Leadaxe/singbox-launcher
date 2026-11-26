@@ -150,3 +150,35 @@ func TestStateEditIncidentScenario(t *testing.T) {
 		t.Errorf("dns rule on deleted server not reported: %v", dres.Dangling)
 	}
 }
+
+// TestSetServerDetourImpairScenario — сценарий теста с impair (SPEC 164 ядра,
+// SPEC 190): impair-узел добавляется как любой сервер из JSON, на него вешается
+// detour корневого сервера и члена папки, потом снимается. Цель обязана
+// существовать, сам на себя узел не вешается.
+func TestSetServerDetourImpairScenario(t *testing.T) {
+	st := incidentState(t)
+	res, err := AddServers(st, nil, AddServersRequest{Input: `{"type":"impair","tag":"imp","link_params":{"profile":"lte-walk"}}`})
+	if err != nil || len(res.Added) != 1 || res.Added[0].Type != "impair" {
+		t.Fatalf("add impair: %v %+v", err, res)
+	}
+	got, err := SetServerDetour(st, nil, "old-node", "", &DetourRef{Tag: "imp"})
+	if err != nil || got.Detour == nil || got.Detour.Tag != "imp" || st.Sources[0].Detour == nil || st.Sources[0].Detour.Tag != "imp" {
+		t.Fatalf("set root detour: %v %+v", err, got)
+	}
+	got, err = SetServerDetour(st, nil, "f1", "Work", &DetourRef{Tag: "imp"})
+	if err != nil || got.Previous == nil || got.Previous.Tag != "old-node" || got.Detour.Tag != "imp" {
+		t.Fatalf("set folder detour: %v %+v", err, got)
+	}
+	if _, err := SetServerDetour(st, nil, "old-node", "", nil); err != nil || st.Sources[0].Detour != nil {
+		t.Fatalf("clear detour: %v, detour %+v", err, st.Sources[0].Detour)
+	}
+	if _, err := SetServerDetour(st, nil, "old-node", "", &DetourRef{Tag: "nope"}); err == nil {
+		t.Error("an unknown detour target must be refused")
+	}
+	if _, err := SetServerDetour(st, nil, "imp", "", &DetourRef{Tag: "imp"}); err == nil {
+		t.Error("a node must not dial through itself")
+	}
+	if _, err := SetServerDetour(st, nil, "missing", "", nil); err == nil {
+		t.Error("a missing node must be refused")
+	}
+}

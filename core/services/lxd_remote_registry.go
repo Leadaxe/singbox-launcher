@@ -1306,16 +1306,16 @@ func (r *RemoteRegistry) StopCore(id string) error {
 // «десятки мегабайт по Wi-Fi на каждый Deploy».
 //
 // 409 на PUT означает, что имя занято ссылкой из активного или last-good
-// конфига, и демон отказался его перезаписывать. Сюда мы попадаем только
-// когда хеш НЕ совпал, то есть содержимое действительно другое — значит на
-// машине останется старый набор под новым конфигом. Молчать нельзя: это
-// ровно тот случай, когда ядро поднимется, но с не тем набором правил.
-// Пробрасываем ошибку с внятным советом.
+// конфига, и демон отказался его перезаписывать (last-good лежит на диске,
+// так что и при остановленном ядре тоже). Это не ошибка: прежняя копия
+// согласована с конфигами машины, имя возвращается в kept и пишется в лог.
+// 422 — демон не принял содержимое набора: на машине прежний файл, запись
+// «имя: причина» возвращается в rejected.
 //
 // Блокирующие сетевые вызовы — звать из горутины.
-func (r *RemoteRegistry) SyncResources(id string, files map[string][]byte) error {
-	_, err := r.syncResourcesCounted(id, files)
-	return err
+func (r *RemoteRegistry) SyncResources(id string, files map[string][]byte) (kept, rejected []string, err error) {
+	_, kept, rejected, err = r.syncResourcesCounted(id, files)
+	return kept, rejected, err
 }
 
 // ApplyConfig отправляет конфиг на удалённую машину (SPEC 097).

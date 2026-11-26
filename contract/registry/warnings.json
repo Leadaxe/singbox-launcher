@@ -1847,29 +1847,6 @@
       "dart": "services/builder/chain_nodes.dart:107,117",
       "go": "ChainDegradation.Code/Params → отчёт chain_failed: core/config/chain_nodes.go:buildChainNode (причина — core/config/chain_generator.go:ChainEmitError или коллизия тега)"
     },
-    "chain_strip_utls_on_reality": {
-      "severity": "warning",
-      "params": [
-        "target"
-      ],
-      "title_en": "Chain: uTLS kept because of REALITY",
-      "title_ru": "Цепочка: uTLS оставлен из-за REALITY",
-      "text_en": "The chain is set to strip uTLS, but hop {target} runs REALITY, which cannot work without it. Stripping uTLS was turned off for this chain, so every hop keeps its fingerprint; the chain works.",
-      "text_ru": "Цепочка настроена снимать uTLS, но звено {target} поднимает REALITY, которому он необходим. Снятие uTLS для этой цепочки отключено, отпечаток остаётся у всех звеньев; цепочка работает.",
-      "cause_en": "The chain was set up to strip uTLS from its inner hops, and a node in one of those positions runs REALITY. In REALITY the TLS fingerprint (the ClientHello) is a load-bearing part of the protocol, not camouflage, and the core applies the strip list to all hops at once, so it cannot spare just one.",
-      "cause_ru": "В цепочке настроено снятие uTLS у внутренних звеньев, а узел на одной из этих позиций поднимает REALITY. В REALITY отпечаток TLS (ClientHello) — несущая часть протокола, а не маскировка, а список снятия ядро применяет ко всем звеньям сразу и пощадить одно не умеет.",
-      "fix_en": [
-        "Nothing to do if the chain works.",
-        "To strip uTLS on the other hops, put a node without REALITY into that position."
-      ],
-      "fix_ru": [
-        "Если цепочка работает, делать ничего не нужно.",
-        "Чтобы снимать uTLS у остальных звеньев, поставьте на эту позицию узел без REALITY."
-      ],
-      "desc": "Контракт 1.1.61, SPEC 142 B4: chain.json strip.tls.utls.on_hop_required {action: unstrip}. Ключ каталога снимается с патча цепочки, когда тело хопа на позиции >= 1 этот путь требует — санитайзер вернул бы его связью requires с set (tls.reality.enabled → tls.utls.enabled; nodeflow.StripBlocked). Цепочка собирается, uTLS остаётся у всех звеньев. Факт ядра: sing-box-lx protocol/chain/transform.go «strip tls.utls: node uses reality, which requires utls» — отказ старта (sing-box check не ловит, память chain-check-misses-start-errors); каталог ядро применяет ко всей цепочке разом (buildStripSet). Прежде цепочка выпадала целиком (severity error) по рукописной копии правила (прежний ChainRealityConflict). МЕХАНИЗМ DART: строковый код рядом с цепочкой и/или находка формы ChainIssueCode.",
-      "dart": "screens/chain_edit/chain_form_validation.dart (ChainIssueCode.stripUtlsOnReality)",
-      "go": "contract/registry/protocols/chain.json body.fields.strip.fields.tls.utls.on_hop_required; исполнение — core/config/chain_validate.go:ChainUnstripRequired; EmissionWarning.Code в отчёт сборки — core/config/chain_nodes.go:ResolveChainSources"
-    },
     "chain_nested_position": {
       "severity": "error",
       "params": [
@@ -2897,6 +2874,144 @@
       "desc": "Ссылка-подписка tt://: есть subscription_url, нет ни hostname, ни address, ни username, ни password (правило 6 DEEP_LINK.md). Узел не строится — отказ разбора (dropped). Параметр subscription_url несёт адрес подписки (контракт 1.1.176): сторона, принимающая вставленный источник, заводит по нему подписку вместо отказа; в списке ссылок и в теле подписки строка остаётся отказом с этим кодом. Ответ по адресу — вид источника trusttunnel_endpoint_json.",
       "dart": null,
       "go": "правило реестра contract/registry/protocols/trusttunnel.json mappers.uri.params.subscription_only.on_invalid (drop у селектора); исполнение — core/config/linkmap/exec.go:execOne; адрес подписки из отказа — core/config/subscription/source_loader.go:SubscriptionURLOfLink"
+    },
+    "chain_detour_conflict": {
+      "severity": "error",
+      "params": [
+        "chain",
+        "node",
+        "other"
+      ],
+      "title_en": "Chain {chain}: {node} is already used by chain {other}",
+      "title_ru": "Цепочка {chain}: {node} уже занят цепочкой {other}",
+      "text_en": "The core routes every node and group after the first position of a chain through that chain, so such a node or group can stand in one place only. {node} is needed by chain {chain} and by chain {other} (directly or as a member of a group), and at least one of them needs it after the first position. Make a copy of {node} for one of the chains — a group together with its nodes; a WireGuard node with other keys. Until then the chain {chain} is not built: the core would refuse the whole config.",
+      "text_ru": "Ядро ведёт каждый узел и каждую группу после первой позиции цепочки её путём, поэтому такой узел или группа может стоять только в одном месте. {node} нужен и цепочке {chain}, и цепочке {other} (прямо или как член группы), и хотя бы одной из них — не на первой позиции. Сделайте копию {node} для одной из цепочек — группу вместе с её узлами, узел WireGuard с другими ключами. До тех пор цепочка {chain} не собирается: ядро не приняло бы весь конфиг.",
+      "cause_en": "Two chains share a node or a group and at least one of them uses it after the first position, or one chain has it on two positions after the first. A shared first position of two chains is allowed.",
+      "cause_ru": "Две цепочки делят узел или группу, и хотя бы одна использует их не на первой позиции, либо в одной цепочке он стоит на двух позициях после первой. Общая первая позиция двух цепочек допустима.",
+      "fix_en": [
+        "Make a copy of {node} for one of the chains: a group with copies of its nodes, a WireGuard node with other keys.",
+        "Or use a different node or group in one of the chains."
+      ],
+      "fix_ru": [
+        "Сделайте копию {node} для одной из цепочек: группу — с копиями её узлов, узел WireGuard — с другими ключами.",
+        "Либо поставьте в одну из цепочек другой узел или группу."
+      ],
+      "desc": "Одно место на тег (ALGORITHM К1 ядра): узел или группа, достижимые с позиций цепочек (все члены групп любой вложенности, кроме direct и block), не нужны двум местам, из которых хотя бы одно — позиция ≥ 1: другой цепочке или второй позиции ≥ 1 той же. Общий вход двух цепочек (позиция 0 обеих) — не конфликт (решение владельца 26.11.2026, ядро правится так же). Копии сторона сама не собирает: ошибка в редакторе с подсказкой, что скопировать. Снимается поздняя из двух цепочек; other — вторая. SPEC 165 ядра, SPEC 189 лаунчера, контракт 1.1.184; решение владельца 26.11.2026: клиент не допускает колец и конфликтов цепочек — снимает цепочку на сборке с кодом и показывает причину в редакторе цепочки до сохранения (ядро своих понятных сообщений не даёт). Только для ядра, которое переписывает цепочку (не ниже min_core блока lx.detour) или неизвестной версии. Сверено с ядром d9fc75468.",
+      "go": "ChainDetourProblem → GraphWarning → отчёт emit_degraded: core/config/chain_validate.go:ChainDetourProblems (сборка — core/build/outbound_graph_chain_detour.go:applyChainDetourRules, редактор — core/config/chain_validate.go:ChainEditProblems)"
+    },
+    "chain_detour_ring": {
+      "severity": "error",
+      "params": [
+        "chain",
+        "node",
+        "group",
+        "position"
+      ],
+      "title_en": "Chain {chain}: {node} is on the entry and inside {group}",
+      "title_ru": "Цепочка {chain}: {node} стоит на входе и внутри {group}",
+      "text_en": "In a chain every node after the first position goes through the position below it. {node} is the entry of chain {chain} and also a member of {group} on position {position}, so its path would go around in a circle. Make a copy of {group} without {node} for this position. Until then the chain {chain} is not built: the core would refuse the whole config.",
+      "text_ru": "В цепочке каждый узел после первой позиции идёт через позицию ниже. {node} — вход цепочки {chain} и одновременно член {group} на позиции {position}, поэтому его путь пошёл бы по кругу. Сделайте копию {group} без {node} для этой позиции. До тех пор цепочка {chain} не собирается: ядро не приняло бы весь конфиг.",
+      "cause_en": "The first position is a node (or a group with it), and a group on a later position also contains that node.",
+      "cause_ru": "Первая позиция — узел (или группа с ним), а группа на дальней позиции тоже содержит этот узел.",
+      "fix_en": [
+        "Make a copy of {group} without {node} and put it on position {position}.",
+        "Or choose another first position."
+      ],
+      "fix_ru": [
+        "Сделайте копию {group} без {node} и поставьте её на позицию {position}.",
+        "Либо выберите другую первую позицию."
+      ],
+      "desc": "Кольцо через группу (апстрим ядра называет его circular outbound dependency с тегами хопов `<цепочка>#<i>`): узел, достижимый с позиции 0, достижим и с позиции ≥ 1 той же цепочки; group — тег позиции, через которую он перехвачен. Копию сторона сама не собирает: ошибка в редакторе с подсказкой. SPEC 165 ядра, SPEC 189 лаунчера, контракт 1.1.184; решение владельца 26.11.2026: клиент не допускает колец и конфликтов цепочек — ошибка в редакторе цепочки (сохранить нельзя), сборка снимает цепочку. Только для ядра, которое переписывает цепочку (не ниже min_core блока lx.detour) или неизвестной версии.",
+      "go": "ChainDetourProblem → GraphWarning → отчёт emit_degraded: core/config/chain_validate.go:ChainDetourProblems (сборка — core/build/outbound_graph_chain_detour.go:applyChainDetourRules, редактор — core/config/chain_validate.go:ChainEditProblems)"
+    },
+    "chain_detour_ring_detour": {
+      "severity": "error",
+      "params": [
+        "chain",
+        "node",
+        "position"
+      ],
+      "title_en": "Chain {chain}: a detour leads back into {node}",
+      "title_ru": "Цепочка {chain}: detour ведёт обратно в {node}",
+      "text_en": "In a chain every node after the first position goes through the position below it. The own detour of a node on a lower position leads into {node} on position {position}, so the path would go around in a circle. Clear that detour, or take {node} out of the chain. Until then the chain {chain} is not built: the core would refuse the whole config.",
+      "text_ru": "В цепочке каждый узел после первой позиции идёт через позицию ниже. Собственный detour узла нижней позиции ведёт в {node} на позиции {position}, поэтому путь пошёл бы по кругу. Снимите этот detour или уберите {node} из цепочки. До тех пор цепочка {chain} не собирается: ядро не приняло бы весь конфиг.",
+      "cause_en": "A node on a lower position of the chain has its own detour that leads into a node on a later position.",
+      "cause_ru": "У узла нижней позиции цепочки свой detour, который ведёт в узел дальней позиции.",
+      "fix_en": [
+        "Clear the detour of the lower node.",
+        "Or take {node} out of the chain."
+      ],
+      "fix_ru": [
+        "Снимите detour у нижнего узла.",
+        "Либо уберите {node} из цепочки."
+      ],
+      "desc": "Кольцо через detour (ALGORITHM К6 ядра; апстрим — circular outbound dependency): собственный detour узла нижней позиции ведёт в узел, перехваченный той же цепочкой на позиции выше. SPEC 189 лаунчера, контракт 1.1.184; решение владельца 26.11.2026: ошибка в редакторе цепочки, сборка снимает цепочку.",
+      "go": "ChainDetourProblem → GraphWarning → отчёт emit_degraded: core/config/chain_validate.go:ChainDetourProblems (сборка — core/build/outbound_graph_chain_detour.go:applyChainDetourRules, редактор — core/config/chain_validate.go:ChainEditProblems)"
+    },
+    "chain_hop_local_port": {
+      "severity": "error",
+      "params": [
+        "chain",
+        "node",
+        "position",
+        "fields"
+      ],
+      "title_en": "Chain {chain}: {node} has a fixed local port",
+      "title_ru": "Цепочка {chain}: у {node} фиксированный локальный порт",
+      "text_en": "{node} at position {position} of chain {chain} connects through the position below, and that hop opens its socket, so a fixed local port ({fields}) cannot work. The chain {chain} was excluded, because the core rejects such a config.",
+      "text_ru": "{node} на позиции {position} цепочки {chain} подключается через позицию ниже, и сокет ему открывает этот хоп, поэтому фиксированный локальный порт ({fields}) работать не может. Цепочка {chain} исключена: ядро отвергает такой конфиг.",
+      "cause_en": "A WireGuard, Tailscale or OpenConnect node inside a chain has a fixed local port.",
+      "cause_ru": "У узла WireGuard, Tailscale или OpenConnect внутри цепочки задан фиксированный локальный порт.",
+      "fix_en": [
+        "Clear the local port of the node, or use the node outside chains."
+      ],
+      "fix_ru": [
+        "Уберите локальный порт у узла или используйте узел вне цепочек."
+      ],
+      "desc": "Локальный порт (ALGORITHM К5 ядра): WireGuard/AWG listen_port, Tailscale listen_port / relay_server_port, OpenConnect dtls_local_port у узла позиции ≥ 1 (в том числе члена группы) — ошибка загрузки; сторона снимает цепочку, а не порт. Поля привязки сокета (tcp_fast_open, routing_mark, bind_interface …) ошибкой не являются: ядро показывает их в GetOutboundConfig записями lx.detour. SPEC 165 ядра, SPEC 189 лаунчера, контракт 1.1.184; решение владельца 26.11.2026: клиент не допускает колец и конфликтов цепочек — снимает цепочку на сборке с кодом и показывает причину в редакторе цепочки до сохранения (ядро своих понятных сообщений не даёт). Только для ядра, которое переписывает цепочку (не ниже min_core блока lx.detour) или неизвестной версии. Сверено с ядром d9fc75468.",
+      "go": "ChainDetourProblem → GraphWarning → отчёт emit_degraded: core/config/chain_validate.go:ChainDetourProblems (сборка — core/build/outbound_graph_chain_detour.go:applyChainDetourRules, редактор — core/config/chain_validate.go:ChainEditProblems)"
+    },
+    "chain_hop_tag_taken": {
+      "severity": "error",
+      "params": [
+        "chain",
+        "tag"
+      ],
+      "title_en": "Chain {chain}: the name {tag} is taken",
+      "title_ru": "Цепочка {chain}: имя {tag} занято",
+      "text_en": "The core gives the hops of chain {chain} the names {chain}#1, {chain}#2 and so on in its own numbering, and {tag} is already the name of another node. The chain {chain} was excluded, because the core rejects such a config.",
+      "text_ru": "Ядро называет хопы цепочки {chain} именами вида {chain}#<номер>, а {tag} уже имя другого узла. Цепочка {chain} исключена: ядро отвергает такой конфиг.",
+      "cause_en": "A node is named like a hop of the chain: the chain name, # and a number.",
+      "cause_ru": "Узел назван как хоп цепочки: имя цепочки, # и число.",
+      "fix_en": [
+        "Rename the chain or the node."
+      ],
+      "fix_ru": [
+        "Переименуйте цепочку или узел."
+      ],
+      "desc": "Тег хопа (ALGORITHM П1 ядра): теги `<цепочка>#<i>` (i с нуля) зарезервированы под внутренние хопы chain-hop; занятый тег — ошибка загрузки. SPEC 165 ядра, SPEC 189 лаунчера, контракт 1.1.184; решение владельца 26.11.2026: клиент не допускает колец и конфликтов цепочек — снимает цепочку на сборке с кодом и показывает причину в редакторе цепочки до сохранения (ядро своих понятных сообщений не даёт). Только для ядра, которое переписывает цепочку (не ниже min_core блока lx.detour) или неизвестной версии. Сверено с ядром d9fc75468.",
+      "go": "ChainDetourProblem → GraphWarning → отчёт emit_degraded: core/config/chain_validate.go:ChainDetourProblems (сборка — core/build/outbound_graph_chain_detour.go:applyChainDetourRules, редактор — core/config/chain_validate.go:ChainEditProblems)"
+    },
+    "chain_rewrite_detour": {
+      "severity": "error",
+      "params": [
+        "chain",
+        "type"
+      ],
+      "title_en": "Chain {chain}: rewrite changes detour",
+      "title_ru": "Цепочка {chain}: rewrite меняет detour",
+      "text_en": "The rewrite of chain {chain} for {type} nodes changes detour, but inside a chain the node's path is set by the chain. The chain {chain} was excluded, because the core rejects such a config.",
+      "text_ru": "rewrite цепочки {chain} для узлов {type} меняет detour, а внутри цепочки путь узла задаёт сама цепочка. Цепочка {chain} исключена: ядро отвергает такой конфиг.",
+      "cause_en": "The chain's rewrite table has a detour row.",
+      "cause_ru": "В таблице rewrite цепочки есть строка detour.",
+      "fix_en": [
+        "Remove the detour row from the rewrite table."
+      ],
+      "fix_ru": [
+        "Уберите строку detour из таблицы rewrite."
+      ],
+      "desc": "rewrite с detour (ALGORITHM П5 ядра): merge-patch цепочки не может задавать detour перехваченного узла — ошибка загрузки. SPEC 165 ядра, SPEC 189 лаунчера, контракт 1.1.184; решение владельца 26.11.2026: клиент не допускает колец и конфликтов цепочек — снимает цепочку на сборке с кодом и показывает причину в редакторе цепочки до сохранения (ядро своих понятных сообщений не даёт). Только для ядра, которое переписывает цепочку (не ниже min_core блока lx.detour) или неизвестной версии. Сверено с ядром d9fc75468.",
+      "go": "ChainDetourProblem → GraphWarning → отчёт emit_degraded: core/config/chain_validate.go:ChainDetourProblems (сборка — core/build/outbound_graph_chain_detour.go:applyChainDetourRules, редактор — core/config/chain_validate.go:ChainEditProblems)"
     }
   }
 }

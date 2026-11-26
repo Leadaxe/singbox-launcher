@@ -1,0 +1,25 @@
+{
+  "_": "Ссылка + ip_cidr: ссылка — `Office:office`, inline-набор `Office` только с адресом выпускается для маршрута, но из зеркала исключён (в нём нет доменного ключа — ядро не стартует на DNS-правиле с адресным набором).",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Office",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "https://example.com/rules/office.srs"
+        ],
+        "ip_cidr": [
+          "198.51.100.0/24"
+        ],
+        "outbound": "direct"
+      },
+      "dns": {
+        "enabled": true,
+        "serverTag": "cf"
+      }
+    }
+  ]
+}

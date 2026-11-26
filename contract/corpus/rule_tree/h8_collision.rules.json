@@ -1,0 +1,20 @@
+{
+  "_": "Две ссылки правила с одинаковым stem `pair` и одинаковыми первыми 8 hex sha256 (e31a3654): stem совпал — обе с хешем, хеш совпал — у обеих 16 hex. Третья ссылка со своим stem — `B:<stem>` без хеша. Пара подобрана перебором один раз.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Pair",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "https://example.com/rules/pair-first.srs",
+          "https://mirror-19526.example.com/rules/pair.srs",
+          "https://mirror-99213.example.com/rules/pair.srs"
+        ],
+        "outbound": "proxy-out"
+      }
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "rule_set": [
+    {
+      "tag": "Streaming:ads",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Streaming:trackers",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Streaming",
+      "type": "inline",
+      "rules": [
+        {
+          "domain_suffix": [
+            "example-1.com"
+          ],
+          "ip_cidr": [
+            "192.0.2.0/24"
+          ]
+        }
+      ]
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "Streaming:ads",
+        "Streaming:trackers",
+        "Streaming"
+      ],
+      "port": [
+        443
+      ],
+      "outbound": "proxy-out"
+    }
+  ],
+  "dns_rules": [
+    {
+      "rule_set": [
+        "Streaming:ads",
+        "Streaming:trackers",
+        "Streaming"
+      ],
+      "server": "cf"
+    }
+  ]
+}

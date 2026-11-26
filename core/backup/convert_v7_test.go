@@ -213,12 +213,21 @@ func assertV7ModelEquivalent(t *testing.T, src, dst *state.State, warns []Warnin
 
 	// Настройки маршрута цепочки живут в теле узла (компенсация W5) и обязаны
 	// пережить границу: у 1.0 тело едет как есть, у 0.12 — формой контракта.
+	// idle_timeout, strip_evasion, strip ядро с SPEC 165 отвергает — импорт
+	// их снимает (контракт 1.1.184), rewrite доезжает.
 	var gotChain configtypes.SourceChain
 	if err := json.Unmarshal(chain.Body, &gotChain); err != nil {
 		t.Fatalf("тело цепочки: %v", err)
 	}
-	if gotChain.IdleTimeout != "0s" || gotChain.StripEvasion == nil || *gotChain.StripEvasion {
-		t.Errorf("настройки маршрута цепочки потеряны: %+v", gotChain)
+	if _, ok := gotChain.Rewrite["vless"]; !ok {
+		t.Errorf("rewrite цепочки потерян: %+v", gotChain)
+	}
+	var bodyKeys map[string]json.RawMessage
+	_ = json.Unmarshal(chain.Body, &bodyKeys)
+	for _, k := range []string{"idle_timeout", "strip_evasion", "strip"} {
+		if _, has := bodyKeys[k]; has {
+			t.Errorf("снятый ключ %q доехал в тело цепочки", k)
+		}
 	}
 	// Позиции в теле не живут — их дом hops.
 	if len(gotChain.Hops) != 0 {

@@ -27,8 +27,7 @@
         "hops": [
           "relay-root",
           "G"
-        ],
-        "idle_timeout": "0s"
+        ]
       },
       "hops": [
         { "tag": "relay-root" },

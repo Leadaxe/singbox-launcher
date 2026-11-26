@@ -25,6 +25,7 @@ import (
 	"singbox-launcher/internal/lxdclient"
 	"singbox-launcher/internal/paths"
 	"singbox-launcher/internal/platform"
+	tprof "singbox-launcher/internal/traffic"
 )
 
 // DaemonBackend — движок daemon-режима: ядро живёт внутри долгоживущего
@@ -63,7 +64,7 @@ type DaemonBackend struct {
 
 	// connTracker — накопительный снимок соединений из SubscribeConnections
 	// (traffic-график по gRPC вместо Clash /connections).
-	connTracker *connTracker
+	connTracker *tprof.ConnTracker
 
 	// tailscale — кеш последнего снимка SubscribeTailscaleStatus (SPEC 130);
 	// стрим держит superviseTailscale.
@@ -178,7 +179,7 @@ func newDaemonBackend(ac *AppController) (CoreBackend, error) {
 		cancel: cancel,
 	}
 	b.transport = &daemonProxyTransport{b: b}
-	b.connTracker = newConnTracker()
+	b.connTracker = tprof.NewConnTracker()
 	if ac.APIService != nil {
 		ac.APIService.SetTransport(b.transport)
 	}
@@ -765,38 +766,64 @@ func (b *DaemonBackend) ClashEndpoint() (baseURL, token string, ok bool) {
 	return "", "", false
 }
 
-// PoolSlots implements poolSource через lx-RPC GetPool.
-func (b *DaemonBackend) PoolSlots(group string) ([]PoolSlotInfo, error) {
+// PoolState implements poolSource через lx-RPC GetPool.
+func (b *DaemonBackend) PoolState(group string) (services.PoolState, error) {
 	client, err := b.grpcClient()
 	if err != nil {
-		return nil, err
+		return services.PoolState{}, err
 	}
 	ctx, cancel := context.WithTimeout(b.ctx, daemonRPCTimeout)
 	defer cancel()
 	pool, err := client.GetPool(ctx, &daemonpb.GetPoolRequest{GroupTag: group})
 	if err != nil {
-		return nil, fmt.Errorf("daemon GetPool: %w", err)
+		return services.PoolState{}, fmt.Errorf("daemon GetPool: %w", err)
 	}
-	slots := make([]PoolSlotInfo, 0, len(pool.GetSlots()))
-	for _, slot := range pool.GetSlots() {
-		slots = append(slots, PoolSlotInfo{Slot: slot.GetSlot(), Tag: slot.GetTag(), Delay: slot.GetDelay()})
-	}
-	return slots, nil
+	return services.PoolStateFromPB(pool), nil
 }
 
-// Chains implements chainSource через lx-RPC GetChains.
-func (b *DaemonBackend) Chains() ([]ChainInfo, error) {
+// ChainStatus implements chainSource через lx-RPC GetChainStatus (SPEC 165 ядра).
+func (b *DaemonBackend) ChainStatus(tag string) (ChainInfo, error) {
 	client, err := b.grpcClient()
 	if err != nil {
-		return nil, err
+		return ChainInfo{}, err
 	}
 	ctx, cancel := context.WithTimeout(b.ctx, daemonRPCTimeout)
 	defer cancel()
-	list, err := client.GetChains(ctx, &emptypb.Empty{})
+	st, err := client.GetChainStatus(ctx, &daemonpb.GetChainStatusRequest{Tag: tag})
 	if err != nil {
-		return nil, fmt.Errorf("daemon GetChains: %w", err)
+		return ChainInfo{}, fmt.Errorf("daemon GetChainStatus: %w", err)
 	}
-	return chainInfosFromPB(list.GetChains()), nil
+	return services.ChainInfoFromPB(st), nil
+}
+
+// OutboundConfig implements outboundConfigSource через lx-RPC GetOutboundConfig.
+func (b *DaemonBackend) OutboundConfig(tag string) (services.OutboundConfig, error) {
+	client, err := b.grpcClient()
+	if err != nil {
+		return services.OutboundConfig{}, err
+	}
+	ctx, cancel := context.WithTimeout(b.ctx, daemonRPCTimeout)
+	defer cancel()
+	resp, err := client.GetOutboundConfig(ctx, &daemonpb.GetOutboundConfigRequest{Tag: tag})
+	if err != nil {
+		return services.OutboundConfig{}, fmt.Errorf("daemon GetOutboundConfig: %w", err)
+	}
+	return services.ParseOutboundConfig(resp.GetContent())
+}
+
+// EffectiveConfig implements outboundConfigSource через lx-RPC GetEffectiveConfig.
+func (b *DaemonBackend) EffectiveConfig() (string, error) {
+	client, err := b.grpcClient()
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(b.ctx, daemonRPCTimeout)
+	defer cancel()
+	resp, err := client.GetEffectiveConfig(ctx, &emptypb.Empty{})
+	if err != nil {
+		return "", fmt.Errorf("daemon GetEffectiveConfig: %w", err)
+	}
+	return resp.GetContent(), nil
 }
 
 // ProbeLayer implements chainSource через тот же URLTestOutbound, что и
@@ -823,33 +850,27 @@ func (b *DaemonBackend) ProbeLayer(chainTag string, pos int) (int64, string, err
 }
 
 // SetPositionEnabled implements chainSource через lx-RPC
-// SetChainPositionEnabled (SPEC 075 ядра).
-//
-// warmupError возвращается ПЕРВЫМ результатом рядом с nil-ошибкой: ядро
-// применяет флаг всегда, а неудачный прогрев звена сообщает данными.
-// Свалить это в error значило бы сказать «не переключилось», хотя
-// переключилось — и следующий GetChains показал бы обратное.
-func (b *DaemonBackend) SetPositionEnabled(chainTag string, pos int, enabled bool) (string, error) {
+// SetChainPositionEnabled (SPEC 075 ядра). Звеньев с SPEC 165 нет — ядро
+// только пишет флаг.
+func (b *DaemonBackend) SetPositionEnabled(chainTag string, pos int, enabled bool) error {
 	client, err := b.grpcClient()
 	if err != nil {
-		return "", err
+		return err
 	}
-	// Бюджет как у пробы, а не общий daemonRPCTimeout: включение позиции
-	// поднимает звено (WG-хендшейк, TLS), и это укладывается в секунды.
-	ctx, cancel := context.WithTimeout(b.ctx, chainProbeCallTimeout())
+	ctx, cancel := context.WithTimeout(b.ctx, daemonRPCTimeout)
 	defer cancel()
-	resp, err := client.SetChainPositionEnabled(ctx, &daemonpb.SetChainPositionEnabledRequest{
+	_, err = client.SetChainPositionEnabled(ctx, &daemonpb.SetChainPositionEnabledRequest{
 		ChainTag: chainTag,
 		Position: int32(pos),
 		Enabled:  enabled,
 	})
 	if err != nil {
 		if isUnimplemented(err) {
-			return "", ErrChainToggleUnsupported
+			return ErrChainToggleUnsupported
 		}
-		return "", fmt.Errorf("daemon SetChainPositionEnabled: %w", err)
+		return fmt.Errorf("daemon SetChainPositionEnabled: %w", err)
 	}
-	return resp.GetWarmupError(), nil
+	return nil
 }
 
 // --- gRPC-транспорт proxy-операций (Servers tab, tray, auto-load) --------

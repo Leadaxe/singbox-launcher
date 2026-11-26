@@ -97,6 +97,27 @@ type ParserConfig struct {
 	// в глобале пакета config «с момента открытия окна», и с двумя открытыми
 	// Конфигураторами (SPEC 178) последний открытый диктовал путь обоим.
 	TailscaleRemoteStateDirRoot string `json:"-"`
+
+	// BuildTarget — машина-исполнитель, когда сборка идёт для чужой машины
+	// (SPEC 186). nil = своя машина: гейт узлов считает по локальному ядру,
+	// `@vars` берутся из локального состояния. Поле сборочной проекции, как
+	// TailscaleRemoteStateDirRoot: не сериализуется, ставится разбором окна
+	// машины.
+	BuildTarget *BuildTarget `json:"-"`
+}
+
+// BuildTarget — входы сборки узлов, которые принадлежат машине-цели, а не
+// компьютеру лаунчера (SPEC 186).
+type BuildTarget struct {
+	// GOOS — ОС машины (платформенный гейт полей узла).
+	GOOS string
+	// CoreVersion — версия ядра машины из кэша паспорта её демона; пусто —
+	// неизвестна, гейт по версии не применяется. Теги сборки её ядра паспорт
+	// не несёт: гейт по тегу и проба цепочек для машины не применяются.
+	CoreVersion string
+	// SettingsVars — переменные Settings профиля машины (name → value) для
+	// `@name` в опциях Направлений; пустое значение = умолчание шаблона.
+	SettingsVars map[string]string
 }
 
 // ProxySource represents a proxy subscription source
@@ -747,6 +768,10 @@ type ParsedJump struct {
 // It contains protocol-specific fields (Flow, etc.) and the generated
 // outbound configuration ready for JSON serialization.
 type ParsedNode struct {
+	// BuildTarget — машина-цель сборки (SPEC 186); nil = своя машина. Ставит
+	// генератор перед эмиссией: полевой гейт ядра считает по ней.
+	BuildTarget *BuildTarget `json:"-"`
+
 	Tag      string
 	Scheme   string
 	Server   string
@@ -992,6 +1017,21 @@ func TruncateWarningValue(v string) string {
 // ссылается на ту же строку — расхождение поймал бы любой из тестов SPEC 122.
 const SchemeTailscale = "tailscale"
 
+// SchemeImpair — тестовый outbound ядра `impair` (SPEC 164 форка): «плохой
+// канал» для проверок. В UI его нет, создаётся только debug API (SPEC 190).
+const SchemeImpair = "impair"
+
+// ProtocolDisplay — подпись протокола узла для показа: у impair — «☠ impair»
+// (решение владельца 26.11, как в LxBox), чтобы тестовый канал сразу
+// отличался от настоящих узлов. Тег узла не меняется никогда; остальные
+// протоколы показываются как есть.
+func ProtocolDisplay(typ string) string {
+	if strings.EqualFold(strings.TrimSpace(typ), SchemeImpair) {
+		return "☠ " + SchemeImpair
+	}
+	return typ
+}
+
 // IsExitCapable — годится ли узел ВЫХОДОМ В ИНТЕРНЕТ, то есть кандидатом в
 // состав Направления (SPEC 122 §2.3).
 //
@@ -1109,9 +1149,9 @@ type SourceChain struct {
 	// не даёт стартовать всему конфигу, а не одной цепочке.
 	Hops []string `json:"hops,omitempty"`
 
-	// IdleTimeout — простой, после которого звено без соединений удаляется.
-	// Пусто = умолчание ядра (5m), "0s" = жить до остановки.
-	IdleTimeout string `json:"idle_timeout,omitempty"`
+	// SPEC 165 ядра (SPEC 189): `idle_timeout`, `strip_evasion` и `strip`
+	// цепочки сняты — звеньев больше нет, фильтры живут в lx.detour.strip.
+	// Из сохранённых тел они не читаются.
 
 	// InterruptExistConnections — рвать ли ВНЕШНИЕ (пользовательские)
 	// соединения цепочки при переключении позиции тумблером (SPEC 075
@@ -1121,19 +1161,6 @@ type SourceChain struct {
 	// задано» от «выключено» здесь неотличимо. В конфиг и тело уезжает
 	// только true.
 	InterruptExistConnections bool `json:"interrupt_exist_connections,omitempty"`
-
-	// StripEvasion — снимать ли у звеньев односторонние DPI-приёмы.
-	// Указатель ради трёхзначности: nil = «умолчание ядра» (true),
-	// false = «пользователь выключил явно». Обычный bool не отличил бы
-	// одно от другого — та же причина, что у DirectionAuto.
-	// InterruptExistConnections (там дефолт шаблона может быть true).
-	StripEvasion *bool `json:"strip_evasion,omitempty"`
-
-	// Strip — патч к каталогу ядра поверх StripEvasion.
-	//
-	// Ключи только из ChainStripKeys: неизвестный ключ ядро считает ошибкой
-	// старта, а не опечаткой, которую можно пропустить.
-	Strip map[string]bool `json:"strip,omitempty"`
 
 	// Rewrite — JSON merge-patch поверх опций узла, по типу outbound'а.
 	// Правится на вкладке JSON: форму для произвольного патча по всем типам
@@ -1159,66 +1186,10 @@ type BuiltChain struct {
 // ChainOutboundType — значение поля `type` в конфиге ядра.
 const ChainOutboundType = "chain"
 
-// ChainStripTLSUTLS — ключ каталога `strip`, снятие которого ломает
-// reality-хопы (проверка конфликта — chain_validate.go, волна C4 SPEC 142).
-const ChainStripTLSUTLS = "tls.utls"
-
-// chainScheme — схема цепочки в реестре контракта.
-const chainScheme = "chain"
-
-// ChainStripKeys — каталог `strip` ядра в порядке показа в форме. Источник —
-// реестр (`chain.json` body.strip.order/fields): каталог закрыт, ядро
-// отвергает конфиг на неизвестном ключе, поэтому своего списка в Go нет.
-func ChainStripKeys() []string {
-	f := chainStripField()
-	if f == nil {
-		return nil
-	}
-	out := make([]string, len(f.Order))
-	copy(out, f.Order)
-	return out
-}
-
-// ChainStripDefault — снимается ли ключ при включённом strip_evasion
-// (`default` поля каталога в реестре); known=false — ключа в каталоге нет.
-func ChainStripDefault(key string) (def, known bool) {
-	f := chainStripField()
-	if f == nil {
-		return false, false
-	}
-	kf, ok := f.Fields[key]
-	if !ok || kf == nil {
-		return false, false
-	}
-	b, _ := kf.Default.(bool)
-	return b, true
-}
-
-// ChainStripOnHopRequired — `on_hop_required` ключа каталога `strip`
-// (контракт 1.1.61): что делать, когда звено цепочки этот путь требует.
-// nil — правила у ключа нет.
-func ChainStripOnHopRequired(key string) *registry.OnHopRequired {
-	f := chainStripField()
-	if f == nil {
-		return nil
-	}
-	if kf, ok := f.Fields[key]; ok && kf != nil {
-		return kf.OnHopRequired
-	}
-	return nil
-}
-
-func chainStripField() *registry.Field {
-	reg, err := registry.Get()
-	if err != nil {
-		return nil
-	}
-	f, ok := reg.Field(chainScheme, "strip")
-	if !ok {
-		return nil
-	}
-	return f
-}
+// ChainHopOutboundType — тип внутреннего хопа цепочки `<цепочка>#<i>`
+// (SPEC 165 ядра). Его создаёт только перезапись цепочки при загрузке: в
+// конфиге пользователя такой тип — ошибка, в списках ядра UI его не показывает.
+const ChainHopOutboundType = "chain-hop"
 
 // HopsOrNil — позиции цепочки, безопасно для nil-приёмника.
 //
@@ -1233,7 +1204,3 @@ func (c *SourceChain) HopsOrNil() []string {
 	return c.Hops
 }
 
-// StripEvasionEnabled — умолчание ядра: nil == true.
-func (c *SourceChain) StripEvasionEnabled() bool {
-	return c == nil || c.StripEvasion == nil || *c.StripEvasion
-}

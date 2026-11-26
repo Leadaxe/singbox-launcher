@@ -42,8 +42,7 @@
           "de-1",
           "se-1",
           "root-jp"
-        ],
-        "idle_timeout": "0s"
+        ]
       },
       "hops": [
         { "tag": "de-1", "folder": "Europe" },

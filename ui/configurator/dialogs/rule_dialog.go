@@ -1,60 +1,10 @@
 // Package dialogs содержит диалоговые окна визарда конфигурации.
 //
-// Файл rule_dialog.go содержит утилиты для работы с правилами в диалогах:
-//   - ExtractStringArray - извлечение массива строк из interface{} (поддержка []interface{} и []string)
-//   - ParseLines - парсинг многострочного текста в массив строк (разделение по переносу строки)
-//   - Подписи типов правил для UI (RuleTypeIPLabel и т.д.). Значения типов — в wizardmodels.
-//
-// Эти утилиты используются в add_rule_dialog.go для обработки ввода пользователя
-// (например, ввод доменов или IP-адресов в многострочном текстовом поле).
-//
-// Утилиты для диалогов - это вспомогательные функции, отдельные от основной логики диалогов.
-//
-// Используется в:
-//   - dialogs/add_rule_dialog.go - ExtractStringArray и ParseLines вызываются при сохранении правила
+// Файл rule_dialog.go — утилита полей окна правила: ParseLines разбирает
+// многострочный текст поля в список строк.
 package dialogs
 
-import (
-	"errors"
-	"regexp"
-	"strings"
-)
-
-// Значения типов правил (ips, urls, processes, srs, raw) заданы в wizardmodels — единый источник истины для state и кода.
-// Здесь только ключи правил и подписи для UI.
-
-const (
-	// ProcessKey is the key used in saved rules and config for process-based rules
-	ProcessKey = "process_name"
-	// ProcessPathRegexKey is the key for process path regex rules (match by path)
-	ProcessPathRegexKey = "process_path_regex"
-)
-
-// Подписи типов правил в UI (человекочитаемые; в state и коде — константы выше).
-const (
-	RuleTypeIPLabel      = "IP Addresses (CIDR)"
-	RuleTypeDomainLabel  = "Domains/URLs"
-	RuleTypeProcessLabel = "Processes"
-	RuleTypeSRSLabel     = "SRS"
-	RuleTypeCustomLabel  = "Custom JSON"
-)
-
-// ExtractStringArray extracts []string from interface{} (supports []interface{} and []string).
-func ExtractStringArray(val interface{}) []string {
-	if arr, ok := val.([]interface{}); ok {
-		result := make([]string, 0, len(arr))
-		for _, v := range arr {
-			if s, ok := v.(string); ok {
-				result = append(result, s)
-			}
-		}
-		return result
-	}
-	if arr, ok := val.([]string); ok {
-		return arr
-	}
-	return nil
-}
+import "strings"
 
 // ParseLines parses multiline text, removing empty lines.
 func ParseLines(text string, preserveOriginal bool) []string {
@@ -71,29 +21,4 @@ func ParseLines(text string, preserveOriginal bool) []string {
 		}
 	}
 	return result
-}
-
-// SimplePatternToRegex converts a simple pattern (with * as wildcard) to a valid regex string.
-// * is replaced by (.*); other regex metacharacters are escaped.
-// An empty pattern returns an error (unlike regexp.Compile(""), which succeeds).
-func SimplePatternToRegex(pattern string) (string, error) {
-	if pattern == "" {
-		return "", errors.New("empty pattern")
-	}
-	var b strings.Builder
-	for _, r := range pattern {
-		if r == '*' {
-			b.WriteString("(.*)")
-		} else if strings.ContainsRune(`\.+?()[]{}^$|`, r) {
-			b.WriteByte('\\')
-			b.WriteRune(r)
-		} else {
-			b.WriteRune(r)
-		}
-	}
-	s := b.String()
-	if _, err := regexp.Compile(s); err != nil {
-		return "", err
-	}
-	return s, nil
 }

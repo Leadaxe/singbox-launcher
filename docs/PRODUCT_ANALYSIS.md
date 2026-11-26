@@ -76,13 +76,7 @@ Files: `core/state/rule_types.go`, `SPECS/053-F-N-PRESET_BUNDLES/SPEC.md`, `SPEC
 
 Every var has either `options` (a whitelist) or `select: "local"|"global"` (a scope shortcut). `default` is mandatory.
 
-**Level 2 — user rules** (SPEC 018). Five typed constants:
-
-- `ips` — IP/CIDR
-- `urls` — domain / domain_suffix / domain_keyword / domain_regex
-- `processes` — process_name or process_path_regex (with the Simple/Regex mode stored in `params`)
-- `srs` — an SRS rule-set by URL (your own or one from the runetfreedom catalogue)
-- `raw` — the raw JSON of a rule
+**Level 2 — user rules** (SPEC 188; the five typed rule kinds of SPEC 018 are gone). A rule is a stack of conditions joined by AND, each condition's fields joined by "any of": Destination / Rule sets (domains, CIDR, private IP and set links — `.srs` / `.json` by URL or file — in one condition), Port, Source, Source port, Process, Protocol, Network, Inbound, Wi-Fi, plus rule groups (all of / any of, Not) nested without limit. The condition table lives in the contract registry; a body with keys outside it opens on the JSON tab.
 
 ### Supported matchers
 

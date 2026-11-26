@@ -100,32 +100,6 @@ func TestDedupeProcessStrings(t *testing.T) {
 	}
 }
 
-func TestExtractStringArray(t *testing.T) {
-	tests := []struct {
-		name string
-		in   interface{}
-		want []string
-	}{
-		{"nil", nil, nil},
-		{"wrong type", 42, nil},
-		{"string (not a slice)", "abc", nil},
-		{"empty []interface{}", []interface{}{}, []string{}},
-		{"[]interface{} of strings", []interface{}{"a", "b"}, []string{"a", "b"}},
-		{"[]interface{} mixed types skips non-strings", []interface{}{"a", 1, "b", true, nil}, []string{"a", "b"}},
-		{"[]interface{} all non-strings", []interface{}{1, 2, 3}, []string{}},
-		{"[]string passthrough", []string{"x", "y", "z"}, []string{"x", "y", "z"}},
-		{"empty []string", []string{}, []string{}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ExtractStringArray(tt.in)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ExtractStringArray(%#v) = %#v, want %#v", tt.in, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestParseLines(t *testing.T) {
 	tests := []struct {
 		name             string

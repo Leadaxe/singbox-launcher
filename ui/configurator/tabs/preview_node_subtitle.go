@@ -43,7 +43,7 @@ func previewNodeSubtitle(node *config.ParsedNode) string {
 
 	parts := make([]string, 0, 3)
 	if node.Scheme != "" {
-		parts = append(parts, node.Scheme)
+		parts = append(parts, configtypes.ProtocolDisplay(node.Scheme))
 	}
 	if tr := previewTransportName(node); tr != "" {
 		parts = append(parts, tr)

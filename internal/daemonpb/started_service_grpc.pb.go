@@ -66,14 +66,18 @@ const (
 	StartedService_GetDNSGroups_FullMethodName                   = "/daemon.StartedService/GetDNSGroups"
 	StartedService_GetRunningConfig_FullMethodName               = "/daemon.StartedService/GetRunningConfig"
 	StartedService_GetURLViaOutbound_FullMethodName              = "/daemon.StartedService/GetURLViaOutbound"
-	StartedService_GetChains_FullMethodName                      = "/daemon.StartedService/GetChains"
+	StartedService_GetEffectiveConfig_FullMethodName             = "/daemon.StartedService/GetEffectiveConfig"
+	StartedService_GetOutboundConfig_FullMethodName              = "/daemon.StartedService/GetOutboundConfig"
+	StartedService_GetChainStatus_FullMethodName                 = "/daemon.StartedService/GetChainStatus"
 	StartedService_SetChainPositionEnabled_FullMethodName        = "/daemon.StartedService/SetChainPositionEnabled"
-	StartedService_GetChainCloneConfig_FullMethodName            = "/daemon.StartedService/GetChainCloneConfig"
 	StartedService_SetEndpointEnabled_FullMethodName             = "/daemon.StartedService/SetEndpointEnabled"
 	StartedService_GetWireGuardStatus_FullMethodName             = "/daemon.StartedService/GetWireGuardStatus"
 	StartedService_GetTailscaleStatus_FullMethodName             = "/daemon.StartedService/GetTailscaleStatus"
 	StartedService_TailscaleLogin_FullMethodName                 = "/daemon.StartedService/TailscaleLogin"
 	StartedService_StartConnectionTest_FullMethodName            = "/daemon.StartedService/StartConnectionTest"
+	StartedService_SetImpair_FullMethodName                      = "/daemon.StartedService/SetImpair"
+	StartedService_ScheduleImpair_FullMethodName                 = "/daemon.StartedService/ScheduleImpair"
+	StartedService_GetImpairStatus_FullMethodName                = "/daemon.StartedService/GetImpairStatus"
 )
 
 // StartedServiceClient is the client API for StartedService service.
@@ -131,9 +135,10 @@ type StartedServiceClient interface {
 	GetDNSGroups(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*DnsGroupList, error)
 	GetRunningConfig(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RunningConfig, error)
 	GetURLViaOutbound(ctx context.Context, in *GetURLViaOutboundRequest, opts ...grpc.CallOption) (*GetURLViaOutboundResponse, error)
-	GetChains(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ChainList, error)
+	GetEffectiveConfig(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RunningConfig, error)
+	GetOutboundConfig(ctx context.Context, in *GetOutboundConfigRequest, opts ...grpc.CallOption) (*OutboundConfig, error)
+	GetChainStatus(ctx context.Context, in *GetChainStatusRequest, opts ...grpc.CallOption) (*ChainState, error)
 	SetChainPositionEnabled(ctx context.Context, in *SetChainPositionEnabledRequest, opts ...grpc.CallOption) (*SetChainPositionEnabledResponse, error)
-	GetChainCloneConfig(ctx context.Context, in *GetChainCloneConfigRequest, opts ...grpc.CallOption) (*RunningConfig, error)
 	SetEndpointEnabled(ctx context.Context, in *SetEndpointEnabledRequest, opts ...grpc.CallOption) (*SetEndpointEnabledResponse, error)
 	// Per-endpoint status snapshots (SPEC 114, SPEC 115): one unary getter per
 	// endpoint type, so GetOutbounds stays a plain node list.
@@ -143,6 +148,11 @@ type StartedServiceClient interface {
 	// (SPEC 149); on/off of the endpoint is SetEndpointEnabled.
 	TailscaleLogin(ctx context.Context, in *TailscaleLoginRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	StartConnectionTest(ctx context.Context, in *ConnectionTestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ConnectionTestProgress], error)
+	// Runtime control of an `impair` test outbound (SPEC 164): change the link
+	// now, replace the schedule, read the state. Each answers with the status.
+	SetImpair(ctx context.Context, in *SetImpairRequest, opts ...grpc.CallOption) (*ImpairStatus, error)
+	ScheduleImpair(ctx context.Context, in *ScheduleImpairRequest, opts ...grpc.CallOption) (*ImpairStatus, error)
+	GetImpairStatus(ctx context.Context, in *ImpairStatusRequest, opts ...grpc.CallOption) (*ImpairStatus, error)
 }
 
 type startedServiceClient struct {
@@ -834,10 +844,30 @@ func (c *startedServiceClient) GetURLViaOutbound(ctx context.Context, in *GetURL
 	return out, nil
 }
 
-func (c *startedServiceClient) GetChains(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ChainList, error) {
+func (c *startedServiceClient) GetEffectiveConfig(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RunningConfig, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ChainList)
-	err := c.cc.Invoke(ctx, StartedService_GetChains_FullMethodName, in, out, cOpts...)
+	out := new(RunningConfig)
+	err := c.cc.Invoke(ctx, StartedService_GetEffectiveConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) GetOutboundConfig(ctx context.Context, in *GetOutboundConfigRequest, opts ...grpc.CallOption) (*OutboundConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OutboundConfig)
+	err := c.cc.Invoke(ctx, StartedService_GetOutboundConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) GetChainStatus(ctx context.Context, in *GetChainStatusRequest, opts ...grpc.CallOption) (*ChainState, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ChainState)
+	err := c.cc.Invoke(ctx, StartedService_GetChainStatus_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -848,16 +878,6 @@ func (c *startedServiceClient) SetChainPositionEnabled(ctx context.Context, in *
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SetChainPositionEnabledResponse)
 	err := c.cc.Invoke(ctx, StartedService_SetChainPositionEnabled_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *startedServiceClient) GetChainCloneConfig(ctx context.Context, in *GetChainCloneConfigRequest, opts ...grpc.CallOption) (*RunningConfig, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RunningConfig)
-	err := c.cc.Invoke(ctx, StartedService_GetChainCloneConfig_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -923,6 +943,36 @@ func (c *startedServiceClient) StartConnectionTest(ctx context.Context, in *Conn
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StartedService_StartConnectionTestClient = grpc.ServerStreamingClient[ConnectionTestProgress]
 
+func (c *startedServiceClient) SetImpair(ctx context.Context, in *SetImpairRequest, opts ...grpc.CallOption) (*ImpairStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImpairStatus)
+	err := c.cc.Invoke(ctx, StartedService_SetImpair_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) ScheduleImpair(ctx context.Context, in *ScheduleImpairRequest, opts ...grpc.CallOption) (*ImpairStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImpairStatus)
+	err := c.cc.Invoke(ctx, StartedService_ScheduleImpair_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) GetImpairStatus(ctx context.Context, in *ImpairStatusRequest, opts ...grpc.CallOption) (*ImpairStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImpairStatus)
+	err := c.cc.Invoke(ctx, StartedService_GetImpairStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StartedServiceServer is the server API for StartedService service.
 // All implementations must embed UnimplementedStartedServiceServer
 // for forward compatibility.
@@ -978,9 +1028,10 @@ type StartedServiceServer interface {
 	GetDNSGroups(context.Context, *emptypb.Empty) (*DnsGroupList, error)
 	GetRunningConfig(context.Context, *emptypb.Empty) (*RunningConfig, error)
 	GetURLViaOutbound(context.Context, *GetURLViaOutboundRequest) (*GetURLViaOutboundResponse, error)
-	GetChains(context.Context, *emptypb.Empty) (*ChainList, error)
+	GetEffectiveConfig(context.Context, *emptypb.Empty) (*RunningConfig, error)
+	GetOutboundConfig(context.Context, *GetOutboundConfigRequest) (*OutboundConfig, error)
+	GetChainStatus(context.Context, *GetChainStatusRequest) (*ChainState, error)
 	SetChainPositionEnabled(context.Context, *SetChainPositionEnabledRequest) (*SetChainPositionEnabledResponse, error)
-	GetChainCloneConfig(context.Context, *GetChainCloneConfigRequest) (*RunningConfig, error)
 	SetEndpointEnabled(context.Context, *SetEndpointEnabledRequest) (*SetEndpointEnabledResponse, error)
 	// Per-endpoint status snapshots (SPEC 114, SPEC 115): one unary getter per
 	// endpoint type, so GetOutbounds stays a plain node list.
@@ -990,6 +1041,11 @@ type StartedServiceServer interface {
 	// (SPEC 149); on/off of the endpoint is SetEndpointEnabled.
 	TailscaleLogin(context.Context, *TailscaleLoginRequest) (*emptypb.Empty, error)
 	StartConnectionTest(*ConnectionTestRequest, grpc.ServerStreamingServer[ConnectionTestProgress]) error
+	// Runtime control of an `impair` test outbound (SPEC 164): change the link
+	// now, replace the schedule, read the state. Each answers with the status.
+	SetImpair(context.Context, *SetImpairRequest) (*ImpairStatus, error)
+	ScheduleImpair(context.Context, *ScheduleImpairRequest) (*ImpairStatus, error)
+	GetImpairStatus(context.Context, *ImpairStatusRequest) (*ImpairStatus, error)
 	mustEmbedUnimplementedStartedServiceServer()
 }
 
@@ -1204,16 +1260,20 @@ func (UnimplementedStartedServiceServer) GetURLViaOutbound(context.Context, *Get
 	return nil, status.Errorf(codes.Unimplemented, "method GetURLViaOutbound not implemented")
 }
 
-func (UnimplementedStartedServiceServer) GetChains(context.Context, *emptypb.Empty) (*ChainList, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetChains not implemented")
+func (UnimplementedStartedServiceServer) GetEffectiveConfig(context.Context, *emptypb.Empty) (*RunningConfig, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetEffectiveConfig not implemented")
+}
+
+func (UnimplementedStartedServiceServer) GetOutboundConfig(context.Context, *GetOutboundConfigRequest) (*OutboundConfig, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetOutboundConfig not implemented")
+}
+
+func (UnimplementedStartedServiceServer) GetChainStatus(context.Context, *GetChainStatusRequest) (*ChainState, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetChainStatus not implemented")
 }
 
 func (UnimplementedStartedServiceServer) SetChainPositionEnabled(context.Context, *SetChainPositionEnabledRequest) (*SetChainPositionEnabledResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetChainPositionEnabled not implemented")
-}
-
-func (UnimplementedStartedServiceServer) GetChainCloneConfig(context.Context, *GetChainCloneConfigRequest) (*RunningConfig, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetChainCloneConfig not implemented")
 }
 
 func (UnimplementedStartedServiceServer) SetEndpointEnabled(context.Context, *SetEndpointEnabledRequest) (*SetEndpointEnabledResponse, error) {
@@ -1234,6 +1294,18 @@ func (UnimplementedStartedServiceServer) TailscaleLogin(context.Context, *Tailsc
 
 func (UnimplementedStartedServiceServer) StartConnectionTest(*ConnectionTestRequest, grpc.ServerStreamingServer[ConnectionTestProgress]) error {
 	return status.Errorf(codes.Unimplemented, "method StartConnectionTest not implemented")
+}
+
+func (UnimplementedStartedServiceServer) SetImpair(context.Context, *SetImpairRequest) (*ImpairStatus, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetImpair not implemented")
+}
+
+func (UnimplementedStartedServiceServer) ScheduleImpair(context.Context, *ScheduleImpairRequest) (*ImpairStatus, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ScheduleImpair not implemented")
+}
+
+func (UnimplementedStartedServiceServer) GetImpairStatus(context.Context, *ImpairStatusRequest) (*ImpairStatus, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetImpairStatus not implemented")
 }
 func (UnimplementedStartedServiceServer) mustEmbedUnimplementedStartedServiceServer() {}
 func (UnimplementedStartedServiceServer) testEmbeddedByValue()                        {}
@@ -2015,20 +2087,56 @@ func _StartedService_GetURLViaOutbound_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StartedService_GetChains_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StartedService_GetEffectiveConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(StartedServiceServer).GetChains(ctx, in)
+		return srv.(StartedServiceServer).GetEffectiveConfig(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: StartedService_GetChains_FullMethodName,
+		FullMethod: StartedService_GetEffectiveConfig_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StartedServiceServer).GetChains(ctx, req.(*emptypb.Empty))
+		return srv.(StartedServiceServer).GetEffectiveConfig(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_GetOutboundConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOutboundConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).GetOutboundConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_GetOutboundConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).GetOutboundConfig(ctx, req.(*GetOutboundConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_GetChainStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetChainStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).GetChainStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_GetChainStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).GetChainStatus(ctx, req.(*GetChainStatusRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2047,24 +2155,6 @@ func _StartedService_SetChainPositionEnabled_Handler(srv interface{}, ctx contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StartedServiceServer).SetChainPositionEnabled(ctx, req.(*SetChainPositionEnabledRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StartedService_GetChainCloneConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetChainCloneConfigRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StartedServiceServer).GetChainCloneConfig(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StartedService_GetChainCloneConfig_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StartedServiceServer).GetChainCloneConfig(ctx, req.(*GetChainCloneConfigRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2151,6 +2241,60 @@ func _StartedService_StartConnectionTest_Handler(srv interface{}, stream grpc.Se
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StartedService_StartConnectionTestServer = grpc.ServerStreamingServer[ConnectionTestProgress]
+
+func _StartedService_SetImpair_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetImpairRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).SetImpair(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_SetImpair_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).SetImpair(ctx, req.(*SetImpairRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_ScheduleImpair_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ScheduleImpairRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).ScheduleImpair(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_ScheduleImpair_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).ScheduleImpair(ctx, req.(*ScheduleImpairRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_GetImpairStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImpairStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).GetImpairStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_GetImpairStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).GetImpairStatus(ctx, req.(*ImpairStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 // StartedService_ServiceDesc is the grpc.ServiceDesc for StartedService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -2280,16 +2424,20 @@ var StartedService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StartedService_GetURLViaOutbound_Handler,
 		},
 		{
-			MethodName: "GetChains",
-			Handler:    _StartedService_GetChains_Handler,
+			MethodName: "GetEffectiveConfig",
+			Handler:    _StartedService_GetEffectiveConfig_Handler,
+		},
+		{
+			MethodName: "GetOutboundConfig",
+			Handler:    _StartedService_GetOutboundConfig_Handler,
+		},
+		{
+			MethodName: "GetChainStatus",
+			Handler:    _StartedService_GetChainStatus_Handler,
 		},
 		{
 			MethodName: "SetChainPositionEnabled",
 			Handler:    _StartedService_SetChainPositionEnabled_Handler,
-		},
-		{
-			MethodName: "GetChainCloneConfig",
-			Handler:    _StartedService_GetChainCloneConfig_Handler,
 		},
 		{
 			MethodName: "SetEndpointEnabled",
@@ -2306,6 +2454,18 @@ var StartedService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TailscaleLogin",
 			Handler:    _StartedService_TailscaleLogin_Handler,
+		},
+		{
+			MethodName: "SetImpair",
+			Handler:    _StartedService_SetImpair_Handler,
+		},
+		{
+			MethodName: "ScheduleImpair",
+			Handler:    _StartedService_ScheduleImpair_Handler,
+		},
+		{
+			MethodName: "GetImpairStatus",
+			Handler:    _StartedService_GetImpairStatus_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

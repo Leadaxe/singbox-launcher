@@ -1,0 +1,59 @@
+{
+  "rule_set": [
+    {
+      "tag": "Video (2):music",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Video (2):news",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Video (2)",
+      "type": "inline",
+      "rules": [
+        {
+          "domain_suffix": [
+            "example-10.com"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "Video:news:eu (2)",
+      "type": "local",
+      "format": "binary"
+    },
+    {
+      "tag": "Video:news",
+      "type": "inline",
+      "rules": [
+        {
+          "domain": [
+            "example-11.com"
+          ]
+        }
+      ]
+    }
+  ],
+  "route_rules": [
+    {
+      "rule_set": [
+        "Video (2):music",
+        "Video (2):news",
+        "Video (2)"
+      ],
+      "outbound": "proxy-out"
+    },
+    {
+      "rule_set": [
+        "Video:news:eu (2)",
+        "Video:news"
+      ],
+      "outbound": "direct"
+    }
+  ],
+  "dns_rules": []
+}

@@ -139,9 +139,9 @@ func TestRuleDNSMirror(t *testing.T) {
 				},
 			},
 			Target: template.LocalTarget(),
-			SrsCachedPaths: map[string][]string{
-				state.StableRuleID(lists): {"/tmp/lists.srs"},
-				state.StableRuleID(gone):  {"/tmp/gone.srs"},
+			SrsCachedPaths: map[string]string{
+				"https://example.com/lists.srs": "/tmp/lists.srs",
+				"https://example.com/gone.srs":  "/tmp/gone.srs",
 			},
 			templateWarnings: &warns,
 		}
@@ -166,8 +166,8 @@ func TestRuleDNSMirror(t *testing.T) {
 			`{"action":"predefined","query_type":["HTTPS","SVCB"],"rcode":"NOERROR"}`,
 			`{"domain_suffix":"home.lan","server":"local_dns_resolver"}`,
 			`{"domain_suffix":["corp.example"],"server":"cf_doh"}`,
-			`{"action":"predefined","ip_version":6,"rcode":"NOERROR","rule_set":"user:lists"}`,
-			`{"rule_set":"user:lists","server":"local_dns_resolver"}`,
+			`{"action":"predefined","ip_version":6,"rcode":"NOERROR","rule_set":"lists:lists"}`,
+			`{"rule_set":"lists:lists","server":"local_dns_resolver"}`,
 			`{"action":"predefined","domain_suffix":["ports.example"],"query_type":["HTTPS","SVCB"],"rcode":"NOERROR"}`,
 			`{"domain_suffix":["ports.example"],"server":"local_dns_resolver"}`,
 		}

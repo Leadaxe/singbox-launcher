@@ -33,7 +33,7 @@ import (
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
-	rulesTooltipSrsMissingEnabledText = "Rule-set file not downloaded — this rule won't work until the SRS is fetched. The launcher is downloading it in the background; you can also click ⬇ srs to retry."
+	rulesTooltipSrsMissingEnabledText = "Rule-set file not downloaded — this rule won't work until the SRS is fetched. The launcher is downloading it in the background; you can also click ⬇ upd to retry."
 )
 
 // buildUnifiedRuleRows — один обход через RuleOrder, рендерит tile per slot.
@@ -101,6 +101,10 @@ func buildSinglePresetRefRow(
 		labelText += "  ·  " + wizardbusiness.PresetServedNodesLabel(served)
 	}
 	srsEntries := presetRefSRSEntries(pr, tplPreset)
+	// SPEC 185: в режиме remote наборы качает ядро — кнопки и гейта нет.
+	if ruleSetsRemote(model, pr.SrsOptions) {
+		srsEntries = nil
+	}
 
 	// SPEC 106: системное правило (sortable:false в шаблоне) — часть конфига,
 	// а не выбор пользователя: его нельзя двигать (позиция часть инварианта:
@@ -346,9 +350,9 @@ func buildSinglePresetRefRow(
 
 	// Auto-download silent: SRS missing у enabled preset'а — пробуем
 	// тихо скачать сразу. Failure не показывает popup (silent=true) —
-	// юзер увидит остающуюся ⚠ + ⬇ srs кнопку для ручного retry.
+	// юзер увидит остающуюся ⚠ + ⬇ upd кнопку для ручного retry.
 	// Success path: refreshRulesTabFromPresenter пересоберёт row → srsWarn
-	// исчезнет, btn станет "✔️ srs". Cascade safety: success-path не
+	// исчезнет, btn станет "✔️ upd". Cascade safety: success-path не
 	// re-kick'ает (после success !AllSRSDownloaded → false → check fails).
 	if srsMissingEnabled && srsHF != nil {
 		runSRSDownloadAsync(presenter, model, guiState, srsEntries, srsHF.TTWidget(), nil,
@@ -389,7 +393,7 @@ func makePresetSRSButton(
 		// К списку URL добавляем КАТАЛОГ, куда файлы лягут: профилей теперь
 		// несколько (свой и по одному на машину), и по одной галочке «скачано»
 		// не понять, чей это набор.
-		btn.TTWidget().SetToolTip(tip + "\n\n" + srsTargetDirHint(model))
+		btn.TTWidget().SetToolTip(tip + "\n\n" + srsTargetDirHint(model) + srsLastUpdatedHint(model, entries))
 	}
 	btn.OnTapped = func() {
 		runSRSDownloadAsync(presenter, model, guiState, entries, btn.TTWidget(), nil /* no outboundSelect */, func() {

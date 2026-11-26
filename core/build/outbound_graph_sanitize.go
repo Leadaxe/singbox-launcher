@@ -38,6 +38,9 @@
 //  5. кольцо по любым рёбрам (member → позиция цепочки → …) разрывается по
 //     ребру, замкнувшему цикл; кольцо, замкнувшееся ребром detour, разрывается
 //     выбросом носителя — снять detour значило бы тот же тихий direct;
+//  7. цепочка как перезапись detour (SPEC 165 ядра, только когда ядро цели
+//     её делает): конфликт места, кольцо через хоп, локальный порт, занятый
+//     тег хопа, rewrite с detour снимают цепочку — outbound_graph_chain_detour.go;
 //  6. urltest с interval больше idle_timeout (в том числе дефолтного, 30m):
 //     idle_timeout поднимается до interval — ядро отвергает такую пару в
 //     конструкторе группы, и check это снова не ловит, падает только run
@@ -107,7 +110,7 @@ func (e *graphEntry) setMembers(members []string) {
 // кольцом через detour (SPEC 113-B), и узлы, у которых снят detour на
 // недоступную цель (1.1.171). Вызывающий доливает их в отчёт сборки: без
 // этого и то и другое было бы молчаливым.
-func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool) (*ParsedCache, graphLosses) {
+func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool, chainDetour bool) (*ParsedCache, graphLosses) {
 	if cache == nil || (len(cache.Outbounds) == 0 && len(cache.Endpoints) == 0) {
 		return cache, graphLosses{}
 	}
@@ -212,6 +215,29 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool) (*Pars
 		strippedByKey[key].Nodes = append(strippedByKey[key].Nodes, e.tag)
 	}
 
+	// dropChain — правило 7: цепочка снята конфликтом перехвата, запись в
+	// отчёт с кодом на источник цепочки.
+	var warnings []GraphWarning
+	dropChain := func(c *graphEntry, code string, params map[string]string, why string) {
+		if c.dropped {
+			return
+		}
+		drop(c, why)
+		origin := cache.NodeOrigins[c.tag]
+		p := map[string]string{"chain": c.tag}
+		for k, v := range params {
+			p[k] = v
+		}
+		warnings = append(warnings, GraphWarning{
+			SourceID:    origin.SourceID,
+			SourceLabel: origin.SourceLabel,
+			Subject:     c.tag,
+			Code:        code,
+			Params:      p,
+			Reason:      why,
+		})
+	}
+
 	// Fixpoint: каждое исправление может открыть следующее. Верхняя граница —
 	// защитная: каждый содержательный проход удаляет узел или ребро, их
 	// конечное число.
@@ -231,6 +257,11 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool) (*Pars
 		if breakDependencyCycle(entries, byTag, drop, dropDetourCarrier) {
 			changed = true
 		}
+		// Правило 7 — только на устоявшемся графе: висячие ссылки и кольца по
+		// обычным рёбрам сперва разбирают правила 1–5.
+		if !changed && chainDetour && applyChainDetourRules(entries, dropChain) {
+			changed = true
+		}
 		if !changed {
 			break
 		}
@@ -248,6 +279,7 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool) (*Pars
 	for _, key := range strippedOrder {
 		losses.stripped = append(losses.stripped, *strippedByKey[key])
 	}
+	losses.warnings = warnings
 	return out, losses
 }
 
@@ -255,6 +287,7 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool) (*Pars
 type graphLosses struct {
 	excluded []SourceExclusion
 	stripped []DetourStripped
+	warnings []GraphWarning
 }
 
 // sanitizeEntryRefs — правила 1–3 для одной записи. Возвращает true, если

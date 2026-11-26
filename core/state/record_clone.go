@@ -46,6 +46,8 @@ func cloneRule(r Rule) Rule {
 		v := *r.Num
 		out.Num = &v
 	}
+	// Ссылки записи — старая форма (до v9): после NormalizeRuleRecord пусты,
+	// но входы до нормализации (бэкап) обязаны донести их до неё.
 	if len(r.Refs) > 0 {
 		out.Refs = append([]string(nil), r.Refs...)
 	}
@@ -55,6 +57,10 @@ func cloneRule(r Rule) Rule {
 			vars[k] = v
 		}
 		out.Vars = vars
+	}
+	if r.UpdateIntervalHours != nil {
+		v := *r.UpdateIntervalHours
+		out.UpdateIntervalHours = &v
 	}
 	out.DNS = CloneRuleDNS(r.DNS)
 	if len(r.Body) > 0 {

@@ -49,6 +49,8 @@ func RebuildNodePool(model *wizardmodels.WizardModel) (int, error) {
 	// SPEC 117: одноразовая проекция canonical → сборочная форма. Строится
 	// локально на входе и выбрасывается — модель проекцию не хранит.
 	pc := model.AsParserConfig()
+	// SPEC 186: состав пула (цепочки) — по той же машине-цели, что у сборки.
+	pc.BuildTarget = BuildTargetOf(model)
 
 	proxies := pc.ParserConfig.Proxies
 	totalSources := len(proxies)

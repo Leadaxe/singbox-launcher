@@ -136,7 +136,8 @@ func stripLxBoxSideFields(t *testing.T, raw []byte) []byte {
 	rules := arr(doc["rules"])
 	for i, rawRule := range rules {
 		rule := obj(rawRule)
-		drop(rule, "update_interval_hours", "verbatim")
+		// update_interval_hours — общее поле с контракта 1.1.177 (SPEC 185).
+		drop(rule, "verbatim")
 		rules[i] = enc(rule)
 	}
 	doc["rules"] = enc(rules)

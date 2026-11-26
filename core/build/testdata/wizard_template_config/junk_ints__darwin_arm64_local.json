@@ -113,7 +113,6 @@
         "172.16.0.1/30"
       ],
       "auto_route": true,
-      "include_interface": [],
       "mtu": "abc",
       "route_exclude_address": [],
       "stack": "system",

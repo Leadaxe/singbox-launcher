@@ -67,6 +67,8 @@ func NewConfigService(ac *AppController) *ConfigService {
 		}
 	}
 	services.CreateHTTPClientFunc = CreateHTTPClient
+	// SPEC 185 §2.3: перед Deploy наборы машины обновляются.
+	services.PreDeployFunc = ac.RefreshMachineRuleSets
 	return &ConfigService{ac: ac}
 }
 
@@ -171,6 +173,11 @@ func (svc *ConfigService) GenerateOutboundsFromParserConfig(
 ) (*config.OutboundGenerationResult, error) {
 	layout := svc.ac.FileService.Layout
 	subst := config.BuildVarSubstituterFromDisk(layout)
+	// SPEC 186: сборка для чужой машины подставляет `@vars` её профиля, а не
+	// локального state.json.
+	if parserConfig != nil && parserConfig.BuildTarget != nil {
+		subst = config.BuildVarSubstituterFor(layout, parserConfig.BuildTarget.SettingsVars)
+	}
 	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
 
 	return config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback,
@@ -464,15 +471,16 @@ func collectAllStageRuleSetTags(dataDir paths.DataDir, target, machineID string,
 		// без этой ветки orphan GC удалял бы реально-скачанный файл при
 		// каждом save, ломая user-SRS правила.
 		//
-		// state v8: наборы — поле записи Refs, читается напрямую и без
-		// валидации вида. Это keep-лист: запись с незаполненным именем всё
-		// равно ссылается на файл, и удалять его нельзя.
+		// SPEC 188: ссылки правила — state.RuleRefs (обход дерева тела, а для
+		// записи старой формы — её поле refs), без валидации вида. Это
+		// keep-лист: запись с незаполненным именем всё равно ссылается на
+		// файл, и удалять его нельзя.
 		for _, r := range s.Rules {
 			if r.Kind != state.RuleKindSrs {
 				continue
 			}
 			// Все наборы правила, не только первый (репорт 1.5.5).
-			for _, u := range r.Refs {
+			for _, u := range state.RuleRefs(r) {
 				addTag(build.SRSTagFromURL(u))
 			}
 		}

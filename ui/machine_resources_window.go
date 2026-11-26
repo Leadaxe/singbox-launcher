@@ -147,7 +147,7 @@ func resourceRow(win fyne.Window, registry *services.RemoteRegistry,
 	case services.ResourceMissing:
 		stateText = locale.T("✗ not on server")
 	case services.ResourceDiffers:
-		stateText = locale.T("≠ differs")
+		stateText = locale.T("≠ content differs")
 	case services.ResourceOrphan:
 		stateText = locale.T("⚠ only on server")
 	}
@@ -155,6 +155,29 @@ func resourceRow(win fyne.Window, registry *services.RemoteRegistry,
 		sizeOrDash(e.LocalSize, e.LocalSHA != ""),
 		sizeOrDash(e.ServerSize, e.ServerSHA != ""),
 		stateText))
+	// Расхождение по содержимому при равном размере читалось как «пометка
+	// врёт»: вторая строка называет дату локальной копии и почему файл на
+	// машине не заменён. Обрезка, а не перенос: Label без Wrapping раздувал
+	// бы окно по самой длинной строке.
+	var detail fyne.CanvasObject
+	if e.State == services.ResourceDiffers {
+		var text string
+		if !e.LocalModTime.IsZero() {
+			text = locale.Tf("local copy updated %s", e.LocalModTime.Local().Format("2006-01-02 15:04"))
+		}
+		if e.InUse {
+			if text != "" {
+				text += " · "
+			}
+			text += locale.T("in use by the machine's config — the previous version stays there")
+		}
+		if text != "" {
+			l := widget.NewLabel(text)
+			l.Truncation = fyne.TextTruncateEllipsis
+			l.Importance = widget.LowImportance
+			detail = l
+		}
+	}
 
 	run := func(action func() error) {
 		go func() {
@@ -209,11 +232,12 @@ func resourceRow(win fyne.Window, registry *services.RemoteRegistry,
 		buttons.Add(del)
 	}
 
-	return container.NewVBox(
-		container.NewBorder(nil, nil, name, buttons),
-		meta,
-		widget.NewSeparator(),
-	)
+	rows := container.NewVBox(container.NewBorder(nil, nil, name, buttons), meta)
+	if detail != nil {
+		rows.Add(detail)
+	}
+	rows.Add(widget.NewSeparator())
+	return rows
 }
 
 // sizeOrDash — размер в человеческом виде либо «—», если стороны нет.

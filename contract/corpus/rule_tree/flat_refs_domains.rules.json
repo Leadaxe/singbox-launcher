@@ -1,0 +1,32 @@
+{
+  "_": "Плоское правило: две ссылки + domain_suffix + ip_cidr + port. Ссылки — B:<stem> (`Streaming:ads`, `Streaming:trackers`), inline-набор (домены и адрес) — чистый B последним; port остаётся на правиле. Зеркало: inline-набор с доменом не исключается, port выпадает.",
+  "template_rule_set_tags": [],
+  "rules": [
+    {
+      "kind": "srs",
+      "name": "Streaming",
+      "enabled": true,
+      "num": 1000,
+      "body": {
+        "refs": [
+          "https://example.com/rules/ads.srs",
+          "https://example.com/rules/trackers.srs"
+        ],
+        "domain_suffix": [
+          "example-1.com"
+        ],
+        "ip_cidr": [
+          "192.0.2.0/24"
+        ],
+        "port": [
+          443
+        ],
+        "outbound": "proxy-out"
+      },
+      "dns": {
+        "enabled": true,
+        "serverTag": "cf"
+      }
+    }
+  ]
+}

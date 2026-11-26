@@ -8,108 +8,13 @@
 package config
 
 import (
+	"encoding/json"
+	"sort"
 	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/core/config/nodeflow"
-	"singbox-launcher/core/config/registry"
 )
-
-// NodeRequiresPath — тело узла ТРЕБУЕТ путь path: без него санитайзер реестра
-// дописал бы его обратно (связь `requires` с `set`, контракт 1.1.61).
-//
-// Это вопрос каталога `strip` цепочки к звену: снимать ключ `tls.utls` у
-// REALITY-узла нельзя — ядро отвергает такую цепочку отказом старта
-// (`protocol/chain/transform.go:228-232`). Кто что требует, знает реестр
-// (tls.reality.enabled → tls.utls.enabled), здесь имён полей и схем нет.
-func NodeRequiresPath(node *ParsedNode, path string) bool {
-	if node == nil || node.Outbound == nil {
-		return false
-	}
-	return nodeflow.StripBlocked(node.Scheme, node.Outbound, path)
-}
-
-// ChainStripsKey — снимает ли цепочка ключ каталога `strip`.
-//
-// Учитывается и общий переключатель, и точечный патч: `strip` перекрывает
-// strip_evasion в обе стороны, и смотреть только на один из них значило бы
-// пропустить половину случаев.
-func ChainStripsKey(c *configtypes.SourceChain, key string) bool {
-	if c == nil {
-		return false
-	}
-	if v, ok := c.Strip[key]; ok {
-		return v
-	}
-	def, _ := configtypes.ChainStripDefault(key)
-	return c.StripEvasionEnabled() && def
-}
-
-// ChainHopsRequiring — теги позиций цепочки, чьи узлы требуют путь path.
-//
-// Проверяются позиции с индексом ≥ 1: strip применяется к звеньям, а
-// позиция 0 идёт в сеть как есть и её опции не трогаются
-// (`protocol/chain/chain.go` — звено создаётся начиная со второй позиции).
-func ChainHopsRequiring(c *configtypes.SourceChain, nodesByTag map[string]*ParsedNode, path string) []string {
-	if c == nil || len(nodesByTag) == 0 {
-		return nil
-	}
-	var out []string
-	hops := c.HopsOrNil()
-	for i := 1; i < len(hops); i++ {
-		if NodeRequiresPath(nodesByTag[hops[i]], path) {
-			out = append(out, hops[i])
-		}
-	}
-	return out
-}
-
-// ChainUnstripNote — ключ каталога `strip`, снятый с патча цепочки по
-// `on_hop_required` реестра, и позиции, которые его требуют.
-type ChainUnstripNote struct {
-	Key  string
-	Code string
-	Hops []string
-}
-
-// ChainUnstripRequired — ключи каталога `strip`, которые цепочка сняла бы у
-// звена, чьё тело их требует, и копия цепочки, где они не снимаются.
-//
-// Какие ключи так судятся и что делать, объявляет реестр (`chain.json`
-// strip.fields.<ключ>.on_hop_required, контракт 1.1.61). Каталог ядро
-// применяет ко всем звеньям разом, поэтому «не снимать у одного» выражается
-// только патчем `ключ: false` на всю цепочку: отпечаток остаётся у всех
-// звеньев, а цепочка собирается — прежде она выпадала целиком.
-//
-// Без находок возвращается исходная цепочка.
-func ChainUnstripRequired(c *configtypes.SourceChain, nodesByTag map[string]*ParsedNode) (*configtypes.SourceChain, []ChainUnstripNote) {
-	if c == nil || len(nodesByTag) == 0 {
-		return c, nil
-	}
-	var notes []ChainUnstripNote
-	for _, key := range configtypes.ChainStripKeys() {
-		rule := configtypes.ChainStripOnHopRequired(key)
-		if rule == nil || rule.Action != registry.HopRequiredUnstrip || !ChainStripsKey(c, key) {
-			continue
-		}
-		if hops := ChainHopsRequiring(c, nodesByTag, key); len(hops) > 0 {
-			notes = append(notes, ChainUnstripNote{Key: key, Code: rule.Code, Hops: hops})
-		}
-	}
-	if len(notes) == 0 {
-		return c, nil
-	}
-	out := *c
-	out.Strip = make(map[string]bool, len(c.Strip)+len(notes))
-	for k, v := range c.Strip {
-		out.Strip[k] = v
-	}
-	for _, n := range notes {
-		out.Strip[n.Key] = false
-	}
-	return &out, notes
-}
 
 // ChainNestedConflict — теги вложенных цепочек, стоящих не на позиции 0.
 //
@@ -174,3 +79,369 @@ func ChainInternalTag(tag string) bool {
 // без этого списка форма и сборка расходились бы («direct-out» предложен —
 // «direct-out» не найден).
 var ChainBuiltinHopTags = []string{"direct-out"}
+
+// ChainDetourProblem — то, на чём ядро с перезаписью цепочки в detour (SPEC 165
+// форка) отвергнет весь конфиг. Chain — цепочка, которую надо снять (или
+// исправить в редакторе); Code и Params — запись реестра warnings.json.
+type ChainDetourProblem struct {
+	Chain  string
+	Code   string
+	Params map[string]string
+	Reason string
+}
+
+// chainHopLocalPortFields — фиксированные локальные порты по типу узла
+// (ALGORITHM К5 ядра): под detour сокет узлу открывает хоп.
+var chainHopLocalPortFields = map[string][]string{
+	"wireguard":   {"listen_port"},
+	"tailscale":   {"listen_port", "relay_server_port"},
+	"openconnect": {"dtls_local_port"},
+}
+
+// ChainDetourProblems проверяет граф исходящих (outbounds и endpoints в форме
+// конфига, в порядке записей) по правилам перезаписи цепочки ядра (SPEC 165,
+// сверено с ядром d9fc75468) и возвращает проблемы в порядке цепочек. Одна и
+// та же функция зовётся сборкой (снимает цепочку) и редактором цепочки
+// (показывает причину до сохранения), чтобы они не разошлись.
+//
+//   - одно место на тег: узел или группа, достижимые с позиций цепочек (все
+//     члены групп любой вложенности, кроме direct и block), не нужны двум
+//     местам, из которых хотя бы одно — позиция ≥ 1: другой цепочке или
+//     второй позиции ≥ 1 той же; общий вход двух цепочек (позиция 0 обеих) —
+//     не конфликт (решение владельца 26.11); снимается поздняя из двух;
+//   - кольцо: узел позиции ≥ 1 ходит через позицию ниже, и если оттуда (по
+//     членам групп, detour и позициям цепочек) путь возвращается к нему —
+//     кольцо: `[A, Группа{A, X}]` (chain_detour_ring, подсказка — копия группы
+//     без A) или свой detour узла нижней позиции в узел выше
+//     (chain_detour_ring_detour);
+//   - фиксированный локальный порт у узла позиции ≥ 1;
+//   - тег хопа `<цепочка>#<i>` занят;
+//   - rewrite цепочки меняет detour.
+func ChainDetourProblems(entries []map[string]interface{}) []ChainDetourProblem {
+	byTag := make(map[string]map[string]interface{}, len(entries))
+	var chains []map[string]interface{}
+	for _, e := range entries {
+		tag, _ := e["tag"].(string)
+		if tag == "" {
+			continue
+		}
+		byTag[tag] = e
+		if t, _ := e["type"].(string); t == configtypes.ChainOutboundType {
+			chains = append(chains, e)
+		}
+	}
+	typeOf := func(tag string) string {
+		t, _ := byTag[tag]["type"].(string)
+		return t
+	}
+	strs := func(v interface{}) []string {
+		arr, _ := v.([]interface{})
+		out := make([]string, 0, len(arr))
+		for _, x := range arr {
+			if s, ok := x.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	isGroup := func(tag string) bool {
+		t := typeOf(tag)
+		return t == "selector" || t == "urltest"
+	}
+	// reach — тег и всё, что достижимо из него через члены групп.
+	reach := func(tag string) []string {
+		var out []string
+		seen := map[string]bool{}
+		var walk func(string)
+		walk = func(t string) {
+			if seen[t] {
+				return
+			}
+			seen[t] = true
+			out = append(out, t)
+			if isGroup(t) {
+				for _, m := range strs(byTag[t]["outbounds"]) {
+					walk(m)
+				}
+			}
+		}
+		walk(tag)
+		return out
+	}
+	counted := func(tag string) bool {
+		if _, ok := byTag[tag]; !ok {
+			return false // статика шаблона (direct-out): ядро её не перехватывает
+		}
+		t := typeOf(tag)
+		return t != "direct" && t != "block"
+	}
+
+	var out []ChainDetourProblem
+	dropped := map[string]bool{}
+	add := func(chain, code, reason string, params map[string]string) {
+		if dropped[chain] {
+			return
+		}
+		dropped[chain] = true
+		p := map[string]string{"chain": chain}
+		for k, v := range params {
+			p[k] = v
+		}
+		out = append(out, ChainDetourProblem{Chain: chain, Code: code, Params: p, Reason: reason})
+	}
+
+	// Собственные проверки цепочки: тег хопа, rewrite, локальный порт.
+	for _, c := range chains {
+		ctag, _ := c["tag"].(string)
+		hops := strs(c["outbounds"])
+		for i := range hops {
+			if ht := ChainLayerTag(ctag, i); byTag[ht] != nil {
+				add(ctag, "chain_hop_tag_taken", "tag “"+ht+"” is reserved for the chain hop but already used", map[string]string{"tag": ht})
+			}
+		}
+		if rw, ok := c["rewrite"].(map[string]interface{}); ok {
+			for typ, patch := range rw {
+				if pm, ok := patch.(map[string]interface{}); ok {
+					if _, has := pm["detour"]; has {
+						add(ctag, "chain_rewrite_detour", "rewrite["+typ+"] cannot change detour", map[string]string{"type": typ})
+					}
+				}
+			}
+		}
+		for pos := 1; pos < len(hops); pos++ {
+			for _, t := range reach(hops[pos]) {
+				if !counted(t) || isGroup(t) {
+					continue
+				}
+				var fields []string
+				for _, f := range chainHopLocalPortFields[typeOf(t)] {
+					if v, has := byTag[t][f]; has && !chainZeroJSON(v) {
+						fields = append(fields, f)
+					}
+				}
+				if len(fields) > 0 {
+					add(ctag, "chain_hop_local_port", "node “"+t+"” at position "+strconv.Itoa(pos+1)+" has "+strings.Join(fields, ", "),
+						map[string]string{"node": t, "position": strconv.Itoa(pos + 1), "fields": strings.Join(fields, ", ")})
+				}
+			}
+		}
+	}
+
+	// Одно место на тег.
+	type place struct {
+		chain string
+		pos   int
+		order int
+	}
+	places := map[string][]place{}
+	for ci, c := range chains {
+		ctag, _ := c["tag"].(string)
+		if dropped[ctag] {
+			continue
+		}
+		for pos, h := range strs(c["outbounds"]) {
+			for _, t := range reach(h) {
+				if !counted(t) {
+					continue
+				}
+				dup := false
+				for _, p := range places[t] {
+					if p.chain == ctag && p.pos == pos {
+						dup = true
+					}
+				}
+				if !dup {
+					places[t] = append(places[t], place{ctag, pos, ci})
+				}
+			}
+		}
+	}
+	tags := make([]string, 0, len(places))
+	for t := range places {
+		tags = append(tags, t)
+	}
+	sort.Strings(tags)
+	for _, t := range tags {
+		ps := places[t]
+	pairs:
+		for i := range ps {
+			for j := i + 1; j < len(ps); j++ {
+				a, b := ps[i], ps[j]
+				// Решение владельца 26.11: общий вход двух цепочек (узел или
+				// группа на позиции 0 обеих) — не конфликт; конфликт — когда
+				// место нужно хотя бы одной цепочке на позиции ≥ 1. Позиция 0
+				// и позиция выше одной цепочки — кольцо, ниже.
+				if a.pos == 0 && b.pos == 0 {
+					continue
+				}
+				if a.chain == b.chain && (a.pos == 0 || b.pos == 0 || a.pos == b.pos) {
+					continue
+				}
+				victim, other := b, a
+				if a.order > b.order {
+					victim, other = a, b
+				}
+				add(victim.chain, "chain_detour_conflict",
+					"“"+t+"” is needed on chain “"+other.chain+"” position "+strconv.Itoa(other.pos+1)+" and on chain “"+victim.chain+"” position "+strconv.Itoa(victim.pos+1)+" — make a copy of it for one of them",
+					map[string]string{"node": t, "other": other.chain})
+				break pairs
+			}
+		}
+	}
+
+	// Кольца: рёбра — члены групп, detour (у перехваченного узла — хоп, то
+	// есть позиция ниже его цепочки) и позиции цепочек.
+	intercept := map[string]string{} // узел → тег позиции ниже
+	interceptChain := map[string]string{}
+	interceptAt := map[string]string{}      // узел → тег позиции, через которую он перехвачен
+	interceptPos := map[string]int{}        // узел → номер этой позиции (с нуля)
+	entryOf := map[string]map[string]bool{} // цепочка → достижимое с позиции 0
+	for _, c := range chains {
+		ctag, _ := c["tag"].(string)
+		if dropped[ctag] {
+			continue
+		}
+		hops := strs(c["outbounds"])
+		if len(hops) > 0 {
+			entryOf[ctag] = map[string]bool{}
+			for _, t := range reach(hops[0]) {
+				entryOf[ctag][t] = true
+			}
+		}
+		for pos := 1; pos < len(hops); pos++ {
+			for _, t := range reach(hops[pos]) {
+				if counted(t) && !isGroup(t) && typeOf(t) != configtypes.ChainOutboundType {
+					if _, ok := intercept[t]; !ok {
+						intercept[t] = hops[pos-1]
+						interceptChain[t] = ctag
+						interceptAt[t] = hops[pos]
+						interceptPos[t] = pos
+					}
+				}
+			}
+		}
+	}
+	next := func(tag string) []string {
+		e := byTag[tag]
+		if e == nil {
+			return nil
+		}
+		var refs []string
+		if isGroup(tag) || typeOf(tag) == configtypes.ChainOutboundType {
+			refs = append(refs, strs(e["outbounds"])...)
+		}
+		if below, ok := intercept[tag]; ok {
+			refs = append(refs, below)
+		} else if d, _ := e["detour"].(string); d != "" {
+			refs = append(refs, d)
+		}
+		return refs
+	}
+	reaches := func(from, target string) bool {
+		seen := map[string]bool{}
+		stack := []string{from}
+		for len(stack) > 0 {
+			t := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if t == target {
+				return true
+			}
+			if seen[t] {
+				continue
+			}
+			seen[t] = true
+			stack = append(stack, next(t)...)
+		}
+		return false
+	}
+	ringNodes := make([]string, 0, len(intercept))
+	for t := range intercept {
+		ringNodes = append(ringNodes, t)
+	}
+	sort.Strings(ringNodes)
+	for _, t := range ringNodes {
+		if !reaches(intercept[t], t) {
+			continue
+		}
+		c := interceptChain[t]
+		pos := strconv.Itoa(interceptPos[t] + 1)
+		if entryOf[c][t] {
+			// Узел стоит на входе и внутри группы позиции выше.
+			add(c, "chain_detour_ring",
+				"node “"+t+"” is on the entry and inside “"+interceptAt[t]+"” on position "+pos+" — make a copy of the group without “"+t+"” for this position",
+				map[string]string{"node": t, "group": interceptAt[t], "position": pos})
+			continue
+		}
+		add(c, "chain_detour_ring_detour",
+			"the detour of a lower position leads into “"+t+"” on position "+pos+" — a ring; clear that detour",
+			map[string]string{"node": t, "position": pos})
+	}
+	return out
+}
+
+// chainZeroJSON — значение, которое ядро считает незаданным (0, "", false,
+// пустой список или объект).
+func chainZeroJSON(v interface{}) bool {
+	switch x := v.(type) {
+	case nil:
+		return true
+	case bool:
+		return !x
+	case string:
+		return x == ""
+	case float64:
+		return x == 0
+	case json.Number:
+		return x.String() == "0"
+	case []interface{}:
+		return len(x) == 0
+	case map[string]interface{}:
+		return len(x) == 0
+	}
+	return false
+}
+
+// ChainEditProblems — проблемы перезаписи цепочки для редактора: граф последней
+// сборки (строки OutboundsJSON/EndpointsJSON модели), в котором запись
+// редактируемой цепочки (по прежнему тегу originalTag) заменена объектом chain
+// из формы. Возвращает тексты реестра на языке UI для проблем, где цепочка —
+// снимаемая или вторая сторона конфликта.
+func ChainEditProblems(outboundsJSON, endpointsJSON []string, originalTag string, chain map[string]interface{}) []string {
+	tag, _ := chain["tag"].(string)
+	var graph []map[string]interface{}
+	replaced := false
+	parse := func(lines []string) {
+		for _, line := range lines {
+			body := line
+			if i := strings.Index(body, "{"); i >= 0 {
+				body = body[i:]
+			}
+			body = strings.TrimRight(strings.TrimSpace(body), ",")
+			var m map[string]interface{}
+			if json.Unmarshal([]byte(body), &m) != nil {
+				continue
+			}
+			if t, _ := m["tag"].(string); t != "" && (t == originalTag || t == tag) {
+				if !replaced {
+					graph = append(graph, chain)
+					replaced = true
+				}
+				continue
+			}
+			graph = append(graph, m)
+		}
+	}
+	parse(outboundsJSON)
+	parse(endpointsJSON)
+	if !replaced {
+		graph = append(graph, chain)
+	}
+	var out []string
+	for _, p := range ChainDetourProblems(graph) {
+		if p.Chain != tag && p.Params["other"] != tag {
+			continue
+		}
+		out = append(out, registryWarningText(p.Code, p.Params, p.Reason))
+	}
+	return out
+}

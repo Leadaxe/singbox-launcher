@@ -147,14 +147,15 @@ func TestMigrateV7ToV8_NothingLost(t *testing.T) {
 	if s.Rules[2].Enabled {
 		t.Error("enabled=false потерян")
 	}
-	// srs: оба URL, reject в теле.
-	if len(s.Rules[3].Refs) != 2 {
-		t.Fatalf("srs_url+srs_urls → refs: %v", s.Rules[3].Refs)
+	// srs: оба URL, reject в теле; разбор поднимает `refs` в тело (SPEC 188).
+	refs := RuleRefs(s.Rules[3])
+	if len(refs) != 2 {
+		t.Fatalf("srs_url+srs_urls → refs: %v", refs)
 	}
-	if s.Rules[3].Refs[0] != "https://example.invalid/a.srs" || s.Rules[3].Refs[1] != "https://example.invalid/b.srs" {
-		t.Errorf("порядок наборов сбит: %v", s.Rules[3].Refs)
+	if refs[0] != "https://example.invalid/a.srs" || refs[1] != "https://example.invalid/b.srs" {
+		t.Errorf("порядок наборов сбит: %v", refs)
 	}
-	if string(s.Rules[3].Body) != `{"action":"reject"}` {
+	if string(s.Rules[3].Body) != `{"refs":["https://example.invalid/a.srs","https://example.invalid/b.srs"],"action":"reject"}` {
 		t.Errorf("тело srs: %s", s.Rules[3].Body)
 	}
 	// Идентичность правил — та же строка, что до миграции (теги rule_set и
@@ -360,29 +361,68 @@ func TestMigrateV7ToV8_DNSRuleMetadataOutsideBody(t *testing.T) {
 }
 
 // TestV8FileIsNotReadAsV7 — гейт версии: файл v8 не проваливается в ветку v7
-// (иначе новая форма молча терялась бы на первом же Save).
+// (иначе новая форма молча терялась бы на первом же Save), а читается как v8:
+// ссылки записи поднимаются в тело (SPEC 188), и Save даёт ровно фикстуру v9.
 func TestV8FileIsNotReadAsV7(t *testing.T) {
 	fixture, err := os.ReadFile(v8RoundtripFixture)
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := SchemaVersionOfBytes(fixture)
+	v8 := v8FileFromFixture(t, fixture)
+	v, err := SchemaVersionOfBytes(v8)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v != SchemaVersionV8 {
 		t.Fatalf("SchemaVersionOfBytes = %d, want %d", v, SchemaVersionV8)
 	}
-	s, err := Parse(fixture)
+	s, err := Parse(v8)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
 	if s.Version != SchemaVersionV8 {
 		t.Errorf("Parse прочитал v8 как v%d", s.Version)
 	}
-	if len(s.Rules) == 0 || s.Rules[len(s.Rules)-1].Kind != RuleKindSrs || len(s.Rules[len(s.Rules)-1].Refs) != 2 {
+	if s.Migration != nil {
+		t.Errorf("v8-файл не должен мигрировать как v7: %+v", s.Migration)
+	}
+	last := s.Rules[len(s.Rules)-1]
+	if last.Kind != RuleKindSrs || len(RuleRefs(last)) != 2 || last.Refs != nil {
 		t.Errorf("v8-поля потеряны при чтении: %+v", s.Rules)
 	}
+	out := filepath.Join(t.TempDir(), "v9.json")
+	if err := s.Save(out); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(normalizeTimestamps(fixture), normalizeTimestamps(got)) {
+		t.Errorf("Parse(v8)→Save не дал фикстуру v9\n--- want ---\n%s\n--- got ---\n%s", fixture, got)
+	}
+}
+
+// v8FileFromFixture — файл v8 того же состояния, что фикстура v9: ровно то,
+// чем v9 отличается от v8, возвращается назад по байтам (порядок ключей тел
+// цел) — meta.version 8, meta.schema строкой, ссылки srs-правила полем записи
+// (форма до SPEC 188).
+func v8FileFromFixture(t *testing.T, fixture []byte) []byte {
+	t.Helper()
+	swaps := []struct{ v9, v8 string }{
+		{"\"version\": 9,\n    \"schema\": {\n      \"name\": \"sources_v9\",\n      \"min_reader\": 9\n    },",
+			"\"version\": 8,\n    \"schema\": \"sources_v8\","},
+		{"\"num\": 1010,\n      \"body\": {\n        \"refs\": [\n          \"https://example.invalid/a.srs\",\n          \"https://example.invalid/b.srs\"\n        ],\n        \"action\": \"reject\"",
+			"\"num\": 1010,\n      \"refs\": [\n        \"https://example.invalid/a.srs\",\n        \"https://example.invalid/b.srs\"\n      ],\n      \"body\": {\n        \"action\": \"reject\""},
+	}
+	out := fixture
+	for _, sw := range swaps {
+		if n := bytes.Count(out, []byte(sw.v9)); n != 1 {
+			t.Fatalf("фикстура v9 изменилась: фрагмент встречается %d раз, v8-файл не собрать:\n%s", n, sw.v9)
+		}
+		out = bytes.Replace(out, []byte(sw.v9), []byte(sw.v8), 1)
+	}
+	return out
 }
 
 // normalizeTimestamps — created_at/updated_at на плейсхолдер: Save штампует их

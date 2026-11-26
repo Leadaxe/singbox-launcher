@@ -179,7 +179,7 @@ func TestApplyChainFormKeepsFolderLinks(t *testing.T) {
 	hops := []corestate.NodeLink{{FolderID: "SUB1", Tag: "n1"}, {Tag: "warp"}}
 
 	applyChainFormToSource(src, &configtypes.SourceChain{
-		Hops: []string{"[NL] n1", "warp"}, IdleTimeout: "2m"}, hops)
+		Hops: []string{"[NL] n1", "warp"}, InterruptExistConnections: true}, hops)
 
 	if len(src.Hops) != 2 {
 		t.Fatalf("позиций в узле = %d", len(src.Hops))
@@ -189,7 +189,7 @@ func TestApplyChainFormKeepsFolderLinks(t *testing.T) {
 	}
 	// Настройки маршрута живут в теле — тот же дом, что у сервера.
 	back := configtypes.ChainFromBody(src.Body, nil)
-	if back == nil || back.IdleTimeout != "2m" {
+	if back == nil || !back.InterruptExistConnections {
 		t.Errorf("настройки маршрута потеряны: %+v", back)
 	}
 }
