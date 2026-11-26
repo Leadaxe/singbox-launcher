@@ -141,6 +141,11 @@ func (e *rewriteEditor) rowError(idx int) string {
 	if t == "" || k == "" {
 		return "" // строка ещё заполняется — не ругаемся раньше времени
 	}
+	// SPEC 189: путь узла внутри цепочки задаёт сама цепочка — ядро с SPEC 165
+	// отвергает rewrite, меняющий detour, загрузкой всего конфига.
+	if k == "detour" {
+		return locale.T("rewrite cannot change detour: inside a chain the node's path is set by the chain.")
+	}
 	if v == "" {
 		// Тип и параметр заданы, значения нет: Collect такую строку
 		// выбросит, и без предупреждения это была бы полностью молчаливая

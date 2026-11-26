@@ -39,8 +39,8 @@
 //     ребру, замкнувшему цикл; кольцо, замкнувшееся ребром detour, разрывается
 //     выбросом носителя — снять detour значило бы тот же тихий direct;
 //  7. цепочка как перезапись detour (SPEC 165 ядра, только когда ядро цели
-//     её делает): конфликты перехвата снимают цепочку, поля сокета снимаются
-//     с перехваченного узла — outbound_graph_chain_detour.go;
+//     её делает): конфликт места, кольцо через хоп, локальный порт, занятый
+//     тег хопа, rewrite с detour снимают цепочку — outbound_graph_chain_detour.go;
 //  6. urltest с interval больше idle_timeout (в том числе дефолтного, 30m):
 //     idle_timeout поднимается до interval — ядро отвергает такую пару в
 //     конструкторе группы, и check это снова не ловит, падает только run
@@ -237,8 +237,6 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool, chainD
 			Reason:      why,
 		})
 	}
-	socketStrips := map[*graphEntry]*chainSocketStrip{}
-	var socketStripOrder []*graphEntry
 
 	// Fixpoint: каждое исправление может открыть следующее. Верхняя граница —
 	// защитная: каждый содержательный проход удаляет узел или ребро, их
@@ -259,9 +257,9 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool, chainD
 		if breakDependencyCycle(entries, byTag, drop, dropDetourCarrier) {
 			changed = true
 		}
-		// Правило 7 — только на устоявшемся графе: иначе поля К5 снялись бы
-		// с узлов цепочки, которую следующая итерация выбросит правилами 1–5.
-		if !changed && chainDetour && applyChainDetourRules(entries, byTag, dropChain, socketStrips, &socketStripOrder) {
+		// Правило 7 — только на устоявшемся графе: висячие ссылки и кольца по
+		// обычным рёбрам сперва разбирают правила 1–5.
+		if !changed && chainDetour && applyChainDetourRules(entries, dropChain) {
 			changed = true
 		}
 		if !changed {
@@ -281,7 +279,7 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool, chainD
 	for _, key := range strippedOrder {
 		losses.stripped = append(losses.stripped, *strippedByKey[key])
 	}
-	losses.warnings = append(warnings, chainSocketStripWarnings(cache, socketStrips, socketStripOrder)...)
+	losses.warnings = warnings
 	return out, losses
 }
 

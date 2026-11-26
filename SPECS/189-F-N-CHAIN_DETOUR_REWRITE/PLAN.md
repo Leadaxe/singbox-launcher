@@ -14,16 +14,17 @@
    снимает ключ); `lx.mtu_align` — `max_core 1.14.4-lx.37-rc.2`, `lx.detour` и
    `lx.detour.mtu_align` — `min_core 1.14.4-lx.37-rc.2`. Тело цепочки: из `chain.json`
    уходят `idle_timeout`, `strip_evasion`, `strip`, `__dialer`; импорт бэкапа снимает
-   их с кодом. Коды предупреждений: снятые поля К5, цепочка снята конфликтом
-   перехвата. Корпус: `direction/chain_strip_and_timeout`, `backup/chains_roundtrip`,
+   их с кодом. Коды предупреждений: конфликт места, кольцо, локальный порт, тег хопа, rewrite
+   с detour — цепочка снимается. Корпус: `direction/chain_strip_and_timeout`, `backup/chains_roundtrip`,
    затронутые `backup/v10_*`. `contract/VERSION`, `README.md` (строка версии),
    `TASKS_LXBOX.md` §187.
 3. **Сборка.** `ChainBody` / `ChainFromBody` / `ChainOutboundObject` без трёх ключей;
    state v7: снятие при загрузке (`core/state`), бэкап (`core/backup`).
-   Шаблон: `lx.detour.mtu_align` рядом с `lx.mtu_align`. Санитайзер графа: поля К5 у
-   узлов позиций ≥ 1, конфликты К1/К2/К4/К6 (`core/config/nodeflow/sanitize.go`,
-   `core/config/chain_validate.go`). Локальная проверка конфига удалённой машины —
-   через гейт под версию своего ядра (`draft_reject.go`).
+   Шаблон: `lx.detour.mtu_align` рядом с `lx.mtu_align`. Проверка
+   `config.ChainDetourProblems` (`core/config/chain_validate.go`) — одно место на тег,
+   кольцо, локальный порт, тег хопа, rewrite с detour; её зовут правило 7 санитайзера
+   графа и редактор цепочки. Локальная проверка конфига удалённой машины — через гейт
+   под версию своего ядра (`draft_reject.go`).
 4. **UI.** Редактор цепочки без трёх полей, с причиной конфликта перехвата; `chain-hop`
    скрыт по типу; вкладка JSON окна Info из `GetOutboundConfig` (после согласования
    макета, Р3).
@@ -32,4 +33,4 @@
    поток цепочки), `docs/ParserConfig.md` / `docs/WIZARD_STATE.ru.md` (поля цепочки).
 
 Тест (один на волну, data-критичный): сборка конфига с цепочкой под версию ядра rc2 и
-rc.1 — ключи цепочки, `lx.detour`/`lx.mtu_align`, поля К5, конфликт перехвата.
+rc.1 — ключи цепочки, `lx.detour`/`lx.mtu_align`, конфликты и кольца цепочек.

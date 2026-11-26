@@ -869,6 +869,13 @@ func showSourceEditWindowAt(
 		// Content() создаёт виджеты, Load() их наполняет — порядок
 		// обязателен: загрузка в несозданную форму молча потеряла бы
 		// настройки.
+		chainTabBody.graph = func() ([]string, []string) {
+			mm := presenter.Model()
+			if mm == nil {
+				return nil, nil
+			}
+			return mm.GeneratedOutbounds, mm.GeneratedEndpoints
+		}
 		chainTabBody.built = chainTabBody.Content()
 		chainTabBody.nodesKnown = chainNodesKnown(presenter.Model())
 		chainTabBody.SetReferencedBy(chainReferencedBy(presenter.Model()))

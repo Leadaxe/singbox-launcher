@@ -215,19 +215,27 @@ func TestSanitizeGroupsStrippedHopsPerSourceAndTarget(t *testing.T) {
 	}
 }
 
-// TestSanitizeChainDetourRewrite — правило 7 (SPEC 165 ядра, SPEC 189): на
-// ядре, которое переписывает цепочку в detour, узел, перехваченный двумя
-// цепочками (здесь — через общую группу), снимает позднюю цепочку с кодом
-// chain_detour_conflict, а поля сокета у перехваченного узла снимаются с кодом
-// chain_hop_socket_fields_dropped. Для старого ядра конфиг законен и остаётся
-// как есть.
+// TestSanitizeChainDetourRewrite — правило 7 (SPEC 165 ядра, SPEC 189; сверено с
+// ядром d9fc75468): на ядре, которое переписывает цепочку в detour, группа,
+// достижимая из двух цепочек, снимает позднюю цепочку (chain_detour_conflict);
+// кольцо `[A, Группа{A, X}]` снимает цепочку (chain_detour_ring); локальный
+// порт узла позиции ≥ 1 снимает цепочку (chain_hop_local_port); поля сокета
+// узла не трогаются. Для старого ядра конфиг законен и остаётся как есть.
 func TestSanitizeChainDetourRewrite(t *testing.T) {
 	outbounds := []string{
 		`{"tag":"entry","type":"vless","server":"a"}`,
-		`{"tag":"wg","type":"wireguard","listen_port":51820,"bind_interface":"en0"}`,
-		`{"tag":"pool","type":"urltest","outbounds":["wg"]}`,
+		`{"tag":"entry2","type":"vless","server":"a"}`,
+		`{"tag":"x","type":"vless","server":"a","tcp_fast_open":true}`,
+		`{"tag":"pool","type":"urltest","outbounds":["x"]}`,
 		`{"tag":"c1","type":"chain","outbounds":["entry","pool"]}`,
-		`{"tag":"c2","type":"chain","outbounds":["entry","wg"]}`,
+		`{"tag":"c2","type":"chain","outbounds":["entry2","pool"]}`,
+		`{"tag":"r","type":"vless","server":"a"}`,
+		`{"tag":"y","type":"vless","server":"a"}`,
+		`{"tag":"rg","type":"selector","outbounds":["r","y"]}`,
+		`{"tag":"ring","type":"chain","outbounds":["r","rg"]}`,
+		`{"tag":"e3","type":"vless","server":"a"}`,
+		`{"tag":"wg","type":"wireguard","listen_port":51820}`,
+		`{"tag":"port","type":"chain","outbounds":["e3","wg"]}`,
 	}
 	run := func(rewrite bool) (map[string]map[string]interface{}, graphLosses) {
 		cache := &ParsedCache{}
@@ -253,39 +261,39 @@ func TestSanitizeChainDetourRewrite(t *testing.T) {
 	}
 
 	got, losses := run(true)
-	if _, ok := got["c2"]; ok {
-		t.Error("the later chain must be dropped: wg is at position ≥ 1 of both chains")
+	for _, dropped := range []string{"c2", "ring", "port"} {
+		if _, ok := got[dropped]; ok {
+			t.Errorf("chain %s must be dropped", dropped)
+		}
 	}
 	if _, ok := got["c1"]; !ok {
 		t.Fatal("the earlier chain must stay")
 	}
-	wg := got["wg"]
-	if _, ok := wg["listen_port"]; ok {
-		t.Error("listen_port of an intercepted WireGuard node must be removed")
+	if got["x"]["tcp_fast_open"] != true {
+		t.Error("socket fields of a node inside a chain are not an error and must stay")
 	}
-	if _, ok := wg["bind_interface"]; ok {
-		t.Error("bind_interface of an intercepted node must be removed")
-	}
-	if _, ok := got["entry"]["bind_interface"]; ok {
-		t.Error("position 0 is not intercepted and must not change")
+	if _, ok := got["wg"]["listen_port"]; !ok {
+		t.Error("listen_port is not removed: the chain is dropped instead")
 	}
 	codes := map[string]map[string]string{}
 	for _, w := range losses.warnings {
 		codes[w.Code] = w.Params
 	}
-	if p := codes["chain_detour_conflict"]; p["chain"] != "c2" || p["node"] != "wg" || p["other"] != "c1" {
+	if p := codes["chain_detour_conflict"]; p["chain"] != "c2" || p["node"] != "pool" || p["other"] != "c1" {
 		t.Errorf("chain_detour_conflict params = %v", p)
 	}
-	if p := codes["chain_hop_socket_fields_dropped"]; p["chain"] != "c1" || p["fields"] != "bind_interface, listen_port" {
-		t.Errorf("chain_hop_socket_fields_dropped params = %v", p)
+	if p := codes["chain_detour_ring"]; p["chain"] != "ring" || p["node"] != "r" {
+		t.Errorf("chain_detour_ring params = %v", p)
+	}
+	if p := codes["chain_hop_local_port"]; p["chain"] != "port" || p["node"] != "wg" || p["fields"] != "listen_port" {
+		t.Errorf("chain_hop_local_port params = %v", p)
 	}
 
 	got, losses = run(false)
-	if _, ok := got["c2"]; !ok {
-		t.Error("an older core clones position nodes: both chains are valid")
-	}
-	if _, ok := got["wg"]["listen_port"]; !ok {
-		t.Error("an older core keeps listen_port")
+	for _, kept := range []string{"c1", "c2", "ring", "port"} {
+		if _, ok := got[kept]; !ok {
+			t.Errorf("an older core clones position nodes: chain %s is valid", kept)
+		}
 	}
 	if len(losses.warnings) != 0 {
 		t.Errorf("no rule-7 warnings for an older core: %v", losses.warnings)

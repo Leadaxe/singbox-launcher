@@ -6373,5 +6373,8 @@
   },
   "The config as the core runs it: chains rewritten into detours, MTU aligned.": {
     "value": "Конфиг, как его исполняет ядро: цепочки переписаны в detour, MTU выровнен."
+  },
+  "rewrite cannot change detour: inside a chain the node's path is set by the chain.": {
+    "value": "rewrite не может менять detour: внутри цепочки путь узла задаёт сама цепочка."
   }
 }

@@ -23,11 +23,14 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - [`awg_mtu_clamped`](#awg_mtu_clamped) · `warning` — AmneziaWG: MTU lowered to 1280
 - [`awg_mtu_high`](#awg_mtu_high) · `info` — AmneziaWG: MTU above 1280
 - [`chain_cycle_through_direction`](#chain_cycle_through_direction) · `warning` — Chain {chain} excluded from {direction}
-- [`chain_detour_conflict`](#chain_detour_conflict) · `error` — Chain {chain}: node {node} is taken by another route
+- [`chain_detour_conflict`](#chain_detour_conflict) · `error` — Chain {chain}: {node} is already used by another route
+- [`chain_detour_ring`](#chain_detour_ring) · `error` — Chain {chain}: {node} would go around in a circle
+- [`chain_hop_local_port`](#chain_hop_local_port) · `error` — Chain {chain}: {node} has a fixed local port
 - [`chain_hop_missing`](#chain_hop_missing) · `error` — Chain: hop {position} not found
-- [`chain_hop_socket_fields_dropped`](#chain_hop_socket_fields_dropped) · `warning` — Chain {chain}: socket settings removed from {count} node(s)
+- [`chain_hop_tag_taken`](#chain_hop_tag_taken) · `error` — Chain {chain}: the name {tag} is taken
 - [`chain_invalid`](#chain_invalid) · `error` — Chain is malformed
 - [`chain_nested_position`](#chain_nested_position) · `error` — Chain: nested chain at position {position}
+- [`chain_rewrite_detour`](#chain_rewrite_detour) · `error` — Chain {chain}: rewrite changes detour
 - [`chain_unsupported_by_core`](#chain_unsupported_by_core) · `error` — Chains are unavailable in core {version}
 - [`core_rejected`](#core_rejected) · `error` — The core rejected this server
 - [`detour_chain_too_deep`](#detour_chain_too_deep) · `warning` — Chain shortened to {limit} hops
@@ -390,13 +393,46 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 **severity:** `error` · **params:** `chain`, `node`, `other`
 
-**Chain {chain}: node {node} is taken by another route**
+**Chain {chain}: {node} is already used by another route**
 
-- **What happened:** The core routes every node at position 2 or later of a chain through that chain, as the node itself: one node gets one route. Node {node} would get two (chains {chain} and {other}), or it would be both the first position of one chain and a later position of another. The chain {chain} was excluded, because the core rejects such a config and would refuse to start it.
-- **Why it happens:** Two chains share a node (or a group containing it) at positions after the first, or a node is the entry of one chain and an inner position of another, or the node's own hop leads back into its chain.
+- **What happened:** The core routes every node and group inside a chain through that chain, so each of them can stand in one place only. {node} is reached from chain {chain} and from chain {other} (directly or as a member of a group). The chain {chain} was excluded, because the core rejects such a config and would refuse to start it.
+- **Why it happens:** Two chains share a node or a group — also as their first position — or one chain has the same node or group on two positions after the first.
 - **What you can do:**
-  - Use a different node or group at one of the positions.
+  - Use a different node or group in one of the chains.
   - Or keep one of the two chains.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="chain_detour_ring"></a>
+### chain_detour_ring
+
+**severity:** `error` · **params:** `chain`, `node`
+
+**Chain {chain}: {node} would go around in a circle**
+
+- **What happened:** In a chain every node after the first position goes through the position below it. For {node} that path leads back to {node} itself — through a group that also contains it, or through the own hop of the first position. The chain {chain} was excluded, because the core rejects such a config.
+- **Why it happens:** A node of a later position is also reachable from a lower one — for example, the first position is node A and the second is a group that contains A, or the first position's own detour leads into a node of a later position.
+- **What you can do:**
+  - Remove the node from the group at the later position, or choose another first position.
+  - Or clear the detour of the first position.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="chain_hop_local_port"></a>
+### chain_hop_local_port
+
+**severity:** `error` · **params:** `chain`, `node`, `position`, `fields`
+
+**Chain {chain}: {node} has a fixed local port**
+
+- **What happened:** {node} at position {position} of chain {chain} connects through the position below, and that hop opens its socket, so a fixed local port ({fields}) cannot work. The chain {chain} was excluded, because the core rejects such a config.
+- **Why it happens:** A WireGuard, Tailscale or OpenConnect node inside a chain has a fixed local port.
+- **What you can do:**
+  - Clear the local port of the node, or use the node outside chains.
 
 **Where it comes from:**
 
@@ -419,18 +455,17 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 
 - Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
 
-<a id="chain_hop_socket_fields_dropped"></a>
-### chain_hop_socket_fields_dropped
+<a id="chain_hop_tag_taken"></a>
+### chain_hop_tag_taken
 
-**severity:** `warning` · **params:** `chain`, `count`, `tags`, `fields`
+**severity:** `error` · **params:** `chain`, `tag`
 
-**Chain {chain}: socket settings removed from {count} node(s)**
+**Chain {chain}: the name {tag} is taken**
 
-- **What happened:** Nodes at position 2 or later of chain {chain} ({tags}) connect through the hop below, and the hop opens their socket. Their settings {fields} do not apply there, and the core rejects them, so they were removed. The nodes stay in the config.
-- **Why it happens:** A node placed inside a chain carries a fixed local port or a socket binding (interface, routing mark, TCP Fast Open and similar).
+- **What happened:** The core gives the hops of chain {chain} the names {chain}#1, {chain}#2 and so on in its own numbering, and {tag} is already the name of another node. The chain {chain} was excluded, because the core rejects such a config.
+- **Why it happens:** A node is named like a hop of the chain: the chain name, # and a number.
 - **What you can do:**
-  - Nothing to do if the chain works.
-  - If the node needs these settings, use it outside chains.
+  - Rename the chain or the node.
 
 **Where it comes from:**
 
@@ -465,6 +500,22 @@ The `contract/registry/warnings.json` dictionary is shared with LxBox: both apps
 - **What you can do:**
   - Move the nested chain to the first position.
   - Or replace it with the individual nodes it consists of.
+
+**Where it comes from:**
+
+- Node or subscription level: no field in the registry points at this code, so it is raised while the entry as a whole is being read.
+
+<a id="chain_rewrite_detour"></a>
+### chain_rewrite_detour
+
+**severity:** `error` · **params:** `chain`, `type`
+
+**Chain {chain}: rewrite changes detour**
+
+- **What happened:** The rewrite of chain {chain} for {type} nodes changes detour, but inside a chain the node's path is set by the chain. The chain {chain} was excluded, because the core rejects such a config.
+- **Why it happens:** The chain's rewrite table has a detour row.
+- **What you can do:**
+  - Remove the detour row from the rewrite table.
 
 **Where it comes from:**
 

@@ -425,11 +425,15 @@ It lives in `proxies[]` next to subscriptions and servers:
 With core SPEC 165 (1.14.4-lx.37-rc.2) the core rewrites a chain on load:
 every node a position ≥ 2 reaches (members of groups too) gets `detour` on
 the internal hop `<chain>#<i>` of the position below, and dials only that
-way. A node therefore belongs to one chain at most: a node at a later
-position of two chains, or at the first position of one and a later
-position of another, drops the later chain at build
-(`chain_detour_conflict`); a fixed local port or socket binding of such a
-node is removed (`chain_hop_socket_fields_dropped`).
+way. A node or a group (with every member of any depth) may therefore stand
+in one place only: two chains sharing it — the first position too — or one
+chain holding it on two later positions drop the later chain at build
+(`chain_detour_conflict`); so do a ring (`[A, Group{A, X}]`,
+`chain_detour_ring`), a fixed local port of a node inside the chain
+(`chain_hop_local_port`), a node named `<chain>#<i>`
+(`chain_hop_tag_taken`) and a `rewrite` that changes `detour`
+(`chain_rewrite_detour`). The chain editor shows the same problems before
+saving.
 
 For the rest of the launcher a chain is a **node**: it joins the pool, is
 picked up by Direction filters like any subscription server, and shows up in

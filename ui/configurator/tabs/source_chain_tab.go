@@ -28,6 +28,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/fynewidget"
@@ -89,6 +90,11 @@ type chainForm struct {
 	// nodesKnown — разобран ли кэш узлов. Пока нет, позиция, которой не
 	// видно среди кандидатов, — «ещё не знаем», а не «потеряна».
 	nodesKnown bool
+
+	// graph — исходящие и endpoints последней сборки (строки модели): по ним
+	// редактор видит группы и чужие цепочки и проверяет перезапись цепочки
+	// ядром (SPEC 189) до сохранения. nil — проверка не делается.
+	graph func() (outbounds, endpoints []string)
 
 	// unsupported — причина, по которой ядро не примет цепочку. Пусто, если
 	// примет. Показывается предупреждением сверху: настроить маршрут,
@@ -423,6 +429,20 @@ func (f *chainForm) conflicts() []string {
 	tags := make([]string, len(f.hops))
 	for i, link := range f.hops {
 		tags[i] = f.displayTag(link)
+	}
+
+	// SPEC 189: ядро с перезаписью цепочки в detour (SPEC 165) отвергает
+	// весь конфиг на кольце, общем узле или группе двух цепочек, локальном
+	// порту узла внутри цепочки, занятом теге хопа и rewrite с detour.
+	// Решение владельца 26.11: клиент такого не допускает — показываем здесь
+	// той же проверкой, что снимет цепочку на сборке.
+	// Ядро цели здесь не различается: пин лаунчера — ядро с перезаписью, а
+	// машина на старом ядре получит те же цепочки после обновления.
+	if f.graph != nil {
+		if c := f.Collect(); c != nil {
+			obs, eps := f.graph()
+			out = append(out, config.ChainEditProblems(obs, eps, f.originalTag, config.ChainOutboundObject(f.Tag(), c))...)
+		}
 	}
 
 	// T5: вложенная цепочка допустима только первой позицией — звено это
