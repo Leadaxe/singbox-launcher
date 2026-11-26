@@ -1,16 +1,16 @@
 # Release Notes
 
-Полный черновик следующего релиза: [docs/release_notes/upcoming.md](docs/release_notes/upcoming.md)
+Полный черновик следующего релиза: [docs/release_notes/upcoming.md](docs/release_notes/upcoming.md) · последний релиз — [v2.4.5](docs/release_notes/2-4-5.md)
 
 ---
 
-### Выжимка (RU) — следующий релиз (черновик)
+### Выжимка (RU) — v2.4.5
 
-**Правило из условий:** вместо выбора одного типа правило собирается из условий — домены и наборы, порт, источник, процесс, протокол, сеть, входящий, Wi-Fi — связанных «И», плюс группы «all of / any of» с «Not». Теги наборов — имя правила и имя файла набора (`Ai:geosite-google`), свои домены — `Ai`. DNS-опции идут по дереву условий, ⚠ — если DNS их не видит. `state.json` v9 и бэкап `lx_backup: 3` старые версии не читают; прежнее состояние остаётся рядом как `state.json.v8.bak`. Бэкап нового формата читает LxBox с контрактом 1.1.181.
+Патч после v2.4.4, ядро `sing-box-lx 1.14.4-lx.37` (было 1.14.4-lx.35), контракт 1.1.184. **Цепочки под новое ядро:** узел внутри цепочки ходит её путём везде, без копий; кольцо или конфликт цепочек редактор не даёт сохранить и подсказывает, что скопировать, сборка такую цепочку исключает, а вкладка ядра показывает баннер «Цепочка не собрана» с кнопкой перехода в редактор. **JSON узла в окне Info** — как его исполняет ядро, с переключателем на форму конфига. **Пул round_robin** показывает карантин, счётчики и заморозку. **Правило из условий:** вместо выбора одного типа правило собирается из условий — домены и наборы, порт, источник, процесс, протокол, сеть, входящий, Wi-Fi — связанных «И», плюс группы «all of / any of» с «Not». Теги наборов — имя правила и имя файла набора (`Ai:geosite-google`), свои домены — `Ai`. DNS-опции идут по дереву условий, ⚠ — если DNS их не видит. `state.json` v9 и бэкап `lx_backup: 3` старые версии не читают; прежнее состояние остаётся рядом как `state.json.v8.bak`. Бэкап нового формата читает LxBox с контрактом 1.1.181.
 
-### Highlights (EN) — next release (draft)
+### Highlights (EN) — v2.4.5
 
-**Rules built from conditions:** instead of picking one type, a rule is a stack of conditions — domains and rule sets, port, source, process, protocol, network, inbound, Wi-Fi — joined by AND, plus "all of / any of" groups with "Not". Rule-set tags are the rule name plus the set file name (`Ai:geosite-google`), your own domains `Ai`. DNS options follow the condition tree, with ⚠ when DNS cannot see them. `state.json` v9 and backup `lx_backup: 3` are not read by older versions; the previous state is kept as `state.json.v8.bak`. A new-format backup is read by LxBox with contract 1.1.181.
+A patch release after v2.4.4, core `sing-box-lx 1.14.4-lx.37` (was 1.14.4-lx.35), contract 1.1.184. **Hop chains for the new core:** a node inside a chain goes the chain's path everywhere, without copies; a ring or conflict of chains cannot be saved in the editor, which says what to copy, the build leaves such a chain out, and the Core tab shows a "Hop chain is not built" banner with a button to its editor. **Node JSON in the Info window** — as the core runs it, with a switch to the config form. **The round_robin pool** shows quarantine, counters and the freeze. **Rules built from conditions:** instead of picking one type, a rule is a stack of conditions — domains and rule sets, port, source, process, protocol, network, inbound, Wi-Fi — joined by AND, plus "all of / any of" groups with "Not". Rule-set tags are the rule name plus the set file name (`Ai:geosite-google`), your own domains `Ai`. DNS options follow the condition tree, with ⚠ when DNS cannot see them. `state.json` v9 and backup `lx_backup: 3` are not read by older versions; the previous state is kept as `state.json.v8.bak`. A new-format backup is read by LxBox with contract 1.1.181.
 
 ### Выжимка (RU) — v2.4.4
 
@@ -836,6 +836,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v2.4.5** | [docs/release_notes/2-4-5.md](docs/release_notes/2-4-5.md) |
 | **v2.4.4** | [docs/release_notes/2-4-4.md](docs/release_notes/2-4-4.md) |
 | **v2.4.3** | [docs/release_notes/2-4-3.md](docs/release_notes/2-4-3.md) |
 | **v2.4.2** | [docs/release_notes/2-4-2.md](docs/release_notes/2-4-2.md) |
