@@ -40,7 +40,6 @@ const (
 	chainConflictDetourEntryText = "The first position (%s) dials through its own detour — the real path is longer than shown: one more hop precedes it that is not in this list."
 	chainConflictForwardRefText  = "Chains %s are declared below this one in the sources list — a chain may only reference chains above it. Drag them higher, or this chain will not build."
 	chainConflictTagTakenText    = "The name “%s” is already taken by another node, Direction or chain — two outbounds with one tag cannot coexist, this chain will be dropped at build."
-	chainRemovedKeyText          = "The chain key %s is removed from the core: a chain no longer creates link copies, and strip filters moved to lx.detour.strip. Remove the key."
 	chainNoteDetourIgnoredText   = "Positions %s have their own detour — it does not apply inside a chain: a link always dials through the previous position. The path is exactly as shown."
 )
 

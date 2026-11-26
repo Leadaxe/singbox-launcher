@@ -2106,7 +2106,7 @@ func showSourceEditWindowAt(
 			_ = json.Unmarshal([]byte(text), &keys)
 			for _, key := range []string{"idle_timeout", "strip_evasion", "strip"} {
 				if _, has := keys[key]; has {
-					dialog.ShowError(errors.New(locale.Tf(chainRemovedKeyText, key)), win)
+					dialog.ShowError(errors.New(locale.Tf("The chain key %s is removed from the core: a chain no longer creates link copies, and strip filters moved to lx.detour.strip. Remove the key.", key)), win)
 					return
 				}
 			}

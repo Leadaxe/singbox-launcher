@@ -2014,9 +2014,6 @@
   "Nothing left to add: every available target is already in the chain.": {
     "value": "Больше нечего добавить: все доступные цели уже в цепочке."
   },
-  "ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the chain will keep tls.utls on every position. Clear tls.utls to match.": {
-    "value": "Отпечаток ClientHello снят, но на позициях %s стоят reality-узлы — им он нужен, и цепочка оставит tls.utls у всех позиций. Снимите галку tls.utls, чтобы форма совпадала."
-  },
   "A nested chain (%s) is only allowed at the first position — move it to the top or remove it.": {
     "value": "Вложенная цепочка (%s) допустима только первой позицией — переставьте её наверх или уберите."
   },
@@ -2088,27 +2085,6 @@
   },
   "Option %s · %s is set twice — only the last one reaches the config.": {
     "value": "Параметр %s · %s задан дважды — в конфиг попадёт только последний."
-  },
-  "Link idle timeout": {
-    "value": "Простой звена"
-  },
-  "5m — core default, 0s — never drop": {
-    "value": "5m — умолчание ядра, 0s — не удалять"
-  },
-  "Strip DPI evasion from links": {
-    "value": "Снимать DPI-обвес у звеньев"
-  },
-  "ClientHello fragmentation": {
-    "value": "фрагментация ClientHello"
-  },
-  "multiplex padding": {
-    "value": "паддинг мультиплексора"
-  },
-  "XHTTP padding": {
-    "value": "паддинг XHTTP"
-  },
-  "ClientHello fingerprint (must not be stripped on reality nodes)": {
-    "value": "отпечаток ClientHello (на reality-узлах снимать нельзя)"
   },
   "Free community servers": {
     "value": "Бесплатные серверы сообщества"
@@ -3970,9 +3946,6 @@
   },
   "starting": {
     "value": "поднимается"
-  },
-  "active": {
-    "value": "активно"
   },
   "idle": {
     "value": "простаивает"
@@ -6361,5 +6334,8 @@
   },
   "dial errors: %d": {
     "value": "отказов дозвона: %d"
+  },
+  "The chain key %s is removed from the core: a chain no longer creates link copies, and strip filters moved to lx.detour.strip. Remove the key.": {
+    "value": "Ключ цепочки %s убран из ядра: цепочка больше не создаёт копии звеньев, а фильтры strip переехали в lx.detour.strip. Уберите ключ."
   }
 }
