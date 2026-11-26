@@ -96,6 +96,11 @@ type ControllerFacade interface {
 	// the same target (constants.ConfigTargetLocal / ConfigTargetRemote +
 	// machine id) can offer to reload. Called only after the save succeeded.
 	NotifyStateChanged(target, machineID string)
+
+	// SendNotification — системное уведомление тем же путём, что у самого
+	// лаунчера (macOS — свой путь с откатом на osascript, иначе Fyne).
+	// Возвращает, каким путём ушло: "system" или "fyne".
+	SendNotification(title, body string) string
 }
 
 // Server owns the listener, shutdown context, and auth config.
@@ -261,6 +266,7 @@ func (s *Server) endpoints() []apiEndpoint {
 		{"GET", "/proxies", true, "Proxy list with latencies", s.handleProxies},
 		{"GET", "/debug/snapshot", true, "Diagnostic snapshot (state/config/template)", s.handleSnapshot},
 		{"GET", "/debug/paths", true, "Data layout: program/data/logs dirs, core and template in use", s.handlePaths},
+		{"POST", "/debug/notify", true, "Show a test system notification the way the launcher does: {\"title\"?, \"body\"?}", s.handleDebugNotify},
 		{"GET", "/debug/goroutines", true, "Stack dump of all goroutines (text/plain, like SIGQUIT)", s.handleGoroutines},
 		{"POST", "/action/update-subs", true, "Re-fetch subscriptions and rebuild config", s.handleUpdateSubs},
 		{"POST", "/action/start", true, "Start the core", s.handleStart},
@@ -535,4 +541,30 @@ func unixOrNull(t time.Time) any {
 		return nil
 	}
 	return t.Unix()
+}
+
+// handleDebugNotify — POST /debug/notify: тестовое системное уведомление тем
+// же путём, что у самого лаунчера. Нужен, чтобы проверить, доходят ли
+// уведомления до центра уведомлений (на macOS — разрешение у приложения).
+func (s *Server) handleDebugNotify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+		return
+	}
+	var req struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+	}
+	if err := decodeJSONBody(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body: " + err.Error()})
+		return
+	}
+	if strings.TrimSpace(req.Title) == "" {
+		req.Title = "singbox-launcher"
+	}
+	if strings.TrimSpace(req.Body) == "" {
+		req.Body = "Test notification from the debug API"
+	}
+	via := s.facade.SendNotification(req.Title, req.Body)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "via": via, "title": req.Title, "body": req.Body})
 }

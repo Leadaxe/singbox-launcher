@@ -4,6 +4,8 @@ import (
 	"errors"
 	"time"
 
+	"fyne.io/fyne/v2"
+
 	"singbox-launcher/api"
 	"singbox-launcher/core/debugapi"
 	"singbox-launcher/core/events"
@@ -157,6 +159,18 @@ func (f *debugAPIFacade) ApplyLogLevelAndReload(level string) error {
 // ReadCurrentLogLevel — proxy to core.ReadCurrentLogLevelFromState.
 func (f *debugAPIFacade) ReadCurrentLogLevel() (string, bool, error) {
 	return ReadCurrentLogLevelFromState(f.ac)
+}
+
+// SendNotification — тестовое уведомление debug API: тот же путь, что у
+// уведомлений лаунчера (taildropNotify).
+func (f *debugAPIFacade) SendNotification(title, body string) string {
+	if platform.SendNotification(title, body) {
+		return "system"
+	}
+	if app := fyne.CurrentApp(); app != nil {
+		app.SendNotification(&fyne.Notification{Title: title, Content: body})
+	}
+	return "fyne"
 }
 
 // NotifyStateChanged — SPEC 160 §E: a state write through the debug API

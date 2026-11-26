@@ -16,6 +16,7 @@ import (
 
 // fakeFacade lets tests drive the server without booting a whole controller.
 type fakeFacade struct {
+	notified    []string
 	running     bool
 	proxies     []api.ProxyInfo
 	active      string
@@ -108,6 +109,10 @@ func (f *fakeFacade) ReadCurrentLogLevel() (string, bool, error) {
 }
 
 func (f *fakeFacade) NotifyStateChanged(target, machineID string) {}
+func (f *fakeFacade) SendNotification(title, body string) string {
+	f.notified = append(f.notified, title+"|"+body)
+	return "system"
+}
 
 // freeLocalPort binds :0 then closes, returning the port. Good enough for
 // server-under-test tests on a dev box.
@@ -285,4 +290,25 @@ func itoa(i int) string {
 		buf = append([]byte{'-'}, buf...)
 	}
 	return string(buf)
+}
+
+// TestDebugNotify — POST /debug/notify отдаёт уведомление фасаду (тот же путь,
+// что у лаунчера), пустые поля заменяются тестовым текстом.
+func TestDebugNotify(t *testing.T) {
+	f := &fakeFacade{}
+	port := freeLocalPort(t)
+	s, err := New(f, port, "remote-test-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Start()
+	t.Cleanup(s.Stop)
+	base := "http://127.0.0.1:" + itoa(port)
+	resp, body := authDo(t, http.MethodPost, base+"/debug/notify", map[string]any{"title": "T", "body": "B"})
+	if resp.StatusCode != http.StatusOK || len(f.notified) != 1 || f.notified[0] != "T|B" {
+		t.Fatalf("notify: %d %s, sent %v", resp.StatusCode, body, f.notified)
+	}
+	if resp, _ := authDo(t, http.MethodPost, base+"/debug/notify", nil); resp.StatusCode != http.StatusOK || len(f.notified) != 2 || f.notified[1] == "|" {
+		t.Errorf("default notify: %d, sent %v", resp.StatusCode, f.notified)
+	}
 }
