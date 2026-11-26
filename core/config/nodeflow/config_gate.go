@@ -23,7 +23,9 @@ import (
 // Пустая version — гейт по `min_core` не применяется: не деградируем по
 // догадке, та же политика, что у полевого гейта узлов. Ключ с `forbidden`
 // (снят из ядра и из реестра, контракт 1.1.164) снимается всегда, и при
-// неизвестной версии тоже.
+// неизвестной версии тоже. Ключ с `max_core` (контракт 1.1.184: старая форма,
+// которую новое ядро отвергает) снимается у ядра этой версии и новее и при
+// неизвестной версии.
 func GateConfigForCore(root map[string]json.RawMessage, version string) ([]string, error) {
 	version = strings.TrimSpace(version)
 	if len(root) == 0 {
@@ -40,6 +42,10 @@ func GateConfigForCore(root map[string]json.RawMessage, version string) ([]strin
 		case f.Forbidden:
 			paths = append(paths, path)
 		case version != "" && f.MinCore != "" && compareCoreVersions(version, f.MinCore) < 0:
+			paths = append(paths, path)
+		case f.MaxCore != "" && (version == "" || compareCoreVersions(version, f.MaxCore) >= 0):
+			// Неизвестная версия снимает ключ: иначе конфиг нёс бы и старую,
+			// и новую форму, а такой не примет ни одно ядро.
 			paths = append(paths, path)
 		}
 	}

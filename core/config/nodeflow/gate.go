@@ -248,6 +248,11 @@ func (g *gate) supported(f *registry.Field) bool {
 // с min_core на rc.2 в ядро rc.1 не уходит — там его нет, и ядро отвергло
 // бы весь конфиг. Суффикс не вида -rc<K>/-rc.<K> (-dev, -test128) — сборка
 // вне нумерации, сравнивается как релиз своего lx.N, как прежде.
+// CoreAtLeast — версия ядра have не младше want (те же правила сравнения).
+func CoreAtLeast(have, want string) bool {
+	return compareCoreVersions(have, want) >= 0
+}
+
 func compareCoreVersions(have, want string) int {
 	haveBase, haveLx, havePre := splitCoreVersion(have)
 	wantBase, wantLx, wantPre := splitCoreVersion(want)

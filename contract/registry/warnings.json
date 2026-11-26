@@ -2897,6 +2897,55 @@
       "desc": "Ссылка-подписка tt://: есть subscription_url, нет ни hostname, ни address, ни username, ни password (правило 6 DEEP_LINK.md). Узел не строится — отказ разбора (dropped). Параметр subscription_url несёт адрес подписки (контракт 1.1.176): сторона, принимающая вставленный источник, заводит по нему подписку вместо отказа; в списке ссылок и в теле подписки строка остаётся отказом с этим кодом. Ответ по адресу — вид источника trusttunnel_endpoint_json.",
       "dart": null,
       "go": "правило реестра contract/registry/protocols/trusttunnel.json mappers.uri.params.subscription_only.on_invalid (drop у селектора); исполнение — core/config/linkmap/exec.go:execOne; адрес подписки из отказа — core/config/subscription/source_loader.go:SubscriptionURLOfLink"
+    },
+    "chain_detour_conflict": {
+      "severity": "error",
+      "params": [
+        "chain",
+        "node",
+        "other"
+      ],
+      "title_en": "Chain {chain}: node {node} is taken by another route",
+      "title_ru": "Цепочка {chain}: узел {node} занят другим маршрутом",
+      "text_en": "The core routes every node at position 2 or later of a chain through that chain, as the node itself: one node gets one route. Node {node} would get two (chains {chain} and {other}), or it would be both the first position of one chain and a later position of another. The chain {chain} was excluded, because the core rejects such a config and would refuse to start it.",
+      "text_ru": "Ядро ведёт каждый узел на позиции 2 и дальше через его цепочку, как сам узел: у узла один маршрут. Узлу {node} досталось бы два (цепочки {chain} и {other}), либо он оказался бы и первой позицией одной цепочки, и дальней позицией другой. Цепочка {chain} исключена: ядро отвергает такой конфиг и не запустит его.",
+      "cause_en": "Two chains share a node (or a group containing it) at positions after the first, or a node is the entry of one chain and an inner position of another, or the node's own hop leads back into its chain.",
+      "cause_ru": "Две цепочки делят узел (или группу с ним) на позициях после первой, либо узел — вход одной цепочки и внутренняя позиция другой, либо собственный хоп узла ведёт обратно в его цепочку.",
+      "fix_en": [
+        "Use a different node or group at one of the positions.",
+        "Or keep one of the two chains."
+      ],
+      "fix_ru": [
+        "Поставьте на одну из позиций другой узел или группу.",
+        "Либо оставьте одну из двух цепочек."
+      ],
+      "desc": "SPEC 165 ядра (ALGORITHM К1, К2, К6), SPEC 189 лаунчера, контракт 1.1.184: ядро с перезаписью цепочки в detour отвергает весь конфиг, если узел перехвачен дважды, перехвачен и стоит на позиции 0 любой цепочки или собственный detour узла позиции 0 ведёт в узел, перехваченный той же цепочкой. Сторона снимает цепочку — из пары ту, что позже по порядку; other — вторая цепочка пары (при К6 — сама цепочка). Только для ядра, которое переписывает цепочку (не ниже min_core блока lx.detour) или неизвестной версии.",
+      "go": "GraphWarning → отчёт emit_degraded: core/build/outbound_graph_chain_detour.go:applyChainDetourRules"
+    },
+    "chain_hop_socket_fields_dropped": {
+      "severity": "warning",
+      "params": [
+        "chain",
+        "count",
+        "tags",
+        "fields"
+      ],
+      "title_en": "Chain {chain}: socket settings removed from {count} node(s)",
+      "title_ru": "Цепочка {chain}: у {count} узлов сняты настройки сокета",
+      "text_en": "Nodes at position 2 or later of chain {chain} ({tags}) connect through the hop below, and the hop opens their socket. Their settings {fields} do not apply there, and the core rejects them, so they were removed. The nodes stay in the config.",
+      "text_ru": "Узлы на позиции 2 и дальше цепочки {chain} ({tags}) подключаются через хоп ниже, и сокет им открывает хоп. Их настройки {fields} там не действуют, а ядро их отвергает, поэтому они сняты. Узлы остались в конфиге.",
+      "cause_en": "A node placed inside a chain carries a fixed local port or a socket binding (interface, routing mark, TCP Fast Open and similar).",
+      "cause_ru": "У узла внутри цепочки задан фиксированный локальный порт или привязка сокета (интерфейс, routing mark, TCP Fast Open и подобное).",
+      "fix_en": [
+        "Nothing to do if the chain works.",
+        "If the node needs these settings, use it outside chains."
+      ],
+      "fix_ru": [
+        "Ничего делать не нужно, если цепочка работает.",
+        "Если узлу нужны эти настройки, используйте его вне цепочек."
+      ],
+      "desc": "SPEC 165 ядра (ALGORITHM К5), SPEC 189 лаунчера, контракт 1.1.184: у узла на позиции ≥ 1 ядро отвергает фиксированный локальный порт (WireGuard listen_port, Tailscale listen_port / relay_server_port, OpenConnect dtls_local_port) и поля привязки сокета, которые под detour не действуют (bind_interface, inet4_bind_address, inet6_bind_address, bind_address_no_port, protect_path, routing_mark, reuse_addr, netns, tcp_fast_open, tcp_multi_path, network_strategy, network_type, fallback_network_type). Сторона снимает поля с узла, одна запись на цепочку. Только для ядра, которое переписывает цепочку.",
+      "go": "GraphWarning → отчёт emit_degraded: core/build/outbound_graph_chain_detour.go:chainSocketStripWarnings"
     }
   }
 }

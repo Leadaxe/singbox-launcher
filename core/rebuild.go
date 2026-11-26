@@ -211,6 +211,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	// записи доливаются в отчёт поверх его собственных.
 	FeedBuildReportFromSanitizer(gen, res.ExcludedSources)
 	FeedBuildReportFromDetourStripped(gen, res.DetourStripped)
+	FeedBuildReportFromGraphWarnings(gen, res.GraphWarnings)
 	// SPEC 143: мусор в переменных шаблона и директивы новее приложения —
 	// та же попытка, конфиг собран, Save не блокируется.
 	FeedBuildReportFromTemplate(gen, res.TemplateWarnings)

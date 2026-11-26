@@ -772,8 +772,12 @@ type Limit struct {
 // CoreConfigField — запись из registry/core_config.json: ключ config.json вне
 // тел узлов и версия ядра, с которой он существует. Forbidden — ключ снят из
 // ядра и из реестра (контракт 1.1.164): снимается при любой версии ядра.
+// MaxCore — первая версия ядра, где ключа уже нет и он валит загрузку
+// (контракт 1.1.184): снимается у ядра этой версии и новее, а при неизвестной
+// версии — тоже, как у Forbidden.
 type CoreConfigField struct {
 	MinCore   string `json:"min_core"`
+	MaxCore   string `json:"max_core"`
 	Forbidden bool   `json:"forbidden"`
 	Note      string `json:"note"`
 }

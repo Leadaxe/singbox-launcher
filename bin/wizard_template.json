@@ -277,7 +277,7 @@
           "type": "enum",
           "wizard_ui": "edit",
           "title": "Tunnel MTU alignment",
-          "tooltip": "sing-box-lx lx.mtu_align — how a node riding inside another tunnel (chain, detour, WARP) fits its packets into the outer path MTU. Clamp (default) fills in an MTU the node does not set and lowers one that does not fit; fill only fills in a missing MTU and keeps an explicit one, warning if it does not fit; off changes nothing. MTU is never raised.",
+          "tooltip": "sing-box-lx lx.detour.mtu_align (lx.mtu_align before core 1.14.4-lx.37-rc.2) — how a node riding inside another tunnel (chain, detour, WARP) fits its packets into the outer path MTU. Clamp (default) fills in an MTU the node does not set and lowers one that does not fit; fill only fills in a missing MTU and keeps an explicit one, warning if it does not fit; off changes nothing. MTU is never raised.",
           "default_value": "clamp",
           "options": [
             {"title": "Clamp (default)", "value": "clamp"},
@@ -423,9 +423,7 @@
           "title": "Datagrams per read",
           "tooltip": "sing-box-lx lx.wg.buffers.read_datagram_count — how many datagrams a tunnel without a detour reads at once. Every one keeps a 64 KiB buffer for as long as the tunnel is up, twice (IPv4 and IPv6): 128 (default) is 16.4 MiB per tunnel, 8 is about 1 MiB, 1 is 0.13 MiB. Below 128 the kernel's receive coalescing (UDP GRO) is off for the tunnel. 8 suits weak machines and routers and is the default for a remote Linux machine; 1–2 suit tens and hundreds of tunnels. Linux only: macOS and Windows accept the key and ignore it. Needs core 1.14.4-lx.36 or newer.",
           "default_value": {
-            "default": {
-              "#if": [{"#and": [{"@runtime.target": "remote"}, {"@runtime.platform": "linux"}]}, "8", "128"]
-            }
+            "default": {"#if": [{"#and": [{"@runtime.target": "remote"}, {"@runtime.platform": "linux"}]}, "8", "128"]}
           },
           "options": [
             {"title": "128 (core default)", "value": "128"},
@@ -703,6 +701,7 @@
     },
     "lx": {
       "#if mtu_align": [{"#not": {"@mtu_align": "clamp"}}, {"mtu_align": "@mtu_align"}],
+      "#if detour": [{"#not": {"@mtu_align": "clamp"}}, {"detour": {"mtu_align": "@mtu_align"}}],
       "#if sniff_guard": [
         {"#or": [{"#not": {"@sniff_guard_tls": "off"}}, {"#not": {"@sniff_guard_quic": "off"}}]},
         {
@@ -727,7 +726,9 @@
       ],
       "#if masque_idle_timeout": [{"#not": {"@masque_idle_timeout": "off"}}, {"masque": {"idle_timeout": "@masque_idle_timeout"}}],
       "#if wg": [
-        {"#or": [{"#not": {"@wg_read_datagram_count": "128"}}, {"#not": "@wg_send_by_mtu"}, "@wg_connected_socket"]},
+        {
+          "#or": [{"#not": {"@wg_read_datagram_count": "128"}}, {"#not": "@wg_send_by_mtu"}, "@wg_connected_socket"]
+        },
         {
           "wg": {
             "#if buffers": [

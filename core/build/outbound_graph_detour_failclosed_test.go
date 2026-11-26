@@ -29,7 +29,7 @@ func sanitizeWithOrigins(t *testing.T, outbounds []string, origins map[string]No
 		}
 		finalTags[m["tag"].(string)] = true
 	}
-	out, losses := sanitizeOutboundGraph(cache, finalTags)
+	out, losses := sanitizeOutboundGraph(cache, finalTags, false)
 	got := make(map[string]map[string]interface{})
 	for _, raw := range out.Outbounds {
 		var m map[string]interface{}

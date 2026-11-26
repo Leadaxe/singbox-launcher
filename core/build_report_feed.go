@@ -328,6 +328,34 @@ func FeedBuildReportFromDetourStripped(gen config.BuildGeneration, list []build.
 	config.AddBuildReportEntries(gen, entries)
 }
 
+// FeedBuildReportFromGraphWarnings кладёт в отчёт записи последнего рубежа с
+// кодом реестра (правило 7 граф-санитайзера, SPEC 189): одна запись
+// emit_degraded на запись, адресат — источник элемента. Текст UI берёт из
+// реестра по коду; Reason — запасная строка.
+func FeedBuildReportFromGraphWarnings(gen config.BuildGeneration, list []build.GraphWarning) {
+	if len(list) == 0 {
+		return
+	}
+	entries := make([]config.BuildReportEntry, 0, len(list))
+	for _, w := range list {
+		debuglog.WarnLog("build report: %s: %s (%s)", w.Subject, w.Code, w.Reason)
+		subject := w.SourceLabel
+		if subject == "" {
+			subject = w.Subject
+		}
+		entries = append(entries, config.BuildReportEntry{
+			Kind:        config.BuildReportEmitDegraded,
+			Subject:     subject,
+			SourceID:    w.SourceID,
+			SourceLabel: w.SourceLabel,
+			Reason:      w.Reason,
+			Code:        w.Code,
+			Params:      w.Params,
+		})
+	}
+	config.AddBuildReportEntries(gen, entries)
+}
+
 // FeedBuildReportFromTemplate кладёт в отчёт предупреждения подстановки
 // шаблона (SPEC 143, Т18): одна запись на предупреждение.
 //

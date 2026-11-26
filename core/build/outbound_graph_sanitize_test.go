@@ -21,7 +21,7 @@ func sanitizeHelper(t *testing.T, outbounds []string, templateTags ...string) (m
 		}
 		finalTags[m["tag"].(string)] = true
 	}
-	out, _ := sanitizeOutboundGraph(cache, finalTags)
+	out, _ := sanitizeOutboundGraph(cache, finalTags, false)
 	got := make(map[string]map[string]interface{})
 	for _, raw := range out.Outbounds {
 		var m map[string]interface{}
@@ -176,7 +176,7 @@ func TestSanitizeKeepsHealthyGraph(t *testing.T) {
 		_ = json.Unmarshal([]byte(o), &m)
 		finalTags[m["tag"].(string)] = true
 	}
-	out, _ := sanitizeOutboundGraph(cache, finalTags)
+	out, _ := sanitizeOutboundGraph(cache, finalTags, false)
 	if len(out.Outbounds) != len(in) {
 		t.Fatalf("healthy graph lost entries: %d != %d", len(out.Outbounds), len(in))
 	}
@@ -212,5 +212,82 @@ func TestSanitizeGroupsStrippedHopsPerSourceAndTarget(t *testing.T) {
 	}
 	if count["01BIG/gone"] != 2 || count["01BIG/other-gone"] != 1 || count["01SML/gone"] != 1 {
 		t.Errorf("группировка по паре источник × цель неверна: %v", count)
+	}
+}
+
+// TestSanitizeChainDetourRewrite — правило 7 (SPEC 165 ядра, SPEC 189): на
+// ядре, которое переписывает цепочку в detour, узел, перехваченный двумя
+// цепочками (здесь — через общую группу), снимает позднюю цепочку с кодом
+// chain_detour_conflict, а поля сокета у перехваченного узла снимаются с кодом
+// chain_hop_socket_fields_dropped. Для старого ядра конфиг законен и остаётся
+// как есть.
+func TestSanitizeChainDetourRewrite(t *testing.T) {
+	outbounds := []string{
+		`{"tag":"entry","type":"vless","server":"a"}`,
+		`{"tag":"wg","type":"wireguard","listen_port":51820,"bind_interface":"en0"}`,
+		`{"tag":"pool","type":"urltest","outbounds":["wg"]}`,
+		`{"tag":"c1","type":"chain","outbounds":["entry","pool"]}`,
+		`{"tag":"c2","type":"chain","outbounds":["entry","wg"]}`,
+	}
+	run := func(rewrite bool) (map[string]map[string]interface{}, graphLosses) {
+		cache := &ParsedCache{}
+		finalTags := map[string]bool{}
+		for _, o := range outbounds {
+			cache.Outbounds = append(cache.Outbounds, json.RawMessage(o))
+			var m map[string]interface{}
+			if err := json.Unmarshal([]byte(o), &m); err != nil {
+				t.Fatalf("bad fixture: %v", err)
+			}
+			finalTags[m["tag"].(string)] = true
+		}
+		out, losses := sanitizeOutboundGraph(cache, finalTags, rewrite)
+		got := map[string]map[string]interface{}{}
+		for _, raw := range out.Outbounds {
+			var m map[string]interface{}
+			if err := json.Unmarshal(raw, &m); err != nil {
+				t.Fatalf("emitted entry is not JSON: %s", raw)
+			}
+			got[m["tag"].(string)] = m
+		}
+		return got, losses
+	}
+
+	got, losses := run(true)
+	if _, ok := got["c2"]; ok {
+		t.Error("the later chain must be dropped: wg is at position ≥ 1 of both chains")
+	}
+	if _, ok := got["c1"]; !ok {
+		t.Fatal("the earlier chain must stay")
+	}
+	wg := got["wg"]
+	if _, ok := wg["listen_port"]; ok {
+		t.Error("listen_port of an intercepted WireGuard node must be removed")
+	}
+	if _, ok := wg["bind_interface"]; ok {
+		t.Error("bind_interface of an intercepted node must be removed")
+	}
+	if _, ok := got["entry"]["bind_interface"]; ok {
+		t.Error("position 0 is not intercepted and must not change")
+	}
+	codes := map[string]map[string]string{}
+	for _, w := range losses.warnings {
+		codes[w.Code] = w.Params
+	}
+	if p := codes["chain_detour_conflict"]; p["chain"] != "c2" || p["node"] != "wg" || p["other"] != "c1" {
+		t.Errorf("chain_detour_conflict params = %v", p)
+	}
+	if p := codes["chain_hop_socket_fields_dropped"]; p["chain"] != "c1" || p["fields"] != "bind_interface, listen_port" {
+		t.Errorf("chain_hop_socket_fields_dropped params = %v", p)
+	}
+
+	got, losses = run(false)
+	if _, ok := got["c2"]; !ok {
+		t.Error("an older core clones position nodes: both chains are valid")
+	}
+	if _, ok := got["wg"]["listen_port"]; !ok {
+		t.Error("an older core keeps listen_port")
+	}
+	if len(losses.warnings) != 0 {
+		t.Errorf("no rule-7 warnings for an older core: %v", losses.warnings)
 	}
 }

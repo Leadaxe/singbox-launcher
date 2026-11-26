@@ -146,6 +146,11 @@ type Result struct {
 	// записи detour_unavailable в отчёт сборки сам.
 	DetourStripped []DetourStripped
 
+	// GraphWarnings — записи последнего рубежа с кодом реестра (правило 7,
+	// SPEC 189): цепочка снята конфликтом перехвата, поля сокета сняты с узлов
+	// позиций ≥ 1.
+	GraphWarnings []GraphWarning
+
 	// TemplateWarnings — предупреждения подстановки шаблона (SPEC 143):
 	// мусор в числовой переменной, необъявленное имя, неизвестная директива.
 	// Конфиг при этом собран; вызывающий кладёт их в отчёт как
@@ -221,6 +226,7 @@ func BuildConfig(ctx BuildContext) (Result, error) {
 	}
 	res.ExcludedSources = losses.excluded
 	res.DetourStripped = losses.stripped
+	res.GraphWarnings = losses.warnings
 	res.TemplateWarnings = mergeTemplateWarnings(res.TemplateWarnings, presetWarnings)
 
 	// Шаг 3: финальная конкатенация. Раньше тут ещё писался блок-комментарий
@@ -354,7 +360,11 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 		// шаблоне раньше outbounds, и чистка внутри одной секции не увидела
 		// бы ссылку из другой. finalOutboundTags мутируется — route-секция
 		// собирается по уже итоговому множеству тегов.
-		ctx.Cache, excluded = sanitizeOutboundGraph(ctx.Cache, finalOutboundTags)
+		version := ""
+		if CoreVersionForTarget != nil {
+			version = CoreVersionForTarget(ctx.Target)
+		}
+		ctx.Cache, excluded = sanitizeOutboundGraph(ctx.Cache, finalOutboundTags, chainDetourRewriteActive(version))
 	}
 
 	// SPEC 118 (Р-DNS-2): множество тегов, реально уезжающих в

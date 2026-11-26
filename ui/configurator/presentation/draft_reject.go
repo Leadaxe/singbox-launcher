@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/events"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
@@ -93,7 +94,7 @@ func (p *WizardPresenter) runDraftRejectLoop(first string, promotePath string, n
 		Disabler:    newDraftDisabler(p.model),
 		Decide:      ac.CoreRejectDecideFn(),
 		Progress:    composeRejectProgress(ac, progress),
-		ForCheck:    remoteConfigForLocalCheck(p.model.Target.Normalized().IsRemote(), p.model.ResourceDir, p.model.Target.SrsLocalDir),
+		ForCheck:    remoteConfigForLocalCheck(p.model.Target.Normalized().IsRemote(), p.model.ResourceDir, p.model.Target.SrsLocalDir, localCoreVersion(ac)),
 	}
 	out, err := core.RunRejectLoop(in)
 	if err != nil {
@@ -121,15 +122,17 @@ func (p *WizardPresenter) runDraftRejectLoop(first string, promotePath string, n
 // на check («only supported on Linux»), хотя машина его примет. Проверка
 // чужой ОС своим бинарём не может судить о свойствах хоста — такие ключи
 // на время проверки снимаются, в бой уходит исходный конфиг.
-func remoteConfigForLocalCheck(isRemote bool, resourceDir, srsLocalDir string) func([]byte) []byte {
+//
+// SPEC 189: конфиг собран под ядро машины, а проверяет его своё ядро. Ключи
+// вне тел узлов, которых своё ядро не примет (`max_core` реестра: старая форма
+// `lx.mtu_align` для машины на старом ядре), снимаются тем же гейтом под
+// версию своего ядра.
+func remoteConfigForLocalCheck(isRemote bool, resourceDir, srsLocalDir, localVersion string) func([]byte) []byte {
 	if !isRemote {
 		return nil
 	}
 	srs := localSrsPathsForCheck(resourceDir, srsLocalDir)
 	stripHost := runtime.GOOS != "linux"
-	if srs == nil && !stripHost {
-		return nil
-	}
 	return func(cfg []byte) []byte {
 		if srs != nil {
 			cfg = srs(cfg)
@@ -137,8 +140,18 @@ func remoteConfigForLocalCheck(isRemote bool, resourceDir, srsLocalDir string) f
 		if stripHost {
 			cfg = dropTunAutoRedirect(cfg)
 		}
-		return cfg
+		return config.GateConfigJSONForCore(cfg, localVersion)
 	}
+}
+
+// localCoreVersion — версия своего ядра, которым идёт проверка; пусто, если
+// не прочиталась.
+func localCoreVersion(ac *core.AppController) string {
+	v, err := ac.GetInstalledCoreVersion()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(v)
 }
 
 // dropTunAutoRedirect снимает auto_redirect с tun-инбаундов. Конфиг без

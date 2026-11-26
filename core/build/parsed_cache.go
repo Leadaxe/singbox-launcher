@@ -70,6 +70,18 @@ type SourceExclusion struct {
 	DroppedNodes int
 }
 
+// GraphWarning — запись последнего рубежа с кодом реестра (правило 7
+// граф-санитайзера, SPEC 189): адресат — источник элемента, текст UI берёт из
+// реестра по Code, Reason — запасная строка.
+type GraphWarning struct {
+	SourceID    string
+	SourceLabel string
+	Subject     string
+	Code        string
+	Params      map[string]string
+	Reason      string
+}
+
 // DetourStripped — узлы одного источника, у которых последний рубеж снял
 // detour на недоступную цель (контракт 1.1.171, detour_unavailable): цели нет
 // в собранном конфиге — например, исчез селектор шаблона. Узлы остаются и
