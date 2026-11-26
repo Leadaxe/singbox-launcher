@@ -1017,6 +1017,21 @@ func TruncateWarningValue(v string) string {
 // ссылается на ту же строку — расхождение поймал бы любой из тестов SPEC 122.
 const SchemeTailscale = "tailscale"
 
+// SchemeImpair — тестовый outbound ядра `impair` (SPEC 164 форка): «плохой
+// канал» для проверок. В UI его нет, создаётся только debug API (SPEC 190).
+const SchemeImpair = "impair"
+
+// ProtocolDisplay — подпись протокола узла для показа: у impair — «☠ impair»
+// (решение владельца 26.11, как в LxBox), чтобы тестовый канал сразу
+// отличался от настоящих узлов. Тег узла не меняется никогда; остальные
+// протоколы показываются как есть.
+func ProtocolDisplay(typ string) string {
+	if strings.EqualFold(strings.TrimSpace(typ), SchemeImpair) {
+		return "☠ " + SchemeImpair
+	}
+	return typ
+}
+
 // IsExitCapable — годится ли узел ВЫХОДОМ В ИНТЕРНЕТ, то есть кандидатом в
 // состав Направления (SPEC 122 §2.3).
 //

@@ -9,6 +9,7 @@ import (
 	"singbox-launcher/api"
 	"singbox-launcher/core"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
@@ -78,7 +79,7 @@ func serversProxyContextMenu(ac *core.AppController, status *widget.Label, win f
 	// Disabled она подсвечивалась под курсором и закрывала меню по клику,
 	// ничего не сделав: ровно то, что человек читает как «кнопка не
 	// работает».
-	typeLine := fyne.NewMenuItem(proxy.ContextMenuTypeLine(locale.T("Unknown type")), nil)
+	typeLine := fyne.NewMenuItem(configtypes.ProtocolDisplay(proxy.ContextMenuTypeLine(locale.T("Unknown type"))), nil)
 	typeLine.Disabled = true
 	items := []*fyne.MenuItem{typeLine}
 	// Принудительный замер — первым действием: у группы urltest он тот же

@@ -104,7 +104,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	}
 
 	// Вид узла одной строкой: тип, секция, транспорт, защита.
-	kind := []string{node.Type, node.Kind}
+	kind := []string{configtypes.ProtocolDisplay(node.Type), node.Kind}
 	if node.Transport != "" {
 		kind = append(kind, node.Transport)
 	}
