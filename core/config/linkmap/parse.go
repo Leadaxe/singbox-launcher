@@ -187,6 +187,10 @@ func unwrapBody(m *registry.Mapper, form registry.Form, text string) (string, er
 	// Ровно он и порождает оболочку в результате, и ровно он же её снимает
 	// ниже: признак структурный, из самой формы.
 	scoped := false
+	// tail — `#метка` оболочки, СНЯТАЯ С ТЕКСТА ДО первого декодера с
+	// областью. После декодирования искать её по '#' уже нельзя: решётка
+	// есть и внутри пейлоада.
+	tail := ""
 	for i, raw := range form.Decode {
 		if i >= maxDecodeDepth {
 			return "", fmt.Errorf("linkmap: превышена глубина декодирования")
@@ -213,8 +217,9 @@ func unwrapBody(m *registry.Mapper, form registry.Form, text string) (string, er
 			body = next
 			continue
 		}
-		if scope != scopeAll {
+		if scope != scopeAll && !scoped {
 			scoped = true
+			_, _, tail = splitAuthorityPart(body)
 		}
 		next, err := decodeScoped(name, scope, body)
 		if err != nil {
@@ -242,7 +247,7 @@ func unwrapBody(m *registry.Mapper, form registry.Form, text string) (string, er
 	// первого комментария, и отвергался как «обязательное поле
 	// peers[].public_key пусто» (Q133-60).
 	if form.Space != "" && form.Space != "url" && scoped {
-		body = stripURIWrapper(body)
+		body = stripURIWrapper(body, tail)
 	}
 	return body, nil
 }
@@ -275,13 +280,15 @@ func decodeSubject(form registry.Form, text string) string {
 // stripURIWrapper снимает `схема://` спереди и `#метку` сзади, оставляя
 // пейлоад. Метка — свойство оболочки: у vmess она стоит СНАРУЖИ base64
 // (`vmess://<base64>#Имя`), и внутрь пейлоада ей нельзя.
-func stripURIWrapper(text string) string {
-	s := strings.TrimSpace(text)
+//
+// Метка приходит параметром (tail исходной ссылки) и срезается только как
+// суффикс. Разрез по первому '#' раскодированного текста обрывал пейлоад на
+// комментарии `.conf` под `[Peer]` (терялся PublicKey) и на '#' в имени
+// внутри JSON vmess — узел не получался.
+func stripURIWrapper(text, tail string) string {
+	s := strings.TrimSuffix(strings.TrimSpace(text), tail)
 	if i := strings.Index(s, "://"); i >= 0 {
 		s = s[i+len("://"):]
-	}
-	if i := strings.Index(s, "#"); i >= 0 {
-		s = s[:i]
 	}
 	return strings.TrimSpace(s)
 }

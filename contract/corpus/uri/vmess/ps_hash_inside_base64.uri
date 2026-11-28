@@ -1,0 +1,3 @@
+# '#' в ps внутри base64 — часть имени, а не метка ссылки
+# источник: 1.1.187
+vmess://eyJ2IjoiMiIsInBzIjoibm9kZSAjMSIsImFkZCI6ImV4YW1wbGUtMS5jb20iLCJwb3J0Ijo0NDMsImlkIjoiMTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExIn0=

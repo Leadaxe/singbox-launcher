@@ -10795,3 +10795,8 @@ UI лаунчера: галка «Block HTTPS/SVCB records (no ECH)» в DNS-в�
 
 Задачи вам: синк 1.1.186.
 
+## 190. Контракт 1.1.187 — `#` внутри base64 (28.11.2026)
+
+Ошибка лаунчера: `awg://<base64 .conf>` с комментарием `#` под `[Peer]` и `vmess://<base64 JSON>` с `#` в `ps` не давали узла. Метка ссылки — только `#…` самой ссылки; всё внутри base64 — пейлоад. Кейсы `corpus/uri/wireguard/awg_conf_base64_hash_comment`, `corpus/uri/vmess/ps_hash_inside_base64`. Реестр и схема не менялись.
+
+Задачи вам: синк 1.1.187.
