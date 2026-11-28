@@ -10780,3 +10780,18 @@ UI лаунчера: галка «Block HTTPS/SVCB records (no ECH)» в DNS-в�
 Образец у лаунчера: проверка `core/config/chain_validate.go` (`ChainDetourProblems`, её же зовёт редактор через `ChainEditProblems`), санитайзер графа `core/build/outbound_graph_chain_detour.go` (тест `TestSanitizeChainDetourRewrite`), гейт `core/config/nodeflow/config_gate.go`, нормализация тела `core/state/sources_v7.go` (`chainBodyRemovedKeys`).
 
 Задачи вам: синк 1.1.184 одним шагом с пином rc2; снятие трёх ключей из формы цепочки, состояния и импорта; `lx.detour.mtu_align` вместо `lx.mtu_align`; проверки п. 3 на сборке и в редакторе цепочки; ответ с sha.
+
+## 188. Контракт 1.1.185 — `tag` записи главнее имени из `origin` (28.11.2026)
+
+Решение владельца 28.11.2026, обе стороны. Норма — `docs/BACKUP.md`, поле `tag`: непустой `tag` записи `server` и узла папки главнее любого имени из `origin` у любого `origin.kind`; переименование меняет только `tag`, `origin.raw` остаётся байт в байт. Реестр, схема и корпус не менялись.
+
+У лаунчера имя хранится в записи и из `origin` на чтении и на «Regen from raw» не берётся. У LxBox реализовано в `b218c26a` (задача 456).
+
+Задачи вам: синк 1.1.185.
+
+## 189. Контракт 1.1.186 — `vpn://<base64>#имя` (28.11.2026)
+
+Решение владельца 28.11.2026: имя у `vpn://` читается по той же схеме, что у `awg://<base64>#имя`. Норма — `docs/BACKUP.md`, раздел о происхождении из `vpn://`; кейс `corpus/body/uri_list/vpn_link_name`. У обеих сторон реализовано одним днём.
+
+Задачи вам: синк 1.1.186.
+

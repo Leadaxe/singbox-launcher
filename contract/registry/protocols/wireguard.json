@@ -80,7 +80,7 @@
         "type": "int",
         "default": null,
         "maps_to": "peers[].persistent_keepalive_interval",
-        "desc_en": "Persistent keep-alive interval.",
+        "desc_en": "Persistent keep-alive interval: N seconds, or an AmneziaWG 3.x range N-M.",
         "desc_ru": "Интервал постоянного keep-alive.",
         "impl": "peer.persistent_keepalive_interval. Битое значение → параметр опускается, нода живёт."
       },
@@ -141,7 +141,7 @@
       "jmin": {
         "type": "int",
         "maps_to": "jmin",
-        "desc_en": "AmneziaWG obfuscation parameter jmin.",
+        "desc_en": "AmneziaWG obfuscation parameter jmin; dropped without jmax.",
         "desc_ru": "Параметр обфускации AmneziaWG jmin.",
         "impl": "AWG: junk min size, uint32. Битое значение снимает ПОЛЕ с кодом awg_header_invalid (прежде парсер ронял его молча)."
       },
@@ -183,86 +183,149 @@
       "h1": {
         "type": "int",
         "maps_to": "h1",
-        "desc_en": "AmneziaWG magic header H1.",
+        "desc_en": "AmneziaWG magic header H1: a number N, or a range N-M (AmneziaWG 2.0).",
         "desc_ru": "Magic-заголовок AmneziaWG H1.",
         "impl": "AWG magic header: uint32 ИЛИ строка-диапазон \"lo-hi\" (AWG 2.0, ядро >= lx.6; эмитится строкой). Порядок границ нормализует РЕЕСТР (normalize range_order), тихо: своп смысла диапазона не меняет; при overlap h1-h4 узел дропается связью реестра ranges_disjoint с кодом awg_headers_overlap — прежде рукописный (удалённый) awgHeaderOverlap ронял его молча (находка №8 LEGACY_AUDIT, контракт 1.1.11); Dart — только regex ^\\d+(-\\d+)?$. Битое значение снимает ПОЛЕ с кодом awg_header_invalid (ядро возьмёт дефолтный WG-header, и он не совпадёт с сервером). Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "h2": {
         "type": "int",
         "maps_to": "h2",
-        "desc_en": "AmneziaWG magic header H2.",
+        "desc_en": "AmneziaWG magic header H2: a number N, or a range N-M (AmneziaWG 2.0).",
         "desc_ru": "Magic-заголовок AmneziaWG H2.",
         "impl": "AWG magic header, как h1. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "h3": {
         "type": "int",
         "maps_to": "h3",
-        "desc_en": "AmneziaWG magic header H3.",
+        "desc_en": "AmneziaWG magic header H3: a number N, or a range N-M (AmneziaWG 2.0).",
         "desc_ru": "Magic-заголовок AmneziaWG H3.",
         "impl": "AWG magic header, как h1. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "h4": {
         "type": "int",
         "maps_to": "h4",
-        "desc_en": "AmneziaWG magic header H4.",
+        "desc_en": "AmneziaWG magic header H4: a number N, or a range N-M (AmneziaWG 2.0).",
         "desc_ru": "Magic-заголовок AmneziaWG H4.",
         "impl": "AWG magic header, как h1. Тип awg_range: ЧИСЛО либо строка «min-max»; ядро принимает обе формы (проверено `sing-box check` на 1.14.1-lx.4), поэтому type:\"string\" снимал бы числовую форму, которой её и пишут парсеры (SPEC 131 W2c)."
       },
       "i1": {
         "type": "string",
         "maps_to": "i1",
-        "desc_en": "AmneziaWG 3.x junk packet I1.",
-        "desc_ru": "Мусорный пакет AmneziaWG 3.x I1.",
+        "desc_en": "AmneziaWG 1.5 junk packet I1.",
+        "desc_ru": "Мусорный пакет AmneziaWG 1.5 I1.",
         "impl": "AWG 2.0 CPS-тег (<b 0xHEX>, <r N>, <c>…); регистр сохраняется, URL-decode штатный."
       },
       "i2": {
         "type": "string",
         "maps_to": "i2",
-        "desc_en": "AmneziaWG 3.x junk packet I2.",
-        "desc_ru": "Мусорный пакет AmneziaWG 3.x I2.",
+        "desc_en": "AmneziaWG 1.5 junk packet I2.",
+        "desc_ru": "Мусорный пакет AmneziaWG 1.5 I2.",
         "impl": "AWG CPS-тег, как i1."
       },
       "i3": {
         "type": "string",
         "maps_to": "i3",
-        "desc_en": "AmneziaWG 3.x junk packet I3.",
-        "desc_ru": "Мусорный пакет AmneziaWG 3.x I3.",
+        "desc_en": "AmneziaWG 1.5 junk packet I3.",
+        "desc_ru": "Мусорный пакет AmneziaWG 1.5 I3.",
         "impl": "AWG CPS-тег, как i1."
       },
       "i4": {
         "type": "string",
         "maps_to": "i4",
-        "desc_en": "AmneziaWG 3.x junk packet I4.",
-        "desc_ru": "Мусорный пакет AmneziaWG 3.x I4.",
+        "desc_en": "AmneziaWG 1.5 junk packet I4.",
+        "desc_ru": "Мусорный пакет AmneziaWG 1.5 I4.",
         "impl": "AWG CPS-тег, как i1."
       },
       "i5": {
         "type": "string",
         "maps_to": "i5",
-        "desc_en": "AmneziaWG 3.x junk packet I5.",
-        "desc_ru": "Мусорный пакет AmneziaWG 3.x I5.",
+        "desc_en": "AmneziaWG 1.5 junk packet I5.",
+        "desc_ru": "Мусорный пакет AmneziaWG 1.5 I5.",
         "impl": "AWG CPS-тег, как i1."
       },
       "id": {
         "type": "string",
         "maps_to": "id",
-        "desc_en": "AmneziaWG 3.x cover protocol domain.",
-        "desc_ru": "Домен протокола прикрытия AmneziaWG 3.x.",
+        "desc_en": "AmneziaWG 1.5 masquerade domain; required with ip=quic. Ignored when i1 is set.",
+        "desc_ru": "Домен протокола прикрытия AmneziaWG 1.5.",
         "impl": "Masquerade-сахар над i1 (SPEC 009, домен — регистр сохраняется). Go не ставит при явном i1 (ядро отвергает совместно), Dart guard'а не имеет; из INI [Interface] читает только Dart (разрыв)."
       },
       "ip": {
         "type": "string",
         "maps_to": "ip",
-        "desc_en": "AmneziaWG 3.x cover protocol.",
-        "desc_ru": "Протокол прикрытия AmneziaWG 3.x.",
+        "desc_en": "AmneziaWG 1.5 masquerade protocol: quic, dns, stun or sip. Ignored when i1 is set.",
+        "desc_ru": "Протокол прикрытия AmneziaWG 1.5.",
         "impl": "Masquerade-сахар, как id."
       },
       "ib": {
         "type": "string",
         "maps_to": "ib",
-        "desc_en": "AmneziaWG 3.x browser signature.",
-        "desc_ru": "Сигнатура браузера AmneziaWG 3.x.",
+        "desc_en": "AmneziaWG 1.5 masquerade browser signature: chrome, firefox or curl. Ignored when i1 is set.",
+        "desc_ru": "Сигнатура браузера AmneziaWG 1.5.",
         "impl": "Masquerade-сахар, как id."
+      },
+      "headerprotectionkey": {
+        "type": "base64",
+        "maps_to": "header_protection_key",
+        "desc_en": "AmneziaWG 3.0. Key protecting packet headers. 32 bytes; needs s1–s4 of at least 12.",
+        "desc_ru": "AmneziaWG 3.0. Ключ защиты заголовков пакетов. 32 байта; нужны s1–s4 не меньше 12.",
+        "impl": "Имя ключа ссылки — имя поля тела без подчёркиваний; читает mappers.uri.params."
+      },
+      "contentpaddingaddition": {
+        "type": "string",
+        "maps_to": "content_padding_addition",
+        "desc_en": "AmneziaWG 3.0. Extra content padding, number or range. Value: N or N-M.",
+        "desc_ru": "AmneziaWG 3.0. Добавочная набивка содержимого: число или диапазон. Значение: N или N-M.",
+        "impl": "Имя ключа ссылки — имя поля тела без подчёркиваний; читает mappers.uri.params."
+      },
+      "rekeyaftertime": {
+        "type": "string",
+        "maps_to": "rekey_after_time",
+        "desc_en": "AmneziaWG 3.0. Rekey after this many seconds. Value: N or N-M.",
+        "desc_ru": "AmneziaWG 3.0. Смена ключей через столько секунд. Значение: N или N-M.",
+        "impl": "Имя ключа ссылки — имя поля тела без подчёркиваний; читает mappers.uri.params."
+      },
+      "rekeytimeout": {
+        "type": "string",
+        "maps_to": "rekey_timeout",
+        "desc_en": "AmneziaWG 3.0. Rekey attempt timeout in seconds. Value: N or N-M.",
+        "desc_ru": "AmneziaWG 3.0. Таймаут попытки смены ключей в секундах. Значение: N или N-M.",
+        "impl": "Имя ключа ссылки — имя поля тела без подчёркиваний; читает mappers.uri.params."
+      },
+      "rejectaftertime": {
+        "type": "string",
+        "maps_to": "reject_after_time",
+        "desc_en": "AmneziaWG 3.0. Reject the session after this many seconds. Value: N or N-M.",
+        "desc_ru": "AmneziaWG 3.0. Отбрасывать сессию через столько секунд. Значение: N или N-M.",
+        "impl": "Имя ключа ссылки — имя поля тела без подчёркиваний; читает mappers.uri.params."
+      },
+      "keepalivetimeout": {
+        "type": "string",
+        "maps_to": "keepalive_timeout",
+        "desc_en": "AmneziaWG 3.0. Keepalive timeout in seconds. Value: N or N-M.",
+        "desc_ru": "AmneziaWG 3.0. Таймаут keepalive в секундах. Значение: N или N-M.",
+        "impl": "Имя ключа ссылки — имя поля тела без подчёркиваний; читает mappers.uri.params."
+      },
+      "maxhandshakeattempts": {
+        "type": "string",
+        "maps_to": "max_handshake_attempts",
+        "desc_en": "AmneziaWG 3.0. Maximum handshake attempts, count not seconds. Value: N or N-M.",
+        "desc_ru": "AmneziaWG 3.0. Максимум попыток рукопожатия — попытки, не секунды. Значение: N или N-M.",
+        "impl": "Имя ключа ссылки — имя поля тела без подчёркиваний; читает mappers.uri.params."
+      },
+      "randomtrailers": {
+        "type": "string",
+        "maps_to": "random_trailers",
+        "desc_en": "AmneziaWG 3.1. Append random trailing bytes to packets. Value: on or off.",
+        "desc_ru": "AmneziaWG 3.1. Дописывать случайные байты в хвост пакетов. Значение: on или off.",
+        "impl": "Имя ключа ссылки — имя поля тела без подчёркиваний; читает mappers.uri.params."
+      },
+      "disablecookies": {
+        "type": "string",
+        "maps_to": "disable_cookies",
+        "desc_en": "AmneziaWG 3.1. Disable the cookie mechanism. Value: on or off.",
+        "desc_ru": "AmneziaWG 3.1. Отключить механизм cookie. Значение: on или off.",
+        "impl": "Имя ключа ссылки — имя поля тела без подчёркиваний; читает mappers.uri.params."
       }
     },
     "fragment": "label"

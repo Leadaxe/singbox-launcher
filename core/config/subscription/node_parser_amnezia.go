@@ -8,12 +8,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/linkmap"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/textnorm"
 )
 
 // Amnezia vpn:// link import (SPEC 075).
@@ -71,6 +73,7 @@ func parseAmneziaVPNLink(uri string, skipFilters []map[string]string) (*configty
 		if parseErr != nil {
 			return nil, fmt.Errorf("invalid WireGuard config in vpn:// payload: %w", parseErr)
 		}
+		applyAmneziaLinkName(node, amneziaLinkName(uri))
 		return node, nil
 	}
 
@@ -105,6 +108,7 @@ func parseAmneziaVPNLink(uri string, skipFilters []map[string]string) (*configty
 	if node == nil {
 		return nil, nil
 	}
+	applyAmneziaLinkName(node, amneziaLinkName(uri))
 	// Одиночный путь отдал один контейнер из нескольких — на узел ставится
 	// info-код: остальные локации профиля в этот вызов не попали.
 	if containerCount > 1 {
@@ -358,6 +362,7 @@ func parseAmneziaVPNLinkWithOrigins(uri string, skipFilters []map[string]string)
 		if node == nil {
 			return nil, nil, 0, nil
 		}
+		applyAmneziaLinkName(node, amneziaLinkName(uri))
 		return []*configtypes.ParsedNode{node}, []string{bareConf}, 0, nil
 	}
 
@@ -370,6 +375,18 @@ func parseAmneziaVPNLinkWithOrigins(uri string, skipFilters []map[string]string)
 	baseLabel := amneziaString(profile, "description")
 	if baseLabel == "" {
 		baseLabel = amneziaString(profile, "hostName")
+	}
+	// Имя ссылки заменяет имя профиля; само имя достаётся контейнеру по
+	// умолчанию (нет такого — первому), прочие — `<имя> <контейнер>`.
+	linkName := amneziaLinkName(uri)
+	chosen := 0
+	if def := amneziaString(profile, "defaultContainer"); def != "" {
+		for i, n := range names {
+			if n == def {
+				chosen = i
+				break
+			}
+		}
 	}
 
 	nodes := make([]*configtypes.ParsedNode, 0, len(texts))
@@ -386,6 +403,15 @@ func parseAmneziaVPNLinkWithOrigins(uri string, skipFilters []map[string]string)
 			label = label + " " + names[i]
 		}
 
+		nodeName := ""
+		if linkName != "" {
+			nodeName = linkName
+			if i != chosen && names[i] != "" {
+				nodeName += " " + names[i]
+			}
+			label = nodeName
+		}
+
 		confText = MaterializeWGConfContext(confText, contexts[i])
 		node, parseErr, known := ParseWGConfByEngineHint(confText, label, skipFilters)
 		if !known {
@@ -399,6 +425,7 @@ func parseAmneziaVPNLinkWithOrigins(uri string, skipFilters []map[string]string)
 			continue
 		}
 		if node != nil {
+			applyAmneziaLinkName(node, nodeName)
 			nodes = append(nodes, node)
 			origins = append(origins, confText)
 		}
@@ -493,9 +520,41 @@ func amneziaConfContext(owner, profile map[string]interface{}) map[string]interf
 func amneziaPayload(uri string) string {
 	t := strings.TrimSpace(uri)
 	if i := strings.Index(t, "://"); i >= 0 {
-		return t[i+3:]
+		t = t[i+3:]
+	}
+	if i := strings.Index(t, "#"); i >= 0 {
+		t = t[:i]
 	}
 	return t
+}
+
+// amneziaLinkName — имя после `#`, та же схема, что у `awg://<base64>#имя`
+// (контракт 1.1.186): в base64 символа `#` нет, всё после первого `#` — имя
+// (percent-encoded; битая кодировка остаётся как есть). Пусто — имени нет.
+func amneziaLinkName(uri string) string {
+	i := strings.Index(uri, "#")
+	if i < 0 {
+		return ""
+	}
+	name := uri[i+1:]
+	if decoded, err := url.PathUnescape(name); err == nil {
+		name = decoded
+	}
+	return strings.TrimSpace(name)
+}
+
+// applyAmneziaLinkName ставит узлу имя из ссылки: оно сильнее имени из
+// профиля и комментариев `.conf`. Нормализация — как у метки любой ссылки.
+func applyAmneziaLinkName(node *configtypes.ParsedNode, name string) {
+	if node == nil || name == "" {
+		return
+	}
+	node.Label = textnorm.NormalizeProxyDisplay(sanitizeForDisplay(name))
+	tag, comment := extractTagAndComment(node.Label)
+	if tag == "" {
+		return
+	}
+	node.Tag, node.Comment = normalizeFlagTag(tag), comment
 }
 
 // amneziaContainerNames lists container names for error messages.

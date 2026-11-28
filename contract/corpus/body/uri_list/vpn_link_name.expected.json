@@ -1,0 +1,134 @@
+{
+  "meta": {
+    "body_kind": "uri-list"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.8.0.2/32"
+        ],
+        "peers": [
+          {
+            "address": "example-1.com",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "port": 51820,
+            "public_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA="
+          }
+        ],
+        "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "node-vpn",
+      "scheme": "wireguard"
+    },
+    {
+      "entry": {
+        "address": [
+          "10.8.0.2/32"
+        ],
+        "peers": [
+          {
+            "address": "example-2.com",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "port": 51820,
+            "public_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA="
+          }
+        ],
+        "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "node-awg",
+      "scheme": "wireguard"
+    },
+    {
+      "entry": {
+        "address": [
+          "10.8.0.2/32"
+        ],
+        "peers": [
+          {
+            "address": "example-3.com",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "port": 51820,
+            "public_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA="
+          }
+        ],
+        "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "FromPeer",
+      "scheme": "wireguard"
+    },
+    {
+      "entry": {
+        "address": [
+          "10.8.0.2/32"
+        ],
+        "peers": [
+          {
+            "address": "example-1.com",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "persistent_keepalive_interval": 25,
+            "port": 51820,
+            "public_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA="
+          }
+        ],
+        "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "node-multi",
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wgconf_dns_ignored",
+          "path": "dns",
+          "value": "1.1.1.1"
+        }
+      ]
+    },
+    {
+      "entry": {
+        "address": [
+          "10.9.0.2/32"
+        ],
+        "peers": [
+          {
+            "address": "example-2.com",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "persistent_keepalive_interval": 25,
+            "port": 51820,
+            "public_key": "ddddddddddddddddddddddddddddddddddddddddddA="
+          }
+        ],
+        "private_key": "ccccccccccccccccccccccccccccccccccccccccccA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "node-multi amnezia-wireguard",
+      "scheme": "wireguard",
+      "warnings": [
+        {
+          "code": "wgconf_dns_ignored",
+          "path": "dns",
+          "value": "1.1.1.1"
+        }
+      ]
+    }
+  ],
+  "v": 1
+}

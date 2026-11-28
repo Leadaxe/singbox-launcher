@@ -73,7 +73,7 @@ Everything a link of this scheme can carry. **Maps to** points at the body field
   - Type: int
   - Maps to: [`mtu`](#body-mtu)
   - If invalid: removed → [`type_invalid`](../warnings.md#type_invalid) · If absent: filled in with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) · Above `1280`: replaced with `1280` when any of `jc`, `jmin`, `jmax` is set (and 25 more) → [`awg_mtu_clamped`](../warnings.md#awg_mtu_clamped). From `singbox`: kept as written, with a note → [`awg_mtu_high`](../warnings.md#awg_mtu_high)
-- <a id="link-proto-keepalive"></a>**`keepalive`** — Persistent keep-alive interval.
+- <a id="link-proto-keepalive"></a>**`keepalive`** — Persistent keep-alive interval: N seconds, or an AmneziaWG 3.x range N-M.
   - Type: int
   - Maps to: `peers[].persistent_keepalive_interval`
 - <a id="link-proto-presharedkey"></a>**`presharedkey`** — Pre-shared key of the peer.
@@ -99,7 +99,7 @@ Everything a link of this scheme can carry. **Maps to** points at the body field
   - Type: int
   - Maps to: [`jc`](#body-jc)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-- <a id="link-proto-jmin"></a>**`jmin`** — AmneziaWG obfuscation parameter jmin.
+- <a id="link-proto-jmin"></a>**`jmin`** — AmneziaWG obfuscation parameter jmin; dropped without jmax.
   - Type: int
   - Maps to: [`jmin`](#body-jmin)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
@@ -123,48 +123,84 @@ Everything a link of this scheme can carry. **Maps to** points at the body field
   - Type: int
   - Maps to: [`s4`](#body-s4)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-- <a id="link-proto-h1"></a>**`h1`** — AmneziaWG magic header H1.
+- <a id="link-proto-h1"></a>**`h1`** — AmneziaWG magic header H1: a number N, or a range N-M (AmneziaWG 2.0).
   - Type: int
   - Maps to: [`h1`](#body-h1)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-- <a id="link-proto-h2"></a>**`h2`** — AmneziaWG magic header H2.
+- <a id="link-proto-h2"></a>**`h2`** — AmneziaWG magic header H2: a number N, or a range N-M (AmneziaWG 2.0).
   - Type: int
   - Maps to: [`h2`](#body-h2)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-- <a id="link-proto-h3"></a>**`h3`** — AmneziaWG magic header H3.
+- <a id="link-proto-h3"></a>**`h3`** — AmneziaWG magic header H3: a number N, or a range N-M (AmneziaWG 2.0).
   - Type: int
   - Maps to: [`h3`](#body-h3)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-- <a id="link-proto-h4"></a>**`h4`** — AmneziaWG magic header H4.
+- <a id="link-proto-h4"></a>**`h4`** — AmneziaWG magic header H4: a number N, or a range N-M (AmneziaWG 2.0).
   - Type: int
   - Maps to: [`h4`](#body-h4)
   - If invalid: removed → [`awg_header_invalid`](../warnings.md#awg_header_invalid)
-- <a id="link-proto-i1"></a>**`i1`** — AmneziaWG 3.x junk packet I1.
+- <a id="link-proto-i1"></a>**`i1`** — AmneziaWG 1.5 junk packet I1.
   - Type: string
   - Maps to: [`i1`](#body-i1)
-- <a id="link-proto-i2"></a>**`i2`** — AmneziaWG 3.x junk packet I2.
+- <a id="link-proto-i2"></a>**`i2`** — AmneziaWG 1.5 junk packet I2.
   - Type: string
   - Maps to: [`i2`](#body-i2)
-- <a id="link-proto-i3"></a>**`i3`** — AmneziaWG 3.x junk packet I3.
+- <a id="link-proto-i3"></a>**`i3`** — AmneziaWG 1.5 junk packet I3.
   - Type: string
   - Maps to: [`i3`](#body-i3)
-- <a id="link-proto-i4"></a>**`i4`** — AmneziaWG 3.x junk packet I4.
+- <a id="link-proto-i4"></a>**`i4`** — AmneziaWG 1.5 junk packet I4.
   - Type: string
   - Maps to: [`i4`](#body-i4)
-- <a id="link-proto-i5"></a>**`i5`** — AmneziaWG 3.x junk packet I5.
+- <a id="link-proto-i5"></a>**`i5`** — AmneziaWG 1.5 junk packet I5.
   - Type: string
   - Maps to: [`i5`](#body-i5)
-- <a id="link-proto-id"></a>**`id`** — AmneziaWG 3.x cover protocol domain.
+- <a id="link-proto-id"></a>**`id`** — AmneziaWG 1.5 masquerade domain; required with ip=quic. Ignored when i1 is set.
   - Type: string
   - Maps to: [`id`](#body-id)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-- <a id="link-proto-ip"></a>**`ip`** — AmneziaWG 3.x cover protocol.
+- <a id="link-proto-ip"></a>**`ip`** — AmneziaWG 1.5 masquerade protocol: quic, dns, stun or sip. Ignored when i1 is set.
   - Type: string
   - Maps to: [`ip`](#body-ip)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
-- <a id="link-proto-ib"></a>**`ib`** — AmneziaWG 3.x browser signature.
+- <a id="link-proto-ib"></a>**`ib`** — AmneziaWG 1.5 masquerade browser signature: chrome, firefox or curl. Ignored when i1 is set.
   - Type: string
   - Maps to: [`ib`](#body-ib)
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+- <a id="link-proto-headerprotectionkey"></a>**`headerprotectionkey`** — AmneziaWG 3.0. Key protecting packet headers. 32 bytes; needs s1–s4 of at least 12.
+  - Type: base64
+  - Maps to: [`header_protection_key`](#body-header-protection-key)
+  - If invalid: node dropped → [`awg3_header_key_invalid`](../warnings.md#awg3_header_key_invalid)
+- <a id="link-proto-contentpaddingaddition"></a>**`contentpaddingaddition`** — AmneziaWG 3.0. Extra content padding, number or range. Value: N or N-M.
+  - Type: string
+  - Maps to: [`content_padding_addition`](#body-content-padding-addition)
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+- <a id="link-proto-rekeyaftertime"></a>**`rekeyaftertime`** — AmneziaWG 3.0. Rekey after this many seconds. Value: N or N-M.
+  - Type: string
+  - Maps to: [`rekey_after_time`](#body-rekey-after-time)
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+- <a id="link-proto-rekeytimeout"></a>**`rekeytimeout`** — AmneziaWG 3.0. Rekey attempt timeout in seconds. Value: N or N-M.
+  - Type: string
+  - Maps to: [`rekey_timeout`](#body-rekey-timeout)
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+- <a id="link-proto-rejectaftertime"></a>**`rejectaftertime`** — AmneziaWG 3.0. Reject the session after this many seconds. Value: N or N-M.
+  - Type: string
+  - Maps to: [`reject_after_time`](#body-reject-after-time)
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+- <a id="link-proto-keepalivetimeout"></a>**`keepalivetimeout`** — AmneziaWG 3.0. Keepalive timeout in seconds. Value: N or N-M.
+  - Type: string
+  - Maps to: [`keepalive_timeout`](#body-keepalive-timeout)
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+- <a id="link-proto-maxhandshakeattempts"></a>**`maxhandshakeattempts`** — AmneziaWG 3.0. Maximum handshake attempts, count not seconds. Value: N or N-M.
+  - Type: string
+  - Maps to: [`max_handshake_attempts`](#body-max-handshake-attempts)
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+- <a id="link-proto-randomtrailers"></a>**`randomtrailers`** — AmneziaWG 3.1. Append random trailing bytes to packets. Value: on or off.
+  - Type: string
+  - Maps to: [`random_trailers`](#body-random-trailers)
+  - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
+- <a id="link-proto-disablecookies"></a>**`disablecookies`** — AmneziaWG 3.1. Disable the cookie mechanism. Value: on or off.
+  - Type: string
+  - Maps to: [`disable_cookies`](#body-disable-cookies)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
 
 ## Body fields
@@ -388,12 +424,14 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
   - Means protocol level `awg1.5`, adds `+` to the level label
 - <a id="body-header-protection-key"></a>**`header_protection_key`** — Key protecting packet headers.
   - Type: string, secret, format `base64_32`, must match `^$|^[A-Za-z0-9+/_-]*[B-Za-z0-9+/_-][A-Za-z0-9+/_-]*={0,2}$`, normalized: `base64_std`
+  - Set by link parameter: [`headerprotectionkey`](#link-proto-headerprotectionkey)
   - If invalid: node dropped → [`awg3_header_key_invalid`](../warnings.md#awg3_header_key_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
   - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
   - Means protocol level `awg3`
 - <a id="body-content-padding-addition"></a>**`content_padding_addition`** — Extra content padding, number or range.
   - Type: awg_range
+  - Set by link parameter: [`contentpaddingaddition`](#link-proto-contentpaddingaddition)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
   - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
@@ -401,6 +439,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-rekey-after-time"></a>**`rekey_after_time`** — Rekey after this many seconds.
   - Type: awg_range
   - Default: `120`
+  - Set by link parameter: [`rekeyaftertime`](#link-proto-rekeyaftertime)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
   - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
@@ -408,6 +447,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-rekey-timeout"></a>**`rekey_timeout`** — Rekey attempt timeout in seconds.
   - Type: awg_range
   - Default: `5`
+  - Set by link parameter: [`rekeytimeout`](#link-proto-rekeytimeout)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
   - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
@@ -415,6 +455,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-reject-after-time"></a>**`reject_after_time`** — Reject the session after this many seconds.
   - Type: awg_range
   - Default: `180`
+  - Set by link parameter: [`rejectaftertime`](#link-proto-rejectaftertime)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
   - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
@@ -422,6 +463,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-keepalive-timeout"></a>**`keepalive_timeout`** — Keepalive timeout in seconds.
   - Type: awg_range
   - Default: `10`
+  - Set by link parameter: [`keepalivetimeout`](#link-proto-keepalivetimeout)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
   - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
@@ -429,6 +471,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-max-handshake-attempts"></a>**`max_handshake_attempts`** — Maximum handshake attempts, count not seconds.
   - Type: awg_range
   - Default: `18`
+  - Set by link parameter: [`maxhandshakeattempts`](#link-proto-maxhandshakeattempts)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
   - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
@@ -436,6 +479,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-random-trailers"></a>**`random_trailers`** — Append random trailing bytes to packets.
   - Type: bool
   - Default: `false`
+  - Set by link parameter: [`randomtrailers`](#link-proto-randomtrailers)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
   - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
@@ -443,6 +487,7 @@ The node body itself — the sing-box JSON kept in the launcher state. The path 
 - <a id="body-disable-cookies"></a>**`disable_cookies`** — Disable the cookie mechanism.
   - Type: bool
   - Default: `false`
+  - Set by link parameter: [`disablecookies`](#link-proto-disablecookies)
   - If invalid: removed → [`awg3_field_invalid`](../warnings.md#awg3_field_invalid)
   - Only written when: core ≥ `1.14.0-lx.32`, lx fork only, build tag `with_awg`
   - On a core that lacks it the whole node is dropped at build: `awg3_core_unsupported`
